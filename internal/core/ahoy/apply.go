@@ -592,8 +592,16 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		// when the config write does not land.
 		a.docsTargetForced = true
 	}
+	oracleRecorded := false
 	if ic.OracleBackend == "" {
-		ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+		if a.overrides["oracle_backend"] == "" && !oracleBackendAsked() {
+			// One answer has an adapter, so there is nothing to ask: record it
+			// and say so once the write lands (iss-2610031236155833).
+			ic.OracleBackend = oracleBackendDefault
+			oracleRecorded = true
+		} else {
+			ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+		}
 		if !inSet(ic.OracleBackend, oracleBackendChoices) {
 			return nil // no valid oracle backend => partial
 		}
@@ -644,6 +652,9 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return nil
 	}
 	a.note(writeSettings, configPath(a.cwd))
+	if oracleRecorded {
+		a.inform(oracleBackendRecordedNote)
+	}
 	return ic
 }
 

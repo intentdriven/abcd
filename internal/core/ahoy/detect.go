@@ -571,6 +571,10 @@ func configValueGap(id, key, title, detail string) Gap {
 	g := cfgGap(id, title, detail)
 	if h, ok := HelpFor(key); ok && h.Flag != "" {
 		g.FixHint = "ahoy install asks for the value; " + h.FlagHint() + "."
+		if key == "oracle_backend" && !oracleBackendAsked() {
+			g.FixHint = "ahoy install records " + oracleBackendDefault + ", the only reviewer abcd ships, without asking; " +
+				"to choose another, pass " + h.Flag + " <value>."
+		}
 	}
 	return g
 }

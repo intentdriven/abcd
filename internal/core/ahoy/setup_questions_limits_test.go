@@ -90,18 +90,18 @@ func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Questi
 }
 
 // setupLimitsOwed is every limit a setup question breaks today, as
-// "<question id> <rule>", recorded in iss-2610031236155833: two questions
-// offer more answers than four options hold, which waits on the product
-// thinker's ruling, and the rest exceed the rows under the provisional host
-// figures, which wait on step 5's calibration. The list may only shrink: a
+// "<question id> <rule>", recorded in iss-2610031236155833: docs_target offers
+// more answers than four options hold, which itd-2610030814013772's retirement
+// of claude_md and both brings inside the limit, and the rest exceed the rows
+// under the provisional host figures, which wait on step 5's calibration.
+// oracle_backend is not asked while one answer has an adapter (the 2026-10-03
+// ruling), so it owes nothing while it stays unasked. The list may only shrink: a
 // question that newly breaks a limit fails, and so does a line here that no
 // longer breaks, so the fix deletes its line.
 var setupLimitsOwed = map[string]bool{
 	"artefact_kind rows":                  true,
 	"docs_target options":                 true,
 	"docs_target rows":                    true,
-	"oracle_backend options":              true,
-	"oracle_backend rows":                 true,
 	"oracle_routing.machine_offered rows": true,
 	"scan_deep rows":                      true,
 	"visibility rows":                     true,
@@ -113,10 +113,14 @@ var setupLimitsOwed = map[string]bool{
 // through their field view (spc-2610030944505997 step 4: "every fixed question
 // abcd builds (setup, routing) passing CheckLimits"). The words are core's, so
 // a change to one that breaks a limit fails here, not in front of a person.
-// What breaks a limit today is owed by name in setupLimitsOwed.
+// What breaks a limit today is owed by name in setupLimitsOwed. A question the
+// install does not ask is not held to them.
 func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 	var helps []PromptHelp
 	for _, h := range promptHelp {
+		if h.Key == "oracle_backend" && !oracleBackendAsked() {
+			continue // not asked while one answer has an adapter; it returns with a second
+		}
 		helps = append(helps, h)
 	}
 	for k := range statusLineElementAbout {

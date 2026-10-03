@@ -167,19 +167,27 @@ SIGPIPE when abcd stops reading, by design — judge the run by abcd's own outpu
 and exit status, not the pipeline's.
 
 **Every value question arrives explained.** A question that picks one of
-several values (`visibility`, `docs_target`, `oracle_backend`, `scan_deep`, the
+several values (`visibility`, `docs_target`, `scan_deep`, the
 house-style question and each status-line element) is printed with abcd's own
 explanation above it: one paragraph saying what is being decided, then one
 line per answer saying what that answer means, including what it asks of the
 user (keys, tools, cost). When you relay such a question, relay that
 explanation verbatim with it; never describe an answer in your own words, and
-never offer an answer the question does not list. The four config values also
-name the flag that answers them without the question (`--visibility`,
-`--docs-target`, `--oracle-backend`, `--scan-deep`), and the matching gap's fix
+never offer an answer the question does not list. The config values asked
+also name the flag that answers them without the question (`--visibility`,
+`--docs-target`, `--scan-deep`), and the matching gap's fix
 hint names it too: in a scripted run, pass the user's answer through the flag
 rather than lining a piped answer up with the question. `--yes` chooses no
 value, so a `--yes` run that still has a value to ask says so once, above the
 first such question.
+
+**The AI reviewer is recorded, not asked.** `oracle_backend` has one answer
+abcd ships an adapter for, `host-delegated` (the assistant the user is working
+in), so install records it without a question and says so in one note, which
+names `--oracle-backend` as the way to choose another reviewer once one
+arrives. Relay that note; do not ask the user to choose a reviewer. The flag
+still sets the value in a scripted run, and the question returns on its own once
+a second answer has an adapter.
 
 That is a channel for passing on an answer the technical facilitator has GIVEN
 — set `abcd mode facilitator`, ask the technical facilitator first, then pipe;

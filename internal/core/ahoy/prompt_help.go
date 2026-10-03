@@ -73,6 +73,33 @@ func (h PromptHelp) Meaning(value string) string {
 // promised a direct model call would describe a behaviour abcd does not have.
 const noAdapterYet = " abcd does not ship this adapter yet, so the choice is recorded and reviews still go to the assistant you are working in."
 
+// oracleAdapterShipped names the oracle answers abcd has an adapter for. Every
+// other answer carries noAdapterYet in its meaning, and a test holds the two in
+// step, so marking an adapter here and rewording its meaning is one change.
+var oracleAdapterShipped = map[string]bool{"host-delegated": true}
+
+// oracleBackendAsked reports whether the install asks which oracle to use. A
+// question with one defensible answer is not asked: while only one answer has
+// an adapter, the install records it and says so (oracleBackendRecordedNote).
+// The question returns on its own once a second answer is marked as shipped
+// (the 2026-10-03 ruling on iss-2610031236155833).
+func oracleBackendAsked() bool {
+	n := 0
+	for _, v := range oracleBackendChoices {
+		if oracleAdapterShipped[v] {
+			n++
+		}
+	}
+	return n >= 2
+}
+
+// oracleBackendRecordedNote is the one line an install that recorded the
+// oracle without asking says in its report: what it recorded, why nothing was
+// asked, and how to choose another reviewer once one arrives.
+const oracleBackendRecordedNote = "the AI reviewer was not asked: host-delegated, the assistant you are working in, " +
+	"is recorded because it is the only reviewer abcd ships; other reviewers arrive later, and " +
+	"abcd ahoy install --oracle-backend <value> chooses one then."
+
 // promptHelp is the canonical help, one entry per value question. The choice
 // order matches the order the question offers them.
 var promptHelp = map[string]PromptHelp{
