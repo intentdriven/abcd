@@ -55,7 +55,6 @@ func TestPreflightGateListIsNotRestatedWrongly(t *testing.T) {
 		"docs/how-to/install.md",  // the build section a contributor copies
 		".github/CONTRIBUTING.md", // the local-gates paragraph
 		"AGENTS.md",               // the definition-of-done list
-		"CLAUDE.md",               // AGENTS.md's committed mirror
 		".githooks/pre-push",      // the hook that invokes the recipe
 	} {
 		t.Run(rel, func(t *testing.T) {
@@ -526,7 +525,6 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 	// name the target CI runs — otherwise the human runs a different gate.
 	for _, rel := range []string{
 		"AGENTS.md",                        // the command table and the definition-of-done list
-		"CLAUDE.md",                        // AGENTS.md's committed mirror
 		".github/CONTRIBUTING.md",          // the local-gates paragraph
 		".github/PULL_REQUEST_TEMPLATE.md", // the verification prompt
 		".githooks/pre-push",               // the hook's header, which tells the developer what CI adds
