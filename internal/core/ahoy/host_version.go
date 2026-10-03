@@ -7,28 +7,26 @@ package ahoy
 // spc-2610031342374947) widens this one reading to a table of harnesses in
 // this file rather than restating it.
 //
-// The reading runs a program found on PATH, so it holds to the runner's
-// discipline for a vendor binary (internal/core/runner/proc.go): an argv
-// vector and never a shell line, the git-scrubbed parent environment
-// (gitutil.ScrubbedEnv), the null device on stdin, a working directory that is
-// not the project, output read up to a bound and the rest discarded, and a
-// run past its time killed with the process group it leads, through the pid
-// this handle holds. A command that resolves to a relative path or inside the
-// project is repository content and is never run.
+// The reading runs a program found on PATH through the runner's one launch
+// primitive for a vendor binary (runner.Exec, internal/core/runner/proc.go),
+// so its admission, its bounds and its group kill are the harness's own and
+// never a second copy: an argv vector and never a shell line, the binary
+// refused when it is not absolute, when group or other can write it or a
+// folder it is reached through, or when it resolves inside the project; the
+// git-scrubbed parent environment, the null device on stdin, a working
+// directory that is not the project, each stream bounded, and a run past its
+// time killed with the process group it leads, through the pid that handle
+// holds.
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
-	"syscall"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 // claudeCommand is the command Claude Code installs on PATH.
@@ -66,8 +64,8 @@ func (v hostVersion) less(w hostVersion) bool {
 // can shorten it.
 var hostVersionTimeout = 3 * time.Second
 
-// hostVersionMaxOutput is how much of the command's output is kept; a version
-// line is short, and the rest is discarded unread.
+// hostVersionMaxOutput bounds each of the command's streams; a version line
+// is short, and a command writing past the bound gives no version.
 const hostVersionMaxOutput = 4 << 10
 
 // versionPattern is a major.minor.patch release number.
@@ -77,85 +75,37 @@ var versionPattern = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 // one of them as "raise nothing"; the harness check names them.
 var (
 	errHostAbsent     = errors.New("not on the search path")
-	errHostRefused    = errors.New("resolves to a relative path or inside the project, so it is never run")
+	errHostRefused    = errors.New("resolves to a relative path, inside the project or through a folder others can write, so it is never run")
 	errHostNoAnswer   = errors.New("gave no answer in time, or exited with an error")
 	errHostNoVersion  = errors.New("printed no version")
 	errHostNotStarted = errors.New("could not be started")
 )
 
-// admitHostCommand resolves command on PATH and refuses a result that is not
-// absolute or that lies inside project, lexically or after its links are
-// resolved: a program there is repository content and is never run. A
-// variable so the harness check can put the runner's own admission here.
-var admitHostCommand = func(command, project string) (string, error) {
-	p, err := exec.LookPath(command)
-	if err != nil {
-		return "", errHostAbsent
-	}
-	if !filepath.IsAbs(p) {
-		return "", errHostRefused
-	}
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", errHostAbsent
-	}
-	if project != "" {
-		guards := []string{filepath.Clean(project)}
-		if g, gerr := filepath.EvalSymlinks(project); gerr == nil {
-			guards = append(guards, g)
-		}
-		fold := fsutil.CaseFoldingFS()
-		for _, g := range guards {
-			for _, c := range []string{filepath.Clean(p), resolved} {
-				if fsutil.PathWithin(c, g, fold) {
-					return "", errHostRefused
-				}
-			}
-		}
-	}
-	return p, nil
-}
-
 // readHostVersion asks command, found on PATH, for its version with its
 // --version flag, and returns the first major.minor.patch it prints. project
 // is the folder the reading is made for; a command inside it is never run.
-// The error says why no version was read.
+// The error says why no version was read. It is the one reading of an agent
+// tool's installed version: the harness-version check calls it per harness.
 func readHostVersion(command, project string) (hostVersion, error) {
-	bin, err := admitHostCommand(command, project)
-	if err != nil {
-		return hostVersion{}, err
+	var guards []string
+	if project != "" {
+		guards = []string{project}
 	}
-	// #nosec G204 -- bin is a fixed command name resolved by admitHostCommand
-	// (absolute, outside the project); the argument is a constant.
-	cmd := exec.Command(bin, "--version")
-	cmd.Dir = string(filepath.Separator)
-	cmd.Env = gitutil.ScrubbedEnv()
-	cmd.Stdin = nil
-	out := &keepFirst{limit: hostVersionMaxOutput}
-	cmd.Stdout = out
-	cmd.Stderr = out
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.WaitDelay = time.Second
-	if err := cmd.Start(); err != nil {
+	out, err := runner.Exec(context.Background(), runner.Command{
+		Name: command, Args: []string{"--version"}, Dir: "/", Guards: guards,
+		Timeout: hostVersionTimeout, MaxStdout: hostVersionMaxOutput, MaxStderr: hostVersionMaxOutput,
+	})
+	switch {
+	case errors.Is(err, runner.ErrNotOnPath):
+		return hostVersion{}, errHostAbsent
+	case errors.Is(err, runner.ErrRefused):
+		return hostVersion{}, errHostRefused
+	case errors.Is(err, runner.ErrNotStarted):
 		return hostVersion{}, errHostNotStarted
-	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	timer := time.NewTimer(hostVersionTimeout)
-	defer timer.Stop()
-	select {
-	case err = <-done:
-	case <-timer.C:
-		// The group this child leads, through the pid this handle holds; the
-		// leader is not yet reaped, so the group id is still its.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		<-done
+	case err != nil:
 		return hostVersion{}, errHostNoAnswer
 	}
-	if err != nil {
-		return hostVersion{}, errHostNoAnswer
-	}
-	return parseHostVersion(out.buf.Bytes())
+	return parseHostVersion(append(out.Stdout, out.Stderr...))
 }
 
 // parseHostVersion is the first major.minor.patch in out.
@@ -173,24 +123,6 @@ func parseHostVersion(out []byte) (hostVersion, error) {
 		parts[i] = n
 	}
 	return hostVersion{Major: parts[0], Minor: parts[1], Patch: parts[2]}, nil
-}
-
-// keepFirst keeps the first limit bytes written to it and discards the rest,
-// reporting every write as taken so the child is never stopped by a full pipe.
-type keepFirst struct {
-	buf   bytes.Buffer
-	limit int
-}
-
-func (k *keepFirst) Write(p []byte) (int, error) {
-	if room := k.limit - k.buf.Len(); room > 0 {
-		if len(p) > room {
-			k.buf.Write(p[:room])
-		} else {
-			k.buf.Write(p)
-		}
-	}
-	return len(p), nil
 }
 
 // String is for a test's failure message.

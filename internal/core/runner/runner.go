@@ -126,14 +126,27 @@ type Failure struct {
 	Runner string
 	Reason Reason
 	Detail string
+	// cause is the launch stage that failed (ErrNotOnPath, ErrRefused,
+	// ErrNotStarted), nil for every other failure; errors.Is reads it.
+	cause error
 }
 
 func (f *Failure) Error() string {
 	return fmt.Sprintf("runner %s %s: %s", f.Runner, f.Reason, f.Detail)
 }
 
+// Unwrap is the launch stage that failed, nil when the failure is not one.
+func (f *Failure) Unwrap() error { return f.cause }
+
 func fail(runner string, reason Reason, format string, args ...any) *Failure {
 	return &Failure{Runner: runner, Reason: reason, Detail: fmt.Sprintf(format, args...)}
+}
+
+// failAt is fail for a launch stage: the same failure, carrying cause.
+func failAt(cause error, runner string, reason Reason, format string, args ...any) *Failure {
+	f := fail(runner, reason, format, args...)
+	f.cause = cause
+	return f
 }
 
 var (

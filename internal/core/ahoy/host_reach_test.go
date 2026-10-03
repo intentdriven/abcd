@@ -185,25 +185,28 @@ func fakeClaude(t *testing.T, dir, script string) {
 // TestHostVersionWarning: a claude command on PATH older than the release
 // that reads AGENTS.md on its own raises one warning, naming no version; one
 // at that release, none on PATH, one printing nothing parsable, one that does
-// not answer in time, and one inside the project (repository content, never
-// run) raise nothing.
+// not answer in time, one inside the project (repository content, never run)
+// and one reached through a folder others can write (the runner's own
+// admission) raise nothing.
 func TestHostVersionWarning(t *testing.T) {
 	real := func(project string) (hostVersion, error) { return readHostVersion(claudeCommand, project) }
 	for _, tc := range []struct {
 		name   string
 		script string // "" for no claude on PATH
 		inside bool   // the command sits inside the project
+		open   bool   // the command's folder is one others can write
 		warn   bool
 	}{
-		{"below the floor", `echo "2.1.280 (Claude Code)"`, false, true},
-		{"well below the floor, two digits", `echo "1.10.9 (Claude Code)"`, false, true},
-		{"at the floor", `echo "2.1.281 (Claude Code)"`, false, false},
-		{"above the floor", `echo "2.10.0 (Claude Code)"`, false, false},
-		{"absent", "", false, false},
-		{"nothing parsable", `echo "unknown"`, false, false},
-		{"an error exit", "echo \"2.1.200\"\nexit 3", false, false},
-		{"no answer in time", "sleep 5\necho \"2.1.200\"", false, false},
-		{"inside the project", `echo "2.1.200 (Claude Code)"`, true, false},
+		{"below the floor", `echo "2.1.280 (Claude Code)"`, false, false, true},
+		{"well below the floor, two digits", `echo "1.10.9 (Claude Code)"`, false, false, true},
+		{"at the floor", `echo "2.1.281 (Claude Code)"`, false, false, false},
+		{"above the floor", `echo "2.10.0 (Claude Code)"`, false, false, false},
+		{"absent", "", false, false, false},
+		{"nothing parsable", `echo "unknown"`, false, false, false},
+		{"an error exit", "echo \"2.1.200\"\nexit 3", false, false, false},
+		{"no answer in time", "sleep 5\necho \"2.1.200\"", false, false, false},
+		{"inside the project", `echo "2.1.200 (Claude Code)"`, true, false, false},
+		{"a folder others can write", `echo "2.1.200 (Claude Code)"`, false, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, _ := setupHermetic(t)
@@ -223,6 +226,11 @@ func TestHostVersionWarning(t *testing.T) {
 			}
 			if tc.script != "" {
 				fakeClaude(t, bin, tc.script)
+			}
+			if tc.open {
+				if err := os.Chmod(bin, 0o777); err != nil {
+					t.Fatal(err)
+				}
 			}
 			// Only the fake: the system folders the code under test runs
 			// beside it, and nothing that resolves a claude of the machine's.

@@ -1,6 +1,7 @@
 package runner
 
-// proc.go is the one place this package starts a process. The trust boundary:
+// proc.go is the one place this package starts a process, and Exec is the one
+// place another package starts a vendor binary through it. The trust boundary:
 // a runner starts a harness with a prompt and a repository path, so
 //
 //   - the argv is a vector handed to exec, never a shell line, and the prompt
@@ -18,7 +19,8 @@ package runner
 //     pass through untouched: abcd never logs a harness in; an adapter's own
 //     sealing switches (seal) are set over whatever the parent holds for
 //     them, so the parent cannot reopen what the adapter closes;
-//   - stdin is the null device, the working directory is the repository;
+//   - stdin is the null device, the working directory is the repository (for
+//     Exec, the directory its caller names);
 //   - stdout and stderr are each bounded; a harness writing past the bound is
 //     cut off and the run fails naming the bound;
 //   - the child leads its own process group, and a run past its time, or one
@@ -79,24 +81,24 @@ type procResult struct {
 func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	p, err := l.lookPath(name)
 	if err != nil {
-		return "", fail(runner, ReasonAbsent, "%s is not on PATH", name)
+		return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s is not on PATH", name)
 	}
 	if !filepath.IsAbs(p) {
-		return "", fail(runner, ReasonAbsent, "%s resolves to a relative path, which is never run", name)
+		return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves to a relative path, which is never run", name)
 	}
 	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {
-		return "", fail(runner, ReasonAbsent, "%s does not resolve to a file", name)
+		return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s does not resolve to a file", name)
 	}
 	// Whoever can write the binary, the directory PATH reaches it through, or
 	// the directory it resolves into chooses what runs.
 	for _, c := range []string{resolved, filepath.Dir(resolved), filepath.Dir(filepath.Clean(p))} {
 		fi, err := os.Stat(c)
 		if err != nil {
-			return "", fail(runner, ReasonAbsent, "%s could not be examined before it is run", name)
+			return "", failAt(ErrRefused, runner, ReasonAbsent, "%s could not be examined before it is run", name)
 		}
 		if fsutil.WritableByOthers(fi) && !adminGroupWritableOnly(fi) {
-			return "", fail(runner, ReasonAbsent, "%s, or a directory it is reached through, is one group or other can write, "+
+			return "", failAt(ErrRefused, runner, ReasonAbsent, "%s, or a directory it is reached through, is one group or other can write, "+
 				"so it is never run; chmod go-w it", name)
 		}
 	}
@@ -114,7 +116,7 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	for _, g := range guards {
 		for _, c := range []string{filepath.Clean(p), resolved} {
 			if fsutil.PathWithin(c, g, fold) {
-				return "", fail(runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
+				return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
 					"a program there is repository content and is never run", name)
 			}
 		}
@@ -172,7 +174,7 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = pipeGrace
 	if err := cmd.Start(); err != nil {
-		return procResult{}, fail(runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
+		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -217,6 +219,67 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 		return res, fail(runner, ReasonFailed, "%s did not complete", name)
 	}
 	return res, nil
+}
+
+// The launch stages a Failure can name through errors.Is: the program was not
+// found, it was found and refused, or it was admitted and could not start.
+// Every other failure (a non-zero exit, a run past its time, an overrun bound)
+// is none of them.
+var (
+	ErrNotOnPath  = errors.New("not on PATH")
+	ErrRefused    = errors.New("refused before it is run")
+	ErrNotStarted = errors.New("could not be started")
+)
+
+// Command is one program found on PATH that another package runs under this
+// file's discipline: the one launch primitive abcd has for a vendor binary,
+// so a second copy of the admission, the group kill and the bounds is never
+// written. Zero output bounds take a harness's own.
+type Command struct {
+	// Name is the program's fixed name, looked up on PATH.
+	Name string
+	// Args is the argument vector, never a shell line.
+	Args []string
+	// Dir is the working directory the program runs in.
+	Dir string
+	// Guards are the folders a program resolving inside is refused from,
+	// lexically or through a link: repository content is never run.
+	Guards []string
+	// Timeout bounds the run; past it the program's group is killed. A
+	// command without one is never run.
+	Timeout time.Duration
+	// MaxStdout and MaxStderr bound each stream; past either the run fails.
+	MaxStdout, MaxStderr int
+}
+
+// Output is what an Exec run wrote, each stream up to its bound.
+type Output struct {
+	Stdout, Stderr []byte
+}
+
+// Exec admits c.Name exactly as a harness is admitted (admit) and runs it
+// exactly as a harness is run (run): the scrubbed environment, the null
+// device on stdin, the bounds, and the process group killed through this
+// handle at the timeout or when ctx ends. A failure is a *Failure, whose
+// errors.Is names the stage for ErrNotOnPath, ErrRefused and ErrNotStarted;
+// the output is returned whenever the program produced some.
+func Exec(ctx context.Context, c Command) (Output, error) {
+	l := defaultLauncher()
+	if c.MaxStdout > 0 {
+		l.maxStdout = c.MaxStdout
+	}
+	if c.MaxStderr > 0 {
+		l.maxStderr = c.MaxStderr
+	}
+	if c.Timeout <= 0 {
+		return Output{}, fail(c.Name, ReasonFailed, "%s was given no time bound, so it is never run", c.Name)
+	}
+	bin, err := l.admit(c.Name, c.Name, c.Guards...)
+	if err != nil {
+		return Output{}, err
+	}
+	res, err := l.run(ctx, c.Name, bin, c.Args, nil, c.Dir, c.Timeout)
+	return Output{Stdout: res.stdout, Stderr: res.stderr}, err
 }
 
 // sealedEnv is env with every key seal sets removed, then seal appended: one
