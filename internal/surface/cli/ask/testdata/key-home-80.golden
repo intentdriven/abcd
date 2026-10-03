@@ -9,8 +9,7 @@
   Where should abcd keep the key?
 
 › 1. In the system keychain
-     The key is locked with your login. Another
-     program must ask before it reads the key.
+     The key is locked with your login; another program must ask to read it.
   2. In a file
      The key sits in your home folder. It works on a machine with no keychain.
   3. Decide later
