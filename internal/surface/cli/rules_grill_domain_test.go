@@ -4,91 +4,109 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/question"
 )
 
-// TestGrillDomainCarriesQuestionVisibilityAndAddresseeRules pins this
-// repository's GRILL domain to the two rules the product thinker's
-// 2026-09-29 captures asked for: the example that makes a question answerable
-// sits in the question and in each option's preview (iss-2609291925134691),
-// and the addressee is classified and the mode label set before every question
-// (iss-2609291925149138). The count is pinned too, so the ten rules the domain
-// already carried are added to, never rewritten away: a change to the count is
-// a deliberate edit to this pin.
-func TestGrillDomainCarriesQuestionVisibilityAndAddresseeRules(t *testing.T) {
+// The GRILL domain is generated into the binary's bundled defaults from
+// internal/core/question (spc-2610030944505997 step 3), so every repository abcd
+// manages receives it through the binary, and abcd's own repository runs the
+// same text: its .abcd/rules.json no longer declares the domain.
+
+// grillJSON is one domain as `abcd rules GRILL --json` prints it.
+type grillJSON struct {
+	Name   string   `json:"name"`
+	Source string   `json:"source"`
+	Rules  []string `json:"rules"`
+}
+
+func rulesGrillJSON(t *testing.T) grillJSON {
+	t.Helper()
+	var got grillJSON
+	out := rulesJSON(t, "rules", "GRILL", "--json")
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("rules GRILL --json is not JSON: %v\n%s", err, out)
+	}
+	return got
+}
+
+// TestManagedRepositoryGetsGrillFromTheBinary (itd-201 R1): a managed
+// repository whose .abcd/rules.json is the empty skeleton ahoy writes
+// receives GRILL from the binary. An asking prompt injects it through the
+// prompt hook, and `abcd rules GRILL --json` reports it bundled, its rules the
+// asking rules generated from the field limits.
+func TestManagedRepositoryGetsGrillFromTheBinary(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The skeleton ahoy's stepRules writes: no domain declared, every bundled
+	// default inherited.
+	skeleton := `{"schema_version":1,"disabled":false,"domains":{}}`
+	if err := os.WriteFile(filepath.Join(dir, ".abcd", "rules.json"), []byte(skeleton), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errlog := runHook(t, hookInputJSON(t, "grill-managed", dir, "which option should we choose"), "hook", "prompt-router")
+	if !strings.Contains(out, "## GRILL\n") || !strings.Contains(out, "one thing at a time") {
+		t.Fatalf("an asking prompt did not inject the bundled GRILL domain:\n%s\nstderr:\n%s", out, errlog)
+	}
+
+	t.Chdir(dir)
+	got := rulesGrillJSON(t)
+	if got.Name != "GRILL" || got.Source != "bundled" {
+		t.Fatalf("rules GRILL --json = %+v; want the bundled GRILL domain", got)
+	}
+	if want := question.AskingRules(question.Default); !reflect.DeepEqual(got.Rules, want) {
+		t.Fatalf("the managed repository's GRILL rules are not the generated asking rules:\n got %q\nwant %q", got.Rules, want)
+	}
+}
+
+// TestAbcdsOwnRulesReportGrillBundled: abcd's own repository declares no GRILL
+// override (itd-201 decision 8), so `abcd rules GRILL --json` run in it
+// reports the bundled domain, the text every managed repository runs.
+func TestAbcdsOwnRulesReportGrillBundled(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(testRepoRoot(), ".abcd", "rules.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rules struct {
-		Domains map[string]struct {
-			Rules []string `json:"rules"`
-		} `json:"domains"`
+	var own struct {
+		Domains map[string]json.RawMessage `json:"domains"`
 	}
-	if err := json.Unmarshal(data, &rules); err != nil {
+	if err := json.Unmarshal(data, &own); err != nil {
 		t.Fatalf("parse .abcd/rules.json: %v", err)
 	}
-	dom, ok := rules.Domains["GRILL"]
-	if !ok {
-		t.Fatal(".abcd/rules.json declares no GRILL domain")
+	if _, ok := own.Domains["GRILL"]; ok {
+		t.Fatal(".abcd/rules.json declares GRILL; the domain is generated into the binary and the override is deleted")
 	}
-	const wantCount = 12
-	if len(dom.Rules) != wantCount {
-		t.Errorf("GRILL carries %d rules, want %d (ten standing rules plus the two from the 2026-09-29 captures)", len(dom.Rules), wantCount)
+	root, err := filepath.Abs(testRepoRoot())
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []struct {
-		issue  string
-		phrase []string
-	}{
-		{"iss-2609291925134691", []string{"IN the question text", "each option's preview", "invisible while the question shows"}},
-		{"iss-2609291925149138", []string{"addressee", "FIRST", "mode verb", "mixed interview"}},
-	} {
-		found := false
-		for _, r := range dom.Rules {
-			all := true
-			for _, p := range want.phrase {
-				if !strings.Contains(r, p) {
-					all = false
-					break
-				}
-			}
-			if all {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("GRILL has no rule carrying %q (%s)", want.phrase, want.issue)
-		}
+	t.Chdir(root)
+	if got := rulesGrillJSON(t); got.Source != "bundled" {
+		t.Fatalf("abcd rules GRILL --json in abcd's own repository reports source %q, want bundled", got.Source)
 	}
 }
 
 // TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows holds the
-// quoting rule (what the human accepts, edits or strikes is quoted in the
-// question) to the same claim the visibility rule makes: prose written between
-// tool calls is invisible while the question shows. A softer "does not
-// reliably reach" beside the firmer claim reads as two rules disagreeing about
-// one fact (review of iss-2609291925134691, MINOR 4).
+// quoting rule (the thing being decided is quoted in the question) to the
+// claim the example rule rests on: prose written between tool calls is
+// invisible while the question shows. A softer "does not reliably reach"
+// beside the firmer claim reads as two rules disagreeing about one fact
+// (review of iss-2609291925134691, MINOR 4).
 func TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(testRepoRoot(), ".abcd", "rules.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rules struct {
-		Domains map[string]struct {
-			Rules []string `json:"rules"`
-		} `json:"domains"`
-	}
-	if err := json.Unmarshal(data, &rules); err != nil {
-		t.Fatalf("parse .abcd/rules.json: %v", err)
-	}
+	t.Chdir(t.TempDir())
 	found := false
-	for _, r := range rules.Domains["GRILL"].Rules {
+	for _, r := range rulesGrillJSON(t).Rules {
 		if strings.Contains(r, "does not reliably reach") {
 			t.Errorf("a GRILL rule still says prose %q; the domain states it as invisible while the question shows: %s", "does not reliably reach", r)
 		}
-		if strings.Contains(r, "quoted IN the question itself") {
+		if strings.Contains(r, "quoted in full in the question itself") {
 			found = true
 			if !strings.Contains(r, "invisible while the question shows") {
 				t.Errorf("the GRILL quoting rule does not say prose is %q: %s", "invisible while the question shows", r)
@@ -96,7 +114,7 @@ func TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows(t *testing.T)
 		}
 	}
 	if !found {
-		t.Error("GRILL carries no rule that quotes what the human is asked to accept IN the question itself")
+		t.Error("GRILL carries no rule that quotes the thing being decided in the question itself")
 	}
 }
 
