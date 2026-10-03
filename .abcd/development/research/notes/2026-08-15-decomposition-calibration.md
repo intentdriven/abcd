@@ -2223,3 +2223,14 @@ Links: refines itd-3's setup interview. Verdict proposed: SPLIT, offered beside 
 | one wrap-to-window helper extended from the banner's fixed-width wrap | plumbing | the issue's remedy (one-canonical-primitive) |
 
 Links: itd-2610031215002409 builds on itd-2610031214560142 and itd-2610030810370060; interacts with iss-2609201954342967 (board rows) and itd-200 (role colours). Verdict proposed: SPLIT, offered beside tidy only, the board alone, and later; the product thinker chose the board plus a menu, then asked "two drafts, one bundle?", answered as two drafts with the bundle decided at planning, since a new bundle forms only there. Routing survived confirmation: yes (the menu was kept as its own draft). The reversal flag (the board setting the status would reverse the board's zero-writes promise and the status's "answer owed" meaning) was put as an option and not chosen; the product thinker added a "view for" label in the role colours instead.
+
+## 2026-10-03: a web dashboard for the product thinker, on the home network and later anywhere (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a dashboard of the project in a web browser on a phone, an iPad or a computer on the home network | capability | intent itd-2610032150577708 (draft) |
+| reach from anywhere through Tailscale | capability | intent itd-2610032150580455 (draft, later) |
+| abcd listens on a network only while the person runs the dashboard, only for people the person lets in | trust boundary | adr-2610032150581128 (proposed), plus a brief invariant 7 clause when accepted |
+| what the dashboard shows and how to serve it safely | research | a state-of-the-art pass, then the drafts' reviews |
+
+Links: builds on itd-2610031214560142 (the board); supersedes itd-139 (the static team site), as the product thinker ruled ("Dashboard replaces it"). Verdict proposed: SPLIT. Routing survived confirmation: yes (unchanged: "Split as shown").

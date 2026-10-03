@@ -83,7 +83,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-116` — Validated GitHub issues become ledger entries without retyping (capture extension adopts externally filed findings with provenance; mint stays capture-only)
 - `itd-118` — Merged work leaves no residue (post-merge complement of itd-115: delete the PR branch on merge, tidy the stale local branch, tracking ref, and worktree)
 - `itd-134` — Managed-repo banner generator: a managed CLI in any language opens with its own identity, rendered from its identity block (split from itd-112)
-- `itd-139` — The generic record explorer demonstrated on a second, sparse managed instance (held in drafts until the itd-140 fixture gate can be met; carries the reframed generalisation verdict)
 - `itd-142` — The brief-creation interview: staged elicitation into the brief and a ledger (frontier rounds, options at conjectural questions, hold register, two-output rule per adr-50); spec waits on the collaborating prototype's first run
 - `itd-143` — The framing chapter under 01-product/: the macro-why home, with its brief↔lifeboat mapping row; receives itd-142's committed framing products
 - `itd-144` — Every livery mark has a surface: the lifeboat on disembark and mirrored on embark, the duckling as the harness mascot, the flag icon for the website (settles itd-112's deferred forge/web logo question)
@@ -131,6 +130,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610031348087517` — setup asks whether abcd keeps parts of the README current, and which (draft; routing confirmed 2026-10-03)
 - `itd-2610031214560142` — The board shows a product thinker what waits on them and what comes next, in a few plain lines (draft; builds on the width fix iss-2610031207397996)
 - `itd-2610031215002409` — A 'what next?' menu under the board offers the next step, in a Terminal and in a Claude Code session (draft; builds on itd-2610031214560142 and itd-2610030810370060)
+- `itd-2610032150577708` — The product thinker's dashboard, in a browser on the home network (draft; builds on itd-2610031214560142; supersedes itd-139; the network rule is adr-2610032150581128, proposed)
+- `itd-2610032150580455` — The dashboard from anywhere, through Tailscale (draft; builds on itd-2610032150577708)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
