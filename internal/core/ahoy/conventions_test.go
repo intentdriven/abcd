@@ -659,3 +659,21 @@ func TestToolFileNamedAsSpeltOnDisk(t *testing.T) {
 		t.Errorf("the question does not name gemini.md as spelt on disk: %+v", h)
 	}
 }
+
+// TestUpToDateInstallCarriesTheOwnersWarning: the early return that finds
+// nothing to do still reports the owner's-file warning, from its detection.
+func TestUpToDateInstallCarriesTheOwnersWarning(t *testing.T) {
+	setupHermetic(t)
+	repo := installedRepo(t)
+	writeFixture(t, repo, "CLAUDE.md", "Always run make check first\n", 0o644)
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "already_up_to_date" {
+		t.Fatalf("status = %q, want already_up_to_date (notes %q)", res.Status, res.Notes)
+	}
+	if len(res.Warnings) != 1 || !strings.HasPrefix(res.Warnings[0], "CLAUDE.md holds your own words") {
+		t.Errorf("warnings = %q, want the owner's-file warning", res.Warnings)
+	}
+}
