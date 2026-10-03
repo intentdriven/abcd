@@ -357,6 +357,7 @@ designed to the marked option, and the reason is given beneath it.
      fit one 80 by 24 screen beneath it. If the
      receipt for A4 or B6 shows the product thinker losing the board above the
      menu, (b) goes to them as a question.
+   - Decided: the product thinker, 2026-10-03, asked whether the banner stays above the board (keep it; drop it from the board, the banner staying on the help; decide later): keep the banner.
 3. **What "its branch exists" reads.** (a) The lane branch this checkout's run
    state records, resolving as a local branch (designed to). (b) Any local
    branch whose name holds the spec's id. (c) The peers listing.
