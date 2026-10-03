@@ -49,8 +49,8 @@ func TestClassifyMarkerRejectsFifoPromptly(t *testing.T) {
 
 	var got markerState
 	withinDeadline(t, "classifyMarker", func() { got = classifyMarker(p) })
-	if got != markerMissing {
-		t.Fatalf("a FIFO marker must classify as missing, got %v", got)
+	if got != markerUnreadable {
+		t.Fatalf("a FIFO marker must classify as unreadable, got %v", got)
 	}
 }
 

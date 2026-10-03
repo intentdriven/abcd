@@ -3,10 +3,14 @@ package ahoy
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -75,10 +79,15 @@ const (
 	// sees it as markdown. installMarkerFile refuses to write it, so it is not
 	// a resolvable gap either.
 	markerUnplaceable markerState = "unplaceable"
+	// markerUnreadable is a file that exists but cannot be read whole: a
+	// folder, a FIFO or device, a file past the size cap, or one abcd has no
+	// permission to read. installMarkerFile refuses it, so it is not a
+	// resolvable gap either (iss-2610032202256580).
+	markerUnreadable markerState = "unreadable"
 )
 
-// classifyMarker reads targetPath and classifies its marker block. A read error
-// or absent file is observably equivalent to "missing".
+// classifyMarker reads targetPath and classifies its marker block. An absent
+// file is "missing"; one that exists but cannot be read whole is "unreadable".
 func classifyMarker(targetPath string) markerState {
 	// Do not follow a symlinked leaf: installMarkerFile refuses to write through
 	// one, so classifying it as "missing" would make detection emit a resolvable
@@ -88,7 +97,14 @@ func classifyMarker(targetPath string) markerState {
 	}
 	existing, err := fsutil.ReadGuarded(targetPath, maxAhoyFileBytes)
 	if err != nil {
-		return markerMissing
+		// Only an absent file is one install can create. Anything else it
+		// cannot read (a folder, a FIFO, a file past the cap or without read
+		// permission) it refuses to write, so "missing" would promise a write
+		// that never comes (iss-2610032202256580).
+		if errors.Is(err, fs.ErrNotExist) {
+			return markerMissing
+		}
+		return markerUnreadable
 	}
 	matches := markerBlockRe.FindAllIndex(existing, -1)
 	if len(matches) == 0 {
@@ -118,12 +134,65 @@ func classifyMarker(targetPath string) markerState {
 // The read and the write hold the file's lock (withRewriteLock), so an edit
 // another abcd makes to the file between them is kept (iss-127).
 func installMarkerFile(targetPath string) (wrote bool, err error) {
+	if err := markerFolderRefusal(targetPath); err != nil {
+		return false, err
+	}
 	err = withRewriteLock(targetPath, func() error {
 		var ierr error
 		wrote, ierr = installMarkerFileLocked(targetPath)
 		return ierr
 	})
-	return wrote, err
+	return wrote, withoutFolder(targetPath, err)
+}
+
+// markerFolderRefusal says why the folder holding targetPath cannot take the
+// files a marker write creates beside it, its lock and the atomic write's
+// temporary file, or nil when it can. It asks the kernel (access(2), as the
+// real user), which creates nothing, so the embark probe can ask it too and
+// predict the refusal its write would meet (iss-2610032202263648). Root, which
+// access answers yes for, is refused by the write itself as before.
+func markerFolderRefusal(targetPath string) error {
+	const wOK, xOK = 0x2, 0x1 // W_OK and X_OK, the same on darwin and linux
+	if err := syscall.Access(filepath.Dir(targetPath), wOK|xOK); err != nil {
+		return &ahoyError{"the folder it is in does not let abcd create a file there (" + err.Error() + ")"}
+	}
+	return nil
+}
+
+// pathlessError is a marker error whose text has the target's folder taken
+// out, so it names files by their base names alone; Unwrap keeps the error it
+// came from for errors.Is and errors.As.
+type pathlessError struct {
+	text string
+	err  error
+}
+
+func (e *pathlessError) Error() string { return e.text }
+func (e *pathlessError) Unwrap() error { return e.err }
+
+// withoutFolder takes targetPath's folder out of err's text. An OS error names
+// the absolute path its syscall was given, the account name included, and a
+// marker refusal travels into notes a person reads, pastes or receives as JSON
+// (iss-2610032202259011). Every file a marker read or write touches (the file,
+// its lock, the atomic write's temporary file) sits in that one folder, so
+// what remains is the base name.
+func withoutFolder(targetPath string, err error) error {
+	if err == nil {
+		return nil
+	}
+	text := err.Error()
+	dir := filepath.Dir(targetPath)
+	forms := []string{dir}
+	if resolved, rerr := filepath.EvalSymlinks(dir); rerr == nil && resolved != dir {
+		forms = append(forms, resolved)
+	}
+	for _, d := range forms {
+		text = strings.ReplaceAll(text, d+string(filepath.Separator), "")
+	}
+	if text == err.Error() {
+		return err
+	}
+	return &pathlessError{text: text, err: err}
 }
 
 // installMarkerFileLocked is installMarkerFile's read, change and write.
@@ -278,6 +347,7 @@ func removeMarkerFile(targetPath string) (wrote bool, err error) {
 		wrote, rerr = removeMarkerFileLocked(targetPath)
 		return rerr
 	})
+	err = withoutFolder(targetPath, err)
 	return wrote, err
 }
 

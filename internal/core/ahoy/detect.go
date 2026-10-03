@@ -629,6 +629,13 @@ func detectMarkerDrift(cwd string) []Gap {
 				Title: name + " marker block outdated", Detail: name + " marker block differs from the template.",
 				FixHint: "ahoy install rewrites it to canonical (silent overwrite).", Required: true, Resolvable: true,
 			})
+		case markerUnreadable:
+			gaps = append(gaps, Gap{
+				ID: "marker.unreadable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " cannot take abcd's block",
+				Detail:  name + " exists but is not a file abcd can read whole (a folder, a pipe, a file too large, or one it has no permission to read), so the block cannot be planted in it.",
+				FixHint: "Make " + name + " a readable regular file; ahoy install then plants the block.", Required: true, Resolvable: false,
+			})
 		case markerUnplaceable:
 			gaps = append(gaps, Gap{
 				ID: "marker.unplaceable", Category: PluginOwned, Scope: "repo",
