@@ -108,7 +108,12 @@ surface) and decides whether the question is abcd's: a header in abcd's chip
 grammar, which only abcd's interview pages are taught to write, or a mode
 naming somebody, which only `abcd mode` sets and the prompt hook resets on the
 next human message (itd-201 decision 10). Any other question is another tool's
-and runs, unchecked and unmarked, exit 0, wherever it is asked.
+and runs, unchecked and unmarked, exit 0, wherever it is asked. That includes a
+question with no abcd chip asked while the mode reads managed, in a managed
+checkout too: the gate cannot tell an abcd question that forgot its chip from
+another tool's (itd-201 decision 10; spc-2610030944505997, open question 1,
+decided (a)), and the compensating control is the interview pages teaching the
+chip.
 
 abcd's question is held to the field limits (`question.CheckLimits` over
 `question.Default`) wherever the hook runs, managed or not: the setup interview
@@ -119,11 +124,22 @@ is read from the command tree and passed in. Every finding refuses at once with
 the blocking status: one head line, "Blocked by the abcd guard (question tool):
 N part(s) of this question break abcd's asking rules; fix each and ask again.",
 then one line per finding naming the tab, the part, the value, the limit and
-the remedy, each line through `termsafe.Sanitize`. The hook refuses and never
+the remedy, each line through `termsafe.Sanitize`. The refusal's size follows
+the limits, not the payload: past the count findings, `CheckLimits` checks only
+the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]` options of
+each, and the hook names at most ten findings and closes with one line counting
+the rest, the head line keeping the full count. A question with no abcd chip,
+abcd's only because the mode names somebody, carries one line under the head
+line saying so, naming the mode's person, so an agent whose question another
+tool wrote does not loop on it. The hook refuses and never
 rewrites: the host lets a pre-tool hook replace a tool's input, and a rewritten
 question would put words in the agent's mouth that neither it nor the person
 chose. A questions field the check cannot read is not a decision: the question
-runs and the hook says so on exit 1.
+runs and the hook says so on exit 1. A payload whose outer JSON does not decode
+is the same case: the hook reads its `tool_name` on its own, member by member,
+and a question tool fails open in the question's wording; a payload whose tool
+cannot be read fails open naming no tool. Neither echoes the decoder's text,
+which can name a Go type.
 
 In a repository abcd manages, abcd's question asked while `abcd mode` reads
 managed is also refused with the blocking status. Alone, the refusal is one
