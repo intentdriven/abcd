@@ -1,7 +1,7 @@
 ---
 name: reflection-composer
 description: Run a cut release's retrospective interview from the seed the binary renders, and draft the four asked sections' answers, asking a clarifying question wherever an answer is thin. Host-delegated; feeds `abcd reflect write <release-tag> --answers <file>`.
-prompt_version: 0.1.0
+prompt_version: 0.2.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
