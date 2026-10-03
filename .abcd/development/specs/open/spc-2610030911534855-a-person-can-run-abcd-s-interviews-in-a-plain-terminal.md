@@ -474,7 +474,10 @@ same question as a stub runner's `ask` receipt and asserts the same.
 
 ## Open design questions
 
-These are for the technical facilitator; the record did not settle them.
+These were for the technical facilitator; the record did not settle them.
+Each was decided on 2026-10-03 without a question, under the person's ruling
+that an obvious answer is decided rather than asked; the reason is given
+beneath each.
 
 1. **One dispatch per question, or several.** Each turn of an AI-written
    interview starts the harness again and re-reads the brief, which costs
@@ -486,12 +489,19 @@ These are for the technical facilitator; the record did not settle them.
    the harness's own session between turns, the cheapest, but the runner
    adapters do not resume today and each harness's resume differs. The spec
    designs to (a) with the `Ask` already able to carry (b).
+   - Decided: (a). It is the only option faithful to "a dependent question is
+     asked alone" without a new judgement, (c) has no adapter to stand on, and
+     the `Ask` keeps (b) open for later.
 2. **The name of the accessibility variable.** `ABCD_ACCESSIBLE` is abcd's own;
    `ACCESSIBLE` is what huh reads and GitHub CLI has its own. Options: abcd's
    own only (no surprise from another tool's variable), or also honour
    `ACCESSIBLE` (a screen-reader user who set it once gets every tool's
    numbered mode), at the cost of a variable abcd does not own changing its
    behaviour.
+   - Decided: honour both, `ABCD_ACCESSIBLE` taking precedence when set. The
+     only behaviour `ACCESSIBLE` can change is a switch to the numbered list,
+     which is always safe to give, so the person who set it once is served and
+     nothing they did not ask for can happen.
 3. **Who stamps "answered in: Claude Code".** The plugin page passes
    `--answered-in`, which the agent could omit or get wrong. Options: (a) keep
    it on the page, simple, an assertion the record cannot prove; (b) add a
@@ -500,6 +510,9 @@ These are for the technical facilitator; the record did not settle them.
    host's hook payload carrying the answer, which the state-of-the-art pass did
    not verify; (c) both, the hook when the payload carries the answer and the
    flag otherwise.
+   - Decided: (a). (b) and (c) rest on a host payload nobody has verified; the
+     page's flag ships now, and a binary-stamped field is a later change once
+     the payload is checked.
 4. **How the planning interview's outcome reaches the intent record in a
    Terminal.** Options: (a) the planning-interviewer role edits the record with
    the tools its contract grants, as the host agent does today, parity with the
@@ -508,6 +521,8 @@ These are for the technical facilitator; the record did not settle them.
    confirmed criteria) in `done` and abcd writes it, which makes the outcome
    checkable and B5 provable for planning, but needs record writers that do not
    exist yet for decisions and criteria. The spec designs to (a).
+   - Decided: (a). It keeps parity with the host path and needs no new writer;
+     abcd's validation after the edit is the same gate the host path has.
 5. **Drawing on stderr while stdout is piped.** The spec draws only when all
    three streams are terminals, the letter of adr-49 decision 1, so
    `abcd intent interview itd-N --json | jq` falls to plain-text mode and needs
@@ -515,6 +530,9 @@ These are for the technical facilitator; the record did not settle them.
    and stderr are terminals, which keeps the interview interactive under a
    piped `--json` and needs adr-49 amended to name the stream the person
    reads.
+   - Decided: keep the letter of adr-49. A piped `--json` run is a machine
+     consumer, the answers file serves it, and amending an accepted ADR for a
+     convenience is not warranted.
 
 ## Footprint
 
