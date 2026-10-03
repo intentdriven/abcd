@@ -152,11 +152,11 @@ loosen them:
 
 The decoder reads `data[].id`, the shape the standard list answer and its
 common variants share; any other shape, or no usable id, is a `ListError`
-saying the service listed no usable models. Each id is passed through the
-client's own scrub (so an id that carries the key becomes a redacted string)
-and `termsafe` before it is kept; `oracle` then keeps only ids its
-`validModel` admits (`config.go`, line 92), so an id carrying the key, an
-escape, or more than 128 bytes is dropped and counted in `Dropped`. At most
+saying the service listed no usable models. An id that shows the key in any
+reading the client's scrub knows, holds a rune `termsafe` masks, or is more
+than 128 bytes is dropped and counted in `Dropped`, never kept redacted; the
+ids `oracle`'s `validModel` (`config.go`) and denylist refuse are dropped the
+same way, through `keep`. At most
 `MaxListedModels` (5,000) ids are kept, in the service's order. `oracle`'s
 filter is `keep`, run inside the adapter before the kept ids are read
 together for the key split across adjacent ids, so the ids that read checks
@@ -173,12 +173,12 @@ so the key, in every form `keyForms` knows, is scrubbed from it.
 The printed command is today's verb, `abcd ahoy connect <provider>`, with two
 changes the session's command needs in order to run in a terminal.
 
-**The key on hidden input.** `readKey` (`ahoy_connect.go`, line 234) refuses
-stdin at a terminal, because the key would be echoed. It keeps reading piped
-stdin as today; at a terminal it now reads the key with echo off instead:
-one line on stderr, "Paste the key for <provider> and press Enter. It is not
-shown.", then `term.ReadHidden`, a wrapper over golang.org/x/term's password
-read in `internal/term`. The wrapper runs inside the restore guarantee step 2
+**The key on hidden input.** `readKey` (`ahoy_connect.go`) reads the key from
+piped stdin only. Connect reads it through `readConnectKey`, which keeps that
+piped read and, at a terminal, reads the key with echo off: one line on
+stderr, "Paste the key for <provider> and press Enter. It is not shown.",
+then `term.ReadHidden`, golang.org/x/term's line reader with echo off in
+`internal/term`. The read runs inside the restore guarantee step 2
 of spc-2610030911534855 builds (the idempotent restore reached from the
 deferred call, a recovered panic, and the SIGINT, SIGTERM and SIGHUP handler),
 so an interrupt during the paste never leaves the terminal with its echo off.
