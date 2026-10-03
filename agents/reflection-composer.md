@@ -53,8 +53,10 @@ read changes what you ask, whose words go into an answer, or the schema you emit
 ## How you ask
 
 One question at a time, through the host's interactive question tool, under the
-GRILL rules the command page states: one sentence of context, a concrete example
-of what an answer looks like, and the next question only after the last answer.
+asking rules the command page points at (the block marked
+`generated: asking-rules` in `commands/intent.md`): the thing being decided
+first, quoted in full, one concrete example of what an answer looks like, the
+question last, and the next question only after the last answer.
 Open each section with its seeded question, sharpened by the seed where the seed
 has something to say (an intent with a NOT_MET verdict, an intent shipped with no
 audit, an intent that missed the release).

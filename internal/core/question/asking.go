@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// knowledgeFloorPage is where the knowledge floor is stated in full: a glossary
+// KnowledgeFloorPage is where the knowledge floor is stated in full: a glossary
 // entry in abcd's development record, which every install of the plugin
 // carries under its plugin root (spc-2610030944505997, open question 4,
 // decided (a)). The asking rules point at it in one line rather than restating
 // it (itd-201 decision 5).
-const knowledgeFloorPage = ".abcd/development/brief/glossary/interview/knowledge-floor.md"
+const KnowledgeFloorPage = ".abcd/development/brief/glossary/interview/knowledge-floor.md"
 
 // askingRecall is the GRILL domain's recall: the terms the repository override
 // carried before the domain was generated, kept as they were (itd-201
@@ -76,7 +76,7 @@ func AskingRules(l Limits) []string {
 
 		"In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.",
 
-		"What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at " + knowledgeFloorPage + " under abcd's plugin root (in abcd's own repository, at that path from its root).",
+		"What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at " + KnowledgeFloorPage + " under abcd's plugin root (in abcd's own repository, at that path from its root).",
 
 		"In abcd's own interviews, before stopping for an answer, record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. " +
 			"Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.",

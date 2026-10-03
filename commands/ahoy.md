@@ -304,7 +304,10 @@ consent writes it there, owner-only. A second, separate question offers the same
 table for the repository at `.abcd/config/oracle-routing.json`, which is
 committed, applies to everyone working in the repository, and wins over each
 machine's table. Present the table and relay the user's answer to each question;
-never answer them for the user. Declining writes nothing and records nothing, so
+never answer them for the user. Each routing question, like every question
+this page asks through your question tool, follows the asking rules in
+`commands/intent.md` (the block marked `generated: asking-rules`): the table
+or text being decided first, quoted in full, and the question last. Declining writes nothing and records nothing, so
 the next install offers again; `--yes` skips both offers and reports
 `oracle_routing.machine_offered` and `oracle_routing.repo_offered` under
 `optional_skipped`; `yes |` accepts both. Either file can be edited row by row

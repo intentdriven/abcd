@@ -119,42 +119,48 @@ func TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows(t *testing.T)
 }
 
 // TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines holds the
-// planning interview's "How every question is asked" paragraph in
-// commands/intent.md to the two GRILL rules the product thinker's 2026-09-29
-// captures asked for, since that page ships to every repository abcd is
-// installed in and is where an adopter's agent reads how to ask: the example
-// sits in the question text and in each option's preview
-// (iss-2609291925134691), and a mixed interview re-sets the addressee per
-// question (iss-2609291925149138).
+// planning interview's generated asking-rules block in commands/intent.md
+// (written by cmd/asking-sync from the rules GRILL carries,
+// spc-2610030944505997) to the two GRILL rules the product thinker's
+// 2026-09-29 captures asked for, since that page ships to every repository
+// abcd is installed in and is where an adopter's agent reads how to ask: the
+// example sits in the question text and each option's meaning in its
+// description, never in a preview alone (iss-2609291925134691), and a mixed
+// interview re-sets the addressee per question (iss-2609291925149138).
 func TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(testRepoRoot(), "commands", "intent.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := string(data)
-	start := strings.Index(page, "**How every question is asked")
+	const begin, end = "<!-- generated: asking-rules -->", "<!-- /generated -->"
+	start := strings.Index(page, begin)
 	if start < 0 {
-		t.Fatal("commands/intent.md has no \"How every question is asked\" paragraph")
+		t.Fatal("commands/intent.md has no generated asking-rules block")
 	}
-	end := strings.Index(page[start:], "\n\n")
-	if end < 0 {
-		end = len(page) - start
+	stop := strings.Index(page[start:], end)
+	if stop < 0 {
+		t.Fatal("commands/intent.md opens the asking-rules block and never closes it")
 	}
-	para := strings.Join(strings.Fields(page[start:start+end]), " ")
+	block := strings.Join(strings.Fields(page[start:start+stop]), " ")
+	if !strings.Contains(block, "**How every question is asked") {
+		t.Error("the generated block does not open with the \"How every question is asked\" lead")
+	}
 	for _, want := range []struct {
 		issue, phrase string
 	}{
-		{"iss-2609291925134691", "the example that makes a question answerable goes in the question text"},
-		{"iss-2609291925134691", "each option's preview"},
-		{"iss-2609291925134691", "invisible while a question shows"},
+		{"iss-2609291925134691", "one example of the thing being decided, in the question text"},
+		{"iss-2609291925134691", "each option's description says what choosing that option means"},
+		{"iss-2609291925134691", "never holds it alone"},
+		{"iss-2609291925134691", "invisible while the question shows"},
 		{"iss-2609291925149138", "classify each question's addressee first"},
-		{"iss-2609291925149138", "a mixed interview re-sets it per question"},
+		{"iss-2609291925149138", "a mixed interview re-sets the mode per question"},
 	} {
-		if !strings.Contains(para, want.phrase) {
-			t.Errorf("the interview paragraph does not say %q (%s)", want.phrase, want.issue)
+		if !strings.Contains(block, want.phrase) {
+			t.Errorf("the generated asking-rules block does not say %q (%s)", want.phrase, want.issue)
 		}
 	}
-	if strings.Contains(para, "does not reliably reach") {
-		t.Error("the interview paragraph still says prose \"does not reliably reach\" the human; GRILL states it as invisible while a question shows")
+	if strings.Contains(block, "does not reliably reach") {
+		t.Error("the generated block still says prose \"does not reliably reach\" the human; GRILL states it as invisible while a question shows")
 	}
 }
