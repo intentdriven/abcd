@@ -581,8 +581,8 @@ exists there; it reads nothing in it and changes nothing abcd does, because the
 agent tool itself reads that folder." The presence check is not a read of
 configuration from above the working tree, which the loader's rule forbids: it
 takes nothing, so the most a hostile file above the tree can cause is a
-warning. The version warning runs the `claude` command on `PATH` once with
-`--version` (`host_version.go`: the command never one resolving inside the
+warning. The version warning asks the `claude` command on `PATH` once for its version
+(`host_version.go`: the command never one resolving inside the
 project, the git-scrubbed environment, a three-second limit that kills the
 process group it leads, output kept up to a bound), reads the first
 `major.minor.patch` it prints, and warns, naming no version, when it is below
