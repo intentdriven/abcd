@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -248,12 +249,19 @@ func newGuardHookCommand() *cobra.Command {
 			"exists. A workdir that is not a string, or holds a NUL byte, a control\n" +
 			"character or invalid UTF-8, or is over 4096 bytes, is refused with the\n" +
 			"blocking status and the reason.\n\n" +
-			"On the host's question tool the hook gates the question on the mode, not\n" +
-			"the registry. In a checkout abcd manages, a question asked while `abcd mode`\n" +
-			"reads managed is refused with the blocking status, naming `abcd mode\n" +
-			"product-thinker` and `abcd mode facilitator`; once the mode names somebody\n" +
-			"the question runs and is marked open in the local tier, and the next human\n" +
-			"message resets the mode to managed. Elsewhere a question runs unchecked.",
+			"On the host's question tool the hook checks abcd's own questions instead of\n" +
+			"consulting the registry. A question is abcd's when a header is in abcd's chip\n" +
+			"grammar (such as Product Q2) or when `abcd mode` names somebody; any other\n" +
+			"question is another tool's and runs unchecked. abcd's question is held to\n" +
+			"the asking rules' field limits wherever the hook runs, and one that breaks\n" +
+			"them is refused with the blocking status: a head line counting the parts,\n" +
+			"then one line per part naming the tab, the part, the value, the limit and\n" +
+			"the remedy. The hook never rewrites a question. In a checkout abcd manages,\n" +
+			"abcd's question asked while `abcd mode` reads managed is also refused,\n" +
+			"naming `abcd mode product-thinker` and `abcd mode facilitator`; once the\n" +
+			"mode names somebody the question runs and is marked open in the local tier,\n" +
+			"and the next human message resets the mode to managed. A questions field\n" +
+			"the hook cannot read lets the question run and warns loudly.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// failOpen is the single exit for every non-decision path, so the
@@ -281,12 +289,25 @@ func newGuardHookCommand() *cobra.Command {
 			}
 			var in guardHookInput
 			if err := json.Unmarshal(raw, &in); err != nil {
-				return failOpen("the hook payload is not readable JSON (%v)", err)
+				// The wording follows the tool the payload names, read on its
+				// own, and echoes no decoder text, which can carry a Go type
+				// (review-askGuard-security finding 5).
+				switch tool, known := hookToolName(raw); {
+				case known && isQuestionTool(tool):
+					return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
+				case !known:
+					diagnosticLine(cmd.ErrOrStderr(),
+						"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
+					return &exitError{Code: 1}
+				default:
+					return failOpen("the hook payload is not readable JSON (%v)", err)
+				}
 			}
-			// A question to the human is gated on the mode, not the registry
-			// (itd-2609212130146198); guard_question.go holds the whole of it.
+			// A question to the human is checked against abcd's asking rules
+			// and gated on the mode, not the registry (itd-2609212130146198,
+			// spc-2610030944505997); guard_question.go holds the whole of it.
 			if isQuestionTool(in.ToolName) {
-				return questionGate(cmd, in.Cwd)
+				return questionGate(cmd, in.Cwd, in.ToolInput.Questions)
 			}
 			// The manifest scopes this hook to the shell tool and the question
 			// tools, so a different tool name means the wiring is wrong — worth
@@ -412,6 +433,37 @@ func newGuardHookCommand() *cobra.Command {
 	}
 }
 
+// hookToolName reads the tool_name of a hook payload the full decode refused.
+// It walks the top-level object one member at a time and stops at the first
+// value it cannot read, so a tool_name before the fault is found and one after
+// it is not; known reports whether one was read. A repeated key keeps its last
+// value, as the full decode does.
+func hookToolName(raw []byte) (name string, known bool) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return "", false
+	}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return name, known
+		}
+		if key, _ := tok.(string); key == "tool_name" {
+			var s string
+			if err := dec.Decode(&s); err != nil {
+				return name, known
+			}
+			name, known = s, true
+			continue
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return name, known
+		}
+	}
+	return name, known
+}
+
 // guardHookInput is the subset of the host's pre-tool-use payload the adapter
 // reads. Unknown fields are ignored: the host owns this schema and adds to it.
 type guardHookInput struct {
@@ -425,6 +477,10 @@ type guardHookInput struct {
 		// malformed workdir rather than failing the whole payload open, which
 		// would run the command unchecked.
 		Workdir json.RawMessage `json:"workdir"`
+		// Questions is the question tool's input, kept raw so the question
+		// check decodes it on its own path: a shape it cannot read fails
+		// that check open loudly without touching the shell path.
+		Questions json.RawMessage `json:"questions"`
 	} `json:"tool_input"`
 }
 

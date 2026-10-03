@@ -70,16 +70,43 @@ working directory's repository when the host names one (below). It is invoked by
 not by hand; a blocker returns the host's blocking status with the successor and
 the why as the message, and a warn or an allow lets the command run.
 
-On the host's question tool the hook gates the question on the waiting-on state
-instead of the registry. In a repository abcd manages, a question asked while
-`/abcd:mode` reads `managed` is refused with the blocking status, and the
-refusal names `abcd mode product-thinker` and `abcd mode facilitator`: set the
-one that names whom you are asking, then ask again. An admitted question is
-marked open in `.abcd/.work.local/question_open`, and the next human message
-resets the state to `managed`. Where `abcd mode` could not write the state —
-a local tier that is not writable — the question runs with a loud `NOT
-CHECKED` warning rather than a refusal nobody could answer. Elsewhere a
-question runs unchecked.
+On the host's question tool the hook checks abcd's own questions instead of
+consulting the registry. A question is abcd's when a header is in abcd's chip
+grammar (a role word, then `Q` and the question's number, such as `Product Q2`)
+or when `/abcd:mode` names somebody; any other question belongs to another tool
+and runs unchecked. That includes a question with no abcd chip asked while
+`/abcd:mode` reads `managed`, in a repository abcd manages or not: the hook
+cannot tell an abcd question that forgot its chip from another tool's, so the
+interview pages teaching the chip are what keep abcd's questions under the
+check. abcd's question is held to the field limits of the asking
+rules wherever the hook runs, in a repository abcd manages or not: the header,
+the number of questions and options, each label's words and each meaning's
+sentences, the decide-later option, no bold and no recommended mark, the `Now:`
+and `Change later:` lines, the thing quoted before the question, the rows it
+takes, and no side preview (the host hides every option's description while a
+preview shows, so the meaning goes in the description). A question that breaks any of them is refused with the blocking
+status, in one head line, "Blocked by the abcd guard (question tool): N part(s)
+of this question break abcd's asking rules; fix each and ask again.", then one
+line per part naming the tab, the part, the value, the limit and the remedy, so
+one retry fixes them all. At most ten parts are named, and a closing line counts
+the rest, so a refusal stays a few lines however large the question; the head
+line keeps the full count. A question with no abcd chip, held to the limits
+because `/abcd:mode` names somebody, carries one more line under the head line
+saying so: another tool's question asked while the mode names somebody is held
+to abcd's rules. The hook refuses and never rewrites the question.
+
+In a repository abcd manages, abcd's question asked while `/abcd:mode` reads
+`managed` is also refused, and the refusal names `abcd mode product-thinker`
+and `abcd mode facilitator`: set the one that names whom you are asking, then
+ask again. An admitted question is marked open in
+`.abcd/.work.local/question_open`, and the next human message resets the state
+to `managed`. Where `abcd mode` could not write the state — a local tier that
+is not writable — the mode does not refuse the question, which runs with a loud
+`NOT CHECKED` warning rather than a refusal nobody could answer. A questions
+field the hook cannot read is the same case: the question runs, and the hook
+warns loudly. So is a payload the hook cannot decode at all: where it names the
+question tool the warning says the question runs, and where no tool name can be
+read the warning names no tool.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not

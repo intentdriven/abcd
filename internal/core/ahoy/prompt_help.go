@@ -73,6 +73,33 @@ func (h PromptHelp) Meaning(value string) string {
 // promised a direct model call would describe a behaviour abcd does not have.
 const noAdapterYet = " abcd does not ship this adapter yet, so the choice is recorded and reviews still go to the assistant you are working in."
 
+// oracleAdapterShipped names the oracle answers abcd has an adapter for. Every
+// other answer carries noAdapterYet in its meaning, and a test holds the two in
+// step, so marking an adapter here and rewording its meaning is one change.
+var oracleAdapterShipped = map[string]bool{"host-delegated": true}
+
+// oracleBackendAsked reports whether the install asks which oracle to use. A
+// question with one defensible answer is not asked: while only one answer has
+// an adapter, the install records it and says so (oracleBackendRecordedNote).
+// The question returns on its own once a second answer is marked as shipped
+// (the 2026-10-03 ruling on iss-2610031236155833).
+func oracleBackendAsked() bool {
+	n := 0
+	for _, v := range oracleBackendChoices {
+		if oracleAdapterShipped[v] {
+			n++
+		}
+	}
+	return n >= 2
+}
+
+// oracleBackendRecordedNote is the one line an install that recorded the
+// oracle without asking says in its report: what it recorded, why nothing was
+// asked, and how to choose another reviewer once one arrives.
+const oracleBackendRecordedNote = "the AI reviewer was not asked: host-delegated, the assistant you are working in, " +
+	"is recorded because it is the only reviewer abcd ships; other reviewers arrive later, and " +
+	"abcd ahoy install --oracle-backend <value> chooses one then."
+
 // promptHelp is the canonical help, one entry per value question. The choice
 // order matches the order the question offers them.
 var promptHelp = map[string]PromptHelp{
@@ -92,14 +119,14 @@ var promptHelp = map[string]PromptHelp{
 	"docs_target": {
 		Key:  "docs_target",
 		Flag: "--docs-target",
-		About: "Which conventions file, if any, gets a short block explaining how abcd works in this repository. " +
-			"AI coding assistants read these files at the start of every session; the block names abcd, so it goes only where you choose.",
+		About: "Whether AGENTS.md, which AI coding assistants read at the start of every session, " +
+			"gets a short block on how abcd works here. The block names abcd, so it goes in only if you choose.",
+		// Setup offers only the values it writes (docsTargetWritable): AGENTS.md
+		// is the one conventions file abcd writes (adr-2610030814023326).
 		Choices: []ChoiceHelp{
-			{Value: "claude_md", Meaning: "writes the block into CLAUDE.md, and creates that file if it does not exist."},
-			{Value: "agents_md", Meaning: "writes the block into AGENTS.md, the conventions file many AI coding assistants read, and creates it if it does not exist."},
-			{Value: "both", Meaning: "writes the same block into both CLAUDE.md and AGENTS.md."},
-			{Value: "skip", Meaning: "writes no block: abcd names itself in none of your conventions files. " +
-				"You can choose a file later with abcd ahoy install --docs-target."},
+			{Value: "agents_md", Meaning: "writes the block into AGENTS.md, creating the file if it does not exist."},
+			{Value: "skip", Meaning: "writes no block, so abcd names itself in none of your conventions files; " +
+				"abcd ahoy install --docs-target agents_md adds it later."},
 		},
 	},
 	"oracle_backend": {
@@ -109,7 +136,7 @@ var promptHelp = map[string]PromptHelp{
 			"for example to read a change and say whether it is ready. The choice decides who runs that model, and so what it costs and which keys or tools it needs.",
 		Choices: []ChoiceHelp{
 			{Value: "host-delegated", Meaning: "the AI assistant you are already working in runs every review. " +
-				"No API key, no extra tool and no cost beyond the assistant you already use. The recommended choice."},
+				"No API key, no extra tool and no cost beyond the assistant you already use."},
 			{Value: "native", Meaning: "abcd would call a model itself, through an adapter built into abcd; that needs the provider's API key, and the use is billed by that provider." + noAdapterYet},
 			{Value: "cli", Meaning: "abcd would run a model's command-line tool installed on this machine; that tool must be installed and signed in, and its use may be billed." + noAdapterYet},
 			{Value: "api", Meaning: "abcd would call a model provider's web API directly; that needs an API key, and each call is billed by the provider." + noAdapterYet},
@@ -121,10 +148,10 @@ var promptHelp = map[string]PromptHelp{
 		Key:  "scan_deep",
 		Flag: "--scan-deep",
 		About: "Whether this private repository also wants a deep secret scan with trufflehog, a scanner found on this machine " +
-			"that can check whether a leaked password or key still works. abcd's own built-in secret scan is not affected by the answer.",
+			"that checks whether a leaked password or key still works. abcd's built-in secret scan runs either way.",
 		Choices: []ChoiceHelp{
-			{Value: "true", Meaning: "records that you want the deeper trufflehog scan (scan.deep in .abcd/config.json). " +
-				"No abcd check runs trufflehog yet, so today this records your preference and changes nothing else."},
+			{Value: "true", Meaning: "records that you want the trufflehog scan (scan.deep in .abcd/config.json); " +
+				"no abcd check runs it yet, so nothing else changes."},
 			{Value: "false", Meaning: "keeps to abcd's built-in secret scan and records that choice, so the question is not asked again."},
 		},
 	},
@@ -150,7 +177,7 @@ var promptHelp = map[string]PromptHelp{
 			"It is a matter of style, not correctness, so this repository chooses. The answer is written into " +
 			".abcd/docs-lint.json, where it can be changed later.",
 		Choices: []ChoiceHelp{
-			{Value: "blocking", Meaning: "an em dash in a list item fails the documentation check, so it must be fixed before the check passes."},
+			{Value: "blocking", Meaning: "an em dash in a list item fails the documentation check until it is fixed."},
 			{Value: "warning", Meaning: "an em dash in a list item is reported, but the documentation check still passes."},
 		},
 	},

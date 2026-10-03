@@ -35,9 +35,11 @@ are hand-set: the binary reads them and never writes them.
     "visibility": "private"             // "private" | "public" — set by ahoy each run, no silent default
   },
   "docs": {
-    "target": "both"                    // "claude_md" | "agents_md" | "both" | "skip" — which conventions
-                                        //   router carries the marker block; "skip" is the default, so
-                                        //   a default install names abcd in neither file
+    "target": "agents_md"               // "agents_md" | "skip" — whether AGENTS.md carries the marker
+                                        //   block; "skip" is the default, so a default install names abcd
+                                        //   in no conventions file. "claude_md" and "both" are read for
+                                        //   detection and uninstall, and refused at setup with the
+                                        //   explanation naming this setting (itd-2610030814013772)
   },
   "oracle": {
     "backend": "host-delegated"         // "host-delegated" (default: abcd emits a prompt, the host runs it —
@@ -613,7 +615,7 @@ unchanged. Restating the entry keeps it; leaving the field out inherits the
 list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
-**One bundled domain is generated.** `SHELL` is the teaching plane of the
+**Two bundled domains are generated.** `SHELL` is the teaching plane of the
 shell-hazard guard (itd-103, spc-16 "Two planes, one registry"): its rules and
 recall keywords are built from the same hazard registry `abcd guard` enforces,
 never written in the bundled `rules.json`. The bundled set carries it built from
@@ -657,6 +659,20 @@ every other domain loads as usual. The switches stay independent: the guard
 file decides what is refused, and `rules.json` overrides, silences or kills the
 teaching of it.
 
+`GRILL` is the second (itd-201, spc-2610030944505997 "GRILL generated from one
+Go source"): the asking rules every abcd interview follows. Its rules are
+written once in `internal/core/question`, beside the question's field limits,
+and every limit they state (the header chip's width, the options per question,
+the words per label, the rows at eighty columns) is filled from the one value
+the question check in `abcd guard hook` enforces, so the rules and the check
+cannot state a limit differently. Its recall keywords are words of asking and
+choosing (`which`, `choose`, `decide`, `options`, `interview`, …), so it lands
+in most sessions, at about 1,100 tokens. A bundled `rules.json` that declares
+it by hand panics at load, as one declaring `SHELL` does. It reaches every
+managed repository through the binary, abcd's own repository included, which
+declares no override of it; to every loader contract it is an ordinary bundled
+domain, and a repository silences it with `{"GRILL": {"state": "dormant"}}`.
+
 ## The prompt router's output
 
 `abcd hook prompt-router` is the `UserPromptSubmit` entrypoint the hook manifest
@@ -680,14 +696,14 @@ iss-2608261550580260):
 {
   "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
   "injected": ["WIDGETS"],
-  "active": ["COMMITTING", "DOCUMENTATION", "INTENTS", "ISSUES", "LIFEBOAT",
-             "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
+  "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
+             "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
 }
 ```
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all eleven.
+the set names all twelve.
 
 | Field | Meaning |
 |---|---|
@@ -922,14 +938,16 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus four build-time binaries
+├── cmd/                                # the shipped entrypoint plus six build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
+│   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
+│   ├── asking-sync/                    #   writes the asking rules into commands/intent.md's generated block
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   └── abcd-gen-cli-ref/               #   writes the generated CLI reference page
-│                                       #   The four are developer tooling, not user surface: they run
-│                                       #   from the Makefile or `go generate`, and ship in no release
+│                                       #   The six are developer tooling, not user surface: they run
+│                                       #   from the Makefile, `go generate` or CI, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
 │   │                                   #   (adr-23); each returns structured results

@@ -267,8 +267,8 @@ user-scope directory for machine-local state.
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
-  CLAUDE.md                      marker block (stands alone), only where a docs target
-                                 names it
+  AGENTS.md                      marker block (stands alone), only where the docs target
+                                 is agents_md; the one conventions file abcd writes
 ```
 
 The same inventory is stated as a table under *The two `.abcd/` scopes* in
@@ -527,13 +527,18 @@ terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
 
 **Every value question carries its own explanation** (iss-163). A question that
-picks one of several values (the repo visibility, the docs target, the oracle
-backend, the deep-scan toggle, the house-style question and each status-line
+picks one of several values (the repo visibility, the docs target, the
+deep-scan toggle, the house-style question and each status-line
 element) is rendered with core's canonical help above it: what is being
 decided, then what each answer means, including what it asks of the person in
-keys, tools or cost. The oracle question defines an oracle before asking for
-one, and says plainly that every answer but host-delegated is recorded without
-changing how reviews run, because no other adapter ships. The words live in core, so every
+keys, tools or cost. The oracle backend is not asked while host-delegated is
+the only answer with an adapter, because a question with one defensible answer
+is not put to a person: the install records host-delegated and says in one note
+that other reviewers arrive later, naming the install flag that chooses one then.
+The question returns on its own once a second answer has an adapter, and its
+help, kept for that day, defines an oracle and says plainly that every answer but
+host-delegated is recorded without changing how reviews run
+(iss-2610031236155833). The words live in core, so every
 front door shows the same explanation and none invents its own; the question
 line itself is unchanged, so a piped answer stream lines up with it. The four
 config values' help also carries the install flag that answers the question
@@ -638,8 +643,17 @@ is what makes drift detection meaningful: the block has one canonical source. If
 a template is stale, the template file is what to edit. The block names abcd and
 documents its rule loader, so the docs target defaults to `skip`: a default
 install writes it into none of the repository's committed conventions files
-(iss-2609110944498549), and a project that wants it names `claude_md`,
-`agents_md` or `both`, which is the approval to plant it there. The name-guard
+(iss-2609110944498549), and a project that wants it names `agents_md`, which
+is the approval to plant it into AGENTS.md, the one conventions file abcd writes
+(adr-2610030814023326). `claude_md` and `both` are read, never written: a
+project that saved one still classifies as managed on its CLAUDE.md block, and
+uninstall still strips the block from both files, but detection raises the one
+required, non-resolvable gap `config.docs_target_retired`, setup is refused
+before its first write, and the install flag that names a docs target refuses
+both values, each with the one explanation `RetiredDocsTarget` holds, naming
+`docs.target` and the command that changes it. An install that changes the
+setting to `agents_md` or `skip` runs as any target change does and takes the
+block out of CLAUDE.md. The name-guard
 hooks and the ignore fence are the one sanctioned mention of abcd outside
 `.abcd/` (ruled 2026-09-23; see prepare-this-repo). Every name-guard
 write is create-if-absent **and** contained: paths resolve through an `os.Root` opened
@@ -764,7 +778,9 @@ byte-identical to a fresh install save for the setup date.
 - **Given** no oracle adapter is wired, **when** detection resolves the oracle,
   **then** it stays host-delegated: abcd needs no API keys or model config,
   because it emits prompts the host runs (adr-25), and an adapter can be
-  configured later.
+  configured later. A first install records host-delegated without asking and
+  says so in one note naming the install flag that chooses another reviewer;
+  that flag still sets any of the five values.
 - **Given** a repo whose root SHA is absent from the registry while a sibling
   entry matches its name, **when** the install runs, **then** detection flags a
   re-founding candidate, ahoy asks before linking, and on confirmation records

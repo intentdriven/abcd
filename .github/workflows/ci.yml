@@ -18,7 +18,7 @@ name: ci
 #     every other outcome — one unlisted path, a non-PR event, an empty diff, an
 #     unreadable base, an aborted script, a failed classifier job — runs the full
 #     matrix. Markdown and JSON outside that allowlist (commands/, agents/,
-#     hooks/, .abcd/*.json, the harness routers at the repo root) carry
+#     hooks/, .abcd/*.json, the conventions file at the repo root) carry
 #     behaviour, so they are not inert.
 #   - It gates jobs and steps, never the workflow triggers. Every required check
 #     context still reports on every pull request; `paths:` filtering would leave
@@ -137,8 +137,8 @@ jobs:
           # The inert allowlist: user-facing documentation, the durable record,
           # and the shared working tier, plus the root files that are prose or
           # licence text and the two community-health prose files in .github/.
-          # The harness routers (AGENTS.md, CLAUDE.md, GEMINI.md) are
-          # deliberately absent — they configure agent behaviour.
+          # The conventions file (AGENTS.md) is deliberately absent — it
+          # configures agent behaviour.
           is_inert_path() {
             case "$1" in
               docs/*|.abcd/development/*|.abcd/work/*) return 0 ;;

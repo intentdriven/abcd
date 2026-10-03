@@ -36,9 +36,9 @@ line and the board while you wait:
 ```
 
 Use `facilitator` when the verdict is the technical facilitator's to give.
-The guard holds you to this: a question through the host's question tool is
-refused while the state reads `managed`, and the refusal names the two
-settings. Choose the product thinker or the technical facilitator, set it,
+The guard holds you to this: abcd's question through the host's question tool
+(one headed with abcd's chip, such as `Product Q1`) is refused while the state
+reads `managed`, and the refusal names the two settings. Choose the product thinker or the technical facilitator, set it,
 then ask. An admitted question is marked open, and the next human message is
 its answer: the prompt hook resets the state to `managed` and says so once on
 stderr, so you do not set it back yourself. At a stop with no question tool,

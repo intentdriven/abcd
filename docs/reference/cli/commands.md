@@ -115,7 +115,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
-      --docs-target string      which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)
+      --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --refuse-adopt            decline to adopt an unmanaged repo
@@ -1270,12 +1270,19 @@ exists. A workdir that is not a string, or holds a NUL byte, a control
 character or invalid UTF-8, or is over 4096 bytes, is refused with the
 blocking status and the reason.
 
-On the host's question tool the hook gates the question on the mode, not
-the registry. In a checkout abcd manages, a question asked while `abcd mode`
-reads managed is refused with the blocking status, naming `abcd mode
-product-thinker` and `abcd mode facilitator`; once the mode names somebody
-the question runs and is marked open in the local tier, and the next human
-message resets the mode to managed. Elsewhere a question runs unchecked.
+On the host's question tool the hook checks abcd's own questions instead of
+consulting the registry. A question is abcd's when a header is in abcd's chip
+grammar (such as Product Q2) or when `abcd mode` names somebody; any other
+question is another tool's and runs unchecked. abcd's question is held to
+the asking rules' field limits wherever the hook runs, and one that breaks
+them is refused with the blocking status: a head line counting the parts,
+then one line per part naming the tab, the part, the value, the limit and
+the remedy. The hook never rewrites a question. In a checkout abcd manages,
+abcd's question asked while `abcd mode` reads managed is also refused,
+naming `abcd mode product-thinker` and `abcd mode facilitator`; once the
+mode names somebody the question runs and is marked open in the local tier,
+and the next human message resets the mode to managed. A questions field
+the hook cannot read lets the question run and warns loudly.
 
 ### `abcd help`
 
@@ -2946,6 +2953,14 @@ the registry names. A rule in the repository's words is marked "(repo)" after
 its entry id. A guard.json the guard refuses is named on stderr and not taught;
 SHELL then teaches the registry the guard enforces in its place. It teaches
 before shell work what the guard refuses at the moment a command runs.
+
+GRILL is generated from the asking rules every abcd interview follows, every
+limit they state (the header chip's width, the options per question, the words
+per label, the rows at eighty columns) filled from the one value the question
+check in "abcd guard hook" enforces, so the rules and the check cannot state a
+limit differently. It recalls on words of asking and choosing, so it lands in
+most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
+its .abcd/rules.json.
 Read-only.
 
 ### `abcd scribe`

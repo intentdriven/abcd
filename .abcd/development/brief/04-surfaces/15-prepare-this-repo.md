@@ -71,8 +71,8 @@ visibility, oracle backend and scan depth, writes its rule-loader overrides file
 installs a copy of the binary on `PATH`, records the repo in the machine's own
 store, and offers to pin the git commit identity. It leaves `CLAUDE.md` and
 `AGENTS.md` as the repo wrote them: abcd's own managed rule-loader block names
-the tool, so it lands in either file, or both, only where the project chooses a
-docs target, and the repo classifies as managed on its registry entry without
+the tool, so it lands in `AGENTS.md`, and only there, where the project chooses
+that docs target, and the repo classifies as managed on its registry entry without
 it. It runs a second time, with the installer's attribution flag, where the user
 opts in: that run installs the committed `prepare-commit-msg` prompt asking every
 commit to declare whether a tool assisted it, and the choice is recorded, so a

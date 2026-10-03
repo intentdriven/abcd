@@ -44,7 +44,7 @@ func TestInstallRefusesAbcdDirSymlinkEscape(t *testing.T) {
 		Yes: true,
 		ValueOverrides: map[string]string{
 			"visibility":     "private",
-			"docs_target":    "both",
+			"docs_target":    "agents_md",
 			"oracle_backend": "host-delegated",
 			"scan_deep":      "false",
 		},

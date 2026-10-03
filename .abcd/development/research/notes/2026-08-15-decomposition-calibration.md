@@ -2189,6 +2189,41 @@ Links: refines iss-2609291925136841. Verdict proposed: SPLIT. Routing survived c
 
 Links: refines itd-2609081951381895. Verdict proposed: SPLIT (connect here, picker folded into the existing draft), offered beside two new intents, one, and later. Routing survived confirmation: yes (unchanged).
 
+## 2026-10-03: warn when the harness is behind its latest release (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd's check says when the harness is behind its latest release | capability | intent itd-2610031026190632 (draft) |
+| finding the latest release asks the internet | trust boundary | existing adr-38 and brief invariant 7 (unchanged: the product thinker chose "only when asked") |
+| reading the installed harness version | plumbing | the intent's spec, shared with itd-2610030814013772's floor warning |
+
+Links: builds on itd-111. Verdict proposed: SPLIT, offered beside one draft for everything and later. Routing survived confirmation: yes (unchanged). The reversal flag (a daily check at session start would reverse adr-38) was put as its own question and declined.
+
+Correction (2026-10-03, appended): the desktop-search entry above routes "a setting to turn indexing back on"; the reviews found no such setting exists under that draft's rule, and its interview (decisions 1 and 2) widened the route to the whole home, renamed `~/.abcd.noindex`. The routing row stands as graded at the time; the draft carries the outcome.
+
+Addendum (2026-10-03, appended): at the harness draft's interview the product thinker asked that the newer-version-downloaded signal be filed separately; it is itd-2610031325050110 (draft, builds on itd-2610031026190632). The harness draft itself became offline (its decision 7): the internet row of the entry above no longer applies.
+
+## 2026-10-03: setup asks whether abcd keeps parts of the README current (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| setup asks whether abcd manages parts of the README, and which; abcd keeps those parts current | capability | intent itd-2610031348087517 (draft) |
+| which README elements tools keep current, and how they mark them | research | a state-of-the-art pass, then the draft's reviews |
+| abcd writes only inside marked parts and never rewrites the owner's text | standing stance | existing principle the-users-directory-is-theirs, reused |
+
+Links: refines itd-3's setup interview. Verdict proposed: SPLIT, offered beside waiting for the research and later. Routing survived confirmation: yes (unchanged). The request ended at "incl."; asked, the product thinker completed it: "title, badges (incl. an abcd-managed badge) etc."
+
+## 2026-10-03: a readable status board for the product thinker (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| the board wraps lines past the window's width, indents unevenly, prints raw true/false and lists the next intent twice | defect | issue iss-2610031207397996 |
+| a short board leading with whose view it is (role colour) and what comes next, expandable to the facilitator's view, drawn by abcd for the Terminal and the Claude Code session alike | capability | intent itd-2610031214560142 (draft) |
+| a "what next?" menu under the board, arrow keys or number in a Terminal, the question tool in a session | capability | intent itd-2610031215002409 (draft) |
+| one wrap-to-window helper extended from the banner's fixed-width wrap | plumbing | the issue's remedy (one-canonical-primitive) |
+
+Links: itd-2610031215002409 builds on itd-2610031214560142 and itd-2610030810370060; interacts with iss-2609201954342967 (board rows) and itd-200 (role colours). Verdict proposed: SPLIT, offered beside tidy only, the board alone, and later; the product thinker chose the board plus a menu, then asked "two drafts, one bundle?", answered as two drafts with the bundle decided at planning, since a new bundle forms only there. Routing survived confirmation: yes (the menu was kept as its own draft). The reversal flag (the board setting the status would reverse the board's zero-writes promise and the status's "answer owed" meaning) was put as an option and not chosen; the product thinker added a "view for" label in the role colours instead.
+
 ## 2026-10-03: reserving work across people on a public project (product thinker, routing confirmed)
 
 | part | type | home |

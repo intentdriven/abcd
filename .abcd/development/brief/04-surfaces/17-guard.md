@@ -100,22 +100,66 @@ silenced is the rules loader's
 
 ## The question gate
 
-The hook also answers for the host's question tool (itd-2609212130146198), and
-there it consults the waiting-on state rather than the hazard registry. In a
-repository abcd manages, a question to the human asked while `abcd mode` reads
-managed is refused with the blocking status, and the one-line refusal names the
-two settings, `abcd mode product-thinker` and `abcd mode facilitator`, so the
-agent says whom it is asking before it asks and the status-line badge shows
-it. Once the state names somebody the question runs, and the hook writes a
+The hook also answers for the host's question tool (itd-2609212130146198,
+spc-2610030944505997), and there it checks abcd's own questions rather than
+consulting the hazard registry. It decodes the tool's questions into the field
+view of `internal/core/question` (the host's JSON key names stay in the
+surface) and decides whether the question is abcd's: a header in abcd's chip
+grammar, which only abcd's interview pages are taught to write, or a mode
+naming somebody, which only `abcd mode` sets and the prompt hook resets on the
+next human message (itd-201 decision 10). Any other question is another tool's
+and runs, unchecked and unmarked, exit 0, wherever it is asked. That includes a
+question with no abcd chip asked while the mode reads managed, in a managed
+checkout too: the gate cannot tell an abcd question that forgot its chip from
+another tool's (itd-201 decision 10; spc-2610030944505997, open question 1,
+decided (a)), and the compensating control is the interview pages teaching the
+chip.
+
+abcd's question is held to the field limits (`question.CheckLimits` over
+`question.Default`) wherever the hook runs, managed or not: the setup interview
+asks before a repository is managed, and the limits need no store. The
+addressee the product thinker's register rule reads is the mode's where a mode
+store exists, and the chip's role word where none does; the binary's verb list
+is read from the command tree and passed in. The row limit is estimated with
+the host's frame measured at 80 by 24, and a side preview on any option is
+refused, because the host hides every option's description while a preview
+shows (the layout intent's decision 20). Every finding refuses at once with
+the blocking status: one head line, "Blocked by the abcd guard (question tool):
+N part(s) of this question break abcd's asking rules; fix each and ask again.",
+then one line per finding naming the tab, the part, the value, the limit and
+the remedy, each line through `termsafe.Sanitize`. The refusal's size follows
+the limits, not the payload: past the count findings, `CheckLimits` checks only
+the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]` options of
+each, and the hook names at most ten findings and closes with one line counting
+the rest, the head line keeping the full count. A question with no abcd chip,
+abcd's only because the mode names somebody, carries one line under the head
+line saying so, naming the mode's person, so an agent whose question another
+tool wrote does not loop on it. The hook refuses and never
+rewrites: the host lets a pre-tool hook replace a tool's input, and a rewritten
+question would put words in the agent's mouth that neither it nor the person
+chose. A questions field the check cannot read is not a decision: the question
+runs and the hook says so on exit 1. A payload whose outer JSON does not decode
+is the same case: the hook reads its `tool_name` on its own, member by member,
+and a question tool fails open in the question's wording; a payload whose tool
+cannot be read fails open naming no tool. Neither echoes the decoder's text,
+which can name a Go type.
+
+In a repository abcd manages, abcd's question asked while `abcd mode` reads
+managed is also refused with the blocking status. Alone, the refusal is one
+line naming the two settings, `abcd mode product-thinker` and `abcd mode
+facilitator`, so the agent says whom it is asking before it asks and the
+status-line badge shows it; beside field findings, that line follows them. Once
+the state names somebody the question runs, and the hook writes a
 `question_open` marker in `.abcd/.work.local/`; the rules loader's prompt hook
 resets the state to managed on the next human message and clears the marker.
-Where the badge does not show, a question is not the gate's business and runs
-silently. A state file or marker the gate cannot read or write is not a
-decision: the question runs and the hook says so on exit 1, the same
-fail-open-loud contract below. So is a tier `abcd mode` cannot write — a
-read-only mount, a directory the session's user does not own: the refusal's
-remedy could not run there, so the gate probes that the verb could set the
-state before it refuses, and where it could not, the question runs on exit 1.
+Where the badge does not show, the mode gate does not run. A state file or
+marker the gate cannot read or write is not a decision: the question runs and
+the hook says so on exit 1, the same fail-open-loud contract below. So is a
+tier `abcd mode` cannot write — a read-only mount, a directory the session's
+user does not own: the refusal's remedy could not run there, so the gate probes
+that the verb could set the state before it refuses, and where it could not,
+the mode refuses nothing and only field findings, whose remedy is the agent's
+own, can refuse; with none, the question runs on exit 1.
 The probe is a file created in the tier and removed again; one the remove could
 not reach, because the tier turned unwritable in between or the process died,
 is swept by the next probe. The manifest's pre-tool-use matcher names the

@@ -136,6 +136,7 @@ _Confirmed by the technical facilitator at the planning interview, 2026-10-03._
 10. The technical facilitator: the register and mode rules, and the question check's mode gate, apply to abcd's own interviews only; other tools' questions in a managed repository are not refused.
 11. The technical facilitator: builds_on itd-200, reverses itd-110, and three scope conditions written.
 7. The product thinker: itd-2609151541116052 (show the thing first) is folded into itd-2610030810350727 and superseded by it; the bundle is this record and the layout intent.
+13. 2026-10-03, note: decision 20 of the layout intent (itd-2610030810350727, the product thinker: "No side previews") moves each option's gain and cost into its description. A side preview hides every option's description in the host and is cut to the rows the host leaves it, so abcd's questions carry none: where decision 3 says the side preview "may repeat it with the trade-off", and where the layout intent's decision 17 puts the trade-offs in the previews, the description now holds the meaning, the gain and the cost, and the question check refuses a preview.
 
 ## Review findings (design and feasibility, 2026-10-03, bundle with itd-2610030810350727 and itd-2609151541116052)
 
@@ -159,4 +160,6 @@ Proposed acceptance criteria (agent-seeded, unconfirmed; each walked with an exa
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-5796271104cf -->
+Fidelity review OWED (receipt rcp-5796271104cf).
+<!-- abcd-review-end receipt=rcp-5796271104cf -->

@@ -68,6 +68,10 @@ injection proven from logs rather than model claims, forged-heading and
 separator red-team vectors, guard exit-mapping exhaustiveness, capture
 watermark invariants — is a concrete seed for the parity conformance suite.
 
+## Amendments
+
+Amended by itd-2610030814013772 (2026-10-03, its decision 7): abcd writes no tool-specific conventions file for any tool, and setup offers to retire one it finds that only repeats or links to AGENTS.md. This draft's portability work starts from that: each tool is pointed at AGENTS.md through its own configuration, never through a file abcd writes for it.
+
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._

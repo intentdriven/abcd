@@ -125,9 +125,10 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609301020001595` — A pinned-action bump syncs its scaffold template and lands re-authored, the pin half of the dependency re-authoring (builds on itd-2609221842494980; from iss-209; ruling M3)
 - `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
-- `itd-2610030720038073` — abcd keeps its home folder out of desktop search by default (refines itd-2609091014076309; its rule is adr-2610030720195401; draft, routing confirmed 2026-10-03)
-- `itd-2610030814013772` — abcd's projects keep one conventions file, AGENTS.md (draft; promoted from iss-2609291925136841)
-- `itd-2610030821294016` — Connecting a model service from Claude Code looks up the details and offers the choices (draft; refines itd-2609081951381895)
+- `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
+- `itd-2610031348087517` — setup asks whether abcd keeps parts of the README current, and which (draft; routing confirmed 2026-10-03)
+- `itd-2610031214560142` — The board shows a product thinker what waits on them and what comes next, in a few plain lines (draft; builds on the width fix iss-2610031207397996)
+- `itd-2610031215002409` — A 'what next?' menu under the board offers the next step, in a Terminal and in a Claude Code session (draft; builds on itd-2610031214560142 and itd-2610030810370060)
 - `itd-2610031259176838` — Outside contributors reserve work through a draft pull request that abcd honours (draft; builds on itd-2609150819440345; not urgent)
 <!-- /index -->
 
