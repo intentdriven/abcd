@@ -292,6 +292,13 @@ func pickModel(ctx context.Context, req ConnectRequest, denylist []DenyEntry, op
 	case KeyHomeABCD, KeyHomeKeychain:
 		key = req.Key
 	case KeyHomeExternal:
+		// The pointer is resolved here for the listing and again by the
+		// walkthrough for the verification, so a file pointer's value can
+		// change between the two while the person picks: the listing then
+		// read with one value and the call verified with another. That is
+		// accepted, because nothing wrong persists: the external home stores
+		// the pointer, never the value, the verification is the one test of
+		// it, and a value that fails the call writes nothing.
 		v, err := credential.ResolvePointer(req.Roots.Home, req.KeyName, req.Pointer)
 		if err != nil {
 			return "", fmt.Errorf("oracle adapter: %w; the models were not listed, and nothing was written", err)
