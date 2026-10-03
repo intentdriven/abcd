@@ -130,6 +130,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610030720038073` — abcd keeps its home folder out of desktop search by default (refines itd-2609091014076309; its rule is adr-2610030720195401; draft, routing confirmed 2026-10-03)
 - `itd-2610030814013772` — abcd's projects keep one conventions file, AGENTS.md (draft; promoted from iss-2609291925136841)
 - `itd-2610030821294016` — Connecting a model service from Claude Code looks up the details and offers the choices (draft; refines itd-2609081951381895)
+- `itd-2610031026190632` — abcd's check says when the harness is behind its latest release (draft; builds on itd-111; the network answers only the explicit check)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
