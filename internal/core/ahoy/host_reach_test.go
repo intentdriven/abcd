@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
 // specHostReachWhy is the fixed sentence every presence warning carries, word for
@@ -263,6 +265,58 @@ func TestHostVersionWarning(t *testing.T) {
 				if versionShaped.MatchString(w) {
 					t.Errorf("the warning names a version: %q", w)
 				}
+			}
+		})
+	}
+}
+
+// TestARefusedOrDeclinedInstallReadsNoHostVersion: the host-reach check, a
+// subprocess among it, runs only once the install is past its refusals and
+// its adoption question. A run that refuses (a .abcd that is not a real
+// folder, a binary whose vintage cannot be determined) or that the person
+// declines starts nothing.
+func TestARefusedOrDeclinedInstallReadsNoHostVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status string
+		setup  func(t *testing.T, repo string, opts *InstallOptions)
+	}{
+		{"declined adoption", "aborted", func(t *testing.T, _ string, opts *InstallOptions) {
+			no := false
+			opts.Adopt = &no
+		}},
+		{"a .abcd that is a link", "refused", func(t *testing.T, repo string, _ *InstallOptions) {
+			if err := os.Symlink(t.TempDir(), filepath.Join(repo, ".abcd")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"an undeterminable vintage", "refused", func(t *testing.T, _ string, _ *InstallOptions) {
+			t.Cleanup(SetCurrentVintageForTest(func() vintage.Current { return vintage.Current{Known: false} }))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, _ := setupHermetic(t)
+			repo := filepath.Join(home, "proj")
+			if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			reads := 0
+			t.Cleanup(swapHostVersion(func(string) (hostVersion, error) {
+				reads++
+				return hostVersion{}, errHostAbsent
+			}))
+			opts := installOpts()
+			tc.setup(t, repo, &opts)
+
+			res, err := Install(repo, opts, RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != tc.status {
+				t.Fatalf("status = %q, want %q: %+v", res.Status, tc.status, res.Notes)
+			}
+			if reads != 0 {
+				t.Errorf("a %s install read the agent tool's version %d time(s)", res.Status, reads)
 			}
 		})
 	}

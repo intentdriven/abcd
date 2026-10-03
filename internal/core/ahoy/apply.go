@@ -47,14 +47,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	if err != nil {
 		return InstallResult{}, err
 	}
-	// What keeps AGENTS.md from the agent tool from outside the project's own
-	// files: a personal file at the root, a file in a folder above it, an old
-	// host (itd-2610030814013772). Install checks only, made once per run and
-	// never by Detect, which the status board and the hooks also call.
+	// The host-reach warnings, set once the run is past its refusals and its
+	// adoption question (below).
 	var hostReach []Gap
-	if det.FolderKind != UnmanagedFolder {
-		hostReach = detectHostReach(abs)
-	}
 	// Every outcome past detection carries the warnings, the early returns
 	// included: a tool's own file holding the owner's words hides AGENTS.md
 	// whether or not this run changed anything. The full apply sets them from
@@ -120,6 +115,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		}
 	}
 	_ = adopted
+
+	// What keeps AGENTS.md from the agent tool from outside the project's own
+	// files: a personal file at the root, a file in a folder above it, an old
+	// host (itd-2610030814013772). Install checks only, made once per run and
+	// never by Detect, which the status board and the hooks also call. It runs
+	// a subprocess, so it waits until the run is past every refusal above and
+	// the adoption question: a run that refuses or is declined starts nothing.
+	hostReach = detectHostReach(abs)
 
 	// Where the PATH entry goes, decided BEFORE any write but AFTER the adoption
 	// gate: an explicit --bin-dir abcd cannot write to fails the whole install
