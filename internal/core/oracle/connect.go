@@ -65,6 +65,9 @@ type ConnectRequest struct {
 	Pointer credential.Pointer
 	// Timeout bounds the verification call; 0 keeps its own short bound.
 	Timeout time.Duration
+	// Pick, when Models is empty, chooses one model from the listed ids.
+	// Connect calls it after listing with the key it holds; nil refuses as today.
+	Pick func(ctx context.Context, listed []string) (string, error)
 }
 
 // ConnectResult is what the setup did. It never carries the key.
@@ -100,8 +103,15 @@ var verifyBrief = openaiapi.Brief{
 // Connect verifies the connection with one call and, only when it succeeds,
 // writes the key and the provider block. Every fault the configuration read
 // would refuse is refused first, before the call.
+//
+// With no model named and Pick given, Connect first lists the service's
+// models with the key it holds (pickModel), and the model picked is the
+// allowlist; from there the path is the same. No listing is taken as the
+// verification (itd-2610030821294016 decision 2): the completion to the model
+// picked is.
 func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
-	if err := checkConnect(&req); err != nil {
+	picking := len(req.Models) == 0 && req.Pick != nil
+	if err := checkConnect(&req, picking); err != nil {
 		return ConnectResult{}, err
 	}
 	cfg, err := LoadAPI(req.Roots)
@@ -112,14 +122,21 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 		return ConnectResult{}, fmt.Errorf("oracle adapter: provider %s is already configured in %s; "+
 			"abcd never replaces a block unasked, so edit or remove it there to change it", req.Provider, layered.Config.MachineOrigin())
 	}
+	var opts []openaiapi.Option
+	if req.Timeout > 0 {
+		opts = append(opts, openaiapi.WithTimeout(req.Timeout), openaiapi.WithFirstByteTimeout(req.Timeout))
+	}
+	if picking {
+		m, err := pickModel(ctx, req, cfg.denylist, opts)
+		if err != nil {
+			return ConnectResult{}, err
+		}
+		req.Models = []string{m}
+	}
 	for _, m := range req.Models {
 		if e, denied := Denied(cfg.denylist, m); denied {
 			return ConnectResult{}, fmt.Errorf("oracle adapter: provider %s %s", req.Provider, deniedError(m, e))
 		}
-	}
-	var opts []openaiapi.Option
-	if req.Timeout > 0 {
-		opts = append(opts, openaiapi.WithTimeout(req.Timeout), openaiapi.WithFirstByteTimeout(req.Timeout))
 	}
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
 		KeyHome: req.Home, Diagnostics: append([]string(nil), cfg.Diagnostics...)}
@@ -152,8 +169,9 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 	return res, nil
 }
 
-// checkConnect refuses a malformed request, never echoing the key.
-func checkConnect(req *ConnectRequest) error {
+// checkConnect refuses a malformed request, never echoing the key. A request
+// that picks its model after a listing (picking) names none yet.
+func checkConnect(req *ConnectRequest, picking bool) error {
 	switch {
 	case !providerNameRe.MatchString(req.Provider):
 		return fmt.Errorf("oracle adapter: provider name %q is not lower case letters, digits, - and _", layered.BoundKey(req.Provider))
@@ -163,7 +181,7 @@ func checkConnect(req *ConnectRequest) error {
 	if err := openaiapi.ValidateBaseURL(req.BaseURL); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
-	if len(req.Models) == 0 {
+	if len(req.Models) == 0 && !picking {
 		return errors.New("oracle adapter: no model is listed; a provider serves only the models it lists, so the setup lists at least one")
 	}
 	if len(req.Models) > MaxModels {
@@ -214,6 +232,64 @@ func checkConnect(req *ConnectRequest) error {
 	}
 	// The store's own value check, before the call rather than after it.
 	return credential.CheckValue(req.Key)
+}
+
+// pickModel lists the service's models with the key req holds and asks
+// req.Pick for one (spc-2610031241482088, "No --model: list with the key,
+// then pick"). The key is the one the verification will use: the value given
+// for the abcd and keychain homes, the pointer's value for the external home
+// (resolved now, as the walkthrough resolves it again before its call), none
+// for a keyless server. Only the ids validModel admits and the denylist does
+// not refuse are offered: the adapter keeps ids that carry characters a shell
+// acts on, and a picked model is printed and written. A listing that fails,
+// a listing with nothing to offer, a pick that is cancelled, and a pick of an
+// id that was not offered each return an error that says which, and nothing
+// has been written.
+func pickModel(ctx context.Context, req ConnectRequest, denylist []DenyEntry, opts []openaiapi.Option) (string, error) {
+	key := ""
+	switch req.Home {
+	case KeyHomeABCD, KeyHomeKeychain:
+		key = req.Key
+	case KeyHomeExternal:
+		v, err := credential.ResolvePointer(req.Roots.Home, req.KeyName, req.Pointer)
+		if err != nil {
+			return "", fmt.Errorf("oracle adapter: %w; the models were not listed, and nothing was written", err)
+		}
+		key = v
+	}
+	client, err := openaiapi.New(req.BaseURL, key, opts...)
+	if err != nil {
+		return "", fmt.Errorf("oracle adapter: provider %s: %w; nothing was written", req.Provider, err)
+	}
+	listing, err := client.Models(ctx)
+	if err != nil {
+		return "", fmt.Errorf("oracle adapter: provider %s: the model list could not be read: %w; name a model with --model, and nothing was written",
+			req.Provider, err)
+	}
+	offered := make([]string, 0, len(listing.IDs))
+	dropped := listing.Dropped
+	for _, id := range listing.IDs {
+		if _, denied := Denied(denylist, id); denied || !validModel(id) {
+			dropped++
+			continue
+		}
+		offered = append(offered, id)
+	}
+	if len(offered) == 0 {
+		return "", fmt.Errorf("oracle adapter: provider %s listed no usable models (%d listed names were not usable model names); "+
+			"name a model with --model, and nothing was written", req.Provider, dropped)
+	}
+	picked, err := req.Pick(ctx, offered)
+	if err != nil {
+		return "", fmt.Errorf("oracle adapter: provider %s: no model was picked (%w), so nothing was written", req.Provider, err)
+	}
+	for _, id := range offered {
+		if id == picked {
+			return picked, nil
+		}
+	}
+	return "", fmt.Errorf("oracle adapter: provider %s: the model picked, %q, is not one the service listed, so nothing was written",
+		req.Provider, layered.BoundKey(picked))
 }
 
 // configLockFileName is the lock the provider block's write takes, beside
