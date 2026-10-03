@@ -83,10 +83,10 @@ var (
 
 // readHostVersion asks command, found on PATH, for its version with its
 // --version flag, and returns the first major.minor.patch it prints on
-// stdout. project
-// is the folder the reading is made for; a command inside it is never run.
-// The error says why no version was read. It is the one reading of an agent
-// tool's installed version: the harness-version check calls it per harness.
+// stdout. project is the folder the reading is made for; a command inside it
+// is never run. The error says why no version was read. It is the one reading
+// of an agent tool's installed version: the harness-version check calls it per
+// harness.
 func readHostVersion(command, project string) (hostVersion, error) {
 	var guards []string
 	if project != "" {
@@ -130,9 +130,43 @@ func parseHostVersion(out []byte) (hostVersion, error) {
 // String is for a test's failure message.
 func (v hostVersion) String() string { return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch) }
 
-// readClaudeVersion is the reading the host warning makes. A variable so the
-// package's tests run no harness of the machine's own; the version test puts
+// readClaudeVersion is the reading the host warning makes. A variable so no
+// unit test runs a harness of the machine's own: the package's tests and the
+// front-door tests swap it through the seams below, and the version test puts
 // the real reading back over a fake command.
 var readClaudeVersion = func(project string) (hostVersion, error) {
 	return readHostVersion(claudeCommand, project)
+}
+
+// noHostVersion reads no version, as when no agent tool is on PATH.
+func noHostVersion(string) (hostVersion, error) { return hostVersion{}, errHostAbsent }
+
+// NoHostVersionForTest makes the version reading find no agent tool, as on a
+// machine with none on PATH, and returns a restore func. It is a test-only
+// seam (in the manner of SetCurrentVintageForTest): a front-door test package
+// runs installs in-process and calls it from its TestMain, so no unit test
+// runs the machine's own agent tool and no test's output depends on its
+// release. Production never calls it.
+func NoHostVersionForTest() (restore func()) {
+	return swapHostVersion(noHostVersion)
+}
+
+// OldHostVersionForTest makes the version reading report an agent tool one
+// release below the floor, without running anything, and returns a restore
+// func: the stub a front-door test proves the warning renders with.
+// Production never calls it.
+func OldHostVersionForTest() (restore func()) {
+	old := claudeCodeAgentsFloor
+	if old.Patch > 0 {
+		old.Patch--
+	} else {
+		old.Minor--
+	}
+	return swapHostVersion(func(string) (hostVersion, error) { return old, nil })
+}
+
+func swapHostVersion(f func(string) (hostVersion, error)) (restore func()) {
+	prev := readClaudeVersion
+	readClaudeVersion = f
+	return func() { readClaudeVersion = prev }
 }

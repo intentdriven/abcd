@@ -17,9 +17,6 @@ func TestMain(m *testing.M) {
 	}
 	// No test runs the machine's own agent tool to read its version; the
 	// version test puts the real reading back over a fake command.
-	readClaudeVersion = noHostVersion
+	NoHostVersionForTest()
 	os.Exit(m.Run())
 }
-
-// noHostVersion reads no version, as when no agent tool is on PATH.
-func noHostVersion(string) (hostVersion, error) { return hostVersion{}, errHostAbsent }
