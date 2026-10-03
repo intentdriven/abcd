@@ -131,8 +131,10 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 	sort.Slice(helps, func(i, j int) bool { return helps[i].Key < helps[j].Key })
 	// The visibility question is held twice: as most repositories see it, and
 	// as a repository whose .abcd/ holds tracked records sees it, with public's
-	// caveat, its tallest form.
-	helps = append(helps, visibilityHelp(true))
+	// caveat, its tallest form, labelled so a finding names which form broke.
+	tracked := visibilityHelp(true)
+	tracked.Key = "visibility (tracked)"
+	helps = append(helps, tracked)
 
 	var qs []question.Question
 	for i, h := range helps {

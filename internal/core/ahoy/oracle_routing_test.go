@@ -244,30 +244,35 @@ func TestOracleRoutingRepoWriteNamesASymlinkLeavingTheRepository(t *testing.T) {
 
 // TestProposalCountsSayTheProposalInCounts is the form the machine offer says
 // the proposal in (iss-2610031236155833): the number of agents, the number at
-// each tier with the reason that tier is proposed, strongest tier first, and
+// each tier with the reason that tier is proposed, in the tier vocabulary
+// reversed (frontier before economy), and
 // the fan-out bounds, as one figure where every agent shares it and in counts
 // where they differ, never as a list of agents.
 func TestProposalCountsSayTheProposalInCounts(t *testing.T) {
-	roster := []string{"a", "b", "c", "d"}
+	// Names no copy of the counts could contain by accident, so the check
+	// that no agent is named below cannot pass vacuously.
+	roster := []string{"agent-a", "agent-b", "agent-c", "agent-d"}
 	same := oracle.Table{
-		"a": {Tier: oracle.Economy, FanOut: 1}, "b": {Tier: oracle.Frontier, FanOut: 1},
-		"c": {Tier: oracle.Economy, FanOut: 1}, "d": {Tier: oracle.Economy, FanOut: 1},
+		"agent-a": {Tier: oracle.Economy, FanOut: 1}, "agent-b": {Tier: oracle.Frontier, FanOut: 1},
+		"agent-c": {Tier: oracle.Economy, FanOut: 1}, "agent-d": {Tier: oracle.Economy, FanOut: 1},
 	}
 	if got, want := proposalCounts(roster, same),
 		"4 agents: 1 frontier, "+routingTierReason[oracle.Frontier]+"; 3 economy, "+routingTierReason[oracle.Economy]+"; fan-out 1 each"; got != want {
 		t.Errorf("one shared fan-out:\n got %q\nwant %q", got, want)
 	}
 	differ := oracle.Table{
-		"a": {Tier: oracle.Economy, FanOut: 3}, "b": {Tier: oracle.Economy, FanOut: 1},
-		"c": {Tier: oracle.Economy, FanOut: 1}, "d": {Tier: oracle.Economy, FanOut: 3},
+		"agent-a": {Tier: oracle.Economy, FanOut: 3}, "agent-b": {Tier: oracle.Economy, FanOut: 1},
+		"agent-c": {Tier: oracle.Economy, FanOut: 1}, "agent-d": {Tier: oracle.Economy, FanOut: 3},
 	}
 	if got, want := proposalCounts(roster, differ),
 		"4 agents: 4 economy, "+routingTierReason[oracle.Economy]+"; fan-out 1 for 2, 3 for 2"; got != want {
 		t.Errorf("fan-outs that differ:\n got %q\nwant %q", got, want)
 	}
-	for _, agent := range roster {
-		if strings.Contains(proposalCounts(roster, differ), agent+" ") {
-			t.Errorf("the counts name the agent %q", agent)
+	for _, table := range []oracle.Table{same, differ} {
+		for _, agent := range roster {
+			if counts := proposalCounts(roster, table); strings.Contains(counts, agent) {
+				t.Errorf("the counts name the agent %q: %q", agent, counts)
+			}
 		}
 	}
 }

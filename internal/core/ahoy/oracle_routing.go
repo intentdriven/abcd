@@ -224,8 +224,9 @@ var routingTierReason = map[oracle.Tier]string{
 }
 
 // proposalCounts says the proposal in counts, never naming an agent: how many
-// agents, how many at each tier (the tier vocabulary in reverse, so frontier
-// before economy) with the reason that tier is proposed, and the fan-out
+// agents, how many at each tier (in the order of oracle.Tiers() reversed:
+// frontier before economy today, though a host-decides row would lead, which
+// is not a strength order) with the reason that tier is proposed, and the fan-out
 // bounds, one figure when every agent shares it and "<bound> for <number of
 // agents>" pairs when they differ. A row per agent does not fit
 // one question, so the product thinker ruled for counts on 2026-10-03
