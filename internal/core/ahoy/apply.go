@@ -558,6 +558,19 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// shared applyOverride path covers all four config slots, so a re-install with
 	// an explicit flag is never silently dropped; a re-install with NO override
 	// leaves an already-valid value untouched (a silent no-op).
+	// Every effect this step sets ahead of its write — the echoed overrides, the
+	// forced docs target, the retraction — stands only if the write lands. Each
+	// return that saves nothing (a declined category, a value left unanswered, a
+	// failed write) takes them back through this one rollback, so stepMarker
+	// never retracts a block for a target change that was not saved and the
+	// receipt never echoes one. Receipts earlier steps recorded are kept.
+	mark := len(a.changes)
+	landed := false
+	defer func() {
+		if !landed {
+			a.rollbackForced(mark)
+		}
+	}()
 	oldDocsTarget := ic.DocsTarget
 	visForced := a.applyOverride("visibility", visibilityChoices, &ic.Visibility)
 	// The saved docs target is read against every value setup ever wrote; an
@@ -576,6 +589,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	}
 
 	if !hasConfigGap && !forced {
+		landed = true
 		return ic // all values already valid and no override forced a change
 	}
 	if hasConfigGap && !a.approved[ConfigChange] {
@@ -603,8 +617,8 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		// Choosing the target is the approval to plant into it. At the skip
 		// default detection previews no marker gap, so the plugin-owned category
 		// is never offered, and a first install that names a target would persist
-		// it and plant nothing (iss-2609110944498549). rollbackForced clears this
-		// when the config write does not land.
+		// it and plant nothing (iss-2609110944498549). The rollback above clears
+		// this when the config write does not land.
 		a.docsTargetForced = true
 	}
 	oracleRecorded := false
@@ -658,14 +672,14 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return writeConfig(a.cwd, cfgMap)
 	})
 	if err != nil {
-		// The write did not land; do not echo a change or let downstream steps
-		// reconcile .gitignore/markers against a config value that was not saved.
-		a.rollbackForced()
+		// The write did not land: the deferred rollback keeps downstream steps
+		// from reconciling .gitignore/markers against a value that was not saved.
 		if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
 			a.refuse("could not save the settings to .abcd/config.json: " + errText(err))
 		}
 		return nil
 	}
+	landed = true
 	a.note(writeSettings, configPath(a.cwd))
 	if oracleRecorded {
 		a.inform(oracleBackendRecordedNote)
@@ -675,9 +689,11 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 
 // rollbackForced discards the effects of a forced override whose config write did
 // not land, so the echoed change and the downstream reconciliation steps never
-// claim a change that was not persisted.
-func (a *applyCtx) rollbackForced() {
-	a.changes = nil
+// claim a change that was not persisted. It truncates the change list to mark,
+// its length when stepConfigValues began, so a receipt an earlier step recorded
+// (a dependency installed in this run) is kept (iss-2610031915495759).
+func (a *applyCtx) rollbackForced(mark int) {
+	a.changes = a.changes[:mark]
 	a.visibilityForced = false
 	a.docsTargetForced = false
 	a.markerRetract = nil

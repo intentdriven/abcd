@@ -323,3 +323,55 @@ func TestChangingTheOneSettingMovesTheBlock(t *testing.T) {
 		})
 	}
 }
+
+// TestDeclinedSettingsChangeLeavesTheBlockWhereItWas: the one command the
+// explanation names moves the block only when its settings write lands. A
+// person who declines the settings change at the prompt (here with a value
+// missing beside the saved claude_md) keeps the saved value, keeps the block
+// in CLAUDE.md, gets no block in AGENTS.md, and is told of no change.
+func TestDeclinedSettingsChangeLeavesTheBlockWhereItWas(t *testing.T) {
+	setupHermetic(t)
+	repo := retiredRepo(t, "claude_md")
+	// A missing oracle backend is a settings gap on any machine; a missing
+	// scan.deep is one only where trufflehog is on PATH.
+	writeValidConfig(t, repo, "private", "claude_md", "")
+	before, err := Detect(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasGap(before.Gaps, "config.oracle_backend_missing") {
+		t.Fatal("precondition: a settings value is missing")
+	}
+
+	opts := installOptsWithout()
+	opts.Yes = false
+	opts.ValueOverrides["docs_target"] = "agents_md"
+	res, err := Install(repo, opts, stubPrompter{confirm: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status == "clean" {
+		t.Errorf("status = clean with the settings change declined (notes %v)", res.Notes)
+	}
+	for _, c := range res.Changes {
+		if strings.Contains(c, "docs_target") {
+			t.Errorf("the receipt reports %q, a change that did not land", c)
+		}
+	}
+	cfg, err := readConfig(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := stringVal(subMap(cfg, "docs"), "target"); v != "claude_md" {
+		t.Errorf("saved docs.target = %q, want claude_md (the change was declined)", v)
+	}
+	if !hasBlock(t, filepath.Join(repo, "CLAUDE.md")) {
+		t.Error("CLAUDE.md lost abcd's block though the setting still names it")
+	}
+	if hasBlock(t, filepath.Join(repo, "AGENTS.md")) {
+		t.Error("AGENTS.md gained abcd's block though the setting did not change")
+	}
+	if data, _ := os.ReadFile(filepath.Join(repo, "CLAUDE.md")); !bytes.Contains(data, []byte("The owner's own line.")) {
+		t.Errorf("CLAUDE.md lost the owner's words: %q", data)
+	}
+}
