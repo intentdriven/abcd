@@ -58,7 +58,7 @@ func TestAhoyInstallPipedAnswersNeverRewriteTheIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 16), "ahoy", "install", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {
 		t.Fatalf("piped install exited non-zero: %v\n%s\n%s", err, stdout, stderr)

@@ -23,7 +23,7 @@ func TestAhoyInstallOffersTheEmDashRuleOnStdin(t *testing.T) {
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
 	out, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 16), "ahoy", "install",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
