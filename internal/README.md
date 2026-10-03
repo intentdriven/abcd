@@ -252,7 +252,13 @@ plugin surface, and a future MCP server share one engine.
   question tool takes, one tab per question) to every rule at once and returns
   findings; it refuses and never rewrites. The binary's verb list reaches it as
   an input, so the core keeps no copy of the command tree, and its rows are
-  measured through `textwidth`, never through `term`.
+  measured through `textwidth`, never through `term`. It also holds the
+  structured question both front doors use (`Ask`, spc-2610030911534855): its
+  JSON shape, its structural check (`Check`), and `Ask.Fields`, the mapping onto
+  the field view the limits are checked on. `AskingRules` writes the asking
+  rules with every limit filled from a `Limits` value, numbers as words, and
+  `AskingRecall` their recall terms: the rules loader generates the bundled
+  GRILL domain from them, as it generates SHELL from the guard registry.
 - **`core/banlist/`** — the two banned-names stores (itd-74, spc-20). The public
   layer is managed IN the docs-lint `banned_tokens` family under a `names/` id
   prefix: one banned-token primitive, and the prefix is the ownership boundary a
@@ -290,6 +296,11 @@ plugin surface, and a future MCP server share one engine.
   text the same way without the core importing raw-mode terminal code.
 - **`surface/cli/`** — the default front door: a Cobra command tree that calls
   `core` and formats results as text or `--json`. Holds no business logic.
+- **`surface/cli/ask/`** — the drawing of a question in a plain Terminal
+  (spc-2610030911534855): the pure layout from a `question.Ask` to lines at a
+  width and a colour rung, and the sanitising every part passes first. The
+  width comes from `term.Size`; text is measured and wrapped through
+  `textwidth`.
 - **`surface/mcp/`** *(later)* — an additive front door exposing the same core
   verbs as `mcp:abcd:*` tools. Added once a surface is worth exposing; no core
   rework required because the core is transport-agnostic.

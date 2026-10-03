@@ -53,8 +53,16 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 	}
 
 	// The drive must actually reach every family of question, or a passing run
-	// would say nothing about the one it skipped.
-	for _, want := range []string{"visibility", "docs_target", "oracle_backend", "scan_deep", emDashPromptKey, elementPromptPrefix + "repo"} {
+	// would say nothing about the one it skipped. The oracle question is asked
+	// only once a second answer has an adapter (iss-2610031236155833); until
+	// then a first install records host-delegated without asking it.
+	wants := []string{"visibility", "docs_target", "scan_deep", emDashPromptKey, elementPromptPrefix + "repo"}
+	if oracleBackendAsked() {
+		wants = append(wants, "oracle_backend")
+	} else if _, asked := p.asked["oracle_backend"]; asked {
+		t.Errorf("the install asked oracle_backend while only host-delegated has an adapter")
+	}
+	for _, want := range wants {
 		if _, ok := p.asked[want]; !ok {
 			keys := make([]string, 0, len(p.asked))
 			for k := range p.asked {

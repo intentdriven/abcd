@@ -12,10 +12,10 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers the bundle `asking-and-layout`:
-[itd-2610030810350727](../../intents/planned/itd-2610030810350727-every-question-abcd-puts-to-a-person-reads-the-same-way-and.md)
+[itd-2610030810350727](../../intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person-reads-the-same-way-and.md)
 (every question abcd asks reads the same way, on a narrow window and a wide
 one) and
-[itd-201](../../intents/planned/itd-201-every-question-abcd-s-agents-put-to-a-human-is-asked-one-at.md)
+[itd-201](../../intents/shipped/itd-201-every-question-abcd-s-agents-put-to-a-human-is-asked-one-at.md)
 (every question is asked one thing at a time, in plain language, with options
 that widen). Both ship at one moment, from one change set split into the steps
 below.
@@ -68,7 +68,7 @@ In (this bundle):
   the Claude Code version, and the row estimate calibrated against them.
 
 Out (the plain-Terminal spec,
-[spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
+[spc-2610030911534855](../open/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
 for itd-2610030810370060):
 
 - The question type itself (`Ask`, `Question`, `Block`, `Option`, `List`),
@@ -175,12 +175,11 @@ is), the limit, and a remedy. The rules, each a separate finding:
 4. **Label words.** At most `LabelWords` words, split on white space.
 5. **Meaning sentences.** Each description present and at most
    `MeaningSentences` sentences, counted at `.`, `?`, or `!` before white space
-   or the end, with "e.g.", "i.e.", and "etc." masked. A preview never stands
-   in for an empty description: the meaning is in the description, and the
-   preview may repeat it with the trade-off (itd-201 decision 3).
+   or the end, with "e.g.", "i.e.", and "etc." masked. The description holds
+   the meaning, the gain and the cost; two sentences hold them, and no preview
+   carries any of it (rule 14, the layout intent's decision 20).
 6. **Decide later.** Exactly one option whose label is in `LaterLabels`, and
-   it is the last. With a preview present it stands in for the free-text row
-   the preview removes (A5).
+   it is the last; it is always offered.
 7. **No bold markers.** No `**` or `__` in the header, the question text, a
    label, or a description (the host shows them literally). Previews are
    rendered as markdown by the host and are not held to this.
@@ -211,14 +210,19 @@ is), the limit, and a remedy. The rules, each a separate finding:
     the docs-lint token `punctuation/em-dash-in-list-item`; a test holds the
     two equal, since the token lives in ahoy's JSON seed. The other Writing
     Style rules stay review (scope condition 3).
-13. **Rows.** At `Columns`, the question (or each tab) fits `Rows`: one row for
-    the header, the question text wrapped at `HostTextColumns`, each option's
-    label row and its description wrapped beneath it, and `HostChromeRows`.
-    A preview is held to the rows the frame leaves it, so the host never cuts
-    it. Over budget, the remedy says to split the material into parts as tabs
+13. **Rows.** At `Columns`, the question (or each tab) fits `Rows`: the
+    question text wrapped at `HostTextColumns`, each option's label row and its
+    description wrapped beneath it at `HostOptionColumns`, and `HostChromeRows`,
+    the chip's row included (calibrated in step 5; a preview is refused by rule
+    14, so its layout is not estimated). Over budget, the remedy says to split the material into parts as tabs
     (up to four) or into successive questions, one part per question, and
     never to move it into a message before the question or into a preview
-    alone (decision 9).
+    (decision 9).
+14. **No side preview.** No option carries a preview, refused with the remedy
+    "abcd's questions carry no side preview (decision 20): put the option's
+    meaning, gain and cost in its description." Added in step 5 on the layout
+    intent's decision 20: with a preview the host hides every option's
+    description and cuts the preview to the rows it has, whatever the width.
 
 The check refuses and never rewrites. The host lets a pre-tool hook replace a
 tool's input; this check does not use that, because a rewritten question puts
@@ -375,11 +379,14 @@ at 80 by 24, naming the version, taken in step 5, which also calibrates
 `HostTextColumns` and `HostChromeRows` so the estimate matches what the host
 drew.
 
-**A5.** The automatic half: `TestPreviewQuestionKeepsDecideLater` asserts a
-question with previews and no decide-later option is refused, and the same
-with it admitted. The host half is a dated screenshot at 160 columns with
-previews, the preview beside the options and "Decide later" in place of the
-free-text row (host-dependent, as the criterion says).
+**A5.** Reworded by the layout intent's decision 20: a question abcd builds
+carries no side preview. `TestQuestionCarriesNoSidePreview` asserts every
+preview is refused under rule 14, one finding per option naming it, and the
+same question without previews admitted. The host evidence is the dated
+screenshots at 80 and 160 columns with previews, described in
+`.abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md`:
+with previews the host hides every description, and the preview box is cut by
+height at either width.
 
 **A7.** `TestOneEditMovesEveryStatementOfALimit` copies `question.Default`,
 raises `LabelWords` from 5 to 6, and asserts that `CheckLimits` admits a
@@ -543,7 +550,7 @@ beneath each.
 ## Footprint
 
 - packages: internal/core/question, internal/core/rules, internal/core/ahoy, internal/surface/cli, cmd/asking-sync, commands/, .abcd/rules.json, .abcd/development/brief, AGENTS.md, docs/reference
-- tests: TestRoutingQuestionOf20261003IsRefused, TestWellBuiltQuestionIsAdmitted, TestRecommendedStarredOrLongHeaderIsRefused, TestQuestionFitsTwentyFourRowsAt80, TestPreviewQuestionKeepsDecideLater, TestOneEditMovesEveryStatementOfALimit, TestIntentPageAskingBlockIsGenerated, TestCriterionQuestionQuotesTheCriterionFirst, TestPressReleaseQuestionQuotesTheParagraph, TestOpenQuestionQuotesAndOffersDecideLater, TestInterviewPagesBindTheOrder, TestManagedRepositoryGetsGrillFromTheBinary, TestGrillDomainIsNotHandWritten, TestHandWrittenGrillPanicsAtLoad, TestGrillTextAsksOneThingAtATime, TestProductThinkerQuestionNamesNoRecordOrCommand, TestGrillTextRecordsDeferral, TestRecommendedOrStarredOptionIsRefused, TestGrillTextCarriesTheAmendments, TestGrillTextScopesRegisterToAbcdInterviews, TestForeignQuestionIsNotRefused, TestAbcdChipWhileManagedIsRefused; the em-dash pattern held equal to the docs-lint token; every fixed question abcd builds passing CheckLimits
+- tests: TestRoutingQuestionOf20261003IsRefused, TestWellBuiltQuestionIsAdmitted, TestRecommendedStarredOrLongHeaderIsRefused, TestQuestionFitsTwentyFourRowsAt80, TestQuestionCarriesNoSidePreview, TestRowEstimateMatchesTheHostAt80By24, TestOneEditMovesEveryStatementOfALimit, TestIntentPageAskingBlockIsGenerated, TestCriterionQuestionQuotesTheCriterionFirst, TestPressReleaseQuestionQuotesTheParagraph, TestOpenQuestionQuotesAndOffersDecideLater, TestInterviewPagesBindTheOrder, TestManagedRepositoryGetsGrillFromTheBinary, TestGrillDomainIsNotHandWritten, TestHandWrittenGrillPanicsAtLoad, TestGrillTextAsksOneThingAtATime, TestProductThinkerQuestionNamesNoRecordOrCommand, TestGrillTextRecordsDeferral, TestRecommendedOrStarredOptionIsRefused, TestGrillTextCarriesTheAmendments, TestGrillTextScopesRegisterToAbcdInterviews, TestForeignQuestionIsNotRefused, TestAbcdChipWhileManagedIsRefused; the em-dash pattern held equal to the docs-lint token; every fixed question abcd builds passing CheckLimits
 
 ## Steps
 
@@ -552,19 +559,24 @@ beneath each.
    - packages: internal/core/question, internal/core/ahoy (test only)
    - tests: `CheckLimits` over golden field views, one refusal case per rule and an admitted case; the row estimate over five criteria as one question (refused) and as four tabs then one (admitted); the em-dash pattern equal to the docs-lint token; `Ask.Fields()` places the `Now:` and `Change later:` lines before the ask and `Later` last
    - lands after the companion's step 1 when that lands first, adding `Ask.Fields()`; if this step lands first, it creates the package with `Fields` and `Limits` alone and the companion adds the mapping
+   - landed: #784
 2. The question check in the guard hook
    - criteria: A1, A2, A3, R4, R6, and the mode gate's scope
    - packages: internal/surface/cli
    - tests: TestRoutingQuestionOf20261003IsRefused (the fixture and its expected findings in testdata), TestWellBuiltQuestionIsAdmitted, TestRecommendedStarredOrLongHeaderIsRefused, TestProductThinkerQuestionNamesNoRecordOrCommand, TestRecommendedOrStarredOptionIsRefused, TestForeignQuestionIsNotRefused, TestAbcdChipWhileManagedIsRefused; an unreadable questions field failing open loudly with exit 1; every echoed value sanitised; the existing gate tests unchanged
+   - landed: #784
 3. GRILL generated from the one source
    - criteria: R1, R2, R3, R5, the reworded criteria; the GRILL half of A7
    - packages: internal/core/question, internal/core/rules, .abcd/rules.json, .abcd/development/brief/glossary
    - tests: TestManagedRepositoryGetsGrillFromTheBinary, TestGrillDomainIsNotHandWritten, TestHandWrittenGrillPanicsAtLoad, TestGrillTextAsksOneThingAtATime, TestGrillTextRecordsDeferral, TestGrillTextCarriesTheAmendments, TestGrillTextScopesRegisterToAbcdInterviews; the generated text carries no record handle and no `go run`; the loader contracts (override, dormant, kill switch, `*GRILL`) hold for GRILL as for SHELL; abcd's own `abcd rules GRILL --json` reports `source: bundled` once its override is gone
+   - landed: feat/asking-pages
 4. The interview pages, the generated block, and the docs
    - criteria: A7, S4, and the page side of S1 to S3
    - packages: cmd/asking-sync, commands/, internal/core/ahoy, AGENTS.md, .abcd/development/brief, docs/reference
    - tests: TestOneEditMovesEveryStatementOfALimit, TestIntentPageAskingBlockIsGenerated, TestInterviewPagesBindTheOrder; the managed block's default-domain list names GRILL and its dormant escape, with abcd's own `AGENTS.md` matching it; every fixed question abcd builds (setup, routing) passing `CheckLimits`; docs-lint clean over the glossary page and the universal-patterns section
+   - landed: feat/asking-pages
 5. Host evidence and calibration
    - criteria: A4 and A5 (host halves)
    - packages: internal/core/question, .abcd/development/research
-   - tests: TestQuestionFitsTwentyFourRowsAt80 and TestPreviewQuestionKeepsDecideLater with `HostTextColumns` and `HostChromeRows` set from the screenshots; the dated screenshots at 80 by 24 and at 160 columns, each naming the Claude Code version, kept where open question 6 rules
+   - tests: TestQuestionFitsTwentyFourRowsAt80, TestRowEstimateMatchesTheHostAt80By24 and TestQuestionCarriesNoSidePreview (A5 as decision 20 rewords it) with `HostTextColumns`, `HostOptionColumns` and `HostChromeRows` set from the screenshots; the dated screenshots at 80 by 24 and at 160 columns, each naming the Claude Code version, kept where open question 6 rules
+   - landed: feat/asking-pages

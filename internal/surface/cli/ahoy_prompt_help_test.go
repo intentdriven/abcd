@@ -21,8 +21,10 @@ func TestAhoyInstallRendersCoreHelpAboveEachValueQuestion(t *testing.T) {
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
 	// --yes approves the categories, so the only questions left are the value
-	// questions no flag answered: visibility, the docs target, the oracle.
-	out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+	// questions no flag answered: visibility and the docs target. The oracle is
+	// not asked while host-delegated is the only reviewer abcd ships
+	// (iss-2610031236155833): it is recorded, and the report says so.
+	out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
 	}
@@ -30,7 +32,23 @@ func TestAhoyInstallRendersCoreHelpAboveEachValueQuestion(t *testing.T) {
 		t.Fatalf("stdout is not a clean JSON envelope:\n%s", out)
 	}
 	transcript := string(errOut)
-	for _, key := range []string{"visibility", "docs_target", "oracle_backend"} {
+	if strings.Contains(transcript, "oracle_backend (") {
+		t.Errorf("oracle_backend was asked while only host-delegated has an adapter:\n%s", transcript)
+	}
+	var res ahoy.InstallResult
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatal(err)
+	}
+	said := 0
+	for _, n := range res.Notes {
+		if strings.Contains(n, "host-delegated") && strings.Contains(n, "--oracle-backend") {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Errorf("the report does not say once what reviewer it recorded and how to choose another: %q", res.Notes)
+	}
+	for _, key := range []string{"visibility", "docs_target"} {
 		h, ok := ahoy.HelpFor(key)
 		if !ok {
 			t.Fatalf("core has no help for %s", key)
@@ -74,7 +92,7 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "both",
+	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 	out, errOut, err := runCLIPipedStdinSplit(t, "", append(args, "--json")...)
 	if err != nil {
@@ -154,7 +172,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	_, errOut, err := runCLIPipedStdinSplit(t, "private\n\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+	_, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, errOut)
 	}
@@ -175,7 +193,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 		t.Fatalf("ahoy install --help exited %d", code)
 	}
 	prev := 0
-	for _, key := range []string{"visibility", "docs_target", "oracle_backend"} {
+	for _, key := range []string{"visibility", "docs_target"} {
 		h, _ := ahoy.HelpFor(key)
 		q := strings.Index(transcript, key+" (")
 		if q < 0 {

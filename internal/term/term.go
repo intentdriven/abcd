@@ -1,5 +1,6 @@
 // Package term holds the canonical terminal-capability primitives: the
-// colour-mode ladder and the TTY check (adr-49, brief invariant 13). It is
+// colour-mode ladder, the TTY check (adr-49, brief invariant 13), and the
+// window size a question is drawn at (Size, through golang.org/x/term). It is
 // deliberately banner-independent — the bare-invocation banner (itd-112) is
 // its first consumer and the styled grill (itd-110) its declared second; a
 // surface that wants decoration resolves its mode here rather than minting a

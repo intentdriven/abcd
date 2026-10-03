@@ -82,8 +82,9 @@ check. abcd's question is held to the field limits of the asking
 rules wherever the hook runs, in a repository abcd manages or not: the header,
 the number of questions and options, each label's words and each meaning's
 sentences, the decide-later option, no bold and no recommended mark, the `Now:`
-and `Change later:` lines, the thing quoted before the question, and the rows
-it takes. A question that breaks any of them is refused with the blocking
+and `Change later:` lines, the thing quoted before the question, the rows it
+takes, and no side preview (the host hides every option's description while a
+preview shows, so the meaning goes in the description). A question that breaks any of them is refused with the blocking
 status, in one head line, "Blocked by the abcd guard (question tool): N part(s)
 of this question break abcd's asking rules; fix each and ask again.", then one
 line per part naming the tab, the part, the value, the limit and the remedy, so

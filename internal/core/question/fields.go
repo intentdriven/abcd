@@ -22,7 +22,7 @@ type Tab struct {
 type Choice struct {
 	Label       string // a few words
 	Description string // what choosing it means
-	Preview     string // optional; rendered by the host as markdown beside the options
+	Preview     string // the host's side preview, which abcd's questions never carry (rule 14)
 }
 
 // Person is whom a question is addressed to, as the mode records it.

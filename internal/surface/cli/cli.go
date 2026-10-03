@@ -2293,6 +2293,14 @@ the registry names. A rule in the repository's words is marked "(repo)" after
 its entry id. A guard.json the guard refuses is named on stderr and not taught;
 SHELL then teaches the registry the guard enforces in its place. It teaches
 before shell work what the guard refuses at the moment a command runs.
+
+GRILL is generated from the asking rules every abcd interview follows, every
+limit they state (the header chip's width, the options per question, the words
+per label, the rows at eighty columns) filled from the one value the question
+check in "abcd guard hook" enforces, so the rules and the check cannot state a
+limit differently. It recalls on words of asking and choosing, so it lands in
+most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
+its .abcd/rules.json.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -3788,7 +3796,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")
-	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)")
+	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change")
 	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
@@ -4057,7 +4065,14 @@ func installOptionsFromFlags(cmd *cobra.Command, yes, adopt, refuseAdopt, dev, a
 	if err := set("visibility", visibility, []string{"private", "public"}); err != nil {
 		return opts, err
 	}
-	if err := set("docs_target", docsTarget, []string{"claude_md", "agents_md", "both", "skip"}); err != nil {
+	// claude_md and both are read in a saved setting but never written, so the
+	// flag refuses them with the core's one explanation (itd-2610030814013772).
+	if cmd.Flags().Changed("docs-target") {
+		if why, retired := ahoy.RetiredDocsTarget(docsTarget); retired {
+			return opts, fmt.Errorf("abcd ahoy install: --docs-target %s is refused: %s", docsTarget, why)
+		}
+	}
+	if err := set("docs_target", docsTarget, []string{"agents_md", "skip"}); err != nil {
 		return opts, err
 	}
 	if err := set("oracle_backend", oracleBackend, []string{"host-delegated", "native", "cli", "api", "mcp"}); err != nil {

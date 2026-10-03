@@ -65,7 +65,7 @@ func TestAhoyInstallAcceptsPipedAnswersFromNonTTYStdin(t *testing.T) {
 	// is what `yes | abcd ahoy install` — the documented form — supplies.
 	answers := strings.Repeat("y\n", 12)
 	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
@@ -90,12 +90,12 @@ func TestAhoyInstallAcceptsPipedAnswersFromNonTTYStdin(t *testing.T) {
 	if len(res.Writes) == 0 {
 		t.Fatalf("a fully approved install wrote nothing\n%s", out)
 	}
-	body, err := os.ReadFile(filepath.Join(repo, "CLAUDE.md"))
+	body, err := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
 	if err != nil {
-		t.Fatalf("CLAUDE.md not written by the piped-answer install: %v", err)
+		t.Fatalf("AGENTS.md not written by the piped-answer install: %v", err)
 	}
 	if !strings.Contains(string(body), "<!-- BEGIN ABCD -->") {
-		t.Fatalf("CLAUDE.md has no marker block:\n%s", body)
+		t.Fatalf("AGENTS.md has no marker block:\n%s", body)
 	}
 	// Off a terminal nothing echoes the piped answer, so the prompter writes it:
 	// the diagnostic stream is a transcript of what was asked and answered.
@@ -213,7 +213,7 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
 
 	base := []string{"ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 
 	// First --yes run closes every required gap and leaves the optional pin.
@@ -297,7 +297,7 @@ func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
 
 	if out, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, out)
 	}

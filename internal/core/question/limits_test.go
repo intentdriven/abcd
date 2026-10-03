@@ -117,8 +117,7 @@ func TestEveryRuleRefusesOnItsOwn(t *testing.T) {
 		{"three sentences", RuleMeaningSentences, facilitator(), func(f *Fields) {
 			f.Tabs[0].Options[1].Description = "The label is shorter. You read the question to learn whom it is for. Nothing else moves."
 		}, "option 2 description"},
-		{"meaning only in the preview", RuleMeaningSentences, facilitator(), func(f *Fields) {
-			f.Tabs[0].Options[1].Preview = "The label is shorter."
+		{"no description", RuleMeaningSentences, facilitator(), func(f *Fields) {
 			f.Tabs[0].Options[1].Description = ""
 		}, "option 2 description"},
 		{"no decide-later option", RuleDecideLater, facilitator(), func(f *Fields) {
@@ -154,6 +153,9 @@ func TestEveryRuleRefusesOnItsOwn(t *testing.T) {
 		{"too tall", RuleRows, facilitator(), func(f *Fields) {
 			f.Tabs[0].Text = strings.Repeat("A paragraph of material that runs on and on.\n\n", 9) + f.Tabs[0].Text
 		}, "question text"},
+		{"a side preview", RuleNoPreview, facilitator(), func(f *Fields) {
+			f.Tabs[0].Options[1].Preview = "The label is shorter."
+		}, "option 2 preview"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -255,7 +257,7 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 			tb.Text = "Run abcd mode before every stop.\n\n" + tb.Text
 		}, "abcd mode"},
 		{"label in backticks", func(tb *Tab) { tb.Options[1].Label = "`number` only" }, "`number`"},
-		{"go run in a preview", func(tb *Tab) { tb.Options[1].Preview = "It runs go run ./cmd/abcd." }, "go run"},
+		{"go run in a description", func(tb *Tab) { tb.Options[1].Description = "It runs go run ./cmd/abcd." }, "go run"},
 		{"slash command", func(tb *Tab) { tb.Options[1].Description = "Run /abcd:intent next." }, "/abcd:intent"},
 	}
 	for _, c := range cases {
@@ -279,8 +281,18 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 			}
 		})
 	}
-	// "abcd" followed by a word that is not a verb is product prose.
+	// A preview is still read for the register (previews included), beside
+	// the refusal every preview draws (rule 14).
 	tab := wellBuiltTab()
+	tab.Options[1].Preview = "It runs go run ./cmd/abcd."
+	if got := rulesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, []Rule{RuleRegister, RuleNoPreview}) {
+		t.Errorf("go run in a preview for the product thinker: findings %v, want register then no-preview", got)
+	}
+	if got := rulesOf(CheckLimits(one(tab), Default, facilitator())); !slices.Equal(got, []Rule{RuleNoPreview}) {
+		t.Errorf("go run in a preview for the facilitator: findings %v, want no-preview alone", got)
+	}
+	// "abcd" followed by a word that is not a verb is product prose.
+	tab = wellBuiltTab()
 	tab.Text = "abcd asks every question the same way.\n\n" + tab.Text
 	if fs := CheckLimits(one(tab), Default, productThinker()); len(fs) != 0 {
 		t.Errorf("abcd before a non-verb refused:\n%s", render(fs))
@@ -331,20 +343,40 @@ func TestOpenQuestionQuotesAndOffersDecideLater(t *testing.T) {
 	}
 }
 
-// TestPreviewQuestionKeepsDecideLater is A5's automatic half at the core: a
-// question with previews and no decide-later option is refused (the preview
-// removes the host's free-text row, which "Decide later" stands in for), and
-// the same question with it is admitted.
-func TestPreviewQuestionKeepsDecideLater(t *testing.T) {
+// noPreviewRemedy is rule 14's remedy, verbatim as the layout intent's decision
+// 20 was put into the check.
+const noPreviewRemedy = "abcd's questions carry no side preview (decision 20): put the option's meaning, gain and cost in its description."
+
+// TestQuestionCarriesNoSidePreview is A5's automatic half, reworded by the
+// layout intent's decision 20: the host hides every option's description
+// while a preview shows and cuts the preview to the rows it has, so a question
+// abcd builds carries no side preview. Every preview is refused, one finding
+// per option naming it, however short or tall; the same question without
+// them is admitted.
+func TestQuestionCarriesNoSidePreview(t *testing.T) {
 	tab := wellBuiltTab()
-	for i := range tab.Options {
-		tab.Options[i].Preview = "What changes:\n- the label\n- nothing else"
-	}
 	if fs := CheckLimits(one(tab), Default, productThinker()); len(fs) != 0 {
-		t.Errorf("preview question with Decide later refused:\n%s", render(fs))
+		t.Fatalf("the question without previews refused:\n%s", render(fs))
 	}
-	tab.Options[2] = Choice{Label: "Neither", Description: "Leave the label as it is.", Preview: "Nothing changes."}
-	onlyRule(t, CheckLimits(one(tab), Default, productThinker()), RuleDecideLater)
+	tab.Options[0].Preview = "What changes:\n- the label\n- nothing else"
+	tab.Options[1].Preview = strings.Repeat("a line\n", 20)
+	tab.Options[2].Preview = "Nothing changes."
+	fs := CheckLimits(one(tab), Default, productThinker())
+	onlyRule(t, fs, RuleNoPreview)
+	if len(fs) != 3 {
+		t.Fatalf("want one finding per preview, got:\n%s", render(fs))
+	}
+	for i, f := range fs {
+		if want := optionPart(i, "preview"); f.Part != want {
+			t.Errorf("finding %d part = %q, want %q", i, f.Part, want)
+		}
+		if !strings.Contains(f.Limit, "no side preview") {
+			t.Errorf("finding %d limit = %q, want it to name no side preview", i, f.Limit)
+		}
+		if f.Remedy != noPreviewRemedy {
+			t.Errorf("finding %d remedy = %q, want %q", i, f.Remedy, noPreviewRemedy)
+		}
+	}
 }
 
 // criterion is a criterion of about three wrapped lines at the host's text
@@ -398,15 +430,57 @@ func TestQuestionFitsTwentyFourRowsAt80(t *testing.T) {
 	}
 }
 
-// TestPreviewIsHeldToTheRowsLeftIt: a preview taller than the rows the frame
-// leaves it is refused, so the host never cuts it.
-func TestPreviewIsHeldToTheRowsLeftIt(t *testing.T) {
-	tab := wellBuiltTab()
-	tab.Options[0].Preview = strings.Repeat("a line\n", 20)
-	fs := CheckLimits(one(tab), Default, facilitator())
-	onlyRule(t, fs, RuleRows)
-	if fs[0].Part != "option 1 preview" {
-		t.Errorf("part = %q, want option 1 preview", fs[0].Part)
+// screenshotTab is the shape of the 2026-10-03 screenshot at 80 by 24 without
+// previews (research note 2026-10-03-host-question-layout-calibration): nine
+// rows of question text and three options whose labels and descriptions take
+// seven rows. The host drew it in exactly 24 rows, its eight rows of frame
+// (the chip, two blanks, the free-text row, the separator, the chat row, a
+// blank and the footer) included.
+func screenshotTab() Tab {
+	return Tab{
+		Header: "Product Q2",
+		Text: strings.Join([]string{
+			"Every question names who it is for in a short label above it.",
+			"",
+			"For example, the label reads Product Q2 on the second question put to you, and Tech Q3 on the third.",
+			"",
+			"Now: not applicable",
+			"Change later: not applicable",
+			"",
+			"Should the label name the role as well as the number?",
+		}, "\n"),
+		Options: []Choice{
+			{Label: "Role and number", Description: "It says whom it is for. It costs a few characters."},
+			{Label: "Number only", Description: "The label is shorter and the chip stays narrow on every screen. You read the question itself to learn whom it is for."},
+			{Label: "Decide later", Description: "Nothing changes now. It is asked again."},
+		},
+	}
+}
+
+// TestRowEstimateMatchesTheHostAt80By24 calibrates rule 13 against the host
+// (spc-2610030944505997 step 5): the screenshot's shape is estimated at the
+// 24 rows the host drew, a text line wraps at the 76 columns the host gave
+// the question text, and an option's description wraps at the 74 columns the
+// host gave it, so a 75-column description takes two rows.
+func TestRowEstimateMatchesTheHostAt80By24(t *testing.T) {
+	tab := screenshotTab()
+	if got := blockRows(tab.Text, Default.HostTextColumns); got != 9 {
+		t.Fatalf("the screenshot's text is %d rows at the text measure, want 9 (fix the fixture)", got)
+	}
+	if got := estimateRows(tab, Default); got != 24 {
+		t.Errorf("the screenshot's question estimated at %d rows; the host drew it in 24", got)
+	}
+	// 72 columns, then an eight-column word: the host wrapped the word.
+	line := strings.Repeat("abcdefg ", 8) + "abcdefgh abcdefgh"
+	if got := blockRows(line, Default.HostTextColumns); got != 2 {
+		t.Errorf("a 72-column line and an eight-column word = %d rows at the text measure, want 2", got)
+	}
+	desc := strings.Repeat("abcd ", 14) + "abcde" // 75 columns
+	tab = wellBuiltTab()
+	base := estimateRows(tab, Default)
+	tab.Options[0].Description = desc
+	if got := estimateRows(tab, Default) - base; got != 1 {
+		t.Errorf("a %d-column description against a one-row one adds %d rows, want 1: the host wraps a description at 74 columns", len(desc), got)
 	}
 }
 

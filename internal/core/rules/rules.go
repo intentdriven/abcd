@@ -5,7 +5,9 @@
 // the hook entrypoint marshal these results for their transport.
 //
 // The model is a small set of binary-bundled default domains (embedded below,
-// plus SHELL, generated from the guard's hazard registry in shell.go) merged with two optional override layers, in order: the user scope's
+// plus SHELL, generated from the guard's hazard registry in shell.go, and
+// GRILL, generated from the asking rules in grill.go) merged with two optional
+// override layers, in order: the user scope's
 // ~/.abcd/rules.json (one per machine, spc-23) and then the per-repo
 // <repoRoot>/.abcd/rules.json, so the repo wins a field both set. Each
 // domain carries recall keywords + aliases and a list of rules; a prompt is
@@ -180,6 +182,7 @@ func mustParseDefaults() RuleSet {
 		panic("rules: bundled defaults are malformed: " + err.Error())
 	}
 	rs = withShellDomain(rs)
+	rs = withGrillDomain(rs)
 	if err := Validate(rs); err != nil {
 		panic("rules: bundled defaults fail validation: " + err.Error())
 	}
