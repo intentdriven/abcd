@@ -272,6 +272,21 @@ func TestProposalCountsSayTheProposalInCounts(t *testing.T) {
 	}
 }
 
+// TestMachineRoutingOfferAsksTheHarnessForTheTier holds the offer to what the
+// system does for a step no provider serves (itd-2609170822093401 criterion 4):
+// the step goes to the harness with its tier named in the request, and the host
+// decides, so the offer says the harness is asked for the tier and never that
+// the step runs at it, which no receipt proves (iss-2610031236155833).
+func TestMachineRoutingOfferAsksTheHarnessForTheTier(t *testing.T) {
+	q := machineRoutingQuestion()
+	if !strings.Contains(q, "goes to the harness, asked for its tier") {
+		t.Errorf("the offer does not say the harness is asked for the tier: %q", q)
+	}
+	if strings.Contains(q, "at its tier") {
+		t.Errorf("the offer promises the step runs at its tier: %q", q)
+	}
+}
+
 // TestEveryProposedTierSaysWhyItIsProposed keeps the counts honest: the offer
 // says why each tier it counts is proposed, so a tier the bundled proposal
 // starts to use fails here until its reason is written.

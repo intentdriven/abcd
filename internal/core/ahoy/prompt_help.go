@@ -207,11 +207,12 @@ var statusLineElementAbout = map[statusline.ElementKey]string{
 
 // visibilityTrackedCaveat ends public's meaning where .abcd/ already holds
 // tracked files: git cannot hide a file it tracks, so there the public block
-// keeps out only the per-machine scratch space (effectiveVisibilityEntries
-// narrows it). Where nothing under .abcd/ is tracked it would describe a
+// keeps out only the per-machine scratch space under .abcd/, and the memory/
+// fence at the top stays (effectiveVisibilityEntries narrows the /.abcd/
+// entry alone). Where nothing under .abcd/ is tracked it would describe a
 // repository the person does not have, so HelpIn adds it only where it applies
 // (iss-2610031236155833).
-const visibilityTrackedCaveat = "Here .abcd/ holds records git tracks and cannot hide, so only its scratch is ignored."
+const visibilityTrackedCaveat = "Here .abcd/ holds records git tracks and cannot hide, so only its scratch and memory/ are ignored."
 
 // visibilityHelp is the visibility question's help, with public's caveat about
 // records git already tracks when tracked is true.

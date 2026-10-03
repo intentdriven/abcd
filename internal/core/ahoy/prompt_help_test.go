@@ -166,6 +166,22 @@ func TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	if !strings.HasSuffix(h.Meaning("public"), " "+visibilityTrackedCaveat) {
 		t.Errorf("a repository whose .abcd/ holds tracked records is not shown the caveat: %q", h.Meaning("public"))
 	}
+	// The caveat says what the narrowed block still ignores, so it names every
+	// entry the install writes there beyond .abcd/'s own scratch (the memory/
+	// fence): saying less than the write does reads as negating it.
+	entries, narrowed := effectiveVisibilityEntries(tracked.Root(), "public")
+	if !narrowed {
+		t.Fatal("the tracked repository's public block was not narrowed")
+	}
+	for _, e := range entries {
+		name := strings.TrimPrefix(e, "/")
+		if strings.HasPrefix(name, ".abcd/") {
+			continue
+		}
+		if !strings.Contains(visibilityTrackedCaveat, name) {
+			t.Errorf("the narrowed block keeps %s ignored, but the caveat does not say so: %q", e, visibilityTrackedCaveat)
+		}
+	}
 	if h.Meaning("private") != base.Meaning("private") || h.About != base.About || h.Flag != base.Flag {
 		t.Errorf("the caveat changed more than public's meaning: %+v", h)
 	}
