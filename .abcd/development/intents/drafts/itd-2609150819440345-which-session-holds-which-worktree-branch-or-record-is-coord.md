@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2609091416295622]
+builds_on: [itd-2609091416295622, itd-2609091034175565]
 severity: minor
 related_issues: [iss-2609100519122086]
 origin: extracted-from-record
@@ -25,6 +25,8 @@ Settled with the product thinker on 2026-09-20, while interviewing the listing d
 1. **This record is the register.** Where a session's claims and the records it holds live so any other session can see them: across accounts on one machine and across machines on a network, a tailnet being the working example. The listing draft is the local read of that register; the claim draft (itd-2609091034175565) is the write; the implement verb (itd-2609201916151817) is the consumer that claims, checks, and implements or drops and picks the next.
 2. **Built-in basic, pluggable SOTA**, as abcd's practice: a basic register abcd carries itself, and an adapter seam for an external implementation. The first agent to work on a repository registers it; others discover it.
 3. **The transport is the interview's first question.** Candidates: the forge as the register (one ref per session pushed to the remote; needs no daemon, sees only what was pushed); a small peer service abcd runs per machine, found over the tailnet by its DNS name or by an announcement, which sees uncommitted state but needs a process that stays up; or both, the service first and the forge as the fallback when no peer answers. A LAN-only discovery (mDNS) reaches one network segment and is a candidate for the adapter, not the built-in.
+
+4. **The marker is a claim branch abcd lists, on the shared remote** (the product thinker, 2026-10-03, with a second person now working on the project and the repository public): A claim is a small marker the remote holds per item, taken only if absent, carrying who holds it, the files it expects to touch and an expiry, renewed while work continues, and re-checked before merging; abcd lists the claims. As first ruled the marker was a ref the website does not show; the product thinker narrowed it to a branch the same day, because a hosted cloud session can push only branches ([itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it-is-about-to-fix-has.md), decision 10). It answers decision 3's transport question with its first candidate. It covers people who can change the project directly; outside contributors, who cannot push one, are itd-2610031259176838's follow-up. Reserving one item is built first, in itd-2609091034175565 (the product thinker, 2026-10-03: "A today, B later"); this record keeps the wider register of running sessions and what they hold, for later. Anything kept only on one computer (the local tier, a note on the desktop, same-account messaging) is never the register, because the other person never sees it; it may only speed up notice. A claim's contents are public, so they carry nothing private. Grounds: The state-of-the-art review and the run lessons of 2026-10-03 ([`2026-10-03-multi-agent-coordination-sota-and-run-lessons.md`](../../research/notes/2026-10-03-multi-agent-coordination-sota-and-run-lessons.md)).
 
 ## Why This Matters
 

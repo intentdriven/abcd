@@ -2188,3 +2188,13 @@ Links: refines iss-2609291925136841. Verdict proposed: SPLIT. Routing survived c
 | an arrow-key, searchable list for long choices in a plain Terminal (opencode-like), model choice as its first example | capability | folded into itd-2610030810370060 (plain-Terminal interviews) |
 
 Links: refines itd-2609081951381895. Verdict proposed: SPLIT (connect here, picker folded into the existing draft), offered beside two new intents, one, and later. Routing survived confirmation: yes (unchanged).
+
+## 2026-10-03: reserving work across people on a public project (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| the project's own people reserve an item with a claim branch abcd lists, on the shared remote, re-checked before merging (narrowed to a branch by itd-2609091034175565 decision 10) | capability (decision on an existing draft) | itd-2609150819440345, decision 4 |
+| outside contributors reserve through a draft pull request abcd honours | capability | intent itd-2610031259176838 (draft, not urgent) |
+| nothing kept on one computer is the register; claim contents are public | trust rule | recorded in decision 4; an ADR is owed at planning |
+
+Links: itd-2610031259176838 builds on itd-2609150819440345 and refines iss-2609020716570699. Verdict proposed: SPLIT, offered as a draft pull request, a marker on the shared remote, both by person, or later; the product thinker chose the marker, since narrowed to a claim branch abcd lists (itd-2609091034175565, decision 10), and asked for the outside-contributor follow-up. Routing survived confirmation: yes. Not yet routed: the four overlapping claim designs (implement claim, itd-2609091034175565, itd-33, this register), left for the register's planning interview.
