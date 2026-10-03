@@ -13,3 +13,7 @@ related_intents: [itd-2610030814013772]
 ---
 
 Evaluate whether CLAUDE.md can be removed safely now that Claude Code reads AGENTS.md natively. Today CLAUDE.md duplicates the AGENTS.md router. Check every place that relies on CLAUDE.md being present: the harness's own loading in the main session, sub-agents and plugin contexts; abcd's ahoy/prepare-this-repo scaffolding and lint rules that expect CLAUDE.md as a bridge; docs that name it; and managed repos abcd sets up. Only remove it if every consumer reads AGENTS.md.
+
+## Grounds
+
+Promoted to itd-2610030814013772 on 2026-10-03 without recorded grounds: no pursued conjecture was stated at promotion. The conjecture is put to the product thinker at the draft's planning interview (its Mechanism, Q6).

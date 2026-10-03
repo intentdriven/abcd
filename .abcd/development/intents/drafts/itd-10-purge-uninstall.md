@@ -55,6 +55,10 @@ But for projects that genuinely leave abcd (acquired, deprecated, pivot), the li
 - Same question for `.abcd/development/` (it's design history, not just runtime state)?
 - **Naming — resolved 2026-05-07.** Two-tier on `/abcd:ahoy`: `/abcd:ahoy uninstall` is reversible marker-only removal (re-running `ahoy` re-installs cleanly); the deeper destroy surfaces as `/abcd:ahoy destroy` — fits the nautical metaphor (scuttling a ship has a name and a weight) and the verb's danger is encoded in the verb itself. The `uninstall` description ("reversible marker-only removal") makes the distinction discoverable. Plan-review for this intent treats this naming as decided rather than re-opening.
 
+## Amendments
+
+Amended by itd-2610030814013772 (2026-10-03, its decisions 4 and 8): the marker block lives in AGENTS.md; a block an earlier setup planted in CLAUDE.md is still found and stripped, so the CLAUDE.md wording here describes projects set up before that change.
+
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
