@@ -26,7 +26,7 @@ const numberedPage = 20
 //
 // A typed number chooses the answer with that number, which is its place in
 // the full list, Later being the last. "n" and "p" page a long list 20 at a
-// time. Other typed text narrows the list by question.Matches and lists it
+// time; on a list with one page they narrow, like other text. Other typed text narrows the list by question.Matches and lists it
 // again, numbered as before; an empty line clears the narrowing. Each part of
 // a tabbed Ask is asked in turn. Input that ends before an answer is an
 // error, never a default taken silently.
@@ -66,7 +66,8 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 			from, to := page*numberedPage, min(len(matches), (page+1)*numberedPage)
 			ls = append(ls, d.optionLines(all, matches[from:to], -1)...)
 			if len(matches) > numberedPage {
-				ls = append(ls, pad+fmt.Sprintf("%d to %d of %d; n for the next %d, p for the previous",
+				ls = append(ls, pad+fmt.Sprintf("%d to %d of %d; n for the next %d, p for the previous "+
+					"(a lone n or p pages; type more to narrow by it)",
 					from+1, to, len(matches), numberedPage))
 			}
 			ls = append(ls, d.optionLines(all, []int{len(all) - 1}, -1)...)
@@ -77,6 +78,10 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 			ls = append(ls, "", NumberedHint)
 			w.lines(ls)
 		}
+		// paged reports whether the list on screen has pages: only then is a
+		// lone "n" or "p" paging, as its paging line says; otherwise it
+		// narrows like any other text.
+		paged := func() bool { return len(narrow(filter, answers)) > numberedPage }
 		show("")
 		chosen := -1
 		for chosen < 0 {
@@ -98,10 +103,10 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 					continue
 				}
 				chosen = n - 1
-			case text == "n":
+			case text == "n" && paged():
 				page++
 				show("")
-			case text == "p":
+			case text == "p" && paged():
 				page--
 				show("")
 			case text == "":

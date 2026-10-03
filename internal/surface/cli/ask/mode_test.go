@@ -291,3 +291,27 @@ func TestNumberedFilterEchoIsSanitised(t *testing.T) {
 		t.Errorf("the echo does not show the typed line made visible:\n%q", s)
 	}
 }
+
+// TestNumberedLetterNarrowsWhenThereAreNoPages holds "n" and "p" to what the
+// screen says of them: they page only a list long enough to have pages, whose
+// paging line says a lone n or p pages; on a list with one page they narrow
+// like any other text, so no name is out of reach of its first letter.
+func TestNumberedLetterNarrowsWhenThereAreNoPages(t *testing.T) {
+	var out bytes.Buffer
+	tm := Terminal{In: pipeIn(t, "p\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, numberedSetting, "")}
+	_, _ = tm.Put(fixture(t, "key-home"))
+	if s := out.String(); !strings.Contains(s, "filter: p") {
+		t.Errorf("a lone p on a one-page list did not narrow:\n%s", s)
+	}
+
+	out.Reset()
+	tm = Terminal{In: pipeIn(t, "n\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, numberedSetting, "")}
+	_, _ = tm.Put(longList(300))
+	s := out.String()
+	if strings.Contains(s, "filter: n") {
+		t.Errorf("a lone n on a paged list narrowed instead of paging:\n%s", s)
+	}
+	if !strings.Contains(s, "a lone n or p pages") {
+		t.Errorf("the paging line does not say a lone n or p pages:\n%s", s)
+	}
+}

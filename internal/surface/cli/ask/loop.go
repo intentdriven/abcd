@@ -88,16 +88,16 @@ func SelectMode(getenv func(string) string, list string) (m Mode, why string) {
 // tests panic from it to prove a panic inside the loop restores the terminal.
 var keyHook func(Key)
 
-// Put asks a at the terminal and returns its answers, one per part. It holds
-// a to the structural check first (Prepare), reads interview.list through
-// layered.InterviewList (a refusal is said in one line on Out; a repository's
-// fault is passed over for the machine's setting, a fault in the machine's
-// own file gives the numbered reader), then takes the answer in the mode
-// SelectMode picks; an arrow-key list the terminal cannot take (TERM=dumb,
-// or raw mode refused) falls to the numbered reader with one line on Out
-// saying so, never a failed interview. Ctrl-C returns ErrInterrupted.
+// Put asks a at the terminal and returns its answers, one per part. It holds a
+// to the structural check first (as Prepare does), reads interview.list
+// through layered.InterviewList (a refusal is said in one line on Out; a
+// repository's fault is passed over for the machine's setting, a fault in the
+// machine's own file gives the numbered reader), then takes the answer in the
+// mode SelectMode picks; an arrow-key list the terminal cannot take
+// (TERM=dumb, or raw mode refused) falls to the numbered reader with one line
+// on Out saying so, never a failed interview. Ctrl-C returns ErrInterrupted.
 func (t Terminal) Put(a question.Ask) ([]Answer, error) {
-	if _, err := Prepare(a); err != nil {
+	if err := check(a); err != nil {
 		return nil, err
 	}
 	if t.Getenv == nil {
