@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,26 +22,45 @@ import (
 // never comments, so prose that names the home to explain a boundary is
 // invisible by construction rather than by an exception.
 //
-// A spelling of the home is one of three shapes:
+// A spelling of the home is one of five shapes:
 //
 //  1. a literal containing ".abcd.noindex";
 //  2. a literal containing "~/.abcd";
-//  3. a call that takes a home value and a ".abcd"-led string (".abcd", or
+//  3. a literal holding a format verb followed by "/.abcd" as a whole path
+//     element ("%s/.abcd/lab", "%v/.abcd"): the shape fmt.Sprintf(.., home)
+//     builds the path in. It is judged anywhere, not only beside a home
+//     value, since no repository-tier code formats its ".abcd" that way;
+//  4. a call that takes a home value and a ".abcd"-led string (".abcd", or
 //     ".abcd/" and more): a literal, a constant or variable of the same package
 //     holding one, or such a value as the left end of a concatenation or as the
-//     one argument of a wrapping call (filepath.FromSlash). A home value is an
-//     identifier or selector whose name contains "home" in any case (home,
-//     s.home, homeDir, c.Home) or a call to a function whose name does
-//     (userHome(), os.UserHomeDir).
+//     one argument of a wrapping call (filepath.FromSlash);
+//  5. a composite literal holding the same pair as elements
+//     ([]string{home, ".abcd", "lab"}), a keyed element judged by its value.
 //
-// The third shape is what tells the home's ".abcd" from a repository's
+// A home value is an identifier or selector whose name contains "home" in any
+// case (home, s.home, homeDir, c.Home); a call to a function whose name does
+// (userHome(), os.UserHomeDir) or that carries the string "HOME" as an
+// argument (os.Getenv("HOME")); or an identifier assigned from a home value
+// anywhere in the same top-level declaration (h, _ := os.UserHomeDir(), and
+// d := h after it), closures inside it included.
+//
+// Shapes 4 and 5 are what tell the home's ".abcd" from a repository's
 // ".abcd/": the two tiers share a name and the repository tier keeps it, so
 // filepath.Join(repoRoot, ".abcd", "config.json") is left alone (open design
 // question 1, decided (a)). A home value under a name the rule does not know
-// passes unseen; TestHomeNameScannerIsArmed pins the shapes it does know.
+// passes unseen, and so does a concatenation that is not a call's argument,
+// home + "/.abcd/lab": its literal is not ".abcd"-led and the scanner does not
+// follow "+" from a home value (the spec states this limit). Assignment
+// tracking is by name, not by scope: a shadowing name inside the declaration
+// is judged as the outer one. TestHomeNameScannerIsArmed pins the shapes the
+// scanner does know.
 
 // homeNameNeedles are the literal shapes 1 and 2.
 var homeNameNeedles = []string{".abcd.noindex", "~/.abcd"}
+
+// homeFormatVerb is the literal shape 3: a format verb (flags, width and
+// precision allowed) followed by "/.abcd" ending a path element.
+var homeFormatVerb = regexp.MustCompile(`%[-+# 0-9.*\[\]]*[a-zA-Z]/\.abcd(?:[^\w.-]|$)`)
 
 // homeLedName reports whether s is ".abcd" or a path led by it.
 func homeLedName(s string) bool {
@@ -157,60 +177,141 @@ func calleeName(fun ast.Expr) string {
 }
 
 // isHomeValue reports whether e names the person's home directory by the
-// naming rule above.
-func isHomeValue(e ast.Expr) bool {
+// naming rule above; locals holds the identifiers assigned from a home value
+// in the declaration e sits in.
+func isHomeValue(e ast.Expr, locals map[string]bool) bool {
 	switch x := e.(type) {
 	case *ast.Ident:
-		return strings.Contains(strings.ToLower(x.Name), "home")
+		return locals[x.Name] || strings.Contains(strings.ToLower(x.Name), "home")
 	case *ast.SelectorExpr:
 		return strings.Contains(strings.ToLower(x.Sel.Name), "home")
 	case *ast.CallExpr:
-		return strings.Contains(strings.ToLower(calleeName(x.Fun)), "home")
+		if strings.Contains(strings.ToLower(calleeName(x.Fun)), "home") {
+			return true
+		}
+		for _, a := range x.Args {
+			if b, ok := a.(*ast.BasicLit); ok && b.Kind == token.STRING {
+				if v, err := strconv.Unquote(b.Value); err == nil && v == "HOME" {
+					return true
+				}
+			}
+		}
 	case *ast.ParenExpr:
-		return isHomeValue(x.X)
+		return isHomeValue(x.X, locals)
 	}
 	return false
 }
 
-// homeSpellings returns every spelling of the home in f, judged with the
-// package's folded strings in known.
-func homeSpellings(fset *token.FileSet, f *ast.File, known map[string]string) []homeSpelling {
-	var out []homeSpelling
-	ast.Inspect(f, func(n ast.Node) bool {
+// homeLocals returns the identifiers decl assigns from a home value, through
+// := and = assignments and var declarations, followed until nothing new is
+// learned so a copy of a home local is one too. A single call assigned to
+// several names (h, err := os.UserHomeDir()) makes only the first a home.
+func homeLocals(decl ast.Node) map[string]bool {
+	type pair struct {
+		lhs []ast.Expr
+		rhs []ast.Expr
+	}
+	var pairs []pair
+	ast.Inspect(decl, func(n ast.Node) bool {
 		switch x := n.(type) {
-		case *ast.BasicLit:
-			if x.Kind != token.STRING {
-				return true
+		case *ast.AssignStmt:
+			pairs = append(pairs, pair{x.Lhs, x.Rhs})
+		case *ast.ValueSpec:
+			lhs := make([]ast.Expr, len(x.Names))
+			for i, id := range x.Names {
+				lhs[i] = id
 			}
-			v, err := strconv.Unquote(x.Value)
-			if err != nil {
-				return true
-			}
-			for _, needle := range homeNameNeedles {
-				if strings.Contains(v, needle) {
-					out = append(out, homeSpelling{fset.Position(x.Pos()).Line, v})
-					break
-				}
-			}
-		case *ast.CallExpr:
-			home := false
-			for _, a := range x.Args {
-				if isHomeValue(a) {
-					home = true
-					break
-				}
-			}
-			if !home {
-				return true
-			}
-			for _, a := range x.Args {
-				if lead, ok := leadString(a, known); ok && homeLedName(lead) {
-					out = append(out, homeSpelling{fset.Position(a.Pos()).Line, lead})
-				}
-			}
+			pairs = append(pairs, pair{lhs, x.Values})
 		}
 		return true
 	})
+	locals := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, p := range pairs {
+			for i, l := range p.lhs {
+				var r ast.Expr
+				switch {
+				case len(p.rhs) == len(p.lhs):
+					r = p.rhs[i]
+				case len(p.rhs) == 1 && i == 0:
+					r = p.rhs[0]
+				default:
+					continue
+				}
+				id, ok := l.(*ast.Ident)
+				if !ok || id.Name == "_" || locals[id.Name] || !isHomeValue(r, locals) {
+					continue
+				}
+				locals[id.Name] = true
+				changed = true
+			}
+		}
+	}
+	return locals
+}
+
+// besideHome returns the ".abcd"-led elements of elems when one of elems is a
+// home value (shapes 4 and 5), each with its line.
+func besideHome(fset *token.FileSet, elems []ast.Expr, known map[string]string, locals map[string]bool) []homeSpelling {
+	home := false
+	for _, e := range elems {
+		if isHomeValue(e, locals) {
+			home = true
+			break
+		}
+	}
+	if !home {
+		return nil
+	}
+	var out []homeSpelling
+	for _, e := range elems {
+		if lead, ok := leadString(e, known); ok && homeLedName(lead) {
+			out = append(out, homeSpelling{fset.Position(e.Pos()).Line, lead})
+		}
+	}
+	return out
+}
+
+// homeSpellings returns every spelling of the home in f, judged with the
+// package's folded strings in known. Each top-level declaration is judged
+// with the home locals it assigns.
+func homeSpellings(fset *token.FileSet, f *ast.File, known map[string]string) []homeSpelling {
+	var out []homeSpelling
+	for _, decl := range f.Decls {
+		locals := homeLocals(decl)
+		ast.Inspect(decl, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.BasicLit:
+				if x.Kind != token.STRING {
+					return true
+				}
+				v, err := strconv.Unquote(x.Value)
+				if err != nil {
+					return true
+				}
+				spelled := homeFormatVerb.MatchString(v)
+				for _, needle := range homeNameNeedles {
+					spelled = spelled || strings.Contains(v, needle)
+				}
+				if spelled {
+					out = append(out, homeSpelling{fset.Position(x.Pos()).Line, v})
+				}
+			case *ast.CallExpr:
+				out = append(out, besideHome(fset, x.Args, known, locals)...)
+			case *ast.CompositeLit:
+				elems := make([]ast.Expr, len(x.Elts))
+				for i, e := range x.Elts {
+					if kv, ok := e.(*ast.KeyValueExpr); ok {
+						e = kv.Value
+					}
+					elems[i] = e
+				}
+				out = append(out, besideHome(fset, elems, known, locals)...)
+			}
+			return true
+		})
+	}
 	return out
 }
 
@@ -335,6 +436,16 @@ func TestHomeNameScannerIsArmed(t *testing.T) {
 		"a constant led concatenation":   "const store = \".abcd/worktrees\"\nfunc f(home, sha string) { fsutil.EnsureHomeScope(home, store+\"/\"+sha, 0) }",
 		"a constant folded from another": "const a = \".abcd\"\nconst b = a + \"/x\"\nfunc f(home string) { g(home, b) }",
 		"a working-tree probe":           `func f(home string) string { return workingTreeAbove(home, ".abcd") }`,
+		"a join with HOME read inline":   `func f() string { return filepath.Join(os.Getenv("HOME"), ".abcd", "lab") }`,
+		"a local from UserHomeDir":       `func f() string { h, _ := os.UserHomeDir(); return filepath.Join(h, ".abcd", "lab") }`,
+		"a local from Getenv HOME":       `func f() string { d := os.Getenv("HOME"); return filepath.Join(d, ".abcd/lab") }`,
+		"a local declared from HOME":     `func f() string { var d = os.Getenv("HOME"); return filepath.Join(d, ".abcd") }`,
+		"a local assigned in a closure":  `func f() func() string { h, _ := os.UserHomeDir(); return func() string { return filepath.Join(h, ".abcd") } }`,
+		"a local copied from a local":    `func f() string { h, _ := os.UserHomeDir(); d := h; return filepath.Join(d, ".abcd") }`,
+		"a format verb before the name":  `func f(home string) string { return fmt.Sprintf("%s/` + ".abcd" + `/lab", home) }`,
+		"a format verb, the name last":   `func f(home string) string { return fmt.Sprintf("%v/` + ".abcd" + `", home) }`,
+		"a slice beside a home":          `func f(home string) string { return filepath.Join([]string{home, ".abcd", "lab"}...) }`,
+		"a slice beside a HOME local":    `func f() []string { h, _ := os.UserHomeDir(); return []string{h, ".abcd/lab"} }`,
 	}
 	for label, body := range hostile {
 		src := "package p\n\n" + body + "\n"
@@ -347,6 +458,11 @@ func TestHomeNameScannerIsArmed(t *testing.T) {
 		"the repository tier":       `func f(repoRoot string) string { return filepath.Join(repoRoot, ".abcd", "config.json") }`,
 		"a repo-tier constant":      "const rel = \".abcd/rules.json\"\nfunc f(root string) string { return filepath.Join(root, rel) }",
 		"a home with another leaf":  `func f(home string) string { return filepath.Join(home, ".config") }`,
+		"a local from the cwd":      `func f() string { d, _ := os.Getwd(); return filepath.Join(d, ".abcd") }`,
+		"another variable read":     `func f() string { return filepath.Join(os.Getenv("PWD"), ".abcd") }`,
+		"a HOME local elsewhere":    "func g() { h, _ := os.UserHomeDir(); _ = h }\nfunc f(h string) string { return filepath.Join(h, \".abcd\") }",
+		"a repository-tier slice":   `func f(repoRoot string) []string { return []string{repoRoot, ".abcd", "config.json"} }`,
+		"a format with another dot": `func f(home string) string { return fmt.Sprintf("%s/.abcdef", home) }`,
 	}
 	for label, body := range benign {
 		src := "package p\n\n" + body + "\n"
