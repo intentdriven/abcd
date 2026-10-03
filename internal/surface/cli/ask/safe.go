@@ -87,8 +87,17 @@ func (r *Refusal) Error() string {
 // Scope "Out"). A refused question is returned as a *Refusal naming every
 // finding.
 func Prepare(a question.Ask) (question.Ask, error) {
-	if fs := question.Check(a); len(fs) > 0 {
-		return question.Ask{}, &Refusal{Findings: fs}
+	if err := check(a); err != nil {
+		return question.Ask{}, err
 	}
 	return Safe(a), nil
+}
+
+// check is Prepare's structural check alone, for a caller that sanitises as
+// it draws (the answer loop keeps the question as given for its answers).
+func check(a question.Ask) error {
+	if fs := question.Check(a); len(fs) > 0 {
+		return &Refusal{Findings: fs}
+	}
+	return nil
 }
