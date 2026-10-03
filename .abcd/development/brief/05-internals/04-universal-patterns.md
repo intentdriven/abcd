@@ -12,6 +12,31 @@ Every `AskUserQuestion` (or equivalent harness call) shows:
 
 No silent defaults. No surprises.
 
+Every question also has one layout (itd-2610030810350727, itd-201;
+spc-2610030944505997), and abcd's question check in `abcd guard hook` refuses
+an abcd question that breaks it, naming the part, the value, and the limit:
+
+- **The header is a chip** naming whom the question is for and which it is
+  ("Product Q2"), one of the roles the limits list.
+- **The thing being decided comes first**, quoted in full in paragraphs and
+  lists, never referred to; then the `Now:` and `Change later:` lines, which
+  carry items 1 and 3 above into every question, each saying "not
+  applicable" where it does not apply; then the one plain question, last.
+- **The options widen rather than recommend.** Each label is a few words and
+  each description says what choosing it means (item 2 above); the last
+  option is the decide-later answer; none is marked, styled, or ordered as
+  recommended.
+- **One question fits the narrow window.** Parts of one thing are asked as
+  tabs; a question whose answer depends on another is asked alone, after it.
+
+The limits themselves (the chip's width, the options per question, the words
+per label, the sentences per description, the rows at the narrow window's
+width) are stated once, in `question.Default` in `internal/core/question`, and
+nowhere else in this brief: read them in the generated asking-rules block of
+`commands/intent.md`, which `cmd/asking-sync` renders from that value, or in
+`abcd rules GRILL`, whose domain is generated from the same call. A limit
+changed there changes the check, the rule text, and the page together.
+
 ## 2. Host-delegated by default, oracle adapters opt-in
 
 Every step that needs a model follows this pattern:

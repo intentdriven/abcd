@@ -2293,6 +2293,14 @@ the registry names. A rule in the repository's words is marked "(repo)" after
 its entry id. A guard.json the guard refuses is named on stderr and not taught;
 SHELL then teaches the registry the guard enforces in its place. It teaches
 before shell work what the guard refuses at the moment a command runs.
+
+GRILL is generated from the asking rules every abcd interview follows, every
+limit they state (the header chip's width, the options per question, the words
+per label, the rows at eighty columns) filled from the one value the question
+check in "abcd guard hook" enforces, so the rules and the check cannot state a
+limit differently. It recalls on words of asking and choosing, so it lands in
+most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
+its .abcd/rules.json.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

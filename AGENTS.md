@@ -71,7 +71,7 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SHELL`. Each carries recall keywords and its rules, bundled
+`OPINIONS`, `LOAD`, `SHELL`, `GRILL`. Each carries recall keywords and its rules, bundled
 in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
@@ -85,6 +85,12 @@ repository's own `.abcd/guard.json` is marked `(repo)`), and recalls on the
 commands the registry names (`rm`, `git push`, `pkill`, …) and on shell work in
 general, so an agent is taught the safe form before a host with hooks would
 refuse the command and a host without hooks still teaches it.
+`GRILL` carries the asking rules every abcd interview follows (one thing at a
+time, the thing being decided quoted in full before the question, options that
+widen rather than recommend); it is generated from the same limits the question
+check in `abcd guard hook` enforces, and recalls on words of asking and
+choosing, so it lands in most sessions. A repository that does not want it
+silences it with `{"GRILL": {"state": "dormant"}}` in `.abcd/rules.json`.
 
 ### Reset triggers
 
