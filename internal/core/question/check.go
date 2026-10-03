@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -89,12 +90,24 @@ func ChipRole(header string, l Limits) (string, bool) {
 	return m[1], true
 }
 
+// chipRes holds the chip pattern compiled once per set of role words, keyed by
+// the words joined with a NUL, which no role word carries. The guard reads the
+// chip once per tab, and a compile per read made a call of many tabs spend
+// seconds compiling (review-askGuard-security finding 6).
+var chipRes sync.Map // string -> *regexp.Regexp
+
 func chipRe(l Limits) *regexp.Regexp {
+	key := strings.Join(l.ChipRoles, "\x00")
+	if re, ok := chipRes.Load(key); ok {
+		return re.(*regexp.Regexp)
+	}
 	roles := make([]string, len(l.ChipRoles))
 	for i, r := range l.ChipRoles {
 		roles[i] = regexp.QuoteMeta(r)
 	}
-	return regexp.MustCompile(`^(` + strings.Join(roles, "|") + `) Q[1-9][0-9]*(?:/[1-9][0-9]*)?$`)
+	re := regexp.MustCompile(`^(` + strings.Join(roles, "|") + `) Q[1-9][0-9]*(?:/[1-9][0-9]*)?$`)
+	actual, _ := chipRes.LoadOrStore(key, re)
+	return actual.(*regexp.Regexp)
 }
 
 // CheckLimits holds a call's fields to l and returns every finding at once, so

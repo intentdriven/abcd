@@ -557,3 +557,17 @@ func TestAWordWiderThanTheMeasureCountsItsRows(t *testing.T) {
 	onlyRule(t, CheckLimits(one(words), l, facilitator()), RuleRows)
 	onlyRule(t, CheckLimits(one(long), l, facilitator()), RuleRows)
 }
+
+// TestChipRoleCompilesItsPatternOnce: reading the chip is a match, not a
+// regexp compile per header (review-askGuard-security finding 6); the guard
+// reads it once per tab.
+func TestChipRoleCompilesItsPatternOnce(t *testing.T) {
+	allocs := testing.AllocsPerRun(200, func() {
+		if _, ok := ChipRole("Product Q2", Default); !ok {
+			t.Fatal("ChipRole did not read the chip")
+		}
+	})
+	if allocs > 4 {
+		t.Errorf("ChipRole allocates %.0f times per call; a compiled-once pattern allocates at most 4", allocs)
+	}
+}
