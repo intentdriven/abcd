@@ -124,11 +124,12 @@ func TestHostReachWarningsArePresenceOnly(t *testing.T) {
 	}
 }
 
-// TestHostReachWalkEndsAtAnUnsearchableFolder: a folder on the walk that
-// cannot be searched ends it quietly, naming nothing beyond it and refusing
-// nothing. Every folder above a project abcd can reach is searchable, so the
-// folder met is a .claude one, whose CLAUDE.md cannot be looked for.
-func TestHostReachWalkEndsAtAnUnsearchableFolder(t *testing.T) {
+// TestHostReachWalkGoesPastAShutClaudeFolder: a .claude folder on the walk
+// that cannot be searched hides only its own CLAUDE.md. Reaching the project
+// proves every folder above it searchable, so a shut .claude folder is the one
+// place a probe can fail; the walk skips that name and goes on, and the
+// CLAUDE.md in the home folder above it is still named. Nothing is refused.
+func TestHostReachWalkGoesPastAShutClaudeFolder(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root searches every folder")
 	}
@@ -155,10 +156,17 @@ func TestHostReachWalkEndsAtAnUnsearchableFolder(t *testing.T) {
 	if res.Status == "refused" || res.Status == "aborted" {
 		t.Fatalf("install was %s at an unsearchable folder: %+v", res.Status, res.Notes)
 	}
+	named := 0
 	for _, w := range res.Warnings {
-		if strings.Contains(w, "~/CLAUDE.md") {
-			t.Errorf("the walk went on past a folder it could not search: %q", w)
+		if strings.Contains(w, "~/work/.claude") {
+			t.Errorf("a file in the shut folder is named: %q", w)
 		}
+		if strings.HasPrefix(w, "~/CLAUDE.md:") {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Errorf("the home CLAUDE.md above a shut .claude folder is named %d times, want once: %q", named, res.Warnings)
 	}
 }
 

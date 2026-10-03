@@ -13,7 +13,9 @@ package ahoy
 //     with lstat alone, whether a file of those names exists. In the person's
 //     home folder the user-level .claude/CLAUDE.md is skipped, since it does not
 //     switch AGENTS.md off; a CLAUDE.md directly in the home folder is still
-//     named. A folder that cannot be searched ends the walk quietly;
+//     named. A .claude folder that cannot be searched is passed over, and a
+//     folder above the project that cannot itself be searched ends the walk
+//     quietly;
 //   - the claude command on PATH older than the release that reads AGENTS.md
 //     on its own (host_version.go) is named, with no version number.
 //
@@ -90,6 +92,9 @@ func detectHostReach(root string) []Gap {
 					"Claude Code reads this file, in a folder above this project, and then not AGENTS.md, "+
 						"so abcd's rules stay hidden from it here while the file is there."))
 			case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
+			case filepath.Dir(name) != ".":
+				// A .claude folder that cannot be searched hides only its own
+				// CLAUDE.md: the folder holding it was searched, so the walk goes on.
 			default:
 				ended = true // a folder that cannot be searched ends the walk
 			}
