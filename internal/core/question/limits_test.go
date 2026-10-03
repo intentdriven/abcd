@@ -535,3 +535,25 @@ func TestCheckReadsOnlyTheTabsAndOptionsItCounts(t *testing.T) {
 	tab.Options = append(tab.Options, later)
 	onlyRule(t, CheckLimits(one(tab), Default, unnamed()), RuleOptions)
 }
+
+// TestAWordWiderThanTheMeasureCountsItsRows: the host hard-wraps a word wider
+// than its text measure, so the row estimate counts the rows it fills, and a
+// 400-column URL in a description is refused at the limits that refuse the
+// same bytes broken by spaces (review-askGuard-security finding 2).
+func TestAWordWiderThanTheMeasureCountsItsRows(t *testing.T) {
+	if got := blockRows(strings.Repeat("x", 400), 76); got != 6 {
+		t.Errorf("a 400-column word at 76 columns = %d rows, want 6", got)
+	}
+	url := "https://example.com/" + strings.Repeat("a", 380)
+	spaced := []byte(url)
+	for i := 29; i < len(spaced); i += 10 {
+		spaced[i] = ' '
+	}
+	long, words := wellBuiltTab(), wellBuiltTab()
+	long.Options[0].Description = url
+	words.Options[0].Description = string(spaced)
+	l := Default
+	l.Rows = estimateRows(words, l) - 1
+	onlyRule(t, CheckLimits(one(words), l, facilitator()), RuleRows)
+	onlyRule(t, CheckLimits(one(long), l, facilitator()), RuleRows)
+}
