@@ -155,6 +155,11 @@ type hostQuestionInput struct {
 // the shape the check reads and echoes nothing from the payload.
 var errUnreadableQuestions = errors.New("tool_input.questions is not a list of questions, each a header, a question and options with a label, a description and an optional preview")
 
+// errUnreadableQuestionPayload is why a question-tool payload whose outer JSON
+// the hook could not decode is not checked. It names the shape the hook reads
+// and echoes nothing from the decoder, whose text can carry a Go type.
+var errUnreadableQuestionPayload = errors.New("it is not a JSON object whose tool_input is an object, nested no deeper than the decoder reads")
+
 // decodeQuestions reads the question tool's questions into the field view the
 // limits check reads, one tab per question.
 func decodeQuestions(raw json.RawMessage) (question.Fields, error) {

@@ -507,3 +507,42 @@ func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
 		})
 	}
 }
+
+// TestUnreadableQuestionPayloadFailsOpenAsAQuestion: a question-tool payload
+// whose outer JSON the hook cannot decode (a tool_input that is a string, or a
+// sibling nested past the decoder's depth) lets the question run on exit 1
+// with the question's wording, not the shell's, and echoes no Go type from the
+// decoder. Where the tool name cannot be read at all, the wording names no
+// tool (review-askGuard-security finding 5).
+func TestUnreadableQuestionPayloadFailsOpenAsAQuestion(t *testing.T) {
+	repo := unmanagedRepo(t)
+	cwd, err := json.Marshal(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deep := strings.Repeat("[", 20000) + strings.Repeat("]", 20000)
+	tool := `"tool_name":"` + questionTools[0] + `"`
+	for name, tc := range map[string]struct {
+		payload string
+		want    string
+	}{
+		"tool_input a string":      {`{"cwd":` + string(cwd) + `,` + tool + `,"tool_input":"x"}`, "The question runs UNGATED"},
+		"a sibling nested deeply":  {`{"cwd":` + string(cwd) + `,` + tool + `,"tool_input":{"questions":[],"x":` + deep + `}}`, "The question runs UNGATED"},
+		"the tool after the fault": {`{"cwd":` + string(cwd) + `,"tool_input":{"x":` + deep + `},` + tool + `}`, "The call runs UNGUARDED"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stdout, stderr, code := runGuard(tc.payload, "guard", "hook")
+			if code != 1 || stdout != "" {
+				t.Fatalf("want exit 1 and no stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "NOT CHECKED") || !strings.Contains(stderr, tc.want) {
+				t.Errorf("the fail-open must say NOT CHECKED and %q; stderr = %q", tc.want, stderr)
+			}
+			for _, banned := range []string{"This command runs UNGUARDED", "jsontext", "json:", "struct", "Go value"} {
+				if strings.Contains(stderr, banned) {
+					t.Errorf("the fail-open must not carry %q; stderr = %q", banned, stderr)
+				}
+			}
+		})
+	}
+}
