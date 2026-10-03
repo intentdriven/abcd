@@ -2188,3 +2188,15 @@ Links: refines iss-2609291925136841. Verdict proposed: SPLIT. Routing survived c
 | an arrow-key, searchable list for long choices in a plain Terminal (opencode-like), model choice as its first example | capability | folded into itd-2610030810370060 (plain-Terminal interviews) |
 
 Links: refines itd-2609081951381895. Verdict proposed: SPLIT (connect here, picker folded into the existing draft), offered beside two new intents, one, and later. Routing survived confirmation: yes (unchanged).
+
+## 2026-10-03: warn when the harness is behind its latest release (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd's check says when the harness is behind its latest release | capability | intent itd-2610031026190632 (draft) |
+| finding the latest release asks the internet | trust boundary | existing adr-38 and brief invariant 7 (unchanged: the product thinker chose "only when asked") |
+| reading the installed harness version | plumbing | the intent's spec, shared with itd-2610030814013772's floor warning |
+
+Links: builds on itd-111. Verdict proposed: SPLIT, offered beside one draft for everything and later. Routing survived confirmation: yes (unchanged). The reversal flag (a daily check at session start would reverse adr-38) was put as its own question and declined.
+
+Correction (2026-10-03, appended): the desktop-search entry above routes "a setting to turn indexing back on"; the reviews found no such setting exists under that draft's rule, and its interview (decisions 1 and 2) widened the route to the whole home, renamed `~/.abcd.noindex`. The routing row stands as graded at the time; the draft carries the outcome.

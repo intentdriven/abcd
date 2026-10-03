@@ -57,6 +57,10 @@ abcd has two onboarding paths: `/abcd:ahoy install` (add abcd to an existing pro
 - Should `/abcd:init-project scaffold` always require running `/abcd:intent new` immediately after, or offer it as optional?
 - What's the conflict policy if directory isn't fully empty (per the brief's emptiness rules)?
 
+## Amendments
+
+Amended by itd-2610030814013772 (2026-10-03, its decisions 1 and 7): a scaffolded project receives AGENTS.md alone, never a CLAUDE.md or any other tool's conventions file; where this draft's text or criteria name a CLAUDE.md, read AGENTS.md.
+
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
