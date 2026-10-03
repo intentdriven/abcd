@@ -35,9 +35,11 @@ are hand-set: the binary reads them and never writes them.
     "visibility": "private"             // "private" | "public" — set by ahoy each run, no silent default
   },
   "docs": {
-    "target": "both"                    // "claude_md" | "agents_md" | "both" | "skip" — which conventions
-                                        //   router carries the marker block; "skip" is the default, so
-                                        //   a default install names abcd in neither file
+    "target": "agents_md"               // "agents_md" | "skip" — whether AGENTS.md carries the marker
+                                        //   block; "skip" is the default, so a default install names abcd
+                                        //   in no conventions file. "claude_md" and "both" are read for
+                                        //   detection and uninstall, and refused at setup with the
+                                        //   explanation naming this setting (itd-2610030814013772)
   },
   "oracle": {
     "backend": "host-delegated"         // "host-delegated" (default: abcd emits a prompt, the host runs it —

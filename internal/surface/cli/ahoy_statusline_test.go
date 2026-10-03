@@ -45,7 +45,7 @@ func TestAhoyInstallYesReportsTheSkippedStatusLineOffer(t *testing.T) {
 	before, _ := os.ReadFile(settings)
 
 	out := runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	var res struct {
 		Status          string   `json:"status"`
@@ -79,7 +79,7 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 	settings := harnessSettingsFixture(t, `{"statusLine": {"type": "command", "command": "bash /tmp/prev.sh"}}`)
 	answers := strings.Repeat("y\n", 24)
 	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	if err != nil {
 		t.Fatalf("install: %v\n%s\n%s", err, out, errOut)
@@ -131,7 +131,7 @@ func TestAhoyInstallSanitizesRefusalNotes(t *testing.T) {
 	}
 	answers := strings.Repeat("y\n", 24)
 	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {
 		t.Fatalf("install: %v\n%s\n%s", err, out, errOut)
