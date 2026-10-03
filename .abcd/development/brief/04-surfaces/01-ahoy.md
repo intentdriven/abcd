@@ -568,26 +568,36 @@ early returns included.
 Install, and install alone, adds the host-reach warnings after them
 (`conventions.host_reach` and `conventions.host_version`, never resolvable and
 never a refusal): neither `Detect`, which the board and the hooks call, nor
-`Managed`, which the status line calls on every refresh, makes them. A
-`CLAUDE.local.md` at the project root is named and never read, classified or
-offered for removal. From the root's parent up to the file-system root, each
-folder is asked with `lstat` alone for `CLAUDE.md`, `.claude/CLAUDE.md` and
-`CLAUDE.local.md`, skipping the user-level `.claude/CLAUDE.md` in the home
-folder but naming a `CLAUDE.md` directly in it; a folder that cannot be
-searched ends the walk quietly. Each path is shown through `fsutil.RedactHome`,
-and each warning carries one fixed sentence: "abcd reads no settings from
+`Managed`, which the status line calls on every refresh, makes them, because
+the check walks every folder above the project and starts the agent tool,
+which a call made on every prompt or refresh must not. That is why the
+owner-file warnings, which ride detection's gaps, also appear in the dry run
+and the doctor report, and the host-reach ones do not. Install makes them only
+once the run is past its refusals and its adoption question, so a run that
+refuses or is declined starts nothing. A `CLAUDE.local.md` at the project root
+is named and never read, classified or offered for removal. From the root's
+parent up to the file-system root, each folder is asked with `lstat` alone for
+`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, skipping the user-level
+`.claude/CLAUDE.md` in the home folder but naming a `CLAUDE.md` directly in it.
+A `.claude` folder that cannot be searched hides only its own `CLAUDE.md`, and
+the walk goes on past it; a folder whose own entries cannot be looked for ends
+the walk quietly. Each path is shown through `fsutil.RedactHome`, and each
+warning carries one fixed sentence: "abcd reads no settings from
 folders above this project. This check only asks whether a file of this name
 exists there; it reads nothing in it and changes nothing abcd does, because the
 agent tool itself reads that folder." The presence check is not a read of
 configuration from above the working tree, which the loader's rule forbids: it
 takes nothing, so the most a hostile file above the tree can cause is a
-warning. The version warning asks the `claude` command on `PATH` once for its version
-(`host_version.go`: the command never one resolving inside the
-project, the git-scrubbed environment, a three-second limit that kills the
-process group it leads, output kept up to a bound), reads the first
-`major.minor.patch` it prints, and warns, naming no version, when it is below
-the one floor constant, cited beside it from the 2026-10-03 research note. No
-command, no answer, an error exit or no parsable version raises nothing.
+warning. The version warning asks the `claude` command on `PATH` once for its
+version (`host_version.go`), through the runner's one launch primitive for a
+vendor binary (`runner.Exec`): the command is refused when it resolves to a
+relative path or inside the project, or when group or other can write it or a
+folder it is reached through, and it runs with the git-scrubbed environment,
+each stream bounded, and a three-second limit that kills the process group it
+leads. The warning reads the first `major.minor.patch` the command prints on
+stdout, and warns, naming no version, when it is below the one floor constant,
+cited beside it from the 2026-10-03 research note. No command, no answer, an
+error exit or no parsable version raises nothing.
 
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
