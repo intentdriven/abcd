@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 // ptyChild is the child: it puts the 300-name list on its stdin and stderr
 // through the arrow-key loop, as an interview's front door would, and exits
 // 130 on an interrupt, as the front door does. The "panic" case panics inside
-// the loop on the key '!'.
+// the loop on the key '!'; the "linger" case lives on after its choice.
 func ptyChild(c string) int {
 	if c == "panic" {
 		keyHook = func(k Key) {
@@ -53,6 +53,12 @@ func ptyChild(c string) int {
 		return 3
 	}
 	fmt.Fprintf(os.Stderr, "CHOSE %s\n", got[0].Value)
+	if c == "linger" {
+		// The process goes on after the question, as an interview's front
+		// door does; a signal sent now must take the default action.
+		time.Sleep(5 * time.Second)
+		fmt.Fprintln(os.Stderr, "LINGERED")
+	}
 	return 0
 }
 
@@ -68,6 +74,14 @@ const wait = 20 * time.Second
 
 func startChild(t *testing.T, c string) *child {
 	t.Helper()
+	return startChildWith(t, c, false)
+}
+
+// startChildWith is startChild, the child started with SIGHUP ignored when
+// hupIgnored is set, as nohup starts a command: a shell ignores it and execs
+// the test binary, which inherits the ignored disposition.
+func startChildWith(t *testing.T, c string, hupIgnored bool) *child {
+	t.Helper()
 	p := ptytest.Open(t, 80, 24)
 	before, err := ptytest.Attrs(p.Terminal)
 	if err != nil {
@@ -77,6 +91,9 @@ func startChild(t *testing.T, c string) *child {
 		t.Fatalf("a fresh pseudo-terminal is not in cooked mode: lflag %#x", before.Lflag)
 	}
 	cmd := exec.Command(os.Args[0])
+	if hupIgnored {
+		cmd = exec.Command("/bin/sh", "-c", `trap '' HUP; exec "$0"`, os.Args[0])
+	}
 	cmd.Env = append(os.Environ(), childEnv+"="+c, childHomeEnv+"="+t.TempDir(), "TERM=xterm",
 		"LANG=en_US.UTF-8", "ABCD_ACCESSIBLE=", "ACCESSIBLE=")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = p.Terminal, p.Terminal, p.Terminal
@@ -131,8 +148,8 @@ func (c *child) restored(t *testing.T, when string) {
 // TestLongListRestoresTerminalOnInterrupt is B6's restore half
 // (spc-2610030911534855): a child on a pseudo-terminal types "claude" into
 // the 300-name list and is then interrupted, terminated from outside, made to
-// panic inside the loop, or suspended; on every exit the terminal's attributes
-// equal those before it, ICANON and ECHO set.
+// panic inside the loop, or suspended; on every exit, and while suspended, the
+// terminal's attributes equal those before it, ICANON and ECHO set.
 func TestLongListRestoresTerminalOnInterrupt(t *testing.T) {
 	t.Run("ctrl-c exits 130", func(t *testing.T) {
 		c := startChild(t, "interrupt")
@@ -203,6 +220,47 @@ func TestLongListRestoresTerminalOnInterrupt(t *testing.T) {
 		}
 		c.restored(t, "after the choice")
 	})
+	// A stop from outside the session cannot see first (SIGTSTP from kill,
+	// SIGSTOP) leaves the terminal raw while stopped (iss-2610032115023656);
+	// what is pinned is the way back: SIGCONT enters raw mode again and the
+	// question is drawn once more, once, and still answers.
+	t.Run("SIGTSTP from outside: SIGCONT re-enters and redraws once", func(t *testing.T) {
+		c := startChild(t, "stop")
+		c.pty.Type(t, "claude")
+		mark := c.pty.WaitFor(t, 0, "filter: claude", wait)
+		if err := c.cmd.Process.Signal(syscall.SIGTSTP); err != nil {
+			t.Fatal(err)
+		}
+		var ws syscall.WaitStatus
+		pid, err := syscall.Wait4(c.cmd.Process.Pid, &ws, syscall.WUNTRACED, nil)
+		if err != nil || pid != c.cmd.Process.Pid || !ws.Stopped() {
+			t.Fatalf("SIGTSTP: wait4 = %d %v %v, want the child stopped", pid, ws, err)
+		}
+		// A shell restores its own modes when a job stops; so does this test.
+		if err := ptytest.SetAttrs(c.pty.Terminal, c.before); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.cmd.Process.Signal(syscall.SIGCONT); err != nil {
+			t.Fatal(err)
+		}
+		mark = c.pty.WaitFor(t, mark, "filter: claude", wait)
+		raw, err := ptytest.Attrs(c.pty.Terminal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw.Lflag&syscall.ICANON != 0 {
+			t.Errorf("after SIGCONT the terminal is not raw again: lflag %#x", raw.Lflag)
+		}
+		c.pty.Type(t, "\r")
+		end := c.pty.WaitFor(t, mark, "CHOSE anthropic/claude-0", wait)
+		if n := strings.Count(c.pty.Output()[mark:end], "filter: claude"); n != 0 {
+			t.Errorf("the continue redrew the question %d more time(s); want it drawn once", n)
+		}
+		if ws := c.exit(t); !ws.Exited() || ws.ExitStatus() != 0 {
+			t.Errorf("wait status %v, want exit 0", ws)
+		}
+		c.restored(t, "after the choice")
+	})
 }
 
 // TestArrowListAnswersOnATerminal drives the arrow-key loop on a
@@ -262,4 +320,64 @@ func escapeSequences(s string) []string {
 		i = j - 1
 	}
 	return out
+}
+
+// TestSessionLeavesNoSignalHandlingBehind pins the protections in the
+// session's signal handling that no other test fails without: a signal the
+// process was started ignoring stays ignored (nohup's SIGHUP must not end an
+// interview), the registration ends with the session (a SIGTERM after the
+// answer takes its default action and ends the process), and a terminal that
+// closes mid-question ends it with an error, exit 3, never a hang.
+func TestSessionLeavesNoSignalHandlingBehind(t *testing.T) {
+	t.Run("a SIGHUP the process was started ignoring stays ignored", func(t *testing.T) {
+		c := startChildWith(t, "nohup", true)
+		c.pty.Type(t, "claude")
+		mark := c.pty.WaitFor(t, 0, "filter: claude", wait)
+		if err := c.cmd.Process.Signal(syscall.SIGHUP); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(300 * time.Millisecond)
+		raw, err := ptytest.Attrs(c.pty.Terminal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw.Lflag&syscall.ICANON != 0 {
+			t.Errorf("an ignored SIGHUP ended the session: the terminal is cooked mid-question, lflag %#x", raw.Lflag)
+		}
+		c.pty.Type(t, "\r")
+		c.pty.WaitFor(t, mark, "CHOSE anthropic/claude-0", wait)
+		if ws := c.exit(t); !ws.Exited() || ws.ExitStatus() != 0 {
+			t.Errorf("wait status %v, want exit 0", ws)
+		}
+		c.restored(t, "after the choice")
+	})
+	t.Run("a SIGTERM after the answer ends the process", func(t *testing.T) {
+		c := startChild(t, "linger")
+		c.pty.Type(t, "\r")
+		c.pty.WaitFor(t, 0, "CHOSE openai/gpt-0", wait)
+		if err := c.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		if ws := c.exit(t); !ws.Signaled() || ws.Signal() != syscall.SIGTERM {
+			t.Errorf("wait status %v, want killed by SIGTERM; the session's registration outlived it:\n%q", ws, c.pty.Output())
+		}
+		c.restored(t, "after the choice")
+	})
+	t.Run("a terminal closed mid-question exits 3", func(t *testing.T) {
+		c := startChild(t, "closed")
+		c.pty.Type(t, "claude")
+		c.pty.WaitFor(t, 0, "filter: claude", wait)
+		// The master end is read outside the poller, so Close lets the
+		// drain's read in flight finish before the descriptor is closed: a
+		// resize makes the child redraw, which ends that read.
+		if err := c.pty.Master.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.cmd.Process.Signal(syscall.SIGWINCH); err != nil {
+			t.Fatal(err)
+		}
+		if ws := c.exit(t); !ws.Exited() || ws.ExitStatus() != 3 {
+			t.Errorf("wait status %v, want exit 3", ws)
+		}
+	})
 }

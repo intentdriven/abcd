@@ -194,6 +194,7 @@ func (s *RawSession) watch() {
 	for {
 		select {
 		case <-s.done:
+			s.drain()
 			return
 		case sig := <-s.sigs:
 			switch sig {
@@ -212,6 +213,27 @@ func (s *RawSession) watch() {
 				s.relay(sig)
 				return
 			}
+		}
+	}
+}
+
+// drain reads what is left on the signal channel once the session has
+// ended, and relays a signal that ends the process. Restore stops the
+// registration first, so nothing more arrives; but a signal delivered while
+// this goroutine was in a hook can be waiting beside the closed done, and a
+// select that took done first would drop it and the process would live on.
+func (s *RawSession) drain() {
+	for {
+		select {
+		case sig := <-s.sigs:
+			switch sig {
+			case syscall.SIGWINCH, syscall.SIGCONT:
+			default:
+				s.relay(sig)
+				return
+			}
+		default:
+			return
 		}
 	}
 }

@@ -222,6 +222,12 @@ layered resolver from the machine's file alone:
   `~/.abcd/config.json` as where it belongs; the reader claims the `interview`
   namespace, so a misspelt key and a value outside the two are refused naming
   the file, never passed over for the default.
+- **A refusal never fails an interview, and never lets a repository choose.**
+  The answer loop says the refusal in one line on stderr and goes on: a fault
+  a repository's file holds (the key set there, a misspelt key under
+  `interview`, a malformed file) is passed over for the machine's own setting,
+  read from `~/.abcd/config.json` alone; a fault in the machine's own file
+  gives `numbered`.
 - **Two variables choose `numbered` for one session.** `ABCD_ACCESSIBLE`
   non-empty, else `ACCESSIBLE` non-empty, selects it whatever the file says,
   so a screen-reader user who cannot set a file first gets it; when both are
