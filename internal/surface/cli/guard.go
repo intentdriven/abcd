@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -288,7 +289,19 @@ func newGuardHookCommand() *cobra.Command {
 			}
 			var in guardHookInput
 			if err := json.Unmarshal(raw, &in); err != nil {
-				return failOpen("the hook payload is not readable JSON (%v)", err)
+				// The wording follows the tool the payload names, read on its
+				// own, and echoes no decoder text, which can carry a Go type
+				// (review-askGuard-security finding 5).
+				switch tool, known := hookToolName(raw); {
+				case known && isQuestionTool(tool):
+					return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
+				case !known:
+					diagnosticLine(cmd.ErrOrStderr(),
+						"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
+					return &exitError{Code: 1}
+				default:
+					return failOpen("the hook payload is not readable JSON (%v)", err)
+				}
 			}
 			// A question to the human is checked against abcd's asking rules
 			// and gated on the mode, not the registry (itd-2609212130146198,
@@ -418,6 +431,37 @@ func newGuardHookCommand() *cobra.Command {
 			}
 		},
 	}
+}
+
+// hookToolName reads the tool_name of a hook payload the full decode refused.
+// It walks the top-level object one member at a time and stops at the first
+// value it cannot read, so a tool_name before the fault is found and one after
+// it is not; known reports whether one was read. A repeated key keeps its last
+// value, as the full decode does.
+func hookToolName(raw []byte) (name string, known bool) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return "", false
+	}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return name, known
+		}
+		if key, _ := tok.(string); key == "tool_name" {
+			var s string
+			if err := dec.Decode(&s); err != nil {
+				return name, known
+			}
+			name, known = s, true
+			continue
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return name, known
+		}
+	}
+	return name, known
 }
 
 // guardHookInput is the subset of the host's pre-tool-use payload the adapter

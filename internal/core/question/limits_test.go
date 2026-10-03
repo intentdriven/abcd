@@ -485,3 +485,89 @@ func TestChipRole(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckReadsOnlyTheTabsAndOptionsItCounts: a call carrying more tabs than
+// QuestionsPerCall allows, or a tab more options than OptionsPerQ, is refused on
+// the count, and only the first tabs and options the limits allow are checked
+// field by field, so the findings stay bounded however many the payload holds
+// (review-askGuard-security finding 1).
+func TestCheckReadsOnlyTheTabsAndOptionsItCounts(t *testing.T) {
+	tabs := make([]Tab, 40000)
+	for i := range tabs {
+		tabs[i] = Tab{Header: "Product Q1"}
+	}
+	fs := CheckLimits(Fields{Tabs: tabs}, Default, unnamed())
+	if len(fs) == 0 || fs[0].Rule != RuleQuestionsPerCall {
+		t.Fatalf("want the count finding first; got %v", rulesOf(fs[:min(len(fs), 5)]))
+	}
+	for _, f := range fs {
+		if f.Tab > Default.QuestionsPerCall[1] {
+			t.Fatalf("tab %d was checked past the %d the limits allow (%d findings)", f.Tab, Default.QuestionsPerCall[1], len(fs))
+		}
+	}
+
+	tab := wellBuiltTab()
+	opts := make([]Choice, 30000)
+	for i := range opts {
+		opts[i] = Choice{Label: "a (Recommended)", Description: "**b**"}
+	}
+	tab.Options = opts
+	fs = CheckLimits(one(tab), Default, unnamed())
+	if !slices.Contains(rulesOf(fs), RuleOptions) {
+		t.Fatalf("want the options count finding; got %v", rulesOf(fs))
+	}
+	for _, f := range fs {
+		if !strings.HasPrefix(f.Part, "option ") {
+			continue
+		}
+		n, err := strconv.Atoi(strings.Fields(f.Part)[1])
+		if err != nil || n > Default.OptionsPerQ[1] {
+			t.Fatalf("%q was checked past the %d options the limits allow (%d findings)", f.Part, Default.OptionsPerQ[1], len(fs))
+		}
+	}
+
+	// The decide-later option is judged against the payload's last option,
+	// not the last one checked: a flood that ends in it is refused on the
+	// count alone.
+	tab = wellBuiltTab()
+	later := tab.Options[2]
+	tab.Options = slices.Repeat(tab.Options[:2], 15000)
+	tab.Options = append(tab.Options, later)
+	onlyRule(t, CheckLimits(one(tab), Default, unnamed()), RuleOptions)
+}
+
+// TestAWordWiderThanTheMeasureCountsItsRows: the host hard-wraps a word wider
+// than its text measure, so the row estimate counts the rows it fills, and a
+// 400-column URL in a description is refused at the limits that refuse the
+// same bytes broken by spaces (review-askGuard-security finding 2).
+func TestAWordWiderThanTheMeasureCountsItsRows(t *testing.T) {
+	if got := blockRows(strings.Repeat("x", 400), 76); got != 6 {
+		t.Errorf("a 400-column word at 76 columns = %d rows, want 6", got)
+	}
+	url := "https://example.com/" + strings.Repeat("a", 380)
+	spaced := []byte(url)
+	for i := 29; i < len(spaced); i += 10 {
+		spaced[i] = ' '
+	}
+	long, words := wellBuiltTab(), wellBuiltTab()
+	long.Options[0].Description = url
+	words.Options[0].Description = string(spaced)
+	l := Default
+	l.Rows = estimateRows(words, l) - 1
+	onlyRule(t, CheckLimits(one(words), l, facilitator()), RuleRows)
+	onlyRule(t, CheckLimits(one(long), l, facilitator()), RuleRows)
+}
+
+// TestChipRoleCompilesItsPatternOnce: reading the chip is a match, not a
+// regexp compile per header (review-askGuard-security finding 6); the guard
+// reads it once per tab.
+func TestChipRoleCompilesItsPatternOnce(t *testing.T) {
+	allocs := testing.AllocsPerRun(200, func() {
+		if _, ok := ChipRole("Product Q2", Default); !ok {
+			t.Fatal("ChipRole did not read the chip")
+		}
+	})
+	if allocs > 4 {
+		t.Errorf("ChipRole allocates %.0f times per call; a compiled-once pattern allocates at most 4", allocs)
+	}
+}

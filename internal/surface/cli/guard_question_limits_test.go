@@ -114,6 +114,10 @@ func markedOpen(t *testing.T, root string) bool {
 // findingLineRe reads one finding line of a refusal: where, the part, the rule.
 var findingLineRe = regexp.MustCompile(`^(tab [0-9]+|the call), (.+?) \(([a-z-]+)\): `)
 
+// moreLineRe reads the line that closes a refusal naming fewer parts than it
+// counts.
+var moreLineRe = regexp.MustCompile(`^\.\.\. and ([0-9]+) more part\(s\)`)
+
 type namedPart struct {
 	Tab  int    `json:"tab"`
 	Part string `json:"part"`
@@ -130,7 +134,12 @@ func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines
 		!strings.HasSuffix(head, " part(s) of this question break abcd's asking rules; fix each and ask again.") {
 		t.Fatalf("the head line is not the spec's: %q", head)
 	}
+	more := 0
 	for _, l := range all[1:] {
+		if m := moreLineRe.FindStringSubmatch(l); m != nil {
+			more, _ = strconv.Atoi(m[1])
+			continue
+		}
 		m := findingLineRe.FindStringSubmatch(l)
 		if m == nil {
 			continue
@@ -143,8 +152,8 @@ func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines
 		lines = append(lines, l)
 	}
 	n := strings.TrimSuffix(strings.TrimPrefix(head, "Blocked by the abcd guard (question tool): "), " part(s) of this question break abcd's asking rules; fix each and ask again.")
-	if want := strconv.Itoa(len(parts)); n != want {
-		t.Errorf("the head line counts %s part(s), but %s finding line(s) follow:\n%s", n, want, stderr)
+	if want := strconv.Itoa(len(parts) + more); n != want {
+		t.Errorf("the head line counts %s part(s), but %d finding line(s) and %d more follow:\n%s", n, len(parts), more, stderr)
 	}
 	return head, parts, lines
 }
@@ -454,5 +463,115 @@ func TestLongChipHeaderIsRefusedWithoutAMode(t *testing.T) {
 	_, parts, lines := refusal(t, stderr)
 	if !slices.Equal(rulesNamed(parts), []string{"header"}) || !strings.Contains(lines[0], "12 columns") {
 		t.Errorf("want one header finding naming the 12-column limit; got %v:\n%s", rulesNamed(parts), stderr)
+	}
+}
+
+// TestQuestionRefusalIsBoundedOnAFlood: a payload of 40,000 tabs, or one tab of
+// 30,000 options, is refused in a few lines, not one line per broken field:
+// the head line keeps the true count, a bounded number of parts are named, and
+// one line says how many more there are (review-askGuard-security finding 1).
+func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
+	repo := unmanagedRepo(t)
+	tabs := make([]map[string]any, 40000)
+	for i := range tabs {
+		tabs[i] = map[string]any{"header": "Product Q1"}
+	}
+	opts := make([]map[string]any, 30000)
+	for i := range opts {
+		opts[i] = map[string]any{"label": "*", "description": ""}
+	}
+	q := wellBuilt()
+	flood := map[string]any{"header": q.Header, "question": strings.Repeat("- a \u2014\n", 1000) + q.Question, "options": q.Options}
+	for name, input := range map[string]any{
+		"40,000 tabs":       map[string]any{"questions": tabs},
+		"30,000 options":    map[string]any{"questions": []any{map[string]any{"header": "Product Q1", "question": q.Question, "options": opts}}},
+		"1,000 dashed list": map[string]any{"questions": []any{flood}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			payload := askToolPayload(t, repo, input)
+			if len(payload) > maxHookStdinBytes {
+				t.Fatalf("the payload is %d bytes, over the hook's cap", len(payload))
+			}
+			stdout, stderr, code := runGuard(payload, "guard", "hook")
+			if code != 2 || stdout != "" {
+				t.Fatalf("want exit 2 and no stdout; code=%d stdout=%d bytes", code, len(stdout))
+			}
+			if len(stderr) > 4096 {
+				t.Fatalf("the refusal is %d bytes; it must stay under 4 KiB:\n%.600s", len(stderr), stderr)
+			}
+			// refusal checks the head line's count against the parts named
+			// and the closing line's count of the rest.
+			if _, parts, _ := refusal(t, stderr); len(parts) > maxRefusalParts {
+				t.Errorf("the refusal names %d parts, over the %d it may name:\n%s", len(parts), maxRefusalParts, stderr)
+			}
+		})
+	}
+}
+
+// TestModeMadeQuestionAbcdsSaysSo: while the mode names somebody every question
+// is abcd's, so another tool's question asked then is held to abcd's rules. Its
+// refusal says why in one line, naming the mode's person, so an agent that did
+// not write the question does not loop on it; a question carrying abcd's chip
+// is abcd's on the chip, and its refusal carries no such line
+// (review-askGuard-security finding 4).
+func TestModeMadeQuestionAbcdsSaysSo(t *testing.T) {
+	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
+	for st, who := range map[mode.State]string{mode.ProductThinker: "the product thinker", mode.Facilitator: "the technical facilitator"} {
+		root := managedCheckout(t)
+		setMode(t, root, st)
+		_, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+		if code != 2 {
+			t.Fatalf("%s: want exit 2; got %d (stderr %q)", st, code, stderr)
+		}
+		want := "treated as abcd's because the mode names " + who + "; another tool's question asked now is held to abcd's rules"
+		if !strings.Contains(stderr, want) {
+			t.Errorf("%s: the refusal must say why the question is abcd's (%q):\n%s", st, want, stderr)
+		}
+		refusal(t, stderr)
+
+		q := wellBuilt()
+		q.Options[0].Label = "Keep it (Recommended)"
+		if _, stderr, _ := runGuard(askPayload(t, root, q), "guard", "hook"); strings.Contains(stderr, "treated as abcd's") {
+			t.Errorf("%s: a question carrying abcd's chip is abcd's on the chip, not the mode:\n%s", st, stderr)
+		}
+	}
+}
+
+// TestUnreadableQuestionPayloadFailsOpenAsAQuestion: a question-tool payload
+// whose outer JSON the hook cannot decode (a tool_input that is a string, or a
+// sibling nested past the decoder's depth) lets the question run on exit 1
+// with the question's wording, not the shell's, and echoes no Go type from the
+// decoder. Where the tool name cannot be read at all, the wording names no
+// tool (review-askGuard-security finding 5).
+func TestUnreadableQuestionPayloadFailsOpenAsAQuestion(t *testing.T) {
+	repo := unmanagedRepo(t)
+	cwd, err := json.Marshal(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deep := strings.Repeat("[", 20000) + strings.Repeat("]", 20000)
+	tool := `"tool_name":"` + questionTools[0] + `"`
+	for name, tc := range map[string]struct {
+		payload string
+		want    string
+	}{
+		"tool_input a string":      {`{"cwd":` + string(cwd) + `,` + tool + `,"tool_input":"x"}`, "The question runs UNGATED"},
+		"a sibling nested deeply":  {`{"cwd":` + string(cwd) + `,` + tool + `,"tool_input":{"questions":[],"x":` + deep + `}}`, "The question runs UNGATED"},
+		"the tool after the fault": {`{"cwd":` + string(cwd) + `,"tool_input":{"x":` + deep + `},` + tool + `}`, "The call runs UNGUARDED"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stdout, stderr, code := runGuard(tc.payload, "guard", "hook")
+			if code != 1 || stdout != "" {
+				t.Fatalf("want exit 1 and no stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "NOT CHECKED") || !strings.Contains(stderr, tc.want) {
+				t.Errorf("the fail-open must say NOT CHECKED and %q; stderr = %q", tc.want, stderr)
+			}
+			for _, banned := range []string{"This command runs UNGUARDED", "jsontext", "json:", "struct", "Go value"} {
+				if strings.Contains(stderr, banned) {
+					t.Errorf("the fail-open must not carry %q; stderr = %q", banned, stderr)
+				}
+			}
+		})
 	}
 }

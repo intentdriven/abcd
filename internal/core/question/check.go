@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -89,12 +90,24 @@ func ChipRole(header string, l Limits) (string, bool) {
 	return m[1], true
 }
 
+// chipRes holds the chip pattern compiled once per set of role words, keyed by
+// the words joined with a NUL, which no role word carries. The guard reads the
+// chip once per tab, and a compile per read made a call of many tabs spend
+// seconds compiling (review-askGuard-security finding 6).
+var chipRes sync.Map // string -> *regexp.Regexp
+
 func chipRe(l Limits) *regexp.Regexp {
+	key := strings.Join(l.ChipRoles, "\x00")
+	if re, ok := chipRes.Load(key); ok {
+		return re.(*regexp.Regexp)
+	}
 	roles := make([]string, len(l.ChipRoles))
 	for i, r := range l.ChipRoles {
 		roles[i] = regexp.QuoteMeta(r)
 	}
-	return regexp.MustCompile(`^(` + strings.Join(roles, "|") + `) Q[1-9][0-9]*(?:/[1-9][0-9]*)?$`)
+	re := regexp.MustCompile(`^(` + strings.Join(roles, "|") + `) Q[1-9][0-9]*(?:/[1-9][0-9]*)?$`)
+	actual, _ := chipRes.LoadOrStore(key, re)
+	return actual.(*regexp.Regexp)
 }
 
 // CheckLimits holds a call's fields to l and returns every finding at once, so
@@ -113,8 +126,11 @@ func CheckLimits(f Fields, l Limits, who Addressee) []Finding {
 			Remedy: "Ask one question, or up to four parts of one thing as tabs; ask a question that depends on an earlier answer alone, after that answer.",
 		})
 	}
+	// Past the count, only the tabs the limits allow are checked field by
+	// field: the count finding already refuses the call, and a finding per
+	// field of every extra tab would grow with the payload, not the fault.
 	c := checker{l: l, who: who, chip: chipRe(l), verb: verbRe(who.Verbs)}
-	for i, t := range f.Tabs {
+	for i, t := range f.Tabs[:min(len(f.Tabs), max(l.QuestionsPerCall[1], 0))] {
 		out = append(out, c.tab(i+1, t)...)
 	}
 	return out
@@ -177,6 +193,11 @@ func (c checker) tab(n int, t Tab) []Finding {
 			fmt.Sprintf("%d to %d options, the decide-later option included", l.OptionsPerQ[0], l.OptionsPerQ[1]),
 			"Offer only the answers each defensible on the record, then the decide-later option.")
 	}
+	// Past the count, only the options the limits allow are checked field by
+	// field, as CheckLimits does with tabs. Rule 6 still reads every label,
+	// since "the last" is the payload's last, but names only kept options.
+	all := t.Options
+	t.Options = t.Options[:min(len(t.Options), max(l.OptionsPerQ[1], 0))]
 
 	// 4. Label words, and 5. meaning sentences.
 	for i, o := range t.Options {
@@ -199,7 +220,7 @@ func (c checker) tab(n int, t Tab) []Finding {
 
 	// 6. Decide later.
 	var later []int
-	for i, o := range t.Options {
+	for i, o := range all {
 		if c.isLater(o.Label) {
 			later = append(later, i)
 		}
@@ -214,7 +235,7 @@ func (c checker) tab(n int, t Tab) []Finding {
 			"Add "+quoteList(l.LaterLabels)+" as the last option; it is always offered, and with a preview it stands in for the free-text row the preview removes.")
 	}
 	for _, i := range later {
-		if i == len(t.Options)-1 {
+		if i == len(all)-1 || i >= len(t.Options) {
 			continue
 		}
 		remedy := "Move the decide-later option to the end."
