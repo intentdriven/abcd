@@ -160,4 +160,6 @@ Proposed acceptance criteria (agent-seeded, unconfirmed; each walked with an exa
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-5796271104cf -->
+Fidelity review OWED (receipt rcp-5796271104cf).
+<!-- abcd-review-end receipt=rcp-5796271104cf -->

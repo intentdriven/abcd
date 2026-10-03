@@ -125,7 +125,9 @@ Flagged for the product thinker to confirm (record-discipline review, 2026-10-03
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-7f60ee417b11 -->
+Fidelity review OWED (receipt rcp-7f60ee417b11).
+<!-- abcd-review-end receipt=rcp-7f60ee417b11 -->
 
 ## Grounds
 
