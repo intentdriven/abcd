@@ -78,7 +78,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-107` — Autonomous routines assemble from one versioned template
 - `itd-108` — The plugin installs from the curated release artifact, not the repo, and every cut release reaches users automatically
 - `itd-109` — Acceptance criteria verify themselves; the manual rest renders for a human (`abcd verify`, sha-keyed receipts)
-- `itd-110` — The grill interview renders with clear structure and colour
 - `itd-113` — The MCP front door opens — abcd's core verbs from any MCP-capable harness (the [adr-39](../../decisions/adrs/0039-host-tier-policy.md) universal floor)
 - `itd-115` — A ready PR merges without ever wedging BEHIND (managed-repo merge queue by default, rung-1 auto-update fallback, strict preserved)
 - `itd-116` — Validated GitHub issues become ledger entries without retyping (capture extension adopts externally filed findings with provenance; mint stays capture-only)
@@ -104,10 +103,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-174` — Each repository configures how far its facilitator is consulted and when it escalates (sequenced after itd-169)
 - `itd-175` — The product thinker writes down how this could be wrong, and what would show it (Phase 8; the defeater list an acceptance rests on)
 - `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
-- `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
 - `itd-2609151838312703` — sessions on one machine or one local network leave each other messages in a shared mailbox abcd owns (the built-in basic; nothing leaves the local network)
 - `itd-2609151838327688` — an opt-in adapter to a local message broker brings push delivery and cross-machine reach to the session mailbox (sequenced after the mailbox)
-- `itd-2609151541116052` — every question an interview puts to a human shows the thing being decided before it asks, at every step (refines itd-201)
 - `itd-2609151658486398` — a release cut publishes the security advisories its fixes close, and closes those resolved as won't-fix (the publication step the 2026-08-27 advisory-handling pilot named as its target)
 - `itd-2609091416304128` — `capture resolve` and `capture wontfix` refuse a record already terminal at the local `origin/main` ref as last fetched, stating the ref's age and performing no fetch; the same judgement rendered read-only on `abcd <record-id>` (split from itd-2609091034175565 on the same ruling; the third clause of iss-2609020716570699's remedy, RS001's answer moved earlier)
 - `itd-2609091034175565` — A record says who is working on it before anyone else starts: the claim verb, the session lease and the write-verb refusals, with the `claimed_by` stamp bounded by a two-release migration (promoted from iss-2609020716570699; the read-only listing and the upstream refusal were split out on 2026-09-09; not ready — carries the refusal-surface, liveness and pushed-price questions as open questions)
@@ -131,6 +128,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
 - `itd-2610030720038073` — abcd keeps its home folder out of desktop search by default (refines itd-2609091014076309; its rule is adr-2610030720195401; draft, routing confirmed 2026-10-03)
+- `itd-2610030814013772` — abcd's projects keep one conventions file, AGENTS.md (draft; promoted from iss-2609291925136841)
+- `itd-2610030821294016` — Connecting a model service from Claude Code looks up the details and offers the choices (draft; refines itd-2609081951381895)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

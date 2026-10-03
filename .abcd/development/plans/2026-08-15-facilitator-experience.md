@@ -67,7 +67,7 @@ Ordering and item specs unchanged from that plan:
 
 ## Workstream C — interaction polish
 
-8. **[itd-110](../intents/drafts/itd-110-the-grill-interview-renders-with-clear-structure-and-colour.md)**
+8. **[itd-110](../intents/superseded/itd-110-the-grill-interview-renders-with-clear-structure-and-colour.md)**
    — the grill interview renders with structure and colour. Draft seed:
    needs expansion, then grill.
 9. **[iss-230](../../work/issues/open/iss-230-one-tap-micro-prompt-channel.md)**
