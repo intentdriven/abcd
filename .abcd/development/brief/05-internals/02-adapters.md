@@ -72,6 +72,33 @@ judged by the caller's output contract, the one the host sub-agent's payload is
 judged by. The request is the host's brief in the protocol's two roles: the
 agent's prompt as the system message, the verb's request as the user message.
 
+The call asks for a streamed answer and assembles the protocol's server-sent
+events (one chunk per `data:` line, `data: [DONE]` at the end, keep-alive
+comments read past) into what a single body would carry: the content, the model
+reported and the finish reason, with the token usage when the server reports it
+in a last chunk. A server that answers with one body instead is read as that. A
+stream that closes before any finish reason or `[DONE]` was cut off, and is
+refused rather than used; one that reports two models in one answer is refused,
+because the denylist could not tell which one answered. The size bound holds
+across the stream: one event, the assembled answer and the whole stream are
+each bounded. Time is bounded three ways rather than by one deadline, because a
+reasoning model's answer can run past ten minutes and a deadline on the whole
+call abandons it while it is still arriving: a first-byte limit (five minutes,
+for a local server reading a long prompt), an idle limit between reads once the
+answer has begun (two minutes; a keep-alive counts as the server being alive),
+and a total cap (thirty minutes), which a caller of the adapter may set for one
+call and no route setting carries. A stream is also bounded between its events
+(ten minutes, the window the record saw a gateway hold a request that had sent
+nothing): a keep-alive is a read but not an answer, so a server that sends only
+keep-alives is refused at that limit and the refusal says so. A failed status is
+reported on the status, its body waited for half a minute at most and quoted
+only when it arrived whole: a body cut off by that wait or by its size bound
+can end inside an echoed key the scrub cannot recognise, so it is named as cut
+off instead. A caller's own earlier deadline is named as the caller's, not as
+the adapter's cap. Whichever limit fires, and a cancelled caller, closes the connection, so a
+server still generating sees the client go away and can stop. The setup's verification call is one short exchange and
+keeps its own two-minute bound.
+
 The key is resolved by name through the credential store
 (`internal/core/credential`, `Store(home).Resolve`), the one reader, from
 whichever of its three homes the person chose; the adapter reads no file and no
