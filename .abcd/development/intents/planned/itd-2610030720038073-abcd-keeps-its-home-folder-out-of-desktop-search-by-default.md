@@ -1,8 +1,8 @@
 ---
 id: itd-2610030720038073
 slug: abcd-keeps-its-home-folder-out-of-desktop-search-by-default
-spec_id: null
-kind: null
+spec_id: spc-2610031309233367
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -11,15 +11,16 @@ related_adrs: [adr-2610030720195401]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
+impact: breaking
 ---
 
 # abcd keeps its home folder out of desktop indexing by default
 
 ## Press Release
 
-> On a Mac, abcd's own folder no longer gives the desktop search indexer work to do. The folder is named `~/.abcd.noindex`, a name the indexer passes over, so opening a working copy, writing a run log, or keeping a transcript there sets off no indexing burst, and the computer stays responsive while abcd works. A new install starts with that name. An existing install moves its folder to the new name once, by itself. A project abcd manages keeps pointing at the old folder until abcd's setup runs in that project again, which brings it up to date; a script a person wrote themselves is theirs to update. What search shows does not change, because the folder's contents were never in search results, and abcd never touches the computer's own search settings.
+> On a Mac, abcd's own folder no longer gives the desktop search indexer work to do. The folder is named `~/.abcd.noindex`, a name the indexer passes over, so opening a working copy, writing a run log, or keeping a transcript there sets off no indexing burst, and the computer stays responsive while abcd works. A new install starts with that name. An existing install stops at its next run and asks the person to rename ~/.abcd to ~/.abcd.noindex, naming the one command; after that, abcd runs as before. A project abcd manages keeps pointing at the old folder until abcd's setup runs in that project again, which brings it up to date; a script a person wrote themselves is theirs to update. What search shows does not change, because the folder's contents were never in search results, and abcd never touches the computer's own search settings.
 
-_Proposed by the facilitator from decisions 1 to 4; to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 1 to 4; confirmed as written by the product thinker at the planning interview, 2026-10-03 (decision 5)._
 
 Previous wording (superseded at the interview):
 
@@ -37,27 +38,27 @@ Typed links: `refines` itd-2609091014076309 (the machine-scoped worktree store w
 
 We expect creating folders under abcd's home to cost the desktop indexer no work because macOS's indexer honours a folder name ending in `.noindex` when it scans, not only when it shows results, for that folder and everything beneath it, as Xcode's DerivedData folders rely on; indexer CPU (corespotlightd, mds_stores, mdworker) unchanged on the 2026-10-02 run shape, eight working copies opened within four minutes, shows the claim wrong.
 
-_Proposed by the facilitator from decisions 1 to 4; to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 1 to 4; confirmed by the product thinker, 2026-10-03._
 
 ## Scope Conditions
 
-- macOS versions on which a dated receipt shows the `.noindex` name honoured at scan time, macOS 27.0 first; no Apple page documents the name, so each later macOS version holds the claim only once its own receipt is dated.
-- The macOS desktop indexer (corespotlightd, mds_stores, mdworker); any other program on a Mac that scans the home folder is outside the claim.
-- Windows is a later change, with the per-folder attribute `FILE_ATTRIBUTE_NOT_CONTENT_INDEXED` named for it (decision 3).
-- Linux needs no change from abcd: Tracker skips a directory holding `.git` by default, and Baloo's exclusions are a user setting abcd never edits (decision 3).
+- macOS versions on which a dated receipt shows the `.noindex` name honoured at scan time, macOS 27.0 first; no Apple page documents the name, so each later macOS version holds the claim only once its own receipt is dated. <!-- cond: cond-2610031309233205 -->
+- The macOS desktop indexer (corespotlightd, mds_stores, mdworker); any other program on a Mac that scans the home folder is outside the claim. <!-- cond: cond-2610031309237054 -->
+- Windows is a later change, with the per-folder attribute `FILE_ATTRIBUTE_NOT_CONTENT_INDEXED` named for it (decision 3). <!-- cond: cond-2610031309234392 -->
+- Linux needs no change from abcd: Tracker skips a directory holding `.git` by default, and Baloo's exclusions are a user setting abcd never edits (decision 3). <!-- cond: cond-2610031309236184 -->
 
-_Proposed by the facilitator from decisions 1 to 4; to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 1 to 4; confirmed by the product thinker, 2026-10-03._
 
 ## Acceptance Criteria
 
 _Proposed by the facilitator from decisions 1 to 4 and the design review's criteria that survive them; each is unconfirmed until walked with its addressee. No criterion is phrased as "search does not find X": the dot-prefixed home already passes that today, so it would test nothing._
 
-- D1 (product thinker; unconfirmed) Given an account with no abcd home, when abcd first creates its home, then `~/.abcd.noindex` exists and no `~/.abcd` is created (example: a first install on a clean account, followed by a first run that writes a run log, leaves only `~/.abcd.noindex`); a go test against a temporary home folder asserts it.
-- D2 (product thinker; unconfirmed) Given an existing `~/.abcd` that abcd created, when a version carrying this change first runs, then abcd moves it to `~/.abcd.noindex` once, with every file intact, and a second run moves nothing; when the move cannot complete (a `~/.abcd.noindex` already present, a folder abcd cannot prove it made, a permission refusal), then the home is whole under exactly one of the two names, nothing is half moved, and abcd says what stopped the move and what the person can do (example: a home folder already holding both names is refused by name and neither folder changes); a go test asserts the move, the repeat, and each refusal.
-- D3 (technical facilitator; unconfirmed) Given the Go source tree, when an AST literal test walks every non-test file, then only the one home resolver's package spells the home's folder name, `.abcd.noindex` or `.abcd`, in the shape of TestOnlyTheHistoryPackageNamesTheStorePath (example: a new reader that joins the home folder with `.abcd` itself fails the test, naming its file and line); a go test asserts it.
-- D4 (product thinker; unconfirmed) Given a managed project whose conventions block names `~/.abcd/rules.json` and `~/.abcd/trusted-roots`, when abcd's setup runs in that project again, then the block names `~/.abcd.noindex/rules.json` and `~/.abcd.noindex/trusted-roots` and every line outside the block is byte-identical, while before setup runs there the block is untouched (example: a project set up before the change keeps its old block until setup runs, then carries the new paths); a go test asserts both states.
-- D5 (technical facilitator; unconfirmed) Given every abcd code path, when an AST literal test walks the non-test source, then none names `mdutil`, `.Spotlight-V100`, or `VolumeConfiguration.plist` (the Spotlight privacy list) (example: a change that adds a call running `mdutil` fails the test, naming its file and line); a go test asserts it.
-- D6 (technical facilitator; unconfirmed) Given a Mac with indexing on, macOS 27.0 first, when eight working copies are created under the home within four minutes, the 2026-10-02 run shape, then corespotlightd, mds_stores, and mdworker CPU, sampled every five seconds for a minute, stays under 20% combined, and no run log carries a `stop` naming indexing (example: on 2026-10-02 corespotlightd sat near 114% and mds_stores near 70%; the receipt records samples from the same shape before and after the rename); a dated receipt, naming the macOS version, records it.
+- D1 (product thinker; CONFIRMED 2026-10-03) Given an account with no abcd home, when abcd first creates its home, then `~/.abcd.noindex` exists and no `~/.abcd` is created (example: a first install on a clean account, followed by a first run that writes a run log, leaves only `~/.abcd.noindex`); a go test against a temporary home folder asserts it.
+- D2 (product thinker; CONFIRMED 2026-10-03, reworded by decision 6) Given an existing `~/.abcd` and no `~/.abcd.noindex`, when any abcd command or hook runs, then it stops before writing anything, names the folder and the one rename command, and creates no new folder; with both folders present it stops and names both (example: the person updates abcd, runs any command, reads the one line, renames the folder, and runs again); a go test against a temporary home folder asserts each case.
+- D3 (technical facilitator; CONFIRMED 2026-10-03) Given the Go source tree, when an AST literal test walks every non-test file, then only the one home resolver's package spells the home's folder name, `.abcd.noindex` or `.abcd`, in the shape of TestOnlyTheHistoryPackageNamesTheStorePath (example: a new reader that joins the home folder with `.abcd` itself fails the test, naming its file and line); a go test asserts it.
+- D4 (product thinker; CONFIRMED 2026-10-03) Given a managed project whose conventions block names `~/.abcd/rules.json` and `~/.abcd/trusted-roots`, when abcd's setup runs in that project again, then the block names `~/.abcd.noindex/rules.json` and `~/.abcd.noindex/trusted-roots` and every line outside the block is byte-identical, while before setup runs there the block is untouched (example: a project set up before the change keeps its old block until setup runs, then carries the new paths); a go test asserts both states.
+- D5 (technical facilitator; CONFIRMED 2026-10-03) Given every abcd code path, when an AST literal test walks the non-test source, then none names `mdutil`, `.Spotlight-V100`, or `VolumeConfiguration.plist` (the Spotlight privacy list) (example: a change that adds a call running `mdutil` fails the test, naming its file and line); a go test asserts it.
+- D6 (technical facilitator; CONFIRMED 2026-10-03) Given a Mac with indexing on, macOS 27.0 first, when eight working copies are created under the home within four minutes, the 2026-10-02 run shape, then corespotlightd, mds_stores, and mdworker CPU, sampled every five seconds for a minute, stays under 20% combined, and no run log carries a `stop` naming indexing (example: on 2026-10-02 corespotlightd sat near 114% and mds_stores near 70%; the receipt records samples from the same shape before and after the rename); a dated receipt, naming the macOS version, records it.
 
 ## Review findings (design and record discipline, 2026-10-03)
 
@@ -94,16 +95,21 @@ Not applied here: appending the routing ruling to the shared decision log (recor
 2. 2026-10-03, the product thinker, asked the method after the reviews found the planned marker file no longer honoured on current macOS (each inner folder renamed to end in `.noindex`; the home itself renamed; the person asked to add the folder in System Settings), and after asking how existing projects would be updated (answered from the code: each managed project's block names the home's top-level `rules.json` and `trusted-roots`, and running setup there again refreshes the block): rename the home itself, `~/.abcd` to `~/.abcd.noindex`. Every install moves once; a managed project names the old folder until setup runs there again; scripts a person wrote are never updated. The product thinker first leaned to renaming each inner folder and asked for an example, then weighed the routes again with the effect on existing projects in view.
 3. 2026-10-03, decided without a question (no Windows user on the record): Windows is an explicit later, the per-folder attribute `FILE_ATTRIBUTE_NOT_CONTENT_INDEXED` named for it. Linux is settled by its indexers: Tracker skips a directory holding `.git` by default, and Baloo's exclusions are a user setting abcd never edits.
 4. 2026-10-03, flagged for planning (reversals, each needing its own superseding record, never an amended ADR): decision 2 changes the location adr-2609091248200336 binds (`~/.abcd/worktrees/<root-sha>/<name>/`), the transcript store's single spelling under brief invariant 15, every `~/.abcd` path in AGENTS.md, the docs, the brief and the managed block, and the trust paths that read `~/.abcd` (path-entry, trusted-roots, rules.json, the plugin hook's shell guard). How an existing home moves (abcd created it, so the principle admits a move abcd can prove it made), and how both names are read during the move, is the spec's.
+5. 2026-10-03, the product thinker: the revised press release confirmed as written.
+6. 2026-10-03, the product thinker, proposing it themselves: abcd moves nothing. An existing `~/.abcd` stops every abcd command and hook before it writes anything, naming the one rename command, until the person renames it; with both folders present abcd stops and names both. The automatic move (decision 2's "every install moves once") and its proof that abcd made the folder are dropped, so no move code is carried towards v1.0.0. The press release's sentence and criterion D2 are reworded to match and confirmed in that wording. The facilitator's caveat, recorded with it: the check runs before any write on every entry point, the hooks and the status line included, or a hook could create a fresh `~/.abcd.noindex` beside the old folder.
 
 ## Open Questions
 
 The four questions filed with the draft are answered: the method and the whole home by decisions 1 and 2, existing installs by decisions 2 and 4, other platforms by decision 3. Nothing remains for the product thinker beyond confirming the press release, the Mechanism, the Scope Conditions, and the acceptance criteria. Owed to the spec, for the technical facilitator:
 
-- How the move is made atomic: a rename within one volume, how abcd proves it created the folder it moves, and what a run that starts while another session holds the home open does.
-- How both names are read during the move: which readers fall back to `~/.abcd`, for how long, and how the trust paths (path-entry, trusted-roots, rules.json) read the home without admitting a symlinked alias the home-scope readers refuse today.
-- The shell guard's path: how the plugin hook's guard finds the home, before and after the move, when it runs ahead of the binary.
+- Where the stop is checked (decision 6): the one home resolver refuses before any write, on every entry point, the plugin hooks' shell wrapper and the status line included; and how the trust paths (path-entry, trusted-roots, rules.json) read the new home without admitting a symlinked alias the home-scope readers refuse today.
+- The shell guard's path: how the plugin hook's guard finds the home when it runs ahead of the binary, and what it says while the old folder stands.
 - The superseding records decision 4 lists, one each for adr-2609091248200336's location and for invariant 15's transcript store spelling, and the line each changes in AGENTS.md, the docs, the brief, and the managed block.
 
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: a run that opens many lanes no longer waits on the indexer, as it did on 2 October (the product thinker, 2026-10-03).

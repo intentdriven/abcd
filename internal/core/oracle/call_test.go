@@ -247,3 +247,15 @@ func TestTheReceiptCarriesTheProviderCall(t *testing.T) {
 		}
 	}
 }
+
+// newStalledProvider is a provider that takes the brief and never answers,
+// until the client goes away; it returns its base URL.
+func newStalledProvider(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
