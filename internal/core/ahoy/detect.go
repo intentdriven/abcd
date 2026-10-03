@@ -569,7 +569,7 @@ func cfgGap(id, title, detail string) Gap {
 // answer in a piped run, so the fix hint says so (iss-2609120447486547).
 func configValueGap(id, key, title, detail string) Gap {
 	g := cfgGap(id, title, detail)
-	if h, ok := HelpFor(key); ok && h.Flag != "" {
+	if h, ok := helpFor(key); ok && h.Flag != "" {
 		g.FixHint = "ahoy install asks for the value; " + h.FlagHint() + "."
 		if key == "oracle_backend" && !oracleBackendAsked() {
 			g.FixHint = "ahoy install records " + oracleBackendDefault + ", the only reviewer abcd ships, without asking; " +

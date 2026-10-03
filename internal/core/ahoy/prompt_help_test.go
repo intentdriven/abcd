@@ -76,7 +76,7 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 	}
 
 	for key, choices := range p.asked {
-		h, ok := HelpFor(key)
+		h, ok := helpFor(key)
 		if !ok {
 			t.Errorf("%s: no canonical help, so a front door must invent what the question means", key)
 			continue
@@ -106,7 +106,7 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 // names: the backend question must say what an oracle is, and every answer
 // must state what it asks of the person (keys, tools, cost), not only its name.
 func TestOracleHelpDefinesTheOracleAndItsCosts(t *testing.T) {
-	h, ok := HelpFor("oracle_backend")
+	h, ok := helpFor("oracle_backend")
 	if !ok {
 		t.Fatal("no help for oracle_backend")
 	}
@@ -124,11 +124,11 @@ func TestOracleHelpDefinesTheOracleAndItsCosts(t *testing.T) {
 // TestHelpForUnknownKeyIsAbsent keeps the lookup honest: a key core does not
 // ask about has no help, so a front door renders nothing rather than a guess.
 func TestHelpForUnknownKeyIsAbsent(t *testing.T) {
-	if _, ok := HelpFor("no_such_question"); ok {
-		t.Fatal("HelpFor invented help for an unknown key")
+	if _, ok := helpFor("no_such_question"); ok {
+		t.Fatal("helpFor invented help for an unknown key")
 	}
-	if _, ok := HelpFor(elementPromptPrefix + "no_such_element"); ok {
-		t.Fatal("HelpFor invented help for an unknown status-line element")
+	if _, ok := helpFor(elementPromptPrefix + "no_such_element"); ok {
+		t.Fatal("helpFor invented help for an unknown status-line element")
 	}
 }
 
@@ -139,7 +139,7 @@ func TestHelpForUnknownKeyIsAbsent(t *testing.T) {
 // install narrows the public block. Elsewhere it would describe a repository
 // the person does not have, at the cost of rows the question cannot spare.
 func TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
-	base, ok := HelpFor("visibility")
+	base, ok := helpFor("visibility")
 	if !ok {
 		t.Fatal("no help for visibility")
 	}
@@ -169,16 +169,16 @@ func TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	if h.Meaning("private") != base.Meaning("private") || h.About != base.About || h.Flag != base.Flag {
 		t.Errorf("the caveat changed more than public's meaning: %+v", h)
 	}
-	if again, _ := HelpFor("visibility"); again.Meaning("public") != base.Meaning("public") {
+	if again, _ := helpFor("visibility"); again.Meaning("public") != base.Meaning("public") {
 		t.Errorf("HelpIn wrote its variant into the canonical help: %q", again.Meaning("public"))
 	}
 
 	// Every other question reads the same in every repository.
 	for _, key := range []string{"docs_target", "scan_deep", artefactKindKey, elementPromptPrefix + "repo", "no_such_question"} {
-		want, wantOK := HelpFor(key)
+		want, wantOK := helpFor(key)
 		got, gotOK := HelpIn(tracked.Root(), key)
 		if gotOK != wantOK || got.About != want.About || got.ChangeLaterLine() != want.ChangeLaterLine() {
-			t.Errorf("%s: HelpIn differs from HelpFor", key)
+			t.Errorf("%s: HelpIn differs from helpFor", key)
 		}
 	}
 }

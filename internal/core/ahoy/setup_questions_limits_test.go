@@ -122,7 +122,7 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 		helps = append(helps, h)
 	}
 	for k := range statusLineElementAbout {
-		h, ok := HelpFor(elementPromptPrefix + string(k))
+		h, ok := helpFor(elementPromptPrefix + string(k))
 		if !ok {
 			t.Fatalf("no help for the status-line element %s", k)
 		}

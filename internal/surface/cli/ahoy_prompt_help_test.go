@@ -50,7 +50,7 @@ func TestAhoyInstallRendersCoreHelpAboveEachValueQuestion(t *testing.T) {
 		t.Errorf("the report does not say once what reviewer it recorded and how to choose another: %q", res.Notes)
 	}
 	for _, key := range []string{"visibility", "docs_target"} {
-		h, ok := ahoy.HelpFor(key)
+		h, ok := ahoy.HelpIn("", key)
 		if !ok {
 			t.Fatalf("core has no help for %s", key)
 		}
@@ -91,7 +91,7 @@ func TestStdinPrompterRendersNoHelpForAnUnknownKey(t *testing.T) {
 // (iss-2610031236155833). The artefact kind is such a question: its answer is
 // changed in the file the release commands read.
 func TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater(t *testing.T) {
-	h, ok := ahoy.HelpFor("artefact_kind")
+	h, ok := ahoy.HelpIn("", "artefact_kind")
 	if !ok {
 		t.Fatal("core has no help for artefact_kind")
 	}
@@ -124,7 +124,7 @@ func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	untracked := gittest.NewRepo(t)
 
 	withCaveat, _ := ahoy.HelpIn(tracked.Root(), "visibility")
-	without, _ := ahoy.HelpFor("visibility")
+	without, _ := ahoy.HelpIn("", "visibility")
 	if withCaveat.Meaning("public") == without.Meaning("public") {
 		t.Fatal("core shows a repository with tracked records no caveat; nothing to render")
 	}
@@ -267,7 +267,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 	}
 	prev := 0
 	for _, key := range []string{"visibility", "docs_target"} {
-		h, _ := ahoy.HelpFor(key)
+		h, _ := ahoy.HelpIn("", key)
 		q := strings.Index(transcript, key+" (")
 		if q < 0 {
 			t.Fatalf("%s was not asked:\n%s", key, transcript)

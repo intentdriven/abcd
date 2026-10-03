@@ -4231,7 +4231,7 @@ type stdinPrompter struct {
 	yesApproved, yesTold bool
 	// cwd is the repository the install runs in, so each question's help is
 	// the one core gives for it (ahoy.HelpIn); empty, the help is the same
-	// in every repository (ahoy.HelpFor).
+	// in every repository.
 	cwd string
 }
 

@@ -317,8 +317,8 @@ question. Consent writes the full table there, owner-only, where every row can
 be read and edited. A second, separate question offers the same
 table for the repository at `.abcd/config/oracle-routing.json`, which is
 committed, applies to everyone working in the repository, and wins over each
-machine's table. Present the question's text and relay the user's answer to
-each question; never answer them for the user. Each routing question, like every question
+machine's table. Present that text and relay the user's answer to each
+question; never answer them for the user. Each routing question, like every question
 this page asks through your question tool, follows the asking rules in
 `commands/intent.md` (the block marked `generated: asking-rules`): the text
 being decided first, quoted in full, and the question last. Declining writes nothing and records nothing, so

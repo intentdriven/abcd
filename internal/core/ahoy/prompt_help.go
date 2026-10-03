@@ -230,25 +230,27 @@ func visibilityHelp(tracked bool) PromptHelp {
 }
 
 // HelpIn returns the help for the value question keyed key as the install asks
-// it in the repository at cwd. It is HelpFor, except where a fact holds only in
+// it in the repository at cwd. It is helpFor, except where a fact holds only in
 // some repositories: public visibility's caveat is shown only where .abcd/
 // holds tracked files, the same evidence the install narrows the public block
 // on. The words stay core's; a front door passes the repository and renders
-// what comes back (iss-2610031236155833). An empty cwd is HelpFor.
+// what comes back (iss-2610031236155833). An empty cwd gives the help that is
+// the same in every repository (helpFor).
 func HelpIn(cwd, key string) (PromptHelp, bool) {
 	if key != "visibility" || cwd == "" {
-		return HelpFor(key)
+		return helpFor(key)
 	}
 	_, narrowed := effectiveVisibilityEntries(cwd, "public")
 	return visibilityHelp(narrowed), true
 }
 
-// HelpFor returns the canonical help for the value question keyed key, and
+// helpFor returns the canonical help for the value question keyed key, and
 // false for a key the install does not ask about, so a front door renders
 // nothing rather than a guess. It is the same in every repository: the
 // visibility help is the one a repository whose .abcd/ holds no tracked files
-// sees, and HelpIn is the help for one repository.
-func HelpFor(key string) (PromptHelp, bool) {
+// sees, and HelpIn, the one lookup front doors call, is the help for one
+// repository.
+func helpFor(key string) (PromptHelp, bool) {
 	if h, ok := promptHelp[key]; ok {
 		return h, true
 	}
