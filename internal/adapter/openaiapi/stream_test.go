@@ -610,3 +610,41 @@ func TestAFailedStatusIsReportedWithoutWaitingOutItsBody(t *testing.T) {
 		}
 	})
 }
+
+// TestAnErrorBodyCutOffIsNotQuoted: a failed call's body that is cut off, by
+// the wait for it or by its size bound, can end inside an echoed key, where
+// the scrub (which matches whole key forms) cannot see it. So a cut-off body
+// is never quoted: the status is reported, and the refusal says the body was
+// cut off.
+func TestAnErrorBodyCutOffIsNotQuoted(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body  string
+		stall bool
+	}{
+		"cut by the wait": {body: `{"error":{"message":"invalid key ` + testKey[:len(testKey)-6], stall: true},
+		"cut by the size": {body: strings.Repeat(" ", maxErrorBodyBytes-20) + testKey},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = io.WriteString(w, tc.body)
+				w.(http.Flusher).Flush()
+				if tc.stall {
+					<-r.Context().Done()
+				}
+			})
+			c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(time.Minute), WithTimeout(time.Minute))
+			c.errorWait = 200 * time.Millisecond
+			_, err, _ := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
+			if err == nil {
+				t.Fatal("Complete succeeded against a 401")
+			}
+			if strings.Contains(err.Error(), testKey[:12]) {
+				t.Fatalf("a prefix of the key reached the error: %v", err)
+			}
+			if !strings.Contains(err.Error(), "answered HTTP 401") || !strings.Contains(err.Error(), "cut off") {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}

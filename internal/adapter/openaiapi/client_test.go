@@ -652,7 +652,7 @@ func jsonEscapeMixed(s string) string {
 }
 
 // TestAnEscapedKeyInAnUndecodableBodyIsScrubbed: a body that is not
-// decodable JSON (plain text, or a JSON body cut at the error-body bound) is
+// decodable JSON (plain text, or a JSON body the provider cut short) is
 // scrubbed as thoroughly as one that is: the key written as JSON escapes,
 // ordinary ASCII runes included, reaches no error, and neither does a key
 // that itself carries a backslash sequence or a character reference written
@@ -694,7 +694,13 @@ func TestAnEscapedKeyInAnUndecodableBodyIsScrubbed(t *testing.T) {
 					t.Fatalf("the error carries the key as %q: %s", leak, msg)
 				}
 			}
-			if !strings.Contains(msg, "[credential]") {
+			// A body cut at the error-body bound is not quoted at all
+			// (iss-2610031210435016); every other body is quoted, scrubbed.
+			if strings.HasPrefix(c.name, "JSON cut at the bound") {
+				if !strings.Contains(msg, "cut off") {
+					t.Fatalf("error = %s, want the body named as cut off and not quoted", msg)
+				}
+			} else if !strings.Contains(msg, "[credential]") {
 				t.Fatalf("error = %s, want the key replaced by [credential] and the provider's text around it kept", msg)
 			}
 		})

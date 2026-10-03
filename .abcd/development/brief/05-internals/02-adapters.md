@@ -91,9 +91,11 @@ call and no route setting carries. A stream is also bounded between its events
 (ten minutes, the window the record saw a gateway hold a request that had sent
 nothing): a keep-alive is a read but not an answer, so a server that sends only
 keep-alives is refused at that limit and the refusal says so. A failed status is
-reported on the status, its body waited for half a minute at most, and a
-caller's own earlier deadline is named as the caller's, not as the adapter's
-cap. Whichever limit fires, and a cancelled caller, closes the connection, so a
+reported on the status, its body waited for half a minute at most and quoted
+only when it arrived whole: a body cut off by that wait or by its size bound
+can end inside an echoed key the scrub cannot recognise, so it is named as cut
+off instead. A caller's own earlier deadline is named as the caller's, not as
+the adapter's cap. Whichever limit fires, and a cancelled caller, closes the connection, so a
 server still generating sees the client go away and can stop. The setup's verification call is one short exchange and
 keeps its own two-minute bound.
 

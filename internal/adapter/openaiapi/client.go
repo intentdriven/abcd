@@ -97,7 +97,8 @@ const (
 	// Each event repeats the chunk's envelope, so a long answer streamed a
 	// token at a time is many times its own size.
 	maxStreamBytes = 16 * MaxResponseBytes
-	// maxErrorBodyBytes bounds how much of a failed call's body is read at all.
+	// maxErrorBodyBytes bounds how much of a failed call's body is read at all;
+	// a body longer than this is reported as cut off and not quoted.
 	maxErrorBodyBytes = 16 << 10
 	// maxEcho bounds how much of a provider's own text an error carries.
 	maxEcho = 200
@@ -367,15 +368,20 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 }
 
 // failedStatus reports a non-200 answer on its status, quoting what its body
-// says when the body arrives within errorWait. The body is read past liveBody,
-// so its bytes re-arm no limit: the first-byte, idle and total limits still
-// run, and whichever ends the read first, the status is reported with whatever
-// arrived.
+// says when the whole body arrives within errorWait and maxErrorBodyBytes. The
+// body is read past liveBody, so its bytes re-arm no limit: the first-byte,
+// idle and total limits still run, and whichever ends the read first, the
+// status is reported. A body cut off, by the wait, the size bound or a read
+// error, is not quoted at all: the cut can end inside a key the provider
+// echoed, and the scrub matches whole key forms only (iss-2610031210435016).
 func (c *Client) failedStatus(l *limits, resp *http.Response) error {
 	wait := time.AfterFunc(c.errorWait, func() { l.cancel(errErrorBody) })
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
 	wait.Stop()
 	msg := fmt.Sprintf("%s answered HTTP %d", c.host, resp.StatusCode)
+	if err != nil || len(raw) > maxErrorBodyBytes {
+		return c.fail(msg + " (its body was cut off, so it is not quoted)")
+	}
 	if said := c.providerSaid(raw); said != "" {
 		msg += ": " + said
 	}
@@ -611,8 +617,8 @@ func unfence(s string) string {
 // one, else the body itself. A provider may echo the key in any field and in
 // any encoding its stack applies, so the text is decoded before the scrub: a
 // JSON body is re-rendered from its decoded values (every \u, \/ and other
-// escape undone), a body that does not decode (plain text, or JSON cut at
-// maxErrorBodyBytes) has its JSON escapes undone where they stand
+// escape undone), a body that does not decode (plain text, or JSON the
+// provider cut short) has its JSON escapes undone where they stand
 // (unescapeJSONText), and HTML character references are resolved, which
 // leaves the key, wherever it was, in the one literal form the scrub
 // matches. The scrub runs before each decoding step as well as after it, so
