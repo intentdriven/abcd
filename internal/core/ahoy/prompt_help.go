@@ -148,10 +148,10 @@ var promptHelp = map[string]PromptHelp{
 		Key:  "scan_deep",
 		Flag: "--scan-deep",
 		About: "Whether this private repository also wants a deep secret scan with trufflehog, a scanner found on this machine " +
-			"that can check whether a leaked password or key still works. abcd's own built-in secret scan is not affected by the answer.",
+			"that checks whether a leaked password or key still works. abcd's built-in secret scan runs either way.",
 		Choices: []ChoiceHelp{
-			{Value: "true", Meaning: "records that you want the deeper trufflehog scan (scan.deep in .abcd/config.json). " +
-				"No abcd check runs trufflehog yet, so today this records your preference and changes nothing else."},
+			{Value: "true", Meaning: "records that you want the trufflehog scan (scan.deep in .abcd/config.json); " +
+				"no abcd check runs it yet, so nothing else changes."},
 			{Value: "false", Meaning: "keeps to abcd's built-in secret scan and records that choice, so the question is not asked again."},
 		},
 	},
@@ -177,7 +177,7 @@ var promptHelp = map[string]PromptHelp{
 			"It is a matter of style, not correctness, so this repository chooses. The answer is written into " +
 			".abcd/docs-lint.json, where it can be changed later.",
 		Choices: []ChoiceHelp{
-			{Value: "blocking", Meaning: "an em dash in a list item fails the documentation check, so it must be fixed before the check passes."},
+			{Value: "blocking", Meaning: "an em dash in a list item fails the documentation check until it is fixed."},
 			{Value: "warning", Meaning: "an em dash in a list item is reported, but the documentation check still passes."},
 		},
 	},

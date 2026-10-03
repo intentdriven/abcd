@@ -93,7 +93,8 @@ func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Questi
 // "<question id> <rule>", recorded in iss-2610031236155833: docs_target offers
 // more answers than four options hold, which itd-2610030814013772's retirement
 // of claude_md and both brings inside the limit, and the rest exceed the rows
-// under the provisional host figures, which wait on step 5's calibration.
+// under the host figures calibrated on 2026-10-03 (step 5), each still taller
+// than its copy can be cut to without losing what an answer means.
 // oracle_backend is not asked while one answer has an adapter (the 2026-10-03
 // ruling), so it owes nothing while it stays unasked. The list may only shrink: a
 // question that newly breaks a limit fails, and so does a line here that no
@@ -103,7 +104,6 @@ var setupLimitsOwed = map[string]bool{
 	"docs_target options":                 true,
 	"docs_target rows":                    true,
 	"oracle_routing.machine_offered rows": true,
-	"scan_deep rows":                      true,
 	"visibility rows":                     true,
 }
 
