@@ -2,7 +2,10 @@ package ahoy
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // EnsureMarker installs, refreshes, or (dryRun) predicts the CURRENT abcd marker
@@ -17,13 +20,21 @@ import (
 // It wraps the existing unexported classify/install machinery: dryRun maps
 // classifyMarker(path) → current→(false,nil), missing/outdated→(true,nil),
 // symlink or unplaceable→(false, err); a real run calls installMarkerFile(path) → its
-// error wrapped as (false, err), else (wrote, nil).
+// error wrapped as (false, err), else (wrote, nil). classifyMarker folds a read
+// error into missing (detection's reading), but the write refuses a file it
+// cannot read, so the dry run re-reads a missing file and returns that same
+// refusal for anything but an absent one (iss-2610032048280232).
 func EnsureMarker(path string, dryRun bool) (changed bool, err error) {
 	if dryRun {
 		switch classifyMarker(path) {
 		case markerCurrent:
 			return false, nil
-		case markerMissing, markerOutdated:
+		case markerMissing:
+			if _, rerr := fsutil.ReadGuarded(path, maxAhoyFileBytes); rerr != nil && !os.IsNotExist(rerr) {
+				return false, fmt.Errorf("cannot write marker to %s: it could not be read: %w", filepath.Base(path), rerr)
+			}
+			return true, nil
+		case markerOutdated:
 			return true, nil
 		case markerSymlink:
 			return false, fmt.Errorf("cannot write marker to %s: it is a symlink", filepath.Base(path))
