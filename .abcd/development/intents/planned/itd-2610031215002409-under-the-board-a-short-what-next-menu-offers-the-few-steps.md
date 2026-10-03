@@ -1,8 +1,8 @@
 ---
 id: itd-2610031215002409
 slug: under-the-board-a-short-what-next-menu-offers-the-few-steps
-spec_id: null
-kind: null
+spec_id: spc-2610031844158884
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2610031214560142, itd-2610030810370060]
@@ -12,6 +12,7 @@ production_mode: hand-written
 related_issues: [iss-2609201954342967]
 related_intents: [itd-2610030810350727, itd-201, itd-200]
 related_adrs: [adr-49]
+impact: additive
 ---
 
 # A 'what next?' menu under the board offers the next step, in a Terminal and in a Claude Code session
@@ -20,7 +21,7 @@ related_adrs: [adr-49]
 
 > Under the board, a short 'what next?' menu offers at most four steps that make sense now: start building the next item, see everything that is ready, open the view for the facilitator, and 'Nothing for now', always last. When an answer is waiting on you, 'Answer what is waiting' takes the place of 'See everything that is ready'. In a Terminal you choose with the arrow keys or by number, drawn the same way as abcd's other questions; in a Claude Code session the same choices arrive as a question in the host session. Choosing to start building begins at once, because the choice already names what will be built. While the menu waits, the status line says an answer is waiting on whoever the view is for, and it clears when you answer or leave; in a Terminal this is the one thing opening the board ever changes. Where nobody can answer, such as output going to a file or another program, the board prints alone with no menu, and one setting on your machine turns the menu off for good.
 
-_Proposed by the facilitator from decisions 4 to 11 (2026-10-03); to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 4 to 11 (2026-10-03); confirmed as written by the product thinker, 2026-10-03._
 
 Superseded wording (filed 2026-10-03, kept for the record):
 
@@ -43,29 +44,29 @@ Typed links (front matter): builds on itd-2610031214560142 (the board it ends) a
 
 [F] We expect a product thinker to take the next step from the board without knowing any command, because the board ends on at most four moves that follow the state, each saying what choosing it does. The claim is falsified if, in the dated receipt of criterion B6, the product thinker reaches for a command they were not shown to take the step they wanted after reading the board.
 
-_Proposed by the facilitator, 2026-10-03; to be confirmed by the product thinker._
+_Proposed by the facilitator, 2026-10-03; confirmed by the product thinker, 2026-10-03._
 
 ## Scope Conditions
 
-- In a Terminal, only where both input and output are a Terminal, in a repository abcd manages whose local tier exists, and the machine setting has not turned the menu off.
-- macOS and Linux, the two systems abcd is released for.
-- In a host session, the host's question tool asks and today's status rules set and clear the waiting-on status; abcd itself writes it only in a Terminal, where it takes the answer.
-- One person answers at a time; the status the menu sets follows the view shown, not a guess at who is at the keyboard.
-- At most four moves, the limit both the Terminal layout and the host's question tool take.
+- In a Terminal, only where both input and output are a Terminal, in a repository abcd manages whose local tier exists, and the machine setting has not turned the menu off. <!-- cond: cond-2610031844154919 -->
+- macOS and Linux, the two systems abcd is released for. <!-- cond: cond-2610031844150092 -->
+- In a host session, the host's question tool asks and today's status rules set and clear the waiting-on status; abcd itself writes it only in a Terminal, where it takes the answer. <!-- cond: cond-2610031844155104 -->
+- One person answers at a time; the status the menu sets follows the view shown, not a guess at who is at the keyboard. <!-- cond: cond-2610031844153513 -->
+- At most four moves, the limit both the Terminal layout and the host's question tool take. <!-- cond: cond-2610031844156951 -->
 
-_Proposed by the facilitator, 2026-10-03; to be confirmed by the product thinker._
+_Proposed by the facilitator, 2026-10-03; confirmed by the product thinker, 2026-10-03._
 
 ## Acceptance Criteria
 
 _Agent-seeded from the design review's B1 to B7 of 2026-10-03 as they survive decisions 4 to 11; all unconfirmed, each walked with its addressee at the planning interview._
 
-- B1 (product thinker; unconfirmed; go test with an injected terminal) Given terminals in and out in a managed repository with a READY intent and nothing waiting, when the board ends, then a "Product Q1" menu shows four options, the last "Nothing for now", chosen by the arrow keys or by number (example: 1 Start building <title>; 2 See everything that is ready; 3 Open the view for the facilitator; 4 Nothing for now).
-- B2 (product thinker; unconfirmed; go test) Given an answer waiting on the product thinker, then "Answer what is waiting" takes the place of "See everything that is ready" and there are still at most four options with "Nothing for now" last; given no READY intent, "Start building…" is absent and at least two options remain (example: 1 Answer what is waiting; 2 Open the view for the facilitator; 3 Nothing for now).
-- B3 (technical facilitator; unconfirmed; go test) Given stdin or stdout not a terminal, the machine setting turning the menu off, or a repository with no local tier, then the board prints with no menu and no ESC byte, and the status store's bytes are the same before and after.
-- B4 (technical facilitator; unconfirmed; go test) Given the menu drawn under the product thinker's view, then while it waits the status reads product-thinker and the question marker exists, and under the facilitator's view the chip reads "Tech Q1" and the status reads facilitator; after an answer, Ctrl-C or end of input the status reads managed, the marker is gone and the Terminal is restored.
-- B5 (technical facilitator; unconfirmed; go test) Given the menu's question object for either view and either state, then question.CheckLimits returns no finding for the Product or the Tech addressee.
-- B6 (product thinker; unconfirmed; dated receipt) Given the board asked for in a host session, then the same options arrive through the host's question tool with the same labels and descriptions, the status line reads "waiting on the product thinker" while it waits and "abcd-managed" after the answer, and the product thinker takes the step they wanted without a command.
-- B7 (product thinker; unconfirmed; go test) Given "Start building <title>" chosen, then the build loop starts on that item at once with no second question, and a refusal (an open question, a hold, a peer holding it) is shown in plain words under the board (example: "Not started: another working copy is building <title>.").
+- B1 (product thinker; CONFIRMED 2026-10-03; go test with an injected terminal) Given terminals in and out in a managed repository with a READY intent and nothing waiting, when the board ends, then a "Product Q1" menu shows four options, the last "Nothing for now", chosen by the arrow keys or by number (example: 1 Start building <title>; 2 See everything that is ready; 3 Open the view for the facilitator; 4 Nothing for now).
+- B2 (product thinker; CONFIRMED 2026-10-03; go test) Given an answer waiting on the product thinker, then "Answer what is waiting" takes the place of "See everything that is ready" and there are still at most four options with "Nothing for now" last; given no READY intent, "Start building…" is absent and at least two options remain (example: 1 Answer what is waiting; 2 Open the view for the facilitator; 3 Nothing for now).
+- B3 (technical facilitator; CONFIRMED 2026-10-03; go test) Given stdin or stdout not a terminal, the machine setting turning the menu off, or a repository with no local tier, then the board prints with no menu and no ESC byte, and the status store's bytes are the same before and after.
+- B4 (technical facilitator; CONFIRMED 2026-10-03; go test) Given the menu drawn under the product thinker's view, then while it waits the status reads product-thinker and the question marker exists, and under the facilitator's view the chip reads "Tech Q1" and the status reads facilitator; after an answer, Ctrl-C or end of input the status reads managed, the marker is gone and the Terminal is restored.
+- B5 (technical facilitator; CONFIRMED 2026-10-03; go test) Given the menu's question object for either view and either state, then question.CheckLimits returns no finding for the Product or the Tech addressee.
+- B6 (product thinker; CONFIRMED 2026-10-03; dated receipt) Given the board asked for in a host session, then the same options arrive through the host's question tool with the same labels and descriptions, the status line reads "waiting on the product thinker" while it waits and "abcd-managed" after the answer, and the product thinker takes the step they wanted without a command.
+- B7 (product thinker; CONFIRMED 2026-10-03; go test) Given "Start building <title>" chosen, then the build loop starts on that item at once with no second question, and a refusal (an open question, a hold, a peer holding it) is shown in plain words under the board (example: "Not started: another working copy is building <title>.").
 
 _Impact expected: additive. The menu is new and can be switched off for good; the board it ends prints as before wherever nobody can answer._
 
@@ -92,6 +93,7 @@ Kept for the spec: CheckLimits over the menu object, with "Nothing for now" as t
 9. 2026-10-03, the technical facilitator, decided without a question: the status the menu sets follows the view shown (product-thinker under the product thinker's view, facilitator under the facilitator's), amending decision 2's "waiting on the product thinker" for the facilitator's view, under itd-201's rule that the register follows the addressee.
 10. 2026-10-03, the technical facilitator, decided without a question: with stdin or stdout not a terminal there is no menu and no escape byte (adr-49, invariant 13).
 11. 2026-10-03, the technical facilitator, decided without a question: decision 3 (two records, linked, not one bundle) supersedes decision 1's question of whether the two are one bundle, as itd-2610031214560142's decision 13 records for the pair.
+12. 2026-10-03, the product thinker: the revised press release confirmed as written.
 
 ## Open Questions
 
@@ -103,3 +105,7 @@ Kept for the spec: CheckLimits over the menu object, with "Nothing for now" as t
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: a product thinker sees what is next and takes the next step without learning abcd's commands (the product thinker, 2026-10-03).

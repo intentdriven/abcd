@@ -1,8 +1,8 @@
 ---
 id: itd-2610031214560142
 slug: when-you-type-abcd-in-a-terminal-or-ask-for-the-board-in-a
-spec_id: null
-kind: null
+spec_id: spc-2610031844142274
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -12,6 +12,7 @@ production_mode: hand-written
 related_issues: [iss-2610031207397996, iss-2609201954342967]
 related_intents: [itd-200]
 related_adrs: [adr-49]
+impact: additive
 ---
 
 # The board shows a product thinker what waits on them and what comes next, in a few plain lines
@@ -20,7 +21,7 @@ related_adrs: [adr-49]
 
 > When you open abcd's board in a Terminal, or ask for it in a Claude Code session, you see in a few plain lines where things stand and what comes next. The top line says whose view it is, 'view for the product thinker', in the colour the status line already gives you, and the words alone carry the meaning, so nothing is lost where colour is off. Below it come what is being built now and the next three things to build, each title fitted to your window, then how many more are ready and how many are parked for later. Every state is said by a word and a symbol as well as a colour. The board always opens on your view, and one step opens the view for the facilitator, with the details a developer works from. In the host session you see the board abcd draws, passed on unchanged rather than retold. Showing the board never marks anyone as owing an answer.
 
-_Proposed by the facilitator from decisions 2 and 5 to 13 (2026-10-03); to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 2 and 5 to 13 (2026-10-03); confirmed as written by the product thinker, 2026-10-03._
 
 Superseded wording (filed 2026-10-03, kept for the record):
 
@@ -47,29 +48,29 @@ Typed links (front matter): related to iss-2610031207397996 (the width fix, fixe
 
 [F] We expect a product thinker to name the next thing to be built within one screen of an 80-column Terminal, without scrolling, because their view carries only whose view it is, titles, counts and state words, in a fixed order fitted to the window, and no record id or developer row. The claim is falsified if, in the dated receipt of criterion A4, the product thinker cannot name the next item from the first screen.
 
-_Proposed by the facilitator, 2026-10-03; to be confirmed by the product thinker._
+_Proposed by the facilitator, 2026-10-03; confirmed by the product thinker, 2026-10-03._
 
 ## Scope Conditions
 
-- A Terminal at least 80 columns wide, on macOS and Linux, the two systems abcd is released for.
-- A repository abcd manages, whose intent store and ledger are those of this working copy; a record held only in another working copy is not counted.
-- Output that is not a Terminal (a file, another program) gets plain text with no colour or cursor codes (adr-49, invariant 13).
-- The view label's colour shows only where the terminal paints 24-bit colour; elsewhere, and under NO_COLOR, the words alone carry it.
-- In the host session the board is abcd's markdown form passed on unchanged; that the agent does so is measured by an eval, not assumed.
+- A Terminal at least 80 columns wide, on macOS and Linux, the two systems abcd is released for. <!-- cond: cond-2610031844149402 -->
+- A repository abcd manages, whose intent store and ledger are those of this working copy; a record held only in another working copy is not counted. <!-- cond: cond-2610031844141308 -->
+- Output that is not a Terminal (a file, another program) gets plain text with no colour or cursor codes (adr-49, invariant 13). <!-- cond: cond-2610031844146361 -->
+- The view label's colour shows only where the terminal paints 24-bit colour; elsewhere, and under NO_COLOR, the words alone carry it. <!-- cond: cond-2610031844148905 -->
+- In the host session the board is abcd's markdown form passed on unchanged; that the agent does so is measured by an eval, not assumed. <!-- cond: cond-2610031844148490 -->
 
-_Proposed by the facilitator, 2026-10-03; to be confirmed by the product thinker._
+_Proposed by the facilitator, 2026-10-03; confirmed by the product thinker, 2026-10-03._
 
 ## Acceptance Criteria
 
 _Agent-seeded from the design review's A1 to A7 of 2026-10-03 as they survive decisions 5 to 13; all unconfirmed, each walked with its addressee at the planning interview._
 
-- A1 (product thinker; unconfirmed; go test) Given a managed fixture with one intent being built, three more READY and 40 parked, and a stored status naming either role, when `abcd` runs on an 80-column Terminal, then line 1 reads "view for the product thinker", followed by one Now title, three Next titles and "N more ready, 40 parked", with no owed-answer line, no record id and no command word (golden; example: "view for the product thinker", "● building: The board shows…", "○ next: …" three times, "11 more ready, 40 parked").
-- A2 (technical facilitator; unconfirmed; go test) Given the same fixture, when stdout is a pipe or `--json` is passed, then no ESC byte is emitted and the text form still carries "view for the product thinker" (invariant 13).
-- A3 (technical facilitator; unconfirmed; go test) Given the markdown form, then the output is a markdown list with no table and no ANSI, byte-equal to its golden, and the plugin page for the bare command runs that exact invocation and tells the agent to paste it unchanged in one fenced block (a page-reading test, as the existing page tests do).
-- A4 (product thinker; unconfirmed; dated receipt from an eval) Given the board asked for in a host session, then the fenced block in the reply diffs empty against the markdown form run in the same checkout, on three sessions across two models, and the product thinker names the next item from it.
-- A5 (technical facilitator; unconfirmed; go test) Given the facilitator's view asked for (by the menu in a Terminal, by a flag in a pipe or a session), then the label reads "view for the facilitator", every row of today's board is present (ids, presence, peers, inbox, oracle, reviews, receipts), and each planned intent carries its spec id and an in-flight marker where its spec is open and its branch exists (golden on today's fixture plus one in-flight spec; example: "itd-… spc-… in flight").
-- A6 (product thinker; unconfirmed; go test) Given NO_COLOR or `--no-color` on a Terminal, then the same lines appear uncoloured, each state word with its symbol (● ○ •), and with the plain-text fallback when the locale is not UTF-8 (example: "* building:" in place of "● building:").
-- A7 (technical facilitator; unconfirmed; go test) Given a title longer than the window and a title of wide glyphs, when drawn at 80 columns, then no line exceeds 80 columns as internal/textwidth.Columns counts them.
+- A1 (product thinker; CONFIRMED 2026-10-03; go test) Given a managed fixture with one intent being built, three more READY and 40 parked, and a stored status naming either role, when `abcd` runs on an 80-column Terminal, then line 1 reads "view for the product thinker", followed by one Now title, three Next titles and "N more ready, 40 parked", with no owed-answer line, no record id and no command word (golden; example: "view for the product thinker", "● building: The board shows…", "○ next: …" three times, "11 more ready, 40 parked").
+- A2 (technical facilitator; CONFIRMED 2026-10-03; go test) Given the same fixture, when stdout is a pipe or `--json` is passed, then no ESC byte is emitted and the text form still carries "view for the product thinker" (invariant 13).
+- A3 (technical facilitator; CONFIRMED 2026-10-03; go test) Given the markdown form, then the output is a markdown list with no table and no ANSI, byte-equal to its golden, and the plugin page for the bare command runs that exact invocation and tells the agent to paste it unchanged in one fenced block (a page-reading test, as the existing page tests do).
+- A4 (product thinker; CONFIRMED 2026-10-03; dated receipt from an eval) Given the board asked for in a host session, then the fenced block in the reply diffs empty against the markdown form run in the same checkout, on three sessions across two models, and the product thinker names the next item from it.
+- A5 (technical facilitator; CONFIRMED 2026-10-03; go test) Given the facilitator's view asked for (by the menu in a Terminal, by a flag in a pipe or a session), then the label reads "view for the facilitator", every row of today's board is present (ids, presence, peers, inbox, oracle, reviews, receipts), and each planned intent carries its spec id and an in-flight marker where its spec is open and its branch exists (golden on today's fixture plus one in-flight spec; example: "itd-… spc-… in flight").
+- A6 (product thinker; CONFIRMED 2026-10-03; go test) Given NO_COLOR or `--no-color` on a Terminal, then the same lines appear uncoloured, each state word with its symbol (● ○ •), and with the plain-text fallback when the locale is not UTF-8 (example: "* building:" in place of "● building:").
+- A7 (technical facilitator; CONFIRMED 2026-10-03; go test) Given a title longer than the window and a title of wide glyphs, when drawn at 80 columns, then no line exceeds 80 columns as internal/textwidth.Columns counts them.
 
 _Impact expected: additive. The board gains a view and a markdown form; nothing a person relies on today is removed, because the facilitator's view keeps today's rows (decision 11)._
 
@@ -98,6 +99,7 @@ Kept for the spec: what the board can derive about a waiting answer is a role an
 11. 2026-10-03, the technical facilitator, decided without a question: the facilitator's view keeps today's rows, with iss-2609201954342967's spec-id and in-flight rows added (decision 7).
 12. 2026-10-03, the technical facilitator, decided without a question: in a host session the board is abcd's own markdown form pasted unchanged, and the check that the agent relays it unchanged is an eval.
 13. 2026-10-03, the technical facilitator, decided without a question: decision 4 (two records, linked, not one bundle) supersedes decision 1's question of whether the two are planned as one bundle.
+14. 2026-10-03, the product thinker: the revised press release confirmed as written.
 
 ## Open Questions
 
@@ -110,3 +112,7 @@ Kept for the spec: what the board can derive about a waiting answer is a role an
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: a product thinker sees what is next and takes the next step without learning abcd's commands (the product thinker, 2026-10-03).
