@@ -616,7 +616,22 @@ func detectMarkerDrift(cwd string) []Gap {
 	files := writableMarkerTargets(target)
 	var gaps []Gap
 	for _, name := range files {
-		switch classifyMarker(filepath.Join(cwd, name)) {
+		target := filepath.Join(cwd, name)
+		state := classifyMarker(target)
+		// A block to plant or rewrite needs the file's folder: the write
+		// creates its lock and its temporary file beside the target, and asks
+		// this same check first. A folder that refuses makes the gap one
+		// install can never close (iss-2610032303183254).
+		if (state == markerMissing || state == markerOutdated) && markerFolderRefusal(target) != nil {
+			gaps = append(gaps, Gap{
+				ID: "marker.unwritable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " cannot take abcd's block",
+				Detail:  "The folder " + name + " is in does not let abcd create a file there, so the block cannot be planted or rewritten.",
+				FixHint: "Let your account create files in the folder that holds " + name + "; ahoy install then plants the block.", Required: true, Resolvable: false,
+			})
+			continue
+		}
+		switch state {
 		case markerMissing:
 			gaps = append(gaps, Gap{
 				ID: "marker.missing", Category: PluginOwned, Scope: "repo",

@@ -148,9 +148,10 @@ func installMarkerFile(targetPath string) (wrote bool, err error) {
 // markerFolderRefusal says why the folder holding targetPath cannot take the
 // files a marker write creates beside it, its lock and the atomic write's
 // temporary file, or nil when it can. It asks the kernel (access(2), as the
-// real user), which creates nothing, so the embark probe can ask it too and
-// predict the refusal its write would meet (iss-2610032202263648). Root, which
-// access answers yes for, is refused by the write itself as before.
+// real user), which creates nothing, so the embark probe and detection can ask
+// it too and predict the refusal its write would meet (iss-2610032202263648,
+// iss-2610032303183254). For root access answers yes, and the write then
+// succeeds, so the prediction holds there as well.
 func markerFolderRefusal(targetPath string) error {
 	const wOK, xOK = 0x2, 0x1 // W_OK and X_OK, the same on darwin and linux
 	if err := syscall.Access(filepath.Dir(targetPath), wOK|xOK); err != nil {

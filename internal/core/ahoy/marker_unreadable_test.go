@@ -138,3 +138,76 @@ func TestMarkerRefusalsCarryNoPath(t *testing.T) {
 		pathFree(t, "removeMarkerFile", err.Error(), repo)
 	}
 }
+
+// TestMarkerInAFolderThatCannotTakeItIsNotAResolvableGap: an absent
+// conventions file, or one whose block is out of date, in a folder that does
+// not let abcd create a file there is a gap install can never close, since
+// the write creates its lock and its temporary file beside the target. It is
+// raised non-resolvable, naming the file and not its folder's path, and
+// install leaves no marker gap outstanding (iss-2610032303183254).
+func TestMarkerInAFolderThatCannotTakeItIsNotAResolvableGap(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root creates files in every folder")
+	}
+	for _, tc := range []struct {
+		name  string
+		shape func(t *testing.T, p string)
+	}{
+		{"absent", func(t *testing.T, p string) {
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"outdated", func(t *testing.T, p string) {
+			if err := os.WriteFile(p, []byte("# Project\n\n<!-- BEGIN ABCD -->\nold\n<!-- END ABCD -->\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupHermetic(t)
+			repo := t.TempDir()
+			if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+				t.Fatal(err)
+			}
+			tc.shape(t, filepath.Join(repo, "AGENTS.md"))
+			if err := os.Chmod(repo, 0o555); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(repo, 0o755) })
+
+			det, err := Detect(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			named := false
+			for _, g := range det.Gaps {
+				if !strings.HasPrefix(g.ID, "marker.") {
+					continue
+				}
+				if g.Resolvable {
+					t.Errorf("gap %s is resolvable, but the folder cannot take the file: %+v", g.ID, g)
+				}
+				if g.ID == "marker.unwritable" && strings.Contains(g.Title, "AGENTS.md") {
+					named = true
+					pathFree(t, "the gap", g.Title+" "+g.Detail+" "+g.FixHint, repo)
+				}
+			}
+			if !named {
+				t.Errorf("no marker.unwritable gap names AGENTS.md: %+v", det.Gaps)
+			}
+			res, err := Install(repo, installOpts(), RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range res.Remaining {
+				if strings.HasPrefix(id, "marker.") {
+					t.Errorf("install leaves %s outstanding, a gap it can never close: %+v", id, res)
+				}
+			}
+		})
+	}
+}
