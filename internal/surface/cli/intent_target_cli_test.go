@@ -151,3 +151,62 @@ func TestLaunchPreviewAndCutListTheTargetedIntent(t *testing.T) {
 		t.Errorf("the cut must rewrite the missed target to next:\n%s", rec)
 	}
 }
+
+// targetedLines returns every `targeted:` line of a cut render, trimmed, so an
+// assertion judges each line whole rather than a substring of the report.
+func targetedLines(out []byte) map[string]string {
+	lines := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "targeted:")
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		id, _, _ := strings.Cut(rest, " ")
+		lines[id] = rest
+	}
+	return lines
+}
+
+// TestTheCutsDryRunNamesTheTargetsItMoves is iss-2610020718369838 at the
+// front door: the cut's dry run — the emit step of the ship verb and the
+// read-only changelog preview, which share one render — marks the target the
+// cut passes as moving to next, and leaves the target past the cut unmarked,
+// so a reader no longer compares each target with the derived tag by hand.
+// The JSON carries the same list.
+func TestTheCutsDryRunNamesTheTargetsItMoves(t *testing.T) {
+	r := shipRenderableRepo(t)
+	r.Write(".abcd/development/intents/planned/itd-91-due.md",
+		"---\nid: itd-91\nimpact: additive\ntarget_release: v0.4.1\n---\n# Due\n")
+	r.Write(".abcd/development/intents/planned/itd-93-later.md",
+		"---\nid: itd-93\nimpact: additive\ntarget_release: v0.5.0\n---\n# Later\n")
+	r.Commit("one target the cut reaches, one past it")
+
+	const moved = "itd-91 targets v0.4.1, not shipped (.abcd/development/intents/planned/itd-91-due.md); the cut moves it to next"
+	const stands = "itd-93 targets v0.5.0, not shipped (.abcd/development/intents/planned/itd-93-later.md)"
+	for _, args := range [][]string{{"launch", "ship"}, {"changelog"}} {
+		out, err := shipIn(t, r, args...)
+		if code := exitCodeOf(err); code != 0 {
+			t.Fatalf("%v: a target must not refuse the cut: exit = %d\n%s", args, code, out)
+		}
+		lines := targetedLines(out)
+		if lines["itd-91"] != moved {
+			t.Errorf("%v: the target the cut reaches must be named as moving:\n got %q\nwant %q", args, lines["itd-91"], moved)
+		}
+		if lines["itd-93"] != stands {
+			t.Errorf("%v: the target past the cut must stay unmarked:\n got %q\nwant %q", args, lines["itd-93"], stands)
+		}
+	}
+
+	js, err := shipIn(t, r, "launch", "ship", "--json")
+	if err != nil {
+		t.Fatalf("emit --json: %v\n%s", err, js)
+	}
+	var cut release.Cut
+	if err := json.Unmarshal(js, &cut); err != nil {
+		t.Fatalf("emit JSON: %v\n%s", err, js)
+	}
+	if len(cut.Moves) != 1 || cut.Moves[0].ID != "itd-91" || cut.Moves[0].From != "v0.4.1" {
+		t.Errorf("the cut JSON must carry the one move: %+v", cut.Moves)
+	}
+}

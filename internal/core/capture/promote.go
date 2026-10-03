@@ -120,6 +120,11 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	if err != nil {
 		return PromoteResult{}, err
 	}
+	// An id the ledger does not hold, on either route, is refused before the
+	// preamble provisions anything (iss-2609302305500526).
+	if err := requireHeld(issuesRoot, req.ID); err != nil {
+		return PromoteResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return PromoteResult{}, err
 	}

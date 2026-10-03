@@ -39,11 +39,12 @@ Every write acts for a joined session, named with `--session` on every call.
 Join first, stating the role:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement join --session <id> --role first|second [--ceiling <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement join --session <id> --role first|second [--ceiling <n>] [--model <id>] [--reason <text>] --json
 ```
 
-Joining writes the session's record and a `session_open` line, and signals no
-one: the first session learns of a second only by reading the run state, and
+Joining writes the session's record and a `session_open` line, carrying the
+model the session runs (`--model`) and why it opens (`--reason`: run start,
+window, resume) when they are given, and signals no one: the first session learns of a second only by reading the run state, and
 never waits on it. Joining again with the same role is a resume; asking for the
 other role is refused.
 
@@ -238,23 +239,36 @@ first, a round's validators in order, then the implementer of a new lane. A
 run's `waiting` with the time it was first held; the move that later serves it
 records the minutes it waited. A lane opens for a spec step once every step it
 needs has landed (the step's `- needs:` line, or by default every step before
-it), whatever the ceiling: its worktree and brief are made, and only its
-implementer waits for a slot. A landing waiting on the forge's merge holds only
-its own lane: the call moves another lane, names the wait under `blocked` (a
-`blocked:` line in the text form) and in `next`, and gives the wait (exit 3)
-only when nothing else moves. Any other refusal of a stage the binary performs,
-a missing preflight receipt included, is the call's answer, and no other lane
-moves.
+it), and only when a helper is free to take it: a slot is left for its
+implementer beside every lane opened whose implementer is not out yet, and
+fewer step worktrees than the ceiling are on disk. Its worktree is made just
+before its implementer takes the slot; a step waiting for a helper has none,
+and waits under `waiting` as `step <n>`. A landing waiting on the forge's merge,
+or on the preflight receipt its push needs, holds only its own lane: the call
+moves another lane, names the wait under `blocked` (a `blocked:` line in the
+text form) and in `next`, and gives the wait (exit 3) only when nothing else
+moves. A lane waiting for its receipt reads "waiting for its full check (since
+HH:MM)" in `blocked`, in `status` and in `alive`, the time the wait began (UTC)
+kept on its landing as `check_wait_since` until the push. Any other refusal of
+a stage the binary performs is the call's answer, and no other lane moves.
 
 `receipt` looks the path up among every outstanding await of the run and
 advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing.
 
-When the stage hands the lane to a role that `roles.<role>.runner` routes to a
-command-line runner (`claude` or `opencode`, enabled under `runner.<name>` in
-`~/.abcd/config.json`), `step` starts it itself, in the lane's worktree, with
-the same brief and receipt path; the claude runner runs in print mode with
-`--bare`, so the repository's hooks, plugins and configured servers do not run.
+When the stage hands the lane to a role that `roles.<role>.runner` in
+`~/.abcd/config.json` routes to a command-line runner (`claude` or `opencode`,
+enabled under `runner.<name>` there), `step` starts it itself, in the lane's
+worktree, with the same brief and receipt path; the claude runner runs in print
+mode with `--bare`, so the repository's hooks, plugins and configured servers do
+not run, and opencode runs with `--pure` and its project configuration, its
+`CLAUDE.md` reading and its external skills switched off, so the repository's
+instruction files, settings, agents, skills and plugins do not reach it. A route
+the repository's `.abcd/config.json` sets to a runner is skipped with a warning
+on stderr: the role is the host's, as if unrouted, and no fallback is recorded.
+One it sets to `host` keeps the role on the host over the machine's route to a
+runner, with a warning naming the repository's file, the role and the machine
+route it displaced.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
@@ -369,12 +383,17 @@ over each of the run's lanes' own diff.
    what the hook names is settled.
 3. It pushes the lane's branch only once the repository's preflight receipt
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
-   lane's head. Without one, `step` refuses naming it: run `make preflight` in
+   lane's head. Without one, the lane waits for its full check (exit 3 when
+   nothing else moves) and every other lane carries on: run `make preflight` in
    the lane's worktree, then `step` again. The push runs the pre-push hook and
    never skips or forces anything.
 4. It opens the pull request through `gh`, with a body written from the run's
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
+   The body ends with `Assisted-by: abcd:<version>` (abcd wrote its text) and
+   then one `Assisted-by:` per model the lane's receipts reported (the change
+   carries their work); a lane whose receipt reports no model is refused before
+   the pull request is opened.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
    the lane's base: where a merge queue gates the default branch AND a ruleset
    requires a person's approval (an approving review count of one or more, or

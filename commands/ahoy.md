@@ -1,7 +1,7 @@
 ---
 name: ahoy
 description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
-argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect]"
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect | credential]"
 block: people
 ---
 
@@ -21,8 +21,9 @@ the credential's verification call succeeds.
 A mode is a flag on the bare verb, one at a time; a distinct action is a
 sub-verb.
 
-Read `$ARGUMENTS` for the sub-verb or the mode. No argument, or `status`, is the
-bare read-only detection pass below.
+Read `$ARGUMENTS` for the sub-verb or the mode. No argument is the bare
+read-only detection pass below; the binary refuses any other word, `status`
+included.
 
 ## Bare — read-only detection
 
@@ -481,9 +482,12 @@ The bare board names the same adapter as an optional gap
 adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 A route the configuration read skips (a repository's route to a provider that
 holds a key, a repository's route that is not `<provider>/<model>` or whose
-name is not a plain lower-case name, a route to a provider this machine has
-not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
-`detail` one line per skipped route; relay each line.
+name is not a plain lower-case name, a repository's route to a model a provider
+holding no key does not list, a route to a provider this machine has not
+configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
+`detail` one line per skipped route; relay each line. A skipped
+repository route never displaces the machine's: where `~/.abcd/config.json`
+routes the same name, that route applies.
 Declining is not running `connect`, and it changes nothing.
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>

@@ -134,7 +134,11 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
 			"~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,\n" +
 			"a model route the allowlist does not admit included, is refused at the runner stage and\n" +
-			"nothing is created or launched.\n\n" +
+			"nothing is created or launched. Only a route in ~/.abcd/config.json hands a role to a\n" +
+			"runner, which spends the person's own key: one the repository's .abcd/config.json sets to\n" +
+			"a runner is skipped with a warning on stderr, and the role runs on the host as if unrouted.\n" +
+			"One it sets to host keeps the role on the host over a runner route in ~/.abcd/config.json,\n" +
+			"since that spends nothing of the person's, with a warning naming both routes.\n\n" +
 			"An issue id (iss-N, validated by shape) is built as one lane. Its checks are the\n" +
 			"repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing\n" +
 			"open blocks it, its category and severity are ones the rule takes, it carries a remedy a\n" +
@@ -349,6 +353,9 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
 	}
 	renderLanding(w, l.PR, l.Landing)
+	if cw := l.CheckWait(); cw != "" {
+		fmt.Fprintf(w, "    %s: run the repository's preflight in the lane's worktree, which mints its receipt\n", cw)
+	}
 	for _, a := range l.Awaits {
 		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(a.Role),
 			termsafe.Sanitize(fsutil.RedactHome(a.Receipt)), termsafe.Sanitize(fsutil.RedactHome(a.Brief)))
@@ -568,9 +575,12 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"implementer. A call that finds the ceiling reached hands out nothing, exits 0 naming\n" +
 			"every lane alive with the role and receipt it awaits, and records the held work with the\n" +
 			"time it was first held. A lane opens for a spec step once every step it needs has\n" +
-			"landed (its `- needs:` line, or by default every earlier step), whatever the ceiling: its\n" +
-			"worktree and brief are made, and its implementer waits for a slot. A landing waiting on\n" +
-			"the forge's merge holds only its own lane: the call moves another and names the wait\n" +
+			"landed (its `- needs:` line, or by default every earlier step), and only when a helper is\n" +
+			"free to take it: a slot is left for its implementer, and fewer step worktrees than the\n" +
+			"ceiling are on disk; its worktree is made just before its implementer takes the slot, and\n" +
+			"a step waiting for a helper has none. A landing waiting on the forge's merge, or on the\n" +
+			"preflight receipt its push needs (shown as waiting for its full check, since the time\n" +
+			"the wait began), holds only its own lane: the call moves another and names the wait\n" +
 			"under blocked:; any other refused stage is the call's answer. Landing is one lane at a\n" +
 			"time; a lane whose sibling landed\n" +
 			"since its base is synced first (the default branch merged in with a merge commit, never a\n" +
@@ -622,8 +632,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
-			"A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled\n" +
-			"under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage\n" +
+			"A role routed to a command-line runner (roles.<role>.runner in ~/.abcd/config.json:\n" +
+			"claude or opencode, enabled under runner.<name> there) is started by the step itself when the stage\n" +
 			"hands the lane out: the runner gets the brief and the receipt path the host would get,\n" +
 			"runs in the lane's worktree (claude with the role's tools granted and nothing else asked,\n" +
 			"opencode under its own permission configuration), its\n" +
@@ -631,7 +641,13 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"own verifier, so a verified one completes the stage in the same call and the result and\n" +
 			"the run record name the route that ran it. The claude runner runs in print mode with\n" +
 			"--bare, so the repository's hooks, plugins and configured servers do not run; opencode\n" +
-			"runs in run mode with --pure. A runner that is absent, refuses, fails, runs past its time,\n" +
+			"runs in run mode with --pure and with its project configuration, its CLAUDE.md reading and\n" +
+			"its external skills switched off, so the repository's instruction files, settings, agents,\n" +
+			"skills and plugins do not reach it. A route the repository's .abcd/config.json sets to a\n" +
+			"runner is skipped with a warning on stderr, and the role is the host's as if unrouted;\n" +
+			"one it sets to host keeps the role on the host over the machine's runner route, with a\n" +
+			"warning naming both routes.\n" +
+			"A runner that is absent, refuses, fails, runs past its time,\n" +
 			"or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed\n" +
 			"the role as with no runner, and the call records one fallback naming the role, the runner\n" +
 			"asked for, the reason and the route that runs it. A role left unset is the host's, and\n" +

@@ -2106,6 +2106,29 @@ Per hand-run, append:
   table is the lane's prediction only. The metering flag and the sanitiser's ADR row are the two places the
   prediction most expects the interview to change.
 
+### Run: the worktree store (itd-2609091014076309, 2026-09-30, product thinker's planning interview)
+
+- **Input:** the draft, after two adversarial reviews (design/feasibility, then record-discipline). The
+  record-discipline reviewer proposed the table and a HOLD on three record findings, all applied before the
+  interview.
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | `abcd ahoy worktree add/list/prune`, the board line, the AGENTS.md pointer | capability | intent itd-2609091014076309 | refines itd-2609201916151817 |
+  | The build loop's lane primitive moving into the store package | plumbing | the brief's internals | refines itd-2609201916151817 (spc-2609202134338445 piece 6) |
+  | Delete only what passes the proof of belonging | trust rule | already adr-2609091248200336; a brief invariant cites it | none new |
+  | The user's directory is theirs | stance | already the principle `the-users-directory-is-theirs` | none new |
+  | Quiet-worktree sweep, the local tier on reclaim, exit codes | scope decisions | this interview | carried from itd-148's 2026-08-26 rulings |
+
+- **Verdict:** FILE-AS-IS, confirmed by the product thinker after a plain-language restatement (the first
+  statement, in record ids and package names, was sent back unanswered for plain words).
+- **Grade:** the prediction held on routing. What it did not predict: the interview added a capability row
+  that was not in the draft, a notes archive (a sibling store of the transcript store) that takes a reclaimed
+  worktree's local tier instead of deleting it. It joined this intent as part of `prune`, not as a new record,
+  because it has no user moment apart from the reclaim.
+- **Notes:** the decomposition question is the one most likely to be written for the facilitator by habit.
+  Put to the product thinker, it needs an everyday analogy for "record homes" before the rows mean anything.
+
 ### Run: the consistency pass follow-ups (itd-2609291923559186, 2026-10-02, product thinker's planning interview)
 
 - **Input:** the draft, after two adversarial reviews (design/feasibility, then record-discipline). The

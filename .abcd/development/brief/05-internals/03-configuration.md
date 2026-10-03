@@ -119,10 +119,18 @@ rather than skipped:
   one model, and matching ignores case, OpenRouter's `~` alias prefix and a
   `:variant` suffix. No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
-- **A route is `<provider>/<model>`.** A role or a judgement type pointed at a
-  model its provider does not list is refused naming the list, and one pointed at
-  a provider this machine has not configured is a diagnostic: the step stays on
-  the host, as it would with nothing configured (adr-25). A role outside the
+- **A route is `<provider>/<model>`.** A role or a judgement type the
+  machine's file points at a model its provider does not list is refused naming
+  the list. The same route in a repository's `.abcd/config.json`, to a provider
+  that holds no key, is skipped with one diagnostic naming the file, the route
+  and the list, and the machine's own route to that name, if it has one,
+  applies in its place (the technical facilitator's ruling CD3 of 2026-10-02);
+  a model the denylist matches is refused from either file. A route pointed at
+  a provider this machine has not configured is a diagnostic, not a refusal: a
+  repository's such route is skipped where `~/.abcd/config.json` routes the
+  same name, so the owner's setting applies (ruling CD4 of 2026-10-02), and
+  otherwise the step stays on the host, as it would with nothing configured
+  (adr-25, amended 2026-10-02). A role outside the
   roster is named and skipped, like an orphan routing row. A route's name is a
   plain lower-case name. A repository route that is not `<provider>/<model>`,
   or whose name only the repository spells otherwise (a lookalike letter from
@@ -365,7 +373,7 @@ apart. Three properties are load-bearing:
 
 ## The worktree store
 
-**Design target (itd-2609091014076309, `intents/drafts/`; unbuilt).** No
+**Design target (itd-2609091014076309, `intents/planned/`; unbuilt).** No
 `worktree` verb exists in the shipped binary, and nothing in it creates or reads
 this store. What follows is the layout the intent commits to, on the rule
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
@@ -397,6 +405,25 @@ Three properties are load-bearing, and each is the intent's to deliver:
 
 Worktrees already sitting beside a checkout are outside the store by definition:
 listed as such, never moved, and retired by the user's own `git worktree remove`.
+
+**One primitive owns the store and its notes archive.** One package under `ahoy`
+derives the lane from the root commit, makes every level of
+`~/.abcd/worktrees/<root-sha>/` and of the notes archive
+`~/.abcd/notes/<root-sha>/` one at a time as a real directory that is the
+caller's alone, and adds, lists and removes worktrees through git. The build
+loop's lanes are made through it, so a worktree enters the store one way. Before
+`prune` removes a worktree it moves the worktree's git-ignored
+`.abcd/.work.local/` into `~/.abcd/notes/<root-sha>/<UTC timestamp>-<name>/`
+beside a manifest, redacted on write by the transcript store's pass; nothing
+reclaims the archive.
+
+**Invariant: the store deletes only what passes its proof of belonging.** A
+directory leaves the lane only when git lists it as a worktree of this
+repository, its real path lies inside this repository's lane, and its own common
+directory is this checkout's; anything else is reported and left in place, and no
+removal is forced. It is the reclaim half of
+[adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md):
+a tool that must not create in the user's space must not delete there either.
 
 ## The two `.abcd/` scopes
 

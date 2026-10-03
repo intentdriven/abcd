@@ -271,11 +271,12 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 		t.Fatalf("the audit the closing lane took is ingested at the close, not owed again:\n%s", shipped)
 	}
 
-	// No preflight receipt: refused, nothing pushed.
+	// No preflight receipt: the lane waits for its full check (ruling DR6d-2),
+	// nothing pushed.
 	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	r := mustRefusal(t, err)
-	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "preflight receipt") || !strings.Contains(r.Remedy, "preflight") {
-		t.Fatalf("a landing without the preflight receipt is refused naming it: %+v", r)
+	if r.Stage != string(StageLand) || !r.Contention || !strings.Contains(r.Reason, "preflight receipt") || !strings.Contains(r.Remedy, "preflight") {
+		t.Fatalf("a landing without the preflight receipt waits for it, naming it: %+v", r)
 	}
 	if got := f.remoteBranch(t, l.Branch); got != "" {
 		t.Fatalf("nothing is pushed without the receipt, but the remote has %s", got)
@@ -301,6 +302,9 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("the body is built from the records (%q missing):\n%s", want, body)
 		}
+	}
+	if !strings.HasSuffix(string(body), "\n"+composedAssistedBy()+"\nAssisted-by: Claude:claude-test-5\n") {
+		t.Fatalf("the body ends with the abcd label and the receipt's model:\n%s", body)
 	}
 	if l = currentLane(t, f.repo, f.runID); l.PR != 7 {
 		t.Fatalf("the state records the pull request: %+v", l)

@@ -15,7 +15,9 @@ package runner
 //     config-injection variable scrubbed (gitutil.ScrubbedEnv), so an inherited
 //     GIT_DIR cannot aim the role's git at another repository, while the
 //     person's own git identity and the harness's own credential variables
-//     pass through untouched: abcd never logs a harness in;
+//     pass through untouched: abcd never logs a harness in; an adapter's own
+//     sealing switches (seal) are set over whatever the parent holds for
+//     them, so the parent cannot reopen what the adapter closes;
 //   - stdin is the null device, the working directory is the repository;
 //   - stdout and stderr are each bounded; a harness writing past the bound is
 //     cut off and the run fails naming the bound;
@@ -33,6 +35,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -151,14 +154,15 @@ var fileGroup = func(fi os.FileInfo) (uint32, bool) {
 	return st.Gid, true
 }
 
-// run starts bin with args in dir and waits for it, at most timeout.
-func (l launcher) run(ctx context.Context, runner, bin string, args []string, dir string, timeout time.Duration) (procResult, error) {
+// run starts bin with args in dir and waits for it, at most timeout. seal is
+// the adapter's KEY=value switches, set over the parent's.
+func (l launcher) run(ctx context.Context, runner, bin string, args, seal []string, dir string, timeout time.Duration) (procResult, error) {
 	// #nosec G204 -- bin is a fixed harness name resolved by admit (absolute,
 	// outside the repository); args are a vector built by the adapter, never a
 	// shell line.
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = gitutil.ScrubbedEnv()
+	cmd.Env = sealedEnv(gitutil.ScrubbedEnv(), seal)
 	cmd.Stdin = nil
 	var out, errb bytes.Buffer
 	ow := &bounded{w: &out, remaining: l.maxStdout}
@@ -213,6 +217,26 @@ func (l launcher) run(ctx context.Context, runner, bin string, args []string, di
 		return res, fail(runner, ReasonFailed, "%s did not complete", name)
 	}
 	return res, nil
+}
+
+// sealedEnv is env with every key seal sets removed, then seal appended: one
+// entry per switch, the adapter's value.
+func sealedEnv(env, seal []string) []string {
+	if len(seal) == 0 {
+		return env
+	}
+	set := map[string]bool{}
+	for _, kv := range seal {
+		k, _, _ := strings.Cut(kv, "=")
+		set[k] = true
+	}
+	out := make([]string, 0, len(env)+len(seal))
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); !set[k] {
+			out = append(out, kv)
+		}
+	}
+	return append(out, seal...)
 }
 
 func (l launcher) bound(stream string) int {

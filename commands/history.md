@@ -1,7 +1,7 @@
 ---
 name: history
 description: "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb."
-argument-hint: "list [--session <id>] | separation | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest [<path>...] | migrate | reconstruct <session-id>"
+argument-hint: "list [--session <id>] | separation | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest --into <repo-root> [<path>...] | migrate | reconstruct <session-id>"
 block: agents
 ---
 

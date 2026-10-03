@@ -134,7 +134,11 @@ runner-up and why it lost, and the falsifier. The first lane's worktree stage
 appends it to the intent in the lane's own worktree, through the intent store's
 grounds writer and lock, and commits that one file as the lane branch's first
 commit (decision 6), under the configured git identity, with hooks off and the
-isolated environment less the global-config neutralisers. A worktree stage run
+isolated environment less the global-config neutralisers. Its message is
+computed too, so it ends with the abcd label, `Assisted-by: abcd:<version>`,
+naming the binary's release version or `dev` for a build with none: abcd
+composed the text from record facts, so neither a model's trailer nor the
+human-only `None` would be true of it. A worktree stage run
 again adopts a commit already on the branch only when it is that commit byte
 for byte: the pick's subject, the picked intent's record the one path changed,
 and that record the base's with the one entry appended. The lane records the
@@ -297,16 +301,22 @@ nothing, names every lane alive with what it awaits, and records the held work
 under `waiting`; the move that later serves it records the whole minutes it
 waited. A lane opens for a spec step once every step it needs has landed (its
 `- needs:` line, or by default every step before it, ruling DR6b), so a spec
-that declares no needs lands its steps one lane at a time; it opens whatever the
-ceiling, its worktree and brief made, and only its implementer waits for a slot.
-A landing waiting on the forge's merge holds only that lane: the move goes to
-another and names the wait under `blocked` and in its next move. Any other
-refusal of a stage the binary performs, a missing preflight receipt included, is
+that declares no needs lands its steps one lane at a time. It opens only when a
+helper is free to take it (ruling DR6d-1): a slot is left for its implementer
+beside every lane opened whose implementer is not out yet, and fewer step
+worktrees than the ceiling are on disk, so its worktree is made just before its
+implementer takes the slot, and a step waiting for a helper has no worktree. A
+landing waiting on the forge's merge, or on the preflight receipt its push needs
+(ruling DR6d-2), holds only that lane: the move goes to another and names the
+wait under `blocked` and in its next move. The lane waiting for its receipt
+shows "waiting for its full check (since HH:MM)", the time the wait began kept
+on its landing across moves. Any other refusal of a stage the binary performs is
 the move's answer, and no other lane moves.
 
 Landing is one lane at a time, the lower spec step first. A lane whose sibling
 landed since its base is synced before its landing begins: the default branch is
-merged into its branch with a merge commit, never a rebase, and a fresh round
+merged into its branch with a merge commit, never a rebase, whose computed
+message carries the same abcd label as the pick's commit, and a fresh round
 judges the merge head. A conflicting merge is aborted with the branch unchanged
 and goes to a fresh implementer with a sync brief; its receipt must carry the
 merged sha as an ancestor of its head. A sync counts no fix round. The closing
@@ -339,14 +349,29 @@ resume in a build that carries it. This build carries every stage of the
 sequence.
 
 **The runner** (piece 3, the process driver's loop half, and itd-2609201916056194).
-A role's route is `roles.<role>.runner` in the layered configuration, the
-repository's or the machine's: `host`, the default, or a runner the machine
-enables under `runner.<name>` (`claude`, `opencode`), with an optional model
-route admitted against its provider's allowlist. The build verb reads the
+A role's route is `roles.<role>.runner` in the layered configuration: `host`,
+the default, or a runner the machine enables under `runner.<name>` (`claude`,
+`opencode`), with an optional model route admitted against its provider's
+allowlist. Only a personal layer, the machine's file or the person's own
+invocation, may hand a role to a runner, because a runner spends the person's
+key (rulings RN2 and OC2, 2026-10-02): the repository's file may keep a role on
+the host, and a route there to a runner is skipped with a diagnostic naming the
+file, the key and the machine's file, so the next layer's route, or the host,
+runs the role. A repository route to the host stands over the machine's route to
+a runner, since it spends nothing of the person's, and is reported with a
+diagnostic naming the repository's file, the role and the machine route it
+displaced, so a checkout never cancels the person's choice without a word. The claude runner stays bare, on an API key alone, and a person
+whose account is a subscription runs the role in their own session. The
+opencode runner is sealed against the repository it runs in (ruling OC1): no
+external plugins, and its project configuration, its compatibility reading of
+the other harness's instruction files and skills, and its external skills
+switched off, so the repository's instruction files, settings, agents, skills
+and plugins do not reach it; the person's own global configuration, which names
+the model and the server, still applies. The build verb reads the
 configuration before it creates a run, and the step verb before each stage; a
 fault, a model route off the allowlist included, is refused at the `runner`
 stage before anything is created or launched, and its diagnostics (a role no
-agent answers to) go to stderr. When a stage hands the lane to a role that is
+agent answers to, a repository route to a runner) go to stderr. When a stage hands the lane to a role that is
 routed to a runner, the step verb starts the runner itself, outside the run's
 lock, in the lane's worktree, with the brief and the receipt path the host would
 be handed, the claude runner with the role's tools granted without a prompt and
@@ -539,14 +564,21 @@ until the last step.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook
-   checks, read before any connection opens. The push is a plain `git push`
-   from the checkout the run lives in, so the hook runs; nothing is skipped or
-   forced.
+   checks, read before any connection opens. Until it exists the lane waits
+   for its full check, as a landing waits on the forge's merge, and every other
+   lane carries on (ruling DR6d-2). The push is a plain `git push` from the
+   checkout the run lives in, so the hook runs; nothing is skipped or forced.
 4. It opens the pull request through the forge client the repository already
    uses (`gh`), with a title and a body written from the run's records (the
    step, the spec, the intent, the passing round's verdicts, the close, each
    resolved capture, and the `Delivers:` and `Resolves:` lines) and passed
-   through the outbound scrub. After creating it, the loop re-reads the body the
+   through the outbound scrub. The body ends with `Assisted-by: abcd:<version>`,
+   abcd having composed it from record facts (the version as the pick commit
+   names it), then one `Assisted-by:` per distinct model the lane's receipts
+   reported, in the order first reported, since the change it describes carries
+   those models' work and a squash merge may adopt it as the commit message; a
+   lane whose receipts report no model, or name abcd as one, is refused before
+   the forge is called, as the records commit is. After creating it, the loop re-reads the body the
    forge holds, and a session URL or tool footer the harness appended is
    stripped and the body read again; one that survives is refused. A pull
    request a killed invocation opened is found by the forge's listing of the

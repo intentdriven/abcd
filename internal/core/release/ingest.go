@@ -130,8 +130,10 @@ var writableSections = []Section{SectionAdded, SectionFixed}
 // sectionNotice is the sentence every derived section carries directly under
 // its heading, once per cut, so the absence of the other sections reads as a
 // rule rather than an oversight. It is written per section rather than once in
-// the preamble because a reader lands on a release, not on the file.
-const sectionNotice = "These notes list what was added and what was fixed; changes to earlier behaviour are not claimed until the composer can see the previous release."
+// the preamble because a reader lands on a release, not on the file. It says
+// where a break is stated, because a breaking cut prints its Breaking lines
+// directly beneath it (iss-2610020728592612).
+const sectionNotice = "These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release."
 
 // writableSection is writableSections as a membership test.
 var writableSection = func() map[Section]bool {
@@ -385,7 +387,9 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	heading := datedHeading(cut.NextTag, at)
 	// Each target this cut passes becomes `next` in the same change, and the
 	// section names the move (itd-2609212103572513 criterion 3, ruling BS1).
-	moves := launch.MissedTargets(cut.Targets, cut.NextTag)
+	// The list is the one the emitted cut carries, so the write moves exactly
+	// what the dry run named.
+	moves := cut.Moves
 	section := renderSection(heading, entries, changelog.TargetMoveNote(moves))
 	content, before, err := insertSection(root, section)
 	if err != nil {

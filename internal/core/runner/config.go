@@ -5,9 +5,12 @@ package runner
 // placed roles.<role>.runner in layered.Config):
 //
 //   - roles.<role>.runner names host (the default when unset) or a runner.
-//     The repository and the machine may set it; the higher layer wins per
-//     role. A role no agent answers to is a diagnostic and is skipped, as the
-//     oracle's routes are.
+//     Only a personal layer (the machine, or the invocation's own flag) may
+//     name a runner (rulings RN2 and OC2 of 2026-10-02); the repository may
+//     name host alone, and a repository route to a runner is a diagnostic and
+//     is skipped, so the next layer's route, or the host, applies. The higher
+//     layer wins per role among the routes that stand. A role no agent
+//     answers to is a diagnostic and is skipped, as the oracle's routes are.
 //   - runner.<name> enables a shipped runner (claude, opencode) on this
 //     machine, with an optional model route, <provider>/<model>, admitted
 //     against that provider's allowlist when the configuration is read
@@ -23,9 +26,13 @@ package runner
 // on whose credential it runs, is the person's own machine's to say, as a
 // provider block is (the product thinker's ruling AA(b) of 2026-09-29, which
 // keeps a repository from spending the person's paid key). A repository that
-// declares it is refused, naming the machine's file. A role a repository
-// routes to a runner the machine did not enable runs nowhere new: the dispatch
-// records it as an absent runner and falls back.
+// declares it is refused, naming the machine's file. Handing a role to a
+// runner spends the same key, so that too is the person's alone: a
+// repository's route to a runner is skipped (RN2: the claude runner stays
+// bare on an API key, and a person whose account is a subscription runs the
+// role in their own session). A role the person routes to a runner the
+// machine did not enable runs nowhere new: the dispatch records it as an
+// absent runner and falls back.
 
 import (
 	"fmt"
@@ -214,25 +221,70 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		if len(found) == 0 {
 			continue
 		}
-		win := found[0]
-		where := fmt.Sprintf("%s (%s layer): %s", win.Origin, win.Layer, key)
 		if !known[role] {
+			where := fmt.Sprintf("%s (%s layer): %s", found[0].Origin, found[0].Layer, key)
 			c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s names %q, which is neither an agent in the roster "+
 				"nor the implementer; the route is skipped and the remaining routes apply", where, role))
 			continue
 		}
-		name, err := layered.Decode[string](win.Raw)
-		if err != nil {
-			return fmt.Errorf("runner: %s: %w", where, err)
+		// found lists the layers that set the key, highest first (flag, repo,
+		// machine): the first route that stands is the role's.
+		for i, f := range found {
+			where := fmt.Sprintf("%s (%s layer): %s", f.Origin, f.Layer, key)
+			name, err := layered.Decode[string](f.Raw)
+			if err != nil {
+				return fmt.Errorf("runner: %s: %w", where, err)
+			}
+			if name != Host && !isRunnerName(name) {
+				return fmt.Errorf("runner: %s is %q; a role runs on %s or one of the runners %s",
+					where, layered.BoundKey(name), Host, strings.Join(runnerNames, ", "))
+			}
+			if name != Host && !personal(f.Layer) {
+				c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which is skipped: only the person's own "+
+					"route may hand a role to a runner, which spends their key, so the role runs as if the repository "+
+					"had not routed it; to run it through %s, set %s in %s", where, name, name, key, layered.Config.MachineOrigin()))
+				continue
+			}
+			if name == Host && !personal(f.Layer) {
+				if d, ok := displacedRunnerRoute(found[i+1:]); ok {
+					c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which keeps the role on the host "+
+						"over the person's own route %s (%s layer): %s, which names %q; the repository's route stands, "+
+						"because it spends nothing of theirs, so the runner is not launched for this role",
+						where, name, d.Origin, d.Layer, key, d.Runner))
+				}
+			}
+			c.roles[role] = Route{Runner: name, Layer: f.Layer, Origin: f.Origin}
+			break
 		}
-		if name != Host && !isRunnerName(name) {
-			return fmt.Errorf("runner: %s is %q; a role runs on %s or one of the runners %s",
-				where, layered.BoundKey(name), Host, strings.Join(runnerNames, ", "))
-		}
-		c.roles[role] = Route{Runner: name, Layer: win.Layer, Origin: win.Origin}
 	}
 	return nil
 }
+
+// displacedRunnerRoute returns the first personal route in lower, the layers
+// beneath a repository route to the host, that names a runner: the person's
+// own choice the repository's route displaces. A lower route that does not
+// decode, or names the host, displaces nothing worth saying.
+func displacedRunnerRoute(lower []layered.Found) (Route, bool) {
+	for _, f := range lower {
+		if !personal(f.Layer) {
+			continue
+		}
+		name, err := layered.Decode[string](f.Raw)
+		if err != nil || !isRunnerName(name) {
+			return Route{}, false
+		}
+		return Route{Runner: name, Layer: f.Layer, Origin: f.Origin}, true
+	}
+	return Route{}, false
+}
+
+// personal reports whether a route set in layer l is the person's own, the
+// only kind that may hand a role to a runner (rulings RN2 and OC2 of
+// 2026-10-02): the machine's file under their home, and the flag layer, which
+// is their own invocation for one run. The repository's file is committed
+// content anyone with a pull request can write, so a route there may keep a
+// role on the host and never hand it to a runner.
+func personal(l layered.Layer) bool { return l == layered.Machine || l == layered.Flag }
 
 func isRunnerName(n string) bool {
 	for _, r := range runnerNames {

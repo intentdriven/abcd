@@ -250,7 +250,7 @@ irreversible; guessing downward costs nothing.**
   is the stance. **The store has no verbs yet.** Aim a plain `git worktree add`
   at the path and create the lane by hand; the store's own `add`, its listing
   and its reclaim are
-  [itd-2609091014076309](.abcd/development/intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
+  [itd-2609091014076309](.abcd/development/intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
   in `drafts/`, so until it ships nothing enumerates the lane or prunes a spent
   worktree for you, and a worktree in the store is retired with
   `git worktree remove` like any other.
@@ -484,9 +484,23 @@ irreversible; guessing downward costs nothing.**
 - **A human-only change declares itself: `Assisted-by: None`.** The convention is
   disclosure, and work no AI touched has nothing to disclose — but silence cannot
   say so, because an absent trailer and a forgotten one are the same bytes. The
-  declaration is the positive form, and it is the only accepted non-vendor value:
-  a free-text escape would reopen the omission it closes. Claiming it for assisted
-  work is a false disclosure, which is the thing this convention exists to prevent.
+  declaration is the positive form. Claiming it for assisted work, or for text a
+  tool composed, is a false disclosure, which is the thing this convention exists
+  to prevent.
+- **A commit abcd composes from record facts declares abcd:
+  `Assisted-by: abcd:<version>`.** The implement loop's pick commit and its sync
+  merge carry text the abcd binary computes from the run's state and records: no
+  model wrote it, so a vendor trailer would be false, and a tool composed it, so
+  `None` would be false too. The label names abcd and the version of the binary
+  that composed the text — the release version, or `dev` for a build with none —
+  and a human is still the author of record, because a person ran the command.
+  abcd writes it; a person or a model never types it, and the committed
+  `prepare-commit-msg` hook refuses it as a standing `abcd.assistedBy`, as it
+  refuses `None`. So the trailer has exactly three accepted forms —
+  `<Vendor>:<model-version>`, `None` and `abcd:<version>` — and the last two are
+  the only non-vendor values. Each is one fixed shape, not free text: a free-text
+  escape would reopen the omission the declaration closes, which is why the gate
+  refuses an abcd label in any other shape (an empty or free-text version).
 - **A revert or cherry-pick takes its trailer from one command:**
   `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`.
   `git revert`, `git cherry-pick` and a squash compose their own message and

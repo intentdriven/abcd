@@ -77,7 +77,7 @@ is invisible to `ls` where the user works, which is the point, and the price
 of that invisibility is a verb that lists what the store holds and a verb that
 reclaims what is spent, with a line on the status board so the user learns the
 count without asking. A store nobody can list is the same pile somewhere less
-visible. [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
+visible. [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
 carries the worktree store, its list verb, its prune verb and the board line;
 until it ships, the rule is followed by hand and says so in the principle.
 

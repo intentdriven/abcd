@@ -47,9 +47,10 @@ func pickSubject(st State) string {
 	return "chore(record): " + st.Intent + " picked by run " + st.RunID
 }
 
-// pickMessage is the pick commit's whole message. The trailer declares the
-// commit human-only in the attribution convention's sense: its text is
-// computed by abcd, and no model composed it.
+// pickMessage is the pick commit's whole message. Its text is computed by abcd
+// from the run's records and no model composed it, so its trailer is the abcd
+// label (composed_attribution.go, ruling PC1), never None: None declares that
+// no tool touched the text, and abcd did.
 func pickMessage(st State) string {
 	n := 0
 	if st.Pick != nil {
@@ -60,7 +61,7 @@ func pickMessage(st State) string {
 		"reason to the intent's grounds, marked as the run's. It is record-only: the\n" +
 		"implementer's commits follow it.\n\n" +
 		"Refs: " + st.Intent + "\n" +
-		"Assisted-by: None\n"
+		composedAssistedBy() + "\n"
 }
 
 // pickGit runs one git command in the lane's worktree for the pick commit and

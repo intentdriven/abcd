@@ -100,6 +100,9 @@ func statusRowPlace(r statusblock.Row) string {
 		if l.Awaiting != "" {
 			tag += ", awaiting the " + termsafe.Sanitize(l.Awaiting)
 		}
+		if l.Waiting != "" {
+			tag += ", " + termsafe.Sanitize(l.Waiting)
+		}
 		return tag + " (" + termsafe.Sanitize(l.Run) + ")"
 	case r.NextUp:
 		return "next up"

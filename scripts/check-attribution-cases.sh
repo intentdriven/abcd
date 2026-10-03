@@ -796,6 +796,58 @@ commit_as REPPL human@example.invalid REPPL human@example.invalid 'docs: a hand-
 Assisted-by: None'
 commits_case accept "human-only commit declaration"
 
+# --- The abcd label (ruling PC1) ----------------------------------------------
+# The third form: text abcd composed from record facts. One closed shape, the
+# literal vendor abcd and dev or a release version, never a free-text slot.
+case_is accept "abcd label, development build" 'chore(record): itd-10 picked by run r
+
+Assisted-by: abcd:dev'
+case_is accept "abcd label, release version" 'Text.
+
+Assisted-by: abcd:v0.12.0'
+case_is accept "abcd label, pre-release version" 'Text.
+
+Assisted-by: abcd:v1.0.0-rc.1'
+case_is accept "abcd label, build metadata (outside TRAILER_RE)" 'Text.
+
+Assisted-by: abcd:v1.2.3+build.5'
+case_is accept "abcd label beside a model trailer" 'Text.
+
+Assisted-by: abcd:dev
+Assisted-by: Claude:claude-opus-5'
+case_is reject "abcd label with an empty version" 'Text.
+
+Assisted-by: abcd:'
+case_is reject "abcd label with a free-text version" 'Text.
+
+Assisted-by: abcd:latest'
+case_is reject "abcd label with an unprefixed version" 'Text.
+
+Assisted-by: abcd:0.12.0'
+case_is reject "abcd label in upper case" 'Text.
+
+Assisted-by: ABCD:v0.12.0'
+case_is reject "abcd label with trailing prose" 'Text.
+
+Assisted-by: abcd:dev really'
+case_is reject "a malformed abcd label is not excused by a model trailer" 'Text.
+
+Assisted-by: Claude:claude-opus-5
+Assisted-by: abcd:nightly'
+case_is reject "abcd label alongside a co-authorship trailer" 'Text.
+
+Assisted-by: abcd:dev
+Co-authored-by: Someone <someone@example.invalid>'
+commit_as REPPL human@example.invalid REPPL human@example.invalid 'chore(record): itd-10 picked by run r
+
+Refs: itd-10
+Assisted-by: abcd:dev'
+commits_case accept "abcd-composed commit declaration"
+commit_as REPPL human@example.invalid REPPL human@example.invalid 'chore(record): itd-10 picked by run r
+
+Assisted-by: abcd:main'
+commits_case reject "abcd-composed commit with a malformed label"
+
 # Fenced quotation is a BODY concession only. The justification is that a forge
 # renders a fence as a code block, so it reads as an example — and a commit message
 # is never rendered as markdown. `git log` shows it verbatim, so a fenced footer
@@ -840,6 +892,9 @@ Assisted-by: Claude:claude-opus-5'
 case_is_crlf accept "CRLF body, human-only declaration" 'Text.
 
 Assisted-by: None'
+case_is_crlf accept "CRLF body, abcd label" 'Text.
+
+Assisted-by: abcd:v0.12.0'
 case_is_crlf reject "CRLF body, tool footer still refused" 'Text.
 
 🤖 Generated with [Some Tool](https://example.invalid)

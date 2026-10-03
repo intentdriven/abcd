@@ -56,7 +56,7 @@ gives the original record and the principle as its grounds, refuses the
 sibling and in-checkout forms, and says in as many words that the store has no
 verbs: a plain `git worktree add` aimed at the path, with nothing to enumerate
 the lane or prune a spent worktree until
-[itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
+[itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
 ships. That made the normative clause true. What it left is a Consequence
 bullet that reads as though the whole edit is still ahead, when its location
 half is behind and only its verb half remains, and nothing in the record says

@@ -765,3 +765,15 @@ func TestComposerPromptNamesOnlyTheWritableSections(t *testing.T) {
 		t.Error("the composer prompt does not cite the ruling that closes its section set")
 	}
 }
+
+// TestIngestNoticeSaysWhereABreakIsStated — the v0.12.0 docs-currency review's
+// dc-4 (iss-2609302306281487). writableSections files a breaking record as an
+// Added line that states the break, by ruling, so a notice saying changes to
+// earlier behaviour are not claimed contradicted the Breaking lines directly
+// beneath it. The notice names where a break is stated.
+func TestIngestNoticeSaysWhereABreakIsStated(t *testing.T) {
+	n := strings.ToLower(sectionNotice)
+	if !strings.Contains(n, "breaking change") || !strings.Contains(n, "added line") {
+		t.Errorf("the notice %q does not say a breaking change is stated as an Added line", sectionNotice)
+	}
+}

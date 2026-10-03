@@ -1,11 +1,26 @@
 package runner
 
 // opencode.go is the opencode runner (spc-2609221533057881 scope 2): run mode
-// with raw JSON events, the repository as its directory, the brief attached,
-// and no external plugins (--pure), the nearest the harness offers to the
-// claude CLI's bare mode, so a plugin the target repository configures does
-// not run. Permissions are left at the harness's own configuration: abcd does
-// not pass the flag that approves every request unasked.
+// with raw JSON events, the repository as its directory and the brief
+// attached, sealed against the repository it runs in (ruling OC1 of
+// 2026-10-02), the nearest the harness offers to the claude CLI's bare mode:
+//
+//   - --pure: no external plugins, so a plugin the repository configures does
+//     not run;
+//   - OPENCODE_DISABLE_PROJECT_CONFIG=1: no project configuration, so the
+//     repository's opencode.json and .opencode/ (settings, agents, commands,
+//     skills) and its instruction files (AGENTS.md) are not read;
+//   - OPENCODE_DISABLE_CLAUDE_CODE=1: no CLAUDE.md and no .claude/ skills;
+//   - OPENCODE_DISABLE_EXTERNAL_SKILLS=1: no skills from the other agents'
+//     directories (.agents/).
+//
+// OPENCODE_DISABLE_PROJECT_CONFIG is read from opencode's source, not its
+// documentation, which does not list it (github.com/anomalyco/opencode,
+// flag.ts, config.ts and instruction.ts, read 2026-10-02); the other two are
+// in both. The owner's global configuration still applies: it names the model
+// and the server, and is the person's own. Permissions are left at that
+// configuration too: abcd does not pass the flag that approves every request
+// unasked.
 //
 // The runner reaches opencode through run mode only; its server's session
 // endpoints, where a server is already up, are a later adapter.
@@ -15,6 +30,14 @@ import (
 	"context"
 	"encoding/json"
 )
+
+// openCodeSeal is the environment every opencode launch is sealed with, set
+// over whatever the parent's environment holds for the same names.
+var openCodeSeal = []string{
+	"OPENCODE_DISABLE_PROJECT_CONFIG=1",
+	"OPENCODE_DISABLE_CLAUDE_CODE=1",
+	"OPENCODE_DISABLE_EXTERNAL_SKILLS=1",
+}
 
 // OpenCodeCLI is the opencode runner.
 type OpenCodeCLI struct {
@@ -50,7 +73,7 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	if err != nil {
 		return Answer{}, nil, err
 	}
-	res, err := o.launch.run(ctx, OpenCode, bin, o.args(req), req.Dir, req.timeout())
+	res, err := o.launch.run(ctx, OpenCode, bin, o.args(req), openCodeSeal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
 		return Answer{}, transcript, err

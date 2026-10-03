@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Refusal is the one shape every refusal of the loop takes (criterion 13): the
 // stage it happened at, the reason and the remedy, in text and in --json. A
-// refusal writes nothing: the state file is as it was before the call.
+// refusal writes nothing: the state file is as it was before the call, except
+// for the time a landing began waiting for its full check (ruling DR6d-2),
+// which the call that finds the wait writes once, whatever the call answers.
 type Refusal struct {
 	// Stage is where the loop refused: "check" before a run starts, "state" for
 	// a run that cannot be read, "pause" for the window clock, or the lane stage
@@ -31,6 +34,9 @@ type Refusal struct {
 	// Excluded is every planned intent a pick excluded and the check that
 	// excluded it, when a pick found no candidate.
 	Excluded []Excluded `json:"excluded,omitempty"`
+	// checkWait is when a landing began waiting for its full check (ruling
+	// DR6d-2): the call that finds the wait writes it on the lane once.
+	checkWait time.Time
 }
 
 // Error renders the refusal as one line: stage, reason, remedy.

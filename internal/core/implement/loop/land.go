@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -87,6 +88,11 @@ type Landing struct {
 	// Merged is the default branch's tip, as the remote held it, that carried
 	// the pushed head when the landing cleaned the lane up.
 	Merged string `json:"merged,omitempty"`
+	// CheckWaitSince is when the landing began waiting for its full check: the
+	// preflight receipt naming the head it pushes (ruling DR6d-2). It is set
+	// by the first call that finds no receipt, kept until the push, and
+	// cleared by it.
+	CheckWaitSince *time.Time `json:"check_wait_since,omitempty"`
 }
 
 // The landing's fixed names.
@@ -252,10 +258,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// no model to disclose is refused with its worktree untouched.
 	assisted, gap := assistedByTrailers(lane.Receipts)
 	if gap != "" {
-		return Outcome{}, refuse(string(StageLand), "", lane.ID,
-			"the landing's records commit carries text the lane's implementer composed, and "+gap+", so its Assisted-by: trailer cannot name the model",
-			"have the implementer's receipt report the model its harness runs (\"model\": \"<vendor>:<model-id>\", or a bare claude-* id), "+
-				"send the lane back through a fix round whose receipt reports it, then run `abcd implement step` again; the loop never claims no assistance for a model's text")
+		return Outcome{}, modelGap(*lane, "the landing's records commit carries text the lane's implementer composed", gap)
 	}
 
 	wt := lane.Worktree
@@ -321,7 +324,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			"the close and the resolutions should move records; check the lane's branch holds them open, then run `abcd implement step` again")
 	}
 	// Unlike the pick commit (pickcommit.go), whose text abcd computes and
-	// which declares `Assisted-by: None`, this commit's diff carries prose a
+	// which declares `Assisted-by: abcd:<version>`, this commit's diff carries prose a
 	// model composed: the receipt's resolution note and grounds, and the
 	// audit's verdict ingested into the intent. So it names that model, and
 	// it is made with the repository's hooks running (never through pickGit's
@@ -346,20 +349,19 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
 }
 
-// assistedVendorRe is an Assisted-by: value in the vendor form the attribution
-// gate takes (scripts/check-attribution.sh TRAILER_RE), and bareClaudeRe a bare
-// Claude model id, which takes the Claude vendor prefix.
-var (
-	assistedVendorRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
-	bareClaudeRe     = regexp.MustCompile(`^claude-[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
-)
+// bareClaudeRe is a bare Claude model id, which takes the Claude vendor prefix.
+// A value already in the vendor form the attribution gate takes is judged by
+// assistedby.IsModelValue, the gate's TRAILER_RE in its one Go home.
+var bareClaudeRe = regexp.MustCompile(`^claude-[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
 
 // assistedByTrailers are the records commit's Assisted-by: trailers, one per
 // distinct model the lane's receipts reported, in the order first reported.
 // Every receipt's runner may have composed text the commit carries, so a
 // receipt that reports no model, or one in no form the trailer takes, is a gap
 // named in the returned description, and no trailers are returned; a lane with
-// no receipt at all is a gap too. The model is the runner's report, which the
+// no receipt at all is a gap too. So is a receipt naming abcd as its model: the
+// abcd label says abcd composed the text from record facts (ruling PC1), which
+// is never true of a runner's prose. The model is the runner's report, which the
 // binary cannot verify: a refused value is described, never quoted.
 func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 	if len(rs) == 0 {
@@ -371,9 +373,11 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 		switch {
 		case r.Model == "":
 			return nil, fmt.Sprintf("receipt %d (%s) reports no model", i+1, r.Receipt)
+		case assistedby.NamesAbcd(r.Model):
+			return nil, fmt.Sprintf("receipt %d (%s) reports abcd as its model, a label reserved for text abcd composes from record facts", i+1, r.Receipt)
 		case bareClaudeRe.MatchString(r.Model):
 			v = "Claude:" + r.Model
-		case assistedVendorRe.MatchString(r.Model):
+		case assistedby.IsModelValue(r.Model):
 			v = r.Model
 		default:
 			return nil, fmt.Sprintf("receipt %d (%s) reports a model in no form the trailer takes (%s)", i+1, r.Receipt, termsafe.DescribeRefused(r.Model))
@@ -383,6 +387,16 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 		}
 	}
 	return out, ""
+}
+
+// modelGap is the refusal of a landing step whose text must name the models
+// the lane's receipts reported, when gap (assistedByTrailers') says one cannot
+// be named. what says why the step's text discloses a model.
+func modelGap(lane Lane, what, gap string) error {
+	return refuse(string(StageLand), "", lane.ID,
+		what+", and "+gap+", so its Assisted-by: trailer cannot name the model",
+		"have the implementer's receipt report the model its harness runs (\"model\": \"<vendor>:<model-id>\", or a bare claude-* id), "+
+			"send the lane back through a fix round whose receipt reports it, then run `abcd implement step` again; the loop never claims no assistance for a model's text")
 }
 
 // hookedGit runs one git command in the lane's worktree with the repository's
@@ -447,18 +461,31 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if rcp == "" {
-		return Outcome{}, refuse(string(StageLand), "", lane.ID,
-			"no preflight receipt names the lane's head "+lane.HeadSHA+", so the pre-push gate would refuse its push",
+		// The lane waits for its full check as a landing waits on the forge's
+		// merge (ruling DR6d-2): a contention that holds only this lane, from
+		// the time the first call found it.
+		since := c.Now
+		if ld.CheckWaitSince != nil {
+			since = *ld.CheckWaitSince
+		}
+		r := contend(string(StageLand), "", lane.ID,
+			checkWaitText(since)+": no preflight receipt names the lane's head "+lane.HeadSHA+", so the pre-push gate would refuse its push",
 			"run the repository's preflight (`make preflight`) on a clean tree in the lane's worktree "+fsutil.RedactHome(lane.Worktree)+
 				", which mints the receipt, then run `abcd implement step` again; the loop never bypasses the receipt")
+		r.checkWait = since
+		return Outcome{}, r
 	}
 	ref := "refs/heads/" + lane.Branch
 	if _, err := netGit(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+fsutil.RedactHome(err.Error()),
 			"settle what git or the pre-push hook reports, then run `abcd implement step` again")
 	}
-	ld.PreflightReceipt, ld.Pushed = fsutil.RedactHome(rcp), lane.HeadSHA
-	return Outcome{Stay: true, Note: "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"}, nil
+	note := "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"
+	if ld.CheckWaitSince != nil {
+		note += fmt.Sprintf(", after waiting %d minute(s) for its full check", int(c.Now.Sub(*ld.CheckWaitSince)/time.Minute))
+	}
+	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
+	return Outcome{Stay: true, Note: note}, nil
 }
 
 // netGit runs one git command that reaches the remote, from the checkout the
@@ -542,7 +569,12 @@ func findPR(c Context, lane Lane) (*openPR, error) {
 }
 
 // prTitle and prBody are the pull request's title and body, built from the run's
-// records.
+// records. The body ends with its trailers: the Delivers: and Resolves: lines
+// the records commit carries, then the abcd label (abcd composed the text from
+// record facts, as it does the pick commit's), then assisted, the Assisted-by:
+// lines assistedByTrailers derives from the lane's receipts, since the change
+// the body describes carries those models' work and a squash merge may adopt
+// the body as its message (ruling R4, the technical facilitator, 2026-10-02).
 func prTitle(st State, lane Lane) string {
 	if iss := st.Issue(); iss != "" {
 		return fmt.Sprintf("fix(%s): %s", iss, lane.StepTitle)
@@ -550,7 +582,7 @@ func prTitle(st State, lane Lane) string {
 	return fmt.Sprintf("build(%s): %s, step %d of %s", st.Intent, lane.StepTitle, lane.SpecStep, st.Spec)
 }
 
-func prBody(st State, lane Lane) string {
+func prBody(st State, lane Lane, assisted []string) string {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	if iss := st.Issue(); iss != "" {
@@ -574,9 +606,8 @@ func prBody(st State, lane Lane) string {
 		p("- It resolves %s, fixed by %s.\n", r.Issue, shortSHA(r.Commit))
 		trailers = append(trailers, "Resolves: "+r.Issue)
 	}
-	if len(trailers) > 0 {
-		p("\n%s\n", strings.Join(trailers, "\n"))
-	}
+	trailers = append(append(trailers, composedAssistedBy()), assisted...)
+	p("\n%s\n", strings.Join(trailers, "\n"))
 	return b.String()
 }
 
@@ -594,7 +625,14 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 	}
 	verb := "found"
 	if pr == nil {
-		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBody(c.State, *lane), "the pull request's body")
+		// The disclosure is settled before the forge is called. The records
+		// commit settled it already on a lane that records something; a lane
+		// that records nothing made no records commit, so it is settled here.
+		assisted, gap := assistedByTrailers(lane.Receipts)
+		if gap != "" {
+			return Outcome{}, modelGap(*lane, "the pull request's body describes a change carrying text the lane's implementer composed", gap)
+		}
+		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBody(c.State, *lane, assisted), "the pull request's body")
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()), "settle what the scrub names, then run `abcd implement step` again")
 		}

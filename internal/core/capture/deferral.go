@@ -74,6 +74,11 @@ func Defer(req DeferRequest) (DeferResult, error) {
 		return DeferResult{}, refused(fmt.Errorf("defer: the reason is empty — a deferral with no stated reason records nothing; nothing written"))
 	}
 	reason = termsafe.EncodeHiddenRunes(reason)
+	// An id the ledger does not hold is refused before the preamble provisions
+	// anything (iss-2609302305500526).
+	if err := requireHeld(issuesRoot, req.ID); err != nil {
+		return DeferResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return DeferResult{}, err
 	}

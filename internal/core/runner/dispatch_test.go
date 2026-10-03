@@ -55,13 +55,19 @@ func newHarness(t *testing.T, c *Config, hostSession bool) *harness {
 }
 
 const routedMachine = `{` + localProvider + `,"runner":{"fallback_host":"claude","claude":{},"opencode":{"model":"local/qwen3-coder"}}}`
-const routedRepo = `{"roles":{"ruthless-reviewer":{"runner":"opencode"}}}`
+
+// routed adds the person's route for the ruthless-reviewer to a machine
+// configuration: only a personal route hands a role to a runner (rulings RN2
+// and OC2 of 2026-10-02).
+func routed(machine string) string {
+	return `{"roles":{"ruthless-reviewer":{"runner":"opencode"}},` + strings.TrimPrefix(machine, "{")
+}
 
 // TestUnsetRoleHandsToHostUnchanged is criterion 2: a role left unset goes to
 // the host session exactly as today: no runner launched, no fallback receipt.
 func TestUnsetRoleHandsToHostUnchanged(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, routedMachine, routedRepo), true)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), true)
 	out, err := h.d.Dispatch(context.Background(), f.request("security-reviewer"))
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +88,7 @@ func TestUnsetRoleHandsToHostUnchanged(t *testing.T) {
 // its transcript lands in the store.
 func TestRoutedRoleRunsThroughItsRunner(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, routedMachine, routedRepo), true)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), true)
 	req := f.request("ruthless-reviewer")
 	out, err := h.d.Dispatch(context.Background(), req)
 	if err != nil {
@@ -121,7 +127,7 @@ func TestFallbackOnEveryFailureKind(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFake(t, tc.mode, tc.onPath...)
-			h := newHarness(t, mustLoad(t, routedMachine, routedRepo), true)
+			h := newHarness(t, mustLoad(t, routed(routedMachine), ""), true)
 			out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
 			if err != nil {
 				t.Fatal(err)
@@ -145,7 +151,7 @@ func TestFallbackOnEveryFailureKind(t *testing.T) {
 // machine has not enabled is an absent runner, recorded, not a silent host run.
 func TestRoutedToADisabledRunnerFallsBack(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, `{"runner":{"claude":{}}}`, routedRepo), true)
+	h := newHarness(t, mustLoad(t, routed(`{"runner":{"claude":{}}}`), ""), true)
 	out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +169,7 @@ func TestRoutedToADisabledRunnerFallsBack(t *testing.T) {
 // receipt names it as the route that ran.
 func TestNoHostSessionFallsBackToTheConfiguredHost(t *testing.T) {
 	f := newFake(t, "ok", Claude) // opencode absent, claude present
-	h := newHarness(t, mustLoad(t, routedMachine, routedRepo), false)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), false)
 	out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +204,7 @@ func TestNoHostSessionUnsetRoleRunsOnTheConfiguredHost(t *testing.T) {
 // starts.
 func TestNoHostAndNoFallbackHostIsRefusedBeforeLaunch(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, `{`+localProvider+`,"runner":{"opencode":{"model":"local/qwen3-coder"}}}`, routedRepo), false)
+	h := newHarness(t, mustLoad(t, routed(`{`+localProvider+`,"runner":{"opencode":{"model":"local/qwen3-coder"}}}`), ""), false)
 	_, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
 	if err == nil || !strings.Contains(err.Error(), "runner.fallback_host") {
 		t.Fatalf("err = %v, want a refusal naming runner.fallback_host", err)
@@ -211,7 +217,7 @@ func TestNoHostAndNoFallbackHostIsRefusedBeforeLaunch(t *testing.T) {
 // TestFallbackHostFailingToo is an error naming both: nothing lands silently.
 func TestFallbackHostFailingToo(t *testing.T) {
 	f := newFake(t, "exit1", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, routedMachine, routedRepo), false)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), false)
 	_, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
 	if err == nil || !strings.Contains(err.Error(), OpenCode) || !strings.Contains(err.Error(), Claude) {
 		t.Fatalf("err = %v, want both failures named", err)
@@ -250,7 +256,7 @@ func TestTallyCountsPerRunnerAndPerRole(t *testing.T) {
 func TestReceiptsDifferOnlyInRoute(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
 	req := f.request("ruthless-reviewer")
-	viaRunner, err := newHarness(t, mustLoad(t, routedMachine, routedRepo), true).d.Dispatch(context.Background(), req)
+	viaRunner, err := newHarness(t, mustLoad(t, routed(routedMachine), ""), true).d.Dispatch(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +311,7 @@ func TestTranscriptLandsInTheHistoryStore(t *testing.T) {
 // any answer.
 func TestDispatchNeedsAValidator(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
-	h := newHarness(t, mustLoad(t, routedMachine, routedRepo), true)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), true)
 	h.d.Validate = nil
 	if _, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer")); err == nil {
 		t.Fatal("dispatched with no validator")

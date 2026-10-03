@@ -208,16 +208,25 @@ implementer, the lower spec step first); several agents may be out at once, so
 start each as it is handed out. A step that finds the ceiling reached hands out
 nothing and exits 0 with `ceiling_reached: true`, naming every agent out and its
 receipt path: hand a receipt back, then step again. When a step's needs have
-landed, its lane opens whatever the ceiling (its worktree and brief are made,
-and its implementer takes the next free slot), and the run record gets a line
-naming it, as the start line names the first.
+landed, its lane opens only when a helper is free to take it (a slot is left for
+its implementer, and fewer step worktrees than the ceiling are on disk): its
+worktree is made just before its implementer takes the slot, and the run record
+gets a line naming it, as the start line names the first.
 
 A role can run through a command-line runner instead of an agent you start.
-`roles.<role>.runner` in the repository's or the machine's `.abcd/config.json`
-names `host` (the default) or a runner, `claude` or `opencode`, that the machine
-enables under `runner.<name>` in `~/.abcd/config.json` (with an optional
-`model` route, `<provider>/<model>`, admitted against that provider's
-allowlist). `build` reads this configuration before it creates the run, and a
+`roles.<role>.runner` in `~/.abcd/config.json` names `host` (the default) or a
+runner, `claude` or `opencode`, that the machine enables under `runner.<name>`
+in the same file (with an optional `model` route, `<provider>/<model>`,
+admitted against that provider's allowlist). Only the person's own file hands a
+role to a runner, because a runner spends their key: the repository's
+`.abcd/config.json` may set a role to `host`, and a route there to a runner is
+skipped with a warning on stderr, so the role runs on the host as if unrouted
+(tell the user, naming the file the warning names). A repository route to
+`host` stands over the person's own route to a runner, because it spends
+nothing of theirs, and says so with a warning on stderr naming the repository's
+file, the role and the machine route it displaced (tell the user that too). A person whose Claude
+account is a subscription, with no API key, runs the role in their own session:
+the claude runner runs bare, on an API key only. `build` reads this configuration before it creates the run, and a
 fault, a model route off the allowlist included, is refused at the `runner`
 stage with nothing created. When a step hands work to a routed role,
 `implement step` starts the runner itself with the brief and the receipt path
@@ -304,11 +313,14 @@ A lane's stages run in order:
    refused, and a hook that refuses the commit stops the landing until what it
    names is settled. It pushes the
    branch only once the repository's preflight receipt names the lane's head:
-   when `step` refuses for want of one, run `make preflight` in the lane's
+   until then the lane is waiting for its full check (since the time the wait
+   began) while the other lanes carry on; run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by
    hand. It opens the pull request through `gh`, with a body built from the
-   run's records and passed through the outbound scrub, re-reads the body the
-   forge holds and strips a session URL or tool footer. It arms auto-merge with
+   run's records and passed through the outbound scrub, ending with
+   `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
+   lane's receipts reported, re-reads the body the forge holds and strips a
+   session URL or tool footer. It arms auto-merge with
    the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names
    only where that mirror also requires a person's approval (an approving
    review count of one or more, or a code-owner review with a CODEOWNERS file

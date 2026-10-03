@@ -687,7 +687,10 @@ func mixedCaseHostSuffix(m string) bool {
 // ("if cfg.local {"), or it is called or indexed ("cfg.local()", "x.lan[0]").
 // A hostname is the OBJECT of a command or the value on the right of a setting,
 // never any of those. The test is deliberately narrow — it costs a finding only
-// where an identifier is plainly being read as a field.
+// where an identifier is plainly being read as a field. A selector passed as a
+// call's argument, followed by ')' or ',', is not exempt here: those two close
+// prose, logs and diagrams as readily as argument lists, so only a caller that
+// knows the file is Go may spare it (GoSourceSkip).
 func selectorExpression(line string, start, end int) bool {
 	if end < len(line) && (line[end] == '(' || line[end] == '[') {
 		return true
@@ -698,6 +701,106 @@ func selectorExpression(line string, start, end int) bool {
 	}
 	scanMeter.charge(stageSkipAt, i-end)
 	return i < len(line) && (line[i] == '=' || line[i] == '{')
+}
+
+// maxCallArgumentPrefix bounds the line prefix callArgumentSelector reads. A
+// match further into its line than this is reported: the helper cannot see a
+// comment marker or the call's opening parenthesis beyond the bound, so the
+// bound costs an over-report on a line no Go source carries, never a leak.
+const maxCallArgumentPrefix = 512
+
+// GoSourceSkip reports whether a finding of the given kind, matched at
+// line[start:end], is Go code rather than the identifier the kind names. It is
+// for a caller that KNOWS the line comes from a Go source file — the privacy
+// lint rule, which reads tracked files by path — and for no other: a redactor
+// with no file type (the history transcript store, memory, capture and the
+// other write paths that call ScanText with a logical name) must never consult
+// it, because the shapes it spares are written by logs, diagrams and prose too
+// ("dial(…): connection refused", a mermaid node "nas(…) --> router").
+//
+// It spares one shape, a Go selector closing or separating a call's argument
+// list (callArgumentSelector), and only for net_lan_hostname
+// (iss-2610020840196926, narrowed to Go files after sec-scannerSel).
+func GoSourceSkip(kind, line string, start, end int) bool {
+	return kind == kindNetLANHost && callArgumentSelector(line, start, end)
+}
+
+// callArgumentSelector reports whether a LAN-suffix match on a line of Go
+// source is a selector passed as a call's argument — the field `local` of a
+// value `anchor`, joined by a dot and closing a call's argument list or
+// separating it from the next — rather than a host (iss-2610020840196926). It
+// is reached only through GoSourceSkip, never from the pattern's SkipAt, and
+// even inside Go source every condition below must hold:
+//
+//   - ')' or ',' follows the match directly, as gofmt writes an argument;
+//   - the match is a Go selector chain written in lower case: every label an
+//     identifier (no hyphen, no leading digit) with no upper-case letter, so a
+//     hyphenated or capitalised host ("NAS" under .local) never qualifies (an
+//     exported field is mixedCaseSelector's to judge);
+//   - '(' or ',' precedes it, so it IS an argument and not the tail of a URL,
+//     a path or a quoted string;
+//   - the innermost unclosed '(' before it opens a CALL: an identifier byte
+//     sits directly before it, where prose puts a space ("the printer (…)")
+//     and markdown a ']' ("[text](…)");
+//   - no Go comment marker ("//" or "/*") precedes it on the line, so a
+//     call-shaped mention of a host in a Go comment is still reported.
+//
+// The residual is a call-shaped, lower-case, hyphen-free host outside a Go
+// comment marker in a Go source file, such as a quoted string argument's tail.
+func callArgumentSelector(line string, start, end int) bool {
+	if end >= len(line) || (line[end] != ')' && line[end] != ',') {
+		return false
+	}
+	if start > maxCallArgumentPrefix {
+		return false
+	}
+	scanMeter.charge(stageSkipAt, end)
+	if !goSelectorChain(line[start:end]) {
+		return false
+	}
+	prefix := line[:start]
+	if strings.Contains(prefix, "//") || strings.Contains(prefix, "/*") {
+		return false
+	}
+	i := len(prefix)
+	for i > 0 && (prefix[i-1] == ' ' || prefix[i-1] == '\t') {
+		i--
+	}
+	if i == 0 || (prefix[i-1] != '(' && prefix[i-1] != ',') {
+		return false
+	}
+	depth := 0
+	for k := i - 1; k >= 0; k-- {
+		switch prefix[k] {
+		case ')':
+			depth++
+		case '(':
+			if depth == 0 {
+				return k > 0 && isWordByte(prefix[k-1])
+			}
+			depth--
+		}
+	}
+	return false
+}
+
+// goSelectorChain reports whether m is a dotted chain of Go identifiers written
+// in lower case: every label starts with a letter or '_', carries only letters,
+// digits and '_', and has no upper-case letter. Every label is checked, not
+// only the field, so a host written in capitals before its suffix is not read
+// as a selector.
+func goSelectorChain(m string) bool {
+	for _, l := range strings.Split(m, ".") {
+		if l == "" || isASCIIDigit(l[0]) || l != strings.ToLower(l) {
+			return false
+		}
+		for j := 0; j < len(l); j++ {
+			if !isWordByte(l[j]) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // determiners introduce a COMMON NOUN. A device name is a name; "our build-nas",

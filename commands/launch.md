@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | scaffold [--confirm] [--dependency-reauthor]"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
@@ -394,7 +394,13 @@ The cut also lists every planned intent that names a release it must land by
 the intent store could not be read): targeted and not shipped. The list never
 refuses the cut and never changes the exit code; relay it with the report, and
 the ingest in step 3 reports the same list beside what it wrote, and moves
-each target the cut passes to `next` (below).
+each target the cut passes to `next` (below). The cut names those moves before
+anything is written: `target_moves` (`id`, `path`, `from`) lists every target
+the cut passes — `next`, which names this release, or a tag at or below the
+derived `next_tag` — and the render ends each such `targeted:` line with `; the
+cut moves it to next`. A target past the cut keeps its line unmarked, and a
+refused cut derives no version and lists no move. The ingest moves exactly
+this list, so relay it as what the write will change.
 
 The emit render ends with the **receipts protocol**, a numbered checklist the
 binary composes from the committed `release.yml`: commit the roll, run each
@@ -1032,7 +1038,7 @@ the operator to require them on the default branch — the scaffold holds no tok
 and sets no branch protection. An empty `ci_checks` means no pull-request CI was
 found, and the runbook says so.
 
-The workflows come from one embedded template that abcd-cli's own release
+The workflows come from one embedded template that abcd's own release
 workflows are regenerated from (self-scaffold parity), so every abcd release
 exercises the exact machinery a managed repo receives. The scaffolded `release.yml`
 carries a `workflow_dispatch` **rehearsal**: run it green once before the first
