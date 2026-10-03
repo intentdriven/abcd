@@ -120,3 +120,32 @@ func TestReadHiddenRefusesOffATerminal(t *testing.T) {
 		t.Fatal("ReadHidden read from /dev/null")
 	}
 }
+
+// TestReadHiddenRefusesALineAtTheReadersCap (security review finding 4):
+// golang.org/x/term's line reader keeps at most 4096 runes and drops every key
+// past them, so a line that reaches the cap may have been cut there. It is
+// refused, never returned short, whether it is exactly the cap or longer, and
+// the terminal is restored; a line one rune under the cap is read whole.
+func TestReadHiddenRefusesALineAtTheReadersCap(t *testing.T) {
+	for _, n := range []int{maxHiddenRunes - 1, maxHiddenRunes, maxHiddenRunes + 100} {
+		p := ptytest.Open(t, 80, 24)
+		before := attrs(t, p.Terminal)
+		got := hiddenRead(p)
+		waitEchoOff(t, p)
+		typed := strings.Repeat("a", n)
+		for i := 0; i < len(typed); i += 256 {
+			p.Type(t, typed[i:min(i+256, len(typed))])
+		}
+		p.Type(t, "\r")
+		v, err := result(t, got)
+		switch {
+		case n < maxHiddenRunes && (err != nil || v != typed):
+			t.Errorf("%d runes: ReadHidden = %d runes, %v; want the line whole", n, len(v), err)
+		case n >= maxHiddenRunes && (err == nil || v != "" || !strings.Contains(err.Error(), "4096")):
+			t.Errorf("%d runes: ReadHidden = %d runes, %v; want nothing and the cap's refusal", n, len(v), err)
+		}
+		if after := attrs(t, p.Terminal); !ptytest.Same(after, before) {
+			t.Errorf("%d runes: the read left %+v, want %+v", n, after, before)
+		}
+	}
+}
