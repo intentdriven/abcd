@@ -377,6 +377,7 @@ For the technical facilitator; the records do not settle these.
    literals this intent does not otherwise touch. (c) Literal needles only,
    with a list of leaves only the home holds: simplest, but
    `filepath.Join(home, ".abcd", "rules.json")` passes unseen.
+   - Decided: (a), on 2026-10-03 without a question: it is the one reading that keeps a repository's own .abcd/ untouched.
 2. **What a `~/.abcd` that is a symlink counts as.** A person may link the old
    name to the new folder to keep their own scripts working. (a) Any entry at
    `~/.abcd` stops, a link included (designed to): D2's "an existing
@@ -385,6 +386,7 @@ For the technical facilitator; the records do not settle these.
    `~/.abcd.noindex` is admitted as the person's alias, never read through:
    kinder to scripts, at the cost of resolving a link in the check every
    entry point runs, and of a second name that leads into the folder.
+   - Decided: (a): a link at the old path is still the old home, and the principle forbids following it.
 3. **What the guard hook does while the old folder stands.** (a) Refuse every
    shell command and question with the blocking status and the line, and admit
    only the exact rename command (designed to): nothing runs unguarded, D2's
@@ -393,12 +395,14 @@ For the technical facilitator; the records do not settle these.
    included: the strictest, but the person must leave the session to rename.
    (c) Keep judging as today and add the line: the guard's own contract that
    it never stops a session holds, but a hook carries on working, against D2.
+   - Decided: the product thinker, 2026-10-03, asked what the safety check does while the old folder stands (block every command except the rename; warn and let commands through unchecked; decide later): block until renamed. The cost accepted: the session does nothing else until the folder is renamed.
 4. **Where the D6 receipt lives.** (a) A committed, dated research note
    (designed to): scope condition 1 holds the claim only for versions with a
    dated receipt, so the record has to carry them, and the audit reads them.
    (b) The local tier, as the conventions-file canary's receipt is kept: no
    record churn, but the scope condition and the audit could not see it from
    another checkout.
+   - Decided: (a): the scope condition and the audit both read it, so it is committed as a dated note.
 5. **When the rename step lands.** In abcd's own checkout the installed
    plugin's hooks keep writing `~/.abcd` (the live transcript drain runs on
    every prompt) until the plugin is updated, while a source build of step 3
@@ -408,6 +412,7 @@ For the technical facilitator; the records do not settle these.
    to): the window is one update long. (b) Land it whenever it is ready: no
    coupling to the cut, but every source run on a machine with the old plugin
    stops until the next release.
+   - Decided: (a): a source build ahead of the installed plugin would otherwise stop on every prompt.
 
 ## Footprint
 

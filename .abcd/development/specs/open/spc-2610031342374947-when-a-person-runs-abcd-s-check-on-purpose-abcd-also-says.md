@@ -271,6 +271,7 @@ Each is designed to the marked option, and the reason is given beneath it.
    undocumented contract, and a terminal verb may run in none.
    - (a): it is the only option under which the criterion describes
      something a person can see, and it reads nothing abcd does not own.
+   - Decided: (a), on 2026-10-03 without a question: naming a known harness only when its command is present answers H4's first case without running anything.
 2. **Which command is run.** The reading runs a program found on the search
    path. (a) Through the runner's admission, exported as `runner.Admit`: a
    command that resolves to a relative path, sits inside the checkout the
@@ -284,6 +285,7 @@ Each is designed to the marked option, and the reason is given beneath it.
    - (a): one rule for running a harness's binary, and the check never runs
      repository content. `internal/core/runner` imports no `ahoy` code, so
      the import adds no cycle.
+   - Decided: (a): one admission rule for the one shared reading.
 3. **The harness's own update step.** (a) One fixed command per adapter, the
    one the harness documents for updating itself (`claude update`,
    `opencode upgrade`) (designed to): no settings read and no install layout
@@ -300,6 +302,7 @@ Each is designed to the marked option, and the reason is given beneath it.
      press release promises, and adds no new read of another tool's
      configuration. The "held" half of the intent's proposal is not built;
      a person who has turned updates off sees the command and chooses.
+   - Decided: (a): one fixed update command per adapter, each confirmed in its tool's help.
 4. **A harness abcd needs no particular version of.** The intent proposes
    naming it as having no floor to check against, never as current.
    (a) A `no_floor` verdict, printed as "abcd needs no particular version of
@@ -308,6 +311,7 @@ Each is designed to the marked option, and the reason is given beneath it.
    command on would then be invisible.
    - (a): it is the intent's proposal, and brief invariant 16 requires the
      report to say what it compared.
+   - Decided: (a): no_floor never reads as current (invariant 16).
 
 ## Footprint
 

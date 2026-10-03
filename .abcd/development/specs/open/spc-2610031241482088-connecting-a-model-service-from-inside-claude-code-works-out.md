@@ -452,6 +452,7 @@ marked, and stands unless the facilitator rules otherwise.
    padding. (b) A listed "Search" or "Type it" option leading to a second
    question for the text: no change to the type, one more turn each time,
    and an option that means nothing on its own.
+   - Decided: (a), on 2026-10-03 without a question (the person's ruling: obvious answers are decided): one typed answer part counted as one option keeps every question a single step.
 2. **Where the listed models live between the session's turns.** G2 forbids
    a second request and G3 forbids a write. (a) Carried in the turn's
    `resume` object, out on stdout and back on stdin, each id checked again on
@@ -460,18 +461,21 @@ marked, and stands unless the facilitator rules otherwise.
    G3's "written nothing" reads against. (c) One process held open for the
    whole guide: the host's shell tool cannot keep an interactive process
    across questions.
+   - Decided: (a): the guided path writes nothing (G3, confirmed), so the list travels in the resume object and is checked again on the way in; (b) breaks G3.
 3. **How a suggestion matches a listed id.** (a) The exact id only (designed
    to): never suggests a model the person has not used, at the cost of no
    suggestion where two services spell one model differently (a vendor
    prefix on one, none on the other). (b) Also the part after the last `/`:
    more suggestions across services, at the risk of suggesting a different
    model that shares the short name.
+   - Decided: (a): an exact id never matches the wrong model; a looser match is a later change if a case shows the need.
 4. **Naming environment variables for the external home.** (a) Offer at most
    three variable names from the guide's environment that end in `_API_KEY`,
    never reading a value (designed to): the person picks rather than recalls
    a name, and the names enter the conversation. (b) A typed name only:
    nothing about the environment enters the conversation, and the person
    types the name.
+   - Decided: (a): offering names without reading values keeps G6 and saves typing.
 
 ## Footprint
 
