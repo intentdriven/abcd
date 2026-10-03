@@ -445,6 +445,7 @@ decided rather than asked; the reason is given beneath each.
    - criteria: A6, and the install half of A1
    - packages: internal/core/ahoy, internal/surface/cli, docs/how-to, docs/reference, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals
    - tests: TestInstallWritesNoToolConventionsFile, TestSavedRetiredTargetStopsSetup, TestRetiredTargetStillReadsAsManaged, TestUninstallStripsARetiredTargetsBlocks, TestChangingTheOneSettingMovesTheBlock, TestDocsTargetFlagRefusesRetiredValues; the 29 test files that build CLAUDE.md fixtures pass, those that install at `claude_md` or `both` moved to `agents_md` or kept as read-side cases; the command reference regenerated with `go generate ./internal/surface/cli`
+   - landed: feat/agentsmd-setup-writes
 3. Embark follows the conventions target
    - criteria: A2
    - packages: internal/core/lifeboat, internal/surface/cli, commands/embark.md, .abcd/development/brief/04-surfaces

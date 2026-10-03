@@ -59,7 +59,7 @@ func TestAhoyStatusReportsEachScaffoldedArtefact(t *testing.T) {
 	}
 
 	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
 		t.Fatalf("install: %v", err)
 	}

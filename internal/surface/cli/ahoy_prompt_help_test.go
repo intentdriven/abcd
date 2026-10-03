@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -49,7 +50,7 @@ func TestAhoyInstallRendersCoreHelpAboveEachValueQuestion(t *testing.T) {
 		t.Errorf("the report does not say once what reviewer it recorded and how to choose another: %q", res.Notes)
 	}
 	for _, key := range []string{"visibility", "docs_target"} {
-		h, ok := ahoy.HelpFor(key)
+		h, ok := ahoy.HelpIn("", key)
 		if !ok {
 			t.Fatalf("core has no help for %s", key)
 		}
@@ -84,6 +85,78 @@ func TestStdinPrompterRendersNoHelpForAnUnknownKey(t *testing.T) {
 	}
 }
 
+// TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater: a value question no
+// flag answers says where its answer is changed later, in core's words, above
+// the question line, as a flagged question names its flag
+// (iss-2610031236155833). The artefact kind is such a question: its answer is
+// changed in the file the release commands read.
+func TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater(t *testing.T) {
+	h, ok := ahoy.HelpIn("", "artefact_kind")
+	if !ok {
+		t.Fatal("core has no help for artefact_kind")
+	}
+	if h.Flag != "" || h.ChangeLater == "" {
+		t.Fatalf("artefact_kind: flag %q, change later %q; want no flag and where the answer is changed", h.Flag, h.ChangeLater)
+	}
+	var buf strings.Builder
+	p := &stdinPrompter{r: bufio.NewReader(strings.NewReader("plugin\n")), w: &buf}
+	if got := p.Prompt("artefact_kind", []string{"plugin", "binary", "application"}, "application"); got != "plugin" {
+		t.Fatalf("answer = %q", got)
+	}
+	out := buf.String()
+	line := "  (" + question.Default.ChangeLaterPrefix + " " + h.ChangeLater + ")\n"
+	at, q := strings.Index(out, line), strings.Index(out, "artefact_kind (")
+	if at < 0 || at > q {
+		t.Errorf("the change-later line %q is not printed above the question:\n%s", line, out)
+	}
+}
+
+// TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies is the visibility
+// question at the front door (iss-2610031236155833): the install hands the
+// prompter its repository, so public's caveat about records git already
+// tracks is printed where .abcd/ holds tracked files and nowhere else. The
+// words are core's (ahoy.HelpIn); the door only renders them.
+func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
+	hermeticEnv(t)
+	tracked := gittest.NewRepo(t)
+	tracked.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	tracked.Commit("record tier")
+	untracked := gittest.NewRepo(t)
+
+	withCaveat, _ := ahoy.HelpIn(tracked.Root(), "visibility")
+	without, _ := ahoy.HelpIn("", "visibility")
+	if withCaveat.Meaning("public") == without.Meaning("public") {
+		t.Fatal("core shows a repository with tracked records no caveat; nothing to render")
+	}
+	for _, c := range []struct {
+		name string
+		root string
+		want ahoy.PromptHelp
+		not  ahoy.PromptHelp
+	}{
+		{"tracked", tracked.Root(), withCaveat, without},
+		{"untracked", untracked.Root(), without, withCaveat},
+	} {
+		t.Chdir(c.root)
+		out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+		if err != nil {
+			t.Fatalf("%s: install exited non-zero: %v\n%s\n%s", c.name, err, out, errOut)
+		}
+		transcript := string(errOut)
+		q := strings.Index(transcript, "visibility (")
+		if q < 0 {
+			t.Fatalf("%s: visibility was not asked:\n%s", c.name, transcript)
+		}
+		line := "public — " + c.want.Meaning("public") + "\n"
+		if at := strings.Index(transcript, line); at < 0 || at > q {
+			t.Errorf("%s: public's meaning for this repository is not printed above the question:\n%s", c.name, transcript)
+		}
+		if strings.Contains(transcript, "public — "+c.not.Meaning("public")+"\n") {
+			t.Errorf("%s: the other repository's meaning of public is printed:\n%s", c.name, transcript)
+		}
+	}
+}
+
 // TestAhoyInstallTextLeadsWithThePlainSummary is iss-164 at the front door: the
 // text render opens with core's headline and its plain-language items (what,
 // why, what to do) before the exact record of paths, so a person reads what
@@ -92,7 +165,7 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "both",
+	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 	out, errOut, err := runCLIPipedStdinSplit(t, "", append(args, "--json")...)
 	if err != nil {
@@ -194,7 +267,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 	}
 	prev := 0
 	for _, key := range []string{"visibility", "docs_target"} {
-		h, _ := ahoy.HelpFor(key)
+		h, _ := ahoy.HelpIn("", key)
 		q := strings.Index(transcript, key+" (")
 		if q < 0 {
 			t.Fatalf("%s was not asked:\n%s", key, transcript)

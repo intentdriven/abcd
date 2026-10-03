@@ -120,22 +120,22 @@ func TestMarkerInsertFollowsTheCommonMarkFenceRule(t *testing.T) {
 
 func TestClassifySymlinkedMarkerIsNotResolvableGap(t *testing.T) {
 	dir := t.TempDir()
-	// docs.target=claude_md so detection checks only the symlinked CLAUDE.md.
+	// docs.target=agents_md so detection checks only the symlinked AGENTS.md.
 	if err := os.MkdirAll(filepath.Join(dir, ".abcd"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".abcd", "config.json"),
-		[]byte(`{"docs":{"target":"claude_md"}}`), 0o644); err != nil {
+		[]byte(`{"docs":{"target":"agents_md"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// A symlinked CLAUDE.md whose target lacks the block: classifyMarker must
+	// A symlinked AGENTS.md whose target lacks the block: classifyMarker must
 	// report it as a symlink (non-resolvable), not "missing", so detection does
 	// not emit a resolvable gap that install can never close.
 	real := filepath.Join(t.TempDir(), "real.md")
 	if err := os.WriteFile(real, []byte("# Title\n\nno block here\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(dir, "CLAUDE.md")
+	link := filepath.Join(dir, "AGENTS.md")
 	if err := os.Symlink(real, link); err != nil {
 		t.Fatal(err)
 	}
@@ -385,8 +385,6 @@ func TestFirstInstallPlantsTheBlockWhereTheProjectChoseIt(t *testing.T) {
 		want   []string
 		absent []string
 	}{
-		{"both", []string{"CLAUDE.md", "AGENTS.md"}, nil},
-		{"claude_md", []string{"CLAUDE.md"}, []string{"AGENTS.md"}},
 		{"agents_md", []string{"AGENTS.md"}, []string{"CLAUDE.md"}},
 	} {
 		t.Run(tc.target, func(t *testing.T) {
