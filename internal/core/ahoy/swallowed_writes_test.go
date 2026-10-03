@@ -85,6 +85,27 @@ func TestMarkerBlockFailureIsNoted(t *testing.T) {
 	}
 }
 
+// TestMarkerStepPlantsNothingUnderARetiredTarget is the marker step's half of
+// A1: handed a retired docs.target with the plugin-owned category approved, it
+// writes no block, so CLAUDE.md is never created (itd-2610030814013772).
+func TestMarkerStepPlantsNothingUnderARetiredTarget(t *testing.T) {
+	for _, target := range []string{"claude_md", "both"} {
+		t.Run(target, func(t *testing.T) {
+			dir := t.TempDir()
+			a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}}
+			a.stepMarker(&InstallConfig{DocsTarget: target})
+			for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
+				if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+					t.Errorf("%s exists after the marker step ran under %s (err=%v)", name, target, err)
+				}
+			}
+			if len(a.writes) != 0 {
+				t.Errorf("the marker step recorded writes %v under %s", a.writes, target)
+			}
+		})
+	}
+}
+
 // TestSessionStoreFailureIsNoted is the history step's share of the rule the
 // brief states for every install write: a session store abcd could not create
 // is a note naming the store and the reason, never a silent omission. Both

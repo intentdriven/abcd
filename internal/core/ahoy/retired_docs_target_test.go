@@ -162,35 +162,55 @@ func TestSavedRetiredTargetStopsSetup(t *testing.T) {
 // up through claude_md still classifies as managed on its CLAUDE.md block, and
 // detection names the retired setting in one required gap nothing resolves,
 // rather than calling the value missing or offering a block it will not write.
+// With the block gone from CLAUDE.md the retired gap still stands alone: a
+// marker gap there would promise a write install refuses.
 func TestRetiredTargetStillReadsAsManaged(t *testing.T) {
-	setupHermetic(t)
-	repo := retiredRepo(t, "claude_md")
-
-	if !Managed(repo) {
-		t.Error("Managed reads a CLAUDE.md block under a retired target as unmanaged")
-	}
-	det, err := Detect(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if det.FolderKind != ManagedRepo {
-		t.Errorf("folder kind = %q, want %q", det.FolderKind, ManagedRepo)
-	}
-	why, _ := RetiredDocsTarget("claude_md")
-	var found []Gap
-	for _, g := range det.Gaps {
-		switch {
-		case g.ID == docsTargetRetiredGapID:
-			found = append(found, g)
-		case g.ID == "config.docs_target_missing", strings.HasPrefix(g.ID, "marker."):
-			t.Errorf("a saved retired target raised %s (%s)", g.ID, g.Title)
-		}
-	}
-	if len(found) != 1 {
-		t.Fatalf("want one %s gap, got %+v", docsTargetRetiredGapID, found)
-	}
-	if g := found[0]; !g.Required || g.Resolvable || g.Detail != why {
-		t.Errorf("gap = required %v, resolvable %v, detail %q; want required, not resolvable, detail %q", g.Required, g.Resolvable, g.Detail, why)
+	for _, tc := range []struct {
+		name        string
+		removeBlock bool
+	}{
+		{name: "block in CLAUDE.md"},
+		{name: "block taken out of CLAUDE.md", removeBlock: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupHermetic(t)
+			repo := retiredRepo(t, "claude_md")
+			if tc.removeBlock {
+				if _, err := removeMarkerFile(filepath.Join(repo, "CLAUDE.md")); err != nil {
+					t.Fatal(err)
+				}
+				if hasBlock(t, filepath.Join(repo, "CLAUDE.md")) {
+					t.Fatal("precondition: CLAUDE.md still carries abcd's block")
+				}
+			} else {
+				if !Managed(repo) {
+					t.Error("Managed reads a CLAUDE.md block under a retired target as unmanaged")
+				}
+			}
+			det, err := Detect(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !tc.removeBlock && det.FolderKind != ManagedRepo {
+				t.Errorf("folder kind = %q, want %q", det.FolderKind, ManagedRepo)
+			}
+			why, _ := RetiredDocsTarget("claude_md")
+			var found []Gap
+			for _, g := range det.Gaps {
+				switch {
+				case g.ID == docsTargetRetiredGapID:
+					found = append(found, g)
+				case g.ID == "config.docs_target_missing", strings.HasPrefix(g.ID, "marker."):
+					t.Errorf("a saved retired target raised %s (%s)", g.ID, g.Title)
+				}
+			}
+			if len(found) != 1 {
+				t.Fatalf("want one %s gap, got %+v", docsTargetRetiredGapID, found)
+			}
+			if g := found[0]; !g.Required || g.Resolvable || g.Detail != why {
+				t.Errorf("gap = required %v, resolvable %v, detail %q; want required, not resolvable, detail %q", g.Required, g.Resolvable, g.Detail, why)
+			}
+		})
 	}
 }
 
@@ -227,50 +247,79 @@ func TestUninstallStripsARetiredTargetsBlocks(t *testing.T) {
 }
 
 // TestChangingTheOneSettingMovesTheBlock is A6's way out: over a saved
-// claude_md, the one command the explanation names moves the block out of
-// CLAUDE.md and into AGENTS.md, saves agents_md, and leaves the owner's words.
+// claude_md or both, the one command the explanation names saves the new
+// value and leaves the owner's words. At agents_md the block moves out of
+// CLAUDE.md and into AGENTS.md (an AGENTS.md block already there is kept); at
+// skip it is taken out of both files and AGENTS.md is never created.
 func TestChangingTheOneSettingMovesTheBlock(t *testing.T) {
-	setupHermetic(t)
-	repo := retiredRepo(t, "claude_md")
-	before, err := Detect(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasGap(before.Gaps, docsTargetRetiredGapID) {
-		t.Fatalf("precondition: a saved claude_md raises %s", docsTargetRetiredGapID)
-	}
+	for _, tc := range []struct{ from, to string }{
+		{"claude_md", "agents_md"},
+		{"both", "agents_md"},
+		{"claude_md", "skip"},
+		{"both", "skip"},
+	} {
+		t.Run(tc.from+" to "+tc.to, func(t *testing.T) {
+			setupHermetic(t)
+			repo := retiredRepo(t, tc.from)
+			before, err := Detect(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasGap(before.Gaps, docsTargetRetiredGapID) {
+				t.Fatalf("precondition: a saved %s raises %s", tc.from, docsTargetRetiredGapID)
+			}
 
-	opts := installOptsWithout()
-	opts.ValueOverrides["docs_target"] = "agents_md"
-	res, err := Install(repo, opts, RefusingPrompter{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Status != "clean" {
-		t.Fatalf("status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
-	}
-	claude := filepath.Join(repo, "CLAUDE.md")
-	if hasBlock(t, claude) {
-		t.Error("CLAUDE.md still carries abcd's block after the setting moved to agents_md")
-	}
-	if data, _ := os.ReadFile(claude); !bytes.Contains(data, []byte("The owner's own line.")) {
-		t.Errorf("CLAUDE.md lost the owner's words: %q", data)
-	}
-	if got := classifyMarker(filepath.Join(repo, "AGENTS.md")); got != markerCurrent {
-		t.Errorf("AGENTS.md marker = %q, want current", got)
-	}
-	cfg, err := readConfig(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v, _ := stringVal(subMap(cfg, "docs"), "target"); v != "agents_md" {
-		t.Errorf("saved docs.target = %q, want agents_md", v)
-	}
-	after, err := Detect(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasGap(after.Gaps, docsTargetRetiredGapID) {
-		t.Errorf("%s still raised after the setting changed", docsTargetRetiredGapID)
+			opts := installOptsWithout()
+			opts.ValueOverrides["docs_target"] = tc.to
+			res, err := Install(repo, opts, RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != "clean" {
+				t.Fatalf("status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
+			}
+			claude := filepath.Join(repo, "CLAUDE.md")
+			if hasBlock(t, claude) {
+				t.Errorf("CLAUDE.md still carries abcd's block after the setting moved to %s", tc.to)
+			}
+			if data, _ := os.ReadFile(claude); !bytes.Contains(data, []byte("The owner's own line.")) {
+				t.Errorf("CLAUDE.md lost the owner's words: %q", data)
+			}
+			agents := filepath.Join(repo, "AGENTS.md")
+			switch tc.to {
+			case "agents_md":
+				if got := classifyMarker(agents); got != markerCurrent {
+					t.Errorf("AGENTS.md marker = %q, want current", got)
+				}
+			case "skip":
+				if hasBlock(t, agents) {
+					t.Error("AGENTS.md carries abcd's block after the setting moved to skip")
+				}
+				if tc.from == "claude_md" {
+					if _, err := os.Lstat(agents); !os.IsNotExist(err) {
+						t.Errorf("AGENTS.md exists after a move to skip (err=%v)", err)
+					}
+				}
+			}
+			if tc.from == "both" {
+				if data, _ := os.ReadFile(agents); !bytes.Contains(data, []byte("The owner's own line.")) {
+					t.Errorf("AGENTS.md lost the owner's words: %q", data)
+				}
+			}
+			cfg, err := readConfig(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v, _ := stringVal(subMap(cfg, "docs"), "target"); v != tc.to {
+				t.Errorf("saved docs.target = %q, want %s", v, tc.to)
+			}
+			after, err := Detect(repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hasGap(after.Gaps, docsTargetRetiredGapID) {
+				t.Errorf("%s still raised after the setting changed", docsTargetRetiredGapID)
+			}
+		})
 	}
 }
