@@ -509,7 +509,10 @@ your question tool, after relaying `key_homes`, and offer the three without
 marking one: `external` takes `--env <VARIABLE>` or
 `--file ~/<file>.json --field <dotted.field>` (abcd keeps only where the key
 is); `abcd` and `keychain` take the key piped in on stdin from a file or a
-variable. It verifies the provider with one call to the first model listed,
+variable, or, when the person runs the command in a terminal, pasted on hidden
+input: abcd prints one line on stderr, "Paste the key for <provider> and press
+Enter. It is not shown.", and reads the key with echo off. An empty paste is
+refused as an empty pipe is. It verifies the provider with one call to the first model listed,
 and only when that call succeeds keeps the key in that home and writes the
 provider block (the base URL, the key's name and the models, the allowlist)
 into `~/.abcd/config.json`. Nothing goes into the repository or the harness's
@@ -521,11 +524,25 @@ home and the tool's file is a symlink, wherever it leads (a `~/.config` linked
 elsewhere, say); `--env` stays open.
 `--home none` sets up a server that takes no key.
 
-The key is read from stdin and nowhere else, and never from a terminal, where it
-would be echoed. **Never ask the person for the key and never pass it
+Run in a terminal (stdin, stdout and stderr all terminals) with no `--model`,
+the command lists the service's models with the key it holds: the pasted key,
+the value the `external` pointer names, or none for `--home none`. The list is
+one request to the service's model list, which follows no redirect and gives
+up after ten seconds. Only the names abcd accepts as model identifiers are
+offered, in the plain-Terminal list, typing part of a name to narrow it, and
+the model picked is verified with one real completion before anything is
+written; a list is never taken as the verification. A list that cannot be
+read, a list with no usable name, decide later, and a completion that fails
+each write nothing and say which; Ctrl-C at the list exits 130 with nothing
+written. Off a terminal, a run with no `--model` is refused, naming both ways
+on: `--model`, or running the command in a terminal to pick there.
+
+The key is read from stdin and nowhere else: piped, or at a terminal on hidden
+input, never echoed. Ctrl-C during the paste exits 130, the terminal restored
+and nothing written. **Never ask the person for the key and never pass it
 yourself**: it would enter this conversation. Give them the command to run in
-their own shell, with the key piped in from a file or a variable they hold, and
-relay the result — `verified` (the provider, the model asked for, the model
+their own terminal, where they paste the key on hidden input or pipe it in from
+a file or a variable they hold, and relay the result — `verified` (the provider, the model asked for, the model
 it reported and the credential's name), each `wrote` path, and `dispatch`. A
 route the configuration read skips is named on stderr, in the text and the JSON
 form alike, and the setup stands: relay that line too.

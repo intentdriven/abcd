@@ -31,6 +31,11 @@ func TestMain(m *testing.M) {
 	if actAsBinary(os.Getenv(cliTestAsBinaryEnv), os.Args[1:]) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
+	// The hidden key read's pseudo-terminal tests run `ahoy connect` as a
+	// child on the terminal end (ahoy_connect_pty_test.go).
+	if actAsConnectChild(os.Getenv(connectPtyChildEnv), os.Args[1:]) {
+		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
 	ahoy.SetCurrentVintageForTest(func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}

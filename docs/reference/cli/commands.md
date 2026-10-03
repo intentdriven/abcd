@@ -58,7 +58,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.
+Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses no --model off a terminal.
 
 **Usage:** `abcd ahoy connect <provider> [flags]`
 
@@ -69,9 +69,9 @@ Verify a model provider with one call, then configure it: Writes its block under
       --env string          for --home external: the environment variable that holds the value
       --field string        for --home external: the dotted field of --file that holds the value (auth.token)
       --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
-      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
+      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
 ```
 
 **Example:**
