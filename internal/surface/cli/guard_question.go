@@ -210,14 +210,24 @@ func verbsOf(root *cobra.Command) []string {
 	return out
 }
 
+// maxRefusalParts bounds the finding lines one refusal names. The host
+// replays the refusal to the agent, so its size must follow the limits, not
+// the payload: a question of thousands of broken fields is still refused in a
+// few lines (review-askGuard-security finding 1).
+const maxRefusalParts = 10
+
 // writeLimitsRefusal writes the refusal the host replays to the agent: one
-// head line counting the parts, then one line per finding naming the tab, the
-// part, the value, the limit and the remedy. Every line passes
+// head line counting every part, then one line per finding naming the tab, the
+// part, the value, the limit and the remedy, at most maxRefusalParts of them,
+// and one closing line counting the parts not named. Every line passes
 // termsafe.Sanitize, so no value the agent wrote reaches the terminal raw.
 func writeLimitsRefusal(w io.Writer, findings []question.Finding) {
 	fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(findings))
-	for _, f := range findings {
+	for _, f := range findings[:min(len(findings), maxRefusalParts)] {
 		fmt.Fprintln(w, termsafe.Sanitize(f.String()))
+	}
+	if more := len(findings) - maxRefusalParts; more > 0 {
+		fmt.Fprintf(w, "... and %d more part(s); fix these and ask again to see the rest.\n", more)
 	}
 }
 
