@@ -6,6 +6,7 @@ kind: null
 suggested_kind: null
 reclassification_history: []
 builds_on: []
+refines: [itd-2609081951381895]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -15,15 +16,19 @@ production_mode: hand-written
 
 ## Press Release
 
-> Connecting a model service from inside Claude Code works out the details with the person instead of asking them to type them. It looks up what it can: the service's own list of models from the address given, where the person's key could be kept on this machine, and abcd's settings folder. It offers the choices one question at a time, and then either sets the connection up itself or prints the exact command to paste into a terminal. When a service lists hundreds of models, the person sees a short list of suggestions first and can page through the whole list.
+> Connecting a model service from inside Claude Code works out the details with the person instead of asking them to type them. It looks up what it can: the service's own list of models from the address given, where the person's key could be kept on this machine, and abcd's settings folder. It offers the choices one question at a time, and then either sets the connection up itself or prints the exact command to paste into a terminal. When a service lists hundreds of models, the person sees three suggestions and can type part of a name to narrow the list; the full searchable list is the plain-Terminal picker's (itd-2610030810370060).
+
+> _Proposed; to be confirmed at the planning interview._
 
 ## Why This Matters
 
-The product thinker asked on 2026-10-03 that `ahoy connect`, used from the harness, probe for its flag values (`--base-url`, `--model`, `--home` and the rest) and offer options, so that it either runs the setup itself or tells the person the exact terminal command, because nobody should have to work out exact model names: easy with a handful of models, hard with hundreds (a routing service such as OpenRouter lists several hundred).
+The product thinker asked on 2026-10-03, as relayed by the technical facilitator (the routing row in the decomposition-calibration note), that `ahoy connect`, used from the harness, probe for its flag values (`--base-url`, `--model`, `--home` and the rest) and offer options, so that it either runs the setup itself or tells the person the exact terminal command, because nobody should have to work out exact model names: easy with a handful of models, hard with hundreds (a routing service such as OpenRouter lists several hundred).
 
-Today `abcd ahoy connect <provider>` needs every value typed: the base URL, `--model` repeated for each model the provider may serve (the first becomes the verification call's model), `--home` (external, abcd, or keychain) with `--env` or `--file` and `--field` for an external home, and `--key`. It verifies the provider with one call and refuses a key typed at a terminal. The shipped intent itd-2609081951381895 owns the adapter and this verb.
+Today `abcd ahoy connect <provider>` needs every value typed: the base URL, `--model` repeated for each model the provider may serve (the first becomes the verification call's model), `--home` (none, external, abcd, or keychain) with `--env` or `--file` and `--field` for an external home, and `--key`, which names the credential rather than carrying its value. It verifies the provider with one call and refuses a key typed at a terminal. The shipped intent itd-2609081951381895 owns the adapter and this verb; its decision 5 hands the external and keychain homes to the credential store, itd-2609221017023290 (shipped), whose standard-input discipline the key's handling rests on.
 
-What the binary can look up without asking: an OpenAI-compatible service's model list (its `/models` endpoint, at the base URL the person names), the homes a key can live in on this machine (environment variables and known tool configuration files, named but never read for their value until the person chooses), and abcd's own settings folder. The key itself never passes through the conversation: the person stores it, and the binary reads it from the chosen home.
+What the binary could look up without asking, once built (no such call exists today): an OpenAI-compatible service's model list (its `/models` endpoint, at the base URL the person names), the homes a key can live in on this machine (environment variables and known tool configuration files, named but never read for their value until the person chooses), and abcd's own settings folder. The proposed promise (see the review findings below: it is a discipline, not a property): connect never prints, echoes or records the key, and the guided path never asks for it; the person stores it, and the binary reads it from the chosen home.
+
+Routed out: whether a request is judged against a model's published size before it is sent is the adapter's question, not connect's; it is captured as its own record, a follow-up of the streaming fix iss-2610030931521214. <!-- record-lint: forward-looking -->
 
 Typed links: refines itd-2609081951381895 (its connect verb gains a guided path); the arrow-key list the product thinker wants later is routed to itd-2610030810370060 (abcd's interviews in a plain Terminal), with model choice as its first example (the product thinker's routing, 2026-10-03); the questions it asks follow itd-2610030810350727 (one question layout).
 
@@ -46,14 +51,14 @@ Typed links: refines itd-2609081951381895 (its connect verb gains a guided path)
 - In the harness, three suggestions plus a search beats paging: three at a time, 300 models would take about 100 questions.
 - OpenRouter shortens an oversize prompt for small models unless told not to, which would break "the record shows what answered".
 - A request near a model's limit can only be judged exactly by the server (a few have a token-count endpoint); the error text names both numbers.
-- Claude Code's own model discovery never follows a redirect, so a key cannot leak to another address.
+- abcd's adapter already refuses to follow a redirect, so a look-up built on it cannot carry a key to another address.
 
 Two questions this puts to the product thinker before criteria are written:
 
 - The order for a service that needs the key to list its models: today abcd stores a key only after a test call with a model, so it cannot list first and choose after. Options: accept the list itself as the test where a wrong key is refused; a service-specific check; or have the person store the key and choose the model in one Terminal step, outside the session.
 - A key the person has already put into the computer's own password store, with the input hidden, typed into the system's tool and not into abcd: may abcd adopt it by name?
 
-## Review findings (design and feasibility, 2026-10-03, reports/review-connect-design.md in the local tier)
+## Review findings (design and feasibility, then record discipline, 2026-10-03, reports/review-connect-design.md and reports/review-connect-records.md in the local tier)
 
 Nothing here is settled; each item is put to its addressee at the interview.
 
@@ -65,16 +70,16 @@ Nothing here is settled; each item is put to its addressee at the interview.
 - Should-fix, the look-up: http is already refused except on this machine, so a local-network address over http is refused; the look-up is a GET with no key, no redirect followed, a short timeout and the size cap, after one question showing the scheme and host.
 - Consider: request size is the adapter's (iss-2610030931521214 and its follow-up), not connect's; connect may show a listed size labelled with its meaning and source, storing none of it. <!-- record-lint: forward-looking -->
 
+Applied from the record-discipline review: the press release no longer promises the full list (the plain-Terminal picker's), the request-size question is routed out, the `refines` link is in the front matter, and the statements about `--home`, `--key`, the look-up and the key are corrected. Reversals of the shipped intent's decisions for the product thinker to confirm at the interview: setting up from inside the session (its decision 6); the list itself as the test (decision 7); any service-specific check or service-named parameter (decision 2); a look-up before setup (a network call adr-25's default does not make); a setting that runs without asking (invariant 1); a service-ordered shortlist inside a question (the asking rules put recommendations in prose).
+
 Proposed acceptance criteria (agent-seeded, unconfirmed): C1 keyless listing call rules and the host shown first (facilitator); C2 three suggestions, search, narrowing (product thinker); C3 run only for no key, a session variable or a file pointer, else print the command (facilitator); C4 one confirming question showing the command and every path written (product thinker); C5 the one-terminal-step path for a service that refuses keyless listing (facilitator); C6 no key value in any question, answer, printed command or error (facilitator); C7 a service with no model list falls back to typing, with the reason told (product thinker); C8 a listed size labelled with its meaning and source, nothing written (facilitator). Full text in the review report; each is walked with an example at the interview.
 
 ## Open Questions
 
 - Run it or print it: whether the person chooses each time, or a setting decides, and whether "run it" may write the person's machine settings from inside a session without a confirmation step.
-- Suggestions for a long list: by what the person's routes already use, by a short curated list abcd ships, by the service's own ordering, or by a search the person types; how many per page.
+- Suggestions for a long list: by what the person's routes already use, by a short curated list abcd ships, by the service's own ordering, or by a search the person types; how many per page, given that the harness question view holds at most four options (itd-2610030810350727), so paging through hundreds means a question per page or a search step.
 - The look-up call: listing models is a call to the service before the person has confirmed it, and some services need the key to list; whether that call waits for the key to be stored first.
 - A service that publishes no model list: fall back to typing, or to the curated list.
-- Request size: some services publish each model's largest accepted request in their model list; a user test of a keyless local service on 2026-10-03 had a consistency check refused by the service because the request exceeded the chosen model's size, by about 0.5%. Whether connect shows each model's size and routing checks a request against it before sending (or picks a listed model that fits) belongs here or in its own record.
-- The harness question view holds at most four options (see reports/sota-question-layout.md in the local tier, and itd-2610030810350727): paging through hundreds means a question per page or a search step.
 
 ## Audit Notes
 
