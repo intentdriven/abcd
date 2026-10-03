@@ -17,7 +17,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
 .PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
-	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check fmt fmt-check
+	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -283,6 +283,17 @@ scaffold-sync:
 
 scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
+
+# Write the asking rules (internal/core/question: asking.go, limits.go) into the
+# generated block of commands/intent.md (spc-2610030944505997). Nothing in CI
+# calls either target: the drift is GATED by `go test`
+# (TestIntentPageAskingBlockIsGenerated, under preflight); these are the
+# read-only look at it and the one-command fix.
+asking-sync:
+	@go run ./cmd/asking-sync
+
+asking-sync-check:
+	@go run ./cmd/asking-sync -check
 
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a

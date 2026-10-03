@@ -74,7 +74,7 @@ It builds on, and reuses rather than restates:
 - The shipped credential store (itd-2609221017023290): its three homes, its
   walkthrough (`credential.Walk`) and its rule that a stored secret is never
   replaced.
-- [spc-2610030944505997](spc-2610030944505997-asking-and-layout.md), the
+- [spc-2610030944505997](../closed/spc-2610030944505997-asking-and-layout.md), the
   asking rules and the field limits: every guided question is held to them
   where they have landed.
 

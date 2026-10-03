@@ -322,49 +322,26 @@ The sign-off is the product thinker's; set the mode before the first question
 and reset it whenever the hat changes, as the rule below says. Run it only in a live session with the product thinker; deferral of
 any question is a valid answer, but silence is not consent.
 
-**How every question is asked (the GRILL rule domain).** One question at a
-time, through the harness's interactive question tool, never as a numbered
-list inside prose. Each question carries one sentence of context, one concrete
-example of what each answer means in practice, and options that widen rather
-than recommend: no starred default, no recommended label, the null answer
-always offered. A question is asked only where two or more answers are each
-defensible on the record, and its options are exactly those answers plus the
-null answer, never alternatives made up to fill a set; a decision with one
-defensible answer is not asked, but recorded as a decision line naming the
-answer and why no question was put. What the human is asked to accept, edit
-or strike is quoted in the question itself, never referred to: prose written
-between questions is invisible while a question shows, so a question that asks
-"are these yours?" about text they cannot see cannot be answered. For the same
-reason, the example that makes a question answerable goes in the question text,
-and each option's preview carries what choosing that option means, with its own
-concrete example. A recommendation the human asks for is given in prose apart
-from the question. The next question waits for the last answer. The register
-follows the addressee: a product thinker gets outcomes in product terms with no
-record ids or internals; a technical facilitator gets the mechanism and the
-ids. Where the hat is unknown, that is the first question. The mode carries
-the addressee: classify each question's addressee first, and before each
-question set `abcd mode product-thinker` or `abcd mode facilitator` when it
-differs from the current label, then ask, and the question names that role.
-The status line names the person the question on screen is for, so a mixed
-interview re-sets it per question, never once at the start.
+<!-- generated: asking-rules -->
+<!-- Written by `make asking-sync` from internal/core/question; edit asking.go or limits.go there, never this block. -->
+**How every question is asked (the GRILL rule domain).** These are the rules the GRILL domain carries into every repository abcd manages, and the question check refuses a question that breaks the layout they set:
 
-**What each register is assumed to know.** The register sets the tone; the
-knowledge floor is what an explanation is measured against. The product
-thinker knows the product, its users, what done looks like, and the ordinary
-vocabulary of using software: a file, a folder, a name, a version, an account,
-a link, a permission someone grants. They are not assumed to know version
-control (a checkout, a branch, a merge, a commit, a worktree), a shell, file
-ownership and permission bits, continuous integration or a merge queue, a hook,
-an environment variable, a checksum, a symbolic link, or the record ids. The
-technical facilitator knows all of that as well, so explaining it to them is
-padding, and leaving the ids out of their answer withholds the handle they act
-on. A concept below the product thinker's floor that cannot be avoided is
-introduced in one sentence in product terms before it is used, without naming
-the tool that implements it: a lock is one person holding the pen, a checksum
-is a fingerprint saying two copies are identical. A question that fails this is
-rewritten, not annotated. The floor is stated here rather than pointed at,
-because this page ships to every repository abcd is installed in and the rule
-domain that carries the same text is declared in abcd's own repository alone.
+- Ask one thing at a time, through the host's interactive question tool, never as a numbered list in a message. The parts of one thing (the criteria of one feature, the paragraphs of one text) are asked as tabs, up to four on a screen, each short, and the rest on the next screen. A question whose answer depends on an earlier one is asked alone, after that answer. A host with no question tool asks one question per message, in the same order and the same words.
+- A question is put to the person only where two or more answers are each defensible on the record; where the record settles the answer, stating it is reporting, not recommending. The options are exactly those defensible answers plus the decide-later answer, never alternatives made up to fill a set. A decision with one defensible answer is not asked: It is recorded as a decision line naming the answer and why no question was put.
+- The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before "does it stand?", the paragraph before "confirm or change?", the open question before "resolve or defer?". Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. Material too long for one question is put one part per question, never into a message before the question or into a preview.
+- Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. The header is a chip of at most twelve columns naming whom the question is for and which it is: "Product Q2", "Tech Q3", or "Setup Q1/4", the role one of Product, Tech, or Setup, with a total after the slash only when the interview's length is known. The question text gives the material first, then a line starting "Now:" and a line starting "Change later:" (each saying "not applicable" where it does not apply), and ends with the question on its own line. It offers two to four options, the last "Decide later" or "None of these"; each label is at most five words, and each description at most two sentences. There is no bold (no ** or __) and no side preview, and one question, or one tab, fits twenty-four rows at eighty columns.
+- Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.
+- Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.
+- An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option.
+- Deferral is a real answer and is recorded as one; silence is never consent, and a step whose answer is missing is asked again rather than assumed.
+- In abcd's own interviews, address the person in their register: The product thinker gets outcomes and choices in product terms, with no record ids, no code, and no internals; the technical facilitator gets the mechanism, the ids, and the trade-offs.
+- In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.
+- What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at .abcd/development/brief/glossary/interview/knowledge-floor.md under abcd's plugin root (in abcd's own repository, at that path from its root).
+- In abcd's own interviews, before stopping for an answer, record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
+- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator); when it differs from the current mode, set the mode, then ask, and the chip names that role. The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.
+
+The knowledge floor every explanation is measured against: [knowledge-floor.md](../.abcd/development/brief/glossary/interview/knowledge-floor.md).
+<!-- /generated -->
 
 **Prerequisite — two adversarial reviews.** Before the interview, the draft
 has been through two independent adversarial reviewers with different lenses
@@ -446,8 +423,11 @@ checks; the judgement is yours, as the host.
    expect the work to prove.
 8. **Acceptance criteria:** walk EVERY Given-When-Then bullet, one question
    per criterion with the criterion quoted in the question; the human
-   accepts, edits, or strikes each, and adds what is missing. Seeded criteria
-   are proposals, never approvals.
+   accepts, edits, or strikes each, and adds what is missing. Each question
+   also carries one concrete example of what the criterion means in practice,
+   and a question that offers a choice between two forms explains the
+   difference between them, so an answer is never given on wording alone.
+   Seeded criteria are proposals, never approvals.
 9. Edit the draft file to the confirmed content.
 10. Only after the human explicitly confirms the criteria are theirs, run:
 

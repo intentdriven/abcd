@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "id": "regenerate",
+      "chip": "Setup Q4",
+      "material": [
+        {"kind": "paragraph", "text": "The settings you just changed feed every configuration file abcd derives for this repository. A derived file that is not rebuilt keeps the old settings until the next install."}
+      ],
+      "ask": "Should abcd rebuild the derived files now?",
+      "options": [
+        {"value": "rebuild", "label": "Rebuild every derived configuration file", "meaning": "Every file abcd derives is written again from the new settings. Files you edited by hand are left alone."},
+        {"value": "keep", "label": "Keep the files unchanged", "meaning": "Nothing is written now. The files catch up at the next install."}
+      ],
+      "later": {"value": "later", "label": "Decide later", "meaning": "Nothing changes now. abcd asks again when the settings next change."},
+      "now": "the files hold the old settings",
+      "change_later": "not applicable"
+    }
+  ]
+}
