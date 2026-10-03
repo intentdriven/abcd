@@ -92,7 +92,7 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "both",
+	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 	out, errOut, err := runCLIPipedStdinSplit(t, "", append(args, "--json")...)
 	if err != nil {

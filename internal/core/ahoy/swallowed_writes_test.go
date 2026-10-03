@@ -76,8 +76,8 @@ func TestMarkerBlockFailureIsNoted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}, markerRetract: []string{"AGENTS.md"}}
-	a.stepMarker(&InstallConfig{DocsTarget: "claude_md"})
+	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}, markerRetract: []string{"CLAUDE.md"}}
+	a.stepMarker(&InstallConfig{DocsTarget: "agents_md"})
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
 		if !notesCarryAll(a.notes, name, "symlink") {
 			t.Errorf("no note says abcd's block in %s was left alone, and why; notes: %v", name, a.notes)

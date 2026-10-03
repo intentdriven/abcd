@@ -79,6 +79,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		}
 	}
 
+	// A docs.target setup no longer writes (claude_md, both) stops the run
+	// before its first write and before the adoption question, unless this run
+	// changes that one setting to a value setup writes: the person is told the
+	// one command, and nothing is half-done (itd-2610030814013772, A6).
+	if reason := retiredDocsTargetRefusal(abs, opts.ValueOverrides); reason != "" {
+		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -552,14 +560,16 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// leaves an already-valid value untouched (a silent no-op).
 	oldDocsTarget := ic.DocsTarget
 	visForced := a.applyOverride("visibility", visibilityChoices, &ic.Visibility)
-	docsForced := a.applyOverride("docs_target", docsTargetChoices, &ic.DocsTarget)
+	// The saved docs target is read against every value setup ever wrote; an
+	// override may only name one it writes now.
+	docsForced := a.applyOverride("docs_target", docsTargetWritable, &ic.DocsTarget)
 	oracleForced := a.applyOverride("oracle_backend", oracleBackendChoices, &ic.OracleBackend)
 	scanForced := a.applyScanDeepOverride(ic)
 	forced := visForced || docsForced || oracleForced || scanForced
 	a.visibilityForced = visForced  // stepVisibility must refresh .gitignore for a new visibility
 	a.docsTargetForced = docsForced // stepMarker must re-plant markers for a new docs target
 	if docsForced {
-		// Narrowing the target set (e.g. both -> claude_md, or -> skip) leaves the
+		// Narrowing the target set (e.g. both -> agents_md, or -> skip) leaves the
 		// de-selected file's block orphaned; stepMarker retracts it so nothing is
 		// left inconsistent.
 		a.markerRetract = markerFilesDropped(oldDocsTarget, ic.DocsTarget)
@@ -581,9 +591,14 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		}
 	}
 	if ic.DocsTarget == "" {
-		ic.DocsTarget = a.resolveValue("docs_target", docsTargetChoices, docsTargetDefault)
-		if !inSet(ic.DocsTarget, docsTargetChoices) {
-			return nil // no valid docs target => partial (never persist a typo)
+		ic.DocsTarget = a.resolveValue("docs_target", docsTargetWritable, docsTargetDefault)
+		if !inSet(ic.DocsTarget, docsTargetWritable) {
+			// A retired answer is said, with the one explanation; a typo is
+			// never persisted either way.
+			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
+				a.refuse(why)
+			}
+			return nil // no writable docs target => partial
 		}
 		// Choosing the target is the approval to plant into it. At the skip
 		// default detection previews no marker gap, so the plugin-owned category
@@ -774,7 +789,7 @@ func overridesWouldChange(cwd string, overrides map[string]string) bool {
 		return ok && v != "" && cur != "" && inSet(v, choices) && cur != v
 	}
 	if differs("visibility", visibilityChoices, ic.Visibility) ||
-		differs("docs_target", docsTargetChoices, ic.DocsTarget) ||
+		differs("docs_target", docsTargetWritable, ic.DocsTarget) ||
 		differs("oracle_backend", oracleBackendChoices, ic.OracleBackend) {
 		return true
 	}
@@ -1046,7 +1061,9 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 			target = v
 		}
 	}
-	for _, name := range markerTargets(target) {
+	// Only a target setup writes plants a block; a retired one was refused
+	// before the first write, and is never planted into here either.
+	for _, name := range writableMarkerTargets(target) {
 		path := filepath.Join(a.cwd, name)
 		wrote, err := installMarkerFile(path)
 		if err != nil {
@@ -1058,7 +1075,7 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 		}
 	}
 	// Retract the block from files a narrowed docs-target override de-selected,
-	// so a target change (e.g. both -> claude_md, or -> skip) leaves no orphan.
+	// so a target change (e.g. both -> agents_md, or -> skip) leaves no orphan.
 	for _, name := range a.markerRetract {
 		path := filepath.Join(a.cwd, name)
 		wrote, err := removeMarkerFile(path)

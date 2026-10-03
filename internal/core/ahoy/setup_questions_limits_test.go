@@ -90,9 +90,8 @@ func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Questi
 }
 
 // setupLimitsOwed is every limit a setup question breaks today, as
-// "<question id> <rule>", recorded in iss-2610031236155833: docs_target offers
-// more answers than four options hold, which itd-2610030814013772's retirement
-// of claude_md and both brings inside the limit, and the rest exceed the rows
+// "<question id> <rule>", recorded in iss-2610031236155833 (docs_target fits
+// since itd-2610030814013772 retired claude_md and both): each exceeds the rows
 // under the host figures calibrated on 2026-10-03 (step 5), each still taller
 // than its copy can be cut to without losing what an answer means.
 // oracle_backend is not asked while one answer has an adapter (the 2026-10-03
@@ -101,8 +100,6 @@ func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Questi
 // longer breaks, so the fix deletes its line.
 var setupLimitsOwed = map[string]bool{
 	"artefact_kind rows":                  true,
-	"docs_target options":                 true,
-	"docs_target rows":                    true,
 	"oracle_routing.machine_offered rows": true,
 	"visibility rows":                     true,
 }
