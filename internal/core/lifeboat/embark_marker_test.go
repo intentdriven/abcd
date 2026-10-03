@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -113,9 +114,9 @@ func TestEmbarkPlantsInAgentsMD(t *testing.T) {
 // TestEmbarkFollowsTheChosenTarget holds every docs.target a project's setup
 // can have saved: agents_md plants into AGENTS.md; skip and the two retired
 // values plant nowhere, say why, and still land the records; a settings file
-// that cannot be read plants nowhere; a value setup reads as unset is no
-// choice, so the block goes to AGENTS.md. The probe predicts each outcome, and
-// a CLAUDE.md already in the target is never written.
+// that is malformed or cannot be read plants nowhere; a value setup reads as
+// unset is no choice, so the block goes to AGENTS.md. The probe predicts each
+// outcome, and a CLAUDE.md already in the target is never written.
 func TestEmbarkFollowsTheChosenTarget(t *testing.T) {
 	dest := packSource(t, embarkableSourceFixture(t))
 	skipNote := "this project's setup chose no conventions file for abcd's block"
@@ -127,18 +128,20 @@ func TestEmbarkFollowsTheChosenTarget(t *testing.T) {
 	cases := []struct {
 		name       string
 		config     string // raw .abcd/config.json; "" writes none
+		perm       os.FileMode
 		wantTarget string
 		wantAction MarkerAction
 		wantNote   string // "" asserts no note; "*" asserts any non-empty note
 	}{
-		{"agents_md", `{"docs": {"target": "agents_md"}}`, "AGENTS.md", MarkerActionInstall, ""},
-		{"skip", `{"docs": {"target": "skip"}}`, "", MarkerActionSkip, skipNote},
-		{"retired claude_md", `{"docs": {"target": "claude_md"}}`, "", MarkerActionSkip, claudeWhy},
-		{"retired both", `{"docs": {"target": "both"}}`, "", MarkerActionSkip, bothWhy},
-		{"no settings file", "", "AGENTS.md", MarkerActionInstall, ""},
-		{"settings without docs.target", `{"docs": {}}`, "AGENTS.md", MarkerActionInstall, ""},
-		{"a value setup reads as unset", `{"docs": {"target": "elsewhere"}}`, "AGENTS.md", MarkerActionInstall, ""},
-		{"unreadable settings", `{"docs": `, "", MarkerActionSkip, "*"},
+		{"agents_md", `{"docs": {"target": "agents_md"}}`, 0o644, "AGENTS.md", MarkerActionInstall, ""},
+		{"skip", `{"docs": {"target": "skip"}}`, 0o644, "", MarkerActionSkip, skipNote},
+		{"retired claude_md", `{"docs": {"target": "claude_md"}}`, 0o644, "", MarkerActionSkip, claudeWhy},
+		{"retired both", `{"docs": {"target": "both"}}`, 0o644, "", MarkerActionSkip, bothWhy},
+		{"no settings file", "", 0o644, "AGENTS.md", MarkerActionInstall, ""},
+		{"settings without docs.target", `{"docs": {}}`, 0o644, "AGENTS.md", MarkerActionInstall, ""},
+		{"a value setup reads as unset", `{"docs": {"target": "elsewhere"}}`, 0o644, "AGENTS.md", MarkerActionInstall, ""},
+		{"malformed settings", `{"docs": `, 0o644, "", MarkerActionSkip, "*"},
+		{"unreadable settings", `{"docs": {"target": "agents_md"}}`, 0o000, "", MarkerActionSkip, "*"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -147,8 +150,15 @@ func TestEmbarkFollowsTheChosenTarget(t *testing.T) {
 				if err := os.MkdirAll(filepath.Join(target, ".abcd"), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(target, ".abcd", "config.json"), []byte(tc.config), 0o644); err != nil {
+				cfg := filepath.Join(target, ".abcd", "config.json")
+				if err := os.WriteFile(cfg, []byte(tc.config), tc.perm); err != nil {
 					t.Fatal(err)
+				}
+				if tc.perm == 0o000 {
+					if f, err := os.Open(cfg); err == nil {
+						f.Close()
+						t.Skip("a mode-000 file is readable here (running as root)")
+					}
 				}
 			}
 			// A CLAUDE.md holding abcd's block, as a retired target left it:
@@ -244,22 +254,56 @@ func TestEmbarkMarkerNeverWritesThroughALink(t *testing.T) {
 		}
 	})
 
-	t.Run("not a regular file", func(t *testing.T) {
-		target := t.TempDir()
-		if err := os.Mkdir(filepath.Join(target, "AGENTS.md"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		res, err := EmbarkFrom(dest, target)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.Marker.Target != "AGENTS.md" || res.Marker.Action != MarkerActionSkip || res.Marker.Note == "" {
-			t.Errorf("marker = %+v, want AGENTS.md skip with a note", res.Marker)
-		}
-		if res.Written == 0 {
-			t.Error("the records did not land")
-		}
-	})
+	// A chosen AGENTS.md the write cannot read is refused by the write, so the
+	// probe must predict that same refusal, not an install: the plan a person
+	// approves names the action the run then takes (iss-2610032048280232).
+	for _, tc := range []struct {
+		name string
+		make func(t *testing.T, path string)
+	}{
+		{"a directory", func(t *testing.T, path string) {
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a FIFO", func(t *testing.T, path string) {
+			if err := syscall.Mkfifo(path, 0o644); err != nil {
+				t.Skipf("mkfifo unsupported: %v", err)
+			}
+		}},
+		{"an unreadable file", func(t *testing.T, path string) {
+			if err := os.WriteFile(path, []byte("# The target's own\n"), 0o000); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+			if f, err := os.Open(path); err == nil {
+				f.Close()
+				t.Skip("a mode-000 file is readable here (running as root)")
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := t.TempDir()
+			tc.make(t, filepath.Join(target, "AGENTS.md"))
+			plan, err := EmbarkProbe(dest, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := EmbarkFrom(dest, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Marker.Target != "AGENTS.md" || res.Marker.Action != MarkerActionSkip || res.Marker.Changed || res.Marker.Note == "" {
+				t.Errorf("from marker = %+v, want AGENTS.md skip unchanged with a note", res.Marker)
+			}
+			if plan.Marker != res.Marker {
+				t.Errorf("probe marker = %+v, but from gave %+v: the probe mispredicts", plan.Marker, res.Marker)
+			}
+			if res.Written == 0 {
+				t.Error("the records did not land")
+			}
+		})
+	}
 }
 
 // TestEmbarkRendersASkippedMarkerWithoutAFile holds the two human renders to
