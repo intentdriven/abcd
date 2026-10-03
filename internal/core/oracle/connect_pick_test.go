@@ -400,3 +400,33 @@ func TestCheckConnectNeedsNoKey(t *testing.T) {
 		t.Fatalf("CheckConnect of the reserved name = %v", err)
 	}
 }
+
+// TestConnectRefusesAMissingOrMalformedKeyBeforeListing: a home that stores a
+// key refuses a request carrying none, or one the store would refuse, before
+// the listing, so a caller other than the CLI never sends a request or runs
+// the picker for a key it cannot store.
+func TestConnectRefusesAMissingOrMalformedKeyBeforeListing(t *testing.T) {
+	for _, home := range []string{KeyHomeABCD, KeyHomeKeychain} {
+		for _, tc := range []struct{ key, want string }{
+			{"", "none was given"},
+			{"key-with-a-trailing-space ", ""},
+		} {
+			svc := newListingFake(t, http.StatusOK, []string{"vendor/ok"}, http.StatusOK)
+			f := newFx(t)
+			picked := false
+			req := pickReq(f, svc.base(), func(_ context.Context, ids []string) (string, error) {
+				picked = true
+				return ids[0], nil
+			})
+			req.Home, req.Key = home, tc.key
+			_, err := Connect(context.Background(), req)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("home %s, key %q: err = %v, want a refusal naming %q", home, tc.key, err, tc.want)
+			}
+			if listAuth, chat := svc.seen(); len(listAuth) != 0 || len(chat) != 0 || picked {
+				t.Fatalf("home %s, key %q: refused too late: listed %q, completed %q, picked %v", home, tc.key, listAuth, chat, picked)
+			}
+			assertNothingWritten(t, f, "a refused key")
+		}
+	}
+}
