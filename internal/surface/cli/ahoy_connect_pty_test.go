@@ -198,3 +198,65 @@ func TestActAsConnectChildOnlyForAConnectRun(t *testing.T) {
 		t.Error("without the marker the binary always runs the tests")
 	}
 }
+
+// TestConnectPicksAtARealTerminal (security review finding 2): the picker
+// the setup draws at a terminal (terminalPick) on a real one. With no
+// --model, after the key is pasted hidden, the service's models are listed
+// with it and drawn; typing part of a name narrows the list and Enter picks,
+// so the completion asks for the model picked and the block holds it. Ctrl-C
+// at the list exits 130 with no completion and nothing written. Either way
+// the terminal is left as it was found and the key is never drawn.
+func TestConnectPicksAtARealTerminal(t *testing.T) {
+	t.Run("a fragment and Enter pick", func(t *testing.T) {
+		svc := newListingService(t, []string{"vendor/coder-large", "vendor/coder-small"}, 200)
+		c := startPtyConnect(t, "example", "--base-url", svc.base(), "--home", "abcd")
+		c.waitHidden(t)
+		c.pty.Type(t, connectKey+"\r")
+		mark := c.pty.WaitFor(t, 0, "lists 2 models", ptyWait)
+		c.pty.Type(t, "small")
+		c.pty.WaitFor(t, mark, "filter: small", ptyWait)
+		c.pty.Type(t, "\r")
+		ws := c.exit(t)
+		if !ws.Exited() || ws.ExitStatus() != 0 {
+			t.Fatalf("wait status %v\n%q", ws, c.pty.Output())
+		}
+		listAuth, _, chatModel := svc.seen()
+		if len(listAuth) != 1 || listAuth[0] != "Bearer "+connectKey || len(chatModel) != 1 || chatModel[0] != "vendor/coder-small" {
+			t.Fatalf("listed with %d request(s), completion asked for %q; want one keyed listing and the model picked", len(listAuth), chatModel)
+		}
+		raw, err := os.ReadFile(c.home + "/.abcd/config.json")
+		if err != nil || !strings.Contains(string(raw), `"vendor/coder-small"`) || strings.Contains(string(raw), "coder-large") {
+			t.Fatalf("the provider block does not hold the model picked: %v\n%s", err, raw)
+		}
+		if strings.Contains(c.pty.Output(), connectKey) {
+			t.Fatalf("the key was drawn on the terminal:\n%q", c.pty.Output())
+		}
+		c.restored(t, "after the pick")
+	})
+	t.Run("ctrl-c at the list exits 130", func(t *testing.T) {
+		svc := newListingService(t, []string{"vendor/coder-large", "vendor/coder-small"}, 200)
+		c := startPtyConnect(t, "example", "--base-url", svc.base(), "--home", "abcd")
+		c.waitHidden(t)
+		c.pty.Type(t, connectKey+"\r")
+		mark := c.pty.WaitFor(t, 0, "lists 2 models", ptyWait)
+		c.pty.Type(t, "coder")
+		c.pty.WaitFor(t, mark, "filter: coder", ptyWait)
+		c.pty.Type(t, "\x03")
+		ws := c.exit(t)
+		if !ws.Exited() || ws.ExitStatus() != ask.ExitInterrupted {
+			t.Fatalf("Ctrl-C at the list: wait status %v, want exit 130\n%q", ws, c.pty.Output())
+		}
+		if _, _, chatModel := svc.seen(); len(chatModel) != 0 {
+			t.Errorf("an interrupted pick made a completion: %q", chatModel)
+		}
+		for _, name := range []string{"config.json", "credentials.json", "credential-homes.json"} {
+			if _, err := os.Lstat(c.home + "/.abcd/" + name); err == nil {
+				t.Errorf("an interrupted pick wrote ~/.abcd/%s", name)
+			}
+		}
+		if strings.Contains(c.pty.Output(), connectKey) {
+			t.Fatalf("the key was drawn on the terminal:\n%q", c.pty.Output())
+		}
+		c.restored(t, "after Ctrl-C at the list")
+	})
+}
