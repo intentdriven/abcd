@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -398,5 +399,32 @@ func TestStepConfigValuesScanDeepDefaultOnRefusedPrompt(t *testing.T) {
 	v, present := persistedScanDeep(t, dir)
 	if !present || v != want {
 		t.Errorf("config.json scan.deep = %v (present=%v), want %v", v, present, want)
+	}
+}
+
+// TestUnsavedSettingsKeepEarlierReceipts: when stepConfigValues saves nothing,
+// it takes back only what it set itself (its echoed overrides, the forced
+// target, the retraction), never a receipt an earlier step recorded, such as a
+// dependency installed in the same run.
+func TestUnsavedSettingsKeepEarlierReceipts(t *testing.T) {
+	dir := t.TempDir()
+	writeValidConfig(t, dir, "private", "claude_md", "")
+	receipt := "dependency: example-tool installed"
+	a := &applyCtx{
+		cwd:        dir,
+		approved:   map[GapCategory]bool{},
+		overrides:  map[string]string{"docs_target": "agents_md"},
+		prompter:   RefusingPrompter{},
+		gapPresent: map[string]bool{"config.oracle_backend_missing": true},
+		changes:    []string{receipt},
+	}
+	if cfg := a.stepConfigValues(); cfg != nil {
+		t.Fatalf("stepConfigValues returned %+v with the settings change declined", cfg)
+	}
+	if !slices.Equal(a.changes, []string{receipt}) {
+		t.Errorf("changes = %q, want only the earlier receipt %q", a.changes, receipt)
+	}
+	if a.docsTargetForced || a.visibilityForced || a.markerRetract != nil {
+		t.Errorf("an unsaved settings change left forced=%v vis=%v retract=%v", a.docsTargetForced, a.visibilityForced, a.markerRetract)
 	}
 }

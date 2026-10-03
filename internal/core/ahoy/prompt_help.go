@@ -33,6 +33,11 @@ type PromptHelp struct {
 	// answers lining up with the questions, so the flag is the reliable route
 	// there, and the question and the gap both name it (iss-2609120447486547).
 	Flag string `json:"flag,omitempty"`
+	// ChangeLater says where the answer is changed later, for a question no
+	// flag answers (a flag's hint takes that place where one exists). It is
+	// the question's change-later line, so the material need not repeat it
+	// (iss-2610031236155833).
+	ChangeLater string `json:"change_later,omitempty"`
 }
 
 // YesStillAsksValues is said once, before the first value question, by a run
@@ -53,7 +58,16 @@ func (h PromptHelp) FlagHint() string {
 	for i, c := range h.Choices {
 		values[i] = c.Value
 	}
-	return "to answer without being asked, pass " + h.Flag + " " + strings.Join(values, "|")
+	return "pass " + h.Flag + " " + strings.Join(values, "|") + " to answer without asking"
+}
+
+// ChangeLaterLine is the question's change-later line: the flag hint where a
+// flag answers the question, else ChangeLater, else "".
+func (h PromptHelp) ChangeLaterLine() string {
+	if hint := h.FlagHint(); hint != "" {
+		return hint
+	}
+	return h.ChangeLater
 }
 
 // Meaning returns what answering value means, or "" for a value the question
@@ -106,27 +120,26 @@ var promptHelp = map[string]PromptHelp{
 	"visibility": {
 		Key:  "visibility",
 		Flag: "--visibility",
-		About: "Whether abcd's records for this repository (its decisions, intents and issues, kept under .abcd/) " +
-			"are committed with your code or kept out of git. It decides what the block abcd writes into .gitignore contains.",
+		About: "Whether abcd's records (decisions, intents and issues, under .abcd/) are committed with your code " +
+			"or kept out of git, by abcd's block in .gitignore.",
 		Choices: []ChoiceHelp{
-			{Value: "private", Meaning: "the records under .abcd/ are committed with your code, so everyone who can see the repository shares them; " +
-				"only abcd's per-machine scratch space, .abcd/.work.local/, is kept out of git. Suits a repository whose code is not published."},
-			{Value: "public", Meaning: "the whole .abcd/ folder is kept out of git, so the records stay on this machine and are not published with your code, " +
-				"and so is a memory/ folder at the top of the repository, the older home of abcd's memory store. " +
-				"If .abcd/ already holds committed records, only its per-machine scratch space is kept out, because git cannot hide a file it already tracks; the memory/ folder is still kept out."},
+			{Value: "private", Meaning: "records committed, shared by all who see the repository; only per-machine scratch, " +
+				".abcd/.work.local/, is ignored. Suits unpublished code."},
+			{Value: "public", Meaning: "all of .abcd/ is ignored, so records stay on this machine, unpublished; " +
+				"so is memory/ at the top, abcd's older memory home."},
 		},
 	},
 	"docs_target": {
 		Key:  "docs_target",
 		Flag: "--docs-target",
-		About: "Which conventions file, if any, gets a short block explaining how abcd works in this repository. " +
-			"AI coding assistants read these files at the start of every session; the block names abcd, so it goes only where you choose.",
+		About: "Whether AGENTS.md, which AI coding assistants read at the start of every session, " +
+			"gets a short block on how abcd works here. The block names abcd, so it goes in only if you choose.",
+		// Setup offers only the values it writes (docsTargetWritable): AGENTS.md
+		// is the one conventions file abcd writes (adr-2610030814023326).
 		Choices: []ChoiceHelp{
-			{Value: "claude_md", Meaning: "writes the block into CLAUDE.md, and creates that file if it does not exist."},
-			{Value: "agents_md", Meaning: "writes the block into AGENTS.md, the conventions file many AI coding assistants read, and creates it if it does not exist."},
-			{Value: "both", Meaning: "writes the same block into both CLAUDE.md and AGENTS.md."},
-			{Value: "skip", Meaning: "writes no block: abcd names itself in none of your conventions files. " +
-				"You can choose a file later with abcd ahoy install --docs-target."},
+			{Value: "agents_md", Meaning: "writes the block into AGENTS.md, creating the file if it does not exist."},
+			{Value: "skip", Meaning: "writes no block, so abcd names itself in none of your conventions files; " +
+				"abcd ahoy install --docs-target agents_md adds it later."},
 		},
 	},
 	"oracle_backend": {
@@ -156,19 +169,15 @@ var promptHelp = map[string]PromptHelp{
 		},
 	},
 	artefactKindKey: {
-		Key: artefactKindKey,
-		About: "What this repository releases. abcd's release commands read the answer from .abcd/config/artefact.json " +
-			"to choose what the release preview scans and which release workflow they lay, and refuse to guess it. " +
-			"The answer can be changed in that file later.",
+		Key:         artefactKindKey,
+		About:       "What this repository releases; abcd's release commands refuse to guess it.",
+		ChangeLater: "edit .abcd/config/artefact.json, read by the release commands",
 		Choices: []ChoiceHelp{
-			{Value: "plugin", Meaning: "the repository is released as an agent plugin: the release preview scans the plugin payload " +
-				"listed in .abcd/config/launch-payload.json and checks that it would install."},
-			{Value: "binary", Meaning: "the repository is released as a built program: the release preview scans the files the release tag " +
-				"would archive, and the release set-up lays a release gate with an empty build job for you to fill in. " +
-				"abcd handles binary and application the same way today."},
-			{Value: "application", Meaning: "the repository is released as an application, which abcd handles exactly as a binary today: " +
-				"the release preview scans the files the release tag would archive, and the release set-up lays a release gate " +
-				"with an empty build job for you to fill in. It is the default because it assumes least about how you build."},
+			{Value: "plugin", Meaning: "an agent plugin: the release preview scans the plugin payload listed in " +
+				".abcd/config/launch-payload.json and checks that it would install."},
+			{Value: "binary", Meaning: "a built program: the release preview scans what the release tag would archive; " +
+				"the release set-up lays a gate whose empty build job you fill in."},
+			{Value: "application", Meaning: "as binary today; the default, since it assumes least about how you build."},
 		},
 	},
 	emDashPromptKey: {
@@ -196,10 +205,53 @@ var statusLineElementAbout = map[statusline.ElementKey]string{
 	statusline.KeyIssues:   "how many issues abcd's issue ledger holds for the repository",
 }
 
-// HelpFor returns the canonical help for the value question keyed key, and
+// visibilityTrackedCaveat ends public's meaning where .abcd/ already holds
+// tracked files: git cannot hide a file it tracks, so there the public block
+// keeps out only the per-machine scratch space under .abcd/, and the memory/
+// fence at the top stays (effectiveVisibilityEntries narrows the /.abcd/
+// entry alone). Where nothing under .abcd/ is tracked it would describe a
+// repository the person does not have, so HelpIn adds it only where it applies
+// (iss-2610031236155833).
+const visibilityTrackedCaveat = "Here .abcd/ holds records git tracks and cannot hide, so only its scratch and memory/ are ignored."
+
+// visibilityHelp is the visibility question's help, with public's caveat about
+// records git already tracks when tracked is true.
+func visibilityHelp(tracked bool) PromptHelp {
+	h := promptHelp["visibility"]
+	if !tracked {
+		return h
+	}
+	h.Choices = append([]ChoiceHelp(nil), h.Choices...)
+	for i := range h.Choices {
+		if h.Choices[i].Value == "public" {
+			h.Choices[i].Meaning += " " + visibilityTrackedCaveat
+		}
+	}
+	return h
+}
+
+// HelpIn returns the help for the value question keyed key as the install asks
+// it in the repository at cwd. It is helpFor, except where a fact holds only in
+// some repositories: public visibility's caveat is shown only where .abcd/
+// holds tracked files, the same evidence the install narrows the public block
+// on. The words stay core's; a front door passes the repository and renders
+// what comes back (iss-2610031236155833). An empty cwd gives the help that is
+// the same in every repository (helpFor).
+func HelpIn(cwd, key string) (PromptHelp, bool) {
+	if key != "visibility" || cwd == "" {
+		return helpFor(key)
+	}
+	_, narrowed := effectiveVisibilityEntries(cwd, "public")
+	return visibilityHelp(narrowed), true
+}
+
+// helpFor returns the canonical help for the value question keyed key, and
 // false for a key the install does not ask about, so a front door renders
-// nothing rather than a guess.
-func HelpFor(key string) (PromptHelp, bool) {
+// nothing rather than a guess. It is the same in every repository: the
+// visibility help is the one a repository whose .abcd/ holds no tracked files
+// sees, and HelpIn, the one lookup front doors call, is the help for one
+// repository.
+func helpFor(key string) (PromptHelp, bool) {
 	if h, ok := promptHelp[key]; ok {
 		return h, true
 	}

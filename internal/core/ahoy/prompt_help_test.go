@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // choiceRecordingPrompter approves every confirm, answers the visibility
@@ -74,7 +76,7 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 	}
 
 	for key, choices := range p.asked {
-		h, ok := HelpFor(key)
+		h, ok := helpFor(key)
 		if !ok {
 			t.Errorf("%s: no canonical help, so a front door must invent what the question means", key)
 			continue
@@ -104,7 +106,7 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 // names: the backend question must say what an oracle is, and every answer
 // must state what it asks of the person (keys, tools, cost), not only its name.
 func TestOracleHelpDefinesTheOracleAndItsCosts(t *testing.T) {
-	h, ok := HelpFor("oracle_backend")
+	h, ok := helpFor("oracle_backend")
 	if !ok {
 		t.Fatal("no help for oracle_backend")
 	}
@@ -122,10 +124,77 @@ func TestOracleHelpDefinesTheOracleAndItsCosts(t *testing.T) {
 // TestHelpForUnknownKeyIsAbsent keeps the lookup honest: a key core does not
 // ask about has no help, so a front door renders nothing rather than a guess.
 func TestHelpForUnknownKeyIsAbsent(t *testing.T) {
-	if _, ok := HelpFor("no_such_question"); ok {
-		t.Fatal("HelpFor invented help for an unknown key")
+	if _, ok := helpFor("no_such_question"); ok {
+		t.Fatal("helpFor invented help for an unknown key")
 	}
-	if _, ok := HelpFor(elementPromptPrefix + "no_such_element"); ok {
-		t.Fatal("HelpFor invented help for an unknown status-line element")
+	if _, ok := helpFor(elementPromptPrefix + "no_such_element"); ok {
+		t.Fatal("helpFor invented help for an unknown status-line element")
+	}
+}
+
+// TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies holds the visibility
+// question to the repository it is asked in (iss-2610031236155833): public's
+// caveat, that git cannot hide the records it already tracks under .abcd/, is
+// part of the help only where .abcd/ holds tracked files, the case in which the
+// install narrows the public block. Elsewhere it would describe a repository
+// the person does not have, at the cost of rows the question cannot spare.
+func TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
+	base, ok := helpFor("visibility")
+	if !ok {
+		t.Fatal("no help for visibility")
+	}
+	if strings.Contains(base.Meaning("public"), visibilityTrackedCaveat) {
+		t.Fatalf("the repository-independent help carries the tracked caveat: %q", base.Meaning("public"))
+	}
+
+	untracked := gittest.NewRepo(t)
+	h, ok := HelpIn(untracked.Root(), "visibility")
+	if !ok {
+		t.Fatal("HelpIn has no help for visibility")
+	}
+	if strings.Contains(h.Meaning("public"), visibilityTrackedCaveat) {
+		t.Errorf("a repository whose .abcd/ holds nothing tracked is shown the caveat: %q", h.Meaning("public"))
+	}
+
+	tracked := gittest.NewRepo(t)
+	tracked.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	tracked.Commit("record tier")
+	h, ok = HelpIn(tracked.Root(), "visibility")
+	if !ok {
+		t.Fatal("HelpIn has no help for visibility")
+	}
+	if !strings.HasSuffix(h.Meaning("public"), " "+visibilityTrackedCaveat) {
+		t.Errorf("a repository whose .abcd/ holds tracked records is not shown the caveat: %q", h.Meaning("public"))
+	}
+	// The caveat says what the narrowed block still ignores, so it names every
+	// entry the install writes there beyond .abcd/'s own scratch (the memory/
+	// fence): saying less than the write does reads as negating it.
+	entries, narrowed := effectiveVisibilityEntries(tracked.Root(), "public")
+	if !narrowed {
+		t.Fatal("the tracked repository's public block was not narrowed")
+	}
+	for _, e := range entries {
+		name := strings.TrimPrefix(e, "/")
+		if strings.HasPrefix(name, ".abcd/") {
+			continue
+		}
+		if !strings.Contains(visibilityTrackedCaveat, name) {
+			t.Errorf("the narrowed block keeps %s ignored, but the caveat does not say so: %q", e, visibilityTrackedCaveat)
+		}
+	}
+	if h.Meaning("private") != base.Meaning("private") || h.About != base.About || h.Flag != base.Flag {
+		t.Errorf("the caveat changed more than public's meaning: %+v", h)
+	}
+	if again, _ := helpFor("visibility"); again.Meaning("public") != base.Meaning("public") {
+		t.Errorf("HelpIn wrote its variant into the canonical help: %q", again.Meaning("public"))
+	}
+
+	// Every other question reads the same in every repository.
+	for _, key := range []string{"docs_target", "scan_deep", artefactKindKey, elementPromptPrefix + "repo", "no_such_question"} {
+		want, wantOK := helpFor(key)
+		got, gotOK := HelpIn(tracked.Root(), key)
+		if gotOK != wantOK || got.About != want.About || got.ChangeLaterLine() != want.ChangeLaterLine() {
+			t.Errorf("%s: HelpIn differs from helpFor", key)
+		}
 	}
 }

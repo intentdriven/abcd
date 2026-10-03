@@ -267,8 +267,8 @@ user-scope directory for machine-local state.
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
-  CLAUDE.md                      marker block (stands alone), only where a docs target
-                                 names it
+  AGENTS.md                      marker block (stands alone), only where the docs target
+                                 is agents_md; the one conventions file abcd writes
 ```
 
 The same inventory is stated as a table under *The two `.abcd/` scopes* in
@@ -490,7 +490,7 @@ about, one question per category present, never one per item.
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
-| `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
+| `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
@@ -544,9 +544,15 @@ line itself is unchanged, so a piped answer stream lines up with it. The four
 config values' help also carries the install flag that answers the question
 without asking it, and both the question and the missing-value gap's fix hint
 name it, because a flag is the reliable answer in a piped run
-(iss-2609120447486547). Approving every kind of change up front chooses no
-value, so a run approved that way that still has a value to ask says so once,
-in core's words, above the first value question.
+(iss-2609120447486547). A question no flag answers, such as the artefact kind,
+says instead where its answer is changed later, as its change-later line, so its
+explanation need not repeat it (iss-2610031236155833). The explanation is the one
+for the repository the install runs in: core gives the front door the help for
+that repository, and the public visibility answer's caveat, that git cannot hide
+records it already tracks, is part of it only where `.abcd/` holds tracked
+files, the evidence on which the install narrows the public ignore block. Approving every kind of
+change up front chooses no value, so a run approved that way that still has a
+value to ask says so once, in core's words, above the first value question.
 
 **The result explains itself to the person who ran it** (iss-164). Beside the
 exact record (every write, change, note, declined category, outstanding step and
@@ -643,8 +649,17 @@ is what makes drift detection meaningful: the block has one canonical source. If
 a template is stale, the template file is what to edit. The block names abcd and
 documents its rule loader, so the docs target defaults to `skip`: a default
 install writes it into none of the repository's committed conventions files
-(iss-2609110944498549), and a project that wants it names `claude_md`,
-`agents_md` or `both`, which is the approval to plant it there. The name-guard
+(iss-2609110944498549), and a project that wants it names `agents_md`, which
+is the approval to plant it into AGENTS.md, the one conventions file abcd writes
+(adr-2610030814023326). `claude_md` and `both` are read, never written: a
+project that saved one still classifies as managed on its CLAUDE.md block, and
+uninstall still strips the block from both files, but detection raises the one
+required, non-resolvable gap `config.docs_target_retired`, setup is refused
+before its first write, and the install flag that names a docs target refuses
+both values, each with the one explanation `RetiredDocsTarget` holds, naming
+`docs.target` and the command that changes it. An install that changes the
+setting to `agents_md` or `skip` runs as any target change does and takes the
+block out of CLAUDE.md. The name-guard
 hooks and the ignore fence are the one sanctioned mention of abcd outside
 `.abcd/` (ruled 2026-09-23; see prepare-this-repo). Every name-guard
 write is create-if-absent **and** contained: paths resolve through an `os.Root` opened
