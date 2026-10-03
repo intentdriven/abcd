@@ -263,11 +263,13 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
-// readKey reads the key from stdin: refused from a terminal, where it would
-// be echoed as it is typed; one trailing line ending is dropped.
+// readKey reads a piped key from stdin; one trailing line ending is dropped.
+// It reads no terminal: ahoy connect reads the key hidden there
+// (readConnectKey) and calls this only off one, and ahoy credential takes a
+// piped key alone, so a terminal is refused naming the pipe it needs.
 func readKey(in io.Reader) (string, error) {
 	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {
-		return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
+		return "", errors.New("the key is read only when it is piped in on stdin, and stdin is a terminal; " +
 			"pipe it in from a file or a variable instead (" + setupExample + ")")
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, credential.MaxValueBytes+3))

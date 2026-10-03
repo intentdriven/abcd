@@ -260,3 +260,24 @@ func TestConnectPicksAtARealTerminal(t *testing.T) {
 		c.restored(t, "after Ctrl-C at the list")
 	})
 }
+
+// TestReadKeyRefusesATerminalSayingWhatIsTrue (security review finding 6):
+// the piped-key reader still refuses a terminal (ahoy credential reads only a
+// piped key), but no longer says the key "would be echoed": abcd reads a key
+// hidden at a terminal elsewhere (ahoy connect), so the refusal names what
+// this read takes, a pipe, and how to give it one.
+func TestReadKeyRefusesATerminalSayingWhatIsTrue(t *testing.T) {
+	p := ptytest.Open(t, 80, 24)
+	_, err := readKey(p.Terminal)
+	if err == nil {
+		t.Fatal("readKey read from a terminal")
+	}
+	if strings.Contains(err.Error(), "echoed") {
+		t.Errorf("the refusal says the key would be echoed: %v", err)
+	}
+	for _, want := range []string{"only when it is piped in", "stdin is a terminal", "pipe it in from a file or a variable"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, err)
+		}
+	}
+}
