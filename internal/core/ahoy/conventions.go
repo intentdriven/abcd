@@ -120,88 +120,286 @@ const (
 
 var retireChoices = []string{retireRetire, retireKeep, retireLater}
 
-// classifyToolFile classifies the tool's own conventions file at rel under
-// root, and says how it repeats AGENTS.md when it does. It reads the file at
-// most once, guarded, and never through a link: a link is judged by its target
-// text alone, and a file in a linked folder is the owner's, unread.
-func classifyToolFile(root, rel string) (toolFileClass, string) {
-	path := filepath.Join(root, filepath.FromSlash(rel))
-	// Every folder between the root and the file must be a real directory: a
-	// linked folder would carry the read outside the project.
-	dir := root
-	for _, part := range strings.Split(rel, "/")[:strings.Count(rel, "/")] {
-		dir = filepath.Join(dir, part)
-		fi, err := os.Lstat(dir)
+// conventionsScan classifies the registry files under one project root. It
+// holds the root open as an os.Root, so every read and the removal stay inside
+// the project, and it reads the root's AGENTS.md at most once: a scan is one
+// look at the project, and a look taken later (the check at a retire answer)
+// is a new scan that reads AGENTS.md afresh.
+type conventionsScan struct {
+	root string   // the project root, absolute
+	r    *os.Root // the root held open, or nil when it cannot be opened
+
+	agents     []byte // the root AGENTS.md, guarded, once read
+	agentsErr  error
+	agentsRead bool
+
+	agentsResolved     string // the root AGENTS.md as the kernel resolves it, or ""
+	agentsResolvedDone bool
+
+	rootResolved     string // the root as the kernel resolves it, or ""
+	rootResolvedDone bool
+
+	names map[string][]string // each folder's entry names, once listed, by its path from the root
+}
+
+// newConventionsScan opens a scan of root; close releases it.
+func newConventionsScan(root string) *conventionsScan {
+	s := &conventionsScan{root: root, names: map[string][]string{}}
+	if r, err := os.OpenRoot(root); err == nil {
+		s.r = r
+	}
+	return s
+}
+
+func (s *conventionsScan) close() {
+	if s.r != nil {
+		s.r.Close()
+	}
+}
+
+// readRootAgents reads the root's AGENTS.md, guarded and never through a link.
+// A variable so a test can count the reads a scan makes.
+var readRootAgents = func(r *os.Root) ([]byte, error) {
+	return fsutil.ReadGuardedInRoot(r, "AGENTS.md", maxAhoyFileBytes)
+}
+
+// rootAgents is the root's AGENTS.md, read on the scan's first need of it.
+func (s *conventionsScan) rootAgents() ([]byte, error) {
+	if !s.agentsRead {
+		s.agentsRead = true
+		s.agents, s.agentsErr = readRootAgents(s.r)
+	}
+	return s.agents, s.agentsErr
+}
+
+// agentsResolvedPath is where the root's AGENTS.md physically is: its path with
+// every link resolved, by lstat and readlink alone, reading no file's content.
+// "" when it cannot be resolved (there is none).
+func (s *conventionsScan) agentsResolvedPath() string {
+	if !s.agentsResolvedDone {
+		s.agentsResolvedDone = true
+		s.agentsResolved, _ = filepath.EvalSymlinks(filepath.Join(s.root, "AGENTS.md"))
+	}
+	return s.agentsResolved
+}
+
+// rootResolvedPath is the root with every link in its own path resolved, or "".
+func (s *conventionsScan) rootResolvedPath() string {
+	if !s.rootResolvedDone {
+		s.rootResolvedDone = true
+		s.rootResolved, _ = filepath.EvalSymlinks(s.root)
+	}
+	return s.rootResolved
+}
+
+// toolFileAt is one registry file as a scan found it.
+type toolFileAt struct {
+	class toolFileClass
+	how   string // how it repeats AGENTS.md, when it does
+	// shown is the file's path from the root as it is spelt on disk, which on
+	// a case-insensitive filesystem may differ from the registry's (a
+	// claude.md the tool reads as CLAUDE.md), slash-separated.
+	shown string
+	// dir is the file's folder, held open, and leaf its name there: the very
+	// entry that was classified, so a removal takes that entry and no other.
+	// Set only for a file that repeats AGENTS.md; release closes it.
+	dir   *os.Root
+	leaf  string
+	owned bool // dir was opened for this file and is closed by release
+}
+
+func (at toolFileAt) release() {
+	if at.owned && at.dir != nil {
+		at.dir.Close()
+	}
+}
+
+// classify classifies the registry file rel. It reads the file at most once,
+// guarded, inside the root, and never through a link: a link is judged by
+// where the kernel resolves it, by lstat and readlink alone, and a file in a
+// linked folder is the owner's, unread. Each folder between the root and the
+// file is held open as it is checked, and checked to be the folder that was
+// looked at, so a folder swapped for a link mid-look cannot carry the read or
+// a later removal anywhere else.
+func (s *conventionsScan) classify(rel string) toolFileAt {
+	parts := strings.Split(rel, "/")
+	owners := func(shown []string) toolFileAt {
+		return toolFileAt{class: toolFileOwners, shown: strings.Join(append(shown, parts[len(shown):]...), "/")}
+	}
+	// presentThroughLink says whether the tool, reading through whatever stands
+	// in the folder chain, finds a file: metadata only, nothing is read.
+	presentThroughLink := func() bool {
+		_, err := os.Lstat(filepath.Join(s.root, filepath.FromSlash(rel)))
+		return err == nil
+	}
+	if s.r == nil {
+		if presentThroughLink() {
+			return owners(nil)
+		}
+		return toolFileAt{class: toolFileAbsent, shown: rel}
+	}
+	dir, owned := s.r, false
+	closeDir := func() {
+		if owned {
+			dir.Close()
+		}
+	}
+	var shown []string
+	for _, part := range parts[:len(parts)-1] {
+		fi, err := dir.Lstat(part)
 		if errors.Is(err, fs.ErrNotExist) {
-			return toolFileAbsent, ""
+			closeDir()
+			return toolFileAt{class: toolFileAbsent, shown: rel}
 		}
 		if err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
 			// The tool reads through whatever this is; abcd reads nothing.
-			if _, serr := os.Lstat(path); serr != nil {
-				return toolFileAbsent, ""
+			closeDir()
+			if !presentThroughLink() {
+				return toolFileAt{class: toolFileAbsent, shown: rel}
 			}
-			return toolFileOwners, ""
+			return owners(shown)
 		}
+		name := s.onDisk(dir, strings.Join(shown, "/"), part, fi)
+		sub, err := dir.OpenRoot(part)
+		if err != nil {
+			closeDir()
+			return owners(shown)
+		}
+		st, err := sub.Stat(".")
+		if err != nil || !os.SameFile(fi, st) {
+			// Swapped for something else while it was looked at.
+			sub.Close()
+			closeDir()
+			return owners(shown)
+		}
+		closeDir()
+		dir, owned = sub, true
+		shown = append(shown, name)
 	}
-	fi, err := os.Lstat(path)
+	leaf := parts[len(parts)-1]
+	fi, err := dir.Lstat(leaf)
 	if errors.Is(err, fs.ErrNotExist) {
-		return toolFileAbsent, ""
+		closeDir()
+		return toolFileAt{class: toolFileAbsent, shown: rel}
 	}
 	if err != nil {
-		return toolFileOwners, ""
+		closeDir()
+		return owners(shown)
 	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		target, rerr := os.Readlink(path)
-		if rerr == nil && namesRootAgents(root, path, target) {
-			return toolFileRepeats, repeatsLink
-		}
-		return toolFileOwners, ""
+	name := s.onDisk(dir, strings.Join(shown, "/"), leaf, fi)
+	at := toolFileAt{class: toolFileOwners, shown: strings.Join(append(shown, name), "/")}
+	if how := s.repeats(dir, at.shown, name, fi); how != "" {
+		at.class, at.how, at.dir, at.leaf, at.owned = toolFileRepeats, how, dir, name, owned
+		return at
 	}
-	if !fi.Mode().IsRegular() {
-		return toolFileOwners, ""
-	}
-	data, err := fsutil.ReadGuarded(path, maxAhoyFileBytes)
-	if err != nil {
-		return toolFileOwners, ""
-	}
-	trimmed := strings.TrimSpace(string(data))
-	if trimmed != "" && !strings.ContainsAny(trimmed, "\r\n") && namesRootAgents(root, path, trimmed) {
-		return toolFileRepeats, repeatsLinkText
-	}
-	if stripped, _ := StripMarkerBlock(data); len(bytes.TrimSpace(stripped)) == 0 {
-		return toolFileRepeats, repeatsBlank
-	}
-	if agents, aerr := fsutil.ReadGuarded(filepath.Join(root, "AGENTS.md"), maxAhoyFileBytes); aerr == nil && bytes.Equal(data, agents) {
-		return toolFileRepeats, repeatsCopy
-	}
-	if imp, ok := strings.CutPrefix(trimmed, "@"); ok && !strings.ContainsAny(trimmed, "\r\n") && namesRootAgents(root, path, imp) {
-		return toolFileRepeats, repeatsImport
-	}
-	return toolFileOwners, ""
+	closeDir()
+	return at
 }
 
-// namesRootAgents reports whether ref, a link target or an import path written
-// in the file at path, names the root's AGENTS.md: relative to the file's own
-// folder, or absolute. The comparison is of paths only; nothing is followed.
-func namesRootAgents(root, path, ref string) bool {
+// repeats says how the entry name in dir, at shown from the root, repeats
+// AGENTS.md, or "" when it is the owner's words.
+func (s *conventionsScan) repeats(dir *os.Root, shown, name string, fi fs.FileInfo) string {
+	if fi.Mode()&os.ModeSymlink != 0 {
+		// A link repeats AGENTS.md only when the kernel resolves it to the
+		// root's AGENTS.md itself. Its target text alone could name AGENTS.md
+		// through a linked folder (docs/../AGENTS.md with docs a link out of
+		// the project) and so reach a file outside it.
+		resolved, err := filepath.EvalSymlinks(filepath.Join(s.root, filepath.FromSlash(shown)))
+		if err == nil && resolved != "" && resolved == s.agentsResolvedPath() {
+			return repeatsLink
+		}
+		return ""
+	}
+	if !fi.Mode().IsRegular() {
+		return ""
+	}
+	data, err := fsutil.ReadGuardedInRoot(dir, name, maxAhoyFileBytes)
+	if err != nil {
+		return ""
+	}
+	trimmed := strings.TrimSpace(string(data))
+	oneLine := trimmed != "" && !strings.ContainsAny(trimmed, "\r\n")
+	if oneLine && s.namesRootAgents(shown, trimmed) {
+		return repeatsLinkText
+	}
+	if stripped, _ := StripMarkerBlock(data); len(bytes.TrimSpace(stripped)) == 0 {
+		return repeatsBlank
+	}
+	if agents, aerr := s.rootAgents(); aerr == nil && bytes.Equal(data, agents) {
+		return repeatsCopy
+	}
+	if imp, ok := strings.CutPrefix(trimmed, "@"); ok && oneLine && s.namesRootAgents(shown, imp) {
+		return repeatsImport
+	}
+	return ""
+}
+
+// namesRootAgents reports whether ref, the text of a link saved as a plain
+// file or an import path, written in the file at shown, names the root's
+// AGENTS.md. Text is judged as written, and nothing is followed, so only the
+// plain spelling counts: from the file's own folder, as many ../ as the file
+// is deep and then AGENTS.md (./AGENTS.md at the root too), or the root's
+// AGENTS.md by its absolute path. A spelling that steps into a folder and back
+// out (x/../AGENTS.md), or out of the project and back in, is the owner's: a
+// tool following it physically could leave the project through a linked
+// folder, and abcd will not judge where it lands without following it.
+func (s *conventionsScan) namesRootAgents(shown, ref string) bool {
 	if ref == "" {
 		return false
 	}
-	p := filepath.FromSlash(ref)
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(filepath.Dir(path), p)
+	if p := filepath.FromSlash(ref); filepath.IsAbs(p) {
+		if p != filepath.Clean(p) {
+			return false
+		}
+		if p == filepath.Join(s.root, "AGENTS.md") {
+			return true
+		}
+		// The root by its resolved path (a temporary folder reached through a
+		// linked parent); the root's own resolution reads no file of the
+		// project.
+		resolved := s.rootResolvedPath()
+		return resolved != "" && p == filepath.Join(resolved, "AGENTS.md")
 	}
-	p = filepath.Clean(p)
-	if p == filepath.Join(root, "AGENTS.md") {
-		return true
+	want := strings.Repeat("../", strings.Count(shown, "/")) + "AGENTS.md"
+	return ref == want || (want == "AGENTS.md" && ref == "./AGENTS.md")
+}
+
+// onDisk is how the entry name in dir (at folder from the root) is spelt on
+// disk. It differs from name only on a case-insensitive filesystem, where
+// lstat finds a claude.md under the name CLAUDE.md; the folder is listed, once
+// per scan, only when a case-swapped lstat finds the same file.
+func (s *conventionsScan) onDisk(dir *os.Root, folder, name string, fi fs.FileInfo) string {
+	swapped := strings.ToLower(name)
+	if swapped == name {
+		swapped = strings.ToUpper(name)
 	}
-	// An absolute target may name the root by its resolved path (a temporary
-	// folder reached through a linked parent); the root's own resolution reads
-	// no file of the project.
-	if real, err := filepath.EvalSymlinks(root); err == nil && p == filepath.Join(real, "AGENTS.md") {
-		return true
+	if swapped == name {
+		return name
 	}
-	return false
+	if other, err := dir.Lstat(swapped); err != nil || !os.SameFile(fi, other) {
+		return name // a case-sensitive filesystem: name is the spelling
+	}
+	names, listed := s.names[folder]
+	if !listed {
+		if f, err := dir.Open("."); err == nil {
+			names, _ = f.Readdirnames(-1)
+			f.Close()
+		}
+		s.names[folder] = names
+	}
+	folded := ""
+	for _, n := range names {
+		if n == name {
+			return name
+		}
+		if folded == "" && strings.EqualFold(n, name) {
+			folded = n
+		}
+	}
+	if folded != "" {
+		return folded
+	}
+	return name
 }
 
 // ownerFileWarning is the one line install prints first for a tool's own
@@ -213,11 +411,18 @@ func ownerFileWarning(f toolConventionsFile) string {
 }
 
 // detectToolConventionsFiles raises, for each registry file at the root, the
-// owner's-file warning or the retirement offer.
+// owner's-file warning or the retirement offer, naming each file as it is
+// spelt on disk.
 func detectToolConventionsFiles(root string) []Gap {
+	s := newConventionsScan(root)
+	defer s.close()
 	var gaps []Gap
-	for _, f := range toolConventionsFiles {
-		switch class, how := classifyToolFile(root, f.Rel); class {
+	for _, reg := range toolConventionsFiles {
+		at := s.classify(reg.Rel)
+		at.release()
+		f := reg
+		f.Rel = at.shown
+		switch at.class {
 		case toolFileOwners:
 			gaps = append(gaps, Gap{
 				ID: ConventionsOwnerFileGapID, Category: ConventionsFile, Scope: "repo",
@@ -230,7 +435,7 @@ func detectToolConventionsFiles(root string) []Gap {
 			gaps = append(gaps, Gap{
 				ID: ConventionsRetireGapID, Category: ConventionsFile, Scope: "repo",
 				Title: f.Rel + " only repeats AGENTS.md",
-				Detail: f.Rel + " " + repeatsWhat[how] + ", and " + f.Tool + f.Qualifier + " reads it in place of AGENTS.md. " +
+				Detail: f.Rel + " " + repeatsWhat[at.how] + ", and " + f.Tool + f.Qualifier + " reads it in place of AGENTS.md. " +
 					"It holds nothing of your own, so it can go.",
 				FixHint: "ahoy install at a terminal offers to remove it and removes it only on your answer; --yes never does. " +
 					"Or remove it yourself.",
@@ -263,8 +468,10 @@ func retireAsk(rel string) string { return "Remove " + rel + " from this project
 
 // conventionsRetireHelp is HelpFor's answer for a retirement question's key:
 // the file and what it repeats first, the question last, then the answers
-// with decide-later last. A key naming a file the registry does not hold, or a
-// way of repeating AGENTS.md that does not exist, has no help.
+// with decide-later last. The key names the file as it is spelt on disk, which
+// matches the registry's spelling but for letter case. A key naming a file the
+// registry does not hold, or a way of repeating AGENTS.md that does not exist,
+// has no help.
 func conventionsRetireHelp(key string) (PromptHelp, bool) {
 	rest, ok := strings.CutPrefix(key, conventionsRetirePromptPrefix)
 	if !ok {
@@ -280,9 +487,10 @@ func conventionsRetireHelp(key string) (PromptHelp, bool) {
 		return PromptHelp{}, false
 	}
 	for _, f := range toolConventionsFiles {
-		if f.Rel != rel {
+		if !strings.EqualFold(f.Rel, rel) {
 			continue
 		}
+		f.Rel = rel
 		return PromptHelp{
 			Key: key,
 			About: f.Rel + " " + what + ", so it holds nothing of your own. " + f.Tool + f.Qualifier +
@@ -297,6 +505,10 @@ func conventionsRetireHelp(key string) (PromptHelp, bool) {
 	return PromptHelp{}, false
 }
 
+// beforeToolFileRemove, when set, runs just before a retired file is removed:
+// a test's seam for changing the project in that window.
+var beforeToolFileRemove func(rel string)
+
 // stepConventionsFiles asks, of a person at a terminal, whether to retire
 // each tool's own conventions file that only repeats AGENTS.md. It runs after
 // stepDrainRule, the last consent question, and so after stepMarker, whose
@@ -306,25 +518,42 @@ func (a *applyCtx) stepConventionsFiles() {
 	if a.autoYes || !atTerminal(a.prompter) || !a.approved[ConventionsFile] || !a.has(ConventionsRetireGapID) {
 		return
 	}
+	s := newConventionsScan(a.cwd)
+	defer s.close()
 	for _, f := range toolConventionsFiles {
-		class, how := classifyToolFile(a.cwd, f.Rel)
-		if class != toolFileRepeats {
+		at := s.classify(f.Rel)
+		at.release()
+		if at.class != toolFileRepeats {
 			continue
 		}
-		if a.prompter.Prompt(retirePromptKey(f.Rel, how), retireChoices, retireLater) != retireRetire {
+		if a.prompter.Prompt(retirePromptKey(at.shown, at.how), retireChoices, retireLater) != retireRetire {
 			continue // keep and later write nothing and record nothing
 		}
-		// Classified again at the answer: a file that changed while the
-		// question was open may now hold the owner's words, and is left.
-		if again, _ := classifyToolFile(a.cwd, f.Rel); again != toolFileRepeats {
-			a.refuse(f.Rel + " was not removed: it changed while the question was open and no longer only repeats AGENTS.md, so it is left as it is.")
-			continue
-		}
-		path := filepath.Join(a.cwd, filepath.FromSlash(f.Rel))
-		if err := os.Remove(path); err != nil {
-			a.refuse("could not remove " + f.Rel + ": " + errText(err) + "; it is left as it is.")
-			continue
-		}
-		a.note(writeToolFileRetired, path)
+		a.retireToolFile(f.Rel, at.shown)
 	}
+}
+
+// retireToolFile removes the registry file rel, shown as spelt on disk, after
+// classifying it again: a file that changed while the question was open may
+// now hold the owner's words, and is left. The check is a new scan, so it
+// compares against AGENTS.md as it is now, and the removal takes the very
+// entry it classified, in its folder held open: never a path walked afresh,
+// which a folder swapped for a link would carry out of the project.
+func (a *applyCtx) retireToolFile(rel, shown string) {
+	s := newConventionsScan(a.cwd)
+	defer s.close()
+	again := s.classify(rel)
+	defer again.release()
+	if again.class != toolFileRepeats {
+		a.refuse(shown + " was not removed: it changed while the question was open and no longer only repeats AGENTS.md, so it is left as it is.")
+		return
+	}
+	if beforeToolFileRemove != nil {
+		beforeToolFileRemove(rel)
+	}
+	if err := again.dir.Remove(again.leaf); err != nil {
+		a.refuse("could not remove " + again.shown + ": " + errText(err) + "; it is left as it is.")
+		return
+	}
+	a.note(writeToolFileRetired, filepath.Join(a.cwd, filepath.FromSlash(again.shown)))
 }

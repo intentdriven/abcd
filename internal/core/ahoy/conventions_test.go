@@ -52,6 +52,16 @@ func linkFixture(t *testing.T, root, rel, target string) {
 	}
 }
 
+// classifyToolFile classifies the tool's own conventions file at rel under
+// root with a scan of its own, and says how it repeats AGENTS.md when it does.
+func classifyToolFile(root, rel string) (toolFileClass, string) {
+	s := newConventionsScan(root)
+	defer s.close()
+	at := s.classify(rel)
+	at.release()
+	return at.class, at.how
+}
+
 // TestToolFileClassification holds each class: the five ways a file repeats
 // AGENTS.md, and every way a file is the owner's words, reading nothing
 // through a link and nothing it cannot read guarded.
@@ -73,6 +83,15 @@ func TestToolFileClassification(t *testing.T) {
 		{"an absolute link to AGENTS.md", "GEMINI.md", func(t *testing.T, root string) {
 			linkFixture(t, root, "GEMINI.md", filepath.Join(root, "AGENTS.md"))
 		}, toolFileRepeats, repeatsLink},
+		{"a link through a folder and back", "CLAUDE.md", func(t *testing.T, root string) {
+			if err := os.Mkdir(filepath.Join(root, "docs"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			linkFixture(t, root, "CLAUDE.md", "docs/../AGENTS.md")
+		}, toolFileRepeats, repeatsLink},
+		{"a link in a folder checked out as text", ".claude/CLAUDE.md", func(t *testing.T, root string) {
+			writeFixture(t, root, ".claude/CLAUDE.md", "../AGENTS.md\n", 0o644)
+		}, toolFileRepeats, repeatsLinkText},
 		{"a link checked out as text", "GEMINI.md", func(t *testing.T, root string) {
 			writeFixture(t, root, "GEMINI.md", "AGENTS.md", 0o644)
 		}, toolFileRepeats, repeatsLinkText},
@@ -125,6 +144,25 @@ func TestToolFileClassification(t *testing.T) {
 			elsewhere := t.TempDir()
 			writeFixture(t, elsewhere, "CLAUDE.md", "AGENTS.md", 0o644)
 			linkFixture(t, root, ".claude", elsewhere)
+		}, toolFileOwners, ""},
+
+		// The review's probe: the target text names AGENTS.md through docs,
+		// a link out of the project, so the kernel lands on another file.
+		{"a link through a linked folder out of the project", "CLAUDE.md", func(t *testing.T, root string) {
+			elsewhere := t.TempDir()
+			writeFixture(t, elsewhere, "AGENTS.md", agentsFixture, 0o644)
+			writeFixture(t, elsewhere, "sub/notes.md", "notes\n", 0o644)
+			linkFixture(t, root, "docs", filepath.Join(elsewhere, "sub"))
+			linkFixture(t, root, "CLAUDE.md", "docs/../AGENTS.md")
+		}, toolFileOwners, ""},
+		{"text stepping into a folder and back", "GEMINI.md", func(t *testing.T, root string) {
+			writeFixture(t, root, "GEMINI.md", "docs/../AGENTS.md", 0o644)
+		}, toolFileOwners, ""},
+		{"an import stepping into a folder and back", ".rules", func(t *testing.T, root string) {
+			writeFixture(t, root, ".rules", "@docs/../AGENTS.md\n", 0o644)
+		}, toolFileOwners, ""},
+		{"text leaving the project and coming back", "CLAUDE.md", func(t *testing.T, root string) {
+			writeFixture(t, root, "CLAUDE.md", "../"+filepath.Base(root)+"/AGENTS.md", 0o644)
 		}, toolFileOwners, ""},
 
 		{"absent", "CLAUDE.md", func(*testing.T, string) {}, toolFileAbsent, ""},
@@ -510,5 +548,114 @@ func TestConventionsRetireQuestionPassesTheLimits(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("the registry is empty")
+	}
+}
+
+// TestRetireRemovesOnlyTheFileItChecked: a folder in the file's path swapped
+// for a link, between the check at the answer and the removal, does not carry
+// the removal to the folder the link names, outside the project or inside it.
+// The file there, the owner's words, is left as it was.
+func TestRetireRemovesOnlyTheFileItChecked(t *testing.T) {
+	for _, where := range []string{"outside the project", "inside the project"} {
+		t.Run(where, func(t *testing.T) {
+			setupHermetic(t)
+			repo := installedRepo(t)
+			linkFixture(t, repo, ".claude/CLAUDE.md", "../AGENTS.md")
+			other := t.TempDir()
+			if where == "inside the project" {
+				other = filepath.Join(repo, "docs")
+			}
+			const owners = "The owner's words, in another folder\n"
+			writeFixture(t, other, "CLAUDE.md", owners, 0o644)
+
+			swapped := false
+			beforeToolFileRemove = func(rel string) {
+				if rel != ".claude/CLAUDE.md" {
+					return
+				}
+				if err := os.Rename(filepath.Join(repo, ".claude"), filepath.Join(repo, ".claude-moved")); err != nil {
+					t.Error(err)
+					return
+				}
+				if err := os.Symlink(other, filepath.Join(repo, ".claude")); err != nil {
+					t.Error(err)
+					return
+				}
+				swapped = true
+			}
+			t.Cleanup(func() { beforeToolFileRemove = nil })
+
+			opts := installOpts()
+			opts.Yes = false
+			if _, err := Install(repo, opts, conventionsPrompter("retire")); err != nil {
+				t.Fatal(err)
+			}
+			if !swapped {
+				t.Fatal("the removal was never reached, so the swap was not made")
+			}
+			got, err := os.ReadFile(filepath.Join(other, "CLAUDE.md"))
+			if err != nil {
+				t.Fatalf("the file the swapped-in link names was removed: %v", err)
+			}
+			if string(got) != owners {
+				t.Errorf("the file the swapped-in link names changed: %q", got)
+			}
+		})
+	}
+}
+
+// TestDetectionReadsAgentsOnce: one detection reads the root's AGENTS.md at
+// most once, however many registry files it compares with it.
+func TestDetectionReadsAgentsOnce(t *testing.T) {
+	root := conventionsRoot(t)
+	for _, rel := range []string{"CLAUDE.md", "GEMINI.md", ".rules", ".github/copilot-instructions.md"} {
+		writeFixture(t, root, rel, "Words of the owner's for "+rel+"\nand a second line\n", 0o644)
+	}
+	reads := 0
+	was := readRootAgents
+	readRootAgents = func(r *os.Root) ([]byte, error) {
+		reads++
+		return was(r)
+	}
+	t.Cleanup(func() { readRootAgents = was })
+	gaps := detectToolConventionsFiles(root)
+	if len(gaps) != 4 {
+		t.Fatalf("want four owner's-file warnings, got %+v", gaps)
+	}
+	if reads != 1 {
+		t.Errorf("AGENTS.md was read %d times in one detection, want once", reads)
+	}
+}
+
+// TestToolFileNamedAsSpeltOnDisk: on a case-insensitive filesystem a
+// claude.md is the file Claude Code reads as CLAUDE.md, and the warning, the
+// offer and the question name it as it is spelt on disk.
+func TestToolFileNamedAsSpeltOnDisk(t *testing.T) {
+	root := conventionsRoot(t)
+	writeFixture(t, root, "claude.md", "Always run make check first\n", 0o644)
+	if _, err := os.Lstat(filepath.Join(root, "CLAUDE.md")); err != nil {
+		t.Skip("a case-sensitive filesystem: claude.md is not CLAUDE.md here")
+	}
+	writeFixture(t, root, "gemini.md", agentsFixture, 0o644)
+	var owner, offer *Gap
+	gaps := detectToolConventionsFiles(root)
+	for i, g := range gaps {
+		switch g.ID {
+		case ConventionsOwnerFileGapID:
+			owner = &gaps[i]
+		case ConventionsRetireGapID:
+			offer = &gaps[i]
+		}
+	}
+	if owner == nil || !strings.HasPrefix(owner.Detail, "claude.md holds your own words") ||
+		!strings.Contains(owner.Detail, "remove claude.md.") {
+		t.Errorf("the warning does not name claude.md as spelt on disk: %+v", owner)
+	}
+	if offer == nil || offer.Title != "gemini.md only repeats AGENTS.md" {
+		t.Errorf("the offer does not name gemini.md as spelt on disk: %+v", offer)
+	}
+	h, ok := HelpFor(retirePromptKey("gemini.md", repeatsCopy))
+	if !ok || !strings.HasPrefix(h.About, "gemini.md is an exact copy") || !strings.HasSuffix(h.About, "Remove gemini.md from this project?") {
+		t.Errorf("the question does not name gemini.md as spelt on disk: %+v", h)
 	}
 }
