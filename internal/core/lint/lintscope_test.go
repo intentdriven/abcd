@@ -19,9 +19,6 @@ var linkScopeExempt = map[string]string{
 	// A block ahoy writes into another repository's CLAUDE.md; its links
 	// resolve there, not here.
 	"internal/core/ahoy/defaults/": "templates written into other repositories",
-	// Symlinked mirrors of AGENTS.md, which is read in their place.
-	"CLAUDE.md": "a symlinked mirror of AGENTS.md",
-	"GEMINI.md": "a symlinked mirror of AGENTS.md",
 }
 
 // TestEveryCommittedMarkdownFileHasItsLinksChecked is the link half of iss-46's
