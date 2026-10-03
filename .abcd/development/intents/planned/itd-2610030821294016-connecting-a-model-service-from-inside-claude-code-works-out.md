@@ -1,8 +1,8 @@
 ---
 id: itd-2610030821294016
 slug: connecting-a-model-service-from-inside-claude-code-works-out
-spec_id: null
-kind: null
+spec_id: spc-2610031241482088
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2610030810370060]
@@ -10,6 +10,7 @@ refines: [itd-2609081951381895]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
+impact: additive
 ---
 
 # Connecting a model service from Claude Code looks up the details and offers the choices
@@ -46,10 +47,10 @@ _Proposed by the facilitator from decisions 1 to 8; confirmed by the product thi
 
 ## Scope Conditions
 
-- Services that publish an OpenAI-compatible model list; a service that publishes none falls back to typing the name (decision 5).
-- A person who can open a terminal on the same machine to paste the printed command; the session never finishes the setup itself (decisions 1 and 2).
-- Suggestions only for a person with an existing connection; a first-time user sees the search alone (decision 6).
-- A key that reaches abcd through its own hidden input in that terminal step; a key saved by hand in the computer's password store is not adopted (decisions 2 and 7).
+- Services that publish an OpenAI-compatible model list; a service that publishes none falls back to typing the name (decision 5). <!-- cond: cond-2610031241487546 -->
+- A person who can open a terminal on the same machine to paste the printed command; the session never finishes the setup itself (decisions 1 and 2). <!-- cond: cond-2610031241484784 -->
+- Suggestions only for a person with an existing connection; a first-time user sees the search alone (decision 6). <!-- cond: cond-2610031241488563 -->
+- A key that reaches abcd through its own hidden input in that terminal step; a key saved by hand in the computer's password store is not adopted (decisions 2 and 7). <!-- cond: cond-2610031241482561 -->
 
 _Proposed by the facilitator from decisions 1 to 8; confirmed by the product thinker, 2026-10-03._
 
