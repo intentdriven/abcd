@@ -118,8 +118,66 @@ func TestEmbarkFromWritesRecords(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(target, embarkedADR)); err != nil {
 		t.Errorf("record did not land at %s: %v", embarkedADR, err)
 	}
-	if _, err := os.Stat(filepath.Join(target, "CLAUDE.md")); err != nil {
-		t.Errorf("marker not injected into target CLAUDE.md: %v", err)
+	if _, err := os.Stat(filepath.Join(target, "AGENTS.md")); err != nil {
+		t.Errorf("marker not injected into target AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(out), "marker:    AGENTS.md installed") {
+		t.Errorf("from render does not name the file the block went into:\n%s", out)
+	}
+	if _, err := os.Lstat(filepath.Join(target, "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Errorf("embark created CLAUDE.md (lstat err %v)", err)
+	}
+}
+
+// TestEmbarkReadsTheChosenConventionsTarget is the surface half of
+// itd-2610030814013772's A2: through the CLI, probe and from follow the
+// docs.target the target's setup saved. A target that chose skip receives no
+// conventions file, and both renders and --json say why; one that chose
+// agents_md receives the block in AGENTS.md.
+func TestEmbarkReadsTheChosenConventionsTarget(t *testing.T) {
+	lb := packEmbarkLifeboat(t, embarkSourceRepo(t))
+	save := func(target, value string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(target, ".abcd"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"docs": {"target": "` + value + `"}}` + "\n"
+		if err := os.WriteFile(filepath.Join(target, ".abcd", "config.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	note := "this project's setup chose no conventions file for abcd's block"
+
+	skipped := t.TempDir()
+	save(skipped, "skip")
+	var plan lifeboat.EmbarkPlan
+	if err := json.Unmarshal(runCLI(t, "embark", "probe", lb, skipped, "--json"), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Marker.Target != "" || plan.Marker.Action != lifeboat.MarkerActionSkip || plan.Marker.Note != note {
+		t.Errorf("probe --json marker = %+v, want no file, skip, %q", plan.Marker, note)
+	}
+	out := string(runCLI(t, "embark", "from", lb, skipped))
+	if !strings.Contains(out, "marker:    skipped") || !strings.Contains(out, note) {
+		t.Errorf("from render does not say the marker was skipped and why:\n%s", out)
+	}
+	for _, f := range []string{"AGENTS.md", "CLAUDE.md"} {
+		if _, err := os.Lstat(filepath.Join(skipped, f)); !os.IsNotExist(err) {
+			t.Errorf("a target that chose skip received %s (lstat err %v)", f, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(skipped, embarkedADR)); err != nil {
+		t.Errorf("the record did not land under a skipped marker: %v", err)
+	}
+
+	chosen := t.TempDir()
+	save(chosen, "agents_md")
+	var res lifeboat.EmbarkResult
+	if err := json.Unmarshal(runCLI(t, "embark", "from", lb, chosen, "--json"), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Marker.Target != "AGENTS.md" || res.Marker.Action != lifeboat.MarkerActionInstall {
+		t.Errorf("from --json marker = %+v, want AGENTS.md install", res.Marker)
 	}
 }
 
