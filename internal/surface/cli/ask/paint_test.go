@@ -88,3 +88,27 @@ func csiOtherThanCursor(s string) bool {
 	}
 	return false
 }
+
+// TestCollapseErasesEveryOldRowBeforeAWideAnswer: a collapsed line is written
+// whole, so one wider than the window wraps onto the next old row. Every old
+// row is erased before the answer is written, so no tail of the question
+// stays beside the wrapped remainder.
+func TestCollapseErasesEveryOldRowBeforeAWideAnswer(t *testing.T) {
+	var out bytes.Buffer
+	l := &loop{t: Terminal{Out: &out, Getenv: env("COLUMNS", "80", "LINES", "24"), Mode: term.Mono}}
+	answer := "› Setup Q4: " + strings.Repeat("L", 100)
+	if err := l.paint([]string{answer}, 6, 24, 0); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	at := strings.Index(s, "›")
+	if at < 0 {
+		t.Fatalf("the answer is not written:\n%q", s)
+	}
+	if n := strings.Count(s[:at], "\x1b[2K"); n < 6 {
+		t.Fatalf("%d old rows erased before a wrapping answer, want all 6:\n%q", n, s)
+	}
+	if !strings.Contains(s, answer) {
+		t.Fatalf("the collapsed answer was cut:\n%q", s)
+	}
+}

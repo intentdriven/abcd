@@ -303,8 +303,9 @@ func (l *loop) draw(full bool) error {
 
 // collapse replaces the question on screen with its one plain line per part.
 // The collapsed lines are written whole, never cut: they are the record of
-// the answer the scrollback keeps, and nothing is drawn over them, so a line
-// the terminal wraps leaves no row stale. The caller holds mu.
+// the answer the scrollback keeps, and nothing is drawn over them. paint
+// erases every old row before writing them (cols 0), so a line the terminal
+// wraps lands on an erased row and leaves none stale. The caller holds mu.
 func (l *loop) collapse() error {
 	_, rows := term.Size(l.t.In, l.t.Getenv)
 	f := Frame{Mode: l.t.Mode, ASCII: l.t.ASCII}
@@ -320,12 +321,21 @@ func (l *loop) collapse() error {
 // zero, a line wider than cols-1 columns (a long typed filter, a label that is
 // one word wider than its column, material the wrap could not break) is cut
 // to fit (fit), or the terminal would wrap it onto a row the next move up
-// never reaches, leaving the old drawing's top on screen.
+// never reaches, leaving the old drawing's top on screen. With cols zero the
+// lines are written whole, so every old row is erased before any is written.
 func (l *loop) paint(lines []string, onScreen, rows, cols int) error {
 	var b strings.Builder
 	up := min(onScreen, max(rows-1, 0))
 	if up > 0 {
 		fmt.Fprintf(&b, "\x1b[%dA", up)
+		if cols == 0 {
+			// A line written whole may wrap onto the next old row, which the
+			// per-line erase below never reaches: erase every old row first.
+			for range up {
+				b.WriteString("\r\x1b[2K\r\n")
+			}
+			fmt.Fprintf(&b, "\x1b[%dA", up)
+		}
 	}
 	ellipsis := "…"
 	if l.t.ASCII {
