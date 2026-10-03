@@ -202,9 +202,12 @@ func TestNumberedReaderRefusesAClosedInput(t *testing.T) {
 
 // TestPutReadsTheListSetting holds that Put takes interview.list from the
 // layered configuration itself: the machine's numbered selects the numbered
-// reader with no line said (it was asked for), and a setting the reader
-// refuses (a repository that sets it) falls to the numbered reader with one
-// line naming the refusal, never a failed interview.
+// reader with no line said (it was asked for). A setting the reader refuses
+// never fails the interview, and never lets a repository decide how the
+// person is asked: a fault the repository layer holds (the key set there, a
+// misspelt key under interview, a malformed file) is passed over for the
+// machine's own setting, with one line naming the refusal; a fault in the
+// machine's own file gives the numbered reader, with one line naming it.
 func TestPutReadsTheListSetting(t *testing.T) {
 	t.Run("the machine's numbered", func(t *testing.T) {
 		var out bytes.Buffer
@@ -223,23 +226,45 @@ func TestPutReadsTheListSetting(t *testing.T) {
 			t.Errorf("a numbered list that was asked for says why:\n%s", out.String())
 		}
 	})
-	t.Run("a refused setting", func(t *testing.T) {
-		var out bytes.Buffer
-		tm := Terminal{In: pipeIn(t, "1\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, "", numberedSetting)}
-		got, err := tm.Put(fixture(t, "key-home"))
-		if err != nil {
-			t.Fatalf("a refused setting failed the interview: %v\n%s", err, out.String())
-		}
-		if len(got) != 1 || got[0].Value != "keychain" {
-			t.Errorf("answers %+v, want keychain by its number", got)
-		}
-		if n := lineCount(out.String(), "interview.list"); n != 1 {
-			t.Errorf("%d lines name the refused setting, want one:\n%s", n, out.String())
-		}
-		if !strings.Contains(out.String(), NumberedHint) {
-			t.Errorf("a refused setting did not fall to the numbered reader:\n%s", out.String())
-		}
-	})
+	for _, tc := range []struct {
+		name, machine, repo string
+		names               string // what the one refusal line names
+		arrows              bool   // the machine's mode, arrows, is kept
+	}{
+		{"a repository's numbered keeps the machine's arrows", "", numberedSetting, "interview.list", true},
+		{"a repository's misspelt key keeps the machine's arrows", "", `{"interview": {"lst": "numbered"}}`, "interview.lst", true},
+		{"a repository's malformed file keeps the machine's arrows", "", `{"interview": `, ".abcd/config.json", true},
+		{"a repository's arrows keeps the machine's numbered", numberedSetting, `{"interview": {"list": "arrows"}}`, "interview.list", false},
+		{"a malformed machine file gives numbered", `{"interview": `, "", "~/.abcd/config.json", false},
+		{"a machine value outside the two gives numbered", `{"interview": {"list": "tabs"}}`, "", "~/.abcd/config.json", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			tm := Terminal{In: pipeIn(t, "1\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, tc.machine, tc.repo)}
+			got, err := tm.Put(fixture(t, "key-home"))
+			if err != nil {
+				t.Fatalf("a refused setting failed the interview: %v\n%s", err, out.String())
+			}
+			if len(got) != 1 || got[0].Value != "keychain" {
+				t.Errorf("answers %+v, want keychain by its number", got)
+			}
+			s := out.String()
+			var said []string
+			for _, l := range strings.Split(s, "\n") {
+				if strings.HasPrefix(l, "abcd: ") && !strings.Contains(l, "refused the arrow-key list") {
+					said = append(said, l)
+				}
+			}
+			if len(said) != 1 || !strings.Contains(said[0], tc.names) {
+				t.Errorf("want one line naming the refusal (%q), got %q:\n%s", tc.names, said, s)
+			}
+			// The input is a pipe, so an arrow-key list is refused raw mode
+			// and says so: that line is how the test sees arrows chosen.
+			if tried := lineCount(s, "refused the arrow-key list") == 1; tried != tc.arrows {
+				t.Errorf("arrow-key list tried %v, want %v (the machine's mode):\n%s", tried, tc.arrows, s)
+			}
+		})
+	}
 }
 
 // TestNumberedFilterEchoIsSanitised holds that the numbered reader's echo of

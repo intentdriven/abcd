@@ -90,8 +90,9 @@ var keyHook func(Key)
 
 // Put asks a at the terminal and returns its answers, one per part. It holds
 // a to the structural check first (Prepare), reads interview.list through
-// layered.InterviewList (a setting it cannot read gives the numbered reader,
-// with one line on Out naming the refusal), then takes the answer in the mode
+// layered.InterviewList (a refusal is said in one line on Out; a repository's
+// fault is passed over for the machine's setting, a fault in the machine's
+// own file gives the numbered reader), then takes the answer in the mode
 // SelectMode picks; an arrow-key list the terminal cannot take (TERM=dumb,
 // or raw mode refused) falls to the numbered reader with one line on Out
 // saying so, never a failed interview. Ctrl-C returns ErrInterrupted.
@@ -102,17 +103,13 @@ func (t Terminal) Put(a question.Ask) ([]Answer, error) {
 	if t.Getenv == nil {
 		t.Getenv = func(string) string { return "" }
 	}
-	list, err := layered.InterviewList(t.Roots)
-	if err != nil {
-		// A setting that cannot be read never fails the interview: the
-		// numbered list is always safe to give, and the refusal is said once,
-		// sanitised: it can echo a key a repository's file holds.
-		if _, werr := fmt.Fprintf(t.Out, "abcd: %s; the list is numbered.\n", termsafe.Sanitize(err.Error())); werr != nil {
-			return nil, werr
+	list, note := t.listSetting()
+	if note != "" {
+		if _, err := fmt.Fprintln(t.Out, note); err != nil {
+			return nil, err
 		}
-		list.V = layered.InterviewListNumbered
 	}
-	m, why := SelectMode(t.Getenv, list.V)
+	m, why := SelectMode(t.Getenv, list)
 	if m == Numbered {
 		if t.Getenv("TERM") == "dumb" {
 			if _, err := fmt.Fprintf(t.Out, "abcd: %s, so the list is numbered.\n", why); err != nil {
@@ -130,6 +127,29 @@ func (t Terminal) Put(a question.Ask) ([]Answer, error) {
 		return t.numbered(a)
 	}
 	return got, err
+}
+
+// listSetting reads interview.list for Put, and the one line to say when it
+// was refused (sanitised: a refusal can echo a key a file holds), or "". A
+// refusal never fails the interview, and a repository never decides how the
+// person is asked: a fault the repository layer holds (the key set there, a
+// misspelt key under interview, a malformed file) is passed over by reading
+// the machine's file alone, so the person's own setting stands; a fault in
+// the machine's own file gives the numbered list, which is always safe.
+func (t Terminal) listSetting() (list, note string) {
+	v, err := layered.InterviewList(t.Roots)
+	if err == nil {
+		return v.V, ""
+	}
+	if t.Roots.Repo != "" {
+		mv, merr := layered.InterviewList(layered.Roots{Home: t.Roots.Home})
+		if merr == nil {
+			return mv.V, fmt.Sprintf("abcd: %s; how the list is read is taken from this machine's settings alone.",
+				termsafe.Sanitize(err.Error()))
+		}
+		err = merr
+	}
+	return layered.InterviewListNumbered, fmt.Sprintf("abcd: %s; the list is numbered.", termsafe.Sanitize(err.Error()))
 }
 
 // rawRefused is raw mode refused by the terminal: the caller falls back.
