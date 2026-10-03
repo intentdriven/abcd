@@ -109,7 +109,7 @@ var promptHelp = map[string]PromptHelp{
 			"for example to read a change and say whether it is ready. The choice decides who runs that model, and so what it costs and which keys or tools it needs.",
 		Choices: []ChoiceHelp{
 			{Value: "host-delegated", Meaning: "the AI assistant you are already working in runs every review. " +
-				"No API key, no extra tool and no cost beyond the assistant you already use. The recommended choice."},
+				"No API key, no extra tool and no cost beyond the assistant you already use."},
 			{Value: "native", Meaning: "abcd would call a model itself, through an adapter built into abcd; that needs the provider's API key, and the use is billed by that provider." + noAdapterYet},
 			{Value: "cli", Meaning: "abcd would run a model's command-line tool installed on this machine; that tool must be installed and signed in, and its use may be billed." + noAdapterYet},
 			{Value: "api", Meaning: "abcd would call a model provider's web API directly; that needs an API key, and each call is billed by the provider." + noAdapterYet},
