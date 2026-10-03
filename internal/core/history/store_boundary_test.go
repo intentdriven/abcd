@@ -247,12 +247,21 @@ func TestOnlyTheHistoryPackageNamesTheStorePath(t *testing.T) {
 
 // TestStorePathBoundaryScannerIsArmed proves the scanner reports a literal and
 // ignores a comment, so a pass above is the property holding rather than the
-// scanner missing everything it walked.
+// scanner missing everything it walked. The hostile literals are written out
+// here rather than drawn from storePathNeedles, so a needle dropped from the
+// scanner fails this test instead of shrinking it.
 func TestStorePathBoundaryScannerIsArmed(t *testing.T) {
-	for _, needle := range storePathNeedles {
-		src := "package p\n\nvar x = \"" + needle + "/aaaa/records\"\n"
+	hostile := []string{
+		".abcd/transcripts/aaaa/records",
+		".abcd.noindex/transcripts/aaaa/records",
+		".work.local/transcripts/aaaa/records",
+		".abcd/local-transcript-roots",
+		"history/transcripts/aaaa/records",
+	}
+	for _, literal := range hostile {
+		src := "package p\n\nvar x = " + strconv.Quote(literal) + "\n"
 		if got := storePathLiterals(t, "hostile.go", src); len(got) != 1 {
-			t.Errorf("the scanner admits the literal %q; it is not armed for that spelling", needle)
+			t.Errorf("the scanner admits the literal %q; it is not armed for that spelling", literal)
 		}
 	}
 	resolverCalls := map[string]string{
