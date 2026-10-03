@@ -12,13 +12,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
-
-	"golang.org/x/text/width"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/livery"
 	"github.com/intentdriven/abcd/internal/term"
+	"github.com/intentdriven/abcd/internal/textwidth"
 )
 
 // bannerTTY is the emission seam: under test cmd.OutOrStdout() is a buffer,
@@ -74,64 +72,11 @@ func bannerTaglineLines() []string {
 	return wrapWords(bakedTagline, bannerWidth)
 }
 
-// wrapWords word-wraps s into lines of at most limit display columns and
-// never breaks a word; a word wider than limit stands alone on its line. The
-// wrap is balanced: it keeps the fewest lines a greedy wrap at limit needs,
-// then narrows the measure while that count holds, so the last line is never
-// a stranded word.
+// wrapWords is the banner's seam onto the shared balanced wrap: the tagline
+// and every other caller measure and wrap text through internal/textwidth, so
+// the banner and the question limits count columns the same way.
 func wrapWords(s string, limit int) []string {
-	words := strings.Fields(s)
-	longest := 0
-	for _, w := range words {
-		longest = max(longest, displayColumns(w))
-	}
-	lines := greedyWrap(words, limit)
-	for measure := limit - 1; measure >= longest; measure-- {
-		narrower := greedyWrap(words, measure)
-		if len(narrower) > len(lines) {
-			break
-		}
-		lines = narrower
-	}
-	return lines
-}
-
-// greedyWrap fills each line with as many words as fit within limit
-// display columns.
-func greedyWrap(words []string, limit int) []string {
-	var lines []string
-	line, cols := "", 0
-	for _, w := range words {
-		wc := displayColumns(w)
-		switch {
-		case line == "":
-			line, cols = w, wc
-		case cols+1+wc <= limit:
-			line, cols = line+" "+w, cols+1+wc
-		default:
-			lines = append(lines, line)
-			line, cols = w, wc
-		}
-	}
-	if line != "" {
-		lines = append(lines, line)
-	}
-	return lines
-}
-
-// displayColumns counts the terminal columns plain text occupies: East Asian
-// wide and fullwidth runes take two, every other rune one.
-func displayColumns(s string) int {
-	n := 0
-	for _, r := range s {
-		switch width.LookupRune(r).Kind() {
-		case width.EastAsianWide, width.EastAsianFullwidth:
-			n += 2
-		default:
-			n++
-		}
-	}
-	return n
+	return textwidth.Wrap(s, limit)
 }
 
 // IdentityGenSource is the single template for the generated identity file:

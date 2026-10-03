@@ -244,6 +244,15 @@ plugin surface, and a future MCP server share one engine.
   front door compensates by making a disabled registry loud rather than silent.
   Fail-open-loud on a broken guard belongs to the hook shim (`hooks/hooks.json`)
   and the `abcd guard hook` adapter, not here.
+- **`core/question/`** — what a question abcd puts to a person may contain
+  (spc-2610030944505997). `Limits` and its one value `Default` are the only
+  statement of the field limits in the tree: the question check, the GRILL rule
+  text and the interview pages read them, so a limit changes in one edit.
+  `CheckLimits` holds the field view (`Fields`, the four fields the host's
+  question tool takes, one tab per question) to every rule at once and returns
+  findings; it refuses and never rewrites. The binary's verb list reaches it as
+  an input, so the core keeps no copy of the command tree, and its rows are
+  measured through `textwidth`, never through `term`.
 - **`core/banlist/`** — the two banned-names stores (itd-74, spc-20). The public
   layer is managed IN the docs-lint `banned_tokens` family under a `names/` id
   prefix: one banned-token primitive, and the prefix is the ownership boundary a
@@ -275,6 +284,10 @@ plugin surface, and a future MCP server share one engine.
   byte span, so two secrets on one line cannot leak each other through the
   snippet they share. `core/launch` consumes it before a bundle is published;
   external scanners stay config-selected plug-ins behind the same seam.
+- **`textwidth/`** — the one display-width measure and word wrap (East Asian
+  wide runes count two), a pure leaf with no terminal I/O. It sits outside
+  `core/` and `term/` so the banner and the core's question row estimate measure
+  text the same way without the core importing raw-mode terminal code.
 - **`surface/cli/`** — the default front door: a Cobra command tree that calls
   `core` and formats results as text or `--json`. Holds no business logic.
 - **`surface/mcp/`** *(later)* — an additive front door exposing the same core
