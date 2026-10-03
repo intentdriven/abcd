@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -55,7 +56,7 @@ func machineRoutingPath() string {
 	if err != nil || home == "" {
 		return ""
 	}
-	return filepath.Join(home, ".abcd", filepath.FromSlash(layered.OracleRouting.MachineRel))
+	return abcdhome.Path(home, layered.OracleRouting.MachineRel)
 }
 
 // absent reports whether nothing at all is at p: not a file, not a symlink,
@@ -74,7 +75,7 @@ func detectOracleRouting(cwd string) []Gap {
 			ID: OracleRoutingMachineGapID, Category: OracleRouting, Scope: "machine",
 			Title:    "model-tier routing not accepted on this machine",
 			Detail:   "abcd proposes a model tier and a fan-out bound for each of its agents; nothing of it applies until it is accepted, so every delegated step asks the harness for host-decides.",
-			FixHint:  "ahoy install renders the proposal and writes ~/.abcd/oracle-routing.json only on consent; --yes never accepts it (run without --yes).",
+			FixHint:  "ahoy install renders the proposal and writes " + abcdhome.Display("oracle-routing.json") + " only on consent; --yes never accepts it (run without --yes).",
 			Required: false, Resolvable: true,
 		})
 	}
@@ -121,39 +122,39 @@ func (a *applyCtx) stepOracleRouting() {
 func (a *applyCtx) writeMachineRouting(body []byte) {
 	p := machineRoutingPath()
 	if p == "" {
-		a.refuse("the model-tier routing was not written: the home directory could not be resolved, so ~/.abcd/oracle-routing.json has nowhere to go.")
+		a.refuse("the model-tier routing was not written: the home directory could not be resolved, so " + abcdhome.Display("oracle-routing.json") + " has nowhere to go.")
 		return
 	}
 	// The resolver refuses a machine table behind a symlinked ~/.abcd, so a
 	// write through the link would land wherever it points and never be read.
-	if err := fsutil.HomeScopeLink(userHome(), ".abcd/"+layered.OracleRouting.MachineRel); err != nil {
+	if err := fsutil.HomeScopeLink(userHome(), abcdhome.Rel(layered.OracleRouting.MachineRel)); err != nil {
 		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
 		return
 	}
 	if !absent(p) {
-		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
+		a.refuse("the model-tier routing was not written: " + abcdhome.Display("oracle-routing.json") + " appeared while the question was open, and it is left as it is.")
 		return
 	}
 	// ~/.abcd is created, judged and opened relative to home's descriptor and
 	// the table is written through it, so a link swapped in after the check
 	// above is refused rather than written through (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(userHome(), ".abcd", 0o700)
+	dir, err := fsutil.EnsureHomeScope(userHome(), abcdhome.Rel(), 0o700)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
 		return
 	}
 	if err != nil {
-		a.refuse("could not create ~/.abcd for the model-tier routing (" + errText(err) + "); nothing was written.")
+		a.refuse("could not create " + abcdhome.Display() + " for the model-tier routing (" + errText(err) + "); nothing was written.")
 		return
 	}
 	defer dir.Close()
 	if _, err := dir.Lstat(layered.OracleRouting.MachineRel); !errors.Is(err, os.ErrNotExist) {
-		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
+		a.refuse("the model-tier routing was not written: " + abcdhome.Display("oracle-routing.json") + " appeared while the question was open, and it is left as it is.")
 		return
 	}
 	// 0600, never wider: the resolver refuses a machine file others can write.
 	if err := fsutil.WriteFileAtomicInRoot(dir, layered.OracleRouting.MachineRel, body, 0o600); err != nil {
-		a.refuse("could not write ~/.abcd/oracle-routing.json (" + errText(err) + "); the routing was not accepted.")
+		a.refuse("could not write " + abcdhome.Display("oracle-routing.json") + " (" + errText(err) + "); the routing was not accepted.")
 		return
 	}
 	a.note(writeRouting, p)
@@ -220,7 +221,7 @@ func machineRoutingQuestion() string {
 	var b strings.Builder
 	b.WriteString("abcd proposes a model tier and a fan-out bound for each of its agents: frontier for the verdicts " +
 		"a person reads and acts on, economy for the rest. Nothing of it applies until it is accepted. Accepting " +
-		"writes this table to ~/.abcd/oracle-routing.json, where any row can be edited; a repository's own table " +
+		"writes this table to " + abcdhome.Display("oracle-routing.json") + ", where any row can be edited; a repository's own table " +
 		"wins over it, and a step no configured provider can serve still runs through the harness, which is asked " +
 		"for the tier. Declining writes nothing.\n")
 	width := len("agent")

@@ -43,12 +43,13 @@ import (
 	"os"
 	"sort"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // SettingsRelPath is the user-level setting, relative to the caller's home.
-const SettingsRelPath = ".abcd/statusline.json"
+var SettingsRelPath = abcdhome.Rel(SettingsFileName)
 
 // SettingsFileName is its leaf name.
 const SettingsFileName = "statusline.json"
@@ -56,7 +57,7 @@ const SettingsFileName = "statusline.json"
 // SettingsDisplay names the file in a diagnostic: the tilde form, never the
 // expanded path, so a message a user pastes into a shell works and no
 // diagnostic carries the caller's home path (iss-81, fsutil.RedactHome).
-const SettingsDisplay = "~/" + SettingsRelPath
+var SettingsDisplay = abcdhome.Display(SettingsFileName)
 
 // maxSettingsBytes caps the read. The file is four small fields; 64 KiB bounds
 // a planted device or an endless file without ever refusing a real one — the

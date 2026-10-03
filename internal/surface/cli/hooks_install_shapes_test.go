@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 )
 
@@ -88,11 +89,11 @@ func attestInstallShapeCache(t *testing.T, home, data string) {
 			sha = v
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	body := "data_dir=" + data + "\nbinary_sha256=" + sha + "\ncache_trust=manifest\nattested_at=2026-09-15T00:00:00Z\n"
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "cache-attestation"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "cache-attestation"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

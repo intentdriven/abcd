@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"sort"
 	"strings"
@@ -295,7 +296,7 @@ func detectIdentity(id RepoIdentity, idx *historyIndex) []Gap {
 	gaps := []Gap{{
 		ID: "identity.unregistered", Category: UserState, Scope: "repo",
 		Title:   "root SHA not in history index",
-		Detail:  "Root commit " + shortSHA(id.RootSHA) + " is absent from ~/.abcd/history/index.json.",
+		Detail:  "Root commit " + shortSHA(id.RootSHA) + " is absent from " + abcdhome.Display("history", "index.json") + ".",
 		FixHint: "ahoy install registers the repo entry.", Required: true, Resolvable: true,
 	}}
 	if cand := findRefoundingCandidate(idx, id); cand != nil {
@@ -444,7 +445,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 	if !isDir(root) {
 		gaps = append(gaps, Gap{
 			ID: "history.bootstrap_missing", Category: UserState, Scope: "machine",
-			Title: "~/.abcd/history/ not bootstrapped", Detail: "The shared history store directory is absent.",
+			Title: abcdhome.Display("history/") + " not bootstrapped", Detail: "The shared history store directory is absent.",
 			FixHint: "ahoy install bootstraps it.", Required: true, Resolvable: true,
 		})
 	}
@@ -461,7 +462,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 		gaps = append(gaps, Gap{
 			ID: "history.meta_missing", Category: UserState, Scope: "repo",
 			Title:   "history meta.json missing",
-			Detail:  "~/.abcd/history/" + shortSHA(rootSHA) + "/meta.json is absent.",
+			Detail:  abcdhome.Display("history", shortSHA(rootSHA), "meta.json") + " is absent.",
 			FixHint: "ahoy install writes the per-repo meta.json.", Required: true, Resolvable: true,
 		})
 	}
@@ -487,7 +488,7 @@ func detectStoredCredential(rootSHA, repoDir string) []Gap {
 	if idx, err := readHistoryIndexFile(); err == nil && idx != nil {
 		for _, r := range idx.Repos {
 			if r.Github != "" && scrubRemoteUserinfo(r.Github) != r.Github {
-				where = append(where, "~/.abcd/history/index.json")
+				where = append(where, abcdhome.Display("history", "index.json"))
 				break
 			}
 		}
@@ -495,7 +496,7 @@ func detectStoredCredential(rootSHA, repoDir string) []Gap {
 	if rootSHA != "" {
 		metaPath := filepath.Join(repoDir, "meta.json")
 		if g := metaGithub(metaPath); g != "" && scrubRemoteUserinfo(g) != g {
-			where = append(where, "~/.abcd/history/"+shortSHA(rootSHA)+"/meta.json")
+			where = append(where, abcdhome.Display("history", shortSHA(rootSHA), "meta.json"))
 		}
 	}
 	if len(where) == 0 {
@@ -807,7 +808,7 @@ func unrecordedEntryGap(target string) []Gap {
 	return []Gap{{
 		ID: "symlink.unrecorded", Category: ConfigChange, Scope: "machine",
 		Title: "PATH entry is not recorded as this machine's abcd",
-		Detail: displayPath(target) + " is abcd's own entry, but ~/.abcd/path-entry does not record it. " +
+		Detail: displayPath(target) + " is abcd's own entry, but " + abcdhome.Display("path-entry") + " does not record it. " +
 			"The plugin's hooks read that record before they will run an abcd off PATH, so they ignore this install: " +
 			"no rules loader, no shell guard, and no transcript capture.",
 		FixHint:  "ahoy install writes the record naming this entry — with --dev if the entry is the track-latest shim, which a plain install replaces with a pinned one.",

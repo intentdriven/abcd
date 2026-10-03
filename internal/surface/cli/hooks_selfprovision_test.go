@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // Every binary-invoking hook self-provisions, because SessionStart is a single
@@ -459,7 +461,7 @@ func TestTheBriefNamesSessionEndAsTheBootstrapException(t *testing.T) {
 // itself would accept, so the fixture carries a well-formed one.
 func writeHookPathEntry(t *testing.T, home, target string) {
 	t.Helper()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -789,7 +791,7 @@ func TestBinaryHooksRefuseAPathBinaryVouchedForByAnUnownedRecord(t *testing.T) {
 					// The record names the binary correctly. The ONLY defect is
 					// the mode of the record itself.
 					writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
-					if err := os.Chmod(filepath.Join(home, ".abcd", "path-entry"), mode); err != nil {
+					if err := os.Chmod(abcdhome.Path(home, "path-entry"), mode); err != nil {
 						t.Fatal(err)
 					}
 					_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
@@ -816,11 +818,11 @@ func TestBinaryHooksRefuseAPathBinaryVouchedForByASymlinkedRecord(t *testing.T) 
 			// location — the shape whose target's owner the shim never saw.
 			elsewhere := t.TempDir()
 			writeHookPathEntry(t, elsewhere, filepath.Join(pathDir, "abcd"))
-			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(filepath.Join(elsewhere, ".abcd", "path-entry"),
-				filepath.Join(home, ".abcd", "path-entry")); err != nil {
+			if err := os.Symlink(abcdhome.Path(elsewhere, "path-entry"),
+				abcdhome.Path(home, "path-entry")); err != nil {
 				t.Fatal(err)
 			}
 			_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
@@ -845,7 +847,7 @@ func TestBinaryHooksStillRunAnOwnedPathBinaryWithATightRecord(t *testing.T) {
 					home := t.TempDir()
 					pathStub(t, pathDir)
 					writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
-					if err := os.Chmod(filepath.Join(home, ".abcd", "path-entry"), mode); err != nil {
+					if err := os.Chmod(abcdhome.Path(home, "path-entry"), mode); err != nil {
 						t.Fatal(err)
 					}
 					_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
@@ -914,7 +916,7 @@ func TestBinaryHooksRefuseAPathBinaryVouchedForBehindASymlinkedAbcdHome(t *testi
 			dotfiles := t.TempDir()
 			writeHookPathEntry(t, dotfiles, filepath.Join(pathDir, "abcd"))
 			home := t.TempDir()
-			if err := os.Symlink(filepath.Join(dotfiles, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+			if err := os.Symlink(abcdhome.Path(dotfiles), abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
 			_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)

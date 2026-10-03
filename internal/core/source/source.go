@@ -42,6 +42,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -174,7 +175,7 @@ func DefaultDir() (string, error) {
 	if err != nil || home == "" {
 		return "", fmt.Errorf("cannot resolve the home directory for the default corpus: %v", err)
 	}
-	return filepath.Join(home, ".abcd", "sources"), nil
+	return abcdhome.Path(home, "sources"), nil
 }
 
 // present reports whether dir exists, and refuses one that is not a real directory.

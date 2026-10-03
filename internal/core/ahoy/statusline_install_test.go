@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 )
 
@@ -173,7 +174,7 @@ func TestDetectStatusLineNoHarnessOffersNothing(t *testing.T) {
 	if ids := statusLineGaps(det.Gaps); len(ids) != 0 {
 		t.Errorf("gaps raised with no harness: %v", ids)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 		t.Error("~/.abcd/statusline.json was written with no harness present")
 	}
 }
@@ -348,7 +349,7 @@ func TestStatusLineConsentWiresBothFiles(t *testing.T) {
 	}
 
 	// The user-level setting.
-	settingPath := filepath.Join(home, ".abcd", "statusline.json")
+	settingPath := abcdhome.Path(home, "statusline.json")
 	fi, err := os.Stat(settingPath)
 	if err != nil {
 		t.Fatalf("user-level setting not written: %v", err)
@@ -442,7 +443,7 @@ func TestStatusLineYesSkipsTheOfferAndSaysSo(t *testing.T) {
 	if string(before) != string(after) {
 		t.Error("--yes rewrote the harness settings")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 		t.Error("--yes wrote the user-level setting")
 	}
 	again, err := Install(repo, installOpts(), RefusingPrompter{})
@@ -508,7 +509,7 @@ func TestStatusLineUnknownTypeIsRefused(t *testing.T) {
 	if string(before) != string(after) {
 		t.Error("the harness settings were rewritten")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 		t.Error("the user-level setting was written despite the refusal")
 	}
 }
@@ -530,7 +531,7 @@ func TestStatusLineMalformedSettingsIsRefused(t *testing.T) {
 	if string(after) != "{not json" {
 		t.Error("the malformed settings were rewritten")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 		t.Error("the user-level setting was written")
 	}
 	// The apply-time re-read refuses too: corrupt the file between detection
@@ -554,7 +555,7 @@ func TestStatusLineMalformedSettingsIsRefused(t *testing.T) {
 	if len(a.writes) != 0 {
 		t.Errorf("wrote %v after a refusal", a.writes)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 		t.Error("the user-level setting was written although the harness file was refused")
 	}
 }
@@ -567,7 +568,7 @@ func TestStatusLineExistingSettingIsLeftAlone(t *testing.T) {
 	settings := harnessFixture(t, harnessSettingsWith(
 		`{"type": "command", "command": "`+previousStatusCommand+`"}`))
 	repo := installedRepo(t)
-	settingPath := filepath.Join(home, ".abcd", "statusline.json")
+	settingPath := abcdhome.Path(home, "statusline.json")
 	body := "{\n  \"schema_version\": 1,\n  \"disabled\": true,\n  \"elements\": {\"model\": false},\n  \"previous_command\": \"\"\n}\n"
 	if err := os.MkdirAll(filepath.Dir(settingPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -638,10 +639,10 @@ func TestStatusLineDanglingIsRepaired(t *testing.T) {
 		home, _ := setupHermetic(t)
 		settings := harnessFixture(t, harnessSettingsWith(
 			`{"type": "command", "command": "'/nowhere/at/all/abcd' statusline"}`))
-		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+		if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(home, ".abcd", "statusline.json"),
+		if err := os.WriteFile(abcdhome.Path(home, "statusline.json"),
 			[]byte(`{"schema_version": 1, "previous_command": "`+previousStatusCommand+`"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -700,7 +701,7 @@ func TestUninstallRestoresTheStatusLine(t *testing.T) {
 			t.Error("top-level keys not preserved")
 		}
 		// The user's configuration stays.
-		if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".abcd", "statusline.json")); err != nil {
+		if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "statusline.json")); err != nil {
 			t.Error("uninstall removed ~/.abcd/statusline.json")
 		}
 	})
@@ -832,7 +833,7 @@ func TestStatusLineRefusesToRecordItselfAsPrevious(t *testing.T) {
 			if after, _ := os.ReadFile(settings); string(after) != string(before) {
 				t.Error("the harness settings were rewritten")
 			}
-			if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+			if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 				t.Error("the user-level setting was written with abcd's own verb as the previous command")
 			}
 		})
@@ -847,10 +848,10 @@ func TestStatusLineRefusesToRecordItselfAsPrevious(t *testing.T) {
 func TestStatusLineRestoreRefusesARecordedCommandThatIsAbcd(t *testing.T) {
 	writeRecorded := func(t *testing.T, home string) {
 		t.Helper()
-		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+		if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(home, ".abcd", "statusline.json"),
+		if err := os.WriteFile(abcdhome.Path(home, "statusline.json"),
 			[]byte(`{"schema_version": 1, "previous_command": "abcd statusline"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -902,7 +903,7 @@ func TestStatusLineRestoreRefusesARecordedCommandThatIsAbcd(t *testing.T) {
 func TestStatusLineSettingNotTheCallersWordIsRefused(t *testing.T) {
 	writeWorldWritable := func(t *testing.T, home, body string) string {
 		t.Helper()
-		p := filepath.Join(home, ".abcd", "statusline.json")
+		p := abcdhome.Path(home, "statusline.json")
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1034,7 +1035,7 @@ func TestStatusLineWiringRefusesAStatusLineChangedDuringThePrompts(t *testing.T)
 	if after, _ := os.ReadFile(settings); string(after) != concurrent {
 		t.Errorf("the harness file is not what the concurrent writer left:\n%s", after)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "statusline.json")); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
 		t.Error("the user-level setting was written although the wiring was refused")
 	}
 }

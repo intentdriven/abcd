@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 )
 
@@ -78,7 +79,7 @@ func TestStagedEntryPastTheLimitReportsOverdue(t *testing.T) {
 
 // recordsDirOf names this repo's records leaf under a redirected HOME.
 func recordsDirOf(home, rootSHA string) string {
-	return filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	return abcdhome.Path(home, "transcripts", rootSHA, "records")
 }
 
 // sealRecordsDir makes the records leaf unwritable, so a capture into it fails
@@ -209,7 +210,7 @@ func TestDeterministicRefusalIsQuarantinedNotRetriedForever(t *testing.T) {
 	if _, err := os.Stat(res.Staged.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the refused transcript is still in staging (%v); every later drain will re-read and re-refuse it", err)
 	}
-	qdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "quarantine")
+	qdir := abcdhome.Path(home, "transcripts", testRootSHA, "quarantine")
 	qpath := filepath.Join(qdir, filepath.Base(res.Staged.Path))
 	body, err := os.ReadFile(qpath)
 	if err != nil {
@@ -241,7 +242,7 @@ func TestQuarantineHoldsUnredactedTextAtOwnerOnlyModes(t *testing.T) {
 	if _, err := Drain(repoRoot, testRootSHA, DrainBudget{}); err != nil {
 		t.Fatal(err)
 	}
-	qdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "quarantine")
+	qdir := abcdhome.Path(home, "transcripts", testRootSHA, "quarantine")
 	fi, err := os.Stat(qdir)
 	if err != nil {
 		t.Fatalf("quarantine dir: %v", err)
@@ -338,14 +339,14 @@ func TestCorruptSidecarIsNotTreatedAsPermanent(t *testing.T) {
 func TestSurveyBacklogSeesEveryRepositoryInTheStore(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	const otherSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", otherSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", otherSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// The corpus moved out of ahoy's namespace; the per-repo meta.json did not.
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", otherSHA), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "history", otherSHA), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "history", otherSHA, "meta.json"),
+	if err := os.WriteFile(abcdhome.Path(home, "history", otherSHA, "meta.json"),
 		[]byte(`{"root_commit":"`+otherSHA+`","name":"a-quiet-repo"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +416,7 @@ func TestDiscardRemovesOneTranscriptAndItsMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := filepath.Base(res.Staged.Path)
-	qdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "quarantine")
+	qdir := abcdhome.Path(home, "transcripts", testRootSHA, "quarantine")
 
 	out, err := Discard(repoRoot, testRootSHA, name)
 	if err != nil {

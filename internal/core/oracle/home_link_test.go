@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -24,7 +25,7 @@ func TestConnectRefusesASymlinkedAbcdHome(t *testing.T) {
 			p := newProvFake(t, 200, chat("local-model", "ok"))
 			f := newFx(t)
 			dotfiles := t.TempDir()
-			if err := os.Symlink(dotfiles, filepath.Join(f.roots.Home, ".abcd")); err != nil {
+			if err := os.Symlink(dotfiles, abcdhome.Path(f.roots.Home)); err != nil {
 				t.Fatal(err)
 			}
 			req := connectReq(f, p.base())
@@ -51,7 +52,7 @@ func TestConnectRefusesASymlinkedAbcdHome(t *testing.T) {
 // leaves the checkout as it was.
 func TestProviderBlockIsNotWrittenThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 	home := t.TempDir()
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	dotfiles := filepath.Join(home, "dotfiles", "abcd")
 	for _, dir := range []string{abcd, dotfiles} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {

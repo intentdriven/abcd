@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestJoiningNeedsNoWordFromTheFirstSession: a second session joins a run the
@@ -225,7 +227,7 @@ func TestPeekCreatesNothing(t *testing.T) {
 	if _, ok, err := r.CurrentMode(); ok || err != nil {
 		t.Fatalf("mode on an empty run: %v %v", ok, err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Peek created ~/.abcd: %v", err)
 	}
 	if _, err := Peek("not-a-sha"); !errors.Is(err, ErrRefused) {
@@ -239,10 +241,10 @@ func TestOpenRefusesASymlinkedRunsDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	outside := t.TempDir()
-	if err := os.Mkdir(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.Mkdir(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(home, ".abcd", "runs")); err != nil {
+	if err := os.Symlink(outside, abcdhome.Path(home, "runs")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Open(testSHA); err == nil {
@@ -301,7 +303,7 @@ func TestOpenJoinedCreatesNothingForARunNobodyStarted(t *testing.T) {
 	if _, err := OpenJoined(testSHA, "ghost"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "ghost") {
 		t.Fatalf("OpenJoined on no run = %v; want a refusal naming the session", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("OpenJoined created ~/.abcd: %v", err)
 	}
 	if _, err := Open(testSHA); err != nil {

@@ -25,13 +25,14 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // WorktreeStoreRel is the machine-scoped worktree store, relative to the
 // caller's home.
-const WorktreeStoreRel = ".abcd/worktrees"
+var WorktreeStoreRel = abcdhome.Rel("worktrees")
 
 // BranchPrefix is the namespace every lane branch is cut under.
 const BranchPrefix = "build/"

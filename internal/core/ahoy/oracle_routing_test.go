@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
@@ -30,7 +31,7 @@ func routingPrompter(machine, repo bool) *scriptedPrompter {
 }
 
 func routingPaths(home, repo string) (machine, repoFile string) {
-	return filepath.Join(home, ".abcd", filepath.FromSlash(layered.OracleRouting.MachineRel)),
+	return abcdhome.Path(home, filepath.FromSlash(layered.OracleRouting.MachineRel)),
 		filepath.Join(repo, filepath.FromSlash(layered.OracleRouting.RepoRel))
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -251,7 +252,7 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	wt := state.Lanes[0].Worktree
-	if !strings.HasPrefix(wt, filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees")) {
+	if !strings.HasPrefix(wt, abcdhome.Path(os.Getenv("HOME"), "worktrees")) {
 		t.Fatalf("the worktree is in the store: %q", wt)
 	}
 	if err := os.WriteFile(filepath.Join(wt, "built.txt"), []byte("built\n"), 0o600); err != nil {

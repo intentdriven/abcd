@@ -284,6 +284,17 @@ plugin surface, and a future MCP server share one engine.
   byte span, so two secrets on one line cannot leak each other through the
   snippet they share. `core/launch` consumes it before a bundle is published;
   external scanners stay config-selected plug-ins behind the same seam.
+- **`abcdhome/`** — the one place the user-level home's name is spelled: the
+  folder abcd keeps in the person's home directory for its machine-scoped
+  records and stores. `Rel` gives the slash path the `fsutil` home-scope
+  primitives take, so every reader keeps their guards; `Path` joins it under a
+  home directory; `Display` gives the `~/`-form a message names it by. A leaf
+  importing only the standard library, outside `core/` because the spellings
+  sit in `core/`, `surface/cli` and `cmd/` alike. Its boundary test holds every
+  other package to it (a literal naming the home, or a home value joined with a
+  `.abcd`-led string), and leaves a repository's own `.abcd/` alone; a second
+  test holds that no code names the computer's search settings
+  (adr-2610030720195401).
 - **`textwidth/`** — the one display-width measure and word wrap (East Asian
   wide runes count two), a pure leaf with no terminal I/O. It sits outside
   `core/` and `term/` so the banner and the core's question row estimate measure

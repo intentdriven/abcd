@@ -53,6 +53,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -117,7 +118,7 @@ var (
 // origin and in every refusal: repo-relative, and in the tilde form so no
 // message carries the caller's home path.
 func (f File) RepoOrigin() string    { return f.RepoRel }
-func (f File) MachineOrigin() string { return "~/.abcd/" + f.MachineRel }
+func (f File) MachineOrigin() string { return abcdhome.Display(f.MachineRel) }
 
 // Roots are the two places the layers are read from. Repo is the directory the
 // repository layer is read at; "" means there is none and the repo layer is
@@ -254,7 +255,7 @@ func readRepo(repoRoot, rel string) ([]byte, error) {
 // symlinked directory, because what it says decides which model a step
 // reaches. An absent file returns (nil, nil).
 func readMachine(home, rel string) ([]byte, error) {
-	raw, refusal, err := fsutil.ReadHomeDeclaration(home, ".abcd/"+rel, MaxFileBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, abcdhome.Rel(rel), MaxFileBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 		return raw, nil

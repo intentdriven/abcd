@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/identity"
 )
 
@@ -94,7 +95,7 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 	t.Run("the store cannot be created", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		if err := os.WriteFile(filepath.Join(home, ".abcd"), []byte("not a directory\n"), 0o600); err != nil {
+		if err := os.WriteFile(abcdhome.Path(home), []byte("not a directory\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
@@ -108,10 +109,10 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 	t.Run("the transcript store cannot be created", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(home, ".abcd", "transcripts"), []byte("not a directory\n"), 0o600); err != nil {
+		if err := os.WriteFile(abcdhome.Path(home, "transcripts"), []byte("not a directory\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
@@ -137,7 +138,7 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 func TestUnreadableHistoryIndexIsNoted(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".abcd", "history")
+	dir := abcdhome.Path(home, "history")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
