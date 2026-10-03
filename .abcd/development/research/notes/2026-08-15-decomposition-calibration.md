@@ -2128,3 +2128,24 @@ Per hand-run, append:
   because it has no user moment apart from the reclaim.
 - **Notes:** the decomposition question is the one most likely to be written for the facilitator by habit.
   Put to the product thinker, it needs an everyday analogy for "record homes" before the rows mean anything.
+
+### Run: the consistency pass follow-ups (itd-2609291923559186, 2026-10-02, product thinker's planning interview)
+
+- **Input:** the draft, after two adversarial reviews (design/feasibility, then record-discipline). The
+  record-discipline reviewer listed the defensible homes for A3 and A4 and held the draft on four record
+  findings, all applied before the interview.
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | A1, cross-document lint codes (at warn) | capability | intent itd-2609291923559186 | builds on itd-48 |
+  | A2, the pre-commit gate (warn / stop / automatic, asked at setup) | capability | this intent; its build waits for the managed pre-commit gates | related_intents itd-62 (ruling J23) |
+  | A3, one run beside the kind rules | capability | this intent (homes offered: here, its own intent beside the shipped itd-34, folded into A2) | none new |
+  | A4, overflow signal and chunked review | capability | this intent, with its trigger built (homes offered: here, or split until a signal exists) | none new |
+  | G1, the stable finding key and `addressed` | capability | this intent, landing first | related_adrs adr-2609300821558671 |
+
+- **Verdict:** FILE-AS-IS, confirmed by the product thinker part by part (A3 kept here; A4 kept, with its signal built).
+- **Grade:** the table predicted the homes, and the person picked the in-intent home for both contested parts.
+  What it did not predict: the person widened A2 at the interview with an automatic option (fix the obvious,
+  file the rest) and a setup question, so a scope row grew without a new record.
+- **Notes:** the defensible-homes column (several options, no recommendation) let the routing question be put
+  in plain words with one row at a time.
