@@ -331,3 +331,46 @@ func TestConnectReportsOnlyTheWritesItMade(t *testing.T) {
 		t.Fatalf("wrote = %q, want %q", res.Wrote, want)
 	}
 }
+
+// TestConnectRefusesOfferedIdsThatTogetherCarryTheKey (security review
+// finding 1): the adapter reads the ids it keeps as one run for a key split
+// across them, and the ids offered are the ones a configuration admits, so the
+// run read is the offered one. A service that separates the key's halves with
+// an id validModel refuses gets no list: the halves would otherwise be offered
+// as adjacent lines, and either one picked would be printed and written.
+func TestConnectRefusesOfferedIdsThatTogetherCarryTheKey(t *testing.T) {
+	half := len(callKey) / 2
+	for _, between := range []string{"vendor/m;x", "denied/model"} {
+		t.Run(between, func(t *testing.T) {
+			svc := newListingFake(t, http.StatusOK, []string{callKey[:half], between, callKey[half:]}, http.StatusOK)
+			f := newFx(t)
+			const denylist = `{"oracle":{"denylist":["denied/*"]}}`
+			f.machineConfig(denylist)
+			var offered []string
+			_, err := Connect(context.Background(), pickReq(f, svc.base(), func(_ context.Context, ids []string) (string, error) {
+				offered = ids
+				return ids[0], nil
+			}))
+			if err == nil || !strings.Contains(err.Error(), "together carry the key") || !strings.Contains(err.Error(), "nothing was written") {
+				t.Fatalf("Connect = %v; want the listing refused as carrying the key together, and nothing written", err)
+			}
+			if strings.Contains(err.Error(), callKey) || strings.Contains(err.Error(), callKey[:half]) || strings.Contains(err.Error(), callKey[half:]) {
+				t.Fatal("the refusal carries the key or a half of it")
+			}
+			if len(offered) != 0 {
+				t.Fatalf("the picker was offered %q", offered)
+			}
+			if _, chat := svc.seen(); len(chat) != 0 {
+				t.Errorf("a completion was made: %q", chat)
+			}
+			if raw, err := os.ReadFile(machineFile(f, "config.json")); err != nil || string(raw) != denylist {
+				t.Errorf("the configuration was changed: %q, %v", raw, err)
+			}
+			for _, name := range []string{credential.StoreFileName, credential.IndexFileName} {
+				if _, err := os.Lstat(machineFile(f, name)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("%s was written", name)
+				}
+			}
+		})
+	}
+}

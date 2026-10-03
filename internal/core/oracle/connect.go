@@ -247,10 +247,11 @@ func checkConnect(req *ConnectRequest, picking bool) error {
 // (resolved now, as the walkthrough resolves it again before its call), none
 // for a keyless server. Only the ids validModel admits and the denylist does
 // not refuse are offered: the adapter keeps ids that carry characters a shell
-// acts on, and a picked model is printed and written. A listing that fails,
-// a listing with nothing to offer, a pick that is cancelled, and a pick of an
-// id that was not offered each return an error that says which, and nothing
-// has been written.
+// acts on, and a picked model is printed and written. The filter is the
+// adapter's keep, so its read for the key split across adjacent ids reads the
+// ids offered. A listing that fails, a listing with nothing to offer, a pick
+// that is cancelled, and a pick of an id that was not offered each return an
+// error that says which, and nothing has been written.
 func pickModel(ctx context.Context, req ConnectRequest, denylist []DenyEntry, opts []openaiapi.Option) (string, error) {
 	key := ""
 	switch req.Home {
@@ -267,24 +268,18 @@ func pickModel(ctx context.Context, req ConnectRequest, denylist []DenyEntry, op
 	if err != nil {
 		return "", fmt.Errorf("oracle adapter: provider %s: %w; nothing was written", req.Provider, err)
 	}
-	listing, err := client.Models(ctx)
+	// Only the ids validModel admits and the denylist does not refuse are
+	// kept, and the adapter reads the key split across adjacent ids in what
+	// is kept, so the ids it checks are the ids offered.
+	listing, err := client.Models(ctx, func(id string) bool {
+		_, denied := Denied(denylist, id)
+		return validModel(id) && !denied
+	})
 	if err != nil {
 		return "", fmt.Errorf("oracle adapter: provider %s: the model list could not be read: %w; name a model with --model, and nothing was written",
 			req.Provider, err)
 	}
-	offered := make([]string, 0, len(listing.IDs))
-	dropped := listing.Dropped
-	for _, id := range listing.IDs {
-		if _, denied := Denied(denylist, id); denied || !validModel(id) {
-			dropped++
-			continue
-		}
-		offered = append(offered, id)
-	}
-	if len(offered) == 0 {
-		return "", fmt.Errorf("oracle adapter: provider %s listed no usable models (%d listed names were not usable model names); "+
-			"name a model with --model, and nothing was written", req.Provider, dropped)
-	}
+	offered := listing.IDs
 	picked, err := req.Pick(ctx, offered)
 	if err != nil {
 		return "", fmt.Errorf("oracle adapter: provider %s: no model was picked (%w), so nothing was written", req.Provider, err)

@@ -113,7 +113,8 @@ sibling on the same `Client`:
 
 ```go
 // Models asks the service for the models it lists: one GET of {base}/models.
-func (c *Client) Models(ctx context.Context) (Listing, error)
+// keep, when given, is the caller's filter: a usable id it refuses is dropped.
+func (c *Client) Models(ctx context.Context, keep func(id string) bool) (Listing, error)
 
 type Listing struct {
 	IDs     []string // in the service's own order, each sanitised and bounded
@@ -156,7 +157,11 @@ client's own scrub (so an id that carries the key becomes a redacted string)
 and `termsafe` before it is kept; `oracle` then keeps only ids its
 `validModel` admits (`config.go`, line 92), so an id carrying the key, an
 escape, or more than 128 bytes is dropped and counted in `Dropped`. At most
-`MaxListedModels` (5,000) ids are kept, in the service's order.
+`MaxListedModels` (5,000) ids are kept, in the service's order. `oracle`'s
+filter is `keep`, run inside the adapter before the kept ids are read
+together for the key split across adjacent ids, so the ids that read checks
+are the ids offered: an id the filter drops cannot separate two halves of the
+key there and leave them adjacent in the offer.
 
 The status mapping: 401 and 403 are `NeedsKey`; any other non-200 status, a
 redirect, a timeout, an unreachable host, an oversize body and an undecodable

@@ -41,7 +41,8 @@ var errListTimeout = errors.New("list timeout")
 // Listing is what a service lists. An id is bounded and free of the key and of
 // every rune a terminal acts on, but not of characters a shell acts on (`;`,
 // `$(`, a quote): a caller checks it as a model name (internal/core/oracle's
-// validModel) before offering it or printing it in a command.
+// validModel), through Models' keep, before offering it or printing it in a
+// command.
 type Listing struct {
 	IDs     []string // in the service's own order, each sanitised and bounded
 	Dropped int      // listed names that were not usable model names
@@ -69,9 +70,13 @@ func (e *ListError) Error() string { return e.msg }
 // the key in, and that carries no rune the terminal sanitiser masks. Every
 // other entry is dropped and counted, never kept redacted: a scrubbed id
 // names no model. Which names the configuration admits is the caller's to
-// judge. Every failure is a *ListError, its reason in plain words, and no
-// part of the service's body is quoted in it.
-func (c *Client) Models(ctx context.Context) (Listing, error) {
+// judge, through keep: a usable id keep refuses is dropped and counted the
+// same way, and a nil keep keeps every usable id. The kept ids are then read
+// together for the key split across them, so the run read is exactly the ids
+// returned, whatever keep removed from between them. Every failure is a
+// *ListError, its reason in plain words, and no part of the service's body is
+// quoted in it.
+func (c *Client) Models(ctx context.Context, keep func(id string) bool) (Listing, error) {
 	lctx, cancel := context.WithTimeoutCause(ctx, c.listWait, errListTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(lctx, http.MethodGet, c.models, nil)
@@ -105,11 +110,12 @@ func (c *Client) Models(ctx context.Context) (Listing, error) {
 	if len(raw) > MaxResponseBytes {
 		return Listing{}, c.listFail(false, fmt.Sprintf("answered with a list larger than %d bytes, so it is refused unread", MaxResponseBytes))
 	}
-	return c.decodeListing(raw)
+	return c.decodeListing(raw, keep)
 }
 
-// decodeListing reads data[].id from a list answer.
-func (c *Client) decodeListing(raw []byte) (Listing, error) {
+// decodeListing reads data[].id from a list answer, keeping the usable ids
+// keep admits (every usable id when keep is nil).
+func (c *Client) decodeListing(raw []byte, keep func(string) bool) (Listing, error) {
 	var env struct {
 		Data *[]json.RawMessage `json:"data"`
 	}
@@ -125,7 +131,7 @@ func (c *Client) decodeListing(raw []byte) (Listing, error) {
 		var m struct {
 			ID *string `json:"id"`
 		}
-		if json.Unmarshal(entry, &m) != nil || m.ID == nil || !c.usableID(*m.ID) {
+		if json.Unmarshal(entry, &m) != nil || m.ID == nil || !c.usableID(*m.ID) || (keep != nil && !keep(*m.ID)) {
 			l.Dropped++
 			continue
 		}
@@ -138,7 +144,9 @@ func (c *Client) decodeListing(raw []byte) (Listing, error) {
 	}
 	// Each kept id is free of the key, but the key split across adjacent ids
 	// passes every id's own check, so the kept ids are read once more as one
-	// run. A service that splits the key so is hostile and gets no list. A key
+	// run. A service that splits the key so is hostile and gets no list. The
+	// run is read after keep, so an id keep drops cannot sit between two
+	// halves here and leave them adjacent in what the caller is given. A key
 	// split across ids that are not adjacent is not reassembled here.
 	if c.carriesKey(strings.Join(l.IDs, "")) {
 		return Listing{}, c.listFail(false, "listed names that together carry the key, so abcd keeps none of them")
