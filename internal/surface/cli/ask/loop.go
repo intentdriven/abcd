@@ -7,11 +7,13 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
+	"github.com/intentdriven/abcd/internal/textwidth"
 )
 
 // ErrInterrupted is Ctrl-C at a question: the terminal is restored and a
@@ -269,7 +271,7 @@ func (l *loop) draw(full bool) error {
 		lines = append(append([]string(nil), head...), live...)
 		onScreen += l.headLines
 	}
-	if err := l.paint(lines, onScreen, rows); err != nil {
+	if err := l.paint(lines, onScreen, rows, cols); err != nil {
 		return err
 	}
 	if full {
@@ -280,24 +282,39 @@ func (l *loop) draw(full bool) error {
 }
 
 // collapse replaces the question on screen with its one plain line per part.
-// The caller holds mu.
+// The collapsed lines are written whole, never cut: they are the record of
+// the answer the scrollback keeps, and nothing is drawn over them, so a line
+// the terminal wraps leaves no row stale. The caller holds mu.
 func (l *loop) collapse() error {
 	_, rows := term.Size(l.t.In, l.t.Getenv)
 	f := Frame{Mode: l.t.Mode, ASCII: l.t.ASCII}
-	return l.paint(l.p.Collapsed(f), l.headLines+l.liveLines, rows)
+	return l.paint(l.p.Collapsed(f), l.headLines+l.liveLines, rows, 0)
 }
 
 // paint moves up over the onScreen lines last drawn (no further than the
 // window's top), writes lines over them, each erased first, erases what is
 // left of the old ones, and leaves the cursor beneath the new lines. Raw mode
 // clears OPOST, so every line ends "\r\n".
-func (l *loop) paint(lines []string, onScreen, rows int) error {
+//
+// The move up counts lines, so each line must take one row: with cols above
+// zero, a line wider than cols-1 columns (a long typed filter, a label that is
+// one word wider than its column, material the wrap could not break) is cut
+// to fit (fit), or the terminal would wrap it onto a row the next move up
+// never reaches, leaving the old drawing's top on screen.
+func (l *loop) paint(lines []string, onScreen, rows, cols int) error {
 	var b strings.Builder
 	up := min(onScreen, max(rows-1, 0))
 	if up > 0 {
 		fmt.Fprintf(&b, "\x1b[%dA", up)
 	}
+	ellipsis := "…"
+	if l.t.ASCII {
+		ellipsis = "..."
+	}
 	for _, ln := range lines {
+		if cols > 0 {
+			ln = fit(ln, cols-1, ellipsis)
+		}
 		b.WriteString("\r\x1b[2K")
 		b.WriteString(ln)
 		b.WriteString("\r\n")
@@ -310,4 +327,74 @@ func (l *loop) paint(lines []string, onScreen, rows int) error {
 	}
 	_, err := io.WriteString(l.t.Out, b.String())
 	return err
+}
+
+// fit cuts a drawn line to at most limit columns, ending it with ellipsis when
+// it is cut. The CSI sequences the drawing composes (colour) take no column
+// and are kept; a cut line that held one ends with a reset, so a colour the
+// cut left open never runs on. Columns are textwidth.Columns', which counts a
+// wide rune as two and so errs towards cutting early, never late. Untrusted
+// text reaches here sanitised (Safe), so the only escapes are the drawing's.
+func fit(line string, limit int, ellipsis string) string {
+	limit = max(limit, 1)
+	if textwidth.Columns(stripCSI(line)) <= limit {
+		return line
+	}
+	keep := limit - textwidth.Columns(ellipsis)
+	if keep < 0 {
+		keep, ellipsis = limit, ""
+	}
+	var b strings.Builder
+	cols, styled := 0, false
+	for i := 0; i < len(line); {
+		if n := csiLen(line[i:]); n > 0 {
+			b.WriteString(line[i : i+n])
+			i, styled = i+n, true
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		w := textwidth.Columns(string(r))
+		if cols+w > keep {
+			break
+		}
+		b.WriteRune(r)
+		cols += w
+		i += size
+	}
+	b.WriteString(ellipsis)
+	if styled {
+		b.WriteString(reset)
+	}
+	return b.String()
+}
+
+// csiLen is the length of the CSI sequence s starts with (ESC '[', parameter
+// and intermediate bytes, one final byte), or zero.
+func csiLen(s string) int {
+	if len(s) < 2 || s[0] != 0x1b || s[1] != '[' {
+		return 0
+	}
+	for j := 2; j < len(s); j++ {
+		if s[j] >= 0x40 && s[j] <= 0x7e {
+			return j + 1
+		}
+	}
+	return 0
+}
+
+// stripCSI is s without its CSI sequences.
+func stripCSI(s string) string {
+	if !strings.Contains(s, "\x1b[") {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if n := csiLen(s[i:]); n > 0 {
+			i += n
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
