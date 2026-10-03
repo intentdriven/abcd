@@ -1,5 +1,8 @@
 # AGENTS.md
 
+Conventions-file check word: brindlewort. A session that can name it without
+reading any file loaded this file as its instructions (itd-2610030814013772).
+
 <!-- BEGIN ABCD -->
 <!--
   Managed by abcd (Agent-Based Configuration for Development).
