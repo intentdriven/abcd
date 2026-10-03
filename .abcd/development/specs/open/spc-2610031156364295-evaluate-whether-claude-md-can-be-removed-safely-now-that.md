@@ -243,7 +243,7 @@ removal is from the working tree only; the person commits it.
 
 The question is a fixed setup question, so it is held to the asking rules the
 two question specs set
-([spc-2610030944505997](spc-2610030944505997-asking-and-layout.md) and
+([spc-2610030944505997](../closed/spc-2610030944505997-asking-and-layout.md) and
 [spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md))
 once they land: the file and what it repeats quoted first, the question last,
 and the decide-later answer last.
