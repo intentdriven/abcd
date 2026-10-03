@@ -252,7 +252,10 @@ plugin surface, and a future MCP server share one engine.
   question tool takes, one tab per question) to every rule at once and returns
   findings; it refuses and never rewrites. The binary's verb list reaches it as
   an input, so the core keeps no copy of the command tree, and its rows are
-  measured through `textwidth`, never through `term`.
+  measured through `textwidth`, never through `term`. `AskingRules` writes the
+  asking rules with every limit filled from a `Limits` value, numbers as words,
+  and `AskingRecall` their recall terms: the rules loader generates the bundled
+  GRILL domain from them, as it generates SHELL from the guard registry.
 - **`core/banlist/`** — the two banned-names stores (itd-74, spc-20). The public
   layer is managed IN the docs-lint `banned_tokens` family under a `names/` id
   prefix: one banned-token primitive, and the prefix is the ownership boundary a
