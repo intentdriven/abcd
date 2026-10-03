@@ -96,7 +96,8 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 			return questionFailOpen(stderr, "the mode store could not be read (%s)", err)
 		}
 	}
-	if !hasAbcdChip(fields) && st == mode.Managed {
+	chip := hasAbcdChip(fields)
+	if !chip && st == mode.Managed {
 		return nil
 	}
 
@@ -118,7 +119,11 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 		}
 	}
 	if len(findings) > 0 {
-		writeLimitsRefusal(stderr, findings)
+		why := ""
+		if !chip {
+			why = modeMadeAbcds(st)
+		}
+		writeLimitsRefusal(stderr, findings, why)
 		if modeRefuses {
 			fmt.Fprintln(stderr, questionRefusal)
 		}
@@ -221,13 +226,31 @@ func verbsOf(root *cobra.Command) []string {
 // few lines (review-askGuard-security finding 1).
 const maxRefusalParts = 10
 
+// modeMadeAbcds is the line a refusal carries when the question carries no abcd
+// chip and is abcd's only because the mode names somebody (itd-201 decision
+// 10): it says why, so an agent that did not write the question, another
+// tool's, does not loop on rules it never meant to follow
+// (review-askGuard-security finding 4).
+func modeMadeAbcds(st mode.State) string {
+	who := "the product thinker"
+	if st == mode.Facilitator {
+		who = "the technical facilitator"
+	}
+	return "This question carries no abcd chip: it is treated as abcd's because the mode names " + who +
+		"; another tool's question asked now is held to abcd's rules."
+}
+
 // writeLimitsRefusal writes the refusal the host replays to the agent: one
-// head line counting every part, then one line per finding naming the tab, the
+// head line counting every part, then, when why is set, the one line saying
+// why a question without abcd's chip is abcd's, then one line per finding naming the tab, the
 // part, the value, the limit and the remedy, at most maxRefusalParts of them,
 // and one closing line counting the parts not named. Every line passes
 // termsafe.Sanitize, so no value the agent wrote reaches the terminal raw.
-func writeLimitsRefusal(w io.Writer, findings []question.Finding) {
+func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
 	fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(findings))
+	if why != "" {
+		fmt.Fprintln(w, why)
+	}
 	for _, f := range findings[:min(len(findings), maxRefusalParts)] {
 		fmt.Fprintln(w, termsafe.Sanitize(f.String()))
 	}

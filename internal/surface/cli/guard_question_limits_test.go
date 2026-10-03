@@ -508,6 +508,35 @@ func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
 	}
 }
 
+// TestModeMadeQuestionAbcdsSaysSo: while the mode names somebody every question
+// is abcd's, so another tool's question asked then is held to abcd's rules. Its
+// refusal says why in one line, naming the mode's person, so an agent that did
+// not write the question does not loop on it; a question carrying abcd's chip
+// is abcd's on the chip, and its refusal carries no such line
+// (review-askGuard-security finding 4).
+func TestModeMadeQuestionAbcdsSaysSo(t *testing.T) {
+	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
+	for st, who := range map[mode.State]string{mode.ProductThinker: "the product thinker", mode.Facilitator: "the technical facilitator"} {
+		root := managedCheckout(t)
+		setMode(t, root, st)
+		_, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+		if code != 2 {
+			t.Fatalf("%s: want exit 2; got %d (stderr %q)", st, code, stderr)
+		}
+		want := "treated as abcd's because the mode names " + who + "; another tool's question asked now is held to abcd's rules"
+		if !strings.Contains(stderr, want) {
+			t.Errorf("%s: the refusal must say why the question is abcd's (%q):\n%s", st, want, stderr)
+		}
+		refusal(t, stderr)
+
+		q := wellBuilt()
+		q.Options[0].Label = "Keep it (Recommended)"
+		if _, stderr, _ := runGuard(askPayload(t, root, q), "guard", "hook"); strings.Contains(stderr, "treated as abcd's") {
+			t.Errorf("%s: a question carrying abcd's chip is abcd's on the chip, not the mode:\n%s", st, stderr)
+		}
+	}
+}
+
 // TestUnreadableQuestionPayloadFailsOpenAsAQuestion: a question-tool payload
 // whose outer JSON the hook cannot decode (a tool_input that is a string, or a
 // sibling nested past the decoder's depth) lets the question run on exit 1
