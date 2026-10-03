@@ -177,9 +177,11 @@ never offer an answer the question does not list. The config values asked
 also name the flag that answers them without the question (`--visibility`,
 `--docs-target`, `--scan-deep`), and the matching gap's fix
 hint names it too: in a scripted run, pass the user's answer through the flag
-rather than lining a piped answer up with the question. `--yes` chooses no
-value, so a `--yes` run that still has a value to ask says so once, above the
-first such question.
+rather than lining a piped answer up with the question. A question no flag
+answers, such as the artefact kind, ends its explanation instead on a
+`(Change later: <where>)` line saying where the answer is changed afterwards.
+`--yes` chooses no value, so a `--yes` run that still has a value to ask says so
+once, above the first such question.
 
 **The AI reviewer is recorded, not asked.** `oracle_backend` has one answer
 abcd ships an adapter for, `host-delegated` (the assistant the user is working

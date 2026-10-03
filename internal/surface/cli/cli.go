@@ -38,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/memory"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -4271,6 +4272,8 @@ func (p *stdinPrompter) Prompt(key string, choices []string, def string) string 
 		}
 		if hint := h.FlagHint(); hint != "" {
 			fmt.Fprintf(p.w, "  (%s)\n", hint)
+		} else if h.ChangeLater != "" {
+			fmt.Fprintf(p.w, "  (%s %s)\n", question.Default.ChangeLaterPrefix, h.ChangeLater)
 		}
 	}
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)

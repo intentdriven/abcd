@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -81,6 +82,32 @@ func TestStdinPrompterRendersNoHelpForAnUnknownKey(t *testing.T) {
 	}
 	if want := "no_such_question (x/y) [x]: x\n"; buf.String() != want {
 		t.Fatalf("rendered %q, want only the question and the echoed answer %q", buf.String(), want)
+	}
+}
+
+// TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater: a value question no
+// flag answers says where its answer is changed later, in core's words, above
+// the question line, as a flagged question names its flag
+// (iss-2610031236155833). The artefact kind is such a question: its answer is
+// changed in the file the release commands read.
+func TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater(t *testing.T) {
+	h, ok := ahoy.HelpFor("artefact_kind")
+	if !ok {
+		t.Fatal("core has no help for artefact_kind")
+	}
+	if h.Flag != "" || h.ChangeLater == "" {
+		t.Fatalf("artefact_kind: flag %q, change later %q; want no flag and where the answer is changed", h.Flag, h.ChangeLater)
+	}
+	var buf strings.Builder
+	p := &stdinPrompter{r: bufio.NewReader(strings.NewReader("plugin\n")), w: &buf}
+	if got := p.Prompt("artefact_kind", []string{"plugin", "binary", "application"}, "application"); got != "plugin" {
+		t.Fatalf("answer = %q", got)
+	}
+	out := buf.String()
+	line := "  (" + question.Default.ChangeLaterPrefix + " " + h.ChangeLater + ")\n"
+	at, q := strings.Index(out, line), strings.Index(out, "artefact_kind (")
+	if at < 0 || at > q {
+		t.Errorf("the change-later line %q is not printed above the question:\n%s", line, out)
 	}
 }
 

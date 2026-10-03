@@ -33,6 +33,11 @@ type PromptHelp struct {
 	// answers lining up with the questions, so the flag is the reliable route
 	// there, and the question and the gap both name it (iss-2609120447486547).
 	Flag string `json:"flag,omitempty"`
+	// ChangeLater says where the answer is changed later, for a question no
+	// flag answers (a flag's hint takes that place where one exists). It is
+	// the question's change-later line, so the material need not repeat it
+	// (iss-2610031236155833).
+	ChangeLater string `json:"change_later,omitempty"`
 }
 
 // YesStillAsksValues is said once, before the first value question, by a run
@@ -54,6 +59,15 @@ func (h PromptHelp) FlagHint() string {
 		values[i] = c.Value
 	}
 	return "to answer without being asked, pass " + h.Flag + " " + strings.Join(values, "|")
+}
+
+// ChangeLaterLine is the question's change-later line: the flag hint where a
+// flag answers the question, else ChangeLater, else "".
+func (h PromptHelp) ChangeLaterLine() string {
+	if hint := h.FlagHint(); hint != "" {
+		return hint
+	}
+	return h.ChangeLater
 }
 
 // Meaning returns what answering value means, or "" for a value the question
@@ -156,19 +170,15 @@ var promptHelp = map[string]PromptHelp{
 		},
 	},
 	artefactKindKey: {
-		Key: artefactKindKey,
-		About: "What this repository releases. abcd's release commands read the answer from .abcd/config/artefact.json " +
-			"to choose what the release preview scans and which release workflow they lay, and refuse to guess it. " +
-			"The answer can be changed in that file later.",
+		Key:         artefactKindKey,
+		About:       "What this repository releases; abcd's release commands refuse to guess it.",
+		ChangeLater: "edit .abcd/config/artefact.json, read by the release commands",
 		Choices: []ChoiceHelp{
-			{Value: "plugin", Meaning: "the repository is released as an agent plugin: the release preview scans the plugin payload " +
-				"listed in .abcd/config/launch-payload.json and checks that it would install."},
-			{Value: "binary", Meaning: "the repository is released as a built program: the release preview scans the files the release tag " +
-				"would archive, and the release set-up lays a release gate with an empty build job for you to fill in. " +
-				"abcd handles binary and application the same way today."},
-			{Value: "application", Meaning: "the repository is released as an application, which abcd handles exactly as a binary today: " +
-				"the release preview scans the files the release tag would archive, and the release set-up lays a release gate " +
-				"with an empty build job for you to fill in. It is the default because it assumes least about how you build."},
+			{Value: "plugin", Meaning: "an agent plugin: the release preview scans the plugin payload listed in " +
+				".abcd/config/launch-payload.json and checks that it would install."},
+			{Value: "binary", Meaning: "a built program: the release preview scans what the release tag would archive; " +
+				"the release set-up lays a gate whose empty build job you fill in."},
+			{Value: "application", Meaning: "as binary today; the default, since it assumes least about how you build."},
 		},
 	},
 	emDashPromptKey: {

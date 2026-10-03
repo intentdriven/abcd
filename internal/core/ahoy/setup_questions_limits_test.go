@@ -21,14 +21,15 @@ var setupLater = question.Option{
 // valueQuestion is the field view of one value question, built the way the
 // plain-Terminal spec maps PromptHelp onto the shared question type: the key
 // as the id, About as the material, each choice as an option whose label is
-// the value and whose description is its meaning, the flag hint as the
-// change-later line, and the decide-later answer last.
+// the value and whose description is its meaning, the change-later line (the
+// flag hint, or where a flagless answer is changed), and the decide-later
+// answer last.
 func valueQuestion(n int, h PromptHelp) question.Question {
 	opts := make([]question.Option, len(h.Choices))
 	for i, c := range h.Choices {
 		opts[i] = question.Option{Value: c.Value, Label: c.Value, Meaning: c.Meaning}
 	}
-	change := h.FlagHint()
+	change := h.ChangeLaterLine()
 	if change == "" {
 		change = question.Default.NotApplicable
 	}
@@ -100,7 +101,6 @@ func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Questi
 // question that newly breaks a limit fails, and so does a line here that no
 // longer breaks, so the fix deletes its line.
 var setupLimitsOwed = map[string]bool{
-	"artefact_kind rows":                  true,
 	"docs_target options":                 true,
 	"docs_target rows":                    true,
 	"oracle_routing.machine_offered rows": true,

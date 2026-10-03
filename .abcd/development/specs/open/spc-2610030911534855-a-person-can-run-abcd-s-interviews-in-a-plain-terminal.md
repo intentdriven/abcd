@@ -336,10 +336,11 @@ The setup interview asks through `ahoy.Prompter`. A new front-door prompter,
 
 - a value question (`Prompt(key, choices, def)`) becomes a question whose id is
   the key, whose material is `PromptHelp.About`, whose options are
-  `PromptHelp.Choices` with their meanings, whose `change_later` line is the
-  flag hint, and whose `Later` option leaves the value unset so the gap stays
-  listed by `abcd ahoy` (the core's own words, so no door invents its own,
-  iss-163);
+  `PromptHelp.Choices` with their meanings, whose `change_later` line is
+  `PromptHelp.ChangeLaterLine` (the flag hint, or, for a question no flag
+  answers, where its answer is changed later, iss-2610031236155833), and whose
+  `Later` option leaves the value unset so the gap stays listed by `abcd ahoy`
+  (the core's own words, so no door invents its own, iss-163);
 - an approval (`Confirm(question)`) becomes a question with the options "Yes,
   make the change" and "No, leave it", and `Later` declining, as the refusing
   prompter does;
