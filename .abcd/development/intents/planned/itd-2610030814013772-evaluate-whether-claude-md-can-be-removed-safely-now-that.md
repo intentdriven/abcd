@@ -1,8 +1,8 @@
 ---
 id: itd-2610030814013772
 slug: evaluate-whether-claude-md-can-be-removed-safely-now-that
-spec_id: null
-kind: null
+spec_id: spc-2610031156364295
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -10,6 +10,7 @@ severity: minor
 related_issues: [iss-2609291925136841]
 origin: extracted-from-record
 production_mode: hand-written
+impact: breaking
 ---
 
 # abcd's projects keep one conventions file, AGENTS.md, and Claude Code reads it directly
@@ -48,10 +49,10 @@ _Proposed by the facilitator from decisions 1 to 8; confirmed by the product thi
 
 ## Scope Conditions
 
-- abcd's own project and every project abcd sets up (decision 2).
-- A Claude Code recent enough to read AGENTS.md itself; an older one is named in a setup warning, never served by a second file (decisions 1 and 3).
-- No CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md at the project root or in a folder above it; where one exists AGENTS.md is hidden and setup warns (decisions 1 and 3). The user-level CLAUDE.md in the person's home settings is not counted.
-- An owner's own words in a tool's file stay theirs: abcd never merges or edits that file, so until the owner acts abcd's rules do not load there (decision 6).
+- abcd's own project and every project abcd sets up (decision 2). <!-- cond: cond-2610031156364414 -->
+- A Claude Code recent enough to read AGENTS.md itself; an older one is named in a setup warning, never served by a second file (decisions 1 and 3). <!-- cond: cond-2610031156365364 -->
+- No CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md at the project root or in a folder above it; where one exists AGENTS.md is hidden and setup warns (decisions 1 and 3). The user-level CLAUDE.md in the person's home settings is not counted. <!-- cond: cond-2610031156360114 -->
+- An owner's own words in a tool's file stay theirs: abcd never merges or edits that file, so until the owner acts abcd's rules do not load there (decision 6). <!-- cond: cond-2610031156364999 -->
 
 _Proposed by the facilitator from decisions 1 to 8; confirmed by the product thinker, 2026-10-03._
 
