@@ -13,6 +13,7 @@ resolution: "The docs target defaults to skip, so a default ahoy install writes 
 impact: fix
 resolved_by:
   commit: "dae705d5"
+related_intents: [itd-2610031348087517]
 ---
 
 **Maintainer ruling, 2026-09-11: `ahoy install` must not write abcd by name into

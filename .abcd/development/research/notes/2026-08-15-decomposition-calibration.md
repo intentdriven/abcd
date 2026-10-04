@@ -2224,6 +2224,8 @@ Links: refines itd-3's setup interview. Verdict proposed: SPLIT, offered beside 
 
 Links: itd-2610031215002409 builds on itd-2610031214560142 and itd-2610030810370060; interacts with iss-2609201954342967 (board rows) and itd-200 (role colours). Verdict proposed: SPLIT, offered beside tidy only, the board alone, and later; the product thinker chose the board plus a menu, then asked "two drafts, one bundle?", answered as two drafts with the bundle decided at planning, since a new bundle forms only there. Routing survived confirmation: yes (the menu was kept as its own draft). The reversal flag (the board setting the status would reverse the board's zero-writes promise and the status's "answer owed" meaning) was put as an option and not chosen; the product thinker added a "view for" label in the role colours instead.
 
+Addendum (2026-10-03, appended): at the README draft's interview the product thinker widened "keeps current" to include a separate check that reports stale parts; filed as itd-2610031651058674 (draft, builds on itd-2610031348087517). The routing row above held for the setup half.
+
 ## 2026-10-03: reserving work across people on a public project (product thinker, routing confirmed)
 
 | part | type | home |
