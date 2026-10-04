@@ -32,6 +32,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
@@ -3705,6 +3706,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		oracleBackend string
 		scanDeep      string
 		installTools  []string
+		answersPath   string
+		answeredIn    string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3722,18 +3725,45 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p := newPrompter(cmd)
-			if sp, ok := p.(*stdinPrompter); ok {
+			if !interview.ValidAnsweredIn(answeredIn) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --answered-in must be %q or %q (nothing written)",
+					interview.Terminal, interview.ClaudeCode)}
+			}
+			// The setup interview's door (spc-2610030911534855): an answers
+			// file answers it wherever it runs; otherwise the drawn questions at
+			// a terminal, or the line-per-answer stream off one (iss-167).
+			var p ahoy.Prompter
+			if answersPath != "" {
+				file, err := readSetupAnswers(answersPath)
+				if err != nil {
+					return err
+				}
+				if err := settleSetupAnswers(cwd, opts, file); err != nil {
+					return err
+				}
+				p = &answersPrompter{
+					setupQuestions: setupQuestions{cwd: cwd, w: cmd.ErrOrStderr(), yesApproved: yes},
+					file:           file, stamp: answeredIn, ascii: !term.UTF8Locale(os.Getenv),
+				}
+			} else {
+				p = newPrompter(cmd)
+			}
+			switch sp := p.(type) {
+			case *stdinPrompter:
 				// --yes answers the category questions and no value question, so
 				// the first value question still asked says so (iss-2609120447486547).
 				sp.yesApproved = yes
 				// The help is the repository's: a caveat that holds only in some
 				// repositories is shown only in those (iss-2610031236155833).
 				sp.cwd = cwd
+			case *drawnPrompter:
+				sp.yesApproved, sp.cwd = yes, cwd
 			}
 			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
 			opts.ApproveDependency = len(named) > 0
-			res, err := ahoy.Install(cwd, opts, p)
+			res, err := runSetup(cwd, p, cmd.ErrOrStderr(), func() (ahoy.InstallResult, error) {
+				return ahoy.Install(cwd, opts, p)
+			})
 			if err != nil {
 				return err
 			}
@@ -3822,6 +3852,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
+	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
+	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall
@@ -3969,7 +4001,9 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 	applyCmd := &cobra.Command{
 		Use:  "apply",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			// A question drawn at a terminal and stopped by Ctrl-C ends the verb (exit 130).
+			defer endOnStop(&err)
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
@@ -4200,6 +4234,16 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 		if yes {
 			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
+		if dp, ok := p.(*drawnPrompter); ok {
+			for _, line := range e.Lines() {
+				fmt.Fprintln(w, termsafe.Sanitize(line))
+			}
+			if !dp.confirmTool(e.Tool, "Install "+e.Tool+" now by running "+e.StepText()+"?") {
+				return tools.Answer{Why: "answered no at the terminal"}
+			}
+			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
+		}
 		sp, ok := p.(*stdinPrompter)
 		if !ok || !sp.tty {
 			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal; " + otherwise(e)}
@@ -4233,6 +4277,15 @@ func newPrompter(cmd *cobra.Command) ahoy.Prompter {
 	in := cmd.InOrStdin()
 	if in == nil {
 		return ahoy.RefusingPrompter{}
+	}
+	// With stdin, stdout and stderr all terminals the questions are drawn
+	// (spc-2610030911534855); anywhere else the stream below reads them.
+	cwd, _ := os.Getwd()
+	if t, notes, ok := drawnTerminal(in, cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd); ok {
+		for _, n := range notes {
+			fmt.Fprintf(cmd.ErrOrStderr(), "abcd: %s\n", termsafe.Sanitize(n))
+		}
+		return &drawnPrompter{setupQuestions: setupQuestions{cwd: cwd, w: t.Out}, term: t}
 	}
 	p := &stdinPrompter{r: bufio.NewReader(in), w: cmd.ErrOrStderr()}
 	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {

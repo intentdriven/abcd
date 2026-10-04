@@ -208,6 +208,43 @@ That is a channel for passing on an answer the technical facilitator has GIVEN
 it is never a licence to answer on their behalf. Note that `yes |` approves
 EVERY question, so only reach for it once they have agreed to all of them.
 
+**At a terminal the questions are drawn; through this page they are relayed
+in an answers file.** When stdin, stdout and stderr are all terminals, the
+install draws each question itself (the material, the question, each answer
+with its meaning, and decide later last), answered by the arrow keys or by
+its number, and Ctrl-C ends the run with exit 130, keeping the answers given
+before it. Every answer is recorded, with the question as it was asked and
+where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
+and the answers that change the machine (the status line, the machine's
+routing table) in `~/.abcd/interviews/`; a run that ends aborted or
+refused changed nothing and records nothing. Through this page, put each
+question to the user with the host's question tool, quoting the question
+exactly as the install writes it, then pass their answers in an answers file
+and say where they were given:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --answers <file> --answered-in "Claude Code" --json
+```
+
+The file is one JSON object: `{"schema_version": 1, "interview": "setup",
+"answers": [{"id": "adopt", "value": "yes"}, {"id": "visibility", "value":
+"private", "note": "<optional>"}]}`. Each answer names its question by id
+(a value question's key, `adopt`, `approve.<category>` for a kind of change,
+or the offer's gap id) and gives one of the values the question offers, or
+`later` to decide later; an unknown or repeated key is refused. With
+`--answers`, each question is written as plain text on stderr. A value
+the question does not offer, or a missing answer to the adoption, an
+approval or a setting value the run would ask (the visibility, the docs
+target, deep scanning), stops the run with exit 2 before anything is
+written, naming the question's id, the flag that answers it, if any, and the
+line to add; nothing is recorded. Put that question to the user, add their
+answer, and run again. The questions the run itself decides to ask (the
+status line's elements, the offers, the artefact kind) are checked when
+they are asked: a stop there leaves the steps before it done, says so, and
+the next run asks only what is still open. The git identity, the
+drain rule and installing a tool are never answered from a file. `--answers`
+replaces the piped answer stream for that run.
+
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
 question declines, so a run that was told nothing writes nothing — but a stdin
 that is held open and silent (a pipe from a still-running command) makes the
