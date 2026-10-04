@@ -64,7 +64,13 @@
 /* ---------- base ---------- */
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--ground);color:var(--ink);font-family:"Newsreader",Georgia,"Times New Roman",serif;font-size:18px;line-height:1.55;font-optical-sizing:auto}
+/* overflow-wrap is the net under every block of text: a record's title or
+   source path can hold a run with nowhere to break (a timestamp-id path, a
+   quoted path), and given nowhere to break it widens the page. `break-word`
+   breaks only where a line would otherwise overflow and, unlike `anywhere`,
+   leaves min-content alone, so tables, grids and flex rows lay out as before;
+   a grid or flex item that needs to give says so itself (`.list`, `.links`). */
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"Newsreader",Georgia,"Times New Roman",serif;font-size:18px;line-height:1.55;font-optical-sizing:auto;overflow-wrap:break-word}
 a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:.15em}
 a:hover{text-decoration-thickness:2px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
@@ -379,8 +385,22 @@ a.tile.lead:hover,a.tile.lead:focus-visible{background:var(--accent-soft);border
 .list{list-style:none;margin:0;padding:0;font-size:.92rem}
 .list li{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--rule);align-items:baseline}
 .list li:last-child{border-bottom:0}
-.list .id{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-2);white-space:nowrap}
+.list .id{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-2);white-space:normal}
+/* The id span wraps between ids and never inside one: a supersession row
+   carries two timestamp ids and an arrow, wider than the row on a phone, so it
+   gives at its spaces while each id link, stub and date stays whole. */
+.list .id>*{white-space:nowrap}
 .list .d{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-3);margin-left:6px}
+/* A row is a grid, and a grid item's automatic minimum width is its
+   min-content width: a title holding one long unspaced token (a quoted path)
+   would set the width of the row and scroll the page sideways on a phone. Only
+   `anywhere` also lowers min-content, and `min-width:0` drops the automatic
+   minimum, so the title column gives whatever the record calls itself. */
+.list li>span:not(.id){overflow-wrap:anywhere;min-width:0}
+/* Below 520 px the id column (a timestamp id and its date, about 220 px)
+   would leave the title a column a few characters wide, so the row stacks:
+   the id above, the title below at the full width of the row. */
+@media (max-width:520px){.list li{grid-template-columns:minmax(0,1fr);row-gap:2px}}
 .health{font-family:"IBM Plex Mono",monospace;font-size:.78rem;line-height:1.6}
 .health .w{color:var(--hazard-ink);background:var(--hazard-soft);padding:0 .3em;border-radius:3px}
 .health .hsum{margin-top:8px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 14px}
