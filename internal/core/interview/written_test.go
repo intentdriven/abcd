@@ -501,8 +501,9 @@ func TestBackticksInTheSeedAndAnswersNeverCloseTheBriefsFences(t *testing.T) {
 // held to the paths the interview grants it. A granted path changed is
 // reported; a tracked file already changed before the run and changed again,
 // and an untracked file, stop the interview after that dispatch, each named,
-// nothing more drawn, and the answer given before it recorded. The local
-// tier, where abcd keeps the turns, is not watched.
+// nothing more drawn, and the answer given before it recorded. The run's own
+// turn directory, where abcd keeps the briefs and the role writes its
+// receipts, is not watched.
 func TestARoleChangingAPathItIsNotGrantedStopsTheInterview(t *testing.T) {
 	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
 	r := newWrittenRun(t, routedToClaude)
@@ -511,7 +512,7 @@ func TestARoleChangingAPathItIsNotGrantedStopsTheInterview(t *testing.T) {
 	r.git.Commit("two files")
 	r.git.Write("tracked.md", "changed before the run\n")
 	r.w.MayChange = []string{"granted.md"}
-	stubAlso(t, script, 1, map[string]string{"granted.md": "the role's edit\n", ".abcd/.work.local/scratch/note.md": "local\n"})
+	stubAlso(t, script, 1, map[string]string{"granted.md": "the role's edit\n", "turns/note.md": "the role's own turn\n"})
 	stubAlso(t, script, 2, map[string]string{"tracked.md": "changed by the role\n", "new/untracked.txt": "planted\n"})
 	res, err := r.w.Run(context.Background())
 	var uc *UnexpectedChangesError

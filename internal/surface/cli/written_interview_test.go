@@ -705,6 +705,53 @@ func TestIntentInterviewRoleChangingAnotherFileIsRefused(t *testing.T) {
 	}
 }
 
+// TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused: what git
+// status does not list is watched too. A planning role that plants a git
+// hook, edits the git configuration, writes a push receipt into the local
+// tier, or writes a gitignored file stops the interview, exit 1, naming the
+// path, with the answer given before it recorded and no readiness reported.
+func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T) {
+	for _, c := range []struct{ name, path, body string }{
+		{"hook", ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n"},
+		{"config", ".git/config", "[core]\n\trepositoryformatversion = 0\n[alias]\n\tst = !sh -c true\n"},
+		{"receipt", ".abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
+		{"ignored", "build.log", "planted\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			routeMachine(t, interview.RolePlanningInterviewer)
+			script := interviewStub(t, stubQuestion("Product Q1", "Does the press release stand?", ""),
+				stubQuestion("Product Q2", "Does the first criterion stand?", ""), `{"done":{"summary":"x"}}`)
+			r := planningRepo(t)
+			r.Write(".gitignore", "*.log\n.abcd/.work.local/\n")
+			r.Commit("ignore")
+			interviewStubAlso(t, script, 2, map[string]string{c.path: c.body})
+			stdout, stderr := tempStream(t, "stdout"), tempStream(t, "stderr")
+			in, w := pipeWith(t, "")
+			_ = w.Close()
+			cmd := NewRootCommand()
+			cmd.SetIn(in)
+			cmd.SetOut(stdout)
+			cmd.SetErr(stderr)
+			cmd.SetArgs([]string{"intent", "interview", "itd-5", "--answers", planningAnswersFileQ1Q2(t)})
+			err := cmd.Execute()
+			errText, _ := os.ReadFile(stderr.Name())
+			out, _ := os.ReadFile(stdout.Name())
+			if exitCodeOf(err) != 1 {
+				t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, errText)
+			}
+			if !strings.Contains(err.Error(), c.path) {
+				t.Fatalf("the refusal does not name %s: %v", c.path, err)
+			}
+			if strings.Contains(string(out), "READY") {
+				t.Fatalf("readiness was reported after the refusal:\n%s", out)
+			}
+			if rec := readInterviewRecord(t, r.Root()); len(rec.Answers) != 1 {
+				t.Fatalf("record %+v", rec)
+			}
+		})
+	}
+}
+
 // TestInterviewRolesAreGrantedReadForTheirBrief: the runner's prompt tells
 // the role to read its turn's brief, and the claude runner denies every tool
 // its launch does not grant (dontAsk), so both roles are launched with Read

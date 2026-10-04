@@ -109,8 +109,10 @@ type Written struct {
 	Tools []string
 	// MayChange are the repository paths, slash-separated and relative to
 	// Repo, the role's contract lets it change. A dispatch that changes any
-	// other path outside the local tier stops the interview with an
-	// *UnexpectedChangesError naming each.
+	// other path the interview watches (treewatch.go: the working tree,
+	// ignored paths, the local tier but for the run's own turn directory,
+	// git's own directory and any hooks directory) stops the interview with
+	// an *UnexpectedChangesError naming each.
 	MayChange []string
 	// Verbs is the binary's verb list, for the limits check's register rule.
 	Verbs []string
@@ -263,16 +265,19 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	if !ok {
 		return WrittenResult{}, ErrNoLocalTier
 	}
-	pre, err := readTree(w.Repo)
-	if err != nil {
-		return WrittenResult{}, err
-	}
 	now := w.Now
 	if now == nil {
 		now = time.Now
 	}
 	start := now().UTC()
+	// The run's turn directory stands before the tree is first read, so its
+	// making is not laid at the role's door; it is the one place in the
+	// local tier the reading leaves out.
 	dirRel, err := w.turnsDir(start)
+	if err != nil {
+		return WrittenResult{}, err
+	}
+	pre, err := readTree(w.Repo, dirRel)
 	if err != nil {
 		return WrittenResult{}, err
 	}
@@ -307,7 +312,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	again := ""
 	for turn := 1; turn <= max; turn++ {
 		if turn > 1 {
-			if pre, err = readTree(w.Repo); err != nil {
+			if pre, err = readTree(w.Repo, dirRel); err != nil {
 				return end(err)
 			}
 		}
@@ -362,7 +367,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		})
 		stopped := interrupted()
 		stop()
-		if cerr := w.heldToContract(pre, &res); cerr != nil {
+		if cerr := w.heldToContract(pre, dirRel, &res); cerr != nil {
 			return end(errors.Join(cerr, err))
 		}
 		if stopped {
@@ -410,8 +415,8 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 // heldToContract reads the tree after a dispatch and adds what the role
 // changed since pre to res.Changed, returning an *UnexpectedChangesError when
 // any of it is a path the interview does not let the role change.
-func (w *Written) heldToContract(pre treeState, res *WrittenResult) error {
-	post, err := readTree(w.Repo)
+func (w *Written) heldToContract(pre treeState, turnDir string, res *WrittenResult) error {
+	post, err := readTree(w.Repo, turnDir)
 	if err != nil {
 		return err
 	}

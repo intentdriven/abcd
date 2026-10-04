@@ -3,18 +3,41 @@ package interview
 // treewatch.go holds an AI-written interview's role to the paths its contract
 // lets it change. The role runs with the person's own route in the checkout,
 // and with no host session nobody watches its edits between the questions
-// abcd draws, so abcd does: before each dispatch it reads the working tree's
-// state, after the dispatch it reads it again, and a path whose state moved
-// that the interview did not grant stops the interview, naming each.
+// abcd draws, so abcd does: before each dispatch it reads the state of every
+// place the role could leave something behind, after the dispatch it reads it
+// again, and a path whose state moved that the interview did not grant stops
+// the interview, naming each.
 //
-// The state is git's own listing of what differs from HEAD (gitutil.Status,
-// the one reader of `git status --porcelain=v1 -z --untracked-files=all`, as
-// the reading assembler's dirty-path gate, the capture ledger's uncommitted
-// marker and the peers listing read it), each listed path paired with its
-// content's hash and mode, so a second edit to a file already changed before
-// the dispatch moves its state too. Paths are relative to the repository's
-// root; the local tier, where abcd keeps the turns and the records, is not
-// watched.
+// Four places are read:
+//
+//   - What differs from HEAD, as git lists it (gitutil.Status, the one reader
+//     of `git status --porcelain=v1 -z --untracked-files=all`): each path
+//     paired with its content's mode and hash, so a second edit to a file
+//     already changed before the dispatch moves its state too.
+//   - What git ignores (the same listing's --ignored=matching entries, an
+//     ignored directory walked whole), and an untracked nested repository
+//     walked the same way: each file by its mode, size and modification time,
+//     never its content, since an ignored tree (a build's output, the local
+//     tier's scratch) can be large. The local tier is watched like any other
+//     path: a push receipt under preflight-receipts/ or the handover changed
+//     by the role stops the interview.
+//   - git's own directory, which no status lists: every entry of hooks/ and
+//     info/, the configuration (config, and config.worktree), and a linked
+//     worktree's .git file, by mode, size and content hash. A hook runs on the
+//     person's next git command, and the configuration can name a hooks
+//     directory, an alias or a credential helper. In a linked worktree these
+//     live in the repository's common directory and are read there.
+//   - The directory each core.hooksPath value names, in any scope the
+//     person's git reads, when it is outside the working tree (inside, the
+//     listing above already covers it), read as git's own directory is.
+//
+// Two places are left out because abcd itself writes them while a role runs:
+// the run's own turn directory, where abcd writes each brief and the role its
+// receipt, and the local transcript store a checkout can pull its runners'
+// transcripts into. Every other run's turn directory is watched.
+//
+// Paths are relative to the repository's root; a path outside it (a linked
+// worktree's common directory, a hooks directory elsewhere) is named in full.
 
 import (
 	"crypto/sha256"
@@ -22,10 +45,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -33,8 +61,14 @@ import (
 // is refused rather than read in part.
 const maxStatusBytes = 8 << 20
 
-// treeState is each path git lists as differing from HEAD, outside the local
-// tier, mapped to its status and its content's mode and hash.
+// maxWatched bounds the paths one reading holds. A tree past it is refused
+// rather than read in part, before the first dispatch: a guard that stopped
+// counting would let a role write past the bound unseen. It is several times
+// what a large checkout's local tier and build output hold, so a tree
+// reaching it has something in it worth clearing.
+var maxWatched = 500_000
+
+// treeState is each watched path mapped to its status and its state.
 type treeState map[string]string
 
 // UnexpectedChangesError is an interview stopped because its role changed
@@ -51,44 +85,265 @@ func (e *UnexpectedChangesError) Error() string {
 		e.Role, len(e.Paths), strings.Join(e.Paths, ", "))
 }
 
-// readTree reads the working tree's state under repo.
-func readTree(repo string) (treeState, error) {
-	entries, err := gitutil.Status(repo, maxStatusBytes, gitutil.StatusOptions{})
-	if err != nil {
+// treeReader is one reading of the places a role could change.
+type treeReader struct {
+	repo string
+	// skip are repository-relative slash paths left out, with everything
+	// under them.
+	skip []string
+	st   treeState
+}
+
+// readTree reads the state of every watched place under repo, leaving out
+// turnDir, the run's own turn directory (relative to repo, slash-separated).
+func readTree(repo, turnDir string) (treeState, error) {
+	r := &treeReader{repo: repo, skip: []string{history.LocalStoreRelPath}, st: treeState{}}
+	if turnDir != "" {
+		r.skip = append(r.skip, turnDir)
+	}
+	if err := r.read(); err != nil {
 		return nil, fmt.Errorf("interview: the working tree's state cannot be read, so the role's changes cannot be held to its contract: %w", err)
 	}
-	root, err := os.OpenRoot(repo)
+	return r.st, nil
+}
+
+func (r *treeReader) read() error {
+	entries, err := gitutil.Status(r.repo, maxStatusBytes, gitutil.StatusOptions{Ignored: true})
 	if err != nil {
-		return nil, err
+		return err
+	}
+	root, err := os.OpenRoot(r.repo)
+	if err != nil {
+		return err
 	}
 	defer root.Close()
-	st := treeState{}
-	add := func(status, p string) error {
-		if p == localTierRel || strings.HasPrefix(p, localTierRel+"/") {
-			return nil
+	for _, e := range entries {
+		switch {
+		case strings.HasSuffix(e.Path, "/"):
+			// An ignored directory, or an untracked nested repository: git
+			// lists the directory alone, so it is walked.
+			err = r.walkStat(e.XY, strings.TrimSuffix(e.Path, "/"))
+		case e.XY == "!!":
+			err = r.statOne(e.XY, e.Path)
+		default:
+			err = r.hashOne(root, e.XY, e.Path)
+			if err == nil && e.Orig != "" {
+				// A rename's or copy's source is watched with it.
+				err = r.hashOne(root, e.XY+"<", e.Orig)
+			}
 		}
-		h, err := contentState(root, strings.TrimSuffix(p, "/"))
 		if err != nil {
 			return err
 		}
-		st[p] = status + " " + h
-		return nil
 	}
-	for _, e := range entries {
-		if err := add(e.XY, e.Path); err != nil {
-			return nil, err
-		}
-		// A rename's or copy's source is watched with it.
-		if e.Orig != "" {
-			if err := add(e.XY+"<", e.Orig); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return st, nil
+	return r.readGitDirs()
 }
 
-// contentState is rel's kind, mode and content hash: a link's target is
+// skipped reports whether rel is left out of the reading.
+func (r *treeReader) skipped(rel string) bool {
+	for _, s := range r.skip {
+		if rel == s || strings.HasPrefix(rel, s+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// put records one path's state, refusing past maxWatched.
+func (r *treeReader) put(key, state string) error {
+	if _, ok := r.st[key]; !ok && len(r.st) >= maxWatched {
+		return fmt.Errorf("the tree holds more than %d paths outside what git tracks unchanged (untracked, ignored, or in git's own directory), "+
+			"too many to read around each turn; remove what it no longer needs (a scratch directory, a build's output) and run the interview again", maxWatched)
+	}
+	r.st[key] = state
+	return nil
+}
+
+// hashOne records a path git lists by its content's mode and hash.
+func (r *treeReader) hashOne(root *os.Root, xy, rel string) error {
+	if r.skipped(rel) {
+		return nil
+	}
+	h, err := contentState(root, rel)
+	if err != nil {
+		return err
+	}
+	return r.put(rel, xy+" "+h)
+}
+
+// statOne records an ignored path by its mode, size and modification time.
+func (r *treeReader) statOne(xy, rel string) error {
+	if r.skipped(rel) {
+		return nil
+	}
+	fi, err := os.Lstat(filepath.Join(r.repo, filepath.FromSlash(rel)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return r.put(rel, xy+" absent")
+	}
+	if err != nil {
+		return err
+	}
+	return r.put(rel, xy+" "+statState(fi))
+}
+
+// walkStat records every file under the directory rel by its mode, size and
+// modification time. A directory itself is not recorded: what it holds is,
+// and git keeps no empty directory either. A link is recorded, never
+// followed.
+func (r *treeReader) walkStat(xy, rel string) error {
+	if r.skipped(rel) {
+		return nil
+	}
+	base := filepath.Join(r.repo, filepath.FromSlash(rel))
+	return filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		sub, err := filepath.Rel(base, p)
+		if err != nil {
+			return err
+		}
+		key := path.Join(rel, filepath.ToSlash(sub))
+		if r.skipped(key) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		fi, err := d.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return r.put(key, xy+" "+statState(fi))
+	})
+}
+
+// statState is a file's mode, size and modification time.
+func statState(fi fs.FileInfo) string {
+	return fmt.Sprintf("%v %d %d", fi.Mode(), fi.Size(), fi.ModTime().UnixNano())
+}
+
+// readGitDirs records git's own directory and every hooks directory
+// core.hooksPath names outside the working tree, each entry by its mode,
+// size and content hash.
+func (r *treeReader) readGitDirs() error {
+	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) != 2 || lines[0] == "" || lines[1] == "" {
+		return fmt.Errorf("git named no git directory and common directory (%q)", out)
+	}
+	abs := func(p string) string {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(r.repo, p)
+		}
+		return filepath.Clean(p)
+	}
+	gitDir, common := abs(lines[0]), abs(lines[1])
+	// A linked worktree's .git is a file naming its git directory.
+	if fi, err := os.Lstat(filepath.Join(r.repo, ".git")); err == nil && !fi.IsDir() {
+		if err := r.hashIn(r.repo, ".git"); err != nil {
+			return err
+		}
+	}
+	for _, rel := range []string{"hooks", "info", "config", "config.worktree"} {
+		if err := r.hashIn(common, rel); err != nil {
+			return err
+		}
+	}
+	if gitDir != common {
+		if err := r.hashIn(gitDir, "config.worktree"); err != nil {
+			return err
+		}
+	}
+	hooksPaths, err := gitutil.HooksPaths(r.repo)
+	if err != nil {
+		return err
+	}
+	fold := fsutil.CaseFoldingFS()
+	for _, hp := range hooksPaths {
+		dir := abs(filepath.FromSlash(hp))
+		// Inside the working tree, and outside git's own directory, the
+		// status listing already reads it.
+		if fsutil.PathWithin(dir, r.repo, fold) && !fsutil.PathWithin(dir, gitDir, fold) && !fsutil.PathWithin(dir, common, fold) {
+			continue
+		}
+		if err := r.hashIn(filepath.Dir(dir), filepath.Base(dir)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// hashIn records rel under base, and every entry under it when it is a
+// directory, by mode, size and content hash, keyed by its path relative to
+// the repository when it is inside it and in full when not. The walk stays
+// under base: a link is recorded by its target's text, never followed.
+func (r *treeReader) hashIn(base, rel string) error {
+	root, err := os.OpenRoot(base)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	fi, err := root.Lstat(rel)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		// A file, or a link standing where a directory is expected: recorded
+		// as itself, never followed.
+		h, err := contentState(root, rel)
+		if err != nil {
+			return err
+		}
+		return r.put(r.keyOf(base, rel), "git "+h)
+	}
+	return fs.WalkDir(root.FS(), rel, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		h, err := contentState(root, p)
+		if err != nil {
+			return err
+		}
+		return r.put(r.keyOf(base, p), "git "+h)
+	})
+}
+
+// keyOf is the key of rel under base: its path relative to the repository
+// when it is inside it, in full when not.
+func (r *treeReader) keyOf(base, rel string) string {
+	full := filepath.Join(base, filepath.FromSlash(rel))
+	if k, err := filepath.Rel(r.repo, full); err == nil && k != ".." && !strings.HasPrefix(k, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(k)
+	}
+	return filepath.ToSlash(full)
+}
+
+// contentState is rel's kind, mode, size and content hash: a link's target is
 // hashed, never followed.
 func contentState(root *os.Root, rel string) (string, error) {
 	fi, err := root.Lstat(rel)
@@ -117,7 +372,7 @@ func contentState(root *os.Root, rel string) (string, error) {
 			return "", err
 		}
 	}
-	return fmt.Sprintf("%v %s", fi.Mode(), hex.EncodeToString(h.Sum(nil))), nil
+	return fmt.Sprintf("%v %d %s", fi.Mode(), fi.Size(), hex.EncodeToString(h.Sum(nil))), nil
 }
 
 // changedSince is every path whose state differs between before and after,

@@ -98,9 +98,14 @@ record stands by then.
 
 The role is granted Read, for its turn's brief, and Write, for its receipt,
 and changes no file of the repository: abcd reads the working tree's state
-(git's listing of what differs from HEAD, each path's content hashed, the local
-tier left out) before and after each dispatch, and a dispatch that changes any
-path stops the interview, exit 1, naming each and keeping the answers given.
+(git's listing of what differs from HEAD, each path's content hashed; every path
+git ignores, the local tier among them, by its mode, size and modification
+time; git's own hooks, info files and configuration, read in the repository's
+common git directory, and any hooks directory `core.hooksPath` names outside
+the tree, each hashed; only the run's own turn directory, where the role writes
+its receipt, and a checkout's local transcript store are left out) before and
+after each dispatch, and a dispatch that changes any path stops the interview,
+exit 1, naming each and keeping the answers given.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.
