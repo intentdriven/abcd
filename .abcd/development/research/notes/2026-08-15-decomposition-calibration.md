@@ -2235,3 +2235,26 @@ Addendum (2026-10-03, appended): at the README draft's interview the product thi
 | nothing kept on one computer is the register; claim contents are public | trust rule | recorded in decision 4; an ADR is owed at planning |
 
 Links: itd-2610031259176838 builds on itd-2609150819440345 and refines iss-2609020716570699. Verdict proposed: SPLIT, offered as a draft pull request, a marker on the shared remote, both by person, or later; the product thinker chose the marker, since narrowed to a claim branch abcd lists (itd-2609091034175565, decision 10), and asked for the outside-contributor follow-up. Routing survived confirmation: yes. Not yet routed: the four overlapping claim designs (implement claim, itd-2609091034175565, itd-33, this register), left for the register's planning interview.
+
+## 2026-10-03: a web dashboard for the product thinker, on the home network and later anywhere (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a dashboard of the project in a web browser on a phone, an iPad or a computer on the home network | capability | intent itd-2610032150577708 (draft) |
+| reach from anywhere through Tailscale | capability | intent itd-2610032150580455 (draft, later) |
+| abcd listens on a network only while the person runs the dashboard, only for people the person lets in | trust boundary | adr-2610032150581128 (proposed), plus a brief invariant 7 clause when accepted |
+| what the dashboard shows and how to serve it safely | research | a state-of-the-art pass, then the drafts' reviews |
+
+Links: builds on itd-2610031214560142 (the board); supersedes itd-139 (the static team site), as the product thinker ruled ("Dashboard replaces it"). Verdict proposed: SPLIT. Routing survived confirmation: yes (unchanged: "Split as shown").
+
+Addendum (2026-10-04, appended): at the dashboard's interview the product thinker chose Tailscale first ("revert my decision: tailscale only first"), so the Tailscale draft itd-2610032150580455 was folded into itd-2610032150577708 and superseded; the home network without Tailscale became the later draft itd-2610040740108331. The product thinker named later additions in their own words, routed by the facilitator as two more drafts: acting from the dashboard (itd-2610040740122709) and the dashboard for more people (itd-2610040740135705). The original SPLIT survived as to the ADR; the capability split was re-cut by the product thinker's revision.
+
+## 2026-10-04: the dashboard and the public site for every abcd-managed project (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| the private dashboard works on any abcd-managed project, proven on a second, sparse sample project | capability | intent itd-2610040754440360 (draft, later) |
+| the public record site for any abcd-managed project | capability | intent itd-2610040754453237 (draft, later) |
+| no genericity claim without a second instance | standing rule | existing discipline itd-140, reused |
+
+Links: itd-2610040754440360 builds on itd-2610032150577708; both return, for later, the promise given up at that intent's decision 13 (reversal flag raised in the routing question, confirmed). Verdict proposed: FILE-AS-IS, offered beside two ideas and later; the product thinker chose one idea with the proof inside, then filed the public site as "a separate intent for later, not now". Routing survived confirmation: yes.

@@ -82,7 +82,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-116` — Validated GitHub issues become ledger entries without retyping (capture extension adopts externally filed findings with provenance; mint stays capture-only)
 - `itd-118` — Merged work leaves no residue (post-merge complement of itd-115: delete the PR branch on merge, tidy the stale local branch, tracking ref, and worktree)
 - `itd-134` — Managed-repo banner generator: a managed CLI in any language opens with its own identity, rendered from its identity block (split from itd-112)
-- `itd-139` — The generic record explorer demonstrated on a second, sparse managed instance (held in drafts until the itd-140 fixture gate can be met; carries the reframed generalisation verdict)
 - `itd-142` — The brief-creation interview: staged elicitation into the brief and a ledger (frontier rounds, options at conjectural questions, hold register, two-output rule per adr-50); spec waits on the collaborating prototype's first run
 - `itd-143` — The framing chapter under 01-product/: the macro-why home, with its brief↔lifeboat mapping row; receives itd-142's committed framing products
 - `itd-144` — Every livery mark has a surface: the lifeboat on disembark and mirrored on embark, the duckling as the harness mascot, the flag icon for the website (settles itd-112's deferred forge/web logo question)
@@ -128,6 +127,11 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
 - `itd-2610031651058674` — abcd's check reports README parts that have gone stale, and writes nothing (draft; builds on itd-2610031348087517)
 - `itd-2610031259176838` — Outside contributors reserve work through a draft pull request that abcd honours (draft; builds on itd-2609150819440345; not urgent)
+- `itd-2610040740108331` — The dashboard on the home network, without Tailscale (draft; builds on itd-2610032150577708; later, by the product thinker's choice of Tailscale first)
+- `itd-2610040740122709` — Acting from the dashboard: rewriting the brief and approving intents (draft; builds on itd-2610032150577708)
+- `itd-2610040740135705` — The dashboard for more people: the facilitator's view and the team's, configurable (draft; builds on itd-2610032150577708)
+- `itd-2610040754440360` — The private dashboard for every abcd-managed project (draft; builds on itd-2610032150577708; proven on a second, sparse sample project; later)
+- `itd-2610040754453237` — The public record site for every abcd-managed project (draft; later, by the product thinker's ruling)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
