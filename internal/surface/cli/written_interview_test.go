@@ -584,3 +584,23 @@ func TestInterruptWhileARunnerWritesExits130(t *testing.T) {
 		t.Fatal("a retrospective was written")
 	}
 }
+
+// TestAnswersFileValueNotOfferedRefusesRecordingNothing: an answers-file
+// entry whose value the question does not offer refuses at the front door,
+// exit 2, naming the values it offers, and writes no answers record.
+func TestAnswersFileValueNotOfferedRefusesRecordingNothing(t *testing.T) {
+	routeMachine(t, interview.RoleReflectionComposer)
+	interviewStub(t, retroReceipts()...)
+	r := retroRepo(t)
+	p := filepath.Join(t.TempDir(), "answers.json")
+	if err := os.WriteFile(p, []byte(`{"schema_version":1,"interview":"retrospective","answers":[{"id":"Q1","value":"nope"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := interviewRun(t, false, term.Mono, "reflect", "interview", "v0.2.0", "--proceed", "--answers", p)
+	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), "kept|more|later") {
+		t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, stderr)
+	}
+	if b := oneRecord(t, filepath.Join(r.Root(), filepath.FromSlash(interview.RecordsRel))); b != nil {
+		t.Fatalf("a record was written:\n%s", b)
+	}
+}
