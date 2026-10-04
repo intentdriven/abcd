@@ -658,6 +658,13 @@ func TestGuideQuestionsPassTheAskingLimits(t *testing.T) {
 // runtime so no key-shaped literal is committed.
 func keyShapedAnswer(seed uint64) string { return "sk-proj-" + testsecret.Synthetic(seed, 48) }
 
+// plainKeyAnswer is a plain sk- key, the shape older OpenAI keys and many
+// OpenAI-compatible services issue (iss-2610040202190813), built at runtime.
+func plainKeyAnswer(seed uint64) string { return "sk-" + testsecret.Synthetic(seed, 40) }
+
+// openRouterKeyAnswer is an OpenRouter key's shape, built at runtime.
+func openRouterKeyAnswer(seed uint64) string { return "sk-or-v1-" + testsecret.SyntheticHex(seed, 64) }
+
 // TestGuideNeverEchoesATypedValueThatIsNotAName: a key pasted where the guide
 // asks for a name (the model typed, part of a listed model's name, the
 // variable's name, or any other question) is refused with the one message
@@ -683,6 +690,9 @@ func TestGuideNeverEchoesATypedValueThatIsNotAName(t *testing.T) {
 		{"an options question", nil, pasted, GuideQLookup, []string{"type", "vendor/coder", "none"}, keyMsg},
 		{"the variable's name", []string{"type", "vendor/coder", "key", "external"}, pasted, GuideQEnv, []string{"MY_API_KEY"}, keyMsg},
 		{"a key shaped as a name", []string{"type", "vendor/coder", "key", "external"}, asName, GuideQEnv, []string{"MY_API_KEY"}, keyMsg},
+		{"a plain sk- key as the typed model", []string{"type"}, plainKeyAnswer(33), GuideQTyped, []string{"vendor/coder", "none"}, keyMsg},
+		{"a plain sk- key as part of a listed name", []string{"lookup"}, plainKeyAnswer(34), GuideQModel, []string{"vendor/coder", "none"}, keyMsg},
+		{"an OpenRouter key as the typed model", []string{"type"}, openRouterKeyAnswer(35), GuideQTyped, []string{"vendor/coder", "none"}, keyMsg},
 		{"a variable name it cannot take", []string{"type", "vendor/coder", "key", "external"}, "not a name!", GuideQEnv, []string{"MY_API_KEY"}, "is not a variable's name"},
 		{"a model name it cannot take", []string{"type"}, "bad;name", GuideQTyped, []string{"vendor/coder", "none"}, "is not a model name abcd accepts"},
 	} {
