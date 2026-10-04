@@ -2258,3 +2258,22 @@ Addendum (2026-10-04, appended): at the dashboard's interview the product thinke
 | no genericity claim without a second instance | standing rule | existing discipline itd-140, reused |
 
 Links: itd-2610040754440360 builds on itd-2610032150577708; both return, for later, the promise given up at that intent's decision 13 (reversal flag raised in the routing question, confirmed). Verdict proposed: FILE-AS-IS, offered beside two ideas and later; the product thinker chose one idea with the proof inside, then filed the public site as "a separate intent for later, not now". Routing survived confirmation: yes.
+
+## 2026-10-04: the brief as target design, traced to what realises it (product thinker, routing decided by the facilitator)
+
+| part | type | home |
+|---|---|---|
+| each brief section shows what realises it; a brief change names what it touches and proposes its meaning | capability | intent itd-2610040817105016 (draft) |
+| a brief edit's implied intents drawn out | capability | existing itd-61, refined |
+| the tense of a brief | working hypothesis | the decision log, and itd-61, itd-142, itd-143 |
+
+Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "we should file what we've decided" (one defensible routing: the mechanics are one capability; the hypothesis is not yet a ruling). Routing not put to a separate question; graded as unconfirmed.
+
+## 2026-10-04: labs run end to end (product thinker, routing decided by the facilitator)
+
+| part | type | home |
+|---|---|---|
+| a lab runs end to end from a question, with the hand-set-up steps of the first downstream lab recorded | capability | intent itd-2610040822131032 (draft) |
+| a lab in the real project rather than a snapshot | defect in the discipline | existing iss-2610040758486433 |
+
+Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "We only need an intent or something" (one defensible routing). Routing not put to a separate question; graded as unconfirmed.

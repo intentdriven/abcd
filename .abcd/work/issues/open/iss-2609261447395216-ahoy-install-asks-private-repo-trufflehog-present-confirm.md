@@ -35,3 +35,7 @@ above, would remove both.
 
 - A setting that changes nothing while the person is told it did is the defect; either branch makes the answer true. The help text at internal/core/ahoy/prompt_help.go already says the value changes nothing, which narrows the harm but not the question.
 - Rejected: leaving the prompt and relying on that help text.
+
+## Evidence 2026-10-04 (a downstream lab)
+
+A downstream private project's lab reports the same stream: a yes-piped first install answered a scan_deep question it had not been told about. At tip 57d5ec9fa the question arrives explained and names `--scan-deep`, but under `yes |` it still fires and still takes `y`, which then discards the flagged values (iss-2610020700263496). Stopping the question remains the branch that removes both.

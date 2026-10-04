@@ -13,3 +13,7 @@ remedy: "Replace the bundled ROADMAP rules in internal/core/rules/defaults/rules
 ---
 
 The bundled ROADMAP rule domain still teaches retired phases and milestones. internal/core/rules/defaults/rules.json:34 injects 'The roadmap is intent-driven; each phase ends in a milestone.' into every managed repository on a prompt that names a roadmap, milestone or phase, although adr-2609212115255771 retired the phase, the milestone and the word roadmap (decision 8 replaces this domain with the decision's statement) and adr-2609292012006845 carries that forward. abcd's own repository masks the defect with a repo override (.abcd/rules.json:127-131), so its own sessions never see it; a sibling session's user test of an adopted repository on v0.9.0 reported it on 2026-10-03. The brief-wide sweep iss-2609251618079479 does not name the defaults file.
+
+## Evidence 2026-10-04 (a downstream lab)
+
+A downstream private project on v0.9.0 shaped a whole brief around M0 to M8 milestones because the bundled ROADMAP rule taught them as current, while bare `abcd ahoy` called the install up to date (captured separately as iss-2610040758303107). It is not only a stale-release problem: at tip 57d5ec9fa `internal/core/rules/defaults/rules.json` still carries "The roadmap is intent-driven; each phase ends in a milestone." The lab rated the consequence major.

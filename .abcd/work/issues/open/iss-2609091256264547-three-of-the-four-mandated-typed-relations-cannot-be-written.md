@@ -25,3 +25,7 @@ Deferred past v0.11.1: The product thinker's ruling M23 of 2026-09-23: support a
 - Ruling M23 (2026-09-23, .abcd/work/DECISIONS.md) chose to build all four relations; duplicates and refines are schema-known on issues (internal/core/issueschema/issueschema.go), and reverses appears in no schema.
 - The body-edge lint is the record's own detector and stops the prose-called-typed shape from recurring.
 - Rejected: narrowing the rule to the implemented words, which the ruling declined.
+
+## Evidence 2026-10-04 (a downstream lab)
+
+A downstream private project's lab reported that no frontmatter field links an intent to the ADR it carries out, only prose and the ADR's `related_intents`. Half of that is not so: intent frontmatter accepts `related_adrs` (record-lint's `recordRefFields`), and 62 intents in this repository carry it. The half that stands is this record's: `related_adrs` is the untyped related link the decomposition discipline refuses, no intent verb writes it, and "carries out" is not among the four typed relations of ruling M23, so the remainder's planning also meets the question of whether an intent-to-decision edge needs a relation of its own.
