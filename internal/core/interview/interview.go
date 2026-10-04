@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -88,8 +89,9 @@ const RecordsRel = ".abcd/.work.local/interviews"
 // writer creates the records' directory inside it, never the tier itself.
 const localTierRel = ".abcd/.work.local"
 
-// homeRecordsRel is the records' directory below the user's home.
-const homeRecordsRel = ".abcd/interviews"
+// homeRecordsLeaf is the records' directory below abcd's user-level home,
+// reached through abcdhome, the one place the home's name is written.
+const homeRecordsLeaf = "interviews"
 
 // ErrNoLocalTier is Write's refusal for a repository with no local tier: a
 // record is never the thing that creates .abcd/ in a repository.
@@ -153,11 +155,11 @@ func Write(p Place, rec Record, at time.Time) (string, error) {
 		}
 		root, dir = r, filepath.Join(p.Repo, filepath.FromSlash(RecordsRel))
 	} else {
-		r, err := fsutil.EnsureHomeScope(p.Home, homeRecordsRel, 0o700)
+		r, err := fsutil.EnsureHomeScope(p.Home, abcdhome.Rel(homeRecordsLeaf), 0o700)
 		if err != nil {
 			return "", err
 		}
-		root, dir = r, filepath.Join(p.Home, filepath.FromSlash(homeRecordsRel))
+		root, dir = r, abcdhome.Path(p.Home, homeRecordsLeaf)
 	}
 	defer root.Close()
 

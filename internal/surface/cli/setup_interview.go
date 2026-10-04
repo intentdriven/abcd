@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -427,7 +428,7 @@ func writeSetupRecords(cwd string, answers []interview.Answer, w io.Writer) {
 	}
 	write(interview.Place{Repo: cwd}, interview.TargetRepository, interview.RecordsRel, repo)
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		write(interview.Place{Home: home}, interview.TargetMachine, "~/.abcd/interviews", machine)
+		write(interview.Place{Home: home}, interview.TargetMachine, abcdhome.Display("interviews"), machine)
 	} else if len(machine) > 0 {
 		fmt.Fprintf(w, "abcd ahoy install: the machine's answers were not recorded: no home directory resolves\n")
 	}
