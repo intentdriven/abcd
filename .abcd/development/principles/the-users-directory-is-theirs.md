@@ -44,7 +44,7 @@ refuses a configuration root the caller does not own, and only
 root-SHA-keyed `~/.abcd.noindex/worktrees/` lane, a verb that lists it, a verb that
 reclaims a merged worktree, a line on the status board — is
 [itd-2609091014076309](../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
-in drafts. Until it ships the rule is applied by hand: a session that needs a
+planned and unbuilt. Until it ships the rule is applied by hand: a session that needs a
 worktree puts it under `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, the location
 [adr-2610031751065746](../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
 sets, a verifier's

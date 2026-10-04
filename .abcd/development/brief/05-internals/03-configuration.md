@@ -416,8 +416,10 @@ apart. Three properties are load-bearing:
 ## The worktree store
 
 **Design target (itd-2609091014076309, `intents/planned/`; unbuilt).** No
-`worktree` verb exists in the shipped binary, and nothing in it creates or reads
-this store. What follows is the layout the intent commits to, at the location
+`worktree` verb exists in the shipped binary. The build loop is the one writer
+today: each lane's worktree is created at `<root-sha>/<run>-<lane>/` in this store
+(`implement/loop`, `WorktreeStoreRel`), and nothing lists or reclaims what it
+leaves. What follows is the layout the intent commits to, at the location
 [adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
 sets, on the rule
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
