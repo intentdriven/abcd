@@ -86,8 +86,9 @@ func stubRunner(dir string) int {
 	return 0
 }
 
-// stubOnPath puts the stub runner on PATH as claude and points it at a script
-// of receipts, one per turn (turn-1.json, turn-2.json, ...), returning the
+// stubOnPath puts the stub runner on PATH as claude, ahead of the rest of
+// PATH (the loop reads the tree through git), and points it at a script of
+// receipts, one per turn (turn-1.json, turn-2.json, ...), returning the
 // script's directory.
 func stubOnPath(t *testing.T, receipts ...string) string {
 	t.Helper()
@@ -104,7 +105,7 @@ func stubOnPath(t *testing.T, receipts ...string) string {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("PATH", bin)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv(stubScriptEnv, script)
 	return script
 }

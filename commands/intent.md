@@ -508,8 +508,12 @@ own machine's config (`roles.planning-interviewer.runner`, with that runner
 enabled under `runner.<name>`), once per question; it edits the record after
 each answer with its contract's tools, abcd draws each question and records
 each answer in the answers record in the local tier, and the verb ends by
-reporting the readiness gate. The plan act (step 10) stays the product
-thinker's, at the command line. With no route of the person's to a runner it
+reporting the readiness gate. The role may change the intent's record and
+nothing else: a turn that changes any other path stops the interview, exit 1,
+naming each (`refused: "unexpected_changes"` under `--json`, with every path
+the role changed in `changed_paths`); relay the paths to the person to read and
+restore. The plan act (step 10) stays the product thinker's, at the command
+line. With no route of the person's to a runner it
 refuses, exit 2, writing nothing. Never run it from this page in place of the
 interview above: in a host session the interview is yours.
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -54,11 +55,25 @@ func parsePlanningOutcome(raw json.RawMessage) (planningOutcome, error) {
 // what it says it changed, the answers record, and the readiness gate on the
 // record as the interview left it.
 type planningInterviewResult struct {
-	Intent  string             `json:"intent"`
-	Path    string             `json:"path"`
-	Summary string             `json:"summary"`
-	Record  string             `json:"answers_record"`
-	Ready   intent.ReadyResult `json:"ready"`
+	Intent  string `json:"intent"`
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
+	// ChangedPaths are the paths the role changed, relative to the
+	// repository's root: the intent's record, or none.
+	ChangedPaths []string           `json:"changed_paths"`
+	Record       string             `json:"answers_record"`
+	Ready        intent.ReadyResult `json:"ready"`
+}
+
+// planningChangesRefusal is the verb's --json refusal when the role changed a
+// path besides the intent's record: every path it changed, and the answers
+// record kept.
+type planningChangesRefusal struct {
+	Intent       string   `json:"intent"`
+	Refused      string   `json:"refused"`
+	Message      string   `json:"message"`
+	ChangedPaths []string `json:"changed_paths"`
+	Record       string   `json:"answers_record,omitempty"`
 }
 
 // newIntentInterviewCommand is `abcd intent interview <itd-N>`: the planning
@@ -66,8 +81,10 @@ type planningInterviewResult struct {
 // planning-interviewer, on the runner the person routed it to, writes each
 // question and edits the record with its contract's tools after each answer,
 // as the host agent does; abcd draws each question and records each answer,
-// then reports the readiness gate on the record. The plan act stays the
-// product thinker's, at the command line.
+// then reports the readiness gate on the record. The role may change the
+// intent's record and nothing else: a dispatch that changes any other path
+// stops the interview, exit 1, naming each. The plan act stays the product
+// thinker's, at the command line.
 func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 	var flags writtenFlags
 	cmd := &cobra.Command{
@@ -118,7 +135,7 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			w := &interview.Written{
 				Name: interview.Planning, Verb: "abcd intent interview", Role: interview.RolePlanningInterviewer,
 				Target: id, Repo: repoRoot, Task: interview.PlanningTask, Done: interview.PlanningDone,
-				Seed: seedJSON, Tools: planningTools,
+				Seed: seedJSON, Tools: planningTools, MayChange: []string{filepath.ToSlash(it.Path)},
 				CheckDone: func(raw json.RawMessage) error {
 					_, err := parsePlanningOutcome(raw)
 					return err
@@ -133,10 +150,22 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 				},
 			}
 			res, err := runWrittenInterview(cmd, w, flags)
+			recordRel := ""
+			if res.Record != "" {
+				recordRel = path.Join(interview.RecordsRel, filepath.Base(res.Record))
+			}
 			if err != nil {
 				var fin *finishError
 				if errors.As(err, &fin) {
 					return &exitError{Code: 1, Msg: "abcd intent interview: " + termsafe.Sanitize(fin.err.Error())}
+				}
+				var ee *exitError
+				if *asJSON && errors.As(err, &ee) && slices.ContainsFunc(res.Changed, func(p string) bool { return !slices.Contains(w.MayChange, p) }) {
+					ref := planningChangesRefusal{Intent: id, Refused: "unexpected_changes", Message: ee.Msg, ChangedPaths: res.Changed, Record: recordRel}
+					if rerr := render(cmd.OutOrStdout(), true, ref, nil); rerr != nil {
+						return rerr
+					}
+					return &exitError{Code: ee.Code}
 				}
 				return err
 			}
@@ -149,9 +178,9 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent interview: the record no longer reads after the interview: " + termsafe.Sanitize(scrubPaths(err))}
 			}
-			out := planningInterviewResult{Intent: id, Path: ready.Path, Summary: outcome.Summary, Ready: ready}
-			if res.Record != "" {
-				out.Record = path.Join(interview.RecordsRel, filepath.Base(res.Record))
+			out := planningInterviewResult{Intent: id, Path: ready.Path, Summary: outcome.Summary, ChangedPaths: res.Changed, Record: recordRel, Ready: ready}
+			if out.ChangedPaths == nil {
+				out.ChangedPaths = []string{}
 			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				verdict := "READY"

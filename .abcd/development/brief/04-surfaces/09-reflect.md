@@ -92,7 +92,14 @@ that fails the check is the runner's invalid answer: its fallback receipt goes
 into the record and, with no configured host to fall back to, the interview
 stops, exit 1, keeping the answers given. `done` is filed through the write
 below, with every floor and refusal unchanged; a thin answer the write refuses
-goes back to the role, at most twice, to ask the section's follow-up.
+goes back to the role, at most twice, to ask the section's follow-up. A
+fault of the write that is not one of its refusals exits 1, since the answers
+record stands by then.
+
+The role changes no file of the repository: abcd reads the working tree's state
+(git's listing of what differs from HEAD, each path's content hashed, the local
+tier left out) before and after each dispatch, and a dispatch that changes any
+path stops the interview, exit 1, naming each and keeping the answers given.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.

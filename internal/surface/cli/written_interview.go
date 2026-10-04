@@ -71,7 +71,8 @@ func (e *finishError) Unwrap() error { return e.err }
 // reads, the front door and the interrupt relay, and returns the loop's
 // result with its end mapped to an exit: the no-route refusal, a missing
 // local tier and a refused answers file exit 2, an interrupt exits 130, a
-// runner that did not answer exits 1, and a *finishError is handed back for
+// runner that did not answer or a role that changed a path its interview
+// does not grant exits 1, and a *finishError is handed back for
 // the verb to map. The answers record, when one was written, is named on
 // stderr.
 func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlags) (interview.WrittenResult, error) {
@@ -134,7 +135,11 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	msg := w.Verb + ": " + termsafe.SanitizeBlock(scrubPaths(err))
 	var noRoute *interview.NoRouteError
 	var fin *finishError
+	var changes *interview.UnexpectedChangesError
 	switch {
+	case errors.As(err, &changes):
+		// Ahead of an interrupt: what the role changed is the thing to read.
+		return res, &exitError{Code: 1, Msg: w.Verb + ": " + termsafe.SanitizeBlock(changes.Error())}
 	case errors.As(err, &noRoute):
 		return res, &exitError{Code: 2, Msg: termsafe.SanitizeBlock(err.Error())}
 	case errors.Is(err, interview.ErrNoLocalTier):

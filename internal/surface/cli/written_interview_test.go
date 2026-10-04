@@ -483,6 +483,8 @@ func TestIntentInterviewRecordsAndReportsReadiness(t *testing.T) {
 	routeMachine(t, interview.RolePlanningInterviewer)
 	script := interviewStub(t, stubQuestion("Product Q1", "Does the press release stand?", ""), `{"done":{"summary":"The press release stands as written."}}`)
 	r := planningRepo(t)
+	record := ".abcd/development/intents/drafts/itd-5-a-draft.md"
+	interviewStubAlso(t, script, 1, map[string]string{record: "---\nid: itd-5\nslug: a-draft\nkind: standalone\n---\n\n# A draft to plan\n\n## Press Release\n\n> A line the person confirmed.\n\n## Acceptance Criteria\n\n- Given a list, when it is long, then it narrows.\n"})
 	stdout := tempStream(t, "stdout")
 	stderr := tempStream(t, "stderr")
 	in, w := pipeWith(t, "")
@@ -502,7 +504,7 @@ func TestIntentInterviewRecordsAndReportsReadiness(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	if res.Intent != "itd-5" || res.Summary != "The press release stands as written." || res.Ready.Bucket != "drafts" ||
-		!strings.HasPrefix(res.Record, interview.RecordsRel+"/planning-") {
+		!strings.HasPrefix(res.Record, interview.RecordsRel+"/planning-") || !reflect.DeepEqual(res.ChangedPaths, []string{record}) {
 		t.Fatalf("result %+v", res)
 	}
 	if rec := readInterviewRecord(t, r.Root()); rec.Interview != interview.Planning || rec.Target != "itd-5" || len(rec.Answers) != 1 {
@@ -630,5 +632,74 @@ func TestReflectInterviewWriterFaultExitsOneKeepingTheRecord(t *testing.T) {
 	}
 	if rec := readInterviewRecord(t, r.Root()); len(rec.Answers) != 2 {
 		t.Fatalf("record %+v", rec)
+	}
+}
+
+// planningAnswersFileQ1Q2 answers the planning interview's first two
+// questions.
+func planningAnswersFileQ1Q2(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "answers.json")
+	if err := os.WriteFile(p, []byte(`{"schema_version":1,"interview":"planning","answers":[{"id":"Q1","value":"kept"},{"id":"Q2","value":"kept"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestIntentInterviewRoleChangingAnotherFileIsRefused: the planning role may
+// change the intent's record and nothing else. A turn that also writes a
+// file elsewhere in the repository (a hook script a contributed criterion
+// asked for) stops the interview, exit 1, naming it, with the answer given
+// before it recorded and no readiness reported; under --json the refusal
+// carries every path the role changed.
+func TestIntentInterviewRoleChangingAnotherFileIsRefused(t *testing.T) {
+	for _, asJSON := range []bool{false, true} {
+		t.Run(fmt.Sprintf("json=%v", asJSON), func(t *testing.T) {
+			routeMachine(t, interview.RolePlanningInterviewer)
+			script := interviewStub(t, stubQuestion("Product Q1", "Does the press release stand?", ""),
+				stubQuestion("Product Q2", "Does the first criterion stand?", ""), `{"done":{"summary":"x"}}`)
+			r := planningRepo(t)
+			record := ".abcd/development/intents/drafts/itd-5-a-draft.md"
+			interviewStubAlso(t, script, 1, map[string]string{record: "---\nid: itd-5\nslug: a-draft\nkind: standalone\n---\n\n# A draft to plan\n"})
+			interviewStubAlso(t, script, 2, map[string]string{".githooks/pre-push": "#!/bin/sh\nexit 0\n"})
+			stdout, stderr := tempStream(t, "stdout"), tempStream(t, "stderr")
+			in, w := pipeWith(t, "")
+			_ = w.Close()
+			cmd := NewRootCommand()
+			cmd.SetIn(in)
+			cmd.SetOut(stdout)
+			cmd.SetErr(stderr)
+			args := []string{"intent", "interview", "itd-5", "--answers", planningAnswersFileQ1Q2(t)}
+			if asJSON {
+				args = append(args, "--json")
+			}
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			errText, _ := os.ReadFile(stderr.Name())
+			out, _ := os.ReadFile(stdout.Name())
+			if exitCodeOf(err) != 1 {
+				t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, errText)
+			}
+			if asJSON {
+				var ref planningChangesRefusal
+				if jerr := json.Unmarshal(out, &ref); jerr != nil {
+					t.Fatalf("%v\n%s", jerr, out)
+				}
+				if ref.Refused != "unexpected_changes" || !reflect.DeepEqual(ref.ChangedPaths, []string{record, ".githooks/pre-push"}) ||
+					!strings.Contains(ref.Message, ".githooks/pre-push") || !strings.HasPrefix(ref.Record, interview.RecordsRel+"/planning-") {
+					t.Fatalf("refusal %+v", ref)
+				}
+			} else {
+				if !strings.Contains(err.Error(), ".githooks/pre-push") || strings.Contains(err.Error(), record) {
+					t.Fatalf("the refusal does not name the one ungranted path alone: %v", err)
+				}
+				if strings.Contains(string(out), "READY") {
+					t.Fatalf("readiness was reported after the refusal:\n%s", out)
+				}
+			}
+			if rec := readInterviewRecord(t, r.Root()); len(rec.Answers) != 1 {
+				t.Fatalf("record %+v", rec)
+			}
+		})
 	}
 }

@@ -107,6 +107,11 @@ type Written struct {
 	// Tools are the tools the role's contract grants. Write is added, since
 	// the role writes its receipt.
 	Tools []string
+	// MayChange are the repository paths, slash-separated and relative to
+	// Repo, the role's contract lets it change. A dispatch that changes any
+	// other path outside the local tier stops the interview with an
+	// *UnexpectedChangesError naming each.
+	MayChange []string
 	// Verbs is the binary's verb list, for the limits check's register rule.
 	Verbs []string
 	// Config is the runner configuration read at the start.
@@ -143,6 +148,9 @@ type WrittenResult struct {
 	Done      json.RawMessage
 	Answers   []Answer
 	Fallbacks []runner.FallbackReceipt
+	// Changed are the paths the role changed, relative to the repository's
+	// root, sorted.
+	Changed []string
 }
 
 // NoRouteError is the refusal before anything runs: the role's route is the
@@ -255,6 +263,10 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	if !ok {
 		return WrittenResult{}, ErrNoLocalTier
 	}
+	pre, err := readTree(w.Repo)
+	if err != nil {
+		return WrittenResult{}, err
+	}
 	now := w.Now
 	if now == nil {
 		now = time.Now
@@ -294,6 +306,11 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	asked := 0
 	again := ""
 	for turn := 1; turn <= max; turn++ {
+		if turn > 1 {
+			if pre, err = readTree(w.Repo); err != nil {
+				return end(err)
+			}
+		}
 		briefRel, receiptRel := fmt.Sprintf("turn-%d.brief.md", turn), fmt.Sprintf("turn-%d.receipt.json", turn)
 		if err := fsutil.CreateExclusiveIn(root, briefRel, []byte(w.brief(turn, asked, res.Answers, again)), 0o600); err != nil {
 			return end(fmt.Errorf("interview: the turn's brief was not written: %w", err))
@@ -345,6 +362,9 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		})
 		stopped := interrupted()
 		stop()
+		if cerr := w.heldToContract(pre, &res); cerr != nil {
+			return end(errors.Join(cerr, err))
+		}
 		if stopped {
 			return end(errors.Join(ErrInterrupted, err))
 		}
@@ -385,6 +405,30 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		}
 	}
 	return end(fmt.Errorf("interview: the %s interview reached its bound of %d turns without an outcome", w.Name, max))
+}
+
+// heldToContract reads the tree after a dispatch and adds what the role
+// changed since pre to res.Changed, returning an *UnexpectedChangesError when
+// any of it is a path the interview does not let the role change.
+func (w *Written) heldToContract(pre treeState, res *WrittenResult) error {
+	post, err := readTree(w.Repo)
+	if err != nil {
+		return err
+	}
+	var unexpected []string
+	for _, p := range changedSince(pre, post) {
+		if !slices.Contains(res.Changed, p) {
+			res.Changed = append(res.Changed, p)
+		}
+		if !slices.Contains(w.MayChange, p) {
+			unexpected = append(unexpected, p)
+		}
+	}
+	slices.Sort(res.Changed)
+	if len(unexpected) > 0 {
+		return &UnexpectedChangesError{Role: w.Role, Paths: unexpected}
+	}
+	return nil
 }
 
 // clearReceipt makes sure nothing stands at a turn's receipt path when a

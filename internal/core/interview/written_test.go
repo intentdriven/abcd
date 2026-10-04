@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // routedToClaude is the machine of a person who routed the retrospective's
@@ -48,10 +50,11 @@ func stubAsk(chip, ask string) string {
 
 const stubDone = `{"done":{"summary":"two questions answered"}}`
 
-// writtenRun is one AI-written interview's set-up: a repository with a local
-// tier, a home holding the machine's runner configuration, and the run.
+// writtenRun is one AI-written interview's set-up: a git repository with a
+// local tier, a home holding the machine's runner configuration, and the run.
 type writtenRun struct {
 	repo, home string
+	git        *gittest.Repo
 	w          *Written
 	asked      []question.Ask
 	finished   []json.RawMessage
@@ -59,7 +62,8 @@ type writtenRun struct {
 
 func newWrittenRun(t *testing.T, machine string) *writtenRun {
 	t.Helper()
-	r := &writtenRun{repo: t.TempDir(), home: t.TempDir()}
+	g := gittest.NewRepo(t)
+	r := &writtenRun{repo: g.Root(), home: t.TempDir(), git: g}
 	if err := os.MkdirAll(filepath.Join(r.repo, ".abcd", ".work.local"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -490,5 +494,64 @@ func TestBackticksInTheSeedAndAnswersNeverCloseTheBriefsFences(t *testing.T) {
 	}
 	if !strings.Contains(brief, strings.Repeat(backtickEscape, 4)) {
 		t.Fatalf("the injected fence is not carried escaped:\n%s", brief)
+	}
+}
+
+// TestARoleChangingAPathItIsNotGrantedStopsTheInterview: the role's edits are
+// held to the paths the interview grants it. A granted path changed is
+// reported; a tracked file already changed before the run and changed again,
+// and an untracked file, stop the interview after that dispatch, each named,
+// nothing more drawn, and the answer given before it recorded. The local
+// tier, where abcd keeps the turns, is not watched.
+func TestARoleChangingAPathItIsNotGrantedStopsTheInterview(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	r.git.Write("tracked.md", "committed\n")
+	r.git.Write("granted.md", "committed\n")
+	r.git.Commit("two files")
+	r.git.Write("tracked.md", "changed before the run\n")
+	r.w.MayChange = []string{"granted.md"}
+	stubAlso(t, script, 1, map[string]string{"granted.md": "the role's edit\n", ".abcd/.work.local/scratch/note.md": "local\n"})
+	stubAlso(t, script, 2, map[string]string{"tracked.md": "changed by the role\n", "new/untracked.txt": "planted\n"})
+	res, err := r.w.Run(context.Background())
+	var uc *UnexpectedChangesError
+	if !errors.As(err, &uc) || !slices.Equal(uc.Paths, []string{"new/untracked.txt", "tracked.md"}) {
+		t.Fatalf("err = %v, want the two ungranted paths named", err)
+	}
+	for _, p := range uc.Paths {
+		if !strings.Contains(err.Error(), p) {
+			t.Errorf("the refusal does not name %s: %v", p, err)
+		}
+	}
+	if len(r.asked) != 1 || len(r.finished) != 0 {
+		t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the change", len(r.asked), len(r.finished))
+	}
+	if !slices.Equal(res.Changed, []string{"granted.md", "new/untracked.txt", "tracked.md"}) {
+		t.Fatalf("changed %v", res.Changed)
+	}
+	if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
+		t.Fatalf("record %+v", rec)
+	}
+}
+
+// TestChangesBetweenDispatchesAreNotTheRoles: the tree is read around each
+// dispatch, so a file the person changes while a question is put to them is
+// not laid at the role's door.
+func TestChangesBetweenDispatchesAreNotTheRoles(t *testing.T) {
+	stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	answer := r.w.Answer
+	r.w.Answer = func(a question.Ask) ([]Reply, error) {
+		if err := os.WriteFile(filepath.Join(r.repo, "person.md"), []byte("the person's own edit\n"), 0o600); err != nil {
+			return nil, err
+		}
+		return answer(a)
+	}
+	res, err := r.w.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Changed) != 0 || len(r.finished) != 1 {
+		t.Fatalf("changed %v, finished %d", res.Changed, len(r.finished))
 	}
 }
