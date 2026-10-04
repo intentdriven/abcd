@@ -126,6 +126,25 @@ func TestWriteRefusesAPlainSKKeyFilename(t *testing.T) {
 	mustNotCarry(t, "sources registry", SourcesIndexPath(repo), key)
 }
 
+// TestWriteAcceptsASlugEndingInSK: a slug such as task-<commit sha> is a word
+// ending in "sk" followed by '-' and a long alphanumeric run, the shape the
+// plain sk- rule matches once its leading \b is dropped for the glued sweep. It
+// is an ordinary page name and is written under its own name.
+func TestWriteAcceptsASlugEndingInSK(t *testing.T) {
+	repo := t.TempDir()
+	slug := "task-" + testsecret.SyntheticHex(63, 40)
+	src := writeSource(t, repo, "notes.md", "Rotate keys every 24 hours.\n")
+
+	if _, err := Ingest(IngestRequest{
+		RepoRoot: repo, Source: src, Distiller: secretSlugDistiller(slug), Now: fixedNow,
+	}); err != nil {
+		t.Fatalf("a slug carrying a task id was refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(Dir(repo), secretSlugPage(slug))); err != nil {
+		t.Fatalf("the page was not written under its own name: %v", err)
+	}
+}
+
 // TestFilenameBarIsHardFailOnly is the anti-vacuity guard. An implementation
 // that reused scanner.BlockingResidual — the bar every other write-side rule
 // holds — would refuse this ordinary page, because net_device_hostname matches

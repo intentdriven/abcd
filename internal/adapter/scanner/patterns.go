@@ -53,6 +53,46 @@ var (
 // its first 51 bytes, and the plain rule's span is what masks the rest.
 func openAILegacyKeyWhole(m string) bool { return openAILegacyKeyWholeRe.MatchString(m) }
 
+// skAfterWord reports whether a plain sk- match is the tail of a word
+// ending in "sk", which only the glued sweep can see: the bounded pattern's
+// leading \b already refuses any word character before it. The sweep drops
+// that anchor, so task-<commit sha>, disk-<serial>, a desk-<id> path segment
+// and a word glued straight onto a run read as a key, and every redactor masked
+// them.
+//
+// The skip needs the whole alphanumeric run before the match, back to the
+// nearest '_' or non-word byte, to be shaped like a word — lowercase letters,
+// an uppercase first letter at most, no more than maxSKWordLen of them — and
+// not merely a lowercase letter right before it. A key glued behind another
+// token is recovered at the junction with that token, whose tail is a random
+// run; one that happens to end in a lowercase letter would otherwise drop the
+// key and leave its body raw beside a masked neighbour. The glue a key is
+// pasted behind ('_', a digit, an uppercase letter: my_, v2, X) is never
+// word-shaped, so it is still reported, while a page name's my_task-<sha> is
+// the word "task" after its '_'.
+func skAfterWord(line string, start, _ int) bool {
+	i := start
+	for i > 0 && start-i <= maxSKWordLen && line[i-1] != '_' && isWordByte(line[i-1]) {
+		i--
+	}
+	scanMeter.charge(stageSkipAt, start-i+1)
+	if i == start || start-i > maxSKWordLen {
+		return false
+	}
+	for k := i; k < start; k++ {
+		c := line[k]
+		if c >= 'a' && c <= 'z' || k == i && c >= 'A' && c <= 'Z' {
+			continue
+		}
+		return false
+	}
+	return line[start-1] >= 'a' && line[start-1] <= 'z'
+}
+
+// maxSKWordLen bounds the word skAfterWord accepts before a plain sk-
+// match: a longer run is not read as a word, and the walk back stops there.
+const maxSKWordLen = 64
+
 // pemPrivateKeyPattern assembles the bundled pem_private_key regex from named
 // pieces: the two armour markers (the five-dash RFC 7468 / OpenSSH / PGP form,
 // and the four-dash RFC 4716 form an SSH2 private key carries), the separator a
@@ -247,11 +287,13 @@ func DefaultPatterns() []Pattern {
 			// sk-ant-, sk-proj-, sk-svcacct-, sk-admin- and sk-or-v1- break the
 			// run with a '-' before it starts, and a legacy key, all
 			// alphanumerics, is skipped here so it is reported once, as
-			// token:openai_legacy.
+			// token:openai_legacy. A match that is the tail of a word ending in
+			// "sk" is skipped (skAfterWord).
 			Name: "sk_key_generic", Kind: "token:sk_generic", Label: "API key (plain sk-)",
 			Re:         regexp.MustCompile(`\bsk-[A-Za-z0-9]{32,}`),
 			Severity:   SeverityWarn,
 			Skip:       openAILegacyKeyWhole,
+			SkipAt:     skAfterWord,
 			Suggestion: "Review — a plain sk- key from an OpenAI-compatible service; if it is one, DELETE AND ROTATE",
 		},
 		{

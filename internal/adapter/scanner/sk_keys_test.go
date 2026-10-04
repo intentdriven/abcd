@@ -205,6 +205,64 @@ func TestGluedPlainSKKeyNeverLeavesRaw(t *testing.T) {
 	}
 }
 
+// TestWordEndingInSKIsNotAPlainKey — from the re-check of
+// iss-2610040202190813. The glued sweep drops the plain rule's leading \b, so
+// any word ending in "sk" followed by '-' and 32 or more alphanumerics read as
+// a glued key: a task id carrying a commit sha, a disk serial, a path segment,
+// a lowercase word glued straight onto the run. Each was reported, masked by
+// Redact and rewritten by ScrubOutbound. A word before "sk-" is never the '_',
+// digit or uppercase glue a key is pasted behind, so the plain rule skips a
+// match that ends a word; the same body glued behind "my_", "9" or "X" is still
+// reported.
+func TestWordEndingInSKIsNotAPlainKey(t *testing.T) {
+	sha := testsecret.SyntheticHex(70, 40)
+	body := testsecret.Synthetic(71, 40)
+	for _, line := range []string{
+		"see task-" + sha + " for the run",
+		"the array lists disk-" + strings.Repeat("0123456789", 4)[:32] + " as spare",
+		"open https://example.com/board/desk-" + testsecret.SyntheticHex(72, 40) + "/view",
+		"a table cell Samaritaansk-" + body + " sits here",
+	} {
+		fs := scanLine(line)
+		if got := tokenFindings(fs); len(got) != 0 {
+			t.Errorf("%q: a word ending in sk read as a key: %+v", line, got)
+		}
+		if out, _ := Redact(line, fs); out != line {
+			t.Errorf("%q: Redact rewrote ordinary text to %q", line, out)
+		}
+		got, _, err := ScrubOutbound(t.TempDir(), line+"\n", "pr-body")
+		if err != nil || got != line+"\n" {
+			t.Errorf("%q: ScrubOutbound returned %q, %v; want the text unchanged", line, got, err)
+		}
+	}
+	for _, glue := range []string{"my_", "9", "X"} {
+		line := "set " + glue + "sk-" + body + " now"
+		if !hasKind(scanLine(line), "token:sk_generic") {
+			t.Errorf("%q glued: the plain key is no longer reported", glue)
+		}
+	}
+}
+
+// TestKeyGluedBehindATokenEndingInLowercaseIsMasked: a plain key glued straight
+// after another token is recovered at their junction, where the byte before it
+// is the other token's last character. A skip keyed on that one byte being a
+// lowercase letter dropped the key and left its body raw beside the masked
+// neighbour; the word skip reads the whole run before the match, and a token's
+// run is never word-shaped.
+func TestKeyGluedBehindATokenEndingInLowercaseIsMasked(t *testing.T) {
+	body := testsecret.Synthetic(73, 40)
+	for _, n := range []int{35, 36} {
+		line := "v gh" + "p_" + testsecret.Synthetic(74, n) + "a" + "sk-" + body + " end"
+		fs := scanLine(line)
+		if !hasKind(fs, "token:sk_generic") {
+			t.Errorf("%d-char neighbour: the abutting plain key was dropped: %+v", n, fs)
+		}
+		if out, _ := Redact(line, fs); strings.Contains(out, body[4:20]) {
+			t.Errorf("%d-char neighbour: the abutting plain key survived redaction: %q", n, out)
+		}
+	}
+}
+
 // TestEveryWriteBackstopTreatsAWarnTokenAsASecret: the stage-two backstops a
 // committed store, a returned refusal and an outbound artefact share refuse a
 // surviving token whatever its severity. A warn span of no secret class still
