@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -173,9 +172,9 @@ func TestRawSessionLeavesNothingBehind(t *testing.T) {
 		if !ws.Exited() || ws.ExitStatus() != 2 {
 			t.Errorf("wait status %v, want the panic's exit 2; the terminal shows:\n%q", ws, p.Output())
 		}
-		if out := p.Output(); !strings.Contains(out, "forced inside a hook") {
-			t.Errorf("the panic did not reach the terminal:\n%q", out)
-		}
+		// The child has exited, but the drain may not have read its last
+		// bytes yet: wait for the message rather than reading once.
+		p.WaitFor(t, 0, "forced inside a hook", 20*time.Second)
 		if after := attrs(t, p.Terminal); !ptytest.Same(after, before) {
 			t.Errorf("after the panic the terminal is %+v, want %+v", after, before)
 		}
