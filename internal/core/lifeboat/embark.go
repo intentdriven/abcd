@@ -602,12 +602,14 @@ func markerFile(targetAbs string) (file, note string) {
 // embarkMarker predicts (dryRun) or performs the CURRENT abcd marker block in the
 // conventions file the target's setup chose (markerFile) via ahoy.EnsureMarker,
 // then maps the outcome to a MarkerAction. Probe and from both come through
-// here, so a probe cannot mispredict the file or the action.
+// here, so a probe cannot mispredict the file or the action: the dry run asks
+// the write's own questions, of the file and of the folder that must take its
+// lock and temporary file, without writing (iss-2610032202263648).
 // The install/refresh distinction is derived from whether the file already
 // carried a block (via the exported ahoy.StripMarkerBlock), since EnsureMarker's
-// signature reports only whether it changed. No chosen file, and a
-// symlinked/unwritable one, is MarkerActionSkip (non-fatal — the records still
-// land).
+// signature reports only whether it changed. No chosen file, a
+// symlinked/unreadable/unwritable one, and a root that cannot take a new file,
+// is MarkerActionSkip (non-fatal — the records still land).
 func embarkMarker(targetAbs string, dryRun bool) MarkerResult {
 	file, note := markerFile(targetAbs)
 	if file == "" {

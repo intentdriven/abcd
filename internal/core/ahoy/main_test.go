@@ -15,5 +15,8 @@ func TestMain(m *testing.M) {
 	currentVintage = func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}
 	}
+	// No test runs the machine's own agent tool to read its version; the
+	// version test puts the real reading back over a fake command.
+	NoHostVersionForTest()
 	os.Exit(m.Run())
 }
