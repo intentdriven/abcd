@@ -207,7 +207,11 @@ Where it is checked, before any write:
   executable plugin-root binary, the wrapper skips the bootstrap and runs the
   binary, which renders the stop in its own form. With no plugin-root binary, the wrapper
   provisions nothing, reads no path-entry record, prints the line on stderr
-  and exits as its missing-binary branch does today. The PATH fallback reads
+  and exits as its missing-binary branch does today, except the PreToolUse
+  wrapper, which exits 2, the blocking status: a plugin update lands in a fresh
+  root with no binary and the stop provisions none, so a non-blocking exit there
+  would run every command unguarded until the rename (open question 3; found by
+  the step's security review, 2026-10-04). The PATH fallback reads
   `~/.abcd.noindex/path-entry`, and its symlink refusal names
   `~/.abcd.noindex`.
 - **`hooks/bootstrap.sh`**, which a person can also run by hand: right after

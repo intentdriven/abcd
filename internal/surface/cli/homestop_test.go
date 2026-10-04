@@ -242,6 +242,25 @@ func TestOldHomeStopsEveryHook(t *testing.T) {
 			t.Fatalf("exit %d; only the exact rename command is admitted", code)
 		}
 	})
+	t.Run("guard hook refuses the rename padded with a space the shell keeps", func(t *testing.T) {
+		// A shell drops only its own white space around a command; a Unicode
+		// space it keeps would rename the folder to a name with an invisible
+		// character in it, and the stop would lift.
+		for _, pad := range []string{"\u00a0", "\u3000", "\u2003", "\u0085"} {
+			for _, cmd := range []string{abcdhome.RenameCommand + pad, pad + abcdhome.RenameCommand} {
+				code, _, _ := stopRun(t, home, guardPayload(t, repo, cmd), "guard", "hook")
+				if code != 2 {
+					t.Errorf("exit %d for %q; only the exact rename command is admitted", code, cmd)
+				}
+			}
+		}
+	})
+	t.Run("guard hook admits the rename with a shell's own white space around it", func(t *testing.T) {
+		code, _, _ := stopRun(t, home, guardPayload(t, repo, " \t"+abcdhome.RenameCommand+"\n"), "guard", "hook")
+		if code != 0 {
+			t.Fatalf("exit %d; the rename with surrounding spaces, tabs or newlines is the rename", code)
+		}
+	})
 	t.Run("guard hook admits the rename command", func(t *testing.T) {
 		code, out, errOut := stopRun(t, home, guardPayload(t, repo, abcdhome.RenameCommand), "guard", "hook")
 		if code != 0 || out != "" || errOut != "" {

@@ -17,8 +17,12 @@ import (
 // stop to a plugin-root binary when there is one, and says the line itself
 // when there is none.
 
-// stopWrapperEvents is every hooks.json event and the status its missing-binary
-// branch exits with, which is what the stop exits with when no binary can say it.
+// stopWrapperEvents is every hooks.json event and the status the stop exits with
+// when no binary can say it: the missing-binary branch's status, except for
+// PreToolUse, where the stop blocks (exit 2). A plugin update lands in a fresh
+// root with no binary and the stop provisions none, so a non-blocking exit
+// there would run every command unguarded until the rename (the product
+// thinker's ruling, spec open question 3: block until renamed).
 var stopWrapperEvents = []struct {
 	event string
 	code  int
@@ -26,7 +30,7 @@ var stopWrapperEvents = []struct {
 }{
 	{"UserPromptSubmit", 1, []string{"hook prompt-router"}},
 	{"SessionStart", 2, []string{"hook session-start", "hook prompt-router-reset"}},
-	{"PreToolUse", 1, []string{"guard hook"}},
+	{"PreToolUse", 2, []string{"guard hook"}},
 	{"PreCompact", 1, []string{"hook prompt-router-reset"}},
 	{"SessionEnd", 1, []string{"hook session-end"}},
 	{"SubagentStop", 1, []string{"hook subagent-stop"}},
