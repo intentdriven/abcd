@@ -145,3 +145,10 @@ func resolvePointer(home, name string, p Pointer) (string, error) {
 	}
 	return v, nil
 }
+
+// ResolvePointer is resolvePointer for a caller outside the store: a setup
+// that lists a service's models with the external key before the walkthrough
+// verifies it (spc-2610031241482088). It refuses what resolvePointer refuses.
+func ResolvePointer(home, name string, p Pointer) (string, error) {
+	return resolvePointer(home, name, p)
+}

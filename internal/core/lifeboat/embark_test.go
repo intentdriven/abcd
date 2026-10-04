@@ -30,7 +30,7 @@ import (
 //   - NO abcd marker block in any record (so copyRecord's strip-on-pack is a
 //     no-op and packed bytes == source bytes → the P2 self-closure has no
 //     exists-differs), and
-//   - a CLAUDE.md that already holds the CURRENT marker block (so EnsureMarker is
+//   - an AGENTS.md that already holds the CURRENT marker block (so EnsureMarker is
 //     a no-op on a byte-copy of the source, the P2 marker-idempotence leg), and
 //   - NO .abcd/work/DECISIONS.md — the abandoned.json re-derivation (P1) must draw
 //     only from embarked families (a superseded intent, a wontfix issue, an ADR
@@ -88,7 +88,7 @@ func embarkableSourceFixture(t *testing.T) string {
 
 	// A conventions router with the CURRENT abcd marker block, so a byte-copy of
 	// the source needs no marker write (P2).
-	write("CLAUDE.md", "# Project\n\nInvariants: the core never writes to stdout.\n")
+	write("AGENTS.md", "# Project\n\nInvariants: the core never writes to stdout.\n")
 	run := func(args ...string) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = repo
@@ -101,9 +101,9 @@ func embarkableSourceFixture(t *testing.T) string {
 			t.Fatalf("git %v: %v: %s", args, err, out)
 		}
 	}
-	// Install the CURRENT marker block into CLAUDE.md via the shipped one-code-path.
-	if _, err := ahoy.EnsureMarker(filepath.Join(repo, "CLAUDE.md"), false); err != nil {
-		t.Fatalf("seed CLAUDE.md marker: %v", err)
+	// Install the CURRENT marker block into AGENTS.md via the shipped one-code-path.
+	if _, err := ahoy.EnsureMarker(filepath.Join(repo, "AGENTS.md"), false); err != nil {
+		t.Fatalf("seed AGENTS.md marker: %v", err)
 	}
 	run("init", "-q")
 	run("add", "-A")
@@ -572,10 +572,10 @@ func TestEmbarkFromRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Target CLAUDE.md carries the CURRENT marker block (dry-run predicts no change).
-	changed, err := ahoy.EnsureMarker(filepath.Join(target, "CLAUDE.md"), true)
+	// Target AGENTS.md carries the CURRENT marker block (dry-run predicts no change).
+	changed, err := ahoy.EnsureMarker(filepath.Join(target, "AGENTS.md"), true)
 	if err != nil || changed {
-		t.Errorf("target CLAUDE.md not current after embark: changed=%v err=%v", changed, err)
+		t.Errorf("target AGENTS.md not current after embark: changed=%v err=%v", changed, err)
 	}
 
 	// Source tree byte-identical after the whole trip.

@@ -120,7 +120,10 @@ abcd's question is held to the field limits (`question.CheckLimits` over
 asks before a repository is managed, and the limits need no store. The
 addressee the product thinker's register rule reads is the mode's where a mode
 store exists, and the chip's role word where none does; the binary's verb list
-is read from the command tree and passed in. Every finding refuses at once with
+is read from the command tree and passed in. The row limit is estimated with
+the host's frame measured at 80 by 24, and a side preview on any option is
+refused, because the host hides every option's description while a preview
+shows (the layout intent's decision 20). Every finding refuses at once with
 the blocking status: one head line, "Blocked by the abcd guard (question tool):
 N part(s) of this question break abcd's asking rules; fix each and ask again.",
 then one line per finding naming the tab, the part, the value, the limit and

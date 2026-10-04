@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -251,7 +252,7 @@ func TestStartAgainResumesTheRunItsOwnLaneChanged(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wt := filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees", "0123abcd", "lane-1")
+		wt := abcdhome.Path(os.Getenv("HOME"), "worktrees", "0123abcd", "lane-1")
 		if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
 			t.Fatal(err)
 		}

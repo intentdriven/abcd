@@ -4,9 +4,10 @@ package history
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestLocalTranscriptRootsBehindASymlinkedAbcdHomePullNothingIn: the
@@ -19,7 +20,7 @@ func TestLocalTranscriptRootsBehindASymlinkedAbcdHomePullNothingIn(t *testing.T)
 	dotfiles := t.TempDir()
 	declareLocal(t, dotfiles, repo, 0o600)
 	home := t.TempDir()
-	if err := os.Symlink(filepath.Join(dotfiles, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(abcdhome.Path(dotfiles), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)

@@ -7,13 +7,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // planted writes a record file straight into the store, bypassing Capture, so a
 // test can pin how a record written by an EARLIER binary reads back.
 func planted(t *testing.T, home, name, content string) string {
 	t.Helper()
-	p := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records", name)
+	p := abcdhome.Path(home, "transcripts", testRootSHA, "records", name)
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestLineageFieldsAreRedactedWithTheBody(t *testing.T) {
 	user := "zzlineageuser42"
 	home := filepath.Join(base, user)
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", testRootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +211,7 @@ func TestBlockingSpanInAgentTypeRefusesTheWrite(t *testing.T) {
 		t.Fatalf("Capture = (wrote=%v, err=%v); a surviving blocking span in agent_type must refuse the write",
 			res.Wrote, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"))
+	entries, err := os.ReadDir(abcdhome.Path(home, "transcripts", testRootSHA, "records"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -84,7 +85,7 @@ func TestFileLandsInTheMachineStoreOnly(t *testing.T) {
 	if !strings.HasPrefix(filedRep.ID, "rpt-260923100000") {
 		t.Errorf("id = %q, want rpt-<received stamp>", filedRep.ID)
 	}
-	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "inbox"))
+	entries, err := os.ReadDir(abcdhome.Path(home, "inbox"))
 	if err != nil {
 		t.Fatalf("inbox: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestFileLandsInTheMachineStoreOnly(t *testing.T) {
 	if len(names) != 1 || !reportNameRe.MatchString(names[0]) || !strings.Contains(names[0], sender.Key) {
 		t.Fatalf("inbox holds %q, want one <stamp>-<sender-key>.md", names)
 	}
-	info, err := os.Stat(filepath.Join(home, ".abcd", "inbox", names[0]))
+	info, err := os.Stat(abcdhome.Path(home, "inbox", names[0]))
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Errorf("report mode = %v (%v), want 0600", info.Mode().Perm(), err)
 	}
@@ -152,7 +153,7 @@ func TestCountOnAnAbsentInboxIsZero(t *testing.T) {
 	if err != nil || tally.Reports != 0 || tally.Senders != 0 {
 		t.Fatalf("Count = %+v, %v", tally, err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home, "inbox")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("reading created the inbox (%v)", err)
 	}
 }
@@ -161,7 +162,7 @@ func TestCountOnAnAbsentInboxIsZero(t *testing.T) {
 // later template is listed, naming its version, and is not dropped.
 func TestUnknownVersionIsListedUnreadable(t *testing.T) {
 	home := sandbox(t, time.Date(2026, 9, 23, 11, 0, 0, 0, time.UTC))
-	dir := filepath.Join(home, ".abcd", "inbox")
+	dir := abcdhome.Path(home, "inbox")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +349,7 @@ func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 	}
 	// Occupy the move's destination with a non-empty directory, so the rename fails.
 	name := filepath.Base(f.Path)
-	blocker := filepath.Join(home, ".abcd", "inbox", "promoted", name)
+	blocker := abcdhome.Path(home, "inbox", "promoted", name)
 	if err := os.MkdirAll(filepath.Join(blocker, "x"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +423,7 @@ func TestPromoteRefusesOutsideAbcdsOwnCheckout(t *testing.T) {
 	if st := other.Git("status", "--porcelain", "--untracked-files=all"); st != "" {
 		t.Errorf("a refused promotion wrote into the repository:\n%s", st)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox", promotedLogName)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home, "inbox", promotedLogName)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a refused promotion recorded itself (%v)", err)
 	}
 	if tally, _ := Count(); tally.Reports != 1 {
@@ -509,7 +510,7 @@ func TestACaptureRefusalIsARefusal(t *testing.T) {
 	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
 		t.Errorf("the refused capture wrote through the link: %v", entries)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox", promotedLogName)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home, "inbox", promotedLogName)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a refused promotion recorded itself (%v)", err)
 	}
 	if tally, _ := Count(); tally.Reports != 1 {
@@ -555,10 +556,10 @@ func TestAnInboxPathThatIsNotARealDirectoryIsARefusal(t *testing.T) {
 		t.Run(occupant, func(t *testing.T) {
 			home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
 			ledger := abcdCheckout(t)
-			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			inbox := filepath.Join(home, ".abcd", "inbox")
+			inbox := abcdhome.Path(home, "inbox")
 			elsewhere := t.TempDir()
 			switch occupant {
 			case "symlink":
@@ -598,7 +599,7 @@ func TestAnInboxPathThatIsNotARealDirectoryIsARefusal(t *testing.T) {
 // case), the inbox, or its promoted folder — so the reader is sent to the path
 // that is wrong, not to an inbox that may not exist (iss-2609261106286306).
 func TestAnInboxRefusalNamesTheLevelItRefused(t *testing.T) {
-	for _, level := range []string{"", ".abcd", ".abcd/inbox", ".abcd/inbox/promoted"} {
+	for _, level := range []string{"", abcdhome.Rel(), abcdhome.Rel("inbox"), abcdhome.Rel("inbox", "promoted")} {
 		t.Run("~/"+level, func(t *testing.T) {
 			home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
 			elsewhere := t.TempDir()
@@ -665,10 +666,10 @@ func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
 		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
 		file(t)
 		dotfiles := filepath.Join(t.TempDir(), "abcd")
-		if err := os.Rename(filepath.Join(home, ".abcd"), dotfiles); err != nil {
+		if err := os.Rename(abcdhome.Path(home), dotfiles); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(dotfiles, filepath.Join(home, ".abcd")); err != nil {
+		if err := os.Symlink(dotfiles, abcdhome.Path(home)); err != nil {
 			t.Fatal(err)
 		}
 		readers(t, "~/.abcd")
@@ -676,7 +677,7 @@ func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
 	t.Run("symlinked promoted folder", func(t *testing.T) {
 		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
 		file(t)
-		promoted := filepath.Join(home, ".abcd", "inbox", "promoted")
+		promoted := abcdhome.Path(home, "inbox", "promoted")
 		if err := os.Remove(promoted); err != nil {
 			t.Fatal(err)
 		}
@@ -687,7 +688,7 @@ func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
 	})
 	t.Run("symlinked ~/.abcd with no inbox behind it", func(t *testing.T) {
 		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
-		if err := os.Symlink(t.TempDir(), filepath.Join(home, ".abcd")); err != nil {
+		if err := os.Symlink(t.TempDir(), abcdhome.Path(home)); err != nil {
 			t.Fatal(err)
 		}
 		if list, err := List(); err != nil || len(list) != 0 {
@@ -713,7 +714,7 @@ func second[T any](_ T, err error) error { return err }
 // no filing could have written, names nobody.
 func TestAnUnreadableReportStillNamesItsSender(t *testing.T) {
 	home := sandbox(t, time.Date(2026, 9, 23, 11, 0, 0, 0, time.UTC))
-	dir := filepath.Join(home, ".abcd", "inbox")
+	dir := abcdhome.Path(home, "inbox")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

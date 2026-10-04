@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 )
 
@@ -16,7 +17,7 @@ import (
 // <provider>/<model>, every one validated when the configuration is read.
 
 func (f *fx) machineConfig(body string) {
-	f.put(filepath.Join(f.roots.Home, ".abcd", "config.json"), body)
+	f.put(abcdhome.Path(f.roots.Home, "config.json"), body)
 }
 
 func (f *fx) repoConfig(body string) {

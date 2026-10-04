@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // An earlier binary laid the transcript store out 0o755, and a directory that
@@ -20,7 +22,7 @@ import (
 // last.
 func wideLegacyLayout(t *testing.T, home string) []string {
 	t.Helper()
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	base := filepath.Join(abcd, "transcripts")
 	lane := filepath.Join(base, testRootSHA)
 	records := filepath.Join(lane, recordsDirName)

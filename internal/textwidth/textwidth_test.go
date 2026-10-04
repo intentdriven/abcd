@@ -59,3 +59,30 @@ func TestWrapIsBalanced(t *testing.T) {
 		t.Errorf("Wrap of empty text = %q, want nil", got)
 	}
 }
+
+// TestHangKeepsSpacingAndBreaksAtSpaces pins the hanging wrap the status board
+// lays its rows with (iss-2610031207397996): a line that fits comes back
+// byte-identical, runs of spaces and a leading indent included; a longer one
+// breaks only at a space, its first line at most first columns and every
+// later line at most rest, with no blank carried to either side of a break.
+func TestHangKeepsSpacingAndBreaksAtSpaces(t *testing.T) {
+	cases := []struct {
+		in          string
+		first, rest int
+		want        []string
+	}{
+		{"  git repo:   yes", 80, 76, []string{"  git repo:   yes"}},
+		{"", 80, 76, []string{""}},
+		{"      itd-5  The head  [next up]", 22, 16, []string{"      itd-5  The head", "[next up]"}},
+		{"    receipts: 25 release receipts — the oldest", 28, 21, []string{"    receipts: 25 release", "receipts — the oldest"}},
+		{"a  b", 2, 2, []string{"a", "b"}},
+		{"word supercalifragilistic", 10, 6, []string{"word", "supercalifragilistic"}},
+		{"日本 日本 日本", 9, 5, []string{"日本 日本", "日本"}},
+	}
+	for _, c := range cases {
+		got := Hang(c.in, c.first, c.rest)
+		if strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("Hang(%q, %d, %d) = %q, want %q", c.in, c.first, c.rest, got, c.want)
+		}
+	}
+}

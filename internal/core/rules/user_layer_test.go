@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -27,7 +28,7 @@ func userHome(t *testing.T) string {
 // writable (the shape a hand-edited file ordinarily has).
 func writeUserRules(t *testing.T, home, body string) string {
 	t.Helper()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestUserLayerAbsentChangesNothing(t *testing.T) {
 	for _, withDir := range []bool{false, true} {
 		home := userHome(t)
 		if withDir {
-			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -143,7 +144,7 @@ func TestUserLayerUntraversableScopeIsAbsent(t *testing.T) {
 			writeUserRules(t, home, `{"schema_version":1,"domains":{"PII":{"rules":["unreachable pii"]}}}`)
 			dir := home
 			if name == "~/.abcd" {
-				dir = filepath.Join(home, ".abcd")
+				dir = abcdhome.Path(home)
 			}
 			if err := os.Chmod(dir, 0); err != nil {
 				t.Fatal(err)
@@ -269,22 +270,22 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 			writeUserRules(t, home, `{"schema_version":1,"domains":{}}`+strings.Repeat(" ", maxRulesFileBytes))
 		}, "cap"},
 		{"symlinked leaf", func(t *testing.T, home string) {
-			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			target := filepath.Join(home, "elsewhere.json")
 			if err := os.WriteFile(target, []byte(`{"schema_version":1}`), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(target, filepath.Join(home, ".abcd", "rules.json")); err != nil {
+			if err := os.Symlink(target, abcdhome.Path(home, "rules.json")); err != nil {
 				t.Fatal(err)
 			}
 		}, "not a regular file"},
 		{"fifo leaf", func(t *testing.T, home string) {
-			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := syscall.Mkfifo(filepath.Join(home, ".abcd", "rules.json"), 0o644); err != nil {
+			if err := syscall.Mkfifo(abcdhome.Path(home, "rules.json"), 0o644); err != nil {
 				t.Skipf("mkfifo unavailable: %v", err)
 			}
 		}, "not a regular file"},
@@ -296,7 +297,7 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(real, "rules.json"), []byte(`{"schema_version":1,"domains":{}}`), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(real, filepath.Join(home, ".abcd")); err != nil {
+			if err := os.Symlink(real, abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
 		}, "~/.abcd is a symlink"},
@@ -353,7 +354,7 @@ func TestUserLayerSymlinkedScopeWithoutFileIsAbsent(t *testing.T) {
 	if err := os.MkdirAll(real, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(real, filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(real, abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	rs, err := Load(t.TempDir())

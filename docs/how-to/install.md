@@ -302,9 +302,44 @@ package-manager install takes the manager's own upgrade.
 
 Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
 it lays down the `.abcd/` layout and the commit gates. By default it writes abcd's name into none of the
-repository's conventions files (`CLAUDE.md`, `AGENTS.md`); the managed block
-that documents the rule loader, and names abcd, goes into one only when you ask
-for it with `--docs-target`.
+repository's conventions files; the managed block that documents the rule
+loader, and names abcd, goes into `AGENTS.md`, and only into `AGENTS.md`, when
+you ask for it with `--docs-target agents_md`. abcd writes no other
+conventions file. A repository whose saved setting names `CLAUDE.md`
+(`claude_md` or `both`) is still read as set up and still uninstalls cleanly,
+but setup stops before changing anything and names the one setting to change:
+`--docs-target agents_md` moves the block out of `CLAUDE.md` and into
+`AGENTS.md`, and `--docs-target skip` takes it out of both.
+
+Some agent tools read a conventions file of their own, such as `CLAUDE.md`,
+in place of `AGENTS.md` whenever it exists, so `AGENTS.md` stays hidden from
+that tool. Setup looks for each such file at the repository root and never
+changes one that holds your own words: it names it in a warning, printed before
+anything else, which says which tool reads it and that the way to end it is to
+move those words into `AGENTS.md` and remove the file. A file that only repeats
+`AGENTS.md` (a link to it, that link saved as a plain file in a checkout
+without links, an exact copy, a single line that loads it, or nothing once
+abcd's block is taken out) is offered for removal, one question
+per file, with the answers `retire`, `keep` and `later`. The question is asked
+only at a terminal: `--yes` and a piped install never ask it, and list
+`conventions.retire_offered` under `optional_skipped` instead. A removal
+happens only on `retire`, only if the file still only repeats `AGENTS.md` at
+that moment, and only in your working tree, for you to commit.
+
+Setup also warns about what hides `AGENTS.md` from outside the repository's own
+files, and changes nothing for it: a personal conventions file at the
+repository root that the agent tool reads, a conventions file such as
+`CLAUDE.md` in any folder above the repository, and an installed agent tool
+older than the release that reads `AGENTS.md` on its own. The agent tool's
+user-level file in your home folder's settings folder is not named, since it
+leaves `AGENTS.md` read. Each warning is printed with the others, before the
+headline, and none stops setup. For the folders above the repository, setup
+only asks whether a file of that name exists: it reads nothing in it and takes
+no settings from above the repository. A settings folder it cannot search is
+passed over, and a folder it cannot look into at all ends the look. The version check runs the agent tool's own version command once, with a
+short time limit, and says nothing when the tool is absent, does not answer, or
+prints no version. It never runs a command it cannot trust: one found inside
+the repository, or one that others can write, is passed over without a word.
 
 Outside `.abcd/`, a default adoption names abcd in exactly three committed
 files, and nowhere else:

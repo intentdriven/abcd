@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // userScope points HOME at a fresh directory holding body as ~/.abcd/rules.json
@@ -15,10 +17,10 @@ func userScope(t *testing.T, body string) (home, repo string) {
 	t.Helper()
 	home = t.TempDir()
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "rules.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "rules.json"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	repo = t.TempDir()

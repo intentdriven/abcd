@@ -58,20 +58,23 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.
+Verify a model provider with one call and configure it, or guide setup: Writes ~/.abcd/ and the key's home, nothing guided; refuses no --model off a terminal.
 
-**Usage:** `abcd ahoy connect <provider> [flags]`
+**Usage:** `abcd ahoy connect [<provider>] [flags]`
 
 **Flags:**
 
 ```
+      --answer string       with --guide and --resume: the answer to the question the resume object leaves open
       --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
       --env string          for --home external: the environment variable that holds the value
       --field string        for --home external: the dotted field of --file that holds the value (auth.token)
       --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
+      --guide               work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
-      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
+      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
+      --resume string       with --guide: the last turn's resume object, or - to read it from stdin
 ```
 
 **Example:**
@@ -112,10 +115,12 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 ```
       --adopt                   adopt an unmanaged repo without prompting
       --allow-stale-binary      proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix
+      --answered-in string      where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
-      --docs-target string      which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)
+      --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --refuse-adopt            decline to adopt an unmanaged repo
@@ -2953,6 +2958,14 @@ the registry names. A rule in the repository's words is marked "(repo)" after
 its entry id. A guard.json the guard refuses is named on stderr and not taught;
 SHELL then teaches the registry the guard enforces in its place. It teaches
 before shell work what the guard refuses at the moment a command runs.
+
+GRILL is generated from the asking rules every abcd interview follows, every
+limit they state (the header chip's width, the options per question, the words
+per label, the rows at eighty columns) filled from the one value the question
+check in "abcd guard hook" enforces, so the rules and the check cannot state a
+limit differently. It recalls on words of asking and choosing, so it lands in
+most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
+its .abcd/rules.json.
 Read-only.
 
 ### `abcd scribe`

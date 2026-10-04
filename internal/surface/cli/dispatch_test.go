@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/reading"
@@ -75,10 +76,10 @@ func pointMachine(t *testing.T, home, base string, keyed bool, extra string, age
 	}
 	body := `{"oracle":{"api":{"openrouter":{"base_url":"` + base + `/v1",` + keyField +
 		`"models":["typesafe/jev-1.13"]}},"roles":{` + strings.Join(roles, ",") + `}` + extra + `}}`
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

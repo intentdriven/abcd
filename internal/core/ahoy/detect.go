@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"sort"
 	"strings"
@@ -17,8 +18,14 @@ import (
 
 // Enumerations for config-value validation.
 var (
-	visibilityChoices    = []string{"private", "public"}
+	visibilityChoices = []string{"private", "public"}
+	// docsTargetChoices is the set a saved docs.target is READ against, so a
+	// project set up through claude_md or both still reads as configured and
+	// still uninstalls cleanly. docsTargetWritable is the set setup WRITES:
+	// AGENTS.md is the one conventions file abcd writes (adr-2610030814023326),
+	// and RetiredDocsTarget explains the difference.
 	docsTargetChoices    = []string{"claude_md", "agents_md", "both", "skip"}
+	docsTargetWritable   = []string{"agents_md", "skip"}
 	oracleBackendChoices = []string{"host-delegated", "native", "cli", "api", "mcp"}
 	// scan.deep is a boolean, but it is collected and overridden as a string
 	// through the same choice-set seam as the enums above, so its vocabulary is
@@ -106,6 +113,9 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectOracleRouting(abs)...)
 		gaps = append(gaps, detectDrainRule(abs)...)
+		// A tool's own conventions file read in place of AGENTS.md
+		// (itd-2610030814013772): the owner's is named, a repeat is offered.
+		gaps = append(gaps, detectToolConventionsFiles(abs)...)
 		gaps = append(gaps, detectProviderAdapter(abs)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
@@ -295,7 +305,7 @@ func detectIdentity(id RepoIdentity, idx *historyIndex) []Gap {
 	gaps := []Gap{{
 		ID: "identity.unregistered", Category: UserState, Scope: "repo",
 		Title:   "root SHA not in history index",
-		Detail:  "Root commit " + shortSHA(id.RootSHA) + " is absent from ~/.abcd/history/index.json.",
+		Detail:  "Root commit " + shortSHA(id.RootSHA) + " is absent from " + abcdhome.Display("history", "index.json") + ".",
 		FixHint: "ahoy install registers the repo entry.", Required: true, Resolvable: true,
 	}}
 	if cand := findRefoundingCandidate(idx, id); cand != nil {
@@ -444,7 +454,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 	if !isDir(root) {
 		gaps = append(gaps, Gap{
 			ID: "history.bootstrap_missing", Category: UserState, Scope: "machine",
-			Title: "~/.abcd/history/ not bootstrapped", Detail: "The shared history store directory is absent.",
+			Title: abcdhome.Display("history/") + " not bootstrapped", Detail: "The shared history store directory is absent.",
 			FixHint: "ahoy install bootstraps it.", Required: true, Resolvable: true,
 		})
 	}
@@ -461,7 +471,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 		gaps = append(gaps, Gap{
 			ID: "history.meta_missing", Category: UserState, Scope: "repo",
 			Title:   "history meta.json missing",
-			Detail:  "~/.abcd/history/" + shortSHA(rootSHA) + "/meta.json is absent.",
+			Detail:  abcdhome.Display("history", shortSHA(rootSHA), "meta.json") + " is absent.",
 			FixHint: "ahoy install writes the per-repo meta.json.", Required: true, Resolvable: true,
 		})
 	}
@@ -487,7 +497,7 @@ func detectStoredCredential(rootSHA, repoDir string) []Gap {
 	if idx, err := readHistoryIndexFile(); err == nil && idx != nil {
 		for _, r := range idx.Repos {
 			if r.Github != "" && scrubRemoteUserinfo(r.Github) != r.Github {
-				where = append(where, "~/.abcd/history/index.json")
+				where = append(where, abcdhome.Display("history", "index.json"))
 				break
 			}
 		}
@@ -495,7 +505,7 @@ func detectStoredCredential(rootSHA, repoDir string) []Gap {
 	if rootSHA != "" {
 		metaPath := filepath.Join(repoDir, "meta.json")
 		if g := metaGithub(metaPath); g != "" && scrubRemoteUserinfo(g) != g {
-			where = append(where, "~/.abcd/history/"+shortSHA(rootSHA)+"/meta.json")
+			where = append(where, abcdhome.Display("history", shortSHA(rootSHA), "meta.json"))
 		}
 	}
 	if len(where) == 0 {
@@ -532,7 +542,9 @@ func detectConfigValues(cwd string) []Gap {
 	}
 	if v, ok := stringVal(docs, "target"); !ok || !inSet(v, docsTargetChoices) {
 		gaps = append(gaps, configValueGap("config.docs_target_missing", "docs_target", "docs.target not set",
-			"Which docs file (CLAUDE.md / AGENTS.md / both / skip) hosts the marker block."))
+			"Whether AGENTS.md hosts the marker block (agents_md / skip)."))
+	} else if _, retired := RetiredDocsTarget(v); retired {
+		gaps = append(gaps, docsTargetRetiredGap(v))
 	}
 	if v, ok := stringVal(oracle, "backend"); !ok || !inSet(v, oracleBackendChoices) {
 		gaps = append(gaps, configValueGap("config.oracle_backend_missing", "oracle_backend", "oracle.backend not set",
@@ -569,8 +581,12 @@ func cfgGap(id, title, detail string) Gap {
 // answer in a piped run, so the fix hint says so (iss-2609120447486547).
 func configValueGap(id, key, title, detail string) Gap {
 	g := cfgGap(id, title, detail)
-	if h, ok := HelpFor(key); ok && h.Flag != "" {
+	if h, ok := helpFor(key); ok && h.Flag != "" {
 		g.FixHint = "ahoy install asks for the value; " + h.FlagHint() + "."
+		if key == "oracle_backend" && !oracleBackendAsked() {
+			g.FixHint = "ahoy install records " + oracleBackendDefault + ", the only reviewer abcd ships, without asking; " +
+				"to choose another, pass " + h.Flag + " <value>."
+		}
 	}
 	return g
 }
@@ -595,10 +611,28 @@ func detectMarkerDrift(cwd string) []Gap {
 	}
 	docs := subMap(cfg, "docs")
 	target, _ := stringVal(docs, "target")
-	files := markerTargets(target)
+	// A retired target names its files only for the read side: install refuses
+	// to write under it, so a drift gap would promise a write that never comes.
+	// config.docs_target_retired stands in for them.
+	files := writableMarkerTargets(target)
 	var gaps []Gap
 	for _, name := range files {
-		switch classifyMarker(filepath.Join(cwd, name)) {
+		target := filepath.Join(cwd, name)
+		state := classifyMarker(target)
+		// A block to plant or rewrite needs the file's folder: the write
+		// creates its lock and its temporary file beside the target, and asks
+		// this same check first. A folder that refuses makes the gap one
+		// install can never close (iss-2610032303183254).
+		if (state == markerMissing || state == markerOutdated) && markerFolderRefusal(target) != nil {
+			gaps = append(gaps, Gap{
+				ID: "marker.unwritable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " cannot take abcd's block",
+				Detail:  "The folder " + name + " is in does not let abcd create a file there, so the block cannot be planted or rewritten.",
+				FixHint: "Let your account create files in the folder that holds " + name + "; ahoy install then plants the block.", Required: true, Resolvable: false,
+			})
+			continue
+		}
+		switch state {
 		case markerMissing:
 			gaps = append(gaps, Gap{
 				ID: "marker.missing", Category: PluginOwned, Scope: "repo",
@@ -610,6 +644,13 @@ func detectMarkerDrift(cwd string) []Gap {
 				ID: "marker.outdated", Category: PluginOwned, Scope: "repo",
 				Title: name + " marker block outdated", Detail: name + " marker block differs from the template.",
 				FixHint: "ahoy install rewrites it to canonical (silent overwrite).", Required: true, Resolvable: true,
+			})
+		case markerUnreadable:
+			gaps = append(gaps, Gap{
+				ID: "marker.unreadable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " cannot take abcd's block",
+				Detail:  name + " exists but is not a file abcd can read whole (a folder, a pipe, a file too large, or one it has no permission to read), so the block cannot be planted in it.",
+				FixHint: "Make " + name + " a readable regular file; ahoy install then plants the block.", Required: true, Resolvable: false,
 			})
 		case markerUnplaceable:
 			gaps = append(gaps, Gap{
@@ -807,7 +848,7 @@ func unrecordedEntryGap(target string) []Gap {
 	return []Gap{{
 		ID: "symlink.unrecorded", Category: ConfigChange, Scope: "machine",
 		Title: "PATH entry is not recorded as this machine's abcd",
-		Detail: displayPath(target) + " is abcd's own entry, but ~/.abcd/path-entry does not record it. " +
+		Detail: displayPath(target) + " is abcd's own entry, but " + abcdhome.Display("path-entry") + " does not record it. " +
 			"The plugin's hooks read that record before they will run an abcd off PATH, so they ignore this install: " +
 			"no rules loader, no shell guard, and no transcript capture.",
 		FixHint:  "ahoy install writes the record naming this entry — with --dev if the entry is the track-latest shim, which a plain install replaces with a pinned one.",

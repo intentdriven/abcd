@@ -5,10 +5,10 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -103,7 +103,7 @@ func TestHookSessionStartBootstrapsTheStore(t *testing.T) {
 	if stdout != "" || stderr != "" {
 		t.Errorf("a self-creating store must start a session silently; stdout=%q stderr=%q", stdout, stderr)
 	}
-	records := filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	records := abcdhome.Path(home, "transcripts", rootSHA, "records")
 	fi, err := os.Stat(records)
 	if err != nil || !fi.IsDir() {
 		t.Fatalf("the session start must leave a store at %s: %v", records, err)

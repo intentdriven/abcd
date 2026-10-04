@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // linkBareAbcdHome makes home's ~/.abcd a symlink to an EMPTY directory
@@ -17,10 +19,10 @@ func linkBareAbcdHome(t *testing.T, home string) string {
 	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(home, ".abcd")); err != nil {
+	if err := os.RemoveAll(abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(target, abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	return target
@@ -122,7 +124,7 @@ func TestInstallRegistersThroughAHomeThatIsItselfALink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(realHome, ".abcd", "history", "index.json")); err != nil {
+	if _, err := os.Lstat(abcdhome.Path(realHome, "history", "index.json")); err != nil {
 		t.Fatalf("a home reached through a link must still be registered: %v; notes = %v", err, res.Notes)
 	}
 }

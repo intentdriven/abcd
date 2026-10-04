@@ -34,7 +34,7 @@ import (
 // statusLineOfferQuestion is the reason and the question, in one paragraph:
 // core never prints, so the explanation ac-8 requires travels as the text of
 // the confirm the prompter renders.
-const statusLineOfferQuestion = "In an abcd-managed repository the host's status line becomes abcd's own row, " +
+var statusLineOfferQuestion = "In an abcd-managed repository the host's status line becomes abcd's own row, " +
 	"led by a badge saying whether abcd is here and whose answer the loop is waiting on, then the repository, " +
 	"the branch, the model, the context and usage figures, and the record's intent and issue counts; " +
 	"in every other repository the status line you have now runs untouched. " +

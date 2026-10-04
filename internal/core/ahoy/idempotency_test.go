@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // treeHash walks root and returns a stable map of relpath -> content hash. It
@@ -62,7 +64,7 @@ func installOpts() InstallOptions {
 		Yes:   true,
 		ValueOverrides: map[string]string{
 			"visibility":     "private",
-			"docs_target":    "both",
+			"docs_target":    "agents_md",
 			"oracle_backend": "host-delegated",
 			"scan_deep":      "false",
 		},
@@ -87,12 +89,12 @@ func TestInstallThenReinstallIsExactNoOp(t *testing.T) {
 	}
 
 	// Evidence artefacts landed.
-	for _, rel := range []string{".abcd/config.json", ".abcd/rules.json", "CLAUDE.md", "AGENTS.md", ".gitignore"} {
+	for _, rel := range []string{".abcd/config.json", ".abcd/rules.json", "AGENTS.md", ".gitignore"} {
 		if _, err := os.Stat(filepath.Join(repo, rel)); err != nil {
 			t.Errorf("expected %s after install: %v", rel, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "history", "index.json")); err != nil {
+	if _, err := os.Stat(abcdhome.Path(home, "history", "index.json")); err != nil {
 		t.Errorf("history store not bootstrapped: %v", err)
 	}
 
@@ -129,7 +131,7 @@ func TestInstallRestoresHandDeletedMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Hand-delete the marker file while setup_version stays current.
-	if err := os.Remove(filepath.Join(repo, "CLAUDE.md")); err != nil {
+	if err := os.Remove(filepath.Join(repo, "AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
 	det, err := Detect(repo)
@@ -146,7 +148,7 @@ func TestInstallRestoresHandDeletedMarker(t *testing.T) {
 	if res.Status != "clean" {
 		t.Errorf("repair status = %q, want clean", res.Status)
 	}
-	if classifyMarker(filepath.Join(repo, "CLAUDE.md")) != markerCurrent {
+	if classifyMarker(filepath.Join(repo, "AGENTS.md")) != markerCurrent {
 		t.Errorf("marker not restored")
 	}
 }

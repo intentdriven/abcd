@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestLegacyRecordMovedIntoTheStoreIsOwnerOnly: a record an earlier binary wrote
@@ -12,7 +14,7 @@ import (
 func TestLegacyRecordMovedIntoTheStoreIsOwnerOnly(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	legacyRecords := filepath.Join(home, ".abcd", "history", testRootSHA, legacyRecordsDirName)
+	legacyRecords := abcdhome.Path(home, "history", testRootSHA, legacyRecordsDirName)
 	if err := os.MkdirAll(legacyRecords, 0o755); err != nil {
 		t.Fatal(err)
 	}

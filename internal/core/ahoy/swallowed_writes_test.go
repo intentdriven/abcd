@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/identity"
 )
 
@@ -76,12 +77,33 @@ func TestMarkerBlockFailureIsNoted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}, markerRetract: []string{"AGENTS.md"}}
-	a.stepMarker(&InstallConfig{DocsTarget: "claude_md"})
+	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}, markerRetract: []string{"CLAUDE.md"}}
+	a.stepMarker(&InstallConfig{DocsTarget: "agents_md"})
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
 		if !notesCarryAll(a.notes, name, "symlink") {
 			t.Errorf("no note says abcd's block in %s was left alone, and why; notes: %v", name, a.notes)
 		}
+	}
+}
+
+// TestMarkerStepPlantsNothingUnderARetiredTarget is the marker step's half of
+// A1: handed a retired docs.target with the plugin-owned category approved, it
+// writes no block, so CLAUDE.md is never created (itd-2610030814013772).
+func TestMarkerStepPlantsNothingUnderARetiredTarget(t *testing.T) {
+	for _, target := range []string{"claude_md", "both"} {
+		t.Run(target, func(t *testing.T) {
+			dir := t.TempDir()
+			a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}}
+			a.stepMarker(&InstallConfig{DocsTarget: target})
+			for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
+				if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+					t.Errorf("%s exists after the marker step ran under %s (err=%v)", name, target, err)
+				}
+			}
+			if len(a.writes) != 0 {
+				t.Errorf("the marker step recorded writes %v under %s", a.writes, target)
+			}
+		})
 	}
 }
 
@@ -94,7 +116,7 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 	t.Run("the store cannot be created", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		if err := os.WriteFile(filepath.Join(home, ".abcd"), []byte("not a directory\n"), 0o600); err != nil {
+		if err := os.WriteFile(abcdhome.Path(home), []byte("not a directory\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
@@ -108,10 +130,10 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 	t.Run("the transcript store cannot be created", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(home, ".abcd", "transcripts"), []byte("not a directory\n"), 0o600); err != nil {
+		if err := os.WriteFile(abcdhome.Path(home, "transcripts"), []byte("not a directory\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
@@ -137,7 +159,7 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 func TestUnreadableHistoryIndexIsNoted(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".abcd", "history")
+	dir := abcdhome.Path(home, "history")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

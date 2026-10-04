@@ -76,7 +76,7 @@ func TestAhoyInstallBinDirFlagIsWired(t *testing.T) {
 	t.Chdir(repo)
 
 	runCLI(t, "ahoy", "install", "--yes", "--adopt", "--bin-dir", dir,
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	if _, err := os.Lstat(filepath.Join(dir, "abcd")); err != nil {

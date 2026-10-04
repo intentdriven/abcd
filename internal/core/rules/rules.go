@@ -5,7 +5,9 @@
 // the hook entrypoint marshal these results for their transport.
 //
 // The model is a small set of binary-bundled default domains (embedded below,
-// plus SHELL, generated from the guard's hazard registry in shell.go) merged with two optional override layers, in order: the user scope's
+// plus SHELL, generated from the guard's hazard registry in shell.go, and
+// GRILL, generated from the asking rules in grill.go) merged with two optional
+// override layers, in order: the user scope's
 // ~/.abcd/rules.json (one per machine, spc-23) and then the per-repo
 // <repoRoot>/.abcd/rules.json, so the repo wins a field both set. Each
 // domain carries recall keywords + aliases and a list of rules; a prompt is
@@ -33,6 +35,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -46,13 +49,13 @@ const RepoRelPath = ".abcd/rules.json"
 // UserRelPath is the user-scope override file, relative to the home directory:
 // the machine's own conventions, layered between the bundled defaults and every
 // repo's override (itd-117, spc-23).
-const UserRelPath = ".abcd/rules.json"
+var UserRelPath = abcdhome.Rel("rules.json")
 
 // UserDisplayPath is how the user-scope file is NAMED in a diagnostic: the tilde
 // form, never the expanded path, so no message carries the developer-identity
 // home path (iss-81, fsutil.RedactHome) and a refusal a user pastes still names
 // the file.
-const UserDisplayPath = "~/" + UserRelPath
+var UserDisplayPath = abcdhome.Display("rules.json")
 
 // maxRulesFileBytes caps each rules.json, user scope and repo alike (trust
 // boundary).
@@ -180,6 +183,7 @@ func mustParseDefaults() RuleSet {
 		panic("rules: bundled defaults are malformed: " + err.Error())
 	}
 	rs = withShellDomain(rs)
+	rs = withGrillDomain(rs)
 	if err := Validate(rs); err != nil {
 		panic("rules: bundled defaults fail validation: " + err.Error())
 	}
@@ -461,7 +465,7 @@ func readUserLayer(home string) (over RuleSet, ok bool, err error) {
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationBehindSymlink:
-		return RuleSet{}, false, fmt.Errorf("rules: ~/.abcd is a symlink (refusing to follow it to %s)", UserDisplayPath)
+		return RuleSet{}, false, fmt.Errorf("rules: %s is a symlink (refusing to follow it to %s)", abcdhome.Display(), UserDisplayPath)
 	case fsutil.DeclarationDirectoryExposed:
 		return RuleSet{}, false, fmt.Errorf("rules: %s is not read: %w", UserDisplayPath, err)
 	case fsutil.DeclarationNotRegular:

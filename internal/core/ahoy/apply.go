@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"slices"
 	"sort"
@@ -34,7 +35,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 
 // install is Install without the person-facing summary, which Install composes
 // once over whichever of the several outcomes below was reached.
-func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error) {
+func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, err error) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return InstallResult{}, err
@@ -47,6 +48,18 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	if err != nil {
 		return InstallResult{}, err
 	}
+	// The host-reach warnings, set once the run is past its refusals and its
+	// adoption question (below).
+	var hostReach []Gap
+	// Every outcome past detection carries the warnings, the early returns
+	// included: a tool's own file holding the owner's words hides AGENTS.md
+	// whether or not this run changed anything. The full apply sets them from
+	// its final detection instead.
+	defer func() {
+		if err == nil && res.Warnings == nil {
+			res.Warnings = installWarnings(det.Gaps, hostReach)
+		}
+	}()
 
 	// Unmanaged folder: nothing to act on.
 	if det.FolderKind == UnmanagedFolder {
@@ -79,6 +92,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		}
 	}
 
+	// A docs.target setup no longer writes (claude_md, both) stops the run
+	// before its first write and before the adoption question, unless this run
+	// changes that one setting to a value setup writes: the person is told the
+	// one command, and nothing is half-done (itd-2610030814013772, A6).
+	if reason := retiredDocsTargetRefusal(abs, opts.ValueOverrides); reason != "" {
+		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -95,6 +116,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		}
 	}
 	_ = adopted
+
+	// What keeps AGENTS.md from the agent tool from outside the project's own
+	// files: a personal file at the root, a file in a folder above it, an old
+	// host (itd-2610030814013772). Install checks only, made once per run and
+	// never by Detect, which the status board and the hooks also call. It runs
+	// a subprocess, so it waits until the run is past every refusal above and
+	// the adoption question: a run that refuses or is declined starts nothing.
+	hostReach = detectHostReach(abs)
 
 	// Where the PATH entry goes, decided BEFORE any write but AFTER the adoption
 	// gate: an explicit --bin-dir abcd cannot write to fails the whole install
@@ -189,6 +218,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepOracleRouting()
 	// After the routing offers: the last of the repository consent questions.
 	ac.stepDrainRule()
+	// After the last consent question, and so after stepMarker, whose
+	// retraction may just have left a tool's own file blank: the retirement
+	// offers, one question per file, asked only at a terminal.
+	ac.stepConventionsFiles()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	// Before the pin: an identity mended here is the one the pin then records.
@@ -219,6 +252,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	}
 	return InstallResult{
 		Status:             status,
+		Warnings:           installWarnings(final.Gaps, hostReach),
 		Writes:             ac.writes,
 		Changes:            ac.changes,
 		Remaining:          remaining,
@@ -550,68 +584,70 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// shared applyOverride path covers all four config slots, so a re-install with
 	// an explicit flag is never silently dropped; a re-install with NO override
 	// leaves an already-valid value untouched (a silent no-op).
+	// Every effect this step sets ahead of its write — the echoed overrides, the
+	// forced docs target, the retraction — stands only if the write lands. Each
+	// return that saves nothing (a declined category, a value left unanswered, a
+	// failed write) takes them back through this one rollback, so stepMarker
+	// never retracts a block for a target change that was not saved and the
+	// receipt never echoes one. Receipts earlier steps recorded are kept.
+	mark := len(a.changes)
+	landed := false
+	defer func() {
+		if !landed {
+			a.rollbackForced(mark)
+		}
+	}()
 	oldDocsTarget := ic.DocsTarget
+	saved := *ic // the values on disk, before any override is applied
 	visForced := a.applyOverride("visibility", visibilityChoices, &ic.Visibility)
-	docsForced := a.applyOverride("docs_target", docsTargetChoices, &ic.DocsTarget)
+	// The saved docs target is read against every value setup ever wrote; an
+	// override may only name one it writes now.
+	docsForced := a.applyOverride("docs_target", docsTargetWritable, &ic.DocsTarget)
 	oracleForced := a.applyOverride("oracle_backend", oracleBackendChoices, &ic.OracleBackend)
 	scanForced := a.applyScanDeepOverride(ic)
 	forced := visForced || docsForced || oracleForced || scanForced
 	a.visibilityForced = visForced  // stepVisibility must refresh .gitignore for a new visibility
 	a.docsTargetForced = docsForced // stepMarker must re-plant markers for a new docs target
 	if docsForced {
-		// Narrowing the target set (e.g. both -> claude_md, or -> skip) leaves the
+		// Narrowing the target set (e.g. both -> agents_md, or -> skip) leaves the
 		// de-selected file's block orphaned; stepMarker retracts it so nothing is
 		// left inconsistent.
 		a.markerRetract = markerFilesDropped(oldDocsTarget, ic.DocsTarget)
 	}
 
 	if !hasConfigGap && !forced {
+		landed = true
 		return ic // all values already valid and no override forced a change
 	}
 	if hasConfigGap && !a.approved[ConfigChange] {
-		// Category declined; a required value is missing.
+		// Category declined; a required value is missing. Nothing is saved, so
+		// every value flag the person typed is dropped, and each is named
+		// rather than left silent (iss-2610032027321900).
+		for _, n := range declinedOverrideNotes(saved, a.overrides) {
+			a.refuse(n)
+		}
 		return nil
 	}
 
 	// Collect the missing values.
-	if ic.Visibility == "" {
-		ic.Visibility = a.resolveValue("visibility", visibilityChoices, "")
-		if !inSet(ic.Visibility, visibilityChoices) {
-			return nil // no valid visibility => partial
-		}
+	got := collectMissingValues(a.cwd, ic, a.overrides, a.resolveValue)
+	if got.retired != "" {
+		// A retired answer is said, with the one explanation; a typo is never
+		// persisted either way.
+		a.refuse(got.retired)
 	}
-	if ic.DocsTarget == "" {
-		ic.DocsTarget = a.resolveValue("docs_target", docsTargetChoices, docsTargetDefault)
-		if !inSet(ic.DocsTarget, docsTargetChoices) {
-			return nil // no valid docs target => partial (never persist a typo)
-		}
+	if !got.ok {
+		return nil // a value left unanswered or not one setup writes => partial
+	}
+	if got.docsChosen {
 		// Choosing the target is the approval to plant into it. At the skip
 		// default detection previews no marker gap, so the plugin-owned category
 		// is never offered, and a first install that names a target would persist
-		// it and plant nothing (iss-2609110944498549). rollbackForced clears this
-		// when the config write does not land.
+		// it and plant nothing (iss-2609110944498549). The rollback above clears
+		// this when the config write does not land.
 		a.docsTargetForced = true
 	}
-	if ic.OracleBackend == "" {
-		ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
-		if !inSet(ic.OracleBackend, oracleBackendChoices) {
-			return nil // no valid oracle backend => partial
-		}
-	}
-	if ic.Visibility == "private" && onPath(a.cwd, "trufflehog") && ic.ScanDeep == nil {
-		// The prompter returns the typed line verbatim, so the answer is re-checked
-		// against the choice set exactly as the three slots above are. Comparing it
-		// to "true" instead would fold every other spelling into false: a person who
-		// answered "yes" to deep secret scanning would get it switched OFF, silently
-		// — an unparseable answer must never resolve to a WEAKER scan than the one
-		// the operator asked for. An explicit "false" still disables it deliberately.
-		ans := a.resolveValue("scan_deep", scanDeepChoices, scanDeepDefault)
-		if !inSet(ans, scanDeepChoices) {
-			return nil // no valid scan_deep => partial (never persist a typo)
-		}
-		v := ans == "true"
-		ic.ScanDeep = &v
-	}
+	oracleRecorded := got.oracleRecorded
 
 	// Persist into the config map (read-modify-write), under the file's lock and
 	// only after every prompt above has been answered: the re-read is the one
@@ -635,23 +671,220 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return writeConfig(a.cwd, cfgMap)
 	})
 	if err != nil {
-		// The write did not land; do not echo a change or let downstream steps
-		// reconcile .gitignore/markers against a config value that was not saved.
-		a.rollbackForced()
+		// The write did not land: the deferred rollback keeps downstream steps
+		// from reconciling .gitignore/markers against a value that was not saved.
 		if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
 			a.refuse("could not save the settings to .abcd/config.json: " + errText(err))
 		}
 		return nil
 	}
+	landed = true
 	a.note(writeSettings, configPath(a.cwd))
+	if oracleRecorded {
+		a.inform(oracleBackendRecordedNote)
+	}
 	return ic
+}
+
+// collectedValues is what collecting the missing config values decided
+// beside the values themselves.
+type collectedValues struct {
+	// ok: every missing value was answered with one setup writes.
+	ok bool
+	// docsChosen: this run chose the repository's first docs target.
+	docsChosen bool
+	// oracleRecorded: the one oracle backend with an adapter was recorded
+	// without asking.
+	oracleRecorded bool
+	// retired is the explanation for a retired docs target given as the
+	// answer, which is refused.
+	retired string
+}
+
+// collectMissingValues fills each config value ic lacks, in the order setup
+// asks them, from resolve, and stops at the first answer that is not a value
+// setup writes: the values after it are not asked. It is the one sequence
+// the install's value step (stepConfigValues) and the walk before the
+// install (WalkConfigValueQuestions) both follow, so the walk puts exactly
+// the questions the install would.
+func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]string, resolve func(key string, choices []string, def string) string) collectedValues {
+	var c collectedValues
+	if ic.Visibility == "" {
+		ic.Visibility = resolve("visibility", visibilityChoices, "")
+		if !inSet(ic.Visibility, visibilityChoices) {
+			return c // no valid visibility
+		}
+	}
+	if ic.DocsTarget == "" {
+		ic.DocsTarget = resolve("docs_target", docsTargetWritable, docsTargetDefault)
+		if !inSet(ic.DocsTarget, docsTargetWritable) {
+			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
+				c.retired = why
+			}
+			return c // no writable docs target
+		}
+		c.docsChosen = true
+	}
+	if ic.OracleBackend == "" {
+		if overrides["oracle_backend"] == "" && !oracleBackendAsked() {
+			// One answer has an adapter, so there is nothing to ask: record it
+			// and say so once the write lands (iss-2610031236155833).
+			ic.OracleBackend = oracleBackendDefault
+			c.oracleRecorded = true
+		} else {
+			ic.OracleBackend = resolve("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+		}
+		if !inSet(ic.OracleBackend, oracleBackendChoices) {
+			return c // no valid oracle backend
+		}
+	}
+	if ic.Visibility == "private" && onPath(cwd, "trufflehog") && ic.ScanDeep == nil {
+		// The prompter returns the typed line verbatim, so the answer is re-checked
+		// against the choice set exactly as the three slots above are. Comparing it
+		// to "true" instead would fold every other spelling into false: a person who
+		// answered "yes" to deep secret scanning would get it switched OFF, silently
+		// — an unparseable answer must never resolve to a WEAKER scan than the one
+		// the operator asked for. An explicit "false" still disables it deliberately.
+		ans := resolve("scan_deep", scanDeepChoices, scanDeepDefault)
+		if !inSet(ans, scanDeepChoices) {
+			return c // no valid scan_deep (never persist a typo)
+		}
+		v := ans == "true"
+		ic.ScanDeep = &v
+	}
+	c.ok = true
+	return c
+}
+
+// WalkConfigValueQuestions puts to answer, writing nothing, the config value
+// questions an install at cwd with opts would ask, in the order it asks them
+// and exactly as far as it would ask them: a value a flag in
+// opts.ValueOverrides gives is not put, and an answer that is not a value
+// setup writes (deciding later included) ends the walk where it ends the
+// install's collection. It is the part of setup's questions settled before
+// the install's first write, so a front door that answers from a file checks
+// the file against it before Install runs, and a value the file leaves
+// unanswered refuses with the repository untouched (iss-2610040025088395).
+// The questions whose asking the run itself decides (the status line's
+// elements, the offers, the artefact kind) are not walked.
+//
+// Nothing is put when the install would ask no value question: cwd is not a
+// repository, an early refusal ends the install, the adoption is declined, or
+// the settings change (config-change) is not approved. approves answers the
+// adoption ("adopt") where opts.Adopt is unset, and the approval
+// ("approve.config-change") where neither opts.Yes nor
+// opts.ApprovedCategories decides it. The error is Detect's.
+func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id string) bool, answer func(key string, choices []string, def string) string) error {
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return err
+	}
+	det, err := Detect(abs)
+	if err != nil {
+		return err
+	}
+	// install's gates before its first question, in its order: each ends the
+	// run before a value is asked.
+	if det.FolderKind == UnmanagedFolder || abcdDirHazard(abs) != "" {
+		return nil
+	}
+	if !opts.AllowStaleBinary && staleBinaryRefusal(currentVintage(), abs) != "" {
+		return nil
+	}
+	if retiredDocsTargetRefusal(abs, opts.ValueOverrides) != "" {
+		return nil
+	}
+	if det.FolderKind == UnmanagedRepo {
+		if opts.Adopt != nil && !*opts.Adopt || opts.Adopt == nil && !approves("adopt") {
+			return nil
+		}
+	}
+	ic, err := loadPersistedInstallConfig(abs)
+	if err != nil {
+		return nil // a config that cannot be parsed is refused, never asked into
+	}
+	// stepConfigValues' own conditions: a value is missing and the settings
+	// change is approved, or a flag changes a value already saved (which can
+	// make the deep-scan question askable without a gap).
+	present := gapIDSet(det.Gaps)
+	hasConfigGap := present["config.visibility_missing"] || present["config.docs_target_missing"] ||
+		present["config.oracle_backend_missing"] || present["config.scan_deep_missing"]
+	if !hasConfigGap && !overridesWouldChange(abs, opts.ValueOverrides) {
+		return nil
+	}
+	if hasConfigGap {
+		switch {
+		case opts.ApprovedCategories != nil:
+			if !opts.ApprovedCategories[ConfigChange] {
+				return nil
+			}
+		case opts.Yes:
+		default:
+			if !approves(approvePrefix + string(ConfigChange)) {
+				return nil
+			}
+		}
+	}
+	// A flag overrides a value already saved, as applyOverride does.
+	for _, s := range []struct {
+		key     string
+		choices []string
+		dst     *string
+	}{{"visibility", visibilityChoices, &ic.Visibility}, {"docs_target", docsTargetWritable, &ic.DocsTarget}, {"oracle_backend", oracleBackendChoices, &ic.OracleBackend}} {
+		if v := opts.ValueOverrides[s.key]; *s.dst != "" && inSet(v, s.choices) {
+			*s.dst = v
+		}
+	}
+	collectMissingValues(abs, ic, opts.ValueOverrides, func(key string, choices []string, def string) string {
+		if v := opts.ValueOverrides[key]; v != "" {
+			return v
+		}
+		return answer(key, choices, def)
+	})
+	return nil
+}
+
+// valueFlags maps each config value an override can set to the install flag
+// that carries it, in the order the flags are named.
+var valueFlags = []struct{ key, flag string }{
+	{"visibility", "--visibility"},
+	{"docs_target", "--docs-target"},
+	{"oracle_backend", "--oracle-backend"},
+	{"scan_deep", "--scan-deep"},
+}
+
+// declinedOverrideNotes renders one note per explicit value flag a declined
+// settings change dropped: a flag whose value differs from the one saved. A
+// flag that already matched the saved value changed nothing, so it is not
+// named (iss-2610032027321900).
+func declinedOverrideNotes(saved InstallConfig, overrides map[string]string) []string {
+	current := map[string]string{
+		"visibility":     saved.Visibility,
+		"docs_target":    saved.DocsTarget,
+		"oracle_backend": saved.OracleBackend,
+	}
+	if saved.ScanDeep != nil {
+		current["scan_deep"] = fmt.Sprint(*saved.ScanDeep)
+	}
+	var notes []string
+	for _, f := range valueFlags {
+		v := overrides[f.key]
+		if v == "" || v == current[f.key] {
+			continue
+		}
+		notes = append(notes, f.flag+" "+v+" was not applied: the settings change (config-change) was declined, "+
+			"so .abcd/config.json was not written; run abcd ahoy install again with the flag and answer y to the config-change question.")
+	}
+	return notes
 }
 
 // rollbackForced discards the effects of a forced override whose config write did
 // not land, so the echoed change and the downstream reconciliation steps never
-// claim a change that was not persisted.
-func (a *applyCtx) rollbackForced() {
-	a.changes = nil
+// claim a change that was not persisted. It truncates the change list to mark,
+// its length when stepConfigValues began, so a receipt an earlier step recorded
+// (a dependency installed in this run) is kept (iss-2610031915495759).
+func (a *applyCtx) rollbackForced(mark int) {
+	a.changes = a.changes[:mark]
 	a.visibilityForced = false
 	a.docsTargetForced = false
 	a.markerRetract = nil
@@ -763,7 +996,7 @@ func overridesWouldChange(cwd string, overrides map[string]string) bool {
 		return ok && v != "" && cur != "" && inSet(v, choices) && cur != v
 	}
 	if differs("visibility", visibilityChoices, ic.Visibility) ||
-		differs("docs_target", docsTargetChoices, ic.DocsTarget) ||
+		differs("docs_target", docsTargetWritable, ic.DocsTarget) ||
 		differs("oracle_backend", oracleBackendChoices, ic.OracleBackend) {
 		return true
 	}
@@ -1035,7 +1268,9 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 			target = v
 		}
 	}
-	for _, name := range markerTargets(target) {
+	// Only a target setup writes plants a block; a retired one was refused
+	// before the first write, and is never planted into here either.
+	for _, name := range writableMarkerTargets(target) {
 		path := filepath.Join(a.cwd, name)
 		wrote, err := installMarkerFile(path)
 		if err != nil {
@@ -1047,7 +1282,7 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 		}
 	}
 	// Retract the block from files a narrowed docs-target override de-selected,
-	// so a target change (e.g. both -> claude_md, or -> skip) leaves no orphan.
+	// so a target change (e.g. both -> agents_md, or -> skip) leaves no orphan.
 	for _, name := range a.markerRetract {
 		path := filepath.Join(a.cwd, name)
 		wrote, err := removeMarkerFile(path)
@@ -1235,7 +1470,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			remedy := "Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`."
 			switch _, herr := homeScopeErr(); {
 			case errors.Is(herr, fsutil.ErrHomeScopeSymlinked):
-				remedy = "Replace the symlinked ~/.abcd with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
+				remedy = "Replace the symlinked " + abcdhome.Display() + " with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
 			case herr != nil:
 				remedy = "Re-run from a session whose HOME names your own home directory: the hooks refuse to write the attestation into this one for the same reason, so no further session will produce it."
 			}
@@ -1784,34 +2019,44 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // optionalGapIDs are the advisory gaps install closes only against an answered
 // prompt, never under --yes: the identity pin (see stepIdentityPin), the
 // status-line offer (see stepStatusLine), the two model-tier routing offers
-// (see stepOracleRouting) and the drain eligibility record (see
-// stepDrainRule). In the order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID}
+// (see stepOracleRouting), the drain eligibility record (see stepDrainRule)
+// and the retirement of a tool's own conventions file (see
+// stepConventionsFiles). In the order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+
+// terminalOnlyGapIDs are the optional offers put only to a person at a
+// terminal, and their categories: off one, neither the category nor the offer
+// is asked, so a piped answer stream keeps the order it had before they
+// existed.
+var terminalOnlyGapIDs = []string{DrainRuleOfferGapID, ConventionsRetireGapID}
+
+var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
 // optionalSkipped lists the optional gaps a run left un-applied without asking.
 // --yes approves every resolvable category but never adopts the identity pin
 // or wires the status line, so the skip is deliberate — and therefore has to
 // be reported rather than left ambient (iss-166). Outside --yes each is offered
-// as a confirmation, except the drain eligibility record off a terminal (see
-// stepDrainRule), so that one is listed and nothing is skipped silently.
+// as a confirmation, except the terminal-only offers off a terminal (see
+// stepDrainRule and stepConventionsFiles), so those are listed and nothing is
+// skipped silently.
 func optionalSkipped(opts InstallOptions, gaps []Gap, p Prompter) []string {
 	if opts.Yes {
 		return optionalPending(gaps)
 	}
-	if atTerminal(p) || !gapIDSet(gaps)[DrainRuleOfferGapID] {
+	if atTerminal(p) {
 		return nil
 	}
-	return []string{DrainRuleOfferGapID}
+	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return !slices.Contains(terminalOnlyGapIDs, id) })
 }
 
 // optionalAskable is optionalPending less the offers that will not be asked of
-// p: the drain eligibility record is offered only to a person at a terminal.
+// p: the terminal-only offers are put only to a person at a terminal.
 func optionalAskable(gaps []Gap, p Prompter) []string {
 	pending := optionalPending(gaps)
 	if atTerminal(p) {
 		return pending
 	}
-	return slices.DeleteFunc(pending, func(id string) bool { return id == DrainRuleOfferGapID })
+	return slices.DeleteFunc(pending, func(id string) bool { return slices.Contains(terminalOnlyGapIDs, id) })
 }
 
 // optionalPending reports which of the optional gaps are the remaining work.
@@ -1876,6 +2121,7 @@ var categoryPromptOrder = []GapCategory{
 	StatusLine,
 	OracleRouting,
 	DrainRule,
+	ConventionsFile,
 	UserState,
 	PluginOwned,
 }
@@ -1929,12 +2175,15 @@ func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCatego
 			approved[c] = true
 		}
 	default:
-		// The drain eligibility record is offered only to a person at a
-		// terminal (see stepDrainRule): off one its category is neither asked
-		// nor counted as declined, so a piped answer stream keeps the order it
-		// had before the offer existed.
+		// The drain eligibility record and the retirement of a tool's own
+		// conventions file are offered only to a person at a terminal (see
+		// stepDrainRule, stepConventionsFiles): off one their categories are
+		// neither asked nor counted as declined, so a piped answer stream keeps
+		// the order it had before the offers existed.
 		if !atTerminal(p) {
-			delete(present, DrainRule)
+			for _, c := range terminalOnlyCategories {
+				delete(present, c)
+			}
 		}
 		for _, c := range presentInPromptOrder(present) {
 			if c == Dependency && opts.ApproveDependency {

@@ -26,8 +26,9 @@ type Limits struct {
 	LaterLabels       []string // "Decide later", "None of these"
 	Columns           int      // 80: the narrow window promised
 	Rows              int      // 24: one question, or one tab, at Columns
-	HostTextColumns   int      // the text measure inside the host's frame at Columns
-	HostChromeRows    int      // rows the frame draws around a question
+	HostTextColumns   int      // 76: the question text's measure inside the host's frame at Columns
+	HostChromeRows    int      // 8: rows the frame draws around a question, the chip included
+	HostOptionColumns int      // 74: the measure of an option's label and description at Columns
 	NowPrefix         string   // "Now:"
 	ChangeLaterPrefix string   // "Change later:"
 	NotApplicable     string   // "not applicable"
@@ -48,12 +49,18 @@ var Default = Limits{
 	LaterLabels:      []string{"Decide later", "None of these"},
 	Columns:          80,
 	Rows:             24,
-	// HostTextColumns and HostChromeRows are PROVISIONAL: they are measured,
-	// not chosen, and step 5 of spc-2610030944505997 calibrates them against
-	// the dated screenshot of the host's question view at 80 by 24. Until then
-	// they carry these estimates.
+	// The three host figures are measured, not chosen: step 5 of
+	// spc-2610030944505997 read them on 2026-10-03 from Claude Code 2.1.288's
+	// question view at 80 by 24 in macOS Terminal
+	// (.abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md).
+	// The question text wrapped a line of 72 columns before an eight-column
+	// word, so its measure is 76. An option's description, indented five
+	// columns, wrapped after 74. Without a preview the frame drew eight rows:
+	// the chip, a blank, the blank before the options, the free-text row, the
+	// separator, the chat row, a blank and the footer.
 	HostTextColumns:   76,
-	HostChromeRows:    6,
+	HostChromeRows:    8,
+	HostOptionColumns: 74,
 	NowPrefix:         "Now:",
 	ChangeLaterPrefix: "Change later:",
 	NotApplicable:     "not applicable",

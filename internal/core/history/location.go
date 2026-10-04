@@ -54,27 +54,35 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-const (
+var (
 	// userStoreRelPath is the user-level default, relative to the caller's home.
-	userStoreRelPath = ".abcd/transcripts"
+	userStoreRelPath = abcdhome.Rel("transcripts")
 
+	// LocalRootsRelPath is the home-scoped declaration that pulls a repo's
+	// transcripts into that repo, relative to the caller's home.
+	LocalRootsRelPath = abcdhome.Rel("local-transcript-roots")
+
+	// LocalRootsDisplay names that file in a diagnostic in tilde form, so a
+	// message a user pastes into a shell works and no diagnostic carries the
+	// caller's home path (iss-81, fsutil.RedactHome).
+	LocalRootsDisplay = abcdhome.Display("local-transcript-roots")
+
+	// legacyStoreRelPath is where the store lived when it was a sub-tree of
+	// ahoy's registry namespace. ahoy still owns ~/.abcd/history/ for
+	// index.json and the per-repo meta.json; only the corpus moves out.
+	legacyStoreRelPath = abcdhome.Rel("history")
+)
+
+const (
 	// LocalStoreRelPath is the opt-in per-repo pull-in, relative to the repo
 	// root. It is under .abcd/.work.local/ deliberately: that tier is gitignored
 	// and per-worktree, so a pulled-in transcript is never a commit candidate and
 	// never merge-conflicts between concurrent sessions.
 	LocalStoreRelPath = ".abcd/.work.local/transcripts"
-
-	// LocalRootsRelPath is the home-scoped declaration that pulls a repo's
-	// transcripts into that repo, relative to the caller's home.
-	LocalRootsRelPath = ".abcd/local-transcript-roots"
-
-	// LocalRootsDisplay names that file in a diagnostic in tilde form, so a
-	// message a user pastes into a shell works and no diagnostic carries the
-	// caller's home path (iss-81, fsutil.RedactHome).
-	LocalRootsDisplay = "~/" + LocalRootsRelPath
 
 	// maxLocalRootsBytes caps the declaration read. A hand-maintained list of
 	// checkout paths is a handful of lines; 64 KiB bounds a planted device or an
@@ -85,11 +93,8 @@ const (
 	recordsDirName = "records"
 	stagingDirName = "staging"
 
-	// legacyStoreRelPath is where the store lived when it was a sub-tree of
-	// ahoy's registry namespace; legacyRecordsDirName is the leaf under
-	// <root-sha> that held the records. ahoy still owns ~/.abcd/history/ for
-	// index.json and the per-repo meta.json; only the corpus moves out.
-	legacyStoreRelPath    = ".abcd/history"
+	// legacyRecordsDirName is the leaf under <root-sha> of legacyStoreRelPath
+	// that held the records.
 	legacyRecordsDirName  = "transcripts"
 	legacyTombstoneName   = "transcripts.moved"
 	legacyTombstoneHeader = "The transcript corpus for this repo lives at:\n"
@@ -150,7 +155,7 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 		}
 	} else {
 		res.Base = filepath.Join(home, filepath.FromSlash(userStoreRelPath))
-		chain = []string{filepath.Join(home, ".abcd"), res.Base}
+		chain = []string{abcdhome.Path(home), res.Base}
 	}
 	res.Records = filepath.Join(res.Base, rootSHA, recordsDirName)
 	res.Staging = filepath.Join(res.Base, rootSHA, stagingDirName)
@@ -350,7 +355,7 @@ var caseFoldingFS = fsutil.CaseFoldingFS
 // ignoredDeclaration renders the one-line reason a present declaration was not
 // honoured, naming the file in tilde form so no home path is carried.
 func ignoredDeclaration(why string) string {
-	return "history: IGNORED " + LocalRootsDisplay + " — " + why + "; transcripts stay in " + "~/" + userStoreRelPath
+	return "history: IGNORED " + LocalRootsDisplay + " — " + why + "; transcripts stay in " + abcdhome.Display("transcripts")
 }
 
 // migrateLegacy moves a corpus stored under the legacy location into the

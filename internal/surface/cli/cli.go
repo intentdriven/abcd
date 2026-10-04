@@ -23,6 +23,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -31,6 +32,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
@@ -38,6 +40,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/memory"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -317,16 +320,21 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
-			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
+			width := boardWidth(cmd.OutOrStdout())
+			return render(cmd.OutOrStdout(), asJSON, board, func(out io.Writer) {
+				// Every line is laid at the window's width, a long row
+				// continuing on an indented line (iss-2610031207397996).
+				w := &boardWrapper{w: out, width: width}
+				defer w.Flush()
 				// Sanitised like every other board line: the directory name is the
 				// checkout's own, and a name carrying an ESC sequence or a bidi
 				// control must not reach the terminal raw (iss-2609281736483740).
 				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
 				// bidi runes travel raw, as in every board field.
 				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
-				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
-				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
-				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
+				fmt.Fprintf(w, "  git repo:   %s\n", yesNo(st.IsGitRepo))
+				fmt.Fprintf(w, "  record:     %s\n", yesNo(st.HasRecord))
+				fmt.Fprintf(w, "  work tiers: %s\n", termsafe.Sanitize(tierList(st.WorkTiers)))
 				if board.Statusline != nil {
 					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
 				}
@@ -2264,7 +2272,7 @@ func newRulesCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
-domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+domains, overridden by this machine's ` + abcdhome.Display("rules.json") + ` and then by this repo's
 .abcd/rules.json, each layer per field, so the repo wins a field both set.
 Either file may be absent. Bare, it renders every active domain; a positional
 DOMAIN (case-insensitive) renders that one domain regardless of its state or the
@@ -2293,6 +2301,14 @@ the registry names. A rule in the repository's words is marked "(repo)" after
 its entry id. A guard.json the guard refuses is named on stderr and not taught;
 SHELL then teaches the registry the guard enforces in its place. It teaches
 before shell work what the guard refuses at the moment a command runs.
+
+GRILL is generated from the asking rules every abcd interview follows, every
+limit they state (the header chip's width, the options per question, the words
+per label, the rows at eighty columns) filled from the one value the question
+check in "abcd guard hook" enforces, so the rules and the check cannot state a
+limit differently. It recalls on words of asking and choosing, so it lands in
+most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
+its .abcd/rules.json.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -3690,6 +3706,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		oracleBackend string
 		scanDeep      string
 		installTools  []string
+		answersPath   string
+		answeredIn    string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3707,19 +3725,58 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p := newPrompter(cmd)
-			if sp, ok := p.(*stdinPrompter); ok {
+			if !interview.ValidAnsweredIn(answeredIn) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --answered-in must be %q or %q (nothing written)",
+					interview.Terminal, interview.ClaudeCode)}
+			}
+			// The setup interview's door (spc-2610030911534855): an answers
+			// file answers it wherever it runs; otherwise the drawn questions at
+			// a terminal, or the line-per-answer stream off one (iss-167).
+			var p ahoy.Prompter
+			if answersPath != "" {
+				file, err := readSetupAnswers(answersPath)
+				if err != nil {
+					return err
+				}
+				if err := settleSetupAnswers(cwd, opts, file); err != nil {
+					return err
+				}
+				p = &answersPrompter{
+					setupQuestions: setupQuestions{cwd: cwd, w: cmd.ErrOrStderr(), yesApproved: yes},
+					file:           file, stamp: answeredIn, ascii: !term.UTF8Locale(os.Getenv),
+				}
+			} else {
+				p = newPrompter(cmd)
+			}
+			switch sp := p.(type) {
+			case *stdinPrompter:
 				// --yes answers the category questions and no value question, so
 				// the first value question still asked says so (iss-2609120447486547).
 				sp.yesApproved = yes
+				// The help is the repository's: a caveat that holds only in some
+				// repositories is shown only in those (iss-2610031236155833).
+				sp.cwd = cwd
+			case *drawnPrompter:
+				sp.yesApproved, sp.cwd = yes, cwd
 			}
 			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
 			opts.ApproveDependency = len(named) > 0
-			res, err := ahoy.Install(cwd, opts, p)
+			res, err := runSetup(cwd, p, cmd.ErrOrStderr(), func() (ahoy.InstallResult, error) {
+				return ahoy.Install(cwd, opts, p)
+			})
 			if err != nil {
 				return err
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				// The warnings come first, before the headline: each names a
+				// thing that keeps abcd's rules from an agent tool here, which
+				// only the person can end (itd-2610030814013772).
+				for _, warn := range res.Warnings {
+					fmt.Fprintf(w, "warning: %s\n", termsafe.Sanitize(warn))
+				}
+				if len(res.Warnings) > 0 {
+					fmt.Fprintln(w)
+				}
 				fmt.Fprintf(w, "abcd ahoy install — %s\n", res.Status)
 				// Core's plain summary first (iss-164): what changed for the
 				// person, why it matters and what to do. The exact record of
@@ -3773,6 +3830,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					if slices.Contains(res.OptionalSkipped, ahoy.DrainRuleOfferGapID) {
 						fmt.Fprint(w, "    the drain rule is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
+					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
+						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
 				}
 			})
 		},
@@ -3788,10 +3848,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")
-	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)")
+	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change")
 	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
+	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
+	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall
@@ -3939,7 +4001,9 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 	applyCmd := &cobra.Command{
 		Use:  "apply",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			// A question drawn at a terminal and stopped by Ctrl-C ends the verb (exit 130).
+			defer endOnStop(&err)
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
@@ -4057,7 +4121,14 @@ func installOptionsFromFlags(cmd *cobra.Command, yes, adopt, refuseAdopt, dev, a
 	if err := set("visibility", visibility, []string{"private", "public"}); err != nil {
 		return opts, err
 	}
-	if err := set("docs_target", docsTarget, []string{"claude_md", "agents_md", "both", "skip"}); err != nil {
+	// claude_md and both are read in a saved setting but never written, so the
+	// flag refuses them with the core's one explanation (itd-2610030814013772).
+	if cmd.Flags().Changed("docs-target") {
+		if why, retired := ahoy.RetiredDocsTarget(docsTarget); retired {
+			return opts, fmt.Errorf("abcd ahoy install: --docs-target %s is refused: %s", docsTarget, why)
+		}
+	}
+	if err := set("docs_target", docsTarget, []string{"agents_md", "skip"}); err != nil {
 		return opts, err
 	}
 	if err := set("oracle_backend", oracleBackend, []string{"host-delegated", "native", "cli", "api", "mcp"}); err != nil {
@@ -4104,6 +4175,8 @@ func optionalSkipReason(id string) string {
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
 	case ahoy.DrainRuleOfferGapID:
 		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
+	case ahoy.ConventionsRetireGapID:
+		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	}
 	return ""
 }
@@ -4161,6 +4234,16 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 		if yes {
 			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
+		if dp, ok := p.(*drawnPrompter); ok {
+			for _, line := range e.Lines() {
+				fmt.Fprintln(w, termsafe.Sanitize(line))
+			}
+			if !dp.confirmTool(e.Tool, "Install "+e.Tool+" now by running "+e.StepText()+"?") {
+				return tools.Answer{Why: "answered no at the terminal"}
+			}
+			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
+		}
 		sp, ok := p.(*stdinPrompter)
 		if !ok || !sp.tty {
 			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal; " + otherwise(e)}
@@ -4195,6 +4278,15 @@ func newPrompter(cmd *cobra.Command) ahoy.Prompter {
 	if in == nil {
 		return ahoy.RefusingPrompter{}
 	}
+	// With stdin, stdout and stderr all terminals the questions are drawn
+	// (spc-2610030911534855); anywhere else the stream below reads them.
+	cwd, _ := os.Getwd()
+	if t, notes, ok := drawnTerminal(in, cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd); ok {
+		for _, n := range notes {
+			fmt.Fprintf(cmd.ErrOrStderr(), "abcd: %s\n", termsafe.Sanitize(n))
+		}
+		return &drawnPrompter{setupQuestions: setupQuestions{cwd: cwd, w: t.Out}, term: t}
+	}
 	p := &stdinPrompter{r: bufio.NewReader(in), w: cmd.ErrOrStderr()}
 	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {
 		p.tty = true
@@ -4217,6 +4309,10 @@ type stdinPrompter struct {
 	// of change and chooses no value; yesTold that the run has said so, once,
 	// above the first value question it still asks.
 	yesApproved, yesTold bool
+	// cwd is the repository the install runs in, so each question's help is
+	// the one core gives for it (ahoy.HelpIn); empty, the help is the same
+	// in every repository.
+	cwd string
 }
 
 // echo reports the answer read off a non-terminal stdin. The bytes come from
@@ -4233,8 +4329,9 @@ func (p *stdinPrompter) echo(answer string) {
 
 // AtTerminal reports whether a person is answering at a terminal, which makes
 // the prompter an ahoy.TerminalPrompter: the questions abcd asks only of a
-// person (whether to change who commits, itd-131, and whether to record the
-// drain eligibility rule) are never put to a pipe.
+// person (whether to change who commits, itd-131, whether to record the drain
+// eligibility rule, and whether to remove a tool's own conventions file that
+// only repeats AGENTS.md) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
@@ -4252,7 +4349,7 @@ func (p *stdinPrompter) Confirm(question string) bool {
 // scripted answer stream and a transcript still line up with it. A key core
 // has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
-	if h, ok := ahoy.HelpFor(key); ok {
+	if h, ok := ahoy.HelpIn(p.cwd, key); ok {
 		if h.Flag != "" && p.yesApproved && !p.yesTold {
 			p.yesTold = true
 			fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
@@ -4263,6 +4360,8 @@ func (p *stdinPrompter) Prompt(key string, choices []string, def string) string 
 		}
 		if hint := h.FlagHint(); hint != "" {
 			fmt.Fprintf(p.w, "  (%s)\n", hint)
+		} else if h.ChangeLater != "" {
+			fmt.Fprintf(p.w, "  (%s %s)\n", question.Default.ChangeLaterPrefix, h.ChangeLater)
 		}
 	}
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)

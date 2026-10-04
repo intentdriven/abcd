@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestCaptureRedactsHomeWithANameSuffix pins the transcript store to the three
@@ -19,7 +21,7 @@ func TestCaptureRedactsHomeWithANameSuffix(t *testing.T) {
 	user := "zzhomeuser42"
 	home := filepath.Join(base, user)
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", testRootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	transcript := "the archive is at https://ci.example.com" + home + ".zip for review\n" +

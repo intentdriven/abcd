@@ -4,28 +4,40 @@ package cli
 // (itd-2609081951381895): `abcd ahoy --providers`, the read that explains the
 // adapter, lists what is configured and says where a key can live, and
 // `abcd ahoy connect <provider>`, the write that verifies a provider with one
-// call and then stores its block and its key.
+// call and then stores its block and its key. Its --guide form
+// (ahoy_connect_guide.go) writes nothing and ends by printing that command.
 //
 // The key arrives on stdin and nowhere else: never as a flag (a process
-// listing and a shell history keep argv), never at a prompt (the install
-// prompter echoes every answer into its transcript, and a host's question tool
-// would put it in an agent's context), and never from a terminal, where it
-// would be echoed as it is typed. It is not printed, not logged and not part
-// of any error.
+// listing and a shell history keep argv), and never at a prompt that echoes
+// (the install prompter echoes every answer into its transcript, and a host's
+// question tool would put it in an agent's context). Piped, it is read whole;
+// at a terminal it is read on hidden input (term.ReadHidden), echo off, after
+// one line on stderr (spc-2610031241482088, step 2). It is not printed, not
+// logged and not part of any error.
+//
+// With no --model, at a terminal (stdin, stdout and stderr all terminals, the
+// letter adr-49 sets for drawing), the setup lists the service's models with
+// the key, the person picks one in the plain-Terminal list, and a real
+// completion to it verifies the connection before anything is written. Off a
+// terminal a run with no --model is refused, naming both ways on.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/surface/cli/ask"
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -37,7 +49,7 @@ import (
 var dispatchNote = "a delegating verb whose agent's oracle.roles entry points at a provider sends the step there itself " +
 	"and ingests the answer, and every other step runs on the host; a provider whose block names a key takes only " +
 	"self-contained agents (" + strings.Join(oracle.SelfContained(), ", ") + "), under ruling DR5 of 2026-09-29, " +
-	"and oracle.bundled_context_providers in ~/.abcd/config.json is the person's override for file-reading agents " +
+	"and oracle.bundled_context_providers in " + abcdhome.Display("config.json") + " is the person's override for file-reading agents " +
 	"whose bundle abcd builds (none yet)"
 
 // providerView is one configured provider as the board shows it: the block,
@@ -165,13 +177,20 @@ func keyState(home, name string) (state, from string) {
 
 // newAhoyConnectCommand builds `ahoy connect <provider>`.
 func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
-	var baseURL, home, keyName string
+	var baseURL, home, keyName, resume, answer string
+	var guide bool
 	var models []string
 	var ptr credential.Pointer
 	cmd := &cobra.Command{
-		Use:  "connect <provider>",
+		Use:  "connect [<provider>]",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if guide {
+				return runConnectGuide(cmd, args, baseURL, resume, cmd.Flags().Changed("answer"), answer, *asJSON)
+			}
+			if resume != "" || cmd.Flags().Changed("answer") {
+				return &exitError{Code: 2, Msg: "abcd ahoy connect: --resume and --answer take the guided setup's next turn; add --guide"}
+			}
 			if len(args) == 0 {
 				return &exitError{Code: 2, Msg: "abcd ahoy connect: name the provider to set up; `abcd ahoy --providers` explains the adapter and where its key can live"}
 			}
@@ -183,9 +202,28 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 			for _, n := range notes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
 			}
+			// Picking draws a list, so it needs what drawing needs: every
+			// stream a terminal (adr-49).
+			atTerminal := connectIsTerminal(cmd.InOrStdin()) && connectIsTerminal(cmd.OutOrStdout()) &&
+				connectIsTerminal(cmd.ErrOrStderr())
+			if len(models) == 0 && !atTerminal {
+				return &exitError{Code: 2, Msg: "abcd ahoy connect: no model is named; name one with --model, " +
+					"or run the command in a terminal to pick one from the models the service lists"}
+			}
 			req := oracle.ConnectRequest{Roots: roots, Provider: args[0], BaseURL: baseURL, Models: models, Home: home, KeyName: keyName, Pointer: ptr}
+			if len(models) == 0 {
+				req.Pick = connectPick(cmd, roots, baseURL)
+			}
+			// What needs no key is refused before the key is asked for, so
+			// nobody pastes a key for a setup that cannot finish.
+			if err := oracle.CheckConnect(req); err != nil {
+				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+			}
 			if home == oracle.KeyHomeABCD || home == oracle.KeyHomeKeychain {
-				key, err := readKey(cmd.InOrStdin())
+				key, err := readConnectKey(cmd, args[0])
+				if errors.Is(err, term.ErrInterrupted) {
+					return &exitError{Code: ask.ExitInterrupted, Msg: "abcd ahoy connect: interrupted while the key was pasted; nothing was written"}
+				}
 				if err != nil {
 					return &exitError{Code: 2, Msg: "abcd ahoy connect: " + err.Error()}
 				}
@@ -196,7 +234,11 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				// Every representation of the key, not only its literal form:
 				// the adapter scrubs first, and this is the last time.
 				msg := openaiapi.Scrub(err.Error(), req.Key)
-				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(msg))}
+				code := 2
+				if errors.Is(err, ask.ErrInterrupted) {
+					code = ask.ExitInterrupted
+				}
+				return &exitError{Code: code, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(msg))}
 			}
 			// A route the configuration read skipped (ruling CD2) is said on
 			// stderr, in the text and the JSON form alike, and the setup stands.
@@ -222,18 +264,24 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "the provider's OpenAI-compatible base URL: https, or http to a server on this machine")
-	cmd.Flags().StringArrayVar(&models, "model", nil, "a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)")
-	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)")
+	cmd.Flags().StringArrayVar(&models, "model", nil, "a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); "+
+		"omitted at a terminal, the service's models are listed with the key and you pick one")
+	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only "+credential.StorePath+") | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)")
 	cmd.Flags().StringVar(&keyName, "key", "", "the credential's name (default: the provider's name)")
 	pointerFlags(cmd, &ptr)
+	cmd.Flags().BoolVar(&guide, "guide", false, "work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional")
+	cmd.Flags().StringVar(&resume, "resume", "", "with --guide: the last turn's resume object, or - to read it from stdin")
+	cmd.Flags().StringVar(&answer, "answer", "", "with --guide and --resume: the answer to the question the resume object leaves open")
 	return cmd
 }
 
-// readKey reads the key from stdin: refused from a terminal, where it would
-// be echoed as it is typed; one trailing line ending is dropped.
+// readKey reads a piped key from stdin; one trailing line ending is dropped.
+// It reads no terminal: ahoy connect reads the key hidden there
+// (readConnectKey) and calls this only off one, and ahoy credential takes a
+// piped key alone, so a terminal is refused naming the pipe it needs.
 func readKey(in io.Reader) (string, error) {
 	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {
-		return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
+		return "", errors.New("the key is read only when it is piped in on stdin, and stdin is a terminal; " +
 			"pipe it in from a file or a variable instead (" + setupExample + ")")
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, credential.MaxValueBytes+3))
@@ -245,4 +293,102 @@ func readKey(in io.Reader) (string, error) {
 		return "", errors.New("the chosen home stores a key, and none arrived on stdin; pipe it in (" + setupExample + ")")
 	}
 	return key, nil
+}
+
+// readConnectKey reads the key for the setup of provider: piped, as readKey
+// reads it; at a terminal, on hidden input, after one line on stderr saying
+// so. An empty answer is refused as an empty pipe is. Ctrl-C during the paste
+// is term.ErrInterrupted, the terminal restored.
+func readConnectKey(cmd *cobra.Command, provider string) (string, error) {
+	in := cmd.InOrStdin()
+	if !connectIsTerminal(in) {
+		return readKey(in)
+	}
+	errOut := cmd.ErrOrStderr()
+	if _, err := fmt.Fprintf(errOut, "Paste the key for %s and press Enter. It is not shown.\n", termsafe.Sanitize(provider)); err != nil {
+		return "", err
+	}
+	key, err := connectReadHidden(in, errOut)
+	if err != nil {
+		return "", err
+	}
+	if key == "" {
+		return "", errors.New("the chosen home stores a key, and none was pasted; run the command again and paste it, or pipe it in (" + setupExample + ")")
+	}
+	return key, nil
+}
+
+// errPickLater is the picker's decide later: no model was picked, so the
+// setup ends with nothing written.
+var errPickLater = errors.New("you chose to decide later; run the command again to pick")
+
+// The terminal seams of `ahoy connect`: whether a stream is a terminal, the
+// hidden read of the key, and the picker. Tests replace them, since a test's
+// streams are buffers.
+var (
+	connectIsTerminal = func(s any) bool {
+		f, ok := s.(*os.File)
+		return ok && term.IsTerminal(f)
+	}
+	connectReadHidden = func(in io.Reader, out io.Writer) (string, error) {
+		f, ok := in.(*os.File)
+		if !ok {
+			return "", errors.New("hidden input needs a terminal, and stdin is not one")
+		}
+		return term.ReadHidden(f, out)
+	}
+	connectPick = terminalPick
+)
+
+// pickQuestion is the model question over the listed ids, each offered once
+// in the service's order: the list refuses two choices with one value, and a
+// service may list an id twice. Which ids sit side by side is judged before
+// this (the adapter's split-key check), so dropping a repeat moves nothing
+// the person has not been cleared to see.
+func pickQuestion(host string, ids []string) question.Ask {
+	seen := make(map[string]bool, len(ids))
+	choices := make([]question.Option, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			choices = append(choices, question.Option{Value: id, Label: id})
+		}
+	}
+	return question.Ask{Questions: []question.Question{{
+		ID:   "model",
+		Chip: "Setup",
+		Material: []question.Block{{Kind: question.KindParagraph,
+			Text: fmt.Sprintf("%s lists %d models. Type part of a name to narrow the list.", host, len(choices))}},
+		Ask:  "Which model should abcd verify and set up?",
+		List: &question.List{Choices: choices},
+		// No listed id can take this value: validModel admits no '#'.
+		Later: question.Option{Value: "#later", Label: "Decide later",
+			Meaning: "Nothing is set up or written; run the command again to pick."},
+	}}}
+}
+
+// terminalPick is the picker the setup offers at a terminal: the
+// plain-Terminal long list over the listed ids, typing to narrow
+// (spc-2610030911534855), drawn on stderr. Ctrl-C is ask.ErrInterrupted;
+// decide later is errPickLater.
+func terminalPick(cmd *cobra.Command, roots layered.Roots, baseURL string) func(context.Context, []string) (string, error) {
+	return func(_ context.Context, ids []string) (string, error) {
+		in, ok := cmd.InOrStdin().(*os.File)
+		if !ok {
+			return "", errors.New("the list needs a terminal, and stdin is not one")
+		}
+		host := baseURL
+		if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+			host = u.Host
+		}
+		got, err := ask.Terminal{In: in, Out: cmd.ErrOrStderr(), Getenv: os.Getenv,
+			Mode: term.ResolveColorMode(os.Getenv, false), ASCII: !term.UTF8Locale(os.Getenv), Roots: roots}.Put(pickQuestion(host, ids))
+		switch {
+		case err != nil:
+			return "", err
+		case len(got) != 1 || got[0].Later:
+			return "", errPickLater
+		}
+		return got[0].Value, nil
+	}
 }

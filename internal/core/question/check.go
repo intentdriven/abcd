@@ -16,7 +16,8 @@ import (
 // limits check"). Each is reported as its own finding.
 type Rule string
 
-// The thirteen rules, in the spec's order.
+// The rules, in the spec's order, rule 14 appended by the layout intent's
+// decision 20.
 const (
 	RuleHeader            Rule = "header"               // 1: present, within HeaderColumns, in the chip grammar
 	RuleQuestionsPerCall  Rule = "questions-per-call"   // 2: one to four; more than one is tabs
@@ -31,6 +32,7 @@ const (
 	RuleThingFirst        Rule = "thing-first"          // 11: material first, the question last
 	RuleEmDashListItem    Rule = "em-dash-in-list-item" // 12: no em dash in a list item
 	RuleRows              Rule = "rows"                 // 13: within Rows at Columns
+	RuleNoPreview         Rule = "no-preview"           // 14: no option carries a side preview
 )
 
 // Finding is one broken rule: the question's ordinal (its tab, counted from
@@ -74,8 +76,11 @@ var emDashListItemRe = regexp.MustCompile(EmDashListItemPattern)
 // not loop (itd-201 criterion R6).
 const RecommendedRemedy = "The host's own instruction for this tool asks for a recommended first option; abcd's asking rule reverses it: no option is marked, styled, or ordered as recommended. Remove the mark and ask again; if the person asks for a recommendation, give it in prose beside the question."
 
+// previewRemedy is rule 14's remedy (itd-2610030810350727 decision 20).
+const previewRemedy = "abcd's questions carry no side preview (decision 20): put the option's meaning, gain and cost in its description."
+
 // splitRemedy is rule 13's remedy (itd-2610030810350727 decision 9).
-const splitRemedy = "Split the material into parts: up to four parts of one thing as tabs, or successive questions, one part per question. Never move it into a message before the question, or into a preview alone."
+const splitRemedy = "Split the material into parts: up to four parts of one thing as tabs, or successive questions, one part per question. Never move it into a message before the question, or into a preview."
 
 // ChipRole reads the role word from a header in the chip grammar,
 // "<role> Q<n>" with an optional "/<total>", the role one of l.ChipRoles
@@ -187,8 +192,14 @@ func (c checker) tab(n int, t Tab) []Finding {
 		}
 	}
 
-	// 3. Options.
-	if k := len(t.Options); k < l.OptionsPerQ[0] || k > l.OptionsPerQ[1] {
+	// 3. Options. A typed part is the host's free-text row: it counts as one
+	// option toward the floor (spc-2610031241482088, open question 1), never
+	// toward the ceiling, which is what the host lists.
+	floor := len(t.Options)
+	if strings.TrimSpace(t.Typed) != "" {
+		floor++
+	}
+	if k := len(t.Options); floor < l.OptionsPerQ[0] || k > l.OptionsPerQ[1] {
 		add("options", RuleOptions, fmt.Sprintf("%d options", k),
 			fmt.Sprintf("%d to %d options, the decide-later option included", l.OptionsPerQ[0], l.OptionsPerQ[1]),
 			"Offer only the answers each defensible on the record, then the decide-later option.")
@@ -211,7 +222,7 @@ func (c checker) tab(n int, t Tab) []Finding {
 		switch s := sentences(o.Description); {
 		case strings.TrimSpace(o.Description) == "":
 			add(optionPart(i, "description"), RuleMeaningSentences, o.Description, fmt.Sprintf("1 to %d sentences", l.MeaningSentences),
-				"Say what choosing this option means in its description; a preview may repeat it, never hold it alone.")
+				"Say what choosing this option means in its description, with its gain and cost.")
 		case s > l.MeaningSentences:
 			add(optionPart(i, "description"), RuleMeaningSentences, o.Description, fmt.Sprintf("%d sentences", l.MeaningSentences),
 				fmt.Sprintf("The description is %d sentences; keep what choosing it means and its gain and cost.", s))
@@ -232,7 +243,7 @@ func (c checker) tab(n int, t Tab) []Finding {
 			labels[i] = o.Label
 		}
 		add("options", RuleDecideLater, strings.Join(labels, " | "), laterLimit,
-			"Add "+quoteList(l.LaterLabels)+" as the last option; it is always offered, and with a preview it stands in for the free-text row the preview removes.")
+			"Add "+quoteList(l.LaterLabels)+" as the last option; it is always offered.")
 	}
 	for _, i := range later {
 		if i == len(all)-1 || i >= len(t.Options) {
@@ -322,15 +333,13 @@ func (c checker) tab(n int, t Tab) []Finding {
 		add("question text", RuleRows, fmt.Sprintf("%d rows", rows),
 			fmt.Sprintf("%d rows at %d columns", l.Rows, l.Columns), splitRemedy)
 	}
-	budget := previewBudget(t, l)
+
+	// 14. No side preview (the layout intent's decision 20): with a preview
+	// the host hides every option's description and cuts the preview to the
+	// rows it has, so the meaning is put where it always shows.
 	for i, o := range t.Options {
-		if o.Preview == "" {
-			continue
-		}
-		if rows := blockRows(o.Preview, l.HostTextColumns); rows > budget {
-			add(optionPart(i, "preview"), RuleRows, fmt.Sprintf("%d rows", rows),
-				fmt.Sprintf("the %d rows the frame leaves the preview", budget),
-				"Shorten the preview so the host never cuts it; the meaning belongs in the description.")
+		if o.Preview != "" {
+			add(optionPart(i, "preview"), RuleNoPreview, o.Preview, "no side preview", previewRemedy)
 		}
 	}
 	return out
