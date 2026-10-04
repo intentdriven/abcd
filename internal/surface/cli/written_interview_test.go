@@ -604,3 +604,31 @@ func TestAnswersFileValueNotOfferedRefusesRecordingNothing(t *testing.T) {
 		t.Fatalf("a record was written:\n%s", b)
 	}
 }
+
+// TestReflectInterviewWriterFaultExitsOneKeepingTheRecord: a fault of the
+// retrospective's writer that is not a refusal the person answers (here the
+// retrospectives directory cannot be written in) exits 1, since the answers
+// record was written, never 2, which promises nothing was.
+func TestReflectInterviewWriterFaultExitsOneKeepingTheRecord(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("a directory's mode does not stop root writing in it")
+	}
+	routeMachine(t, interview.RoleReflectionComposer)
+	interviewStub(t, retroReceipts()...)
+	r := retroRepo(t)
+	shut := filepath.Dir(filepath.Dir(retroPath(r, "v0.2.0")))
+	if err := os.MkdirAll(shut, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shut, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(shut, 0o755) })
+	stderr, err := interviewRun(t, false, term.Mono, "reflect", "interview", "v0.2.0", "--proceed", "--answers", retroAnswersFile(t, "Q1", "Q2"))
+	if exitCodeOf(err) != 1 {
+		t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, stderr)
+	}
+	if rec := readInterviewRecord(t, r.Root()); len(rec.Answers) != 2 {
+		t.Fatalf("record %+v", rec)
+	}
+}

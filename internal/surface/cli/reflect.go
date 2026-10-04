@@ -227,10 +227,19 @@ func newReflectInterviewCommand(asJSON *bool) *cobra.Command {
 			}
 			if _, err := runWrittenInterview(cmd, w, flags); err != nil {
 				var fin *finishError
-				if errors.As(err, &fin) {
-					return reflectRefuse(cmd.OutOrStdout(), *asJSON, fin.err)
+				if !errors.As(err, &fin) {
+					return err
 				}
-				return err
+				// The answers record is written by now, so a writer fault
+				// that is not a refusal the person answers exits 1, never
+				// reflectRefuse's 2, which promises nothing was written.
+				rerr := reflectRefuse(cmd.OutOrStdout(), *asJSON, fin.err)
+				var ee *exitError
+				if errors.As(rerr, &ee) && ee.Code == 2 {
+					ee.Code = 1
+					ee.Msg += " (the answers record stands)"
+				}
+				return rerr
 			}
 			if written == nil {
 				return &exitError{Code: 1, Msg: "abcd reflect interview: the interview ended without a retrospective (nothing written)"}
