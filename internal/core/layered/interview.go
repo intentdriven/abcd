@@ -14,7 +14,7 @@ const (
 )
 
 // InterviewList resolves interview.list from the machine's
-// ~/.abcd/config.json, else the bundled arrows. It claims the interview
+// ~/.abcd.noindex/config.json, else the bundled arrows. It claims the interview
 // namespace, so a misspelt key is refused, and it is the machine's alone: how
 // a person reads a list is theirs to say, so a repository's .abcd/config.json
 // that sets it is refused naming the machine's file, as a value outside the

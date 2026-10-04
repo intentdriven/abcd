@@ -3,7 +3,7 @@ package oracle
 // connect.go is the setup's write (itd-2609081951381895 scope 5, criteria 7
 // and 8): given a provider's base URL, its first allowlist and where its key
 // lives, verify the connection with one call, then write the key into its home
-// and the provider block into the machine's ~/.abcd/config.json. Nothing is
+// and the provider block into the machine's ~/.abcd.noindex/config.json. Nothing is
 // written into the repository or into the harness's settings, and a
 // verification that fails writes nothing at all.
 //
@@ -35,7 +35,7 @@ const (
 	// KeyHomeExternal is a setup outside abcd (an environment variable or an
 	// existing tool's configuration); abcd stores only where it is.
 	KeyHomeExternal = credential.HomeExternal
-	// KeyHomeABCD is abcd-only: the owner-only ~/.abcd/credentials.json.
+	// KeyHomeABCD is abcd-only: the owner-only ~/.abcd.noindex/credentials.json.
 	KeyHomeABCD = credential.HomeABCD
 	// KeyHomeKeychain is the platform keychain.
 	KeyHomeKeychain = credential.HomeKeychain
@@ -218,13 +218,13 @@ func checkConnect(req *ConnectRequest) error {
 }
 
 // configLockFileName is the lock the provider block's write takes, beside
-// ~/.abcd/config.json.
+// ~/.abcd.noindex/config.json.
 const configLockFileName = ".config.json.lock"
 
 // configLockTimeout bounds the wait for another setup writing the file.
 var configLockTimeout = 5 * time.Second
 
-// writeProviderBlock sets oracle.api.<name> in ~/.abcd/config.json, keeping
+// writeProviderBlock sets oracle.api.<name> in ~/.abcd.noindex/config.json, keeping
 // every other key, written atomically at mode 0600. The file is read, changed
 // and renamed into place under its lock (fsutil.WithFileLockIn), so concurrent
 // setups never lose each other's blocks, and a block another setup wrote
@@ -232,10 +232,10 @@ var configLockTimeout = 5 * time.Second
 func writeProviderBlock(home, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
 	rel := abcdhome.Rel(layered.Config.MachineRel)
-	// The machine layer refuses a file behind a symlinked ~/.abcd, so a block
+	// The machine layer refuses a file behind a symlinked ~/.abcd.noindex, so a block
 	// written through the link would land wherever it points (a dotfiles
 	// checkout) and never be read back.
-	// ~/.abcd is created, judged and opened in one walk relative to home's
+	// ~/.abcd.noindex is created, judged and opened in one walk relative to home's
 	// descriptor, and the lock and the file are reached through it, so a link
 	// swapped in after the judgement is refused rather than written through
 	// (iss-2609281310017733).
@@ -268,7 +268,7 @@ func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[
 	rel := abcdhome.Rel(layered.Config.MachineRel)
 	root := map[string]json.RawMessage{}
 	// Read through dir, the directory the write below goes through, never by
-	// walking ~/.abcd again: a same-uid swap of ~/.abcd between the two walks
+	// walking ~/.abcd.noindex again: a same-uid swap of ~/.abcd.noindex between the two walks
 	// would otherwise read one directory's file and write it, with the new
 	// block, into the other (iss-2609290300313698).
 	raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, rel, layered.MaxFileBytes, 0)

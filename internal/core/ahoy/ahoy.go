@@ -6,7 +6,7 @@
 // on-disk/registry state.
 //
 // The package performs I/O only under a caller-supplied cwd and the user-scope
-// ~/.abcd/ store (and, on install, an owned PATH copy). It never writes to
+// ~/.abcd.noindex/ store (and, on install, an owned PATH copy). It never writes to
 // stdout, never calls os.Exit, and never imports a transport (cobra/MCP), so it
 // is fully testable and reusable across surfaces. Interactive decisions are
 // routed through the injected Prompter seam.
@@ -43,7 +43,7 @@ const (
 	// an answer the front door's confirmation returns, never on the category
 	// approval alone.
 	Dependency GapCategory = "dependency"
-	// UserState covers ~/.abcd/history registry state (guided, never auto-edited).
+	// UserState covers ~/.abcd.noindex/history registry state (guided, never auto-edited).
 	UserState GapCategory = "user-state"
 	// StatusLine covers the host harness's status-line wiring (spc-70). Its one
 	// gap is advisory and is never written under --yes: the wiring rewrites a

@@ -6,7 +6,7 @@ package loop
 // (ruling DR1, 2026-09-29), resolved once when a run starts through the one
 // layered configuration reader — the --pace, --sub-agents and --fix-rounds
 // flags, then the
-// repository's .abcd/config.json, then the machine's ~/.abcd/config.json,
+// repository's .abcd/config.json, then the machine's ~/.abcd.noindex/config.json,
 // then the bundled default — and written into the run's state with the layer
 // each value came from, so the run record names it and a later invocation
 // honours the pace the run started on, whatever the files say by then.
@@ -46,7 +46,7 @@ const (
 )
 
 // The configuration keys the pace claims, under the `pace` namespace of
-// .abcd/config.json and ~/.abcd/config.json.
+// .abcd/config.json and ~/.abcd.noindex/config.json.
 const (
 	paceNamespace   = "pace"
 	keyWorkMinutes  = "work_minutes"

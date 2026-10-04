@@ -6,8 +6,8 @@
 // The store is machine-scoped and keyed on the repository's root commit, the way
 // the transcript and worktree stores are:
 //
-//	~/.abcd/lab/<root-sha>/index.jsonl        one registry line per lab
-//	~/.abcd/lab/<root-sha>/<lab-id>/          one lab home
+//	~/.abcd.noindex/lab/<root-sha>/index.jsonl        one registry line per lab
+//	~/.abcd.noindex/lab/<root-sha>/<lab-id>/          one lab home
 //	    INTENTION.md                          the question, before any mutation
 //	    snapshot/                             a standalone clone at the pin
 //	    home/                                 the lab's own HOME

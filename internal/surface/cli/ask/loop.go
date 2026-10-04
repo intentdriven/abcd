@@ -41,7 +41,7 @@ type Terminal struct {
 	// ASCII draws the marks without a UTF-8 locale.
 	ASCII bool
 	// Roots are where Put reads the interview.list setting from
-	// (layered.InterviewList): the machine's ~/.abcd/config.json under
+	// (layered.InterviewList): the machine's ~/.abcd.noindex/config.json under
 	// Roots.Home, a repository's under Roots.Repo refused.
 	Roots layered.Roots
 }

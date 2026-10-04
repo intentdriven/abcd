@@ -97,7 +97,7 @@ func hookRunIn(t *testing.T, event, root, pathDir, dir string) (string, string, 
 }
 
 // hookRunHome is hookRunIn with an explicit HOME. The PATH rung's ownership
-// check reads `$HOME/.abcd/path-entry`, so a test that vouches for a planted
+// check reads `$HOME/.abcd.noindex/path-entry`, so a test that vouches for a planted
 // binary has to control the home the shim reads. An empty home gets a fresh
 // temporary one, which carries no record — the shape every caller that predates
 // the ownership rung wants.

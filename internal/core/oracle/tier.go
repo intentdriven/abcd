@@ -7,7 +7,7 @@
 // provider settings) and four layers, resolved through the shared layered
 // configuration resolver (internal/core/layered): an invocation --route over
 // the repository's .abcd/config/oracle-routing.json over the machine's
-// ~/.abcd/oracle-routing.json over the bundled proposal. Nothing is applied
+// ~/.abcd.noindex/oracle-routing.json over the bundled proposal. Nothing is applied
 // until a table is accepted: with neither file present every agent resolves to
 // the harness at host-decides, and the bundled proposal is what an accepted
 // table falls back to for an agent it has no row for.

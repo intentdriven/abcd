@@ -5,8 +5,8 @@ package history
 //
 // The DEFAULT is user-level and exists by construction:
 //
-//	~/.abcd/transcripts/<root-sha>/records/*.md    redacted records
-//	~/.abcd/transcripts/<root-sha>/staging/*.raw   raw, awaiting redaction
+//	~/.abcd.noindex/transcripts/<root-sha>/records/*.md    redacted records
+//	~/.abcd.noindex/transcripts/<root-sha>/staging/*.raw   raw, awaiting redaction
 //
 // Two properties are load-bearing.
 //
@@ -72,7 +72,7 @@ var (
 	LocalRootsDisplay = abcdhome.Display("local-transcript-roots")
 
 	// legacyStoreRelPath is where the store lived when it was a sub-tree of
-	// ahoy's registry namespace. ahoy still owns ~/.abcd/history/ for
+	// ahoy's registry namespace. ahoy still owns ~/.abcd.noindex/history/ for
 	// index.json and the per-repo meta.json; only the corpus moves out.
 	legacyStoreRelPath = abcdhome.Rel("history")
 )
@@ -193,7 +193,7 @@ const storeDirPerm = 0o700
 // existing one alone by contract, so without this step a leaf laid out 0o755
 // stays readable by every local account however each record inside is written.
 //
-// It is the leaf and nothing else. The ancestors are shared ground (~/.abcd, or
+// It is the leaf and nothing else. The ancestors are shared ground (~/.abcd.noindex, or
 // a checkout's .abcd/.work.local) whose modes other readers depend on; closing
 // the leaf is enough, because nothing below it can be listed or opened through a
 // directory other accounts cannot search.
@@ -312,7 +312,7 @@ func storeDirFault(p string, err error) *StorePathError {
 // never written.
 //
 // The declaration is home-scoped and line-oriented, following the
-// ~/.abcd/path-entry and ~/.abcd/trusted-roots idiom rather than inventing one:
+// ~/.abcd.noindex/path-entry and ~/.abcd.noindex/trusted-roots idiom rather than inventing one:
 // an abcd-owned record under the caller's own home, where an absent or
 // unvouched-for file declares nothing. It is a sibling file rather than a
 // section of either, for the reason trusted-roots is: each of those records

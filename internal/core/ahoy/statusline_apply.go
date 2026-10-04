@@ -3,7 +3,7 @@ package ahoy
 // The status-line wiring `ahoy install` writes and `ahoy uninstall` restores
 // (spc-70 ac-8; itd-200 "the install step asks"). Two files, one consent:
 //
-//   - ~/.abcd/statusline.json, the user-level setting — the bundled defaults
+//   - ~/.abcd.noindex/statusline.json, the user-level setting — the bundled defaults
 //     with the element switches the prompts took and `previous_command` set to
 //     whatever the harness ran before, written 0600 because its reader refuses
 //     a file others can write;
@@ -156,7 +156,7 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("the status line was not wired: the home directory could not be resolved, so " + statusline.SettingsDisplay + " has nowhere to go.")
 		return
 	}
-	// The setting's reader refuses a file behind a symlinked ~/.abcd, so a write
+	// The setting's reader refuses a file behind a symlinked ~/.abcd.noindex, so a write
 	// through the link would land wherever the link points and never be read.
 	if err := fsutil.HomeScopeLink(userHome(), statusline.SettingsRelPath); err != nil {
 		a.refuse("refused to wire the status line: " + err.Error() + "; nothing was written.")
@@ -178,7 +178,7 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("refused to wire the status line: " + displayPath(hs.path) + " could not be re-encoded (" + errText(err) + "); nothing was written.")
 		return
 	}
-	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// ~/.abcd.noindex is created, judged and opened relative to home's descriptor and
 	// the setting is written (and, on a failed harness write, removed) through
 	// it, so a link swapped in after the check above is refused rather than
 	// written through (iss-2609281310017733).

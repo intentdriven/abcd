@@ -84,7 +84,7 @@ func userStoreBase() (string, error) {
 }
 
 // ahoyRepoMetaPath is the per-repo meta.json, which ahoy owns and which stays
-// under ~/.abcd/history/: only the corpus moved out (iss-95). A survey that
+// under ~/.abcd.noindex/history/: only the corpus moved out (iss-95). A survey that
 // wants a repository's NAME reads it there while reading its transcripts from
 // the lane Resolve returns.
 func ahoyRepoMetaPath(rootSHA string) (string, error) {

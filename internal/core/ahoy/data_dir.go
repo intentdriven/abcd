@@ -129,7 +129,7 @@ func insideRepo(cwd, p string) bool {
 // these shapes under an ordinary umask; on a host whose umask leaves directories
 // group-writable the refusal costs the owned copy, and the install degrades to
 // the pinned symlink and says why. This is the shape check only; the trust
-// binding — the cache is promoted only when ~/.abcd/cache-attestation names
+// binding — the cache is promoted only when ~/.abcd.noindex/cache-attestation names
 // the directory and its recorded hash — is cacheBindingProblem, and a
 // directory that passes here is still not promoted without it.
 func dataDirHazard(dataDir, cwd string) string {
