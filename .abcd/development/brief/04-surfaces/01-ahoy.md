@@ -487,7 +487,7 @@ about, one question per category present, never one per item.
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
 | `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
-| `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
+| `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
@@ -611,6 +611,40 @@ project and only the person can end, such as a tool's own conventions file that
 holds their words (the `conventions-file` row above). The text render prints
 them before anything else, and every outcome past detection carries them, the
 early returns included.
+
+Install, and install alone, adds the host-reach warnings after them
+(`conventions.host_reach` and `conventions.host_version`, never resolvable and
+never a refusal): neither `Detect`, which the board and the hooks call, nor
+`Managed`, which the status line calls on every refresh, makes them, because
+the check walks every folder above the project and starts the agent tool,
+which a call made on every prompt or refresh must not. That is why the
+owner-file warnings, which ride detection's gaps, also appear in the dry run
+and the doctor report, and the host-reach ones do not. Install makes them only
+once the run is past its refusals and its adoption question, so a run that
+refuses or is declined starts nothing. A `CLAUDE.local.md` at the project root
+is named and never read, classified or offered for removal. From the root's
+parent up to the file-system root, each folder is asked with `lstat` alone for
+`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, skipping the user-level
+`.claude/CLAUDE.md` in the home folder but naming a `CLAUDE.md` directly in it.
+A `.claude` folder that cannot be searched hides only its own `CLAUDE.md`, and
+the walk goes on past it; a folder whose own entries cannot be looked for ends
+the walk quietly. Each path is shown through `fsutil.RedactHome`, and each
+warning carries one fixed sentence: "abcd reads no settings from
+folders above this project. This check only asks whether a file of this name
+exists there; it reads nothing in it and changes nothing abcd does, because the
+agent tool itself reads that folder." The presence check is not a read of
+configuration from above the working tree, which the loader's rule forbids: it
+takes nothing, so the most a hostile file above the tree can cause is a
+warning. The version warning asks the `claude` command on `PATH` once for its
+version (`host_version.go`), through the runner's one launch primitive for a
+vendor binary (`runner.Exec`): the command is refused when it resolves to a
+relative path or inside the project, or when group or other can write it or a
+folder it is reached through, and it runs with the git-scrubbed environment,
+each stream bounded, and a three-second limit that kills the process group it
+leads. The warning reads the first `major.minor.patch` the command prints on
+stdout, and warns, naming no version, when it is below the one floor constant,
+cited beside it from the 2026-10-03 research note. No command, no answer, an
+error exit or no parsable version raises nothing.
 
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it

@@ -119,8 +119,10 @@ func TestTheStatusHeadIsTheIntentBuildNextPicks(t *testing.T) {
 			for _, c := range set.Candidates {
 				cands = append(cands, c.ID)
 			}
-			if !reflect.DeepEqual(next, cands) || pick.Chosen.ID != "itd-21" {
-				t.Errorf("Next = %v, want the pick's order %v with itd-21 first", next, cands)
+			// The head, the pick's choice itd-21, is listed under Now alone
+			// (ruling of 2026-10-03); Next is the pick's order after it.
+			if len(cands) == 0 || cands[0] != "itd-21" || !reflect.DeepEqual(next, cands[1:]) || pick.Chosen.ID != "itd-21" {
+				t.Errorf("Next = %v, want the pick's order %v after its choice itd-21", next, cands)
 			}
 		}
 	}

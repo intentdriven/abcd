@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
@@ -121,7 +122,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,\n" +
 			"--sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,\n" +
 			"pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in\n" +
-			"~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run\n" +
+			abcdhome.Display("config.json") + ", else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run\n" +
 			"record name each number's layer. A malformed pace or ceiling, typed or configured, is\n" +
 			"refused naming the value and the accepted form, and writes nothing. Starting again keeps\n" +
 			"the run's pace; a flag naming another is refused. The window and the pause bind through\n" +
@@ -132,12 +133,12 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"The runner configuration is read before the run is created: roles.<role>.runner (host,\n" +
 			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
-			"~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,\n" +
+			abcdhome.Display("config.json") + ", each model route admitted against its provider's allowlist. A fault,\n" +
 			"a model route the allowlist does not admit included, is refused at the runner stage and\n" +
-			"nothing is created or launched. Only a route in ~/.abcd/config.json hands a role to a\n" +
+			"nothing is created or launched. Only a route in " + abcdhome.Display("config.json") + " hands a role to a\n" +
 			"runner, which spends the person's own key: one the repository's .abcd/config.json sets to\n" +
 			"a runner is skipped with a warning on stderr, and the role runs on the host as if unrouted.\n" +
-			"One it sets to host keeps the role on the host over a runner route in ~/.abcd/config.json,\n" +
+			"One it sets to host keeps the role on the host over a runner route in " + abcdhome.Display("config.json") + ",\n" +
 			"since that spends nothing of the person's, with a warning naming both routes.\n\n" +
 			"An issue id (iss-N, validated by shape) is built as one lane. Its checks are the\n" +
 			"repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing\n" +
@@ -587,7 +588,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;\n" +
 			"a sync counts no fix round.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
-			"store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>\n" +
+			"store, " + abcdhome.Display("worktrees/<root-sha>/<run-id>-<lane-id>") + ", on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
@@ -632,7 +633,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
-			"A role routed to a command-line runner (roles.<role>.runner in ~/.abcd/config.json:\n" +
+			"A role routed to a command-line runner (roles.<role>.runner in " + abcdhome.Display("config.json") + ":\n" +
 			"claude or opencode, enabled under runner.<name> there) is started by the step itself when the stage\n" +
 			"hands the lane out: the runner gets the brief and the receipt path the host would get,\n" +
 			"runs in the lane's worktree (claude with the role's tools granted and nothing else asked,\n" +

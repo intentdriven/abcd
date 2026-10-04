@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/credential"
@@ -206,5 +207,5 @@ func jsonContract(b []byte) error {
 // the person: the four lifeboat agents read the packed lifeboat, which is
 // files, and no verb emits a request that carries them, so none is sent to a
 // provider; the host runs them.
-const disembarkNoDispatch = "the lifeboat agents read the packed lifeboat's files, and abcd builds no request carrying them, " +
-	"so it sends none of them to a provider: remove the oracle.roles entry for the agent from ~/.abcd/config.json"
+var disembarkNoDispatch = "the lifeboat agents read the packed lifeboat's files, and abcd builds no request carrying them, " +
+	"so it sends none of them to a provider: remove the oracle.roles entry for the agent from " + abcdhome.Display("config.json")

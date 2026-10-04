@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -17,7 +18,7 @@ import (
 func dotfilesHome(t *testing.T) (home, dotfiles string) {
 	t.Helper()
 	home, dotfiles = t.TempDir(), t.TempDir()
-	if err := os.Symlink(dotfiles, filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(dotfiles, abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	return home, dotfiles
@@ -78,7 +79,7 @@ func TestTheStoreLockIsOwnerOnly(t *testing.T) {
 	if _, err := SetMachine(home, "openrouter", "sk-example-0123456789"); err != nil {
 		t.Fatal(err)
 	}
-	lock := filepath.Join(home, ".abcd", storeLockFileName)
+	lock := abcdhome.Path(home, storeLockFileName)
 	assertOwnerOnly(t, lock)
 
 	if err := os.Chmod(lock, 0o644); err != nil {
@@ -110,14 +111,14 @@ func assertOwnerOnly(t *testing.T, p string) {
 func TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 	home := t.TempDir()
 	dotfiles := filepath.Join(home, "dotfiles", "abcd")
-	for _, dir := range []string{filepath.Join(home, ".abcd"), dotfiles} {
+	for _, dir := range []string{abcdhome.Path(home), dotfiles} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	swapped := false
 	t.Cleanup(fsutil.SwapHomeScopeVettedForTest(func(dir string) {
-		if swapped || dir != filepath.Join(home, ".abcd") {
+		if swapped || dir != abcdhome.Path(home) {
 			return
 		}
 		swapped = true
@@ -162,7 +163,7 @@ func TestResolveRefusesAStoreSwappedForAGroupReadableOneAfterItsCheck(t *testing
 	}
 	swapped := false
 	t.Cleanup(fsutil.SwapHomeScopeVettedForTest(func(dir string) {
-		if swapped || dir != filepath.Join(home, ".abcd") {
+		if swapped || dir != abcdhome.Path(home) {
 			return
 		}
 		swapped = true

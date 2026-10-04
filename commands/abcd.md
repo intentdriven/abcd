@@ -82,7 +82,8 @@ a `status:` heading with the three counts, one line per intent under `Now:` and
 alone: its rows are in the JSON and on the site's Status page. Now is every
 intent a build run has in a lane (each row's `lane` names the run, the lane,
 its next stage and the role it waits on), then the intent marked `next_up`; Next
-is every planned intent the readiness gate reports READY; Later is every
+is every other planned intent the readiness gate reports READY, since the
+`next_up` intent is listed under Now alone; Later is every
 planned intent the gate refuses, its `failing_checks` named, then the drafts.
 A planned intent that names the release it must land by carries it as
 `target_release` on its row, in any list, and its text line shows `target

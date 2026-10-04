@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/update"
 )
 
@@ -45,13 +46,13 @@ func runBootstrapWithDataHome(t *testing.T, root, data, home string, fx *bootstr
 
 // homePathEntry is $HOME/.abcd/path-entry, the home-scoped provenance record.
 func homePathEntry(home string) string {
-	return filepath.Join(home, ".abcd", "path-entry")
+	return abcdhome.Path(home, "path-entry")
 }
 
 // seedHomePathEntry writes the provenance record under a pinned HOME.
 func seedHomePathEntry(t *testing.T, home, body string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(homePathEntry(home), []byte(body), 0o644); err != nil {
@@ -933,7 +934,7 @@ func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
 
 // homeCacheAttestation is $HOME/.abcd/cache-attestation.
 func homeCacheAttestation(home string) string {
-	return filepath.Join(home, ".abcd", "cache-attestation")
+	return abcdhome.Path(home, "cache-attestation")
 }
 
 // attestationValues parses the attestation, failing when it is absent.
@@ -1053,7 +1054,7 @@ func TestBootstrapOfflineCacheHitNeverAttests(t *testing.T) {
 		home := t.TempDir()
 		seedBootstrapCache(t, data, bootstrapTag, cached)
 		prior := "data_dir=/some/other/data\nbinary_sha256=" + strings.Repeat("a", 64) + "\ncache_trust=manifest\nattested_at=2026-09-01T00:00:00Z\n"
-		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(homeCacheAttestation(home), []byte(prior), 0o600); err != nil {
@@ -1197,12 +1198,12 @@ func TestBootstrapAttestationTempIgnoresAPlantedSymlink(t *testing.T) {
 	if err := os.WriteFile(victim, []byte(victimBody), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	out, code := runBootstrapWithDataHomeAtPid(t, root, data, home, fx, func(pid int) {
-		planted := filepath.Join(home, ".abcd", ".cache-attestation."+strconv.Itoa(pid))
+		planted := abcdhome.Path(home, ".cache-attestation."+strconv.Itoa(pid))
 		if err := os.Symlink(victim, planted); err != nil {
 			t.Fatal(err)
 		}
@@ -1389,7 +1390,7 @@ func TestBootstrapRefusesASymlinkedAbcdHome(t *testing.T) {
 	root, data, fx := attestableRun(t)
 	home := t.TempDir()
 	dotfiles := t.TempDir()
-	if err := os.Symlink(dotfiles, filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(dotfiles, abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	out, code := runBootstrapInHome(t, t.TempDir(), root, data, home, fx)

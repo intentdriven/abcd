@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -34,7 +35,7 @@ func connectReq(f *fx, base string) ConnectRequest {
 	}
 }
 
-func machineFile(f *fx, name string) string { return filepath.Join(f.roots.Home, ".abcd", name) }
+func machineFile(f *fx, name string) string { return abcdhome.Path(f.roots.Home, name) }
 
 func TestConnectVerifiesThenWritesTheBlockAndTheKey(t *testing.T) {
 	p := newProvFake(t, 200, chat("typesafe/jev-1.13-20260915", "ok"))
@@ -173,7 +174,7 @@ func TestConnectRefusesAPointerAtNothing(t *testing.T) {
 	if p.calls.Load() != 0 {
 		t.Fatal("a call was made")
 	}
-	if _, statErr := os.Lstat(filepath.Join(f.roots.Home, ".abcd")); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Lstat(abcdhome.Path(f.roots.Home)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatal("something was written")
 	}
 }
@@ -418,7 +419,7 @@ func TestConcurrentConnectsOfOneProviderWriteOneBlock(t *testing.T) {
 func TestConnectNamesAnUnsafeConfigLockRatherThanContention(t *testing.T) {
 	p := newProvFake(t, 200, chat("local-model", "ok"))
 	f := newFx(t)
-	dir := filepath.Join(f.roots.Home, ".abcd")
+	dir := abcdhome.Path(f.roots.Home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +463,7 @@ func TestTheProviderBlockWriteRefusesAConfigNamingAKeyTwice(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
-			dir := filepath.Join(home, ".abcd")
+			dir := abcdhome.Path(home)
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -490,7 +491,7 @@ func TestTheProviderBlockWriteRefusesAConfigNamingAKeyTwice(t *testing.T) {
 // left as it was.
 func TestTheProviderBlockIsReadWhereItIsWritten(t *testing.T) {
 	home := t.TempDir()
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	fresh := filepath.Join(home, "fresh")
 	aside := filepath.Join(home, "moved-aside")
 	for _, c := range []struct{ dir, body string }{
@@ -504,7 +505,7 @@ func TestTheProviderBlockIsReadWhereItIsWritten(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), 0o700)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -41,7 +42,7 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"never checks for or applies updates on its own (adr-38). A plugin-root\n" +
 			"binary, the dev shim, and package-manager installs are refused with the\n" +
 			"command that owns them. The file being replaced must be provably abcd's:\n" +
-			"the binary running the command, an install ~/.abcd/path-entry records, or\n" +
+			"the binary running the command, an install " + abcdhome.Display("path-entry") + " records, or\n" +
 			"a digest a published release still names. Anything else is refused with a\n" +
 			"remedy that reinstalls over it — never one that deletes it.\n\n" +
 			"With --check it only asks: it fetches the latest release's tag once, says\n" +

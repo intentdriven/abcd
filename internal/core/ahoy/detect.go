@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"sort"
 	"strings"
@@ -304,7 +305,7 @@ func detectIdentity(id RepoIdentity, idx *historyIndex) []Gap {
 	gaps := []Gap{{
 		ID: "identity.unregistered", Category: UserState, Scope: "repo",
 		Title:   "root SHA not in history index",
-		Detail:  "Root commit " + shortSHA(id.RootSHA) + " is absent from ~/.abcd/history/index.json.",
+		Detail:  "Root commit " + shortSHA(id.RootSHA) + " is absent from " + abcdhome.Display("history", "index.json") + ".",
 		FixHint: "ahoy install registers the repo entry.", Required: true, Resolvable: true,
 	}}
 	if cand := findRefoundingCandidate(idx, id); cand != nil {
@@ -453,7 +454,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 	if !isDir(root) {
 		gaps = append(gaps, Gap{
 			ID: "history.bootstrap_missing", Category: UserState, Scope: "machine",
-			Title: "~/.abcd/history/ not bootstrapped", Detail: "The shared history store directory is absent.",
+			Title: abcdhome.Display("history/") + " not bootstrapped", Detail: "The shared history store directory is absent.",
 			FixHint: "ahoy install bootstraps it.", Required: true, Resolvable: true,
 		})
 	}
@@ -470,7 +471,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 		gaps = append(gaps, Gap{
 			ID: "history.meta_missing", Category: UserState, Scope: "repo",
 			Title:   "history meta.json missing",
-			Detail:  "~/.abcd/history/" + shortSHA(rootSHA) + "/meta.json is absent.",
+			Detail:  abcdhome.Display("history", shortSHA(rootSHA), "meta.json") + " is absent.",
 			FixHint: "ahoy install writes the per-repo meta.json.", Required: true, Resolvable: true,
 		})
 	}
@@ -496,7 +497,7 @@ func detectStoredCredential(rootSHA, repoDir string) []Gap {
 	if idx, err := readHistoryIndexFile(); err == nil && idx != nil {
 		for _, r := range idx.Repos {
 			if r.Github != "" && scrubRemoteUserinfo(r.Github) != r.Github {
-				where = append(where, "~/.abcd/history/index.json")
+				where = append(where, abcdhome.Display("history", "index.json"))
 				break
 			}
 		}
@@ -504,7 +505,7 @@ func detectStoredCredential(rootSHA, repoDir string) []Gap {
 	if rootSHA != "" {
 		metaPath := filepath.Join(repoDir, "meta.json")
 		if g := metaGithub(metaPath); g != "" && scrubRemoteUserinfo(g) != g {
-			where = append(where, "~/.abcd/history/"+shortSHA(rootSHA)+"/meta.json")
+			where = append(where, abcdhome.Display("history", shortSHA(rootSHA), "meta.json"))
 		}
 	}
 	if len(where) == 0 {
@@ -616,7 +617,22 @@ func detectMarkerDrift(cwd string) []Gap {
 	files := writableMarkerTargets(target)
 	var gaps []Gap
 	for _, name := range files {
-		switch classifyMarker(filepath.Join(cwd, name)) {
+		target := filepath.Join(cwd, name)
+		state := classifyMarker(target)
+		// A block to plant or rewrite needs the file's folder: the write
+		// creates its lock and its temporary file beside the target, and asks
+		// this same check first. A folder that refuses makes the gap one
+		// install can never close (iss-2610032303183254).
+		if (state == markerMissing || state == markerOutdated) && markerFolderRefusal(target) != nil {
+			gaps = append(gaps, Gap{
+				ID: "marker.unwritable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " cannot take abcd's block",
+				Detail:  "The folder " + name + " is in does not let abcd create a file there, so the block cannot be planted or rewritten.",
+				FixHint: "Let your account create files in the folder that holds " + name + "; ahoy install then plants the block.", Required: true, Resolvable: false,
+			})
+			continue
+		}
+		switch state {
 		case markerMissing:
 			gaps = append(gaps, Gap{
 				ID: "marker.missing", Category: PluginOwned, Scope: "repo",
@@ -628,6 +644,13 @@ func detectMarkerDrift(cwd string) []Gap {
 				ID: "marker.outdated", Category: PluginOwned, Scope: "repo",
 				Title: name + " marker block outdated", Detail: name + " marker block differs from the template.",
 				FixHint: "ahoy install rewrites it to canonical (silent overwrite).", Required: true, Resolvable: true,
+			})
+		case markerUnreadable:
+			gaps = append(gaps, Gap{
+				ID: "marker.unreadable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " cannot take abcd's block",
+				Detail:  name + " exists but is not a file abcd can read whole (a folder, a pipe, a file too large, or one it has no permission to read), so the block cannot be planted in it.",
+				FixHint: "Make " + name + " a readable regular file; ahoy install then plants the block.", Required: true, Resolvable: false,
 			})
 		case markerUnplaceable:
 			gaps = append(gaps, Gap{
@@ -825,7 +848,7 @@ func unrecordedEntryGap(target string) []Gap {
 	return []Gap{{
 		ID: "symlink.unrecorded", Category: ConfigChange, Scope: "machine",
 		Title: "PATH entry is not recorded as this machine's abcd",
-		Detail: displayPath(target) + " is abcd's own entry, but ~/.abcd/path-entry does not record it. " +
+		Detail: displayPath(target) + " is abcd's own entry, but " + abcdhome.Display("path-entry") + " does not record it. " +
 			"The plugin's hooks read that record before they will run an abcd off PATH, so they ignore this install: " +
 			"no rules loader, no shell guard, and no transcript capture.",
 		FixHint:  "ahoy install writes the record naming this entry — with --dev if the entry is the track-latest shim, which a plain install replaces with a pinned one.",

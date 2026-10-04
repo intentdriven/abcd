@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -47,7 +48,7 @@ func hermetic(t *testing.T) string {
 func newCorpus(t *testing.T) string {
 	t.Helper()
 	home := hermetic(t)
-	dir := filepath.Join(home, ".abcd", "sources")
+	dir := abcdhome.Path(home, "sources")
 	if _, err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
@@ -517,7 +518,7 @@ func TestAMismatchedClassRefusesTheSync(t *testing.T) {
 // them creates the corpus.
 func TestNoCorpusIsNamedByEveryStep(t *testing.T) {
 	home := hermetic(t)
-	dir := filepath.Join(home, ".abcd", "sources")
+	dir := abcdhome.Path(home, "sources")
 	repo := t.TempDir()
 	steps := map[string]func() error{
 		"add": func() error {

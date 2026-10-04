@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // sourceCheckout stands the process in a fresh repository under a temp HOME, so
@@ -62,7 +64,7 @@ func TestSourceNoCorpusSaysSoOnEveryVerb(t *testing.T) {
 	if code != 0 || strings.Count(stdout+stderr, "\n") != 1 || !strings.Contains(stderr, "no sources corpus") {
 		t.Fatalf("refresh with no corpus: exit %d\n%s%s", code, stdout, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "sources")); !os.IsNotExist(err) {
+	if _, err := os.Stat(abcdhome.Path(home, "sources")); !os.IsNotExist(err) {
 		t.Fatal("a verb created the corpus")
 	}
 }

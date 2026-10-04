@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestPackAppendsVoyageForGitSource: a git-backed source (has a root-commit SHA)
@@ -28,7 +30,7 @@ func TestPackAppendsVoyageForGitSource(t *testing.T) {
 	_ = rootSHA
 	// Find the single ledger under ~/.abcd/voyage/<sha>/disembark/history.jsonl.
 	var ledger string
-	err = filepath.Walk(filepath.Join(home, ".abcd", "voyage"), func(p string, info os.FileInfo, err error) error {
+	err = filepath.Walk(abcdhome.Path(home, "voyage"), func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && filepath.Base(p) == "history.jsonl" {
 			ledger = p
 		}
@@ -74,7 +76,7 @@ func TestPackVoyageAppendsNotRewrites(t *testing.T) {
 		}
 	}
 	var ledger string
-	filepath.Walk(filepath.Join(home, ".abcd", "voyage"), func(p string, info os.FileInfo, err error) error {
+	filepath.Walk(abcdhome.Path(home, "voyage"), func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && filepath.Base(p) == "history.jsonl" {
 			ledger = p
 		}
@@ -94,7 +96,7 @@ func TestPackVoyageRefusesSymlinkedBase(t *testing.T) {
 	repo := packFixture(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	if err := os.MkdirAll(abcd, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +137,7 @@ func TestPackSkipsVoyageWhenNoRootSHA(t *testing.T) {
 	if !strings.Contains(res.VoyageNote, "root-commit SHA") {
 		t.Errorf("want a 'no root-commit SHA' note, got %q", res.VoyageNote)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "voyage")); !os.IsNotExist(err) {
+	if _, err := os.Stat(abcdhome.Path(home, "voyage")); !os.IsNotExist(err) {
 		t.Errorf("no voyage directory should be created for an unkeyable source")
 	}
 }

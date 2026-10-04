@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The pacing intent at the surface (itd-2609201925079472): `abcd build`'s
@@ -70,10 +72,10 @@ func TestBuildRunsOnTheBundledPaceAndNamesIt(t *testing.T) {
 func TestBuildPaceFlagsWinOverTheConfiguration(t *testing.T) {
 	repo := buildRepo(t)
 	home := os.Getenv("HOME")
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(`{"pace": {"work_minutes": 60, "pause_minutes": 120, "sub_agents": 1}}`), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"pace": {"work_minutes": 60, "pause_minutes": 120, "sub_agents": 1}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	repo.Write(".abcd/config.json", `{"pace": {"work_minutes": 100, "pause_minutes": 200, "sub_agents": 4}}`)

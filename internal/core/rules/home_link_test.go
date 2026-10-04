@@ -4,9 +4,10 @@ package rules
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestTrustedRootsBehindASymlinkedAbcdHomeReAdmitNothing: the rules loader
@@ -20,7 +21,7 @@ func TestTrustedRootsBehindASymlinkedAbcdHomeReAdmitNothing(t *testing.T) {
 	dotfiles := t.TempDir()
 	declareTrusted(t, dotfiles, marker)
 	home := t.TempDir()
-	if err := os.Symlink(filepath.Join(dotfiles, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(abcdhome.Path(dotfiles), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)

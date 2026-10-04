@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -68,7 +69,7 @@ func newSourceCommand(asJSON *bool) *cobra.Command {
 		Use: "source",
 		Long: "The personal sources corpus: documents you may consult, a CSL-JSON bibliography, and one\n" +
 			"append-only influence ledger per repository, in a local-only git repository with no\n" +
-			"remote (~/.abcd/sources by default; --corpus names another). The folder a source sits\n" +
+			"remote (" + abcdhome.Display("sources") + " by default; --corpus names another). The folder a source sits\n" +
 			"in — confidential/<key>/ or public/<key>/ — is its classification.\n\n" +
 			"Consult freely, cite deliberately: confidential entries are projected into this\n" +
 			"repository's untracked private banlist (sync-banlist), which the committed pre-commit\n" +
@@ -93,7 +94,7 @@ func newSourceCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, st, func(w io.Writer) { renderSourceStatus(w, st) })
 		},
 	}
-	cmd.PersistentFlags().StringVar(&corpusFlag, "corpus", "", "the corpus directory (absolute; default ~/.abcd/sources)")
+	cmd.PersistentFlags().StringVar(&corpusFlag, "corpus", "", "the corpus directory (absolute; default "+abcdhome.Display("sources")+")")
 	cmd.AddCommand(newSourceInitCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceAddCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceDeclassifyCommand(asJSON, &corpusFlag))

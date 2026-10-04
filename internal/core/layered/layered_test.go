@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // fixture lays a repository root and a home under one temp dir and returns the
@@ -46,7 +48,7 @@ func (f *fixture) repoFile(file File, body string) string {
 }
 
 func (f *fixture) machineFile(file File, body string) string {
-	p := filepath.Join(f.roots.Home, ".abcd", filepath.FromSlash(file.MachineRel))
+	p := abcdhome.Path(f.roots.Home, filepath.FromSlash(file.MachineRel))
 	f.write(p, body)
 	return p
 }

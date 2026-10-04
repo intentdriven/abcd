@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
@@ -58,9 +59,9 @@ const (
 const StagePace = "pace"
 
 // paceForm is the accepted form every pace refusal names.
-const paceForm = "--pace takes <work-minutes>/<pause-minutes> in whole minutes (work 1 to 10080, pause 0 to 10080, e.g. 120/300) " +
+var paceForm = "--pace takes <work-minutes>/<pause-minutes> in whole minutes (work 1 to 10080, pause 0 to 10080, e.g. 120/300) " +
 	"--sub-agents a whole number of lanes from 1 to 64, and --fix-rounds the fix rounds a lane may take before it is handed back, " +
-	"a whole number from 0 to 64; in .abcd/config.json or ~/.abcd/config.json the same numbers are " +
+	"a whole number from 0 to 64; in .abcd/config.json or " + abcdhome.Display("config.json") + " the same numbers are " +
 	"pace.work_minutes, pace.pause_minutes, pace.sub_agents and pace.fix_rounds"
 
 // PaceValue is one of the pace's numbers with the layer that supplied it:

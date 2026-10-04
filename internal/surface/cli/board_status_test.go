@@ -68,7 +68,8 @@ func writeRunState(t *testing.T, root, intentID string) {
 // rulings BV1 and BV2 of 2026-09-29 amend criterion 1: in a managed checkout
 // the text carries Now and Next with each row's id and title — the lane row
 // with its lane state, the head marked next up — and Later as a count alone,
-// and an intent in a lane is listed under Now only; --json carries the three
+// and an intent in a lane is listed under Now only, as is the head (ruling of
+// 2026-10-03, iss-2610031207397996); --json carries the three
 // lists in full, Later's refused intent with its failing checks and the draft.
 func TestBoardCarriesTheStatusBlock(t *testing.T) {
 	root := managedCheckout(t)
@@ -77,9 +78,9 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 
 	text := string(runCLI(t))
 	for _, want := range []string{
-		"  status:     Now 2 · Next 1 · Later 2",
+		"  status:     Now 2 · Next 0 · Later 2",
 		"    Now:\n      itd-7  The unlinked one  [lane-1: implement (run-2609290000000001)]\n      itd-2609010000000001  The ready one  [next up]\n",
-		"    Next:\n      itd-2609010000000001  The ready one\n    Later: 2 intents\n",
+		"    Next:\n      (none)\n    Later: 2 intents\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the board lacks\n%s\nin\n%s", want, text)
@@ -100,7 +101,10 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 	}
 	// The lists are read in the pick order, the one order there is, so the
 	// heading carries the counts and no note about the order.
-	if !strings.Contains(text, "  status:     Now 2 · Next 1 · Later 2\n") || strings.Contains(text, "READY intents read") {
+	if n := strings.Count(text, "itd-2609010000000001 "); n != 1 {
+		t.Errorf("the head is on the text board %d times, want once, under Now:\n%s", n, text)
+	}
+	if !strings.Contains(text, "  status:     Now 2 · Next 0 · Later 2\n") || strings.Contains(text, "READY intents read") {
 		t.Errorf("the heading is not the three counts alone:\n%s", text)
 	}
 
@@ -130,8 +134,8 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := got.Status
-	if s == nil || len(s.Now) != 2 || len(s.Next) != 1 || len(s.Later) != 2 {
-		t.Fatalf("--json status = %+v, want two Now rows, one Next, two Later", s)
+	if s == nil || len(s.Now) != 2 || len(s.Next) != 0 || len(s.Later) != 2 {
+		t.Fatalf("--json status = %+v, want two Now rows, no Next (the head is under Now alone), two Later", s)
 	}
 	if s.Now[0].Lane == nil || s.Now[0].Lane.Stage != "implement" || s.Now[0].Lane.Run != "run-2609290000000001" || !s.Now[1].NextUp {
 		t.Errorf("--json Now = %+v, want the lane state then the head", s.Now)
@@ -170,7 +174,7 @@ func TestBoardWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 		if strings.Contains(l, "(run-2609290000000001)") {
 			continue
 		}
-		l = strings.Replace(l, "Now 2 · Next 1 · Later 2", "Now 1 · Next 1 · Later 3", 1)
+		l = strings.Replace(l, "Now 2 · Next 0 · Later 2", "Now 1 · Next 0 · Later 3", 1)
 		kept = append(kept, strings.Replace(l, "Later: 2 intents", "Later: 3 intents", 1))
 	}
 	if got := strings.Join(kept, "\n"); got != without {
@@ -238,7 +242,7 @@ func TestBoardRowShowsItsTarget(t *testing.T) {
 			{ID: "itd-5", Title: "The head", Bucket: "planned", Target: "next", NextUp: true},
 		},
 		Next: []statusblock.Row{
-			{ID: "itd-5", Title: "The head", Bucket: "planned", Target: "next"},
+			{ID: "itd-4", Title: "Ready", Bucket: "planned", Target: "next"},
 			{ID: "itd-6", Title: "Untargeted", Bucket: "planned"},
 		},
 		Later: []statusblock.Row{},
@@ -247,7 +251,7 @@ func TestBoardRowShowsItsTarget(t *testing.T) {
 	for _, want := range []string{
 		"      itd-7  In a lane  [lane-1: implement (run-1); target v0.11.0]\n",
 		"      itd-5  The head  [next up; target next]\n",
-		"      itd-5  The head  [target next]\n",
+		"      itd-4  Ready  [target next]\n",
 		"      itd-6  Untargeted\n",
 	} {
 		if !strings.Contains(got, want) {

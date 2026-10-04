@@ -4,12 +4,12 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -301,7 +301,7 @@ func TestTranscriptLandsInTheHistoryStore(t *testing.T) {
 		recs[0].AgentType != "ruthless-reviewer" {
 		t.Fatalf("records = %+v", recs)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "transcripts", rootSHA)); err != nil {
+	if _, err := os.Stat(abcdhome.Path(home, "transcripts", rootSHA)); err != nil {
 		t.Fatalf("the store is not the user-level one: %v", err)
 	}
 }
