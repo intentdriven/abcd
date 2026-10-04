@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
@@ -232,10 +233,10 @@ func TestImplementLoadReportsLoadAndCores(t *testing.T) {
 func TestImplementLoadMalformedLimitsIsLoud(t *testing.T) {
 	loadFixture(t, machine(3, 3, 3), nil)
 	home, _ := os.UserHomeDir()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "load-limits"), []byte("# mine\nextreme-load 9\nstray-mins 12\n"), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "load-limits"), []byte("# mine\nextreme-load 9\nstray-mins 12\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	code, out, _ := implementCLI(t, "implement", "load", "--site", "preflight")

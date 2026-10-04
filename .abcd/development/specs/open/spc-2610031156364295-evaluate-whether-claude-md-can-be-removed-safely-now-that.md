@@ -456,11 +456,13 @@ decided rather than asked; the reason is given beneath each.
    - packages: internal/core/ahoy, internal/surface/cli, docs/how-to, .abcd/development/brief/04-surfaces
    - tests: TestOwnersToolFileIsUntouchedAndNamed, TestRepeatingToolFileIsOfferedForRetirement, TestRetireRechecksTheFile, TestToolFileClassification; the existing piped-install tests unchanged in their answer order, since the offer is asked only at a terminal
    - lands after step 2; it adds `Warnings` to `InstallResult`, and its question meets the asking rules of the two question specs where those have landed
+   - landed: feat/agentsmd-tool-files
 5. The host-reach warnings: presence above the root, the personal file, and the version
    - criteria: A5
    - packages: internal/core/ahoy, docs/how-to, .abcd/development/brief/04-surfaces
    - tests: TestHostReachWarningsArePresenceOnly, TestHostVersionWarning (a fake `claude` on `PATH` below the floor, at it, absent, and printing nothing parsable); `Managed` unchanged in cost, asserted by its existing tests
    - lands after step 4, whose `Warnings` list it reuses
+   - landed: feat/agentsmd-host-reach
 6. prepare-this-repo, the remaining brief, and the close
    - criteria: the page half of A1; the intent's close
    - packages: commands/prepare-this-repo.md, internal/core/ahoy (test only), .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals

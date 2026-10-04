@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -14,12 +15,12 @@ import (
 
 // TrustedRootsRelPath is the home-scoped opt-in that re-admits a marker root the
 // caller does not own, relative to the user's home directory.
-const TrustedRootsRelPath = ".abcd/trusted-roots"
+var TrustedRootsRelPath = abcdhome.Rel("trusted-roots")
 
 // TrustedRootsDisplay is how that file is NAMED in a diagnostic: the tilde form,
 // never the expanded path, so a refusal a user pastes into a shell works and no
 // message carries the developer-identity home path (iss-81, fsutil.RedactHome).
-const TrustedRootsDisplay = "~/" + TrustedRootsRelPath
+var TrustedRootsDisplay = abcdhome.Display("trusted-roots")
 
 // maxTrustedRootsBytes caps the declaration read. A hand-maintained list of
 // checkout paths is a handful of lines; 64 KiB bounds a planted device or an
@@ -325,9 +326,9 @@ func foreignOwnerRefusal(marker, cwd string) []string {
 	return append(notes, fmt.Sprintf(
 		"rules: REFUSED %s as this session's configuration root — %s, and git would not answer for it, %s. "+
 			"If that checkout really is yours to trust — a foreign-uid checkout, a container bind mount, a shared CI checkout — "+
-			"declare it once, from an account you control: mkdir -p ~/.abcd && printf '%%s\\n' '%s' >> %s",
+			"declare it once, from an account you control: mkdir -p %s && printf '%%s\\n' '%s' >> %s",
 		termsafe.Sanitize(marker), because, outcome,
-		termsafe.Sanitize(marker), TrustedRootsDisplay))
+		abcdhome.Display(), termsafe.Sanitize(marker), TrustedRootsDisplay))
 }
 
 // trustedRootDeclared reports whether the caller has declared marker trustworthy

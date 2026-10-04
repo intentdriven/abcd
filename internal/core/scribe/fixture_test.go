@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
@@ -65,7 +66,7 @@ func newFixture(t *testing.T, position string, n int) fixture {
 	for rel, sentinel := range outsideSentinels {
 		writeFile(t, repo, rel, sentinel+"\n")
 	}
-	writeFile(t, home, ".abcd/transcripts/aaaa/records/y.md", "SENTINEL-TRANSCRIPT-STORE\n")
+	writeFile(t, home, abcdhome.Rel("transcripts/aaaa/records/y.md"), "SENTINEL-TRANSCRIPT-STORE\n")
 	return f
 }
 

@@ -21,6 +21,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -348,7 +349,7 @@ var configLockTimeout = 5 * time.Second
 // after this one's check is refused rather than replaced.
 func writeProviderBlock(home, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
-	rel := ".abcd/" + layered.Config.MachineRel
+	rel := abcdhome.Rel(layered.Config.MachineRel)
 	// The machine layer refuses a file behind a symlinked ~/.abcd, so a block
 	// written through the link would land wherever it points (a dotfiles
 	// checkout) and never be read back.
@@ -361,7 +362,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 		return fmt.Errorf("oracle adapter: the provider block was not written to %s: %v", origin, err)
 	}
 	if err != nil {
-		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
+		return fmt.Errorf("oracle adapter: %s could not be created, so the provider block was not written", abcdhome.Display())
 	}
 	defer dir.Close()
 	err = fsutil.WithFileLockIn(dir, configLockFileName, configLockTimeout, func() error {
@@ -373,7 +374,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	case errors.Is(err, fsutil.ErrLockPathUnsafe):
 		// A retry cannot cure a symlinked or non-regular lock, so the
 		// refusal names it rather than reading as contention.
-		return fmt.Errorf("oracle adapter: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and the provider block was not written; remove it, and the next setup creates it afresh", configLockFileName)
+		return fmt.Errorf("oracle adapter: the lock %s is not a regular file (a symlink, or something else), so it is refused and the provider block was not written; remove it, and the next setup creates it afresh", abcdhome.Display(configLockFileName))
 	}
 	return err
 }
@@ -382,7 +383,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 // run under the file's lock.
 func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
-	rel := ".abcd/" + layered.Config.MachineRel
+	rel := abcdhome.Rel(layered.Config.MachineRel)
 	root := map[string]json.RawMessage{}
 	// Read through dir, the directory the write below goes through, never by
 	// walking ~/.abcd again: a same-uid swap of ~/.abcd between the two walks
@@ -456,7 +457,7 @@ const AdapterExplanation = "An aggregator (OpenRouter, for one) serves many vend
 // KeyHomesProse is the prose above the choice of the key's home (criterion 8):
 // the credential store's, which recommends the keychain in the prose and never
 // as a marked option.
-const KeyHomesProse = credential.HomesProse
+var KeyHomesProse = credential.HomesProse
 
 // providerService is the credential walkthrough's service for a provider's
 // key: what it unlocks, what works without it, and the adapter's own

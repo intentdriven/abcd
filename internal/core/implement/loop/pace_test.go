@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -22,7 +23,7 @@ func strp(s string) *string { return &s }
 // modes the machine layer's guard accepts.
 func machineConfig(t *testing.T, body string) {
 	t.Helper()
-	dir := filepath.Join(os.Getenv("HOME"), ".abcd")
+	dir := abcdhome.Path(os.Getenv("HOME"))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

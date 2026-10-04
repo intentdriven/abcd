@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
@@ -31,7 +32,7 @@ func routingPrompter(machine, repo bool) *scriptedPrompter {
 }
 
 func routingPaths(home, repo string) (machine, repoFile string) {
-	return filepath.Join(home, ".abcd", filepath.FromSlash(layered.OracleRouting.MachineRel)),
+	return abcdhome.Path(home, filepath.FromSlash(layered.OracleRouting.MachineRel)),
 		filepath.Join(repo, filepath.FromSlash(layered.OracleRouting.RepoRel))
 }
 
@@ -208,7 +209,7 @@ func TestUninstallLeavesTheRoutingTables(t *testing.T) {
 // TestOracleRoutingIsAskedAfterTheStatusLine pins the consent order the spec
 // names: …, status-line, oracle-routing, user-state, …
 func TestOracleRoutingIsAskedAfterTheStatusLine(t *testing.T) {
-	want := []GapCategory{Dependency, SafeAutocreate, ConfigChange, StatusLine, OracleRouting, DrainRule, UserState, PluginOwned}
+	want := []GapCategory{Dependency, SafeAutocreate, ConfigChange, StatusLine, OracleRouting, DrainRule, ConventionsFile, UserState, PluginOwned}
 	if !reflect.DeepEqual(categoryPromptOrder, want) {
 		t.Fatalf("categoryPromptOrder = %v, want %v", categoryPromptOrder, want)
 	}

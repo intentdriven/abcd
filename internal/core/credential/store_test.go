@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -210,7 +211,7 @@ func TestAValueIntoAWorkingTreeIsRefused(t *testing.T) {
 	if strings.Contains(err.Error(), secretValue) {
 		t.Fatal("the refusal echoes the value")
 	}
-	if _, statErr := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(abcdhome.Path(home)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatal("~/.abcd was created")
 	}
 	// A tool file inside a working tree is refused as a pointer too.
@@ -257,7 +258,7 @@ func TestAHomeThatIsAWorkingTreeKeepsTheOtherHomes(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "working tree") {
 		t.Fatalf("abcd: err = %v, want a working-tree refusal", err)
 	}
-	if _, statErr := os.Lstat(filepath.Join(home, ".abcd", StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Lstat(abcdhome.Path(home, StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatal("abcd: credentials.json was written inside the working tree")
 	}
 	tool := filepath.Join(home, ".config", "tool")
@@ -281,7 +282,7 @@ func TestAHomeThatIsAWorkingTreeKeepsTheOtherHomes(t *testing.T) {
 // concurrent Set would, and only then lets the abcd home's Set proceed.
 func TestOneNameCannotLandInTwoHomes(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +321,7 @@ func TestTheIndexWriteRunsTheScanner(t *testing.T) {
 	if strings.Contains(err.Error(), awsShaped) {
 		t.Fatal("the refusal echoes the secret-shaped pointer")
 	}
-	if _, statErr := os.Stat(filepath.Join(home, ".abcd", IndexFileName)); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(abcdhome.Path(home, IndexFileName)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatal("the index was written")
 	}
 }
@@ -351,7 +352,7 @@ func TestNeitherTheTreeNorTheHarnessCarriesTheValue(t *testing.T) {
 			if _, err := Set(home, "svc", ch); err != nil {
 				t.Fatal(err)
 			}
-			assertNowhere(t, home, value, filepath.Join(home, ".abcd", StoreFileName))
+			assertNowhere(t, home, value, abcdhome.Path(home, StoreFileName))
 		})
 	}
 }

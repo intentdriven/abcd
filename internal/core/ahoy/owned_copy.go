@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -91,13 +92,13 @@ func homeScope() (string, string) {
 func homeScopeErr() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", errors.New("no home directory is resolved (HOME is unset), so there is no ~/.abcd for the record to live in")
+		return "", errors.New("no home directory is resolved (HOME is unset), so there is no " + abcdhome.Display() + " for the record to live in")
 	}
 	if !filepath.IsAbs(home) {
-		return "", errors.New("HOME is a relative path, so ~/.abcd resolves against whatever directory the verb happens to run in rather than naming one home")
+		return "", errors.New("HOME is a relative path, so " + abcdhome.Display() + " resolves against whatever directory the verb happens to run in rather than naming one home")
 	}
 	if cwd, err := os.Getwd(); err == nil && insideRepo(cwd, home) && resolvePath(cwd) != resolvePath(home) {
-		return "", errors.New("HOME lies inside the repository the verb is running against, so its ~/.abcd records would be repository content rather than a write into the caller's own home")
+		return "", errors.New("HOME lies inside the repository the verb is running against, so its " + abcdhome.Display() + " records would be repository content rather than a write into the caller's own home")
 	}
 	if err := fsutil.HomeScopeLink(home, pathEntryRel); err != nil {
 		return "", err
@@ -107,7 +108,7 @@ func homeScopeErr() (string, error) {
 
 // pathEntryRel is the provenance record's place in the home, in the slash form
 // the home-scoped primitives take.
-const pathEntryRel = ".abcd/path-entry"
+var pathEntryRel = abcdhome.Rel("path-entry")
 
 // userPathEntryPath is the PATH-copy provenance record, home-scoped and
 // abcd-owned (~/.abcd/path-entry, alongside the history store). It deliberately
@@ -323,9 +324,9 @@ func IsOwnedPathCopy(target string) bool {
 // ~/.abcd/path-entry, which is exactly the owned-copy shape `ahoy install` then
 // adopts where it stands. One string, shared by the install refusal and the
 // symlink.legacy fix hint, so the two cannot drift apart.
-const coldCacheRemedy = "Install a verified copy first with the install one-liner in the README " +
+var coldCacheRemedy = "Install a verified copy first with the install one-liner in the README " +
 	"(https://github.com/intentdriven/abcd#install): it downloads the release binary, checks it against that release's own checksums.txt, " +
-	"writes it to ~/.local/bin/abcd and records it in ~/.abcd/path-entry. Then re-run `abcd ahoy install`, which adopts it."
+	"writes it to ~/.local/bin/abcd and records it in " + abcdhome.Display("path-entry") + ". Then re-run `abcd ahoy install`, which adopts it."
 
 // coldCacheRefusal is the install note for a run that had no verified artefact
 // to install from. It says what was left at target and why, in the words the
@@ -411,7 +412,7 @@ func cachePresent(dataDir, cwd string) bool {
 // first cut, reproduced in 0.25 s). The promotion hashes the artefact against
 // the attested value, so a pair flipped after the binding fails the hash.
 func cacheBindingProblem(dataDir string) (cacheAttestation, string) {
-	record := "~/.abcd/" + cacheAttestationFile
+	record := abcdhome.Display(cacheAttestationFile)
 	// The home the record would live in is judged before the record: a refused
 	// HOME is a different repair from a missing attestation, and reporting it
 	// as the latter sends the operator to re-run the hooks, which decline to

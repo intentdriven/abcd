@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/cienv"
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/machineload"
@@ -72,7 +73,7 @@ const (
 )
 
 // LimitsFileDisplay is the settings file as every report names it.
-const LimitsFileDisplay = "~/.abcd/" + machineload.LimitsFileName
+var LimitsFileDisplay = abcdhome.Display(machineload.LimitsFileName)
 
 // loadCheckedEnv is the marker `make preflight` exports to its prerequisites and
 // recipe, so a check started inside a preflight knows it.
@@ -284,7 +285,7 @@ func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 		}
 		home = h
 	}
-	raw, refusal, err := fsutil.ReadHomeDeclaration(home, ".abcd/"+machineload.LimitsFileName, maxLimitsBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, abcdhome.Rel(machineload.LimitsFileName), maxLimitsBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:

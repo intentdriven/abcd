@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestHistoryCaptureSupersededPathIsHomeRedacted holds the success-envelope
@@ -30,7 +32,7 @@ func TestHistoryCaptureSupersededPathIsHomeRedacted(t *testing.T) {
 	t.Chdir(repo)
 
 	rootSHA := gitCmd(t, repo, "rev-list", "--max-parents=0", "HEAD")
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", rootSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", rootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 

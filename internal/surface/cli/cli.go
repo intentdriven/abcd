@@ -23,6 +23,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -318,16 +319,21 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
-			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
+			width := boardWidth(cmd.OutOrStdout())
+			return render(cmd.OutOrStdout(), asJSON, board, func(out io.Writer) {
+				// Every line is laid at the window's width, a long row
+				// continuing on an indented line (iss-2610031207397996).
+				w := &boardWrapper{w: out, width: width}
+				defer w.Flush()
 				// Sanitised like every other board line: the directory name is the
 				// checkout's own, and a name carrying an ESC sequence or a bidi
 				// control must not reach the terminal raw (iss-2609281736483740).
 				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
 				// bidi runes travel raw, as in every board field.
 				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
-				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
-				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
-				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
+				fmt.Fprintf(w, "  git repo:   %s\n", yesNo(st.IsGitRepo))
+				fmt.Fprintf(w, "  record:     %s\n", yesNo(st.HasRecord))
+				fmt.Fprintf(w, "  work tiers: %s\n", termsafe.Sanitize(tierList(st.WorkTiers)))
 				if board.Statusline != nil {
 					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
 				}
@@ -2265,7 +2271,7 @@ func newRulesCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
-domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+domains, overridden by this machine's ` + abcdhome.Display("rules.json") + ` and then by this repo's
 .abcd/rules.json, each layer per field, so the repo wins a field both set.
 Either file may be absent. Bare, it renders every active domain; a positional
 DOMAIN (case-insensitive) renders that one domain regardless of its state or the
@@ -3732,6 +3738,15 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				// The warnings come first, before the headline: each names a
+				// thing that keeps abcd's rules from an agent tool here, which
+				// only the person can end (itd-2610030814013772).
+				for _, warn := range res.Warnings {
+					fmt.Fprintf(w, "warning: %s\n", termsafe.Sanitize(warn))
+				}
+				if len(res.Warnings) > 0 {
+					fmt.Fprintln(w)
+				}
 				fmt.Fprintf(w, "abcd ahoy install — %s\n", res.Status)
 				// Core's plain summary first (iss-164): what changed for the
 				// person, why it matters and what to do. The exact record of
@@ -3784,6 +3799,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					}
 					if slices.Contains(res.OptionalSkipped, ahoy.DrainRuleOfferGapID) {
 						fmt.Fprint(w, "    the drain rule is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
+					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
+						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
 				}
 			})
@@ -4123,6 +4141,8 @@ func optionalSkipReason(id string) string {
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
 	case ahoy.DrainRuleOfferGapID:
 		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
+	case ahoy.ConventionsRetireGapID:
+		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	}
 	return ""
 }
@@ -4256,8 +4276,9 @@ func (p *stdinPrompter) echo(answer string) {
 
 // AtTerminal reports whether a person is answering at a terminal, which makes
 // the prompter an ahoy.TerminalPrompter: the questions abcd asks only of a
-// person (whether to change who commits, itd-131, and whether to record the
-// drain eligibility rule) are never put to a pipe.
+// person (whether to change who commits, itd-131, whether to record the drain
+// eligibility rule, and whether to remove a tool's own conventions file that
+// only repeats AGENTS.md) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {

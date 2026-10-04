@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"slices"
 	"sort"
@@ -34,7 +35,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 
 // install is Install without the person-facing summary, which Install composes
 // once over whichever of the several outcomes below was reached.
-func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error) {
+func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, err error) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return InstallResult{}, err
@@ -47,6 +48,18 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	if err != nil {
 		return InstallResult{}, err
 	}
+	// The host-reach warnings, set once the run is past its refusals and its
+	// adoption question (below).
+	var hostReach []Gap
+	// Every outcome past detection carries the warnings, the early returns
+	// included: a tool's own file holding the owner's words hides AGENTS.md
+	// whether or not this run changed anything. The full apply sets them from
+	// its final detection instead.
+	defer func() {
+		if err == nil && res.Warnings == nil {
+			res.Warnings = installWarnings(det.Gaps, hostReach)
+		}
+	}()
 
 	// Unmanaged folder: nothing to act on.
 	if det.FolderKind == UnmanagedFolder {
@@ -103,6 +116,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		}
 	}
 	_ = adopted
+
+	// What keeps AGENTS.md from the agent tool from outside the project's own
+	// files: a personal file at the root, a file in a folder above it, an old
+	// host (itd-2610030814013772). Install checks only, made once per run and
+	// never by Detect, which the status board and the hooks also call. It runs
+	// a subprocess, so it waits until the run is past every refusal above and
+	// the adoption question: a run that refuses or is declined starts nothing.
+	hostReach = detectHostReach(abs)
 
 	// Where the PATH entry goes, decided BEFORE any write but AFTER the adoption
 	// gate: an explicit --bin-dir abcd cannot write to fails the whole install
@@ -197,6 +218,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepOracleRouting()
 	// After the routing offers: the last of the repository consent questions.
 	ac.stepDrainRule()
+	// After the last consent question, and so after stepMarker, whose
+	// retraction may just have left a tool's own file blank: the retirement
+	// offers, one question per file, asked only at a terminal.
+	ac.stepConventionsFiles()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	// Before the pin: an identity mended here is the one the pin then records.
@@ -227,6 +252,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	}
 	return InstallResult{
 		Status:             status,
+		Warnings:           installWarnings(final.Gaps, hostReach),
 		Writes:             ac.writes,
 		Changes:            ac.changes,
 		Remaining:          remaining,
@@ -572,6 +598,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		}
 	}()
 	oldDocsTarget := ic.DocsTarget
+	saved := *ic // the values on disk, before any override is applied
 	visForced := a.applyOverride("visibility", visibilityChoices, &ic.Visibility)
 	// The saved docs target is read against every value setup ever wrote; an
 	// override may only name one it writes now.
@@ -593,7 +620,12 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return ic // all values already valid and no override forced a change
 	}
 	if hasConfigGap && !a.approved[ConfigChange] {
-		// Category declined; a required value is missing.
+		// Category declined; a required value is missing. Nothing is saved, so
+		// every value flag the person typed is dropped, and each is named
+		// rather than left silent (iss-2610032027321900).
+		for _, n := range declinedOverrideNotes(saved, a.overrides) {
+			a.refuse(n)
+		}
 		return nil
 	}
 
@@ -685,6 +717,40 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		a.inform(oracleBackendRecordedNote)
 	}
 	return ic
+}
+
+// valueFlags maps each config value an override can set to the install flag
+// that carries it, in the order the flags are named.
+var valueFlags = []struct{ key, flag string }{
+	{"visibility", "--visibility"},
+	{"docs_target", "--docs-target"},
+	{"oracle_backend", "--oracle-backend"},
+	{"scan_deep", "--scan-deep"},
+}
+
+// declinedOverrideNotes renders one note per explicit value flag a declined
+// settings change dropped: a flag whose value differs from the one saved. A
+// flag that already matched the saved value changed nothing, so it is not
+// named (iss-2610032027321900).
+func declinedOverrideNotes(saved InstallConfig, overrides map[string]string) []string {
+	current := map[string]string{
+		"visibility":     saved.Visibility,
+		"docs_target":    saved.DocsTarget,
+		"oracle_backend": saved.OracleBackend,
+	}
+	if saved.ScanDeep != nil {
+		current["scan_deep"] = fmt.Sprint(*saved.ScanDeep)
+	}
+	var notes []string
+	for _, f := range valueFlags {
+		v := overrides[f.key]
+		if v == "" || v == current[f.key] {
+			continue
+		}
+		notes = append(notes, f.flag+" "+v+" was not applied: the settings change (config-change) was declined, "+
+			"so .abcd/config.json was not written; run abcd ahoy install again with the flag and answer y to the config-change question.")
+	}
+	return notes
 }
 
 // rollbackForced discards the effects of a forced override whose config write did
@@ -1279,7 +1345,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			remedy := "Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`."
 			switch _, herr := homeScopeErr(); {
 			case errors.Is(herr, fsutil.ErrHomeScopeSymlinked):
-				remedy = "Replace the symlinked ~/.abcd with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
+				remedy = "Replace the symlinked " + abcdhome.Display() + " with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
 			case herr != nil:
 				remedy = "Re-run from a session whose HOME names your own home directory: the hooks refuse to write the attestation into this one for the same reason, so no further session will produce it."
 			}
@@ -1828,34 +1894,44 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // optionalGapIDs are the advisory gaps install closes only against an answered
 // prompt, never under --yes: the identity pin (see stepIdentityPin), the
 // status-line offer (see stepStatusLine), the two model-tier routing offers
-// (see stepOracleRouting) and the drain eligibility record (see
-// stepDrainRule). In the order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID}
+// (see stepOracleRouting), the drain eligibility record (see stepDrainRule)
+// and the retirement of a tool's own conventions file (see
+// stepConventionsFiles). In the order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+
+// terminalOnlyGapIDs are the optional offers put only to a person at a
+// terminal, and their categories: off one, neither the category nor the offer
+// is asked, so a piped answer stream keeps the order it had before they
+// existed.
+var terminalOnlyGapIDs = []string{DrainRuleOfferGapID, ConventionsRetireGapID}
+
+var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
 // optionalSkipped lists the optional gaps a run left un-applied without asking.
 // --yes approves every resolvable category but never adopts the identity pin
 // or wires the status line, so the skip is deliberate — and therefore has to
 // be reported rather than left ambient (iss-166). Outside --yes each is offered
-// as a confirmation, except the drain eligibility record off a terminal (see
-// stepDrainRule), so that one is listed and nothing is skipped silently.
+// as a confirmation, except the terminal-only offers off a terminal (see
+// stepDrainRule and stepConventionsFiles), so those are listed and nothing is
+// skipped silently.
 func optionalSkipped(opts InstallOptions, gaps []Gap, p Prompter) []string {
 	if opts.Yes {
 		return optionalPending(gaps)
 	}
-	if atTerminal(p) || !gapIDSet(gaps)[DrainRuleOfferGapID] {
+	if atTerminal(p) {
 		return nil
 	}
-	return []string{DrainRuleOfferGapID}
+	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return !slices.Contains(terminalOnlyGapIDs, id) })
 }
 
 // optionalAskable is optionalPending less the offers that will not be asked of
-// p: the drain eligibility record is offered only to a person at a terminal.
+// p: the terminal-only offers are put only to a person at a terminal.
 func optionalAskable(gaps []Gap, p Prompter) []string {
 	pending := optionalPending(gaps)
 	if atTerminal(p) {
 		return pending
 	}
-	return slices.DeleteFunc(pending, func(id string) bool { return id == DrainRuleOfferGapID })
+	return slices.DeleteFunc(pending, func(id string) bool { return slices.Contains(terminalOnlyGapIDs, id) })
 }
 
 // optionalPending reports which of the optional gaps are the remaining work.
@@ -1920,6 +1996,7 @@ var categoryPromptOrder = []GapCategory{
 	StatusLine,
 	OracleRouting,
 	DrainRule,
+	ConventionsFile,
 	UserState,
 	PluginOwned,
 }
@@ -1973,12 +2050,15 @@ func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCatego
 			approved[c] = true
 		}
 	default:
-		// The drain eligibility record is offered only to a person at a
-		// terminal (see stepDrainRule): off one its category is neither asked
-		// nor counted as declined, so a piped answer stream keeps the order it
-		// had before the offer existed.
+		// The drain eligibility record and the retirement of a tool's own
+		// conventions file are offered only to a person at a terminal (see
+		// stepDrainRule, stepConventionsFiles): off one their categories are
+		// neither asked nor counted as declined, so a piped answer stream keeps
+		// the order it had before the offers existed.
 		if !atTerminal(p) {
-			delete(present, DrainRule)
+			for _, c := range terminalOnlyCategories {
+				delete(present, c)
+			}
 		}
 		for _, c := range presentInPromptOrder(present) {
 			if c == Dependency && opts.ApproveDependency {
