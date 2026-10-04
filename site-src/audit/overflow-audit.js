@@ -76,7 +76,11 @@ function slug(route) {
 }
 
 // longestRun is the longest stretch of a string with no space and no hyphen in
-// it: the longest token a browser has no ordinary place to break.
+// it: the longest token a browser has no ordinary place to break. It is a
+// heuristic for choosing a sample, not a model of line breaking: a browser also
+// breaks after some punctuation (a slash, in some engines) and never between a
+// hyphen and a digit, so the record it picks is a likely worst case, not a
+// proven one. Pass or fail never rests on it; that is the scrollWidth below.
 function longestRun(s) {
   let best = 0;
   for (const part of String(s || '').split(/[\s-]+/)) {
@@ -139,6 +143,13 @@ async function discoverRecordRoutes(page, baseUrl) {
 // renderer once (iss-2610040741103264). A text run is measured too, by its
 // Range, because a heading whose words have nowhere to break overflows without
 // any element box passing the edge; it is named by its parent element.
+//
+// A known limit of the naming, not of the verdict: an absolutely positioned
+// element whose containing block lies OUTSIDE the clipping ancestor escapes that
+// clip and can widen the page, yet `contained` reads only the DOM ancestors and
+// skips it. Such a page still fails on its scrollWidth; it is reported with the
+// culprit unnamed. No page of this site has one today (the board's cards sit in
+// a positioned stage).
 async function measure(page, viewportWidth, tolerance) {
   return page.evaluate(
     ({ width, tol }) => {
