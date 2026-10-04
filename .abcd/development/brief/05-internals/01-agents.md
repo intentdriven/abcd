@@ -13,7 +13,7 @@ assembles the input, states the output contract, and checks what comes back.
 
 ## What ships
 
-Sixteen agent prompts ship in `agents/` today, in four groups:
+Seventeen agent prompts ship in `agents/` today, in four groups:
 
 - **Lifeboat and release synthesis**, each feeding one verb that validates its
   output under a cite-or-be-dropped rule: `principle-distiller`
@@ -25,7 +25,11 @@ Sixteen agent prompts ship in `agents/` today, in four groups:
   cite-or-be-dropped. `reflection-composer` (`reflect write`) runs a cut
   release's retrospective interview from the seed `reflect` renders and drafts
   the answers the writer files, which the writer refuses while an answer is
-  under its floor.
+  under its floor. `planning-interviewer` (`intent interview`) writes the
+  planning interview's questions one turn at a time when the person runs it in
+  a plain Terminal, and edits the intent record after each answer; it and the
+  `reflection-composer` run there on the person's own route, each question
+  checked and drawn by the binary (spc-2610030911534855).
 - **The intent auditor**, `intent-auditor`, which judges a shipped intent's
   promise against delivered reality (below).
 - **Repo-workflow reviewers and researchers**, dispatched by a human rather than

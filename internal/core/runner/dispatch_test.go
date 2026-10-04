@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"reflect"
@@ -214,6 +215,64 @@ func TestNoHostAndNoFallbackHostIsRefusedBeforeLaunch(t *testing.T) {
 	}
 }
 
+// noFallbackMachine enables opencode alone and names no fallback host: the
+// machine of a person at a plain Terminal who routed one role to a runner.
+const noFallbackMachine = `{` + localProvider + `,"runner":{"opencode":{"model":"local/qwen3-coder"}}}`
+
+// TestAttendedRunsTheRoutedRunnerWithNoFallbackHost: with the person at the
+// terminal (the plain-Terminal interviews), a role the person routed to a
+// runner runs there with no host session and no configured host.
+func TestAttendedRunsTheRoutedRunnerWithNoFallbackHost(t *testing.T) {
+	f := newFake(t, "ok", Claude, OpenCode)
+	h := newHarness(t, mustLoad(t, routed(noFallbackMachine), ""), false)
+	h.d.Attended = true
+	out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Handoff || out.Answer == nil || out.Fallback != nil || len(h.receipts) != 0 {
+		t.Fatalf("outcome = %+v, receipts %v", out, h.receipts)
+	}
+	if out.Receipt.Route.Asked != OpenCode || out.Receipt.Route.Ran != OpenCode {
+		t.Fatalf("route = %+v", out.Receipt.Route)
+	}
+}
+
+// TestAttendedRunnerFailingStopsWithItsReceipt: an attended runner that does
+// not answer stops the run. Its fallback receipt is still written, naming
+// none as the route that ran, and nothing else is launched.
+func TestAttendedRunnerFailingStopsWithItsReceipt(t *testing.T) {
+	f := newFake(t, "exit1", Claude, OpenCode)
+	h := newHarness(t, mustLoad(t, routed(noFallbackMachine), ""), false)
+	h.d.Attended = true
+	_, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
+	if err == nil || !strings.Contains(err.Error(), OpenCode) || !strings.Contains(err.Error(), "runner.fallback_host") {
+		t.Fatalf("err = %v, want a refusal naming the runner and runner.fallback_host", err)
+	}
+	if len(h.receipts) != 1 || h.receipts[0].Ran != none || h.receipts[0].Asked != OpenCode || h.receipts[0].Reason != ReasonFailed {
+		t.Fatalf("receipts = %+v, want one naming none as the route that ran", h.receipts)
+	}
+	if f.launched(Claude) {
+		t.Fatal("a runner the person did not route was launched")
+	}
+}
+
+// TestAttendedHostRoleStillNeedsALanding: attending does not invent a route
+// for a role on the host; with no host session and no configured host it is
+// refused before anything is launched, as without it.
+func TestAttendedHostRoleStillNeedsALanding(t *testing.T) {
+	f := newFake(t, "ok", Claude, OpenCode)
+	h := newHarness(t, mustLoad(t, routed(noFallbackMachine), ""), false)
+	h.d.Attended = true
+	_, err := h.d.Dispatch(context.Background(), f.request("security-reviewer"))
+	if err == nil || !strings.Contains(err.Error(), "runner.fallback_host") {
+		t.Fatalf("err = %v, want a refusal naming runner.fallback_host", err)
+	}
+	if f.launched(OpenCode) || f.launched(Claude) {
+		t.Fatal("a runner was launched for a role on the host with no landing")
+	}
+}
+
 // TestFallbackHostFailingToo is an error naming both: nothing lands silently.
 func TestFallbackHostFailingToo(t *testing.T) {
 	f := newFake(t, "exit1", Claude, OpenCode)
@@ -318,5 +377,45 @@ func TestDispatchNeedsAValidator(t *testing.T) {
 	}
 	if f.launched(OpenCode) {
 		t.Fatal("launched before the dispatcher was found incomplete")
+	}
+}
+
+// TestPrepareRunsBeforeEachRunner: the caller's Prepare is consulted before
+// every runner starts, the routed runner and the fallback host alike; a
+// *Failure it returns is that runner's failure, recorded and fallen back on
+// with nothing launched, and any other error ends the dispatch.
+func TestPrepareRunsBeforeEachRunner(t *testing.T) {
+	f := newFake(t, "ok", Claude, OpenCode)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), false)
+	var prepared []string
+	h.d.Prepare = func(name string, _ Request) error {
+		prepared = append(prepared, name)
+		if name == OpenCode {
+			return &Failure{Runner: name, Reason: ReasonInvalid, Detail: "a receipt already stands"}
+		}
+		return nil
+	}
+	out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(prepared, []string{OpenCode, Claude}) {
+		t.Fatalf("prepared %v, want each runner before it starts", prepared)
+	}
+	if f.launched(OpenCode) || out.Receipt.Route.Ran != Claude {
+		t.Fatalf("the refused runner was launched, or the host did not run: %+v", out.Receipt.Route)
+	}
+	if len(h.receipts) != 1 || h.receipts[0].Reason != ReasonInvalid || h.receipts[0].Asked != OpenCode || h.receipts[0].Ran != Claude {
+		t.Fatalf("receipts = %+v", h.receipts)
+	}
+
+	g := newFake(t, "ok", Claude, OpenCode)
+	h2 := newHarness(t, mustLoad(t, routed(routedMachine), ""), false)
+	h2.d.Prepare = func(string, Request) error { return os.ErrPermission }
+	if _, err := h2.d.Dispatch(context.Background(), g.request("ruthless-reviewer")); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("err = %v, want Prepare's own error", err)
+	}
+	if g.launched(OpenCode) || g.launched(Claude) || len(h2.receipts) != 0 {
+		t.Fatalf("a runner was launched, or a receipt recorded, after Prepare failed: %v", h2.receipts)
 	}
 }

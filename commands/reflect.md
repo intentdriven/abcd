@@ -105,6 +105,28 @@ A malformed answers file (an unknown or repeated key) exits 2.
 The retrospective is committed as part of the durable record, like any other
 change.
 
+## In a plain Terminal
+
+With no host session, the person runs the same interview from a Terminal:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reflect interview <release-tag> [--proceed] [--answers <file>] [--answered-in <place>] --json
+```
+
+The `reflection-composer` runs on the runner the person routed it to in their
+own machine's config (`roles.reflection-composer.runner`, with that runner
+enabled under `runner.<name>`), once per question; abcd draws each question,
+records each answer in the answers record in the local tier, and files the
+answers through the write above. With no route of the person's to a runner it
+refuses, exit 2, writing nothing, and names the setting. Never run it from this
+page in place of steps 3 and 4: in a host session the interview is yours.
+
+Off a terminal the questions are answered from an answers file by ordinal
+(`{"schema_version": 1, "interview": "retrospective", "answers": [{"id": "Q1", "value": "..."}]}`);
+an entry that names no `answered_in` takes `--answered-in`, `Terminal` by
+default. When the person's answers were given here, through the host's question
+tool, and are replayed through the verb, pass `--answered-in "Claude Code"`.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails

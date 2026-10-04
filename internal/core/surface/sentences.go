@@ -236,6 +236,8 @@ var sentences = map[string]string{
 		"Writes the intent's spec_id; refuses an intent that is not planned.",
 	"abcd intent plan": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: " +
 		"Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
+	"abcd intent interview": "Run an intent's planning interview in a plain Terminal on your own route: " +
+		"Writes the answers record and the role's edits; refuses with no route of yours.",
 	"abcd intent prepass": "Print a draft's pre-pass input, or write its planning brief from the host's findings: " +
 		"Writes only the brief; refuses a record not on drafts/.",
 	"abcd intent reclassify": "Change an intent's kind, or retire it as superseded by a named successor: " +
@@ -308,6 +310,8 @@ var sentences = map[string]string{
 
 	"abcd reflect": "Render the seed a cut release's retrospective interview opens from: " +
 		"Writes nothing; refuses a release that shipped no intent, or an intent id.",
+	"abcd reflect interview": "Run a cut release's retrospective interview in a plain Terminal on your own route: " +
+		"Writes the answers record and README; refuses with no route of yours.",
 	"abcd reflect write": "Write a cut release's retrospective from the interview's answers: " +
 		"Writes its README once; refuses a thin answer or unconfirmed unshipped work.",
 

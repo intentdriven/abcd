@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -31,6 +32,12 @@ func TestMain(m *testing.M) {
 	// in every test that reaches it, and no test runs the suite recursively.
 	if actAsBinary(os.Getenv(cliTestAsBinaryEnv), os.Args[1:]) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+	// The AI-written interviews' tests put this binary on PATH as the claude
+	// runner: with the script named and claude's own print flag, it plays
+	// the stub runner (written_interview_test.go) instead of the tests.
+	if dir := os.Getenv(interviewStubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
+		os.Exit(interviewStubRunner(dir))
 	}
 	// The hidden key read's pseudo-terminal tests run `ahoy connect` as a
 	// child on the terminal end (ahoy_connect_pty_test.go).

@@ -2190,6 +2190,32 @@ Hold a draft or planned intent so that planning refuses it: Writes the held line
 abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"
 ```
 
+#### `abcd intent interview`
+
+Run an intent's planning interview in a plain Terminal on your own route: Writes the answers record and the role's edits; refuses with no route of yours.
+
+**Usage:** `abcd intent interview <itd-N> [--answers <file>] [--answered-in <place>] [flags]`
+
+Run the planning interview in a plain Terminal, with no host session: the planning-interviewer,
+on the runner the person routed it to in their own machine's config, writes each question and edits
+the intent record with the tools its contract grants; abcd draws each question, takes the answer,
+and reports the readiness gate when the interview ends. With no route of the person's to a runner it
+refuses before anything runs, writing nothing. Off a terminal the questions are answered from
+--answers, by ordinal (Q1, Q2, ...). The plan act stays the product thinker's: `abcd intent plan`.
+
+**Flags:**
+
+```
+      --answered-in string   where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string       answer the questions from this answers file (JSON: schema_version, interview "planning", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
+```
+
+**Example:**
+
+```
+abcd intent interview itd-2609010000000001
+```
+
 #### `abcd intent link`
 
 Link a planned intent to an existing spec: Writes the intent's spec_id; refuses an intent that is not planned.
@@ -2860,6 +2886,32 @@ reflection is the intent audit's (`abcd intent audit <itd-N>`).
 
 ```
 abcd reflect v0.11.0
+```
+
+#### `abcd reflect interview`
+
+Run a cut release's retrospective interview in a plain Terminal on your own route: Writes the answers record and README; refuses with no route of yours.
+
+**Usage:** `abcd reflect interview <release-tag> [--answers <file>] [--answered-in <place>] [--proceed] [flags]`
+
+Run the retrospective interview in a plain Terminal, with no host session: the reflection-composer,
+on the runner the person routed it to in their own machine's config, writes each question, abcd
+draws it and takes the answer, and the outcome is filed through reflect write's own checks. With
+no route of the person's to a runner it refuses before anything runs, writing nothing. Off a
+terminal the questions are answered from --answers, by ordinal (Q1, Q2, ...).
+
+**Flags:**
+
+```
+      --answered-in string   where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string       answer the questions from this answers file (JSON: schema_version, interview "retrospective", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
+      --proceed              run although intents targeted at the release are unshipped (the person's confirmation)
+```
+
+**Example:**
+
+```
+abcd reflect interview v0.11.0
 ```
 
 #### `abcd reflect write`

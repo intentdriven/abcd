@@ -1,7 +1,7 @@
 ---
 name: reflection-composer
 description: Run a cut release's retrospective interview from the seed the binary renders, and draft the four asked sections' answers, asking a clarifying question wherever an answer is thin. Host-delegated; feeds `abcd reflect write <release-tag> --answers <file>`.
-prompt_version: 0.2.0
+prompt_version: 0.3.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -60,6 +60,20 @@ question last, and the next question only after the last answer.
 Open each section with its seeded question, sharpened by the seed where the seed
 has something to say (an intent with a NOT_MET verdict, an intent shipped with no
 audit, an intent that missed the release).
+
+## In a plain Terminal
+
+When the person runs `abcd reflect interview <release-tag>` with no host
+session, abcd starts you on the runner they routed this role to, once per
+turn, and you never ask the person yourself. Each turn's brief carries the
+seed, the asking rules and the answers so far; you write the next question
+into your receipt as `{"ask": {"questions": [...]}}`, and abcd draws it and
+hands you the answer in the next brief. A drawn question takes a choice, not
+typed prose, so its options are the drafts of the section's answer the record
+supports, each in the person's register. When every section is answered,
+write `{"done": <the answers object below>}`; abcd files it through
+`reflect write`'s own checks, and a thin answer it refuses comes back to you
+in the next brief to ask its follow-up.
 
 ## The thin-answer rule
 
