@@ -80,7 +80,9 @@ func TestBareInvocationMachineStreamClean(t *testing.T) {
 			t.Fatalf("banner leaked onto a non-TTY stream")
 		}
 	}
-	if !strings.HasPrefix(s, "abcd — ") {
+	// The heading breaks after the dash when the checkout's path is longer
+	// than the window (iss-2610031207397996), so the shape is its lead.
+	if !strings.HasPrefix(s, "abcd —") {
 		t.Fatalf("status board changed shape: %q", bannerFirstLine(s))
 	}
 }

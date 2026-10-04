@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -49,7 +50,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"appear only as a count and a total CPU share. The check's own parent chain is never\n" +
 			"a stray. Inside an autonomous run (a run state with a joined session) a warning is\n" +
 			"also written to the run log as a `load` event.\n\n" +
-			"The limits are per machine, in `~/.abcd/load-limits`, which the check reads and\n" +
+			"The limits are per machine, in `" + abcdhome.Display("load-limits") + "`, which the check reads and\n" +
 			"never creates. `#` starts a comment; every other line is `<key> <value>`:\n\n" +
 			"  stray-minutes 30   minutes at nearly all its share before a program is a stray (1 to 10080)\n" +
 			"  extreme-load 64    the one-minute load above which the machine is overloaded\n\n" +

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/report"
@@ -35,7 +36,7 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "report [<file>|-]",
 		Long: "File a written account about abcd itself, from a repository abcd manages, into\n" +
-			"the inbox in the user account's machine store (`~/.abcd/inbox/`). Nothing is\n" +
+			"the inbox in the user account's machine store (`" + abcdhome.Display("inbox/") + "`). Nothing is\n" +
 			"written into this repository or into abcd's, and nothing becomes a record until\n" +
 			"a person or a session runs `abcd inbox promote`.\n\n" +
 			"`abcd report --template` prints the skeleton: a block of fields between `---`\n" +
@@ -267,7 +268,7 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "inbox",
 		Long: "Read the reports repositories abcd manages filed with `abcd report`, from the\n" +
-			"inbox in the user account's machine store (`~/.abcd/inbox/`).\n\n" +
+			"inbox in the user account's machine store (`" + abcdhome.Display("inbox/") + "`).\n\n" +
 			"Bare `abcd inbox` lists the waiting reports newest first, naming each sender\n" +
 			"repository plainly; `abcd inbox show <id>` renders one whole. Both are\n" +
 			"read-only and file nothing. A report written to a template version this abcd\n" +

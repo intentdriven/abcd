@@ -43,6 +43,7 @@ package statusblock
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -279,6 +280,10 @@ func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 	}
 	if head != nil {
 		b.Now = append(b.Now, *head)
+		// The head is listed once, under Now: Next is the READY intents
+		// after it (the product thinker's ruling of 2026-10-03,
+		// iss-2610031207397996).
+		b.Next = slices.DeleteFunc(b.Next, func(r Row) bool { return r.ID == head.ID })
 	}
 	return b, nil
 }

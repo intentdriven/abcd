@@ -8,13 +8,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // writeSettings lays a settings file at <home>/.abcd/statusline.json.
 func writeSettings(t *testing.T, home, body string) string {
 	t.Helper()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +299,7 @@ func TestLoadRefusesAMalformedFile(t *testing.T) {
 // regular file is not the caller's word.
 func TestLoadRefusesANonRegularFile(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(filepath.Join(dir, SettingsFileName), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +319,7 @@ func TestLoadRefusesANonRegularFile(t *testing.T) {
 // redirect the read to a file the caller did not write.
 func TestLoadRefusesASymlink(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

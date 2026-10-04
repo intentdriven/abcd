@@ -119,9 +119,9 @@ In a plugin session, inside a repository you own, `/abcd:prepare-this-repo` audi
 ```text
 $ abcd
 abcd — ~/code/your-repo
-  git repo:   true
-  record:     true
-  work tiers: [development work work.local]
+  git repo:   yes
+  record:     yes
+  work tiers: development, work, work.local
   presence:   abcd-managed · your-repo · main · itd 0 · iss 0
   status:     Now 0 · Next 0 · Later 0
     Now:

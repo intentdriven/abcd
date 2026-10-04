@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // `abcd ahoy credential` is the credential store's walkthrough at its front
@@ -19,7 +21,7 @@ import (
 // credential openrouter, served by a fake on the loopback address.
 func providerNamingKey(t *testing.T, base string) {
 	t.Helper()
-	dir := filepath.Join(os.Getenv("HOME"), ".abcd")
+	dir := abcdhome.Path(os.Getenv("HOME"))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +36,7 @@ func providerNamingKey(t *testing.T, base string) {
 // cache attestation), so the absence of the directory proves nothing.
 func abcdHomeEntries(t *testing.T) string {
 	t.Helper()
-	root := filepath.Join(os.Getenv("HOME"), ".abcd")
+	root := abcdhome.Path(os.Getenv("HOME"))
 	var names []string
 	err := filepath.WalkDir(root, func(p string, _ os.DirEntry, err error) error {
 		if err != nil {
@@ -134,10 +136,10 @@ func TestAhoyCredentialKeepsAPointerInTheExternalHome(t *testing.T) {
 		t.Fatalf("%d call(s); output:\n%s", calls.Load(), out)
 	}
 	home := os.Getenv("HOME")
-	if _, err := os.Lstat(filepath.Join(home, ".abcd", "credentials.json")); err == nil {
+	if _, err := os.Lstat(abcdhome.Path(home, "credentials.json")); err == nil {
 		t.Fatal("the external home wrote the abcd-only store")
 	}
-	raw, err := os.ReadFile(filepath.Join(home, ".abcd", "credential-homes.json"))
+	raw, err := os.ReadFile(abcdhome.Path(home, "credential-homes.json"))
 	if err != nil || strings.Contains(string(raw), connectKey) || !strings.Contains(string(raw), "ABCD_TEST_PROVIDER_KEY") {
 		t.Fatalf("index: %v\n%s", err, raw)
 	}
@@ -157,7 +159,7 @@ func TestAhoyCredentialRefusesAFailedVerification(t *testing.T) {
 	if strings.Contains(string(out)+err.Error(), connectKey) {
 		t.Fatal("the refusal carries the key")
 	}
-	if _, statErr := os.Lstat(filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")); statErr == nil {
+	if _, statErr := os.Lstat(abcdhome.Path(os.Getenv("HOME"), "credentials.json")); statErr == nil {
 		t.Fatal("a refused key was stored")
 	}
 }

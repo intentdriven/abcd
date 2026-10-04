@@ -6,6 +6,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestRegisterRepoConcurrentDoesNotLoseUpdate is the iss-101 lost-update repro.
@@ -230,9 +232,9 @@ func TestRegisterRepoWritesTheIndexItLocked(t *testing.T) {
 	if _, err := bootstrapHistory(); err != nil {
 		t.Fatal(err)
 	}
-	hist := filepath.Join(home, ".abcd", "history")
-	aside := filepath.Join(home, ".abcd", "history-aside")
-	fresh := filepath.Join(home, ".abcd", "history-fresh")
+	hist := abcdhome.Path(home, "history")
+	aside := abcdhome.Path(home, "history-aside")
+	fresh := abcdhome.Path(home, "history-fresh")
 	if err := os.MkdirAll(fresh, 0o755); err != nil {
 		t.Fatal(err)
 	}
