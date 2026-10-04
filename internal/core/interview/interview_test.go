@@ -196,3 +196,30 @@ func TestParseAnswersRefusesAnOversizedFile(t *testing.T) {
 		t.Fatalf("a file one byte over the cap: %v", err)
 	}
 }
+
+// TestWriteSanitisesTheNote: a note arrives as data (an answers file names
+// it), so the record keeps it with every terminal-control and hidden rune
+// made visible, as it keeps the question it records.
+func TestWriteSanitisesTheNote(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rec := sampleRecord(Terminal)
+	rec.Answers[0].Note = "keep \x1b[31mred\x1b[0m \u0085 ‮reversed‬ ​hidden"
+	p, err := Write(Place{Repo: repo}, rec, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Record
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if n := got.Answers[0].Note; strings.ContainsAny(n, "\x1b\u0085‮‬​") || !strings.Contains(n, "keep") {
+		t.Fatalf("the note was recorded as %q", n)
+	}
+}

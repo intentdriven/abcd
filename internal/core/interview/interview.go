@@ -5,10 +5,10 @@
 //
 // A record holds, per question, the question as asked (the sanitised
 // question.Ask the front door drew or wrote), the value chosen, the note if
-// any, and where the answer was given: Terminal or Claude Code, and nothing
-// else (itd-2610030810370060 decision 4). The time is in the file's name and
-// never in its content, so two runs given the same answers write the same
-// bytes, whichever front door asked them.
+// any (sanitised by Write), and where the answer was given: Terminal or
+// Claude Code, and nothing else (itd-2610030810370060 decision 4). The time
+// is in the file's name and never in its content, so two runs given the same
+// answers write the same bytes, whichever front door asked them.
 //
 // The package is a library: it returns values and writes files, and never
 // prints.
@@ -28,6 +28,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // SchemaVersion is the answers record's and the answers file's schema.
@@ -114,10 +115,17 @@ func Write(p Place, rec Record, at time.Time) (string, error) {
 	if !nameRe.MatchString(rec.Interview) {
 		return "", fmt.Errorf("interview: %q is not an interview name", rec.Interview)
 	}
-	for _, a := range rec.Answers {
+	// The answers are copied before the note is sanitised, so the caller's
+	// record is left as it was.
+	rec.Answers = append([]Answer(nil), rec.Answers...)
+	for i, a := range rec.Answers {
 		if !ValidAnsweredIn(a.AnsweredIn) {
 			return "", fmt.Errorf("interview: answered_in %q for %s is neither %q nor %q", a.AnsweredIn, a.ID, Terminal, ClaudeCode)
 		}
+		// A note is data (an answers file names it), so it is kept with
+		// every terminal-control and hidden rune made visible, as the
+		// question it answers is.
+		rec.Answers[i].Note = termsafe.Sanitize(a.Note)
 	}
 	rec.SchemaVersion = SchemaVersion
 	body, err := json.MarshalIndent(rec, "", "  ")
