@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2610030821294016](../../intents/planned/itd-2610030821294016-connecting-a-model-service-from-inside-claude-code-works-out.md):
+[itd-2610030821294016](../../intents/shipped/itd-2610030821294016-connecting-a-model-service-from-inside-claude-code-works-out.md):
 a person connecting a model service from inside Claude Code no longer types
 every value. abcd asks for the service's address, offers to look up the models
 the service lists, suggests the models the person already uses through their
@@ -63,7 +63,7 @@ In:
 
 It builds on, and reuses rather than restates:
 
-- [spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
+- [spc-2610030911534855](../open/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
   the plain-Terminal picker (itd-2610030810370060): its step 1 (the question
   type in `internal/core/question`, golang.org/x/term in `go.mod`) and its
   step 2 (the long list with typing to narrow, the numbered fallback, and the
@@ -74,7 +74,7 @@ It builds on, and reuses rather than restates:
 - The shipped credential store (itd-2609221017023290): its three homes, its
   walkthrough (`credential.Walk`) and its rule that a stored secret is never
   replaced.
-- [spc-2610030944505997](../closed/spc-2610030944505997-asking-and-layout.md), the
+- [spc-2610030944505997](spc-2610030944505997-asking-and-layout.md), the
   asking rules and the field limits: every guided question is held to them
   where they have landed.
 
