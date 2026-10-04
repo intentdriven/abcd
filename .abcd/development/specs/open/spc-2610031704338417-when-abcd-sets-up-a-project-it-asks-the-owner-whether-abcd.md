@@ -76,7 +76,7 @@ Builds on and reuses:
   (`TestEverySetupQuestionPassesTheLimits`), which live on the asking branch of
   spc-2610030944505997 and are not
   yet at this spec's base; step 4 waits on them.
-- [spc-2610031156364295](spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
+- [spc-2610031156364295](../closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
   step 2, which narrows the conventions-file question to AGENTS.md or nothing;
   the README pair is asked after it (decision 7).
 
