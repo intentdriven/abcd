@@ -114,6 +114,10 @@ earned by running its contract on real data before the claim ships.
   renderer's compatibility statement is updated in the same change or the
   build refuses the mismatched record loudly.
 
+## Ruling 2026-10-04
+
+itd-139, the second managed project this discipline names as its demonstration (rule 3, the build path and the last acceptance criterion), was superseded on 2026-10-03 by the dashboard intent itd-2610032150577708. Asked what becomes of the promise, the product thinker (wearing the facilitator's hat) chose to give it up: the record site and the dashboard are promised for abcd's own record only (itd-2610032150577708 decision 13). The rules above that name itd-139 stand as written history; a genericity claim remains forbidden, now with no instance planned to earn it.
+
 ## Open Questions
 
 _None recorded yet._

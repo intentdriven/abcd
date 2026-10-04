@@ -5,7 +5,7 @@ status: proposed
 date: 2026-10-03
 supersedes: null
 superseded_by: null
-related_intents: [itd-2610032150577708, itd-2610032150580455]
+related_intents: [itd-2610032150577708, itd-2610032150580455, itd-2610040740108331]
 related_rfcs: []
 related_adrs: [adr-38, adr-2609091248200336]
 ---
@@ -27,6 +27,10 @@ Two people are named apart, as the role model does: the person who starts the da
 - Only the people let in can open it: access is granted by something the person who started it hands over (for example a one-time pairing link), never by being on the same local network alone. Whether being on the person's own private Tailscale network counts as let in is decided at that draft's interview.
 - What the page may change, if anything, is decided at the interview; until it is, the page shows and changes nothing.
 - Nothing the page serves leaves the person's own devices: no third-party scripts, fonts or trackers.
+
+### The product thinker's interview of 2026-10-04
+
+The dashboard's first version is reached through Tailscale only (itd-2610032150577708 decision 9): it listens on this computer alone and is published by Tailscale Serve, never Funnel; it is started by hand and runs until stopped (decision 12). On Tailscale the person's own devices are let in already (decision 4), which overrides the security review's "pairing still applies" below for the tailnet: the identity is taken from Tailscale's own lookup of the connecting device, never from a header a local program could write. The local-network requirements below (an explicit address, the one-time code, the capped device lifetime of seven days, the idle switch-off, the Wi-Fi warning) govern the later home-network draft itd-2610040740108331. The only writes are notes and "Still right" on the brief, over HTTPS with cross-origin protection, held in the checkout's local tier until the technical facilitator reviews them (decisions 11, 16 and 17).
 
 ### Requirements the spec carries
 

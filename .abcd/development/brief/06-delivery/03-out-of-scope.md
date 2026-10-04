@@ -128,8 +128,9 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
 - `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
 - `itd-2610031348087517` — setup asks whether abcd keeps parts of the README current, and which (draft; routing confirmed 2026-10-03)
-- `itd-2610032150577708` — The product thinker's dashboard, in a browser on the home network (draft; builds on itd-2610031214560142; supersedes itd-139; the network rule is adr-2610032150581128, proposed)
-- `itd-2610032150580455` — The dashboard from anywhere, through Tailscale (draft; builds on itd-2610032150577708)
+- `itd-2610040740108331` — The dashboard on the home network, without Tailscale (draft; builds on itd-2610032150577708; later, by the product thinker's choice of Tailscale first)
+- `itd-2610040740122709` — Acting from the dashboard: rewriting the brief and approving intents (draft; builds on itd-2610032150577708)
+- `itd-2610040740135705` — The dashboard for more people: the facilitator's view and the team's, configurable (draft; builds on itd-2610032150577708)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

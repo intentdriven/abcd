@@ -2,17 +2,22 @@
 id: itd-2610032150580455
 slug: a-product-thinker-reaches-abcd-s-dashboard-from-anywhere
 spec_id: null
-kind: null
+kind: standalone
 suggested_kind: null
-reclassification_history: []
+reclassification_history:
+  - { date: 2026-10-04, from: standalone, to: superseded, reason: "the product thinker chose Tailscale first (2026-10-04); reach through Tailscale is the first version's way in, folded into the dashboard intent" }
 builds_on: [itd-2610032150577708]
 related_adrs: [adr-2610032150581128]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
+kind_at_supersession: standalone
+superseded_by: itd-2610032150577708
 ---
 
 # The dashboard from anywhere, through Tailscale
+
+> **Superseded by itd-2610032150577708** on 2026-10-04: the product thinker chose Tailscale first (2026-10-04); reach through Tailscale is the first version's way in, folded into the dashboard intent
 
 ## Press Release
 
