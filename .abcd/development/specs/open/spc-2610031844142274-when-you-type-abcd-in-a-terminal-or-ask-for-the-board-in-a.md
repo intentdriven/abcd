@@ -58,7 +58,7 @@ In:
 Builds on and reuses:
 
 - The width defect,
-  [iss-2610031207397996](../../../work/issues/open/iss-2610031207397996-the-bare-status-board-ignores-the-terminal-s-width-in-an.md),
+  [iss-2610031207397996](../../../work/issues/resolved/iss-2610031207397996-the-bare-status-board-ignores-the-terminal-s-width-in-an.md),
   fixed first by its own record (step 1): the window width read through
   golang.org/x/term with 80 as the fallback, every row wrapped with a hanging
   indent through `textwidth.Wrap`, the first three rows printed as words, even
