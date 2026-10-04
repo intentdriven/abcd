@@ -2059,6 +2059,27 @@
       ]
     },
     {
+      "path": "abcd intent interview",
+      "hidden": false,
+      "sentence": "Run an intent's planning interview in a plain Terminal on your own route: Writes the answers record and the role's edits; refuses with no route of yours.",
+      "flags": [
+        {
+          "name": "answered-in",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "answers",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent link",
       "hidden": false,
       "sentence": "Link a planned intent to an existing spec: Writes the intent's spec_id; refuses an intent that is not planned.",
@@ -2630,6 +2651,34 @@
       "block": "people",
       "sentence": "Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.",
       "flags": []
+    },
+    {
+      "path": "abcd reflect interview",
+      "hidden": false,
+      "sentence": "Run a cut release's retrospective interview in a plain Terminal on your own route: Writes the answers record and README; refuses with no route of yours.",
+      "flags": [
+        {
+          "name": "answered-in",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "answers",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "proceed",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd reflect write",

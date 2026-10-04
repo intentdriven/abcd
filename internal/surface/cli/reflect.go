@@ -14,6 +14,7 @@ package cli
 // malformed answers file) and for a structural fault.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/reflect"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -142,6 +144,106 @@ func newReflectCommand(asJSON *bool) *cobra.Command {
 	writeCmd.Flags().BoolVar(&proceed, "proceed", false,
 		"write although intents targeted at the release are unshipped (the person's confirmation)")
 	cmd.AddCommand(writeCmd)
+	cmd.AddCommand(newReflectInterviewCommand(asJSON))
+	return cmd
+}
+
+// maxThinRefusals bounds how often a plain-Terminal retrospective's writer
+// hands a thin answer back to the role before the refusal is the person's.
+const maxThinRefusals = 2
+
+// newReflectInterviewCommand is `abcd reflect interview <release-tag>`: the
+// retrospective interview in a plain Terminal, its questions written by the
+// reflection-composer on the person's own route and drawn by abcd, its
+// outcome filed through `reflect write`'s own path (spc-2610030911534855).
+func newReflectInterviewCommand(asJSON *bool) *cobra.Command {
+	var flags writtenFlags
+	var proceed bool
+	cmd := &cobra.Command{
+		Use: "interview <release-tag> [--answers <file>] [--answered-in <place>] [--proceed]",
+		Long: "Run the retrospective interview in a plain Terminal, with no host session: the reflection-composer,\n" +
+			"on the runner the person routed it to in their own machine's config, writes each question, abcd\n" +
+			"draws it and takes the answer, and the outcome is filed through reflect write's own checks. With\n" +
+			"no route of the person's to a runner it refuses before anything runs, writing nothing. Off a\n" +
+			"terminal the questions are answered from --answers, by ordinal (Q1, Q2, ...).",
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return &exitError{Code: 2, Msg: "abcd reflect interview: one release tag is expected — abcd reflect interview <release-tag>"}
+			}
+			return reflectTagOperand(args[0])
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := reflectRoot()
+			if err != nil {
+				return err
+			}
+			tag := args[0]
+			seed, err := reflect.BuildSeed(root, tag)
+			if err != nil {
+				return reflectRefuse(cmd.OutOrStdout(), *asJSON, err)
+			}
+			if len(seed.Unshipped) > 0 && !proceed {
+				return reflectRefuse(cmd.OutOrStdout(), *asJSON, &reflect.UnshippedError{Tag: tag, Intents: seed.Unshipped})
+			}
+			view := reflectSeedView{Seed: seed}
+			for _, s := range reflect.AskedSections {
+				view.Questions = append(view.Questions, reflectQuestion{Section: s, Heading: s.Heading(), Question: s.Question()})
+			}
+			seedJSON, err := json.Marshal(view)
+			if err != nil {
+				return err
+			}
+			var written *reflect.WriteResult
+			thin := 0
+			w := &interview.Written{
+				Name: interview.Retrospective, Verb: "abcd reflect interview", Role: interview.RoleReflectionComposer,
+				Target: tag, Repo: root, Task: interview.RetrospectiveTask, Done: interview.RetrospectiveDone,
+				Seed: seedJSON,
+				CheckDone: func(raw json.RawMessage) error {
+					_, err := reflect.ParseAnswers(raw)
+					return err
+				},
+				Finish: func(raw json.RawMessage) (string, error) {
+					answers, err := reflect.ParseAnswers(raw)
+					if err != nil {
+						return "", &finishError{err}
+					}
+					res, err := reflect.Write(root, reflect.WriteRequest{Tag: tag, Answers: answers, ProceedDespiteUnshipped: proceed, Now: time.Now()})
+					var te *reflect.ThinAnswersError
+					if errors.As(err, &te) && thin < maxThinRefusals {
+						thin++
+						var b strings.Builder
+						for _, t := range te.Thin {
+							fmt.Fprintf(&b, "- %s (%s): ask the follow-up, %q, and keep the reply as that section's follow_up.\n", t.Heading, t.Reason, t.Question)
+						}
+						return b.String(), nil
+					}
+					if err != nil {
+						return "", &finishError{err}
+					}
+					written = &res
+					return "", nil
+				},
+			}
+			if _, err := runWrittenInterview(cmd, w, flags); err != nil {
+				var fin *finishError
+				if errors.As(err, &fin) {
+					return reflectRefuse(cmd.OutOrStdout(), *asJSON, fin.err)
+				}
+				return err
+			}
+			if written == nil {
+				return &exitError{Code: 1, Msg: "abcd reflect interview: the interview ended without a retrospective (nothing written)"}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, written, func(w io.Writer) {
+				fmt.Fprintf(w, "retrospective written — %s\n", written.Path)
+				fmt.Fprintf(w, "  release: %s, %d intent(s)\n", written.Seed.Tag, len(written.Seed.Intents))
+			})
+		},
+	}
+	flags.register(cmd, interview.Retrospective)
+	cmd.Flags().BoolVar(&proceed, "proceed", false,
+		"run although intents targeted at the release are unshipped (the person's confirmation)")
 	return cmd
 }
 

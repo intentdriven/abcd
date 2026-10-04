@@ -28,6 +28,7 @@ finishes.
 | Verb | Bucket | Status |
 |---|---|---|
 | `write` | — | shipped |
+| `interview` | — | shipped |
 
 ## Argument
 
@@ -75,6 +76,40 @@ each. A thin answer is met with that section's one follow-up question before
 anything is written, and the reply is filed as the section's follow-up. The
 floor is a heuristic, and a cheap one to be wrong about: it costs one question,
 never the refusal of the answer that question brings.
+
+## In a plain Terminal
+
+The interview sub-verb runs the same interview with no host session
+(spc-2610030911534855). The `reflection-composer` runs on the runner the person
+routed it to in their own machine's configuration, once per turn: each turn's
+brief carries the seed, the asking rules and the answers so far, and the role
+returns the next question as a receipt of the shared question type, or `done`
+with the answers object. abcd checks each question before it is drawn
+(sanitised first, then the structural check and the asking limits), draws it
+when stdin, stdout and stderr are all terminals, and records each answer, marked
+as answered in the Terminal, in the answers record in the local tier. A question
+that fails the check is the runner's invalid answer: its fallback receipt goes
+into the record and, with no configured host to fall back to, the interview
+stops, exit 1, keeping the answers given. `done` is filed through the write
+below, with every floor and refusal unchanged; a thin answer the write refuses
+goes back to the role, at most twice, to ask the section's follow-up.
+
+A drawn question takes a choice, not typed prose, so the role offers drafts of
+a section's answer, and the retrospective carries the drafts the person chose.
+
+It refuses before anything runs, exit 2, writing nothing:
+
+- when no route of the person's reaches a runner: the role's route is the host,
+  no fallback host is set, and the refusal names the role's key, the machine's
+  file, and the setup interview, which needs no route;
+- off a terminal with no answers file. With one, each question is written as
+  plain text and answered by ordinal (`Q1`, `Q2`, ...); the file running out
+  refuses, exit 2, naming the question, and records nothing. An entry's place
+  is its own `answered_in`, else the answered-in flag's, `Terminal` by default.
+
+Unshipped targeted intents refuse as the write does, before any runner starts,
+until the proceed flag confirms them. Ctrl-C at a question, or while the runner
+writes one, exits 130 and keeps the answers given.
 
 ## The write
 
@@ -135,6 +170,7 @@ press-release interview: the three most like it, then the rest as a list
 - Intent: [`itd-24`](../../intents/shipped/itd-24-reflect-command.md); spec
   `spc-2609211751376504`
 - Command page: `commands/reflect.md`; agent: `agents/reflection-composer.md`
+- The plain-Terminal interviews: spec `spc-2610030911534855`
 - Naming registration: [`../02-constraints/04-naming.md`](../02-constraints/04-naming.md)
 - The agent catalogue: [`../05-internals/01-agents.md`](../05-internals/01-agents.md)
 
@@ -146,9 +182,19 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd reflect`
 
-Sub-verbs: `abcd reflect write`.
+Sub-verbs: `abcd reflect interview`, `abcd reflect write`.
 
 Flags: none.
+
+### `abcd reflect interview`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answered-in` | string |
+| `--answers` | string |
+| `--proceed` | bool |
 
 ### `abcd reflect write`
 

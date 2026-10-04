@@ -495,6 +495,30 @@ checks; the judgement is yours, as the host.
     from it, and reads a spec without it as carrying no footprint.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
 
+### In a plain Terminal
+
+With no host session, the person runs the planning interview from a Terminal:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent interview <itd-N> [--answers <file>] [--answered-in <place>] --json
+```
+
+The `planning-interviewer` runs on the runner the person routed it to in their
+own machine's config (`roles.planning-interviewer.runner`, with that runner
+enabled under `runner.<name>`), once per question; it edits the record after
+each answer with its contract's tools, abcd draws each question and records
+each answer in the answers record in the local tier, and the verb ends by
+reporting the readiness gate. The plan act (step 10) stays the product
+thinker's, at the command line. With no route of the person's to a runner it
+refuses, exit 2, writing nothing. Never run it from this page in place of the
+interview above: in a host session the interview is yours.
+
+Off a terminal the questions are answered from an answers file by ordinal
+(`{"schema_version": 1, "interview": "planning", "answers": [{"id": "Q1", "value": "..."}]}`);
+an entry that names no `answered_in` takes `--answered-in`, `Terminal` by
+default. When the person's answers were given here, through the host's question
+tool, and are replayed through the verb, pass `--answered-in "Claude Code"`.
+
 ## Steps: the unit below a spec
 
 A spec may split its work into **steps**: ordered, independently landable

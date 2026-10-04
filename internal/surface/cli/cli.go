@@ -2788,6 +2788,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	intentCmd.AddCommand(newIntentConditionCommand(asJSON))
 	intentCmd.AddCommand(newIntentConsistencyCommand(asJSON))
 	intentCmd.AddCommand(newIntentPrepassCommand(asJSON))
+	intentCmd.AddCommand(newIntentInterviewCommand(asJSON))
 	return intentCmd
 }
 
