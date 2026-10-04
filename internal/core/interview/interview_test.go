@@ -145,3 +145,54 @@ func TestWriteRefusesASymlinkedHome(t *testing.T) {
 		t.Fatalf("the symlink's target gained %d entries", len(ents))
 	}
 }
+
+// TestWriteRefusesASymlinkedLocalTier holds the repository record to the
+// real-directory walk: a local tier that is a symlink, or an interviews
+// directory that is one, is refused, and the symlink's target gains nothing.
+// The interviews link points inside the repository, so the refusal is the
+// walk's, not only the root's refusal of a link out of the tree.
+func TestWriteRefusesASymlinkedLocalTier(t *testing.T) {
+	for _, level := range []string{".work.local", "interviews"} {
+		t.Run(level, func(t *testing.T) {
+			repo := t.TempDir()
+			elsewhere, link := t.TempDir(), ""
+			parent := filepath.Join(repo, ".abcd")
+			if level == "interviews" {
+				parent = filepath.Join(repo, ".abcd", ".work.local")
+				elsewhere, link = filepath.Join(repo, "decoy"), filepath.Join("..", "..", "decoy")
+				if err := os.Mkdir(elsewhere, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.MkdirAll(parent, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if link == "" {
+				link = elsewhere
+			}
+			if err := os.Symlink(link, filepath.Join(parent, level)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Write(Place{Repo: repo}, sampleRecord(Terminal), time.Now()); err == nil {
+				t.Fatalf("wrote through a symlinked %s", level)
+			}
+			if ents, _ := os.ReadDir(elsewhere); len(ents) != 0 {
+				t.Fatalf("the symlink's target gained %d entries", len(ents))
+			}
+		})
+	}
+}
+
+// TestParseAnswersRefusesAnOversizedFile holds ParseAnswers to its own cap,
+// for a caller that reads the file some other way than through
+// fsutil.ReadGuarded: a well-formed file one byte over is refused.
+func TestParseAnswersRefusesAnOversizedFile(t *testing.T) {
+	doc := `{"schema_version":1,"interview":"setup","answers":[]}`
+	padded := doc + strings.Repeat(" ", MaxAnswersBytes+1-len(doc))
+	if _, err := ParseAnswers([]byte(padded[:MaxAnswersBytes]), "setup"); err != nil {
+		t.Fatalf("a file at the cap was refused: %v", err)
+	}
+	if _, err := ParseAnswers([]byte(padded), "setup"); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("a file one byte over the cap: %v", err)
+	}
+}
