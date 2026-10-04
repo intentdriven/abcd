@@ -185,7 +185,7 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 // level keeps whatever mode it has — fsutil.EnsureRealDir never widens or
 // narrows a directory the caller made themselves — except the records leaf,
 // which narrowRecordsLeaf closes to its owner.
-const storeDirPerm = 0o700
+const storeDirPerm = abcdhome.DirMode
 
 // narrowRecordsLeaf removes the group and other bits from the records leaf when
 // an earlier binary created it wider (iss-2609291610432030). storeDirPerm only

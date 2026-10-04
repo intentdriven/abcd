@@ -246,7 +246,8 @@ user-scope directory for machine-local state. Every writer creates that
 directory, and each folder in it, private to the account (`0700`), so the home
 is the same whichever command creates it first, the hook's bootstrap included;
 one that already exists keeps its mode. The records it writes there, the
-path-entry record and the registry's index among them, are `0600`
+path-entry record and the registry's index among them, are `0600`, and one an
+earlier version wrote wider is narrowed when abcd next writes it
 (iss-2610032205304585).
 
 ```

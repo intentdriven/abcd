@@ -1046,7 +1046,10 @@ func writeHistoryIndexIn(dir *os.Root, idx *historyIndex) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomicPreserveModeInRoot(dir, "index.json", data)
+	// Written abcdhome.FileMode, not the mode it had: an index an earlier
+	// version wrote 0o644 is narrowed to the account at its next write
+	// (iss-2610032205304585).
+	return fsutil.WriteFileAtomicInRoot(dir, "index.json", data, abcdhome.FileMode)
 }
 
 // ---------------------------------------------------------------------------

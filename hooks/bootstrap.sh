@@ -1049,8 +1049,10 @@ if path_entry_owned; then
 	case "$rec_sha" in *[!0-9a-f]*) rec_ok='' ;; esac
 	[ "${#rec_sha}" -eq 64 ] || rec_ok=''
 	if [ -n "$rec_ok" ]; then
-		rec_tmp="$path_entry.rewrite.$$"
-		{
+		# An in-directory mktemp, as the attestation's temp (section 9b): a
+		# name a planted link could predict is never written through.
+		rec_tmp=$(mktemp "$(dirname "$path_entry")/.path-entry.XXXXXX" 2>/dev/null) || rec_tmp=''
+		[ -n "$rec_tmp" ] && {
 			printf 'path=%s\n' "$rec_path"
 			printf 'binary_sha256=%s\n' "$rec_sha"
 			printf 'plugin_root=%s\n' "$plugin_root"

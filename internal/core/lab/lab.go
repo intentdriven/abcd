@@ -78,7 +78,7 @@ const (
 // storeDirPerm and fileMode keep the store the account's own business: a lab
 // touches private-tier material, so nothing in it is group- or world-readable.
 const (
-	storeDirPerm = 0o700
+	storeDirPerm = abcdhome.DirMode
 	fileMode     = 0o600
 )
 
