@@ -17,3 +17,7 @@ The managed block ahoy install plants into an adopted repository's conventions f
 ## Evidence 2026-10-03
 
 A second report from the same user test of a private consumer repository (relayed by the product thinker): the marker block grew to 98 lines in each of CLAUDE.md and AGENTS.md, so the block is planted twice, once per conventions file, and both copies still point to abcd's principles folder and abcd's own configuration chapter, neither of which exists in that repository. The double planting ties this record to itd-2610030814013772 (one conventions file, AGENTS.md): once abcd writes AGENTS.md alone, the block has one home.
+
+## Evidence 2026-10-04 (a downstream lab)
+
+A downstream private project's brief-authoring lab reported both halves of this record. (a) The planted block's closing pointer at `.abcd/development/brief/05-internals/03-configuration.md` does not merely dangle there: that project keeps its own brief at the same path, so the pointer resolves to the project's own configuration chapter, which says nothing about abcd's loader. (b) The block is about ninety lines of loader internals loaded into every session; the lab proposed the remedy this record already names, a short pointer at `abcd rules` in place of the long text. At tip 57d5ec9fa an install with `--docs-target agents_md` into a scratch repository holding only a README plants an AGENTS.md that is the block alone, 104 lines, still carrying both the principles and the configuration-chapter pointers.

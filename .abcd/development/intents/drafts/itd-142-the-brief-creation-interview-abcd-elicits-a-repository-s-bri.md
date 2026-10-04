@@ -136,6 +136,13 @@ was willing to consider.
   section, or record family — stays with iss-2608220750029991 and the
   evidence chapter.
 
+## Evidence 2026-10-04 (a downstream lab)
+
+Recorded for the product thinker; nothing here decides either question.
+
+- **Tense of a brief for an unbuilt project.** A downstream private project's brief-authoring lab found that the present-tense-only convention makes a target-design brief read as a working product: 99 present-tense product claims against 9 "staged" markers. Its owner called this the biggest issue they face with abcd, and holds that the brief is the target design the product thinker owns. This interview is where a greenfield brief is first written, so how it marks built against intended is in its reach; the lab named this intent, itd-143 and itd-61 as the records the question touches.
+- **Recording the interview.** The same lab asked for a brief interview that records its questions and answers verbatim. This intent already designs the interview and discards the transcript, keeping committed products only (adr-50, as refined by adr-55), so the ask meets that ruling rather than a missing verb.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._

@@ -114,6 +114,10 @@ the record rather than in a transcript that is discarded.
   abcd-native) once probed against the corpus — where they disagree, the
   mapping table loses.
 
+## Evidence 2026-10-04 (a downstream lab)
+
+Recorded for the product thinker; nothing here decides the question. A downstream private project's brief-authoring lab found that the present-tense-only convention makes a target-design brief read as a working product: 99 present-tense product claims against 9 "staged" markers. Its owner called this the biggest issue they face with abcd, and holds that the brief is the target design the product thinker owns. A framing chapter is one place a brief could say which of the two it is; the lab named this intent with itd-142 and itd-61.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._

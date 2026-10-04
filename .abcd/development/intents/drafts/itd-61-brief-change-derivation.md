@@ -64,6 +64,11 @@ abcd already owns the right instrument: the grill — a Socratic interview that 
 - Does the grill run interactively (like the existing grill) on every brief edit, or single-pass-then-confirm? Interactive is truer to the grill but heavier per edit.
 - Where do drawn-out **principles** land — as discipline drafts under `intents/disciplines/`, and does a framework-provided vs app-authored distinction apply (see [[itd-62-pluggable-safety-gate]])?
 
+## Evidence 2026-10-04 (a downstream lab)
+
+- **Tense** (recorded for the product thinker, not decided). A downstream private project's brief-authoring lab found that the present-tense-only convention makes a target-design brief read as a working product: 99 present-tense product claims against 9 "staged" markers. Its owner called this the biggest issue they face with abcd, and holds that the brief is the target design the product thinker owns. The lab named this intent with itd-142 and itd-143.
+- **Brief to records.** The same lab wrote a 22-file brief over two days and drew no intent from it: no verb proposes intents, decisions or captures from a brief, and the status board did not notice a brief with no records beside it. This intent's derivation pass is the record for the first half, since a brief written from nothing is a run of brief edits; the board's silence on a brief with no records is outside its scope as written. The lab rated it major.
+
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
