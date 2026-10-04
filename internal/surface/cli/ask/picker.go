@@ -45,6 +45,9 @@ type Answer struct {
 	Label string
 	// Later is true when the way to decide later was chosen.
 	Later bool
+	// Typed is true when the answer is text typed for the question's typed
+	// part: Value is then the text as typed, trimmed.
+	Typed bool
 }
 
 // defaultWindow is the list's window before the loop sizes it to the rows.
@@ -65,7 +68,9 @@ const minWindow = 5
 // all digits is a number instead: it narrows nothing, and Enter chooses the
 // entry with that number, which is the entry's place in the full list, so a
 // number read off a narrowed list chooses what it names. Enter otherwise
-// chooses the current entry. Left, Right and Tab move between the parts of a
+// chooses the current entry, except that on a question with a typed part,
+// Enter on text no answer matches answers with the text. Left, Right and Tab
+// move between the parts of a
 // tabbed Ask, and the Ask is done when every part is answered. Later is never
 // narrowed away: when nothing matches, it is the current entry.
 type Picker struct {
@@ -83,9 +88,15 @@ type part struct {
 	shown  []int // indices into all the filter keeps
 	cur    int   // index into shown; len(shown) is Later
 	top    int   // the first shown entry in the window
-	chosen int   // -1 unanswered; an index into all, len(all) for Later
+	chosen int   // -1 unanswered; an index into all, len(all) for Later, typedChoice(all) for the typed text
 	note   string
+	// takesTyped is the question's typed part: Enter on text no option
+	// matches answers with the text.
+	takesTyped bool
 }
+
+// typedChoice is part.chosen for an answer typed for the typed part.
+func (pt *part) typedChoice() int { return len(pt.all) + 1 }
 
 // NewPicker is the list for a, its first part shown, each part's first entry
 // current, nothing typed.
@@ -94,7 +105,7 @@ func NewPicker(a question.Ask) *Picker {
 	for _, q := range p.ask.Questions {
 		all := entries(q)
 		all = all[:len(all)-1]
-		pt := &part{all: all, chosen: -1}
+		pt := &part{all: all, chosen: -1, takesTyped: q.Typed != ""}
 		pt.shown = span(len(all))
 		p.parts = append(p.parts, pt)
 	}
@@ -194,6 +205,9 @@ func (p *Picker) enter(pt *part) Outcome {
 			return Pending
 		}
 		choice = n - 1
+	} else if pt.takesTyped && len(pt.shown) == 0 && strings.TrimSpace(pt.typed) != "" {
+		// Text no option matches is the typed answer.
+		choice = pt.typedChoice()
 	}
 	pt.chosen = choice
 	pt.note = ""
@@ -215,6 +229,11 @@ func (p *Picker) Answers() []Answer {
 			continue
 		}
 		q, safe := p.orig.Questions[i], p.ask.Questions[i]
+		if pt.chosen == pt.typedChoice() {
+			text := strings.TrimSpace(pt.typed)
+			out = append(out, Answer{ID: q.ID, Value: text, Label: termsafe.Sanitize(text), Typed: true})
+			continue
+		}
 		all, safeAll := entries(q), entries(safe)
 		out = append(out, Answer{
 			ID:    q.ID,
@@ -338,6 +357,7 @@ func (p *Picker) Lines(f Frame) (head, live []string) {
 		live = append(live, pad+fmt.Sprintf("%d more below", below))
 	}
 	live = append(live, d.optionLines(all, []int{len(all) - 1}, f.Current)...)
+	live = append(live, d.typed(q)...)
 	if state := d.state(q); len(state) > 0 {
 		live = append(live, "")
 		live = append(live, state...)
@@ -355,7 +375,11 @@ func (p *Picker) Collapsed(f Frame) []string {
 			continue
 		}
 		q := p.ask.Questions[i]
-		out = append(out, d.glyph+" "+q.Chip+": "+entries(q)[pt.chosen].Label)
+		label := termsafe.Sanitize(strings.TrimSpace(pt.typed))
+		if pt.chosen != pt.typedChoice() {
+			label = entries(q)[pt.chosen].Label
+		}
+		out = append(out, d.glyph+" "+q.Chip+": "+label)
 	}
 	return out
 }

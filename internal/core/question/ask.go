@@ -26,6 +26,13 @@ type Question struct {
 	Now         string   `json:"now,omitempty"`          // what holds now (itd-2610030810350727 decision 4)
 	ChangeLater string   `json:"change_later,omitempty"` // how to change the answer later (decision 4)
 	List        *List    `json:"list,omitempty"`         // the long-list variant
+	// Typed is the prompt for a typed answer: a question with a typed part
+	// takes any text as its answer besides its options (spc-2610031241482088,
+	// "The typed part on the question type"). The host's question tool takes
+	// it in its free-text row, so such a question carries no side preview,
+	// which would remove that row; the Terminal draws it as one line after
+	// the options. It counts as one option toward the limits' floor.
+	Typed string `json:"typed,omitempty"`
 }
 
 // Block is one piece of a question's material: a paragraph, or a list.
@@ -61,8 +68,8 @@ type List struct {
 const RuleStructure Rule = "structure"
 
 // Check is the structural check: every question has an id (unique within the
-// Ask), a chip, an ask, a Later option with a value, and either options or a
-// list; every option and list choice has a value and a label; values are
+// Ask), a chip, an ask, a Later option with a value, and options, a list, or a
+// typed part; every option and list choice has a value and a label; values are
 // unique within a question, Later's included; an Ask holds as many questions
 // as Default.QuestionsPerCall admits. It returns every finding at once, each
 // naming the question (its tab, counted from one; zero is the Ask as a whole)
@@ -106,8 +113,8 @@ func Check(a Ask) []Finding {
 			add("ask", q.Ask, "required", "End the question with the one plain question it asks.")
 		}
 		switch {
-		case len(q.Options) == 0 && (q.List == nil || len(q.List.Choices) == 0):
-			add("options", "", "options or a list", "Offer the answers as options, or a long list as a list.")
+		case len(q.Options) == 0 && (q.List == nil || len(q.List.Choices) == 0) && strings.TrimSpace(q.Typed) == "":
+			add("options", "", "options, a list or a typed part", "Offer the answers as options, a long list as a list, or a typed answer as the typed part.")
 		case len(q.Options) > 0 && q.List != nil:
 			add("options", "", "options or a list, not both", "Offer the answers as options or as a list, never both.")
 		}
@@ -156,7 +163,7 @@ func Check(a Ask) []Finding {
 // (spc-2610030944505997, "The field view"): the chip to the header; the
 // material's blocks, then the Now: and Change later: lines, then the ask, to
 // the question text; the options (a long list's choices) and then Later to the
-// options. A line the question does not carry is left out, so the limits
+// options; the typed part to the free-text row (Tab.Typed). A line the question does not carry is left out, so the limits
 // check names the gap rather than the mapping inventing a value.
 func (a Ask) Fields() Fields {
 	f := Fields{Tabs: make([]Tab, 0, len(a.Questions))}
@@ -184,7 +191,7 @@ func (a Ask) Fields() Fields {
 		for _, o := range append(append([]Option(nil), options...), q.Later) {
 			choices = append(choices, Choice{Label: o.Label, Description: o.Meaning})
 		}
-		f.Tabs = append(f.Tabs, Tab{Header: q.Chip, Text: strings.Join(parts, "\n\n"), Options: choices})
+		f.Tabs = append(f.Tabs, Tab{Header: q.Chip, Text: strings.Join(parts, "\n\n"), Options: choices, Typed: q.Typed})
 	}
 	return f
 }
