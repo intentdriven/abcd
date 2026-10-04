@@ -112,6 +112,9 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectOracleRouting(abs)...)
 		gaps = append(gaps, detectDrainRule(abs)...)
+		// A tool's own conventions file read in place of AGENTS.md
+		// (itd-2610030814013772): the owner's is named, a repeat is offered.
+		gaps = append(gaps, detectToolConventionsFiles(abs)...)
 		gaps = append(gaps, detectProviderAdapter(abs)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
