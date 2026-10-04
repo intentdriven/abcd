@@ -26,8 +26,9 @@ import (
 // shared growth budget, and the sweep stays linear in the line.
 //
 // The sweep is narrower than the bounded scan by construction:
-//   - only hard_fail secret patterns (secretPatterns: no identity or network
-//     kind, whose looser shapes would match inside ordinary words);
+//   - only secret patterns (secretPatterns: the hard_fail rules and every
+//     token: rule whatever its severity, never an identity or network kind,
+//     whose looser shapes would match inside ordinary words);
 //   - only patterns whose source opens on \b, because a pattern with no leading
 //     boundary already matches a glued token in the bounded pass;
 //   - each pattern's Skip and SkipAt still apply, so the documentation example
@@ -107,8 +108,8 @@ func gluedFindings(text string, patterns []Pattern, file string) (findings []Fin
 	return findings, len(g.unbuilt) == 0
 }
 
-// gluedPatterns is the sweep's pattern set: every hard_fail secret pattern
-// whose source opens on \b (after an inline flag group), recompiled without
+// gluedPatterns is the sweep's pattern set: every secret pattern
+// (secretPatterns) whose source opens on \b (after an inline flag group), recompiled without
 // that one anchor. A pattern that does not open on \b is left out: its bounded
 // form already matches a glued token in ScanText. A boundary-free form that will
 // not compile (a configured pattern whose \b carries a quantifier) is left out
