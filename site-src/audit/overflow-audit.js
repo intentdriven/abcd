@@ -66,7 +66,8 @@ const ROUTE_FAMILIES = [
   '/references/',
 ];
 
-// One representative page per record type that has its own page shape.
+// The record types whose pages have their own shape; discoverRecordRoutes
+// samples two pages of each.
 const SAMPLED_TYPES = ['adr', 'intent', 'issue'];
 
 function slug(route) {
@@ -74,10 +75,25 @@ function slug(route) {
   return s === '' ? 'index' : s;
 }
 
-// discoverRecordRoutes reads the record export the build emits and picks the
-// lowest-numbered record of each sampled type. Lowest-numbered, not random: the
-// audit must compare like with like from run to run, or a screenshot diff is
-// noise.
+// longestRun is the longest stretch of a string with no space and no hyphen in
+// it: the longest token a browser has no ordinary place to break.
+function longestRun(s) {
+  let best = 0;
+  for (const part of String(s || '').split(/[\s-]+/)) {
+    if (part.length > best) best = part.length;
+  }
+  return best;
+}
+
+// discoverRecordRoutes reads the record export the build emits and picks two
+// records of each sampled type: the lowest-numbered, and the one whose title or
+// source path holds the longest unbroken token (ties to the lower number). The
+// lowest-numbered record is the oldest and plainest; the second is the worst
+// case for wrapping, which the oldest record never is — a timestamp-id record's
+// path and a title quoting a path both widened record pages that the first
+// sample alone could not see (iss-2610040732240935). Deterministic, not random:
+// the audit must compare like with like from run to run, or a screenshot diff
+// is noise.
 async function discoverRecordRoutes(page, baseUrl) {
   const res = await page.request.get(`${baseUrl}/record.json`);
   if (!res.ok()) {
@@ -98,6 +114,16 @@ async function discoverRecordRoutes(page, baseUrl) {
       throw new Error(`record.json holds no node of type '${type}'; the audit cannot sample one`);
     }
     routes.push(`/record/${type}/${of[0].id}/`);
+    let widest = of[0];
+    let widestRun = Math.max(longestRun(widest.title), longestRun(widest.path));
+    for (const n of of) {
+      const run = Math.max(longestRun(n.title), longestRun(n.path));
+      if (run > widestRun) {
+        widest = n;
+        widestRun = run;
+      }
+    }
+    if (widest !== of[0]) routes.push(`/record/${type}/${widest.id}/`);
   }
   return routes;
 }
