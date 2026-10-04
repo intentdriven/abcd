@@ -617,3 +617,32 @@ func TestGuideNeverEchoesATypedValueThatIsNotAName(t *testing.T) {
 		t.Fatalf("a resume object carrying a key = %v", err)
 	}
 }
+
+// TestShellQuote: a word the shell takes as it is stays bare; a word opening
+// with ~ (which the shell expands to a home directory), one holding a quote,
+// and the empty word are single-quoted.
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"vendor/coder": "vendor/coder",
+		"a~b":          "a~b",
+		"~v/x":         "'~v/x'",
+		"it's":         `'it'\''s'`,
+		"":             "''",
+		"a b":          "'a b'",
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+// TestGuideQuotesAListedIdOpeningWithATilde: a listed id OpenRouter-style,
+// opening with ~, reaches the printed command quoted, so a pasted command
+// passes it as it is and never as a home directory.
+func TestGuideQuotesAListedIdOpeningWithATilde(t *testing.T) {
+	svc := newGuideFake(t, http.StatusOK, []string{"~vendor/coder"})
+	d := last(drive(t, newFx(t), GuideRequest{BaseURL: svc.base()}, "lookup", "~vendor/coder", "none")).Done
+	if d == nil || !strings.Contains(d.Command, "--model '~vendor/coder' ") {
+		t.Fatalf("a listed id opening with ~ ends with %+v", d)
+	}
+}
