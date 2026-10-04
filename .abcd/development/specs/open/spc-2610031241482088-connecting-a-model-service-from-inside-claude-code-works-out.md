@@ -250,9 +250,12 @@ listed models are the only thing carried rather than re-derived: the look-up
 runs once, at the turn the replay first reaches a yes to the look-up with no
 `listed` present, and every later turn narrows over what `resume` carries
 (open question 2). A `resume` that was tampered with can change which names
-are offered and nothing else: each id is checked again with `validModel`, the
-address with `ValidateBaseURL`, and the command is shown in full and verified
-with a real completion before anything is written.
+are offered and, as built, cause one keyless request for the model list (a
+`resume` whose answers say yes to the look-up and that carries no `listed` is
+looked up again, as the first yes is: no key, no redirect, at the address the
+replay checks again), and nothing else: each id is checked again with
+`validModel`, the address with `ValidateBaseURL`, and the command is shown in
+full and verified with a real completion before anything is written.
 
 The questions, each one turn, in order. Each is a `question.Ask`, chip
 "Setup Q<n>", that the asking rules hold where spc-2610030944505997 has landed: the thing first, the
