@@ -733,7 +733,7 @@ func historyDir(create bool) (*os.Root, error) {
 		return nil, err
 	}
 	if create {
-		return fsutil.EnsureHomeScope(home, historyRelPath, 0o755)
+		return fsutil.EnsureHomeScope(home, historyRelPath, abcdhome.DirMode)
 	}
 	return fsutil.OpenHomeScope(home, historyRelPath)
 }
@@ -991,7 +991,7 @@ func bootstrapHistory() (bool, error) {
 		tmp.Close()
 		return false, err
 	}
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(abcdhome.FileMode); err != nil {
 		tmp.Close()
 		return false, err
 	}
@@ -1046,7 +1046,10 @@ func writeHistoryIndexIn(dir *os.Root, idx *historyIndex) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomicPreserveModeInRoot(dir, "index.json", data)
+	// Written abcdhome.FileMode, not the mode it had: an index an earlier
+	// version wrote 0o644 is narrowed to the account at its next write
+	// (iss-2610032205304585).
+	return fsutil.WriteFileAtomicInRoot(dir, "index.json", data, abcdhome.FileMode)
 }
 
 // ---------------------------------------------------------------------------

@@ -219,12 +219,12 @@ func writePathEntry(target, shaHex, pluginRoot string) error {
 	// the record is written through it, so a link swapped in after
 	// homeScopeErr's check is refused rather than written through
 	// (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(home, path.Dir(pathEntryRel), 0o755)
+	dir, err := fsutil.EnsureHomeScope(home, path.Dir(pathEntryRel), abcdhome.DirMode)
 	if err != nil {
 		return err
 	}
 	defer dir.Close()
-	return fsutil.WriteFileAtomicInRoot(dir, path.Base(pathEntryRel), []byte(body), 0o644)
+	return fsutil.WriteFileAtomicInRoot(dir, path.Base(pathEntryRel), []byte(body), abcdhome.FileMode)
 }
 
 // removePathEntry drops the provenance record; absent is fine. ~/.abcd is

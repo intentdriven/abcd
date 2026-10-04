@@ -18,12 +18,24 @@
 package abcdhome
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
 
 // name is the home folder abcd keeps under the person's home directory.
 const name = ".abcd"
+
+// DirMode is the mode abcd's home and every folder abcd makes in it are
+// created at: the account's alone. Every writer hands it to
+// fsutil.EnsureHomeScope, so the home is private whichever command creates it
+// first (iss-2610032205304585); TestEveryHomeWriterMakesTheHomePrivate holds
+// them to it.
+const DirMode os.FileMode = 0o700
+
+// FileMode is the mode of a record abcd writes into its home: read and written
+// by the account alone.
+const FileMode os.FileMode = 0o600
 
 // Rel is the slash path, relative to the person's home directory, of leaf
 // below abcd's home: Rel("trusted-roots") is ".abcd/trusted-roots", and Rel()

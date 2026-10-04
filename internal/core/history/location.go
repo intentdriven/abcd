@@ -155,7 +155,13 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 		}
 	} else {
 		res.Base = filepath.Join(home, filepath.FromSlash(userStoreRelPath))
-		chain = []string{abcdhome.Path(home), res.Base}
+		// abcd's home is created here, first and on its own, so the one
+		// mode every writer of it hands is visible at the call
+		// (iss-2610032205304585).
+		if err := fsutil.EnsureRealDir(abcdhome.Path(home), abcdhome.DirMode); err != nil {
+			return Resolution{}, storeDirFault(abcdhome.Path(home), err)
+		}
+		chain = []string{res.Base}
 	}
 	res.Records = filepath.Join(res.Base, rootSHA, recordsDirName)
 	res.Staging = filepath.Join(res.Base, rootSHA, stagingDirName)
@@ -185,7 +191,7 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 // level keeps whatever mode it has — fsutil.EnsureRealDir never widens or
 // narrows a directory the caller made themselves — except the records leaf,
 // which narrowRecordsLeaf closes to its owner.
-const storeDirPerm = 0o700
+const storeDirPerm = abcdhome.DirMode
 
 // narrowRecordsLeaf removes the group and other bits from the records leaf when
 // an earlier binary created it wider (iss-2609291610432030). storeDirPerm only
