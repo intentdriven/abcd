@@ -162,8 +162,8 @@ func TestHiddenKeyRestoresTerminalOnInterrupt(t *testing.T) {
 		if calls.Load() != 0 {
 			t.Errorf("an interrupted setup made %d call(s)", calls.Load())
 		}
-		if _, err := os.Lstat(c.home + "/.abcd"); err == nil {
-			t.Error("an interrupted setup wrote under ~/.abcd")
+		if _, err := os.Lstat(abcdhome.Path(c.home)); err == nil {
+			t.Errorf("an interrupted setup wrote under %s", abcdhome.Display())
 		}
 		if out := c.pty.Settled(t, ptySettle); strings.Contains(out, "half-a-pas") {
 			t.Errorf("the paste was drawn:\n%q", out)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io"
 	"os"
 	"path/filepath"
@@ -294,7 +295,7 @@ func oneRecord(t *testing.T, dir string) []byte {
 // records reads a run's two records: the repository's and the machine's.
 func (r setupRun) records(t *testing.T) (repo, machine []byte) {
 	return oneRecord(t, filepath.Join(r.repo, filepath.FromSlash(interview.RecordsRel))),
-		oneRecord(t, filepath.Join(r.home, ".abcd", "interviews"))
+		oneRecord(t, abcdhome.Path(r.home, "interviews"))
 }
 
 func (r setupRun) config(t *testing.T) []byte {
@@ -455,7 +456,7 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	if after := listTree(t, run.repo); after != before {
 		t.Fatalf("the refused run wrote into the repository:\n--- before\n%s--- after\n%s", before, after)
 	}
-	if _, err := os.Stat(filepath.Join(run.home, ".abcd", "interviews")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(run.home, "interviews")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the refused run made the home's interviews: %v", err)
 	}
 
@@ -569,7 +570,7 @@ func setupRecordsPlace(t *testing.T) (repo, home string) {
 // noSetupRecords fails the test when either tier holds an answers record.
 func noSetupRecords(t *testing.T, repo, home string) {
 	t.Helper()
-	for _, dir := range []string{filepath.Join(repo, filepath.FromSlash(interview.RecordsRel)), filepath.Join(home, ".abcd", "interviews")} {
+	for _, dir := range []string{filepath.Join(repo, filepath.FromSlash(interview.RecordsRel)), abcdhome.Path(home, "interviews")} {
 		if ents, _ := os.ReadDir(dir); len(ents) != 0 {
 			t.Fatalf("%s holds %d answers records, want none", dir, len(ents))
 		}

@@ -3,6 +3,7 @@ package credential_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io"
 	"io/fs"
 	"net/http"
@@ -53,13 +54,13 @@ func guideService(t *testing.T) *httptest.Server {
 func guideRoots(t *testing.T) layered.Roots {
 	t.Helper()
 	r := layered.Roots{Home: filepath.Join(t.TempDir(), "h"), Repo: filepath.Join(t.TempDir(), "r")}
-	for _, d := range []string{filepath.Join(r.Home, ".abcd"), r.Repo} {
+	for _, d := range []string{abcdhome.Path(r.Home), r.Repo} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cfg := `{"oracle":{"api":{"alpha":{"base_url":"https://alpha.example.com/v1","key":"alpha","models":["vendor/coder-small"]}}}}`
-	if err := os.WriteFile(filepath.Join(r.Home, ".abcd", "config.json"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(r.Home, "config.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := credential.SetMachine(r.Home, "alpha", "alpha-value-not-a-key"); err != nil {
