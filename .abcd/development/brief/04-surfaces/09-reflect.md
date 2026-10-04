@@ -100,12 +100,17 @@ The role is granted Read, for its turn's brief, and Write, for its receipt,
 and changes no file of the repository: abcd reads the working tree's state
 (git's listing of what differs from HEAD, each path's content hashed; every path
 git ignores, the local tier among them, by its mode, size and modification
-time; git's own hooks, info files and configuration, read in the repository's
-common git directory, and any hooks directory `core.hooksPath` names outside
-the tree, each hashed; only the run's own turn directory, where the role writes
-its receipt, and a checkout's local transcript store are left out) before and
-after each dispatch, and a dispatch that changes any path stops the interview,
-exit 1, naming each and keeping the answers given.
+time; git's own hooks, info files, configuration, HEAD and refs, and each
+submodule's hooks and configuration, read in the repository's common git
+directory, and any hooks directory `core.hooksPath` names outside the tree,
+read where its links lead, each hashed; left out are only the run's own turn
+directory, where the role writes its receipt, a checkout's local transcript
+store, a file named `.DS_Store` anywhere and `.claude/scheduled_tasks.lock` at
+the root, which execute nothing, every other `.claude/` path watched) before
+and after each dispatch, and any path that changes during a dispatch stops the
+interview, whatever changed it (abcd cannot tell the role's writes from another
+program's, so two interviews run in one checkout stop each other), exit 1,
+naming each and keeping the answers given.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.

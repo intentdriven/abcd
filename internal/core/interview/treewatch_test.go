@@ -3,6 +3,7 @@ package interview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,14 +15,38 @@ import (
 
 // TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview: the guard
 // watches what git status alone does not show. A role that plants a hook,
-// edits the repository's git configuration or its info files, writes into
-// the local tier (a push receipt, the handover), writes a gitignored file or
-// one inside a gitignored directory, rewrites an ignored file at the same
-// size, or writes into a hooks directory core.hooksPath names outside the
-// tree, is stopped after that dispatch with the path named, nothing more
-// drawn, and the answer given before it recorded.
+// edits the repository's git configuration or its info files, moves HEAD,
+// adds a ref or rewrites the packed refs, plants a submodule's hook or edits
+// its configuration, writes into the local tier (a push receipt, the
+// handover), writes a gitignored file or one inside a gitignored directory,
+// rewrites an ignored file at the same size, writes into a hooks directory
+// core.hooksPath names outside the tree (through a link included), or writes
+// the host's local settings, is stopped after that dispatch with the path
+// named, nothing more drawn, and the answer given before it recorded. The
+// two exemptions are held to their exact shape: a scheduler lock anywhere
+// but the root's .claude, and a file under a directory named .DS_Store, are
+// watched.
 func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 	outside := t.TempDir()
+	// linkedHooks is a hooks directory reached through a link, as a
+	// dotfiles-managed ~/.githooks is; linkedFromTree is one an in-tree link
+	// points at.
+	linkedHooks, linkedFromTree := t.TempDir(), t.TempDir()
+	linkTo := func(target, link string) {
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// gitDirOf makes a submodule's git directory under .git/modules.
+	gitDirOf := func(name string) func(r *writtenRun) {
+		return func(r *writtenRun) {
+			r.git.Write(".git/modules/"+name+"/HEAD", "ref: refs/heads/main\n")
+			r.git.Write(".git/modules/"+name+"/config", "[core]\n\tbare = false\n")
+		}
+	}
 	for _, c := range []struct {
 		name string
 		// write is the path the role writes and the content it writes,
@@ -64,6 +89,52 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 			p := filepath.ToSlash(filepath.Join(outside, "pre-push"))
 			return p, "#!/bin/sh\nexit 0\n", "/pre-push"
 		}},
+		{name: "a hook under a core.hooksPath that is a link to a directory", setup: func(r *writtenRun) {
+			link := filepath.Join(t.TempDir(), "githooks")
+			linkTo(linkedHooks, link)
+			r.git.Git("config", "core.hooksPath", link)
+		}, write: func(*writtenRun) (string, string, string) {
+			return filepath.ToSlash(filepath.Join(linkedHooks, "pre-commit")), "#!/bin/sh\nexit 0\n", "/pre-commit"
+		}},
+		{name: "a hook under an in-tree core.hooksPath that links outside the tree", setup: func(r *writtenRun) {
+			linkTo(linkedFromTree, filepath.Join(r.repo, "tools", "hooks"))
+			r.git.Git("config", "core.hooksPath", "tools/hooks")
+		}, write: func(*writtenRun) (string, string, string) {
+			return filepath.ToSlash(filepath.Join(linkedFromTree, "post-checkout")), "#!/bin/sh\nexit 0\n", "/post-checkout"
+		}},
+		{name: "HEAD pointed at another branch", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(*writtenRun) (string, string, string) {
+			return ".git/HEAD", "ref: refs/heads/other\n", ".git/HEAD"
+		}},
+		{name: "a new ref", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
+			return ".git/refs/heads/planted", r.git.Git("rev-parse", "HEAD") + "\n", ".git/refs/heads/planted"
+		}},
+		{name: "the packed refs", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
+			return ".git/packed-refs", r.git.Git("rev-parse", "HEAD") + " refs/heads/packed\n", ".git/packed-refs"
+		}},
+		{name: "a submodule's hook", setup: gitDirOf("sub"), write: func(*writtenRun) (string, string, string) {
+			return ".git/modules/sub/hooks/pre-commit", "#!/bin/sh\n", ".git/modules/sub/hooks/pre-commit"
+		}},
+		{name: "a submodule's configuration", setup: gitDirOf("sub"), write: func(*writtenRun) (string, string, string) {
+			return ".git/modules/sub/config", "[core]\n\tbare = false\n[alias]\n\tst = !sh -c true\n", ".git/modules/sub/config"
+		}},
+		{name: "the hook of a submodule whose name holds a slash", setup: gitDirOf("lib/sub"), write: func(*writtenRun) (string, string, string) {
+			return ".git/modules/lib/sub/hooks/post-checkout", "#!/bin/sh\n", ".git/modules/lib/sub/hooks/post-checkout"
+		}},
+		{name: "the hook of a submodule nested in a submodule", setup: func(r *writtenRun) {
+			gitDirOf("sub")(r)
+			gitDirOf("sub/modules/inner")(r)
+		}, write: func(*writtenRun) (string, string, string) {
+			return ".git/modules/sub/modules/inner/hooks/pre-push", "#!/bin/sh\n", ".git/modules/sub/modules/inner/hooks/pre-push"
+		}},
+		{name: "the host's local settings, which can name hooks", write: func(*writtenRun) (string, string, string) {
+			return ".claude/settings.local.json", `{"hooks":{}}` + "\n", ".claude/settings.local.json"
+		}},
+		{name: "a scheduler lock's name anywhere but the root's .claude", write: func(*writtenRun) (string, string, string) {
+			return "sub/.claude/scheduled_tasks.lock", "1\n", "sub/.claude/scheduled_tasks.lock"
+		}},
+		{name: "a file inside a directory named like Finder's metadata", write: func(*writtenRun) (string, string, string) {
+			return ".DS_Store/tool.sh", "#!/bin/sh\n", ".DS_Store/tool.sh"
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
@@ -80,6 +151,11 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 			}
 			if !slices.ContainsFunc(uc.Paths, func(got string) bool { return strings.HasSuffix(got, named) }) || !strings.Contains(err.Error(), named) {
 				t.Fatalf("the refusal does not name %s: %v", named, err)
+			}
+			// What changed in the dispatch's window is named as that, not
+			// as the role's own doing: abcd cannot tell who wrote it.
+			if want := fmt.Sprintf("%d path(s) changed while the %s ran", len(uc.Paths), RoleReflectionComposer); !strings.Contains(err.Error(), want) {
+				t.Fatalf("the refusal does not say %q: %v", want, err)
 			}
 			if len(r.asked) != 1 || len(r.finished) != 0 {
 				t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the change", len(r.asked), len(r.finished))
@@ -190,5 +266,112 @@ func TestThePersonsOwnEditsToWatchedPlacesAreNotTheRoles(t *testing.T) {
 	}
 	if len(res.Changed) != 0 || len(r.finished) != 1 {
 		t.Fatalf("changed %v, finished %d", res.Changed, len(r.finished))
+	}
+}
+
+// TestAnInTreeHooksDirectoryIsNamedOnce: a hooks directory core.hooksPath
+// names inside the working tree is read through the status listing alone, so
+// a hook the role changes there is named once, by its path in the tree,
+// whether the value is relative or spells the tree through a link (and on a
+// platform whose temporary root is itself a link, the real path and the
+// repository's path are spelled differently either way).
+func TestAnInTreeHooksDirectoryIsNamedOnce(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		value func(r *writtenRun) string
+	}{
+		{name: "relative", value: func(*writtenRun) string { return ".githooks" }},
+		{name: "through a link to the tree", value: func(r *writtenRun) string {
+			via := filepath.Join(t.TempDir(), "via")
+			if err := os.Symlink(r.repo, via); err != nil {
+				t.Fatal(err)
+			}
+			return filepath.Join(via, ".githooks")
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+			r := newWrittenRun(t, routedToClaude)
+			r.git.Write(".githooks/pre-commit", "#!/bin/sh\n")
+			r.git.Commit("hooks")
+			r.git.Git("config", "core.hooksPath", c.value(r))
+			stubAlso(t, script, 2, map[string]string{".githooks/pre-commit": "#!/bin/sh\nexit 0\n"})
+			_, err := r.w.Run(context.Background())
+			var uc *UnexpectedChangesError
+			if !errors.As(err, &uc) || !slices.Equal(uc.Paths, []string{".githooks/pre-commit"}) {
+				t.Fatalf("err = %v, want the in-tree hook named once", err)
+			}
+		})
+	}
+}
+
+// TestFinderMetadataAndTheSchedulerLockAreNotTheRoles: two paths something
+// else on the machine writes while a role runs, and that execute nothing, are
+// left out of the reading: a file named .DS_Store anywhere (Finder's
+// metadata) and the one lock file .claude/scheduled_tasks.lock at the
+// repository's root (the host's scheduler). A role run during which they
+// change runs to its outcome, whether git ignores them or not.
+func TestFinderMetadataAndTheSchedulerLockAreNotTheRoles(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		ignore string
+	}{
+		{name: "untracked"},
+		{name: "ignored", ignore: ".DS_Store\n.claude/\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
+			r := newWrittenRun(t, routedToClaude)
+			if c.ignore != "" {
+				ignoring(c.ignore)(r)
+			}
+			r.git.Write("docs/.DS_Store", "before\n")
+			stubAlso(t, script, 1, map[string]string{
+				".DS_Store":                    "finder\n",
+				"docs/.DS_Store":               "finder, again\n",
+				".git/hooks/.DS_Store":         "finder\n",
+				".claude/scheduled_tasks.lock": "4242\n",
+			})
+			res, err := r.w.Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(res.Changed) != 0 || len(r.finished) != 1 {
+				t.Fatalf("changed %v, finished %d", res.Changed, len(r.finished))
+			}
+		})
+	}
+}
+
+// TestATreePastTheBoundIsRefusedBeforeTheFirstDispatch: a tree holding more
+// watched paths than one reading may hold is refused before any role runs,
+// rather than read in part, naming the bound; a tree at the bound is read.
+func TestATreePastTheBoundIsRefusedBeforeTheFirstDispatch(t *testing.T) {
+	keep := maxWatched
+	t.Cleanup(func() { maxWatched = keep })
+	r := newWrittenRun(t, routedToClaude)
+	for i := range 5 {
+		r.git.Write(fmt.Sprintf("untracked-%d.txt", i), "x\n")
+	}
+	st, err := readTree(r.repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maxWatched = len(st)
+	if _, err := readTree(r.repo, ""); err != nil {
+		t.Fatalf("a tree at the bound of %d is refused: %v", maxWatched, err)
+	}
+	maxWatched = len(st) - 1
+	if _, err := readTree(r.repo, ""); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("more than %d paths", maxWatched)) {
+		t.Fatalf("err = %v, want a tree past the bound of %d refused", err, maxWatched)
+	}
+
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
+	res, err := r.w.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("more than %d paths", maxWatched)) {
+		t.Fatalf("err = %v, want the run refused past the bound", err)
+	}
+	if _, serr := os.Stat(filepath.Join(script, "turn-1.brief.seen.md")); !errors.Is(serr, os.ErrNotExist) || len(r.asked) != 0 || res.Record != "" {
+		t.Fatalf("a role ran (%v), %d asked, record %q; nothing runs past the bound", serr, len(r.asked), res.Record)
 	}
 }

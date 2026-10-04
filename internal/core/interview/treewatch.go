@@ -6,7 +6,10 @@ package interview
 // abcd draws, so abcd does: before each dispatch it reads the state of every
 // place the role could leave something behind, after the dispatch it reads it
 // again, and a path whose state moved that the interview did not grant stops
-// the interview, naming each.
+// the interview, naming each. abcd cannot tell who wrote a path in that
+// window, so a path anything else on the machine changes while the role runs
+// stops it too (a second interview in the same checkout among them: one
+// checkout is one session).
 //
 // Four places are read:
 //
@@ -22,19 +25,30 @@ package interview
 //     path: a push receipt under preflight-receipts/ or the handover changed
 //     by the role stops the interview.
 //   - git's own directory, which no status lists: every entry of hooks/ and
-//     info/, the configuration (config, and config.worktree), and a linked
-//     worktree's .git file, by mode, size and content hash. A hook runs on the
-//     person's next git command, and the configuration can name a hooks
-//     directory, an alias or a credential helper. In a linked worktree these
-//     live in the repository's common directory and are read there.
+//     info/, the configuration (config, and config.worktree), HEAD, the refs
+//     (refs/ and packed-refs), each submodule's hooks and configuration under
+//     modules/, and a linked worktree's .git file, by mode, size and content
+//     hash. A hook runs on the person's next git command, the configuration
+//     can name a hooks directory, an alias or a credential helper, and HEAD
+//     and the refs decide what the next commit or push carries. In a linked
+//     worktree these live in the repository's common directory and are read
+//     there, besides the worktree's own HEAD and config.worktree.
 //   - The directory each core.hooksPath value names, in any scope the
 //     person's git reads, when it is outside the working tree (inside, the
-//     listing above already covers it), read as git's own directory is.
+//     listing above already covers it), read as git's own directory is. The
+//     value is resolved through every link first, so a hooks directory
+//     reached through a link (a dotfiles-managed one, or an in-tree link to a
+//     directory elsewhere) is read where git runs its hooks from.
 //
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
 // receipt, and the local transcript store a checkout can pull its runners'
-// transcripts into. Every other run's turn directory is watched.
+// transcripts into. Every other run's turn directory is watched. Two paths are
+// left out because something else on the machine writes them while a role
+// runs and neither executes anything: a file named .DS_Store anywhere
+// (Finder's metadata), and the host scheduler's lock at the repository's root,
+// .claude/scheduled_tasks.lock, that one path alone. Every other path under
+// .claude/ is watched: the host's settings there can name hooks.
 //
 // Paths are relative to the repository's root; a path outside it (a linked
 // worktree's common directory, a hooks directory elsewhere) is named in full.
@@ -71,8 +85,17 @@ var maxWatched = 500_000
 // treeState is each watched path mapped to its status and its state.
 type treeState map[string]string
 
-// UnexpectedChangesError is an interview stopped because its role changed
-// paths the interview does not let it change.
+// schedulerLock is the one path under .claude/ left out of the reading: the
+// host scheduler's lock, which executes nothing.
+const schedulerLock = ".claude/scheduled_tasks.lock"
+
+// finderMetadata is the base name of Finder's metadata file, left out of the
+// reading wherever it stands.
+const finderMetadata = ".DS_Store"
+
+// UnexpectedChangesError is an interview stopped because paths the interview
+// does not let its role change changed while the role ran. abcd cannot tell
+// who changed them: the role, or anything else writing in that window.
 type UnexpectedChangesError struct {
 	Role string
 	// Paths are the paths changed, relative to the repository's root.
@@ -80,14 +103,17 @@ type UnexpectedChangesError struct {
 }
 
 func (e *UnexpectedChangesError) Error() string {
-	return fmt.Sprintf("the %s changed %d path(s) this interview does not let it change, so the interview stopped: %s; "+
+	return fmt.Sprintf("%d path(s) changed while the %s ran that this interview does not let it change, so the interview stopped: %s; "+
 		"read each (git status, git diff) and restore what you did not ask for",
-		e.Role, len(e.Paths), strings.Join(e.Paths, ", "))
+		len(e.Paths), e.Role, strings.Join(e.Paths, ", "))
 }
 
 // treeReader is one reading of the places a role could change.
 type treeReader struct {
 	repo string
+	// realRepo is repo with every link resolved, so a path read through its
+	// real spelling is still keyed by its place in the tree.
+	realRepo string
 	// skip are repository-relative slash paths left out, with everything
 	// under them.
 	skip []string
@@ -97,7 +123,7 @@ type treeReader struct {
 // readTree reads the state of every watched place under repo, leaving out
 // turnDir, the run's own turn directory (relative to repo, slash-separated).
 func readTree(repo, turnDir string) (treeState, error) {
-	r := &treeReader{repo: repo, skip: []string{history.LocalStoreRelPath}, st: treeState{}}
+	r := &treeReader{repo: repo, realRepo: fsutil.RealExistingPath(repo), skip: []string{history.LocalStoreRelPath}, st: treeState{}}
 	if turnDir != "" {
 		r.skip = append(r.skip, turnDir)
 	}
@@ -149,8 +175,19 @@ func (r *treeReader) skipped(rel string) bool {
 	return false
 }
 
-// put records one path's state, refusing past maxWatched.
+// exempt reports whether key is one of the two paths something else on the
+// machine writes while a role runs that execute nothing: a file named
+// .DS_Store anywhere, and the scheduler's lock at the root.
+func exempt(key string) bool {
+	return key == schedulerLock || path.Base(key) == finderMetadata
+}
+
+// put records one path's state, refusing past maxWatched. An exempt path is
+// not recorded.
 func (r *treeReader) put(key, state string) error {
+	if exempt(key) {
+		return nil
+	}
 	if _, ok := r.st[key]; !ok && len(r.st) >= maxWatched {
 		return fmt.Errorf("the tree holds more than %d paths outside what git tracks unchanged (untracked, ignored, or in git's own directory), "+
 			"too many to read around each turn; remove what it no longer needs (a scratch directory, a build's output) and run the interview again", maxWatched)
@@ -257,14 +294,19 @@ func (r *treeReader) readGitDirs() error {
 			return err
 		}
 	}
-	for _, rel := range []string{"hooks", "info", "config", "config.worktree"} {
+	for _, rel := range []string{"hooks", "info", "config", "config.worktree", "HEAD", "packed-refs", "refs"} {
 		if err := r.hashIn(common, rel); err != nil {
 			return err
 		}
 	}
+	if err := r.readModules(common); err != nil {
+		return err
+	}
 	if gitDir != common {
-		if err := r.hashIn(gitDir, "config.worktree"); err != nil {
-			return err
+		for _, rel := range []string{"config.worktree", "HEAD"} {
+			if err := r.hashIn(gitDir, rel); err != nil {
+				return err
+			}
 		}
 	}
 	hooksPaths, err := gitutil.HooksPaths(r.repo)
@@ -272,11 +314,15 @@ func (r *treeReader) readGitDirs() error {
 		return err
 	}
 	fold := fsutil.CaseFoldingFS()
+	realGitDir, realCommon := fsutil.RealExistingPath(gitDir), fsutil.RealExistingPath(common)
 	for _, hp := range hooksPaths {
-		dir := abs(filepath.FromSlash(hp))
+		// git runs a hook from where the value leads, so a link on the way
+		// (the directory itself, or one above it) is resolved before the
+		// directory is placed and read.
+		dir := fsutil.RealExistingPath(abs(filepath.FromSlash(hp)))
 		// Inside the working tree, and outside git's own directory, the
 		// status listing already reads it.
-		if fsutil.PathWithin(dir, r.repo, fold) && !fsutil.PathWithin(dir, gitDir, fold) && !fsutil.PathWithin(dir, common, fold) {
+		if fsutil.PathWithin(dir, r.realRepo, fold) && !fsutil.PathWithin(dir, realGitDir, fold) && !fsutil.PathWithin(dir, realCommon, fold) {
 			continue
 		}
 		if err := r.hashIn(filepath.Dir(dir), filepath.Base(dir)); err != nil {
@@ -284,6 +330,66 @@ func (r *treeReader) readGitDirs() error {
 		}
 	}
 	return nil
+}
+
+// readModules records the hooks and the configuration of every submodule's
+// git directory under common's modules/. A directory there holding a HEAD, a
+// config or a hooks entry is a submodule's git directory, and its own
+// modules/ is read the same way; any other directory is the leading part of
+// a submodule's name, which may hold a slash, and is read through. A link is
+// never followed.
+func (r *treeReader) readModules(common string) error {
+	root, err := os.OpenRoot(common)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return r.readModulesIn(root.FS(), common, "modules")
+}
+
+func (r *treeReader) readModulesIn(fsys fs.FS, common, dir string) error {
+	entries, err := fs.ReadDir(fsys, dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub := path.Join(dir, e.Name())
+		if !isGitDir(fsys, sub) {
+			if err := r.readModulesIn(fsys, common, sub); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, rel := range []string{"hooks", "config"} {
+			if err := r.hashIn(common, path.Join(sub, rel)); err != nil {
+				return err
+			}
+		}
+		if err := r.readModulesIn(fsys, common, path.Join(sub, "modules")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// isGitDir reports whether dir holds a HEAD, a config or a hooks entry, as
+// a submodule's git directory does.
+func isGitDir(fsys fs.FS, dir string) bool {
+	for _, n := range []string{"HEAD", "config", "hooks"} {
+		if _, err := fs.Lstat(fsys, path.Join(dir, n)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // hashIn records rel under base, and every entry under it when it is a
@@ -334,11 +440,14 @@ func (r *treeReader) hashIn(base, rel string) error {
 }
 
 // keyOf is the key of rel under base: its path relative to the repository
-// when it is inside it, in full when not.
+// when it is inside it, spelled through the repository's path or its real
+// one, and in full when not.
 func (r *treeReader) keyOf(base, rel string) string {
 	full := filepath.Join(base, filepath.FromSlash(rel))
-	if k, err := filepath.Rel(r.repo, full); err == nil && k != ".." && !strings.HasPrefix(k, ".."+string(filepath.Separator)) {
-		return filepath.ToSlash(k)
+	for _, repo := range []string{r.repo, r.realRepo} {
+		if k, err := filepath.Rel(repo, full); err == nil && k != ".." && !strings.HasPrefix(k, ".."+string(filepath.Separator)) {
+			return filepath.ToSlash(k)
+		}
 	}
 	return filepath.ToSlash(full)
 }

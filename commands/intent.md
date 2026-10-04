@@ -509,12 +509,18 @@ enabled under `runner.<name>`), once per question; it edits the record after
 each answer with its contract's tools, abcd draws each question and records
 each answer in the answers record in the local tier, and the verb ends by
 reporting the readiness gate. The role may change the intent's record and
-nothing else: a turn that changes any other path stops the interview, exit 1,
-naming each, whether git tracks it, ignores it (the local tier's push receipts
-and handover included) or keeps it in its own directory (a hook, the git
-configuration); only the run's own turn directory is the role's to write (`refused: "unexpected_changes"` under `--json`, with every path
-the role changed in `changed_paths`); relay the paths to the person to read and
-restore. The plan act (step 10) stays the product thinker's, at the command
+nothing else: any other path that changes while a turn runs stops the
+interview, exit 1, naming each, whether git tracks it, ignores it (the local
+tier's push receipts and handover included) or keeps it in its own directory (a
+hook, the git configuration, HEAD and the refs, a submodule's hooks), and
+whatever wrote it, since abcd cannot tell the role's writes from another
+program's: a second interview run in the same checkout stops this one. Only
+the run's own turn directory is the role's to write, and two paths that execute
+nothing are not watched: a file named `.DS_Store`, and
+`.claude/scheduled_tasks.lock` (every other path under `.claude/` is). The
+refusal is `refused: "unexpected_changes"` under `--json`, with every path
+changed in the turn in `changed_paths`; relay the paths to the person to read
+and restore. The plan act (step 10) stays the product thinker's, at the command
 line. With no route of the person's to a runner it
 refuses, exit 2, writing nothing. Never run it from this page in place of the
 interview above: in a host session the interview is yours.
