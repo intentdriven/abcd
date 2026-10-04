@@ -190,7 +190,9 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   privilege and are perfect bypasses (adr-42). <https://gtfobins.github.io>
 - **gitleaks (Zachary Rice, MIT)** — the canonical aws-access-token prefix
   family the launch scanner's AWS rule deliberately narrows (self-declared
-  at `internal/adapter/scanner/patterns.go`), and the full-history secret
+  at `internal/adapter/scanner/patterns.go`), the openai-api-key rule whose
+  legacy shape and sk-admin- prefix the scanner adopts beside it
+  (iss-2610040202190813, iss-2610040452174484), and the full-history secret
   scan CI runs as the authoritative backstop behind abcd's own fast
   pre-push pass; and the scanner a repository opts into with
   `.abcd/config/gitleaks.json`, which abcd runs beside its native scanner in

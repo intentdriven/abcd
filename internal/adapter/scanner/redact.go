@@ -276,6 +276,20 @@ func IsIdentityKind(kind string) bool {
 	return false
 }
 
+// IsTokenKind reports whether a finding kind is a credential: a key, a token or
+// private-key material, the class every bundled secret rule names under the
+// "token:" prefix. It is the one place that class is declared, because a token
+// is a secret WHATEVER its severity: a rule that only warns (sk_key_generic,
+// which a hash-like committed string must not fail a gate on) still names a
+// credential that no store, refusal or outbound artefact may carry raw. So the
+// sweeps and backstops that guard what is written select on it beside the
+// severity (secretPatterns, BlockingResidual, RedactRefusal, ScrubOutbound's
+// last stage), while the gates that judge files already committed — abcd lint
+// and the launch scan's hard-fail count — still read the severity alone.
+func IsTokenKind(kind string) bool {
+	return strings.HasPrefix(kind, "token:")
+}
+
 // identityKinds enumerates every identity kind IsIdentityKind accepts. It is a
 // function rather than a var so the byte-scan policy table can be checked
 // against it in full (TestEveryIdentityKindIsClassifiedForBytes).
