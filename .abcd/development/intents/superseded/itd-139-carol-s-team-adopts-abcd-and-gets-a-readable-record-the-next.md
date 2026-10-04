@@ -4,13 +4,18 @@ slug: carol-s-team-adopts-abcd-and-gets-a-readable-record-the-next
 spec_id: null
 kind: standalone
 suggested_kind: null
-reclassification_history: []
+reclassification_history:
+  - { date: 2026-10-03, from: standalone, to: superseded, reason: "the product thinker ruled on 2026-10-03 that the live dashboard on the home network replaces the published team site" }
 builds_on: [itd-135, itd-136]
 severity: minor
 impact: additive
+kind_at_supersession: standalone
+superseded_by: itd-2610032150577708
 ---
 
 # Carol's team adopts abcd and gets a readable record the next day, without writing a line of site code
+
+> **Superseded by itd-2610032150577708** on 2026-10-03: the product thinker ruled on 2026-10-03 that the live dashboard on the home network replaces the published team site
 
 ## Press Release
 
