@@ -28,7 +28,8 @@ func setupChip(n int) string { return fmt.Sprintf("Setup Q%d", n) }
 
 // SetupValueQuestion is the n-th question of setup, Prompt(key, choices, def)
 // as the shared type: the key the id; the material the About of the help
-// HelpIn gives for the repository at cwd; the choices the prompt offers as
+// HelpIn gives for the repository at cwd (its last sentence the question,
+// where it asks one); the choices the prompt offers as
 // options, in its order, each labelled by its value with core's meaning
 // beneath; the change-later line from ChangeLaterLine; and the decide-later
 // answer, whose meaning says what the install does with no answer. For a
@@ -44,30 +45,46 @@ func SetupValueQuestion(n int, cwd, key string, choices []string, def string) qu
 }
 
 // valueQuestion is SetupValueQuestion over the help h.
+//
+// A help that ends on its own question (its About's last sentence asks it)
+// is asked by that question, and a choice whose value is SetupLaterValue is
+// the question's own decide-later answer, with its own meaning, never a
+// second one beside it.
 func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
-	opts := make([]question.Option, len(choices))
-	for i, c := range choices {
-		opts[i] = question.Option{Value: c, Label: c, Meaning: h.Meaning(c)}
+	later := question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],
+		Meaning: "Leaves the value unset, so the install lists it again next time."}
+	if h.Flag == "" && def != "" {
+		later.Meaning = "Takes " + def + " for now, as an unanswered question does."
+	}
+	opts := make([]question.Option, 0, len(choices))
+	for _, c := range choices {
+		if c == SetupLaterValue {
+			if m := h.Meaning(c); m != "" {
+				later.Meaning = m
+			}
+			continue
+		}
+		opts = append(opts, question.Option{Value: c, Label: c, Meaning: h.Meaning(c)})
+	}
+	about, ask := h.About, setupAsk
+	if body, own := splitConfirm(about); strings.HasSuffix(about, "?") && len(body) == 1 && own != "" {
+		about, ask = body[0].Text, own
 	}
 	var material []question.Block
-	if h.About != "" {
-		material = []question.Block{{Kind: question.KindParagraph, Text: h.About}}
+	if about != "" {
+		material = []question.Block{{Kind: question.KindParagraph, Text: about}}
 	}
 	change := h.ChangeLaterLine()
 	if change == "" {
 		change = question.Default.NotApplicable
 	}
-	later := "Leaves the value unset, so the install lists it again next time."
-	if h.Flag == "" && def != "" {
-		later = "Takes " + def + " for now, as an unanswered question does."
-	}
 	return question.Question{
 		ID:          h.Key,
 		Chip:        setupChip(n),
 		Material:    material,
-		Ask:         setupAsk,
+		Ask:         ask,
 		Options:     opts,
-		Later:       question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0], Meaning: later},
+		Later:       later,
 		Now:         "not set",
 		ChangeLater: change,
 	}

@@ -119,3 +119,33 @@ func TestSetupMachineWideQuestions(t *testing.T) {
 		}
 	}
 }
+
+// TestSetupValueQuestionKeepsTheHelpsOwnQuestionAndLater builds the question
+// whose help ends on its own question and offers its own decide-later
+// answer (retiring a tool's conventions file that repeats AGENTS.md): the
+// help's last sentence is the question, its "later" answer is the
+// decide-later option, never a second one beside it, and the question
+// passes the structural check the answer loop holds it to.
+func TestSetupValueQuestionKeepsTheHelpsOwnQuestionAndLater(t *testing.T) {
+	key := retirePromptKey("CLAUDE.md", repeatsCopy)
+	h, ok := HelpIn("", key)
+	if !ok {
+		t.Fatalf("no help for %s", key)
+	}
+	q := SetupValueQuestion(3, "", key, retireChoices, retireLater)
+	if q.Ask != retireAsk("CLAUDE.md") {
+		t.Fatalf("ask %q, want the help's own question %q", q.Ask, retireAsk("CLAUDE.md"))
+	}
+	if len(q.Material) != 1 || strings.HasSuffix(q.Material[0].Text, "?") {
+		t.Fatalf("material %+v still ends on the question", q.Material)
+	}
+	if len(q.Options) != 2 || q.Later.Value != retireLater || q.Later.Meaning != h.Meaning(retireLater) {
+		t.Fatalf("options %+v later %+v", q.Options, q.Later)
+	}
+	if fs := question.Check(question.Ask{Questions: []question.Question{q}}); len(fs) > 0 {
+		t.Fatalf("structural findings: %v", fs)
+	}
+	if fs := question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{}); len(fs) > 0 {
+		t.Logf("limits the retire question breaks (owed by its own lane): %v", fs)
+	}
+}
