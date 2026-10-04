@@ -375,3 +375,63 @@ func TestATreePastTheBoundIsRefusedBeforeTheFirstDispatch(t *testing.T) {
 		t.Fatalf("a role ran (%v), %d asked, record %q; nothing runs past the bound", serr, len(r.asked), res.Record)
 	}
 }
+
+// TestAGitEntryReachedThroughALinkIsReadWhereItLeads: git follows a link
+// standing in its own directory, so a hooks directory, an info directory, a
+// configuration file or a single hook there that is a link (a
+// dotfiles-managed one) is read where it leads, and a role writing there is
+// stopped, the path named where it was written.
+func TestAGitEntryReachedThroughALinkIsReadWhereItLeads(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		// link is the entry under .git made a link to a directory or a file
+		// elsewhere; inDir, for a directory, is the file the role writes in it.
+		link, inDir string
+	}{
+		{name: "the hooks directory", link: "hooks", inDir: "pre-commit"},
+		{name: "the info directory", link: "info", inDir: "attributes"},
+		{name: "the configuration", link: "config"},
+		{name: "one hook", link: "hooks/pre-push"},
+		{name: "a submodule's hooks directory", link: "modules/sub/hooks", inDir: "pre-commit"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+			r := newWrittenRun(t, routedToClaude)
+			r.git.Write(".git/modules/sub/HEAD", "ref: refs/heads/main\n")
+			at := filepath.Join(r.repo, ".git", filepath.FromSlash(c.link))
+			target := filepath.Join(t.TempDir(), "target")
+			written, body := target, "#!/bin/sh\nexit 0\n"
+			if c.inDir != "" {
+				if err := os.Mkdir(target, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				written = filepath.Join(target, c.inDir)
+			} else {
+				before, err := os.ReadFile(at)
+				if err != nil && !errors.Is(err, os.ErrNotExist) {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(target, before, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				body = string(before) + "[alias]\n\tst = !sh -c true\n"
+			}
+			if err := os.RemoveAll(at); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(at), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, at); err != nil {
+				t.Fatal(err)
+			}
+			stubAlso(t, script, 2, map[string]string{filepath.ToSlash(written): body})
+			_, err := r.w.Run(context.Background())
+			named := strings.TrimPrefix(written, filepath.Dir(target))
+			var uc *UnexpectedChangesError
+			if !errors.As(err, &uc) || !slices.ContainsFunc(uc.Paths, func(p string) bool { return strings.HasSuffix(p, filepath.ToSlash(named)) }) {
+				t.Fatalf("err = %v, want %s, written through the link at .git/%s, named", err, named, c.link)
+			}
+		})
+	}
+}

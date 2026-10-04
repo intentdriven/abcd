@@ -32,7 +32,9 @@ package interview
 //     can name a hooks directory, an alias or a credential helper, and HEAD
 //     and the refs decide what the next commit or push carries. In a linked
 //     worktree these live in the repository's common directory and are read
-//     there, besides the worktree's own HEAD and config.worktree.
+//     there, besides the worktree's own HEAD and config.worktree. git follows
+//     a link there, so a link (a dotfiles-managed hooks directory, a hook or
+//     a configuration file) is read where it leads too.
 //   - The directory each core.hooksPath value names, in any scope the
 //     person's git reads, when it is outside the working tree (inside, the
 //     listing above already covers it), read as git's own directory is. The
@@ -289,8 +291,10 @@ func (r *treeReader) readGitDirs() error {
 	}
 	gitDir, common := abs(lines[0]), abs(lines[1])
 	// A linked worktree's .git is a file naming its git directory.
+	// The git directory it names is read below, so a link there is not
+	// followed.
 	if fi, err := os.Lstat(filepath.Join(r.repo, ".git")); err == nil && !fi.IsDir() {
-		if err := r.hashIn(r.repo, ".git"); err != nil {
+		if err := r.hashAt(r.repo, ".git", false); err != nil {
 			return err
 		}
 	}
@@ -394,9 +398,18 @@ func isGitDir(fsys fs.FS, dir string) bool {
 
 // hashIn records rel under base, and every entry under it when it is a
 // directory, by mode, size and content hash, keyed by its path relative to
-// the repository when it is inside it and in full when not. The walk stays
-// under base: a link is recorded by its target's text, never followed.
+// the repository when it is inside it and in full when not. A link is
+// recorded by its target's text, and what it leads to is read too, once: git
+// follows a link in its own directory or in a hooks directory, so a hooks
+// directory, a configuration file or a hook that is a link (a
+// dotfiles-managed one) runs or is read where it leads.
 func (r *treeReader) hashIn(base, rel string) error {
+	return r.hashAt(base, rel, true)
+}
+
+// hashAt is hashIn, following each link it meets only when follow is set,
+// and never further than the link's own target.
+func (r *treeReader) hashAt(base, rel string, follow bool) error {
 	root, err := os.OpenRoot(base)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -419,7 +432,13 @@ func (r *treeReader) hashIn(base, rel string) error {
 		if err != nil {
 			return err
 		}
-		return r.put(r.keyOf(base, rel), "git "+h)
+		if err := r.put(r.keyOf(base, rel), "git "+h); err != nil {
+			return err
+		}
+		if follow && fi.Mode()&fs.ModeSymlink != 0 {
+			return r.followLink(base, rel)
+		}
+		return nil
 	}
 	return fs.WalkDir(root.FS(), rel, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -435,8 +454,22 @@ func (r *treeReader) hashIn(base, rel string) error {
 		if err != nil {
 			return err
 		}
-		return r.put(r.keyOf(base, p), "git "+h)
+		if err := r.put(r.keyOf(base, p), "git "+h); err != nil {
+			return err
+		}
+		if follow && d.Type()&fs.ModeSymlink != 0 {
+			return r.followLink(base, p)
+		}
+		return nil
 	})
+}
+
+// followLink reads what the link rel under base leads to, every link on the
+// way resolved, without following any link it finds there. A link leading
+// nowhere reads as nothing.
+func (r *treeReader) followLink(base, rel string) error {
+	target := fsutil.RealExistingPath(filepath.Join(base, filepath.FromSlash(rel)))
+	return r.hashAt(filepath.Dir(target), filepath.Base(target), false)
 }
 
 // keyOf is the key of rel under base: its path relative to the repository
