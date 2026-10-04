@@ -359,3 +359,53 @@ func TestAnAskBreakingTheAskingLimitsIsInvalid(t *testing.T) {
 		t.Fatalf("fallbacks %+v", rec.Fallbacks)
 	}
 }
+
+// TestAReceiptWrittenAheadIsNotTheTurnsAnswer: a role that writes the next
+// turn's receipt ahead of it (turn 1 also leaves a done at turn 2's receipt
+// path) does not answer turn 2 with it. Turn 2's runner writes nothing, so
+// the receipt standing before it started is refused as the role's invalid
+// answer, nothing is finished, and the answer given before it is recorded.
+func TestAReceiptWrittenAheadIsNotTheTurnsAnswer(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"))
+	stubAlso(t, script, 1, map[string]string{"turns/turn-2.receipt.json": stubDone})
+	r := newWrittenRun(t, routedToClaude)
+	res, err := r.w.Run(context.Background())
+	if err == nil || len(r.finished) != 0 {
+		t.Fatalf("err = %v, finished %q; a receipt written ahead was taken as the turn's answer", err, r.finished)
+	}
+	rec := readRecord(t, res.Record)
+	if len(rec.Answers) != 1 || len(rec.Fallbacks) != 1 || rec.Fallbacks[0].Reason != runner.ReasonInvalid ||
+		!strings.Contains(rec.Fallbacks[0].Detail, "already stands") {
+		t.Fatalf("record %+v", rec)
+	}
+}
+
+// TestBeforeAFallbackRunnerTheFailedRunnersReceiptIsRemoved: a turn's first
+// runner meets its receipt path empty or is refused; a fallback runner meets
+// it empty because what the failed runner left is removed, so the fallback's
+// silence is never answered by the failed runner's receipt.
+func TestBeforeAFallbackRunnerTheFailedRunnersReceiptIsRemoved(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	const rel = "turn-1.receipt.json"
+	if err := clearReceipt(root, rel, runner.Claude, true); err != nil {
+		t.Fatalf("an empty receipt path: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, rel), []byte(stubDone), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var fl *runner.Failure
+	if err := clearReceipt(root, rel, runner.Claude, true); !errors.As(err, &fl) || fl.Reason != runner.ReasonInvalid || fl.Runner != runner.Claude {
+		t.Fatalf("before the first runner: err = %v, want the runner's invalid answer", err)
+	}
+	if err := clearReceipt(root, rel, runner.OpenCode, false); err != nil {
+		t.Fatalf("before a fallback runner: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, rel)); !os.IsNotExist(err) {
+		t.Fatalf("the failed runner's receipt still stands: %v", err)
+	}
+}

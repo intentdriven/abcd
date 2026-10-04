@@ -300,6 +300,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		}
 		dir := filepath.Join(w.Repo, filepath.FromSlash(dirRel))
 		var got receipt
+		first := true
 		d := &runner.Dispatcher{
 			Config:      w.Config,
 			Attended:    true,
@@ -315,6 +316,11 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 			Record: func(fb runner.FallbackReceipt) error {
 				res.Fallbacks = append(res.Fallbacks, fb)
 				return nil
+			},
+			Prepare: func(name string, _ runner.Request) error {
+				err := clearReceipt(root, receiptRel, name, first)
+				first = false
+				return err
 			},
 			Now: w.Now,
 		}
@@ -373,6 +379,29 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		}
 	}
 	return end(fmt.Errorf("interview: the %s interview reached its bound of %d turns without an outcome", w.Name, max))
+}
+
+// clearReceipt makes sure nothing stands at a turn's receipt path when a
+// runner starts on the turn, so what the validator reads is what that runner
+// wrote. Before the turn's first runner, a receipt standing there was written
+// ahead by an earlier turn's role: it is that role's invalid answer, and the
+// runner is not started on it. Before a fallback runner, what the failed
+// runner left is removed: it is not the fallback's answer.
+func clearReceipt(root *os.Root, rel, runnerName string, first bool) error {
+	_, err := root.Lstat(rel)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("interview: the turn's receipt path cannot be read: %w", err)
+	case first:
+		return &runner.Failure{Runner: runnerName, Reason: runner.ReasonInvalid,
+			Detail: "a receipt already stands at " + rel + " before the turn's runner started: an earlier turn wrote it ahead, and it is not this turn's answer"}
+	}
+	if err := root.Remove(rel); err != nil {
+		return fmt.Errorf("interview: the failed runner's receipt was not removed before the next runner: %w", err)
+	}
+	return nil
 }
 
 // Values are the values q offers, in the order they are numbered: its options

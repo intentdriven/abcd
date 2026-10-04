@@ -44,6 +44,12 @@ type Dispatcher struct {
 	Transcripts TranscriptStore
 	// Record appends one fallback receipt to the run's state.
 	Record func(FallbackReceipt) error
+	// Prepare, when set, readies req's files for the runner about to run it,
+	// before each runner starts: the routed one and a fallback host alike. A
+	// *Failure it returns is that runner's failure, recorded and fallen back
+	// on as a launch's would be, with nothing launched; any other error ends
+	// the dispatch.
+	Prepare func(runner string, req Request) error
 	// Now is the clock the receipts are stamped with; time.Now when nil.
 	Now func() time.Time
 }
@@ -162,6 +168,11 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 		// runner never launches on a stale answer.
 		if err := d.Config.admitModel(rc.Model); err != nil {
 			return Answer{}, fmt.Errorf("runner: %s.%s.%s is %q, %w", runnerKey, name, modelKey, rc.Model, err)
+		}
+	}
+	if d.Prepare != nil {
+		if err := d.Prepare(name, req); err != nil {
+			return Answer{}, err
 		}
 	}
 	ans, transcript, err := d.Config.adapter(rc).Run(ctx, req)

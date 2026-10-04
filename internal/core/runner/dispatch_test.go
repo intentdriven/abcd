@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"reflect"
@@ -376,5 +377,45 @@ func TestDispatchNeedsAValidator(t *testing.T) {
 	}
 	if f.launched(OpenCode) {
 		t.Fatal("launched before the dispatcher was found incomplete")
+	}
+}
+
+// TestPrepareRunsBeforeEachRunner: the caller's Prepare is consulted before
+// every runner starts, the routed runner and the fallback host alike; a
+// *Failure it returns is that runner's failure, recorded and fallen back on
+// with nothing launched, and any other error ends the dispatch.
+func TestPrepareRunsBeforeEachRunner(t *testing.T) {
+	f := newFake(t, "ok", Claude, OpenCode)
+	h := newHarness(t, mustLoad(t, routed(routedMachine), ""), false)
+	var prepared []string
+	h.d.Prepare = func(name string, _ Request) error {
+		prepared = append(prepared, name)
+		if name == OpenCode {
+			return &Failure{Runner: name, Reason: ReasonInvalid, Detail: "a receipt already stands"}
+		}
+		return nil
+	}
+	out, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(prepared, []string{OpenCode, Claude}) {
+		t.Fatalf("prepared %v, want each runner before it starts", prepared)
+	}
+	if f.launched(OpenCode) || out.Receipt.Route.Ran != Claude {
+		t.Fatalf("the refused runner was launched, or the host did not run: %+v", out.Receipt.Route)
+	}
+	if len(h.receipts) != 1 || h.receipts[0].Reason != ReasonInvalid || h.receipts[0].Asked != OpenCode || h.receipts[0].Ran != Claude {
+		t.Fatalf("receipts = %+v", h.receipts)
+	}
+
+	g := newFake(t, "ok", Claude, OpenCode)
+	h2 := newHarness(t, mustLoad(t, routed(routedMachine), ""), false)
+	h2.d.Prepare = func(string, Request) error { return os.ErrPermission }
+	if _, err := h2.d.Dispatch(context.Background(), g.request("ruthless-reviewer")); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("err = %v, want Prepare's own error", err)
+	}
+	if g.launched(OpenCode) || g.launched(Claude) || len(h2.receipts) != 0 {
+		t.Fatalf("a runner was launched, or a receipt recorded, after Prepare failed: %v", h2.receipts)
 	}
 }
