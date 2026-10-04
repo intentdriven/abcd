@@ -542,10 +542,16 @@ an answers file named on the command line answers the questions wherever the
 install runs: each question is written as plain text (the drawing in Mono at
 80 columns, no escape byte), and one the file does not answer stops the run
 with exit 2, naming the question's id, the flag that answers it and the file
-line that would, with no answers record written. The approvals are asked
-before the first write; a later question's stop leaves the steps before it
-done. A file never answers the questions put only to a person at a terminal
-(the git identity, the drain rule, installing a tool).
+line that would, with no answers record written. The file is checked before
+the first write: an entry whose question has a fixed set of answers must
+give one of them, and every config value the run would ask must be
+answered, by its flag or by the file, walked in the order and as far as the
+install asks them (`ahoy.WalkConfigValueQuestions`), so either refusal says
+that nothing was written. The adoption and the approvals are asked before the
+first write too. A stop at a question the run itself decides to ask (the
+status line's elements, the offers, the artefact kind) leaves the steps before
+it done, and says so. A file never answers the questions put only to a person
+at a terminal (the git identity, the drain rule, installing a tool).
 
 **Every answer is recorded with where it was given.** The drawn door and the
 answers file write one answers record through `interview.Write`: per question,

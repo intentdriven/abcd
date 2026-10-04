@@ -3732,6 +3732,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				if err := settleSetupAnswers(cwd, opts, file); err != nil {
+					return err
+				}
 				p = &answersPrompter{
 					setupQuestions: setupQuestions{cwd: cwd, w: cmd.ErrOrStderr(), yesApproved: yes},
 					file:           file, stamp: answeredIn, ascii: !term.UTF8Locale(os.Getenv),

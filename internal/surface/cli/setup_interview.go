@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -220,8 +221,8 @@ func (p *answersPrompter) answer(q question.Question, flag string) (interview.Fi
 	e, ok := p.file.Find(q.ID)
 	if !ok {
 		panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: %s (%s) has no answer: %s, or add "+
-			`{"id": %q, "value": "<%s>"} to the answers file; no answers record was written`,
-			q.Chip, q.ID, flag, q.ID, strings.Join(values, "|"))})
+			`{"id": %q, "value": "<%s>"} to the answers file; %s`,
+			q.Chip, q.ID, flag, q.ID, strings.Join(values, "|"), writtenBefore(q.ID))})
 	}
 	for _, o := range all {
 		if o.Value == strings.TrimSpace(e.Value) {
@@ -233,8 +234,73 @@ func (p *answersPrompter) answer(q question.Question, flag string) (interview.Fi
 			return e, o
 		}
 	}
-	panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s (%s) with %q, which it does not offer (%s); no answers record was written",
-		q.Chip, q.ID, termsafe.Sanitize(e.Value), strings.Join(values, "|"))})
+	panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s (%s) with %q, which it does not offer (%s); %s",
+		q.Chip, q.ID, termsafe.Sanitize(e.Value), strings.Join(values, "|"), writtenBefore(q.ID))})
+}
+
+// writtenBefore says what a run the answers file stopped at the question id
+// left behind: no answers record, and either nothing at all, for a question
+// the install asks before its first write, or whatever the steps before the
+// question changed. The value questions setup settles before its first write
+// (settleSetupAnswers) never reach this stop.
+func writtenBefore(id string) string {
+	if ahoy.SetupAskedBeforeWriting(id) {
+		return "nothing was written, and no answers record was written"
+	}
+	return "no answers record was written, and what the install changed before this question stays: " +
+		"the next abcd ahoy install lists what remains"
+}
+
+// settleSetupAnswers checks an answers file before the install's first
+// write, so a refusal here leaves the repository and the home untouched
+// (iss-2610040025088395): every entry whose question has a fixed set of
+// answers must give one of them, and every config value the run would ask
+// must be answered, by its flag or by the file, walked in the order and as
+// far as the install would ask them (ahoy.WalkConfigValueQuestions). The
+// questions whose asking the run itself decides are still checked when they
+// are put (answersPrompter.answer).
+func settleSetupAnswers(cwd string, opts ahoy.InstallOptions, file interview.Answers) error {
+	for _, e := range file.Answers {
+		id := strings.TrimSpace(e.ID)
+		values, fixed := ahoy.SetupFixedValues(id)
+		if fixed && !slices.Contains(values, strings.TrimSpace(e.Value)) {
+			return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s with %q, which it does not offer (%s); "+
+				"nothing was written, and no answers record was written", termsafe.Sanitize(id), termsafe.Sanitize(e.Value), strings.Join(values, "|"))}
+		}
+	}
+	var missing string
+	var missingChoices []string
+	err := ahoy.WalkConfigValueQuestions(cwd, opts, func(id string) bool {
+		e, ok := file.Find(id)
+		return ok && strings.TrimSpace(e.Value) == "yes"
+	}, func(key string, choices []string, def string) string {
+		e, ok := file.Find(key)
+		if !ok {
+			if missing == "" {
+				missing, missingChoices = key, choices
+			}
+			return ""
+		}
+		if v := strings.TrimSpace(e.Value); v != ahoy.SetupLaterValue {
+			return v
+		}
+		return ""
+	})
+	if err != nil || missing == "" {
+		return nil // a detection that fails is the install's to report
+	}
+	q := ahoy.SetupValueQuestion(0, cwd, missing, missingChoices, "")
+	var values []string
+	for _, o := range append(append([]question.Option(nil), q.Options...), q.Later) {
+		values = append(values, o.Value)
+	}
+	flag := "no flag answers it"
+	if h, ok := ahoy.HelpIn(cwd, missing); ok && h.Flag != "" {
+		flag = "pass " + h.Flag + " <" + strings.Join(missingChoices, "|") + ">"
+	}
+	return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: the value question (%s) has no answer, and this run asks it: %s, or add "+
+		`{"id": %q, "value": "<%s>"} to the answers file; nothing was written, and no answers record was written`,
+		missing, flag, missing, strings.Join(values, "|"))}
 }
 
 // place is where the entry e was answered: its own answered_in, else the

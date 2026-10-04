@@ -196,3 +196,60 @@ func splitConfirm(text string) ([]question.Block, string) {
 func SetupMachineWide(id string) bool {
 	return strings.HasPrefix(id, elementPromptPrefix) || id == OracleRoutingMachineGapID
 }
+
+// SetupFixedValues returns the values an answers file may give the setup
+// question id when that question's answers are fixed before the run, as
+// SetupValueQuestion and SetupConfirmQuestion build them (the options, then
+// deciding later): a config value's, the house-style question's, a status
+// line element's, and every approval's. ok is false for a question whose
+// answers the run decides (the artefact kind, a conventions file's
+// retirement) or an id setup does not ask.
+func SetupFixedValues(id string) (values []string, ok bool) {
+	var q question.Question
+	switch {
+	case id == "adopt", strings.HasPrefix(id, approvePrefix), confirmIDKnown(id):
+		q = SetupConfirmQuestion(0, "")
+	case strings.HasPrefix(id, elementPromptPrefix):
+		q = valueQuestion(0, PromptHelp{Key: id}, []string{"on", "off"}, "on")
+	default:
+		choices, known := fixedValueChoices[id]
+		if !known {
+			return nil, false
+		}
+		q = valueQuestion(0, PromptHelp{Key: id}, choices, "")
+	}
+	for _, o := range append(append([]question.Option(nil), q.Options...), q.Later) {
+		values = append(values, o.Value)
+	}
+	return values, true
+}
+
+// fixedValueChoices are the choices the value questions with a fixed set
+// offer, keyed by the key the install asks them by.
+var fixedValueChoices = map[string][]string{
+	"visibility":     visibilityChoices,
+	"docs_target":    docsTargetWritable,
+	"oracle_backend": oracleBackendChoices,
+	"scan_deep":      scanDeepChoices,
+	emDashPromptKey:  emDashChoices,
+}
+
+// confirmIDKnown reports whether id is one of the approvals setupConfirmIDs
+// names.
+func confirmIDKnown(id string) bool {
+	for _, c := range setupConfirmIDs {
+		if c.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+// SetupAskedBeforeWriting reports whether the install asks the setup question
+// id before its first write: the adoption and the approvals of each kind of
+// change, which install asks before its first apply step. A stop at one of
+// them leaves the repository untouched; a stop at any other question leaves
+// what the steps before it changed.
+func SetupAskedBeforeWriting(id string) bool {
+	return id == "adopt" || strings.HasPrefix(id, approvePrefix)
+}

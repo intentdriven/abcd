@@ -471,9 +471,18 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	if !errors.As(err, &ee) || ee.Code != 2 {
 		t.Fatalf("an unanswered value: %v\n%s", err, out)
 	}
-	if !strings.Contains(ee.Msg, "(visibility) has no answer: pass --visibility <private|public>") ||
+	if !strings.Contains(ee.Msg, "(visibility) has no answer") || !strings.Contains(ee.Msg, "pass --visibility <private|public>") ||
 		!strings.Contains(ee.Msg, `{"id": "visibility", "value": "<private|public|later>"}`) {
 		t.Fatalf("the refusal %q does not name the visibility question, its flag and its key", ee.Msg)
+	}
+	// The value questions are settled before the first write
+	// (iss-2610040025088395), so this refusal leaves the repository as it was
+	// and says so.
+	if after := listTree(t, run.repo); after != before {
+		t.Fatalf("the run refused for a missing value wrote into the repository:\n--- before\n%s--- after\n%s", before, after)
+	}
+	if !strings.Contains(ee.Msg, "nothing was written") {
+		t.Fatalf("the refusal %q does not say that nothing was written", ee.Msg)
 	}
 	if rec := oneRecord(t, filepath.Join(run.repo, filepath.FromSlash(interview.RecordsRel))); rec != nil {
 		t.Fatalf("a refused run wrote an answers record:\n%s", rec)
@@ -487,6 +496,9 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	}
 	if !strings.Contains(ee.Msg, `"privat"`) || !strings.Contains(ee.Msg, "private|public|later") {
 		t.Fatalf("the refusal %q does not name the value given and the values offered", ee.Msg)
+	}
+	if after := listTree(t, run.repo); after != before || !strings.Contains(ee.Msg, "nothing was written") {
+		t.Fatalf("a value the question does not offer: refused after writing, or not saying so (%q):\n--- before\n%s--- after\n%s", ee.Msg, before, after)
 	}
 	if rec := oneRecord(t, filepath.Join(run.repo, filepath.FromSlash(interview.RecordsRel))); rec != nil {
 		t.Fatalf("a refused run wrote an answers record:\n%s", rec)
@@ -768,5 +780,21 @@ func TestNewPrompterDrawsOnlyWhenAllThreeAreTerminals(t *testing.T) {
 	cmd.SetErr(errOut)
 	if p := newPrompter(cmd); fmt.Sprintf("%T", p) != "*cli.stdinPrompter" {
 		t.Errorf("with stdout a buffer: got %T", p)
+	}
+}
+
+// TestSetupStopSaysWhatWasWritten: a stop at a question the install asks
+// before its first write says nothing was written; a stop at a question
+// asked after the install has begun writing says that what it changed
+// before the question stays.
+func TestSetupStopSaysWhatWasWritten(t *testing.T) {
+	p := &answersPrompter{setupQuestions: setupQuestions{cwd: t.TempDir(), w: io.Discard}, stamp: interview.Terminal}
+	before := stopOf(t, func() { p.Confirm("Apply config-change changes?") })
+	if !strings.Contains(before.msg, "nothing was written") {
+		t.Fatalf("a stop at an approval: %q", before.msg)
+	}
+	after := stopOf(t, func() { p.Prompt("statusline.git", []string{"on", "off"}, "on") })
+	if strings.Contains(after.msg, "nothing was written") || !strings.Contains(after.msg, "changed before this question stays") {
+		t.Fatalf("a stop after the first write: %q", after.msg)
 	}
 }
