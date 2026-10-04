@@ -91,7 +91,7 @@ const (
 
 // The ways a file repeats AGENTS.md, in the order they are checked.
 const (
-	repeatsLink     = "link"      // a link whose target resolves to the root AGENTS.md
+	repeatsLink     = "link"      // a link whose target resolves to the root AGENTS.md, or names it before there is one
 	repeatsLinkText = "link-text" // a regular file holding only such a link's target text
 	repeatsBlank    = "blank"     // blank once abcd's own block is stripped
 	repeatsCopy     = "copy"      // a byte-for-byte copy of AGENTS.md
