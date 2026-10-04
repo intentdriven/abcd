@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -31,7 +32,7 @@ func implementRepo(t *testing.T) (home, runDir string) {
 	repo.Commit("init")
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
 	t.Chdir(repo.Root())
-	return home, filepath.Join(home, ".abcd", "runs", sha)
+	return home, abcdhome.Path(home, "runs", sha)
 }
 
 // implementCLI runs one invocation and returns its exit code and streams.
@@ -91,13 +92,13 @@ func TestImplementBareRendersAndCreatesNothing(t *testing.T) {
 	if !strings.HasPrefix(st.Dir, "~/.abcd/runs/") || st.Sessions == nil || st.Claims == nil || st.Window != nil {
 		t.Fatalf("bare render = %+v", st)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("bare implement created ~/.abcd: %v", err)
 	}
 	if code, _, _ := implementCLI(t, "implement", "report"); code != 0 {
 		t.Fatalf("report on an empty run exited %d", code)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("report created ~/.abcd: %v", err)
 	}
 }
@@ -207,7 +208,7 @@ func TestImplementWritersRefuseMalformedInvocations(t *testing.T) {
 	} {
 		refusalEnvelope(t, 2, args...)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a refused invocation created ~/.abcd: %v", err)
 	}
 	// Unjoined: a session no run knows is refused before anything is created —
@@ -221,7 +222,7 @@ func TestImplementWritersRefuseMalformedInvocations(t *testing.T) {
 		{"implement", "leave", "--session", "ghost", "--json"},
 	} {
 		refusalEnvelope(t, 2, args...)
-		if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("abcd %s created ~/.abcd: %v", strings.Join(args, " "), err)
 		}
 	}
@@ -243,7 +244,7 @@ func TestImplementRefusesOutsideACheckout(t *testing.T) {
 	t.Chdir(t.TempDir())
 	refusalEnvelope(t, 2, "implement", "join", "--session", "alpha", "--role", "first", "--json")
 	refusalEnvelope(t, 2, "implement", "--json")
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a refusal outside a checkout created ~/.abcd: %v", err)
 	}
 }

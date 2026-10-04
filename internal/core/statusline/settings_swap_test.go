@@ -2,10 +2,10 @@ package statusline
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -21,7 +21,7 @@ import (
 func TestReadSettingsFileJudgesTheFileItReads(t *testing.T) {
 	home := t.TempDir()
 	path := writeSettings(t, home, `{"schema_version":1,"previous_command":"theirs-was-vetted"}`)
-	swap := filepath.Join(home, ".abcd", "swap.json")
+	swap := abcdhome.Path(home, "swap.json")
 	if err := os.WriteFile(swap, []byte(`{"schema_version":1,"previous_command":"planted"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestReadSettingsFileJudgesTheFileItReads(t *testing.T) {
 func TestLoadIgnoresASettingInAnAbcdHomeEveryAccountCanWrite(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"schema_version":1,"disabled":true}`)
-	if err := os.Chmod(filepath.Join(home, ".abcd"), 0o777); err != nil {
+	if err := os.Chmod(abcdhome.Path(home), 0o777); err != nil {
 		t.Fatal(err)
 	}
 	got, notes, err := LoadFrom(home)

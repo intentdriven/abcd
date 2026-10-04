@@ -19,11 +19,11 @@ import (
 
 // HomesProse is the prose above the choice of home: the keychain is
 // recommended here, and never as a marked option.
-const HomesProse = "Where the credential lives is your choice of three, made once. The platform keychain is " +
+var HomesProse = "Where the credential lives is your choice of three, made once. The platform keychain is " +
 	"the home abcd recommends, because the secret stays in the operating system's own store rather than in a " +
 	"file. A setup outside abcd keeps it with a tool you already use (an environment variable, or a field of " +
 	"that tool's configuration file), and abcd stores only where to find it. The abcd-only home keeps it in " +
-	"~/.abcd/credentials.json, readable by you alone. The value never enters the harness's settings or a repository."
+	StorePath + ", readable by you alone. The value never enters the harness's settings or a repository."
 
 // Service is one credential's walkthrough, supplied by the adapter that reads
 // it.

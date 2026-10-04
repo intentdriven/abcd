@@ -82,7 +82,8 @@ func lanesOf(started ...Started) LaneReader {
 
 // TestBlockPlacesEveryIntent is criterion 1: Now holds the intents the state
 // file shows in a lane with their lane state, then the head marked next up;
-// Next every READY planned intent in pick order that is in no lane; Later the
+// Next every other READY planned intent in pick order that is in no lane (the
+// head is listed under Now alone, ruling of 2026-10-03); Later the
 // planned intents the gate refuses, each naming its failing checks, then the
 // drafts; every row carries its id and title.
 func TestBlockPlacesEveryIntent(t *testing.T) {
@@ -106,8 +107,8 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 		t.Errorf("Now[1] = %+v, want itd-7 marked next up: the first READY intent in pick order neither in a lane nor held", b.Now[1])
 	}
 
-	if got, want := ids(b.Next), []string{"itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Next = %v, want %v: every READY planned intent in no lane, in pick order, the readiest first, the oldest among equals", got, want)
+	if got, want := ids(b.Next), []string{"itd-5"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Next = %v, want %v: every READY planned intent in no lane but the head, in pick order, the readiest first, the oldest among equals", got, want)
 	}
 	if got, want := ids(b.Later), []string{"itd-8", "itd-3", "itd-2609020000000002"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Later = %v, want %v: the planned intents not READY, then the drafts", got, want)
@@ -146,7 +147,7 @@ func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 		if got := ids(without.Now); !reflect.DeepEqual(got, []string{"itd-2609010000000001"}) || !without.Now[0].NextUp {
 			t.Errorf("%s: Now = %v, want only the head itd-2609010000000001 marked next up", name, without.Now)
 		}
-		if got, want := ids(without.Next), []string{"itd-2609010000000001", "itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
+		if got, want := ids(without.Next), []string{"itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: Next = %v, want %v: itd-7 back in its pick-order place", name, got, want)
 		}
 		var kept []Row
@@ -165,7 +166,7 @@ func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 // state file shows in a lane is listed under Now alone, never also under Next
 // (a READY planned intent) or Later (a planned intent the gate refuses, or a
 // draft). The head is still the first READY intent in pick order that is in no
-// lane, so it stays in Next beside its mark on Now.
+// lane, listed under Now alone (ruling of 2026-10-03).
 func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 	root := store(t)
 	lane := Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}
@@ -181,8 +182,8 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 	if got, want := ids(b.Now), []string{"itd-7", "itd-8", "itd-3", "itd-2609010000000001"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Now = %v, want %v (the three lanes, then the head)", got, want)
 	}
-	if got, want := ids(b.Next), []string{"itd-2609010000000001", "itd-5"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Next = %v, want %v: the READY intents in no lane, the head among them", got, want)
+	if got, want := ids(b.Next), []string{"itd-5"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Next = %v, want %v: the READY intents in no lane but the head", got, want)
 	}
 	if got, want := ids(b.Later), []string{"itd-2609020000000002"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Later = %v, want %v: the refused intent and the draft in a lane are under Now only", got, want)
@@ -333,8 +334,8 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 	for _, c := range pick.Candidates {
 		order = append(order, c.ID)
 	}
-	if got := ids(b.Next); !reflect.DeepEqual(got, order) {
-		t.Errorf("Next = %v, want the pick order %v", got, order)
+	if got := ids(b.Next); !reflect.DeepEqual(got, order[1:]) {
+		t.Errorf("Next = %v, want the pick order after its choice %v", got, order[1:])
 	}
 	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4"}) || !b.Now[0].NextUp {
 		t.Errorf("Now = %+v, want only itd-4 marked next up: the pick's choice, not the oldest id itd-3", b.Now)
@@ -400,8 +401,13 @@ func TestTheHeadTakesAnIntentWhoseBlockerASettledRecordReplaced(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4"}) {
-				t.Fatalf("Next = %v, want [itd-4]", got)
+			// itd-4 is READY either way; heading Now, it is listed there alone.
+			wantNext := []string{"itd-4"}
+			if tc.heads {
+				wantNext = []string{}
+			}
+			if got := ids(b.Next); !reflect.DeepEqual(got, wantNext) {
+				t.Fatalf("Next = %v, want %v", got, wantNext)
 			}
 			switch {
 			case tc.heads && (len(b.Now) != 1 || b.Now[0].ID != "itd-4" || !b.Now[0].NextUp):
@@ -477,8 +483,8 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 			if b, err = Read(root, nil, nil); err != nil {
 				t.Fatal(err)
 			}
-			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
-				t.Errorf("Next = %v, want [itd-4 itd-9] in pick order", got)
+			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4"}) {
+				t.Errorf("Next = %v, want [itd-4]: the head itd-9 is under Now alone", got)
 			}
 			if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-9"}) || !b.Now[0].NextUp {
 				t.Errorf("Now = %+v, want only itd-9 marked next up: itd-4 fails %s", b.Now, tc.check)
@@ -540,8 +546,8 @@ func TestTheHeadPassesOverAnIntentAPeerHolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
-		t.Errorf("Next = %v, want [itd-4 itd-9]: a held intent is still READY", got)
+	if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4"}) {
+		t.Errorf("Next = %v, want [itd-4]: a held intent is still READY, and the head itd-9 is under Now alone", got)
 	}
 	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-9"}) || !b.Now[0].NextUp {
 		t.Errorf("Now = %+v, want only itd-9 marked next up: a peer holds itd-4", b.Now)
@@ -588,12 +594,12 @@ func TestARowShowsItsTarget(t *testing.T) {
 		}
 	}
 	for id, want := range map[string]string{
-		"itd-2609010000000001": "|v0.11.0",   // Now, in a lane
-		"itd-7":                "|next|next", // Now as the head, and Next
-		"itd-5":                "|v0.12.0",   // Next
-		"itd-8":                "|next",      // Later, not READY
-		"itd-3":                "|",          // a draft shows none
-		"itd-2609020000000002": "|",          // no target, none shown
+		"itd-2609010000000001": "|v0.11.0", // Now, in a lane
+		"itd-7":                "|next",    // Now as the head, alone
+		"itd-5":                "|v0.12.0", // Next
+		"itd-8":                "|next",    // Later, not READY
+		"itd-3":                "|",        // a draft shows none
+		"itd-2609020000000002": "|",        // no target, none shown
 	} {
 		if targets[id] != want {
 			t.Errorf("%s rows carry targets %q, want %q", id, targets[id], want)
@@ -606,7 +612,28 @@ func TestARowShowsItsTarget(t *testing.T) {
 	if !strings.Contains(string(raw), `"id":"itd-8","title":"The unlinked one","bucket":"planned","target_release":"next"`) {
 		t.Errorf("--json must carry each row's target as target_release:\n%s", raw)
 	}
-	if strings.Count(string(raw), `"target_release"`) != 5 {
+	if strings.Count(string(raw), `"target_release"`) != 4 {
 		t.Errorf("a row with no target carries no target_release key:\n%s", raw)
+	}
+}
+
+// TestTheHeadIsListedOnceUnderNow is the product thinker's ruling of
+// 2026-10-03 on iss-2610031207397996: the intent that starts next is listed
+// under Now alone, marked next up, and Next lists the other READY intents.
+func TestTheHeadIsListedOnceUnderNow(t *testing.T) {
+	b, err := Read(store(t), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Now) != 1 || !b.Now[0].NextUp {
+		t.Fatalf("Now = %+v, want the head alone, marked next up", b.Now)
+	}
+	for _, r := range b.Next {
+		if r.ID == b.Now[0].ID {
+			t.Errorf("the head %s is listed under Now and again under Next %v", r.ID, ids(b.Next))
+		}
+	}
+	if len(b.Next) == 0 {
+		t.Errorf("Next is empty; the fixture holds READY intents besides the head")
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // GHSA-4q78-ccfv-f374, the second cut. The attestation's whole safety argument
@@ -28,7 +30,7 @@ import (
 // by WHERE home is and never by what the records say.
 func plantHomeRecords(t *testing.T, home string) {
 	t.Helper()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -160,13 +162,13 @@ func symlinkAbcdHome(t *testing.T, home string) string {
 	t.Helper()
 	elsewhere := t.TempDir()
 	plantHomeRecords(t, elsewhere)
-	if err := os.RemoveAll(filepath.Join(home, ".abcd")); err != nil {
+	if err := os.RemoveAll(abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(elsewhere, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(abcdhome.Path(elsewhere), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(elsewhere, ".abcd")
+	return abcdhome.Path(elsewhere)
 }
 
 // TestHomeScopedRecordsRefuseASymlinkedAbcdHome is iss-2609281017573862: the

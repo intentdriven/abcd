@@ -41,16 +41,17 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // storeRelPath is the lab store relative to the caller's home.
-const storeRelPath = ".abcd/lab"
+var storeRelPath = abcdhome.Rel("lab")
 
 // StoreDisplay names the store in a message, in tilde form, so no output
 // carries the account's home path.
-const StoreDisplay = "~/" + storeRelPath
+var StoreDisplay = abcdhome.Display("lab")
 
 // Names inside a lab home and the store.
 const (
@@ -155,7 +156,7 @@ func (s store) ensure() error {
 // exists reports whether the lane exists, refusing a lane path occupied by
 // anything but a real directory.
 func (s store) exists() (bool, error) {
-	for _, p := range []string{filepath.Join(s.home, ".abcd"), filepath.Join(s.home, ".abcd", "lab"), s.dir} {
+	for _, p := range []string{abcdhome.Path(s.home), abcdhome.Path(s.home, "lab"), s.dir} {
 		if fsutil.IsRealDir(p) {
 			continue
 		}

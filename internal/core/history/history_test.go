@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 )
 
@@ -25,7 +26,7 @@ func TestCaptureAcceptsSHA256RootKey(t *testing.T) {
 	sha256Root := strings.Repeat("b", 64)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	tdir := filepath.Join(home, ".abcd", "transcripts", sha256Root, "records")
+	tdir := abcdhome.Path(home, "transcripts", sha256Root, "records")
 	if err := os.MkdirAll(tdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +173,7 @@ func TestCaptureRedactsHomePathFollowedByPunctuation(t *testing.T) {
 	user := "zzhomeuser42"
 	home := filepath.Join(base, user)
 	t.Setenv("HOME", home)
-	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
+	tdir := abcdhome.Path(home, "transcripts", testRootSHA, "records")
 	if err := os.MkdirAll(tdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +422,7 @@ func TestListAndRead(t *testing.T) {
 // *.md symlink in records/ is never store-authored and reads out-of-store bytes.
 func TestListSkipsSymlinkedRecord(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
+	tdir := abcdhome.Path(home, "transcripts", testRootSHA, "records")
 	if _, err := Capture(repoRoot, testRootSHA, []byte("real one\n"), CaptureMeta{SessionID: "sess-real", Kind: "native"}); err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // oracleBoardCheckout lays an unmanaged checkout and a fresh home, and
@@ -29,7 +31,7 @@ func oracleBoardCheckout(t *testing.T, repoTable, machineTable string) {
 		put(filepath.Join(repo, ".abcd", "config", "oracle-routing.json"), repoTable)
 	}
 	if machineTable != "" {
-		put(filepath.Join(home, ".abcd", "oracle-routing.json"), machineTable)
+		put(abcdhome.Path(home, "oracle-routing.json"), machineTable)
 	}
 }
 
@@ -54,6 +56,7 @@ func oracleLines(text string) []string {
 // a repository row and a machine row that disagree are both shown, beside the
 // bundled proposal, and the repository's is marked as the one that applies.
 func TestBoardOracleLinesShowEveryLayerWithTheWinnerMarked(t *testing.T) {
+	setBoardWidth(t, wideBoard)
 	oracleBoardCheckout(t,
 		`{"schema_version":1,"agents":{"scribe":{"tier":"frontier"}}}`,
 		`{"schema_version":1,"agents":{"scribe":{"tier":"local"}}}`)
@@ -129,6 +132,7 @@ func TestBoardOmitsOracleLinesWhenNothingIsAccepted(t *testing.T) {
 // and the rest render (AC 9 at the surface); a malformed table omits the lines
 // with its reason, and the board still succeeds.
 func TestBoardReportsAnOrphanRowAndAMalformedTableOnStderr(t *testing.T) {
+	setBoardWidth(t, wideBoard)
 	oracleBoardCheckout(t, `{"schema_version":1,"agents":{"ghost-agent":{"tier":"local"}}}`, "")
 	stdout, stderr, err := runCLISplit(t)
 	if err != nil {

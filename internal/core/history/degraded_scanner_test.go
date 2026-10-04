@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // degradeScanner writes a per-repo .abcd/config/pii.json that cannot be parsed.
@@ -28,7 +30,7 @@ func degradeScanner(t *testing.T, repoRoot string) {
 // file behind is not a refusal.
 func storedRecords(t *testing.T, home string) []string {
 	t.Helper()
-	dir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
+	dir := abcdhome.Path(home, "transcripts", testRootSHA, "records")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)

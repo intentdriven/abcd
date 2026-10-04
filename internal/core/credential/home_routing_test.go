@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -25,7 +26,7 @@ func linkedDotfilesHome(t *testing.T) (home, target string) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.Symlink(target, filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(target, abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	return home, target
@@ -110,7 +111,7 @@ func TestAPointerWhoseDirectoryLinksIntoARepositoryIsRefused(t *testing.T) {
 	if _, err := Set(home, "svc", Choice{Home: HomeExternal, Pointer: p}); err == nil {
 		t.Fatal("Set recorded a pointer through a link into a repository")
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".abcd", IndexFileName)); !os.IsNotExist(err) {
+	if _, err := os.Lstat(abcdhome.Path(home, IndexFileName)); !os.IsNotExist(err) {
 		t.Fatalf("the index was written: %v", err)
 	}
 }
@@ -139,7 +140,7 @@ func TestSetWritesNoIndexThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			home := t.TempDir()
-			abcd := filepath.Join(home, ".abcd")
+			abcd := abcdhome.Path(home)
 			dotfiles := filepath.Join(home, "dotfiles", "abcd")
 			for _, dir := range []string{abcd, dotfiles} {
 				if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -217,7 +218,7 @@ func TestAHomeThatIsItselfALinkIntoACheckoutIsJudgedWhereItLeads(t *testing.T) {
 	if strings.Contains(err.Error(), secretValue) {
 		t.Fatal("the refusal echoes the value")
 	}
-	if _, serr := os.Lstat(filepath.Join(real, ".abcd", StoreFileName)); !os.IsNotExist(serr) {
+	if _, serr := os.Lstat(abcdhome.Path(real, StoreFileName)); !os.IsNotExist(serr) {
 		t.Fatalf("%s was written inside the checkout: %v", StoreFileName, serr)
 	}
 	assertNowhere(t, repo, secretValue)
@@ -290,7 +291,7 @@ func TestAPointerThroughALinkIsRefusedInAPointersWords(t *testing.T) {
 func TestSetKeepsTheIndexInTheDirectoryItHolds(t *testing.T) {
 	withFakeKeychain(t, keychainSecretService)
 	home := t.TempDir()
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	fresh := filepath.Join(home, "fresh")
 	aside := filepath.Join(home, "moved-aside")
 	for _, c := range []struct{ dir, body string }{
@@ -356,7 +357,7 @@ func TestSetKeepsTheIndexInTheDirectoryItHolds(t *testing.T) {
 // the two.
 func TestSetMachineKeepsTheStoreInTheDirectoryItHolds(t *testing.T) {
 	home := t.TempDir()
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	fresh := filepath.Join(home, "fresh")
 	aside := filepath.Join(home, "moved-aside")
 	for _, c := range []struct{ dir, body string }{
@@ -374,7 +375,7 @@ func TestSetMachineKeepsTheStoreInTheDirectoryItHolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), 0o700)
 	if err != nil {
 		t.Fatal(err)
 	}

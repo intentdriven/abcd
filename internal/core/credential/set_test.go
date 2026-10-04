@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The write half of the interim store, for the one home it reads: the
@@ -21,7 +23,7 @@ func TestSetMachineWritesAnOwnerOnlyStore(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatalf("SetMachine = %v, %v", changed, err)
 	}
-	p := filepath.Join(home, ".abcd", StoreFileName)
+	p := abcdhome.Path(home, StoreFileName)
 	fi, err := os.Lstat(p)
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +31,7 @@ func TestSetMachineWritesAnOwnerOnlyStore(t *testing.T) {
 	if fi.Mode().Perm() != 0o600 || !fi.Mode().IsRegular() {
 		t.Fatalf("store mode = %v, want a regular file at 0600", fi.Mode())
 	}
-	di, err := os.Stat(filepath.Join(home, ".abcd"))
+	di, err := os.Stat(abcdhome.Path(home))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +50,7 @@ func TestSetMachineKeepsTheOtherEntries(t *testing.T) {
 	if _, err := SetMachine(home, "openrouter", secretValue); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(home, ".abcd", StoreFileName))
+	raw, err := os.ReadFile(abcdhome.Path(home, StoreFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,10 +99,10 @@ func TestSetMachineRefusesWhatResolveRefuses(t *testing.T) {
 	if err := os.WriteFile(real, []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(real, filepath.Join(home, ".abcd", StoreFileName)); err != nil {
+	if err := os.Symlink(real, abcdhome.Path(home, StoreFileName)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := SetMachine(home, "openrouter", secretValue); err == nil {
@@ -149,7 +151,7 @@ func TestSetMachineRefusesABadNameOrValue(t *testing.T) {
 		if tc.value != "" && strings.Contains(err.Error(), tc.value) {
 			t.Errorf("SetMachine(%q, …): the refusal carries the value", tc.name)
 		}
-		if _, statErr := os.Lstat(filepath.Join(home, ".abcd", StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
+		if _, statErr := os.Lstat(abcdhome.Path(home, StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
 			t.Errorf("SetMachine(%q, …): a refused write left a store", tc.name)
 		}
 	}
@@ -203,7 +205,7 @@ func TestConcurrentSetsKeepEveryEntry(t *testing.T) {
 // target is never created and nothing is written.
 func TestSetMachineNamesAnUnsafeLockRatherThanContention(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".abcd")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

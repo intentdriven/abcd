@@ -446,13 +446,17 @@ func detectToolConventionsFiles(root string) []Gap {
 	return gaps
 }
 
-// installWarnings is the warning lines the gaps carry, in gap order.
-func installWarnings(gaps []Gap) []string {
+// installWarnings is the warning lines the gaps carry, the owner's files in
+// gap order and then the host-reach warnings in the order they were raised.
+func installWarnings(gaps, hostReach []Gap) []string {
 	out := []string{}
 	for _, g := range gaps {
 		if g.ID == ConventionsOwnerFileGapID {
 			out = append(out, g.Detail)
 		}
+	}
+	for _, g := range hostReach {
+		out = append(out, g.Detail)
 	}
 	return out
 }

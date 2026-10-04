@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -67,7 +68,7 @@ func mint(t *testing.T, r *gittest.Repo) Minted {
 
 // labDir is the absolute lab home under the test HOME.
 func labDir(home string, m Minted) string {
-	return filepath.Join(home, ".abcd", "lab", m.RootSHA, m.ID)
+	return abcdhome.Path(home, "lab", m.RootSHA, m.ID)
 }
 
 func read(t *testing.T, p string) string {
@@ -128,7 +129,7 @@ func TestMintLaysDownALabAndWritesNothingInTheRepo(t *testing.T) {
 			t.Errorf("INTENTION.md lacks %q", want)
 		}
 	}
-	idx := read(t, filepath.Join(home, ".abcd", "lab", root, "index.jsonl"))
+	idx := read(t, abcdhome.Path(home, "lab", root, "index.jsonl"))
 	var e Entry
 	if err := json.Unmarshal([]byte(strings.TrimSpace(idx)), &e); err != nil || e.ID != m.ID || e.Pin != head {
 		t.Fatalf("registry = %q (%v), want one line for %s at the pin", idx, err, m.ID)
@@ -182,7 +183,7 @@ func TestMintRefusesWhatIsNotAQuestionOrAPin(t *testing.T) {
 			t.Errorf("Mint(%q, %q) = %v, want a refusal", c.q, c.pin, err)
 		}
 	}
-	if ents, _ := os.ReadDir(filepath.Join(home, ".abcd", "lab")); len(ents) > 1 {
+	if ents, _ := os.ReadDir(abcdhome.Path(home, "lab")); len(ents) > 1 {
 		t.Errorf("a refused mint left lab homes behind: %v", ents)
 	}
 }
@@ -191,7 +192,7 @@ func TestMintRefusesWhatIsNotAQuestionOrAPin(t *testing.T) {
 // works in the root-commit lane and never writes them.
 func TestMintNeverWritesTheHandRunTopLevelIndex(t *testing.T) {
 	r, home := fixture(t)
-	legacy := filepath.Join(home, ".abcd", "lab", "index.jsonl")
+	legacy := abcdhome.Path(home, "lab", "index.jsonl")
 	write(t, legacy, `{"id": "lab-260831131349-976575f"}`+"\n")
 	mint(t, r)
 	if got := read(t, legacy); got != `{"id": "lab-260831131349-976575f"}`+"\n" {
@@ -202,10 +203,10 @@ func TestMintNeverWritesTheHandRunTopLevelIndex(t *testing.T) {
 func TestMintRefusesASymlinkedStore(t *testing.T) {
 	r, home := fixture(t)
 	elsewhere := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(home, ".abcd", "lab")); err != nil {
+	if err := os.Symlink(elsewhere, abcdhome.Path(home, "lab")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Mint(r.Root(), "a question", ""); !errors.Is(err, ErrRefused) {
@@ -377,7 +378,7 @@ func TestPreflightRefusesEachIsolationBreach(t *testing.T) {
 	operatorHooks := filepath.Join(t.TempDir(), "hooks")
 	write(t, filepath.Join(home, ".gitconfig"), "[core]\n\thooksPath = "+operatorHooks+"\n")
 	gitIn(t, filepath.Join(dir, "snapshot"), "remote", "add", "origin", r.Root())
-	if err := os.Symlink(filepath.Join(home, ".abcd"), filepath.Join(dir, "home", ".abcd")); err != nil {
+	if err := os.Symlink(abcdhome.Path(home), filepath.Join(dir, "home", ".abcd")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -786,7 +787,7 @@ func TestListWritesNothing(t *testing.T) {
 	if err != nil || ls.StoreSeen || len(ls.Labs) != 0 {
 		t.Fatalf("List = %+v, %v", ls, err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd")); !os.IsNotExist(err) {
+	if _, err := os.Stat(abcdhome.Path(home)); !os.IsNotExist(err) {
 		t.Errorf("List created the store: %v", err)
 	}
 }

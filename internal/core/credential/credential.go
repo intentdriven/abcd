@@ -29,6 +29,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -68,11 +69,11 @@ type machine struct{ home string }
 
 // StorePath is where the abcd home lives, displayed with ~ so no
 // developer-identity path reaches output.
-const StorePath = "~/.abcd/" + StoreFileName
+var StorePath = abcdhome.Display(StoreFileName)
 
 // storeRel is the store's place in the home, in the slash form the
 // home-scoped primitives take.
-const storeRel = ".abcd/" + StoreFileName
+var storeRel = abcdhome.Rel(StoreFileName)
 
 func (m machine) Resolve(name string) (string, error) {
 	if !nameRe.MatchString(name) {
@@ -196,12 +197,12 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	// descriptor of home (fsutil.EnsureHomeScope), and the lock and the store
 	// are reached through that descriptor, so a link swapped in after the
 	// judgement is refused rather than written through (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), 0o700)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return false, fmt.Errorf("credential: nothing was written to %s: %v", StorePath, err)
 	}
 	if err != nil {
-		return false, fmt.Errorf("credential: ~/.abcd could not be created, so nothing was written")
+		return false, fmt.Errorf("credential: %s could not be created, so nothing was written", abcdhome.Display())
 	}
 	defer dir.Close()
 	// The store is read, changed and renamed into place, so a second writer
@@ -218,7 +219,7 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	case errors.Is(err, fsutil.ErrLockPathUnsafe):
 		// A retry cannot cure a symlinked or non-regular lock, so the
 		// refusal names it rather than reading as contention.
-		return false, fmt.Errorf("credential: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", storeLockFileName)
+		return false, fmt.Errorf("credential: the lock %s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", abcdhome.Display(storeLockFileName))
 	}
 	return changed, err
 }

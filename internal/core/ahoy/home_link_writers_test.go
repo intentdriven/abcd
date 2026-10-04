@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -26,10 +27,10 @@ func TestMachineWritesRefuseASymlinkedAbcdHome(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			home, _ := setupHermetic(t)
 			dotfiles := t.TempDir()
-			if err := os.RemoveAll(filepath.Join(home, ".abcd")); err != nil {
+			if err := os.RemoveAll(abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(dotfiles, filepath.Join(home, ".abcd")); err != nil {
+			if err := os.Symlink(dotfiles, abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
 			a := &applyCtx{}
@@ -61,7 +62,7 @@ func TestMachineWritesRefuseAnAbcdHomeSwappedForALink(t *testing.T) {
 	for name, write := range writers {
 		t.Run(name, func(t *testing.T) {
 			home, _ := setupHermetic(t)
-			abcd := filepath.Join(home, ".abcd")
+			abcd := abcdhome.Path(home)
 			dotfiles := filepath.Join(home, "dotfiles", "abcd")
 			for _, dir := range []string{abcd, dotfiles} {
 				if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -100,7 +101,7 @@ func TestMachineWritesRefuseAnAbcdHomeSwappedForALink(t *testing.T) {
 // through the descriptor of the directory that was judged leaves it alone.
 func TestPathEntryRemovalRemovesNothingBehindAnAbcdHomeSwappedForALink(t *testing.T) {
 	home, _ := setupHermetic(t)
-	abcd := filepath.Join(home, ".abcd")
+	abcd := abcdhome.Path(home)
 	dotfiles := filepath.Join(home, "dotfiles", "abcd")
 	for _, dir := range []string{abcd, dotfiles} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {

@@ -1,6 +1,10 @@
 package ahoy
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+)
 
 // SummaryItem explains one thing an install reports, for the person who ran it
 // rather than for abcd's implementers (iss-164): what it is, why it matters for
@@ -135,7 +139,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeStatusLine: {
 		What:   "Set up abcd's status line in your AI assistant.",
 		Why:    "In abcd repositories the line shows whether abcd is active and whose answer the work is waiting on.",
-		Action: "Nothing. Switch parts of it off in ~/.abcd/statusline.json, or remove it with abcd ahoy uninstall.",
+		Action: "Nothing. Switch parts of it off in " + abcdhome.Display("statusline.json") + ", or remove it with abcd ahoy uninstall.",
 	},
 	writeRouting: {
 		What:   "Saved which size of AI model each of abcd's review steps asks for.",

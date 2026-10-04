@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -63,10 +64,10 @@ func appendVoyage(lb Lifeboat, dest, manifestSHA string, files, bytesWritten int
 	// and create directories under its target first). EnsureRealDir is that
 	// create-then-prove step, and it is the canonical one — this file used to
 	// carry its own copy (iss-2609091128479544).
-	abcdDir := filepath.Join(home, ".abcd")
+	abcdDir := abcdhome.Path(home)
 	base := filepath.Join(abcdDir, "voyage")
 	if err := fsutil.EnsureRealDir(abcdDir, voyageDirPerm); err != nil {
-		return false, "failed: ~/.abcd is not a real directory (symlinked?)"
+		return false, "failed: " + abcdhome.Display() + " is not a real directory (symlinked?)"
 	}
 	if err := fsutil.EnsureRealDir(base, voyageDirPerm); err != nil {
 		return false, "failed: voyage directory is not a real directory (symlinked?)"
