@@ -115,8 +115,133 @@ None open: the interview of 2026-10-03 answered them (decisions 1 to 8). Owed at
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-8c051b55af1b -->
-Fidelity review OWED (receipt rcp-8c051b55af1b).
+<!-- abcd-review: INGESTED receipt=rcp-8c051b55af1b -->
+Fidelity review — receipt rcp-8c051b55af1b (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:bf4699f8dfbfc48a908c669c391e233decc4ef5004577abcf85cd93eb4cd5aeb
+Input attestations: diff:5bf4aa93b^1..5bf4aa93b (PR #791, connect step 1)@sha256:b3a8df593ac475c1276b0e17f12df4e903ccc5065c1ac5d1941e5cc00bb47050; diff:93e7b7caa^1..93e7b7caa (PR #801, connect step 2)@sha256:a27f29cafda4286312a6a776f9c873009cb8be6c98110b5989d0d610b9c15368; diff:81548efe5^1..81548efe5 (PR #807, connect step 3 and the close)@sha256:ffaddf46964672ccd115d76287ecd0d7e79d4e33f1f0f557106bf5d8724f3c89; test-run:go test ./internal/adapter/openaiapi ./internal/core/oracle ./internal/core/credential ./internal/core/question ./internal/term/... ./internal/surface/cli/ask; go test -run 'TestGuide|TestConnect|TestKeyCanary|TestPicked|TestReadKey|TestHiddenKey|TestActAsConnect|TestPickQuestion' ./internal/surface/cli at 81548efe5: all ok@-;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: The look-up question shows scheme and host and sends nothing until a yes; the guide lists with a keyless client; the adapter sets Authorization only when a key is held, fails on the pinned redirect, bounds the call by ListTimeout and the body by MaxResponseBytes+1; TestGuideAsksBeforeLookingUp (redirect target sees no request, redirecting service sees an empty Authorization) and TestListModelsSendsNoKeyAndFollowsNoRedirect / TestListModelsBoundsTimeAndSize assert each, and pass at HEAD.
+  evidence: internal/core/oracle/connect_guide.go:447 — "abcd can ask %s://%s for the list of models it offers. The request carries no key, follows no redirect, and gives up after %d seconds."
+  evidence: internal/core/oracle/connect_guide.go:619 — "client, err := openaiapi.New(base, "")"
+  evidence: internal/adapter/openaiapi/models.go:87 — "if c.key != "" { req.Header.Set("Authorization", "Bearer "+c.key) }"
+  evidence: internal/adapter/openaiapi/models.go:190 — "case errors.Is(err, errRedirect): return c.listFail(false, "answered with a redirect, which abcd never follows")"
+  evidence: internal/adapter/openaiapi/models.go:80 — "lctx, cancel := context.WithTimeoutCause(ctx, c.listWait, errListTimeout)"
+  evidence: internal/adapter/openaiapi/models.go:106 — "io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))"
+  evidence: internal/core/oracle/connect_guide_test.go:148 — "func TestGuideAsksBeforeLookingUp(t *testing.T)"
+  evidence: internal/adapter/openaiapi/models_test.go:56 — "func TestListModelsSendsNoKeyAndFollowsNoRedirect(t *testing.T)"
+  evidence: internal/adapter/openaiapi/models_test.go:112 — "func TestListModelsBoundsTimeAndSize(t *testing.T)"
+- ac-2 — MET_WITH_CONCERNS: suggestions() draws from routes then provider allowlists, exact-id matches only, capped at maxSuggestions = 3; TestGuideSuggestsTheModelsAlreadyUsed asserts two of 300 are offered and a first-time user gets the typed part alone; TestGuideNarrowsWithoutASecondRequest asserts 'CODER' narrows to the four matches with one request across every turn. Concern (signed off 2026-10-04): the resume object carries at most MaxCarriedBytes (32 KiB) of ids, so for a list past that budget 'narrows the full list' holds only over the carried prefix and a fragment matching none carried asks for the model's full name instead of narrowing; a 300-model list is carried whole, so the criterion's own example holds.
+  evidence: internal/core/oracle/connect_guide.go:53 — "maxSuggestions = 3"
+  evidence: internal/core/oracle/connect_guide.go:778 — "func (g *guide) suggestions(listed map[string]bool) []string"
+  evidence: internal/core/oracle/connect_guide_test.go:212 — "func TestGuideSuggestsTheModelsAlreadyUsed(t *testing.T)"
+  evidence: internal/core/oracle/connect_guide_test.go:236 — "func TestGuideNarrowsWithoutASecondRequest(t *testing.T)"
+  evidence: internal/core/oracle/connect_guide.go:69 — "const MaxCarriedBytes = 32 << 10"
+  evidence: internal/core/oracle/connect_guide.go:649 — "func carry(ids []string) (kept []string, more int)"
+  evidence: .abcd/work/DECISIONS.md:2664 — "the guided connect carries at most 32 KiB of listed ids between turns, with the count not carried"
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:491 — "t.Run("300", func(t *testing.T)"
+- ac-3 — MET: Guide never calls Connect (only the write-free checkConnect) and ends in guideCommand; TestGuideWritesNothing snapshots ~/.abcd, the index, the abcd credential file and the fake keychain before and after a run to the end for the none, abcd and keychain homes against a keyless loopback stand-in, asserts byte-identity, zero keychain reaches and exactly one "command" printed; passes at HEAD.
+  evidence: internal/core/credential/guide_test.go:133 — "func TestGuideWritesNothing(t *testing.T)"
+  evidence: internal/core/credential/guide_test.go:155 — "if after := snapshot(t, roots.Home, roots.Repo, chain); !reflect.DeepEqual(before, after)"
+  evidence: internal/core/credential/guide_test.go:148 — "strings.Count(strings.Join(said, "\n"), `"command":`) != 1"
+  evidence: internal/core/oracle/connect_guide.go:205 — "if err := checkConnect(&probe, false); err != nil"
+  evidence: internal/core/oracle/connect_guide.go:869 — "func guideCommand(provider, base, model, home, env string, picks bool) (*GuideDone, error)"
+- ac-4 — MET_WITH_CONCERNS: The go-test half is demonstrated: TestGuideShowsTheCommandAndEveryPath asserts for none/abcd/external that the text form opens with the command, 'When it runs, this command writes:' and each path, and that running the printed command reports exactly those writes; TestGuideKeychainWritesAreTheRunsWrites covers the keychain home; TestGuideCannotRun refuses --guide with --home/--model/--key/--env, so no setting skips it. The receipt half is present at the path spec:439 names, .abcd/.work.local/logs/connect-guide-2026-10-04.md, carrying every element spec:439 lists (date, commit 81548efe5 = the shipped HEAD, Claude Code 2.1.289, each turn, every stand-in request, and the done turn as shown on screen), and its on-screen text, question ids, provider name and write order match the code at HEAD. Concerns, both named in the receipt itself: the answers were the Claude Code session's own, not a person's, so 'the values worked out with the person' is shown by the mechanism rather than by a person's run; and the receipt is a replacement produced after the close by the shipping session, in the gitignored tier, replacing one lost with a removed worktree, so it is not reproducible from the repository and the auditor did not observe the run.
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:168 — "func TestGuideShowsTheCommandAndEveryPath(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:210 — "want := append([]string{done.Command, "When it runs, this command writes:"}"
+  evidence: internal/core/credential/guide_test.go:222 — "func TestGuideKeychainWritesAreTheRunsWrites(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:145 — "{"--home", "none"}, {"--home", "abcd"}, {"--model", "vendor/coder"}, {"--key", "k"}, {"--env", "X_API_KEY"}"
+  evidence: internal/core/oracle/connect_guide.go:888 — "writes := append([]string{}, credential.WritesFor(home, req.KeyName)...)"
+  evidence: .abcd/development/specs/closed/spc-2610031241482088-connecting-a-model-service-from-inside-claude-code-works-out.md:439 — "The dated receipt `.abcd/.work.local/logs/connect-guide-<yyyy-mm-dd>.md`"
+  evidence: .abcd/.work.local/logs/connect-guide-2026-10-04.md:3 — "Date: 2026-10-04 / Commit: 81548efe55dd5cedba5b6b4dd22eb2355be47d1b / Claude Code: 2.1.289"
+  evidence: .abcd/.work.local/logs/connect-guide-2026-10-04.md:24 — "abcd ahoy connect local --base-url http://127.0.0.1:48731/v1 --model example/coder-small --home abcd / When it runs, this command writes: / ~/.abcd/credentials.json / ~/.abcd/config.json"
+  evidence: .abcd/.work.local/logs/connect-guide-2026-10-04.md:6 — "The answers are the session's own, not a person's."
+  evidence: internal/surface/cli/ahoy_connect_guide.go:183 — "fmt.Fprintln(w, "When it runs, this command writes:")"
+  evidence: internal/surface/cli/ahoy_connect_guide.go:193 — "Paste it into a terminal on this machine; nothing is set up until it runs there."
+  evidence: internal/core/oracle/connect_guide.go:76 — "GuideQNarrow = "model-narrow""
+- ac-5 — MET: readConnectKey prints one stderr line then reads through term.ReadHidden (echo off inside a RawSession); Connect with no model and Pick set lists through pickModel with the held key, hands the ids to Pick, then Walk verifies with a real completion and only on success stores the key and writes the provider block. The stand-in answers a keyless list 401 and lists with the key; TestConnectPicksAfterAKeyedListing asserts the keyed list, the pick, the completion to the picked model and both writes; TestConnectWritesNothingWhenTheCompletionFails asserts no provider block and no stored key; TestConnectReadsTheKeyHiddenAtARealTerminal and TestHiddenKeyRestoresTerminalOnInterrupt hold the hidden read on a real pty. All pass at HEAD.
+  evidence: internal/surface/cli/ahoy_connect.go:308 — "Paste the key for %s and press Enter. It is not shown."
+  evidence: internal/term/hidden.go:34 — "func ReadHidden(in *os.File, out io.Writer) (line string, err error)"
+  evidence: internal/core/oracle/connect.go:134 — "if picking { m, err := pickModel(ctx, req, cfg.denylist, opts)"
+  evidence: internal/core/oracle/connect.go:153 — "walked, err := credential.Walk(ctx, req.Roots.Home, svc, credential.Choice{Home: req.Home, Value: req.Key, Pointer: req.Pointer})"
+  evidence: internal/core/oracle/connect.go:148 — "the verification call failed, so nothing was written"
+  evidence: internal/surface/cli/ahoy_connect_terminal_test.go:100 — "if auth == "" { echo(http.StatusUnauthorized)"
+  evidence: internal/surface/cli/ahoy_connect_terminal_test.go:237 — "func TestConnectPicksAfterAKeyedListing(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_terminal_test.go:273 — "func TestConnectWritesNothingWhenTheCompletionFails(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_pty_test.go:122 — "func TestConnectReadsTheKeyHiddenAtARealTerminal(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_pty_test.go:148 — "func TestHiddenKeyRestoresTerminalOnInterrupt(t *testing.T)"
+- ac-6 — MET_WITH_CONCERNS: TestKeyCanaryAppearsOnlyInItsHome runs the guide to its end and then the printed command with a canary key against a stand-in that echoes the Authorization header into error bodies and lists one id carrying the key; it searches every turn's JSON and text, the command's stdout, stderr and error, and every file under the fake HOME, and asserts the canary is found only in ~/.abcd/credentials.json (and nowhere when the completion fails); TestPickedConnectKeepsTheCanaryInItsHome holds the terminal half. Concern: the end-to-end canary covers the abcd home only; the keychain home, fakeable only inside the credential package, has no end-to-end canary search.
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:289 — "func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:322 — "store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")"
+  evidence: internal/surface/cli/ahoy_connect_terminal_test.go:354 — "func TestPickedConnectKeepsTheCanaryInItsHome(t *testing.T)"
+  evidence: internal/adapter/openaiapi/models.go:207 — "func (c *Client) listFail(needsKey bool, reason string) error"
+  evidence: internal/adapter/openaiapi/models.go:151 — "if c.carriesKey(strings.Join(l.IDs, ""))"
+- ac-7 — MET: A ListError that does not need a key puts the guide on the typed model question whose material opens with '< host> publishes no model list: it < reason>.'; TestGuideFallsBackToTyping asserts the fallback and reason for not found, an empty list and a non-list body, and TestListModelsNamesWhyThereIsNoList holds each reason at the adapter; both pass at HEAD.
+  evidence: internal/core/oracle/connect_guide.go:485 — "why = fmt.Sprintf("%s publishes no model list: it %s.", host, listed.Reason)"
+  evidence: internal/adapter/openaiapi/models.go:101 — "return Listing{}, c.listFail(false, "answered not found")"
+  evidence: internal/core/oracle/connect_guide_test.go:366 — "func TestGuideFallsBackToTyping(t *testing.T)"
+  evidence: internal/adapter/openaiapi/models_test.go:197 — "func TestListModelsNamesWhyThereIsNoList(t *testing.T)"
+- ac-8 — MET: The home question offers exactly the three homes with the keychain's meaning 'You paste it hidden in your terminal'; the guide never searches the keychain or index. TestGuideNeverOffersAHandSavedItem seeds an item named for the service in the fake keychain, asserts the options are exactly external/abcd/keychain plus decide later, that no turn carries the item, zero keychain reaches, and that the command run without a key is refused rather than adopting the item; TestConnectReadsTheKeyHidden asserts the keychain home reads the key through the hidden reader. Both pass at HEAD.
+  evidence: internal/core/oracle/connect_guide.go:542 — "{Value: KeyHomeKeychain, Label: "The system keychain", Meaning: "You paste it hidden in your terminal; the system keychain keeps it."}"
+  evidence: internal/core/credential/guide_test.go:164 — "func TestGuideNeverOffersAHandSavedItem(t *testing.T)"
+  evidence: internal/core/credential/guide_test.go:213 — "want it refused, the hand-saved item never adopted"
+  evidence: internal/surface/cli/ahoy_connect_terminal_test.go:177 — "func TestConnectReadsTheKeyHidden(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect.go:223 — "if home == oracle.KeyHomeABCD || home == oracle.KeyHomeKeychain { key, err := readConnectKey(cmd, args[0])"
+
+Gap audit:
+- honoured:
+  - Nothing is set up from inside the session: the guide always prints one command and writes nothing
+    evidence: internal/core/credential/guide_test.go:133 — "func TestGuideWritesNothing(t *testing.T)"
+    evidence: commands/ahoy.md:649 — "Never ask for the key, never pass it, and never run the"
+  - The look-up runs only after one question showing scheme and host, with no key, no redirect, the adapter's bound and cap
+    evidence: internal/core/oracle/connect_guide.go:447 — "abcd can ask %s://%s for the list of models it offers."
+    evidence: internal/adapter/openaiapi/models_test.go:56 — "func TestListModelsSendsNoKeyAndFollowsNoRedirect(t *testing.T)"
+  - A key-gated service is handled in one terminal step: hidden key, keyed list, pick, real completion, then both writes
+    evidence: internal/core/oracle/connect.go:134 — "if picking { m, err := pickModel(ctx, req, cfg.denylist, opts)"
+    evidence: internal/surface/cli/ahoy_connect_terminal_test.go:237 — "func TestConnectPicksAfterAKeyedListing(t *testing.T)"
+  - A service that lists no models asks for the name to be typed and says why
+    evidence: internal/core/oracle/connect_guide.go:485 — "publishes no model list: it %s."
+  - Suggestions come from the person's existing connections; a first-time user sees the search alone
+    evidence: internal/core/oracle/connect_guide_test.go:212 — "func TestGuideSuggestsTheModelsAlreadyUsed(t *testing.T)"
+  - A hand-saved password-store item is never offered or adopted
+    evidence: internal/core/credential/guide_test.go:164 — "func TestGuideNeverOffersAHandSavedItem(t *testing.T)"
+  - The command and every path it writes are shown in full, from the same list the run reports
+    evidence: internal/core/credential/walk.go:134 — "func WritesFor(home, name string) []string"
+    evidence: internal/surface/cli/ahoy_connect_guide_test.go:168 — "func TestGuideShowsTheCommandAndEveryPath(t *testing.T)"
+- diverged:
+  - 'Typing part of a name narrows the full list' is delivered over a 32 KiB carried prefix; past that budget a fragment matching none carried asks for the model's full name rather than narrowing (signed off 2026-10-04)
+    evidence: internal/core/oracle/connect_guide.go:69 — "const MaxCarriedBytes = 32 << 10"
+    evidence: .abcd/work/DECISIONS.md:2664 — "the guided connect carries at most 32 KiB of listed ids between turns"
+  - The end-to-end canary search (G6) is delivered for the abcd home only, not for the keychain home
+    evidence: internal/surface/cli/ahoy_connect_guide_test.go:322 — "store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")"
+  - Suggestions match an existing connection's model only by exact id, so a differently spelled id on this service yields none
+    evidence: internal/core/oracle/connect_guide.go:778 — "kept only where the service lists the id exactly (open question 3, decided (a)), at most three"
+  - G4's dated Claude Code session receipt is a replacement made after the close by the shipping session with the session's own answers, not a person's, held in the gitignored tier; the original was lost with a removed worktree
+    evidence: .abcd/.work.local/logs/connect-guide-2026-10-04.md:6 — "The answers are the session's own, not a person's."
+    evidence: .abcd/development/specs/closed/spc-2610031241482088-connecting-a-model-service-from-inside-claude-code-works-out.md:439 — "The dated receipt `.abcd/.work.local/logs/connect-guide-<yyyy-mm-dd>.md`"
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2610031241487546 — survived: The look-up decodes the standard data[].id list and nothing else; every other shape or status becomes a ListError whose reason the typed fallback question carries, exactly as the condition assumed.
+  evidence: internal/adapter/openaiapi/models.go:118 — "func (c *Client) decodeListing(raw []byte, keep func(string) bool) (Listing, error)"
+  evidence: internal/core/oracle/connect_guide_test.go:366 — "func TestGuideFallsBackToTyping(t *testing.T)"
+- cond-2610031241484784 — survived: The guide never calls Connect, refuses every flag that would run or write, ends in a printed command, and the page tells the agent never to run it; the setup finishes only when the person pastes the command in a terminal where the pick and hidden read need every stream to be a terminal.
+  evidence: internal/core/credential/guide_test.go:133 — "func TestGuideWritesNothing(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_guide_test.go:141 — "func TestGuideCannotRun(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect.go:209 — "if len(models) == 0 && !atTerminal"
+  evidence: commands/ahoy.md:591 — "never runs that command, and no flag makes it"
+- cond-2610031241488563 — narrowed: Suggestions are drawn only from a person's existing routes and provider allowlists, so a first-time user sees the typed search alone as assumed; but a model is suggested only where this service lists the same id exactly, and at most three are shown, so some people with existing connections also see no suggestion.
+  narrowing: Holds for a person whose existing connections name an id this service lists exactly, at most three of them; an existing connection whose model this service spells differently yields no suggestion, so that person sees the search alone like a first-time user.
+  evidence: internal/core/oracle/connect_guide.go:778 — "func (g *guide) suggestions(listed map[string]bool) []string"
+  evidence: internal/core/oracle/connect_guide.go:53 — "maxSuggestions = 3"
+  evidence: internal/core/oracle/connect_guide_test.go:212 — "func TestGuideSuggestsTheModelsAlreadyUsed(t *testing.T)"
+- cond-2610031241482561 — survived: For the abcd and keychain homes the key reaches abcd through readConnectKey's hidden read in the terminal step and is never asked for by the guide; a hand-saved keychain item is neither offered nor adopted, the keyless run being refused. The external home's variable is a separate, named route the condition does not speak to and does not contradict.
+  evidence: internal/surface/cli/ahoy_connect.go:302 — "func readConnectKey(cmd *cobra.Command, provider string) (string, error)"
+  evidence: internal/core/credential/guide_test.go:164 — "func TestGuideNeverOffersAHandSavedItem(t *testing.T)"
+  evidence: internal/surface/cli/ahoy_connect_pty_test.go:122 — "func TestConnectReadsTheKeyHiddenAtARealTerminal(t *testing.T)"
 <!-- abcd-review-end receipt=rcp-8c051b55af1b -->
 
 ## Grounds
