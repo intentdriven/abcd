@@ -13,17 +13,17 @@ production_mode: hand-written
 impact: additive
 ---
 
-# Connecting a model service from Claude Code looks up the details and offers the choices
+# Connecting a model service from inside your coding session looks up the details and offers the choices
 
 ## Press Release
 
-> When a person connects a model service from inside Claude Code, abcd works out the details with them instead of asking them to type each one. It asks for the service's address and, on a yes, looks up the models the service offers. It suggests the models the person already uses through their other connections, and finds anything else when they type part of a name. It then shows one command, with every file that command will write, for the person to paste into a terminal: nothing is set up from inside the session. Where a service needs the key before it will list its models, that one terminal step asks for the key with the typing hidden, lists the models, lets the person pick one, checks the pick with a real answer, and only then saves anything. A service that lists no models asks for the name to be typed, and says why.
+> When a person connects a model service from inside your coding session, abcd works out the details with them instead of asking them to type each one. It asks for the service's address and, on a yes, looks up the models the service offers. It suggests the models the person already uses through their other connections, and finds anything else when they type part of a name. It then shows one command, with every file that command will write, for the person to paste into a terminal: nothing is set up from inside the session. Where a service needs the key before it will list its models, that one terminal step asks for the key with the typing hidden, lists the models, lets the person pick one, checks the pick with a real answer, and only then saves anything. A service that lists no models asks for the name to be typed, and says why.
 
 _Proposed by the facilitator from decisions 1 to 8; confirmed as written by the product thinker at the planning interview, 2026-10-03 (decision 9)._
 
 Previous wording (superseded at the interview):
 
-> Connecting a model service from inside Claude Code works out the details with the person instead of asking them to type them. It looks up what it can: the service's own list of models from the address given, where the person's key could be kept on this machine, and abcd's settings folder. It offers the choices one question at a time, and then either sets the connection up itself or prints the exact command to paste into a terminal. When a service lists hundreds of models, the person sees three suggestions and can type part of a name to narrow the list; the full searchable list is the plain-Terminal picker's (itd-2610030810370060).
+> Connecting a model service from inside your coding session works out the details with the person instead of asking them to type them. It looks up what it can: the service's own list of models from the address given, where the person's key could be kept on this machine, and abcd's settings folder. It offers the choices one question at a time, and then either sets the connection up itself or prints the exact command to paste into a terminal. When a service lists hundreds of models, the person sees three suggestions and can type part of a name to narrow the list; the full searchable list is the plain-Terminal picker's (itd-2610030810370060).
 
 > _Proposed; to be confirmed at the planning interview._
 
