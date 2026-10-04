@@ -733,7 +733,7 @@ func historyDir(create bool) (*os.Root, error) {
 		return nil, err
 	}
 	if create {
-		return fsutil.EnsureHomeScope(home, historyRelPath, 0o755)
+		return fsutil.EnsureHomeScope(home, historyRelPath, abcdhome.DirMode)
 	}
 	return fsutil.OpenHomeScope(home, historyRelPath)
 }
@@ -991,7 +991,7 @@ func bootstrapHistory() (bool, error) {
 		tmp.Close()
 		return false, err
 	}
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(abcdhome.FileMode); err != nil {
 		tmp.Close()
 		return false, err
 	}

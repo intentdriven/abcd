@@ -147,7 +147,7 @@ func resolveStore(repoRoot string) (store, error) {
 // ensure creates the lane one real directory at a time, never through a
 // symlink, and proves every level.
 func (s store) ensure() error {
-	if err := fsutil.EnsureRealDirAll(s.home, s.rel(), storeDirPerm); err != nil {
+	if err := fsutil.EnsureRealDirAll(s.home, s.rel(), abcdhome.DirMode); err != nil {
 		return fmt.Errorf("%w: cannot create the lab store %s: %v", ErrRefused, s.display(), redact(err, s.home))
 	}
 	return nil

@@ -32,11 +32,9 @@ const (
 	lockFileName    = ".lock"
 )
 
-// storeDirPerm and fileMode keep the inbox the account's own business.
-const (
-	storeDirPerm = 0o700
-	fileMode     = 0o600
-)
+// fileMode keeps the inbox's records the account's own business; its folders
+// are made at abcdhome.DirMode.
+const fileMode = 0o600
 
 // lockTimeout bounds how long a promotion waits for another one.
 const lockTimeout = 3 * time.Second
@@ -159,7 +157,7 @@ func ensureInbox() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := fsutil.EnsureRealDirAll(home, inboxRelPath+"/"+promotedDirName, storeDirPerm); err != nil {
+	if err := fsutil.EnsureRealDirAll(home, inboxRelPath+"/"+promotedDirName, abcdhome.DirMode); err != nil {
 		if refused := inboxNotRealDir(err); refused != nil {
 			return "", refused
 		}

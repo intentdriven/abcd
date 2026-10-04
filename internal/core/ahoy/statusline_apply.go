@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -186,7 +187,7 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 	var settingDir *os.Root
 	if settingBytes != nil {
 		var werr error
-		settingDir, werr = fsutil.EnsureHomeScope(userHome(), path.Dir(statusline.SettingsRelPath), 0o755)
+		settingDir, werr = fsutil.EnsureHomeScope(userHome(), path.Dir(statusline.SettingsRelPath), abcdhome.DirMode)
 		if errors.Is(werr, fsutil.ErrHomeScopeSymlinked) {
 			a.refuse("refused to wire the status line: " + werr.Error() + "; nothing was written.")
 			return

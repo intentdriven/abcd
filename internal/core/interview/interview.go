@@ -155,7 +155,7 @@ func Write(p Place, rec Record, at time.Time) (string, error) {
 		}
 		root, dir = r, filepath.Join(p.Repo, filepath.FromSlash(RecordsRel))
 	} else {
-		r, err := fsutil.EnsureHomeScope(p.Home, abcdhome.Rel(homeRecordsLeaf), 0o700)
+		r, err := fsutil.EnsureHomeScope(p.Home, abcdhome.Rel(homeRecordsLeaf), abcdhome.DirMode)
 		if err != nil {
 			return "", err
 		}
