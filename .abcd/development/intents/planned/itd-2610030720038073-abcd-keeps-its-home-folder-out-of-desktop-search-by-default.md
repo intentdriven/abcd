@@ -98,6 +98,7 @@ Not applied here: appending the routing ruling to the shared decision log (recor
 5. 2026-10-03, the product thinker: the revised press release confirmed as written.
 6. 2026-10-03, the product thinker, proposing it themselves: abcd moves nothing. An existing `~/.abcd` stops every abcd command and hook before it writes anything, naming the one rename command, until the person renames it; with both folders present abcd stops and names both. The automatic move (decision 2's "every install moves once") and its proof that abcd made the folder are dropped, so no move code is carried towards v1.0.0. The press release's sentence and criterion D2 are reworded to match and confirmed in that wording. The facilitator's caveat, recorded with it: the check runs before any write on every entry point, the hooks and the status line included, or a hook could create a fresh `~/.abcd.noindex` beside the old folder.
 7. 2026-10-03, the product thinker, asked what abcd's safety check does while the old folder stands: block every command except the rename, until the folder is renamed (spec open question 3).
+8. 2026-10-04, the product thinker, asked whether today's release includes the rename and the stop (in today's release; next release; decide later), with the cost shown (every abcd session pauses on the day; they update, abcd renames the folder, and they paste one line to re-link the work folders): in today's release. The release waits until step 3 is built and reviewed, and lands it last, with every session paused.
 
 ## Open Questions
 

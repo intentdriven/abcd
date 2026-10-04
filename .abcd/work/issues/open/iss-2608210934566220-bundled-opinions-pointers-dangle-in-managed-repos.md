@@ -32,3 +32,7 @@ repository cannot follow, so every other adopter starts where this one did.
 
 - The four options are the ones the record and its two corroborations weigh; a managed repository took the first on its own, which is evidence for demand, not a ruling.
 - Rejected: editing the bundled lines here, which changes the shipped itd-3 design the deferral names.
+
+## Evidence 2026-10-04 (a downstream lab)
+
+A downstream private project's brief-authoring lab met the dangling pointers again: the injected OPINIONS rules cite `.abcd/development/principles/*.md`, which no install creates. Reproduced at tip 57d5ec9fa: after `ahoy install --adopt` in a scratch repository, `abcd rules OPINIONS` prints ten references to `.abcd/development/principles/`, and the folder does not exist. Fourth independent hit; the ruling the deferral names is still owed.

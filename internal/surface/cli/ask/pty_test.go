@@ -130,6 +130,66 @@ func (c *child) exit(t *testing.T) syscall.WaitStatus {
 	return c.cmd.ProcessState.Sys().(syscall.WaitStatus)
 }
 
+// stopped waits for the kernel to report the child stopped.
+func (c *child) stopped(t *testing.T, what string) {
+	t.Helper()
+	var ws syscall.WaitStatus
+	pid, err := syscall.Wait4(c.cmd.Process.Pid, &ws, syscall.WUNTRACED, nil)
+	if err != nil || pid != c.cmd.Process.Pid || !ws.Stopped() {
+		t.Fatalf("%s: wait4 = %d %v %v, want the child stopped", what, pid, ws, err)
+	}
+}
+
+// resend is how long continued waits for the child to answer a continue
+// before it asks the kernel whether the child is stopped and continues again.
+const resend = 2 * time.Second
+
+// continued sends SIGCONT through send to the child the kernel has reported
+// stopped, and waits up to wait for sub after offset, returning the offset
+// just past it, as WaitFor does.
+//
+// The kernel can lose the continue (iss-2610041944562639). On darwin, a
+// SIGCONT sent the instant wait4 reports a stop the process made itself can
+// arrive before that stop has suspended it; the stop then holds, while the
+// kernel reports the process running. A probe on a test that sent it straight
+// after wait4 lost 2 continues in 2,000, and a bare stop-and-continue loop 21
+// in 3,000, none with a 20 ms pause; a second SIGCONT brought back every one.
+// A shell's fg is typed by a person, long after the stop. So while sub has
+// not appeared and the kernel reports no new stop, the continue is sent
+// again. A stop the kernel does report after the continue is the child's own,
+// such as SIGTTOU from a terminal call made in the background, and fails.
+func (c *child) continued(t *testing.T, offset int, sub string, send func(os.Signal) error) int {
+	t.Helper()
+	pid := c.cmd.Process.Pid
+	deadline := time.Now().Add(wait)
+	for {
+		if err := send(syscall.SIGCONT); err != nil {
+			t.Fatal(err)
+		}
+		for next := time.Now().Add(resend); time.Now().Before(next); time.Sleep(10 * time.Millisecond) {
+			out := c.pty.Output()
+			if offset > len(out) {
+				offset = len(out)
+			}
+			if i := strings.Index(out[offset:], sub); i >= 0 {
+				return offset + i + len(sub)
+			}
+		}
+		var ws syscall.WaitStatus
+		got, err := syscall.Wait4(pid, &ws, syscall.WNOHANG|syscall.WUNTRACED, nil)
+		switch {
+		case err != nil:
+			t.Fatalf("after SIGCONT: wait4: %v", err)
+		case got == pid && ws.Stopped():
+			t.Fatalf("after SIGCONT the child stopped again, by %v; the terminal shows:\n%q", ws.StopSignal(), c.pty.Output())
+		case got == pid:
+			t.Fatalf("after SIGCONT the child ended (%v) before %q; the terminal shows:\n%q", ws, sub, c.pty.Output())
+		case time.Now().After(deadline):
+			t.Fatalf("waited %s for %q after SIGCONT; the terminal shows:\n%q", wait, sub, c.pty.Output())
+		}
+	}
+}
+
 // restored asserts the terminal's attributes equal those before the child.
 func (c *child) restored(t *testing.T, when string) {
 	t.Helper()
@@ -196,16 +256,9 @@ func TestLongListRestoresTerminalOnInterrupt(t *testing.T) {
 		c.pty.Type(t, "claude")
 		mark := c.pty.WaitFor(t, 0, "filter: claude", wait)
 		c.pty.Type(t, "\x1a")
-		var ws syscall.WaitStatus
-		pid, err := syscall.Wait4(c.cmd.Process.Pid, &ws, syscall.WUNTRACED, nil)
-		if err != nil || pid != c.cmd.Process.Pid || !ws.Stopped() {
-			t.Fatalf("Ctrl-Z: wait4 = %d %v %v, want the child stopped", pid, ws, err)
-		}
+		c.stopped(t, "Ctrl-Z")
 		c.restored(t, "while stopped")
-		if err := c.cmd.Process.Signal(syscall.SIGCONT); err != nil {
-			t.Fatal(err)
-		}
-		mark = c.pty.WaitFor(t, mark, "filter: claude", wait)
+		mark = c.continued(t, mark, "filter: claude", c.cmd.Process.Signal)
 		raw, err := ptytest.Attrs(c.pty.Terminal)
 		if err != nil {
 			t.Fatal(err)
@@ -213,6 +266,31 @@ func TestLongListRestoresTerminalOnInterrupt(t *testing.T) {
 		if raw.Lflag&syscall.ICANON != 0 {
 			t.Errorf("after SIGCONT the terminal is not raw again: lflag %#x", raw.Lflag)
 		}
+		c.pty.Type(t, "\r")
+		c.pty.WaitFor(t, mark, "CHOSE anthropic/claude-0", wait)
+		if ws := c.exit(t); !ws.Exited() || ws.ExitStatus() != 0 {
+			t.Errorf("wait status %v, want exit 0", ws)
+		}
+		c.restored(t, "after the choice")
+	})
+	// The kernel can lose the continue after Ctrl-Z (iss-2610041944562639):
+	// the first SIGCONT here never arrives, as one the kernel lost does not,
+	// and the question still comes back and still answers.
+	t.Run("ctrl-z: a continue the kernel loses is sent again", func(t *testing.T) {
+		c := startChild(t, "suspend")
+		c.pty.Type(t, "claude")
+		mark := c.pty.WaitFor(t, 0, "filter: claude", wait)
+		c.pty.Type(t, "\x1a")
+		c.stopped(t, "Ctrl-Z")
+		lost := false
+		send := func(sig os.Signal) error {
+			if !lost {
+				lost = true
+				return nil
+			}
+			return c.cmd.Process.Signal(sig)
+		}
+		mark = c.continued(t, mark, "filter: claude", send)
 		c.pty.Type(t, "\r")
 		c.pty.WaitFor(t, mark, "CHOSE anthropic/claude-0", wait)
 		if ws := c.exit(t); !ws.Exited() || ws.ExitStatus() != 0 {

@@ -295,6 +295,12 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   separate from the evaluator (itd-85). The tool itself is archived and is not a
   dependency.
 - **The Rust RFC process** — the required "Prior Art" section on intents.
+- **signulll's post on product thinkers (<https://x.com/signulll/status/2030404483897815089>)** —
+  the *product thinker* framing: the person who holds a product's why, who it
+  is for and what it should do, without needing to command the how of the
+  code. It names the first of abcd's two roles, defined in the glossary
+  (`core/product-thinker`) and the roles page, and credited in
+  `docs/explanation/rationale.md`.
 - **SpecStory** — the hosted session-transcript capture the native history
   store replaced (adr-29), and the named opt-in cloud backend of the history
   seam; the `specstory-import` provenance kind keeps transcripts it captured
