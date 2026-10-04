@@ -58,20 +58,23 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then set it up: Writes its block in ~/.abcd.noindex/ and its key to the home chosen; refuses a key typed at a terminal.
+Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.
 
-**Usage:** `abcd ahoy connect <provider> [flags]`
+**Usage:** `abcd ahoy connect [<provider>] [flags]`
 
 **Flags:**
 
 ```
+      --answer string       with --guide and --resume: the answer to the question the resume object leaves open
       --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
       --env string          for --home external: the environment variable that holds the value
       --field string        for --home external: the dotted field of --file that holds the value (auth.token)
       --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
+      --guide               work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
-      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
+      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
+      --resume string       with --guide: the last turn's resume object, or - to read it from stdin
 ```
 
 **Example:**
@@ -112,6 +115,8 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 ```
       --adopt                   adopt an unmanaged repo without prompting
       --allow-stale-binary      proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix
+      --answered-in string      where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
@@ -2185,6 +2190,32 @@ Hold a draft or planned intent so that planning refuses it: Writes the held line
 abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"
 ```
 
+#### `abcd intent interview`
+
+Run an intent's planning interview in a plain Terminal on your own route: Writes the answers record and the role's edits; refuses with no route of yours.
+
+**Usage:** `abcd intent interview <itd-N> [--answers <file>] [--answered-in <place>] [flags]`
+
+Run the planning interview in a plain Terminal, with no host session: the planning-interviewer,
+on the runner the person routed it to in their own machine's config, writes each question and edits
+the intent record with the tools its contract grants; abcd draws each question, takes the answer,
+and reports the readiness gate when the interview ends. With no route of the person's to a runner it
+refuses before anything runs, writing nothing. Off a terminal the questions are answered from
+--answers, by ordinal (Q1, Q2, ...). The plan act stays the product thinker's: `abcd intent plan`.
+
+**Flags:**
+
+```
+      --answered-in string   where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string       answer the questions from this answers file (JSON: schema_version, interview "planning", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
+```
+
+**Example:**
+
+```
+abcd intent interview itd-2609010000000001
+```
+
 #### `abcd intent link`
 
 Link a planned intent to an existing spec: Writes the intent's spec_id; refuses an intent that is not planned.
@@ -2855,6 +2886,32 @@ reflection is the intent audit's (`abcd intent audit <itd-N>`).
 
 ```
 abcd reflect v0.11.0
+```
+
+#### `abcd reflect interview`
+
+Run a cut release's retrospective interview in a plain Terminal on your own route: Writes the answers record and README; refuses with no route of yours.
+
+**Usage:** `abcd reflect interview <release-tag> [--answers <file>] [--answered-in <place>] [--proceed] [flags]`
+
+Run the retrospective interview in a plain Terminal, with no host session: the reflection-composer,
+on the runner the person routed it to in their own machine's config, writes each question, abcd
+draws it and takes the answer, and the outcome is filed through reflect write's own checks. With
+no route of the person's to a runner it refuses before anything runs, writing nothing. Off a
+terminal the questions are answered from --answers, by ordinal (Q1, Q2, ...).
+
+**Flags:**
+
+```
+      --answered-in string   where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string       answer the questions from this answers file (JSON: schema_version, interview "retrospective", answers by ordinal Q1, Q2, ...) instead of drawing them; the run refuses at the first question the file does not answer
+      --proceed              run although intents targeted at the release are unshipped (the person's confirmation)
+```
+
+**Example:**
+
+```
+abcd reflect interview v0.11.0
 ```
 
 #### `abcd reflect write`

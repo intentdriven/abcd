@@ -17,15 +17,9 @@ impact: breaking
 
 ## Press Release
 
-> When a person sets up a project with abcd, or works in abcd's own, there is one conventions file to read and keep: AGENTS.md. abcd writes no separate copy of it for Claude Code or for any other tool. If the project already holds a tool's own file with the owner's words in it, abcd leaves that file exactly as it is and warns, loudly, that AGENTS.md stays hidden until the owner moves those words across and removes the file; a file that only repeats or links to AGENTS.md is offered for removal, and goes only on a yes. Setup also warns when an older Claude Code, or a CLAUDE.md in a folder above the project, would hide AGENTS.md. A project set up earlier with a saved choice of CLAUDE.md stops at setup, and abcd explains the one setting to change.
+> When a person sets up a project with abcd, or works in abcd's own, there is one conventions file to read and keep: AGENTS.md. abcd writes no separate copy of it for any tool. If the project already holds a tool's own file with the owner's words in it, abcd leaves that file exactly as it is and warns, loudly, that AGENTS.md stays hidden until the owner moves those words across and removes the file; a file that only repeats or links to AGENTS.md is offered for removal, and goes only on a yes. Setup also warns when an older version of your agent tool, or a CLAUDE.md in a folder above the project, would hide AGENTS.md. A project set up earlier with a saved choice of CLAUDE.md stops at setup, and abcd explains the one setting to change.
 
 _Proposed by the facilitator from decisions 1 to 8; confirmed as written by the product thinker at the planning interview, 2026-10-03 (decision 9)._
-
-Previous wording (superseded at the interview):
-
-> A project abcd looks after carries one conventions file, AGENTS.md, and nothing else of its kind: Claude Code reads it directly, so there is no CLAUDE.md copy to fall out of step. Setting up a project writes AGENTS.md only, and a project that already has a CLAUDE.md is offered its retirement, with nothing lost from what Claude Code loads. abcd's own project does the same.
-
-_Proposed by the facilitator on filing (2026-10-03) from the product thinker's request "retire CLAUDE.md, use AGENTS.md instead in Claude Code"; to be confirmed or rewritten at the planning interview. Its reach ("a project abcd looks after") and "nothing else of its kind" both read as answers to questions the interview has yet to rule on (Q1, Q2 and Q5 below)._
 
 ## Why This Matters
 
@@ -124,9 +118,131 @@ Proposed acceptance criteria (agent-seeded, unconfirmed; each presupposes the po
 
 The draft's title and its file name disagree (the slug is the issue's, reused by contract); the interview should know.
 
+## Superseded press release wording
+
+Kept as history, outside the press release, so the published page renders only the confirmed text.
+
+Previous wording (superseded at the interview):
+
+> A project abcd looks after carries one conventions file, AGENTS.md, and nothing else of its kind: Claude Code reads it directly, so there is no CLAUDE.md copy to fall out of step. Setting up a project writes AGENTS.md only, and a project that already has a CLAUDE.md is offered its retirement, with nothing lost from what Claude Code loads. abcd's own project does the same.
+
+_Proposed by the facilitator on filing (2026-10-03) from the product thinker's request "retire CLAUDE.md, use AGENTS.md instead in Claude Code"; to be confirmed or rewritten at the planning interview. Its reach ("a project abcd looks after") and "nothing else of its kind" both read as answers to questions the interview has yet to rule on (Q1, Q2 and Q5 below)._
+
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+Press release reworded 2026-10-04 under the product thinker's answer "Use the reworded text" (asked because the fidelity audit made this press release the site's front-page hero, and the site gate refuses a page naming a specific agent tool): "for Claude Code or for any other tool" became "for any tool", and "an older Claude Code" became "an older version of your agent tool"; every other word is as confirmed at the planning interview. The superseded filing-time wording moved out of the press release to its own section, unchanged.
+
+A8 is evidenced so far by a scripted receipt (step 1: `claude -p` at the branch tip, dated, Claude Code version named, canary answered); the receipt from a person's own fresh session that the spec's Approach requires was requested on 2026-10-04 and is outstanding.
+
+<!-- abcd-review: INGESTED receipt=rcp-2444af75d52c -->
+Fidelity review — receipt rcp-2444af75d52c (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:6d379515d22ce973540127d4afbc1bcdce373690f8a27e503dc94bf00e6ad6f8
+Input attestations: diff:f2a603427..cc132a8853294e0427ca5d077e57a1f724c74024@sha256:678db2899c36e0404854da77a0c5a951d265f34339e8fdf9bcc0f5067cca74d3;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: TestInstallWritesNoToolConventionsFile (passes at BASE) asserts AGENTS.md carries the block at agents_md and that none of the seven tool files exists after any install, and TestPrepareThisRepoScaffoldsNoToolConventionsFile holds the page to creating AGENTS.md alone; the concern is that the default docs.target is skip, so a bare setup in a new folder writes no AGENTS.md at all and the criterion's example holds only at --docs-target agents_md, a reading the spec decided (open question 1, (a)) without putting it to the product thinker who confirmed the criterion
+  evidence: internal/core/ahoy/retired_docs_target_test.go:63 — "func TestInstallWritesNoToolConventionsFile(t *testing.T)"
+  evidence: internal/core/ahoy/onboarding_test.go:130 — "func TestPrepareThisRepoScaffoldsNoToolConventionsFile(t *testing.T)"
+  evidence: commands/prepare-this-repo.md:133 — "It is the one conventions file this step writes: no other tool's conventions file is made, as a link or as a copy"
+  evidence: internal/core/ahoy/detect.go:43 — "docsTargetDefault = "skip""
+  evidence: .abcd/development/specs/closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:374 — "A1 and the `skip` default. A default setup writes no conventions file"
+- ac-2 — MET: markerFile chooses AGENTS.md for agents_md and for no saved choice, and TestEmbarkPlantsInAgentsMD (passes at BASE) embarks into a target holding only AGENTS.md and asserts the block lands there, MarkerResult.Target reads AGENTS.md, no CLAUDE.md exists and the file list gains only the planned records; TestEmbarkFollowsTheChosenTarget covers skip and the retired values
+  evidence: internal/core/lifeboat/embark.go:588 — "func markerFile(targetAbs string) (file, note string)"
+  evidence: internal/core/lifeboat/embark.go:599 — "return "AGENTS.md", """
+  evidence: internal/core/lifeboat/embark_marker_test.go:60 — "func TestEmbarkPlantsInAgentsMD(t *testing.T)"
+  evidence: internal/core/lifeboat/embark_marker_test.go:120 — "func TestEmbarkFollowsTheChosenTarget(t *testing.T)"
+- ac-3 — MET: TestOwnersToolFileIsUntouchedAndNamed (passes at BASE) writes a CLAUDE.md reading 'Always run make check first', installs under --yes and at a terminal, and asserts the bytes and mode unchanged, no retirement question, and exactly one one-line warning naming CLAUDE.md, saying AGENTS.md stays hidden and how to end it; the CLI prints the warnings before the headline
+  evidence: internal/core/ahoy/conventions_test.go:242 — "func TestOwnersToolFileIsUntouchedAndNamed(t *testing.T)"
+  evidence: internal/core/ahoy/conventions.go:418 — "func ownerFileWarning(f toolConventionsFile) string"
+  evidence: internal/surface/cli/cli.go:3744 — "for _, warn := range res.Warnings {"
+- ac-4 — MET: TestRepeatingToolFileIsOfferedForRetirement (passes at BASE) runs a GEMINI.md link and a CLAUDE.md copy through retire, keep and later: retire removes both, keep and later leave the link a link and the copy byte-identical and the offer is raised again; --yes and a piped run never ask and list the gap in optional_skipped; stepConventionsFiles asks only at a terminal and retireToolFile reclassifies at the answer; the repeating class is wider than the two named cases (spec open question 3), a widening the confirmed press release's 'only repeats or links to' covers
+  evidence: internal/core/ahoy/conventions_test.go:351 — "func TestRepeatingToolFileIsOfferedForRetirement(t *testing.T)"
+  evidence: internal/core/ahoy/conventions.go:533 — "if a.autoYes || !atTerminal(a.prompter) || !a.approved[ConventionsFile] || !a.has(ConventionsRetireGapID)"
+  evidence: internal/core/ahoy/conventions.go:557 — "func (a *applyCtx) retireToolFile(rel, shown string)"
+  evidence: internal/core/ahoy/conventions_test.go:445 — "func TestRetireRechecksTheFile(t *testing.T)"
+- ac-5 — MET: detectHostReach lstats CLAUDE.local.md at the root and CLAUDE.md, .claude/CLAUDE.md and CLAUDE.local.md in every folder above it, skipping the user-level .claude/CLAUDE.md in the home folder, and every gap is a non-required warning carrying the fixed sentence on why the check differs from the no-settings-above rule; TestHostReachWarningsArePresenceOnly (passes at BASE) asserts one warning per file, a mode-000 file named all the same, the user-level file unnamed, install not refused, no version-shaped text, and detection raising none of them
+  evidence: internal/core/ahoy/host_reach.go:68 — "func detectHostReach(root string) []Gap"
+  evidence: internal/core/ahoy/host_reach.go:48 — "const hostReachWhy = "abcd reads no settings from folders above this project. ""
+  evidence: internal/core/ahoy/host_reach.go:84 — "if name == userLevelInstructions && home != "" && dir == home {"
+  evidence: internal/core/ahoy/host_reach_test.go:49 — "func TestHostReachWarningsArePresenceOnly(t *testing.T)"
+- ac-6 — MET: Install refuses before its first write through retiredDocsTargetRefusal with the one explanation naming docs.target and the command, and the flag refuses claude_md and both at the front door; TestSavedRetiredTargetStopsSetup, TestRetiredTargetStillReadsAsManaged, TestUninstallStripsARetiredTargetsBlocks, TestChangingTheOneSettingMovesTheBlock and TestDocsTargetFlagRefusesRetiredValues all pass at BASE, covering the stop, the managed read, the uninstall of both files and the way out
+  evidence: internal/core/ahoy/apply.go:99 — "if reason := retiredDocsTargetRefusal(abs, opts.ValueOverrides); reason != "" {"
+  evidence: internal/core/ahoy/retired_docs_target.go:14 — "func RetiredDocsTarget(v string) (explanation string, retired bool)"
+  evidence: internal/core/ahoy/retired_docs_target_test.go:130 — "func TestSavedRetiredTargetStopsSetup(t *testing.T)"
+  evidence: internal/core/ahoy/retired_docs_target_test.go:220 — "func TestUninstallStripsARetiredTargetsBlocks(t *testing.T)"
+  evidence: internal/surface/cli/cli.go:4094 — "return opts, fmt.Errorf("abcd ahoy install: --docs-target %s is refused: %s", docsTarget, why)"
+  evidence: internal/surface/cli/ahoy_docs_target_flag_test.go:16 — "func TestDocsTargetFlagRefusesRetiredValues(t *testing.T)"
+- ac-7 — MET: At BASE git ls-files at the root lists AGENTS.md alone and lstat finds no CLAUDE.md or GEMINI.md; TestRepositoryKeepsOneConventionsFile (passes at BASE) asserts both halves, the working tree by lstat and the committed list by git ls-files, so a restored link fails it
+  evidence: internal/core/lint/conventionsfile_test.go:29 — "func TestRepositoryKeepsOneConventionsFile(t *testing.T)"
+  evidence: internal/core/lint/conventionsfile_test.go:19 — "var toolConventionsFilesAtRoot = []string{"CLAUDE.md", "GEMINI.md"}"
+- ac-8 — MET_WITH_CONCERNS: The canary line sits in AGENTS.md's first section and TestAgentsMDCanarySitsInTheFirstSection (passes at BASE) holds it before the BEGIN fence, inside 32,768 bytes and absent from every other committed file; a dated receipt exists in the step-1 lane's local tier (2026-10-03, Claude Code 2.1.288, question, canary word and answer quoted, answer correct) so the criterion's letter is realised; the concerns are that the receipt is a scripted claude -p run, which by its own stated limit cannot show whether a tool read AGENTS.md before the answer and records no /memory line, its question is not the spec's no-tool wording, it sits under receipts/ in a sibling worktree rather than the logs/ path the spec names in this checkout, and the intent's own Audit Notes record that the person's fresh-session receipt the spec's Approach requires is outstanding
+  evidence: AGENTS.md:3 — "Conventions-file check word: <the canary word>."
+  evidence: internal/core/lint/conventionsfile_test.go:67 — "func TestAgentsMDCanarySitsInTheFirstSection(t *testing.T)"
+  evidence: .abcd/.work.local/receipts/agents-md-canary-2026-10-03.md:1 — "AGENTS.md canary receipt, 2026-10-03 ... Host: `claude --version` printed `2.1.288 (Claude Code)` ... Answer: "the canary word" ... Limit: print mode prints the answer only, so this receipt does not show whether the session called a tool before answering"
+  evidence: .abcd/development/intents/shipped/itd-2610030814013772-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:129 — "the receipt from a person's own fresh session that the spec's Approach requires was requested on 2026-10-04 and is outstanding"
+  evidence: .abcd/development/specs/closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:136 — "The receipt is taken by a person in a fresh session at the step's branch tip"
+
+Gap audit:
+- honoured:
+  - abcd writes no separate copy of AGENTS.md for Claude Code or any other tool: setup plants the block into AGENTS.md alone and never a tool's own file
+    evidence: internal/core/ahoy/retired_docs_target_test.go:63 — "func TestInstallWritesNoToolConventionsFile(t *testing.T)"
+    evidence: internal/core/ahoy/detect.go:28 — "docsTargetWritable = []string{"agents_md", "skip"}"
+  - embark follows the chosen conventions target and plants into AGENTS.md, never a hard-coded CLAUDE.md
+    evidence: internal/core/lifeboat/embark.go:588 — "func markerFile(targetAbs string) (file, note string)"
+  - a tool's file holding the owner's words is left exactly as it is and named in one loud warning printed first
+    evidence: internal/core/ahoy/conventions.go:418 — "func ownerFileWarning(f toolConventionsFile) string"
+    evidence: internal/surface/cli/cli.go:3744 — "for _, warn := range res.Warnings {"
+  - a file that only repeats or links to AGENTS.md is offered for removal and goes only on a yes
+    evidence: internal/core/ahoy/conventions.go:557 — "func (a *applyCtx) retireToolFile(rel, shown string)"
+    evidence: internal/core/ahoy/conventions_test.go:351 — "func TestRepeatingToolFileIsOfferedForRetirement(t *testing.T)"
+  - setup warns, by presence alone and never refusing, on a CLAUDE.md in a folder above the project and a personal CLAUDE.local.md
+    evidence: internal/core/ahoy/host_reach.go:68 — "func detectHostReach(root string) []Gap"
+  - a project set up earlier with a saved choice of CLAUDE.md stops at setup with the one setting to change, and still reads as managed and uninstalls
+    evidence: internal/core/ahoy/retired_docs_target.go:14 — "func RetiredDocsTarget(v string) (explanation string, retired bool)"
+    evidence: internal/core/ahoy/retired_docs_target_test.go:167 — "func TestRetiredTargetStillReadsAsManaged(t *testing.T)"
+  - abcd's own project keeps AGENTS.md alone: the CLAUDE.md and GEMINI.md links are gone and a test holds it
+    evidence: internal/core/lint/conventionsfile_test.go:29 — "func TestRepositoryKeepsOneConventionsFile(t *testing.T)"
+  - prepare-this-repo scaffolds no tool's conventions file, link or copy
+    evidence: commands/prepare-this-repo.md:133 — "It is the one conventions file this step writes"
+    evidence: internal/core/ahoy/onboarding_test.go:130 — "func TestPrepareThisRepoScaffoldsNoToolConventionsFile(t *testing.T)"
+  - the brief carries the rule's platform-constraint line the ADR's Consequences owed
+    evidence: .abcd/development/brief/02-constraints/01-platform.md:13 — "`AGENTS.md` is the one conventions file abcd writes, in its own project and in every project it sets up"
+- diverged:
+  - A1: 'when setup runs, then it writes AGENTS.md' — a bare setup writes no AGENTS.md, because the default docs.target is skip; AGENTS.md is written only at --docs-target agents_md (and by prepare-this-repo), a reading the spec decided without the product thinker
+    evidence: internal/core/ahoy/detect.go:43 — "docsTargetDefault = "skip""
+    evidence: .abcd/development/specs/closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:382 — "Decided: (a). It keeps the product thinker's standing ruling on the"
+  - press release: 'Setup also warns when an older Claude Code ... would hide AGENTS.md' — the warning is raised only when a claude command on PATH, outside the project and not through a world-writable folder, answers --version in time; an IDE-only host or the first session after an upgrade is never named
+    evidence: internal/core/ahoy/host_version.go:90 — "func readHostVersion(command, project string) (hostVersion, error)"
+    evidence: internal/core/ahoy/host_reach.go:111 — "if v, err := readClaudeVersion(root); err == nil && v.less(claudeCodeAgentsFloor) {"
+  - A8's receipt: the spec's Approach names a person's fresh interactive session, the no-tool question, a /memory line and a transcript with no tool call, at .abcd/.work.local/logs/agents-md-canary-< date>.md; what exists is a scripted claude -p receipt under receipts/ in the step-1 lane's local tier, with a different question and a stated inability to show that no tool ran
+    evidence: .abcd/.work.local/receipts/agents-md-canary-2026-10-03.md:1 — "Session: fresh and non-interactive, `claude -p` with no other flags."
+    evidence: .abcd/development/specs/closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:140 — "receipt, `.abcd/.work.local/logs/agents-md-canary-<yyyy-mm-dd>.md`, records the"
+- missing:
+  - the person's own fresh-session receipt (with the /memory line naming AGENTS.md and a transcript holding no tool call before the answer) that the spec's Approach requires for A8; the intent's Audit Notes record it as outstanding
+    evidence: .abcd/development/intents/shipped/itd-2610030814013772-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:129 — "was requested on 2026-10-04 and is outstanding"
+    evidence: .abcd/development/specs/closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md:136 — "The receipt is taken by a person in a fresh session at the step's branch tip"
+
+Scope-condition dispositions:
+- cond-2610031156364414 — survived: abcd's own tree holds AGENTS.md alone under a committed-tree test, and setup, embark and prepare-this-repo write AGENTS.md alone in every project abcd sets up, whatever target is named
+  evidence: internal/core/lint/conventionsfile_test.go:29 — "func TestRepositoryKeepsOneConventionsFile(t *testing.T)"
+  evidence: internal/core/ahoy/retired_docs_target_test.go:63 — "func TestInstallWritesNoToolConventionsFile(t *testing.T)"
+  evidence: internal/core/lifeboat/embark.go:599 — "return "AGENTS.md", """
+- cond-2610031156365364 — narrowed: No second file is ever written for an older host, as assumed, but the older host is named in a setup warning only where a claude command on PATH answers --version below the floor; TestHostVersionWarning shows an absent command, an unparsable answer, a timeout, a command inside the project or in a world-writable folder each raise nothing
+  narrowing: holds for a Claude Code installed as a `claude` command on PATH that answers --version in time; an IDE-only host, a first session after an upgrade, or a command the runner refuses is never named, so there the person learns of the old host from nothing abcd says
+  evidence: internal/core/ahoy/host_version.go:43 — "var claudeCodeAgentsFloor = hostVersion{Major: 2, Minor: 1, Patch: 281}"
+  evidence: internal/core/ahoy/host_reach.go:111 — "if v, err := readClaudeVersion(root); err == nil && v.less(claudeCodeAgentsFloor) {"
+  evidence: internal/core/ahoy/host_reach_test.go:194 — "func TestHostVersionWarning(t *testing.T)"
+- cond-2610031156360114 — survived: A CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md at the root or in any folder above it raises a presence warning naming its path, the user-level .claude/CLAUDE.md in the home folder is skipped, and a root CLAUDE.md with the owner's words raises the hidden warning; the tests hold each case including a file no one can read
+  evidence: internal/core/ahoy/host_reach.go:54 — "var hostReachAbove = []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md"), "CLAUDE.local.md"}"
+  evidence: internal/core/ahoy/host_reach_test.go:49 — "func TestHostReachWarningsArePresenceOnly(t *testing.T)"
+  evidence: internal/core/ahoy/conventions.go:427 — "func detectToolConventionsFiles(root string) []Gap"
+- cond-2610031156364999 — survived: An owner's CLAUDE.md is byte-identical with the same mode after install under --yes and at a terminal, is never offered for retirement, and the warning says abcd never edits or removes it and that its rules stay hidden until the owner acts
+  evidence: internal/core/ahoy/conventions_test.go:242 — "func TestOwnersToolFileIsUntouchedAndNamed(t *testing.T)"
+  evidence: internal/core/ahoy/conventions.go:420 — "and remove " + f.Rel + ". abcd never edits or removes this file.""
+<!-- abcd-review-end receipt=rcp-2444af75d52c -->
 
 ## Grounds
 

@@ -120,14 +120,25 @@ func Walk(ctx context.Context, home string, s Service, c Choice) (WalkResult, er
 	}
 	res := WalkResult{Name: s.Name, Home: c.Home, Verified: true, Changed: changed, Wrote: []string{}}
 	if changed {
-		switch c.Home {
-		case HomeABCD:
-			res.Wrote = []string{StorePath}
-		case HomeKeychain:
-			res.Wrote = []string{KeychainItem(s.Name), IndexPath}
-		default:
-			res.Wrote = []string{IndexPath}
-		}
+		res.Wrote = WritesFor(c.Home, s.Name)
 	}
 	return res, nil
+}
+
+// WritesFor names what storing name in home touches, in the tilde form and
+// in the order a walkthrough reports it: the abcd home's file; the keychain's
+// item and the index; the external home's index. A home that stores nothing
+// (a keyless provider's none, or a name no home answers to) touches nothing.
+// Walk's Wrote is built from it, so the list a setup shows before it runs
+// and the list a run reports cannot drift apart (spc-2610031241482088).
+func WritesFor(home, name string) []string {
+	switch home {
+	case HomeABCD:
+		return []string{StorePath}
+	case HomeKeychain:
+		return []string{KeychainItem(name), IndexPath}
+	case HomeExternal:
+		return []string{IndexPath}
+	}
+	return nil
 }

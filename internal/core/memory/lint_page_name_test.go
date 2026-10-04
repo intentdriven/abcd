@@ -87,7 +87,8 @@ func TestLintReportsASecretEmbeddedInAPageName(t *testing.T) {
 	}
 }
 
-// TestLintPageNameBarIsHardFailOnly is the read side of TestFilenameBarIsHardFailOnly:
+// TestLintPageNameBarIsHardFailOnly is the read side of
+// TestFilenameBarIsHardFailOrTokenOnly:
 // an ordinary name that net_device_hostname matches at warn severity must stay
 // clean of the page-name rule, or every such page in an ordinary store would be
 // a blocker.

@@ -1404,3 +1404,53 @@ func TestBootstrapRefusesASymlinkedAbcdHome(t *testing.T) {
 		t.Errorf("the notice must say the cache attestation was not written because ~/.abcd.noindex is a symlink; output %q", out)
 	}
 }
+
+// TestBootstrapMakesTheHomePrivate is iss-2610032205304585 at the hook's
+// bootstrap, which can be the first thing to create abcd's home: the home it
+// creates for the cache attestation is the account's alone, whatever the
+// umask, and the path-entry record it refreshes is read and written by the
+// account alone.
+func TestBootstrapMakesTheHomePrivate(t *testing.T) {
+	t.Run("the home the attestation creates", func(t *testing.T) {
+		root := bootstrapRoot(t)
+		data := t.TempDir()
+		home := t.TempDir()
+		body := []byte("#!/bin/sh\n# fresh download\nexit 0\n")
+		fx := bootstrapServer(t, body, bootstrapManifest(body))
+		if out, code := runBootstrapWithDataHome(t, root, data, home, fx, ""); code != 0 {
+			t.Fatalf("the provision must install, got %d (output %q)", code, out)
+		}
+		fi, err := os.Lstat(abcdhome.Path(home))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != abcdhome.DirMode {
+			t.Errorf("the bootstrap created %s at %o, want %o", abcdhome.Display(), got, abcdhome.DirMode)
+		}
+	})
+	t.Run("the path-entry record it refreshes", func(t *testing.T) {
+		root := bootstrapRoot(t)
+		data := t.TempDir()
+		old := []byte("#!/bin/sh\n# old release\nexit 0\n")
+		fresh := []byte("#!/bin/sh\n# new release\nexit 0\n")
+		seedBootstrapCache(t, data, "v9.9.8", old)
+		oldSum := sha256.Sum256(old)
+		home := t.TempDir()
+		pathCopy := filepath.Join(t.TempDir(), "abcd")
+		if err := os.WriteFile(pathCopy, old, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		seedHomePathEntry(t, home, "path="+pathCopy+"\nbinary_sha256="+hex.EncodeToString(oldSum[:])+"\nplugin_root="+t.TempDir()+"\n")
+		fx := bootstrapServer(t, fresh, bootstrapManifest(fresh))
+		if out, code := runBootstrapWithDataHome(t, root, data, home, fx, ""); code != 0 {
+			t.Fatalf("a new release must install, got %d (output %q)", code, out)
+		}
+		fi, err := os.Lstat(homePathEntry(home))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != abcdhome.FileMode {
+			t.Errorf("the refreshed path-entry is %o, want %o", got, abcdhome.FileMode)
+		}
+	})
+}

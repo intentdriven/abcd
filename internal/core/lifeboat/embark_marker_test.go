@@ -332,3 +332,56 @@ func TestEmbarkRendersASkippedMarkerWithoutAFile(t *testing.T) {
 		}
 	}
 }
+
+// TestEmbarkProbePredictsAnUnwritableRoot (iss-2610032202263648): a target
+// whose root cannot take a new file, with a writable .abcd/, lets the records
+// land and refuses the marker, whose write creates its lock and its temporary
+// file beside the conventions file. The probe predicts that refusal, word for
+// word, whether the file is absent or already holds the current block, and
+// the note names no absolute path.
+func TestEmbarkProbePredictsAnUnwritableRoot(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a mode-0555 folder")
+	}
+	dest := packSource(t, embarkableSourceFixture(t))
+	for _, tc := range []struct {
+		name    string
+		current bool
+	}{{"no AGENTS.md", false}, {"AGENTS.md holding the current block", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(target, ".abcd"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if tc.current {
+				if _, err := ahoy.EnsureMarker(filepath.Join(target, "AGENTS.md"), false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Chmod(target, 0o555); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(target, 0o755) })
+			plan, err := EmbarkProbe(dest, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := EmbarkFrom(dest, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Marker.Target != "AGENTS.md" || res.Marker.Action != MarkerActionSkip || res.Marker.Changed || res.Marker.Note == "" {
+				t.Errorf("from marker = %+v, want AGENTS.md skip unchanged with a note", res.Marker)
+			}
+			if plan.Marker != res.Marker {
+				t.Errorf("probe marker = %+v, but from gave %+v: the probe mispredicts", plan.Marker, res.Marker)
+			}
+			if strings.Contains(res.Marker.Note, target) {
+				t.Errorf("the note carries the target's absolute path: %q", res.Marker.Note)
+			}
+			if res.Written == 0 {
+				t.Error("the records did not land")
+			}
+		})
+	}
+}

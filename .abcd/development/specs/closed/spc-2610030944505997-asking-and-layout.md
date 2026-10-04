@@ -68,7 +68,7 @@ In (this bundle):
   the Claude Code version, and the row estimate calibrated against them.
 
 Out (the plain-Terminal spec,
-[spc-2610030911534855](../open/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
+[spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
 for itd-2610030810370060):
 
 - The question type itself (`Ask`, `Question`, `Block`, `Option`, `List`),

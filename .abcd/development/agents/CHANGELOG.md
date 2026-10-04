@@ -12,6 +12,28 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-04 (spc-2610030911534855 — the interviews run in a plain Terminal)
+
+### planning-interviewer 0.1.0
+
+NEW: the planning interview's question writer in a plain Terminal. `abcd
+intent interview <itd-N>` starts it on the runner the person routed it to,
+once per turn; it writes each question as an ask receipt for abcd to draw,
+edits the intent record to what the person confirmed with its contract's tools
+(Read, Edit, Grep, Glob), never performs the plan act, and ends with a done
+receipt summarising the changes. It reads the record, the planning brief and
+the answers as untrusted data (injection canary under its fixtures).
+Unmeasured, in the `0.x` band.
+
+### reflection-composer 0.3.0
+
+MINOR: the composer gains its plain-Terminal turn contract. Started by `abcd
+reflect interview <release-tag>` on the person's own route, it writes each
+question as an ask receipt for abcd to draw, offers the drafts of a section's
+answer as the options, and ends with the unchanged answers object as its done
+receipt; a thin answer `reflect write` refuses comes back to it in the next
+brief. The host path is unchanged. Unmeasured, in the `0.x` band.
+
 ## 2026-10-03 (spc-2610030944505997 — every question reads the same way)
 
 ### reflection-composer 0.2.0

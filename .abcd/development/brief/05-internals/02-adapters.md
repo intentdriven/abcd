@@ -238,7 +238,7 @@ structure is ambiguous.
 | transcript reader | native transcript store (`internal/core/history`) | Reads the root-SHA-keyed local corpus; merge by timestamp/content hash when an imported specstory source is also present |
 | memory reader | `.abcd/memory/` | Reads the curated memory substrate (repo by default; see [`07-memory.md § 0`](07-memory.md#0-memory-scopes-and-routing)). **Read-only on any vendor harvest source** — see invariant below |
 | reviews reader | `.abcd/work/reviews/<YYYY-MM-DD>-<scope>/*.md` (charter grammar) + spec-tied reviews | Reads oracle/review artefacts written by the `oracle` seam's capture side; powers review-collator |
-| `claude_md` reader | `CLAUDE.md` + `git log -p CLAUDE.md` | Snapshot + history |
+| `claude_md` reader | `AGENTS.md` and `CLAUDE.md` | Snapshot: either file grounds the invariants section; its `git log -p` history is a design target, not read yet |
 | `adr` reader | ADR location varies per project | Probes common paths: `docs/development/decisions/adrs/`, `docs/adr/`, `docs/architecture/decisions/`, `adrs/`. Newest-first; respects `Superseded-By`. Configurable via `.abcd/config.json` → `adr.path` if non-standard |
 | `git_log` reader | `git log` | Powers spec-window indexing for chat-distiller |
 | `assets` reader | `docs/**/*.{png,jpg,svg,pdf}`, `Resources/Assets.xcassets/` | Walks; emits `_manifest.json` |

@@ -171,7 +171,8 @@ func TestProposalNamesEveryAgentInTheRosterAndNoOther(t *testing.T) {
 
 // TestProposalSplitIsTheSpecs pins the initial rows the spec names.
 func TestProposalSplitIsTheSpecs(t *testing.T) {
-	frontier := []string{"intent-auditor", "lifeboat-reviewer", "release-changelog-composer", "ruthless-reviewer", "security-reviewer"}
+	// planning-interviewer's frontier row is spc-2610030911534855's.
+	frontier := []string{"intent-auditor", "lifeboat-reviewer", "planning-interviewer", "release-changelog-composer", "ruthless-reviewer", "security-reviewer"}
 	p := Proposal()
 	for _, a := range Roster() {
 		want := Economy

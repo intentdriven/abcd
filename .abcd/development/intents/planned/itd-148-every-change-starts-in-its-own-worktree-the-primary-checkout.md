@@ -5,7 +5,7 @@ spec_id: spc-42
 kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-118, itd-33]
+builds_on: [itd-118]
 blocked_by: [itd-2609091014076309]
 related_adrs: [adr-2609091248200336]
 severity: major

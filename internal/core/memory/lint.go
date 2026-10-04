@@ -216,7 +216,8 @@ const pageNameSuggestion = "If the credential is real, rotate it. Then rename th
 // never matches — in the page's own name, or in the registry back-link that
 // repeats it. The name is therefore judged by the write side's own verdict,
 // filenameHardFailKinds, which splits it into its components and its
-// underscore suffixes and holds the hard_fail bar a prose-shaped name needs.
+// underscore suffixes and holds the hard-fail-or-token bar a prose-shaped
+// name needs.
 // file and line locate where the name was found; the message carries the kind,
 // never the span. The finding names the file as the write-side refusal names
 // the page: a report that withheld it would leave nothing to repair.

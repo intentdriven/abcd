@@ -78,7 +78,7 @@ const (
 // storeDirPerm and fileMode keep the store the account's own business: a lab
 // touches private-tier material, so nothing in it is group- or world-readable.
 const (
-	storeDirPerm = 0o700
+	storeDirPerm = abcdhome.DirMode
 	fileMode     = 0o600
 )
 
@@ -147,7 +147,7 @@ func resolveStore(repoRoot string) (store, error) {
 // ensure creates the lane one real directory at a time, never through a
 // symlink, and proves every level.
 func (s store) ensure() error {
-	if err := fsutil.EnsureRealDirAll(s.home, s.rel(), storeDirPerm); err != nil {
+	if err := fsutil.EnsureRealDirAll(s.home, s.rel(), abcdhome.DirMode); err != nil {
 		return fmt.Errorf("%w: cannot create the lab store %s: %v", ErrRefused, s.display(), redact(err, s.home))
 	}
 	return nil

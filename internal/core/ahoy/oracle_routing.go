@@ -140,7 +140,7 @@ func (a *applyCtx) writeMachineRouting(body []byte) {
 	// ~/.abcd.noindex is created, judged and opened relative to home's descriptor and
 	// the table is written through it, so a link swapped in after the check
 	// above is refused rather than written through (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(userHome(), abcdhome.Rel(), 0o700)
+	dir, err := fsutil.EnsureHomeScope(userHome(), abcdhome.Rel(), abcdhome.DirMode)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
 		return

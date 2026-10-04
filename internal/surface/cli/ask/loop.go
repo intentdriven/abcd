@@ -28,6 +28,12 @@ const ExitInterrupted = 130
 // Terminal is where the answer loop puts a question: the keyboard it reads,
 // the stream it draws on, and how it draws. The question is drawn on Out,
 // which a front door makes stderr, so a --json result on stdout stays clean.
+//
+// A caller under signal.NotifyContext (or any handler of its own for SIGINT,
+// SIGTERM or SIGHUP) must not draw: while an arrow-key list is up, such a
+// signal from outside restores the terminal and is raised again with its
+// default action (term.RawSession), so the process ends as on an unhandled
+// signal, and neither the caller's handler nor any deferred cleanup runs.
 type Terminal struct {
 	// In is the terminal the person answers at.
 	In *os.File

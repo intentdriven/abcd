@@ -38,7 +38,7 @@ var WorktreeStoreRel = abcdhome.Rel("worktrees")
 const BranchPrefix = "build/"
 
 // storeDirPerm is the mode a store level is created with.
-const storeDirPerm fs.FileMode = 0o700
+const storeDirPerm = abcdhome.DirMode
 
 // maxWorktreeListing caps `git worktree list`.
 const maxWorktreeListing = 16 << 20

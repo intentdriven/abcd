@@ -9,6 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/claim.go"
+related_intents: [itd-2609091034175565]
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (lapsed-deferral triage, run A 2026-09-29): May an implement claim hold a cluster of records under one lane key, refused whole when any member is held elsewhere, or does one claim per record stand? implement claim (internal/core/implement/claim.go) holds one record at v0.11.1 and refuses the second session a second live claim."
 remedy: "Waits on the claim-mode ruling: if clusters, implement claim takes several record ids under one --lane and, inside the run lock it already holds, checks every member and creates every claim file or none (removing those it made on a refusal), logging one claim naming all members, with the second session's cap counting lanes rather than records; if one claim per record stands, move the record to wontfix naming the ruling. Prove the cluster form with a test where one member held by another session refuses the whole claim and leaves no claim file behind."

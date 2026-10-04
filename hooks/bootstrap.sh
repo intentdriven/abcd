@@ -886,7 +886,8 @@ else
 							printf 'binary_sha256=%s\n' "$new_sha"
 							printf 'plugin_root=%s\n' "$plugin_root"
 						} > "$tmp/path-entry" 2>/dev/null &&
-							mkdir -p "$(dirname "$path_entry")" 2>/dev/null &&
+							chmod 0600 "$tmp/path-entry" 2>/dev/null &&
+							mkdir -p -m 0700 "$(dirname "$path_entry")" 2>/dev/null &&
 							mv -f "$tmp/path-entry" "$path_entry" 2>/dev/null
 						path_note=' The abcd command on your PATH was refreshed to the same release.'
 					else
@@ -994,7 +995,7 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 			attest_note=' (the cache attestation could not be written because its path is occupied by something that is not a regular file, so `ahoy install` will not promote this cache to an owned PATH copy)'
 		else
 			attest_data_dir=$(printf '%s' "$data_dir" | tr -d '\000-\037\177')
-			if mkdir -p "$attest_dir" 2>/dev/null &&
+			if mkdir -p -m 0700 "$attest_dir" 2>/dev/null &&
 				attest_tmp=$(mktemp "$attest_dir/.cache-attestation.XXXXXX" 2>/dev/null) &&
 				[ -n "$attest_tmp" ] &&
 				{
@@ -1073,12 +1074,15 @@ if path_entry_owned; then
 	case "$rec_sha" in *[!0-9a-f]*) rec_ok='' ;; esac
 	[ "${#rec_sha}" -eq 64 ] || rec_ok=''
 	if [ -n "$rec_ok" ]; then
-		rec_tmp="$path_entry.rewrite.$$"
-		{
+		# An in-directory mktemp, as the attestation's temp (section 9b): a
+		# name a planted link could predict is never written through.
+		rec_tmp=$(mktemp "$(dirname "$path_entry")/.path-entry.XXXXXX" 2>/dev/null) || rec_tmp=''
+		[ -n "$rec_tmp" ] && {
 			printf 'path=%s\n' "$rec_path"
 			printf 'binary_sha256=%s\n' "$rec_sha"
 			printf 'plugin_root=%s\n' "$plugin_root"
 		} > "$rec_tmp" 2>/dev/null &&
+			chmod 0600 "$rec_tmp" 2>/dev/null &&
 			mv -f "$rec_tmp" "$path_entry" 2>/dev/null ||
 			rm -f "$rec_tmp" 2>/dev/null
 	fi

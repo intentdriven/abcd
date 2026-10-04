@@ -4,13 +4,18 @@ slug: agent-communication-infrastructure
 spec_id: null
 kind: standalone
 suggested_kind: null
-reclassification_history: []
+reclassification_history:
+  - { date: 2026-10-03, from: standalone, to: superseded, reason: "Replaced by reserving work through a claim branch on the shared remote; its one-computer active-work file is excluded by the 2026-10-03 rulings (product thinker, 2026-10-03)" }
 blocked_by: [itd-121]
 builds_on: [itd-2609201916151817, itd-22]
 severity: major
+kind_at_supersession: standalone
+superseded_by: itd-2609091034175565
 ---
 
 # Multiple Agents Coordinate On Intent And Spec Work Without Duplicating Effort Or Producing Competing Artefacts
+
+> **Superseded by itd-2609091034175565** on 2026-10-03: Replaced by reserving work through a claim branch on the shared remote; its one-computer active-work file is excluded by the 2026-10-03 rulings (product thinker, 2026-10-03)
 
 ## Press Release
 

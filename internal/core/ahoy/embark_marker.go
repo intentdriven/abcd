@@ -1,8 +1,8 @@
 package ahoy
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -17,25 +17,32 @@ import (
 // probe cannot mispredict. changed reports whether the file was/would be written;
 // a symlinked or unwritable target returns a non-nil error and changed=false.
 //
-// It wraps the existing unexported classify/install machinery: dryRun maps
-// classifyMarker(path) → current→(false,nil), missing/outdated→(true,nil),
-// symlink or unplaceable→(false, err); a real run calls installMarkerFile(path) → its
-// error wrapped as (false, err), else (wrote, nil). classifyMarker folds a read
-// error into missing (detection's reading), but the write refuses a file it
-// cannot read, so the dry run re-reads a missing file and returns that same
-// refusal for anything but an absent one (iss-2610032048280232).
+// It wraps the existing unexported classify/install machinery: dryRun first
+// asks whether the file's folder can take the files a write creates beside it
+// (markerFolderRefusal, the write's own first check, iss-2610032202263648),
+// then maps classifyMarker(path) → current→(false,nil), missing/outdated→
+// (true,nil), symlink, unplaceable or unreadable→(false, err); a real run calls
+// installMarkerFile(path) → its error wrapped as (false, err), else (wrote,
+// nil). An unreadable file's refusal is the write's own: the dry run reads it
+// once more for the reason and words it as the write does, with the folder
+// taken out (iss-2610032048280232, iss-2610032202259011).
 func EnsureMarker(path string, dryRun bool) (changed bool, err error) {
 	if dryRun {
+		if ferr := markerFolderRefusal(path); ferr != nil {
+			return false, fmt.Errorf("cannot write marker to %s: %w", filepath.Base(path), ferr)
+		}
 		switch classifyMarker(path) {
 		case markerCurrent:
 			return false, nil
-		case markerMissing:
-			if _, rerr := fsutil.ReadGuarded(path, maxAhoyFileBytes); rerr != nil && !os.IsNotExist(rerr) {
-				return false, fmt.Errorf("cannot write marker to %s: it could not be read: %w", filepath.Base(path), rerr)
+		case markerMissing, markerOutdated:
+			return true, nil
+		case markerUnreadable:
+			_, rerr := fsutil.ReadGuarded(path, maxAhoyFileBytes)
+			if rerr == nil {
+				rerr = errors.New("it changed while it was read")
 			}
-			return true, nil
-		case markerOutdated:
-			return true, nil
+			return false, fmt.Errorf("cannot write marker to %s: %w", filepath.Base(path),
+				withoutFolder(path, fmt.Errorf("it could not be read: %w", rerr)))
 		case markerSymlink:
 			return false, fmt.Errorf("cannot write marker to %s: it is a symlink", filepath.Base(path))
 		case markerUnplaceable:

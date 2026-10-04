@@ -36,13 +36,15 @@ func CallerHome() string {
 // heuristics and therefore warn by design, so a LAN host or device name that
 // survived stage-one redaction would otherwise be committed in silence — the
 // very class of leak the stores exist to stop. Any surviving IDENTITY or
-// NETWORK span refuses the write whatever its severity; everything else still
-// gates on hard_fail. After the stage-one detector fixes this path is rarely
-// reachable, which is what a backstop is for.
+// NETWORK span refuses the write whatever its severity, and so does any
+// surviving TOKEN (IsTokenKind): a credential rule that only warns, so a
+// hash-like committed string cannot fail a gate, still names a key no store may
+// commit raw. Everything else still gates on hard_fail. After the stage-one
+// detector fixes this path is rarely reachable, which is what a backstop is for.
 func BlockingResidual(findings []Finding) []Finding {
 	var out []Finding
 	for _, f := range findings {
-		if f.Severity == SeverityHardFail || IsIdentityKind(f.Kind) {
+		if f.Severity == SeverityHardFail || IsIdentityKind(f.Kind) || IsTokenKind(f.Kind) {
 			out = append(out, f)
 		}
 	}

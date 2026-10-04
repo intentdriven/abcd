@@ -369,6 +369,21 @@ only at a terminal: `--yes` and a piped install never ask it, and list
 happens only on `retire`, only if the file still only repeats `AGENTS.md` at
 that moment, and only in your working tree, for you to commit.
 
+Setup also warns about what hides `AGENTS.md` from outside the repository's own
+files, and changes nothing for it: a personal conventions file at the
+repository root that the agent tool reads, a conventions file such as
+`CLAUDE.md` in any folder above the repository, and an installed agent tool
+older than the release that reads `AGENTS.md` on its own. The agent tool's
+user-level file in your home folder's settings folder is not named, since it
+leaves `AGENTS.md` read. Each warning is printed with the others, before the
+headline, and none stops setup. For the folders above the repository, setup
+only asks whether a file of that name exists: it reads nothing in it and takes
+no settings from above the repository. A settings folder it cannot search is
+passed over, and a folder it cannot look into at all ends the look. The version check runs the agent tool's own version command once, with a
+short time limit, and says nothing when the tool is absent, does not answer, or
+prints no version. It never runs a command it cannot trust: one found inside
+the repository, or one that others can write, is passed over without a word.
+
 Outside `.abcd/`, a default adoption names abcd in exactly three committed
 files, and nowhere else:
 

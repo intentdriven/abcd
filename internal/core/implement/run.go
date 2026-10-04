@@ -40,10 +40,6 @@ import (
 // runsRelPath is the store's root relative to the caller's home.
 var runsRelPath = abcdhome.Rel("runs")
 
-// storeDirPerm is the mode a run directory is created with: the run state is the
-// caller's own and nobody else's business.
-const storeDirPerm = 0o700
-
 // fileMode is the mode every file in the run state is created with.
 const fileMode = 0o600
 
@@ -127,7 +123,7 @@ func Open(rootSHA string) (*Run, error) {
 	}
 	for _, sub := range []string{claimsDirName, sessionsDirName} {
 		rel := runsRelPath + "/" + rootSHA + "/" + sub
-		if err := fsutil.EnsureRealDirAll(home, rel, storeDirPerm); err != nil {
+		if err := fsutil.EnsureRealDirAll(home, rel, abcdhome.DirMode); err != nil {
 			return nil, fmt.Errorf("cannot create the run state: %w", err)
 		}
 	}

@@ -41,3 +41,9 @@ func open() (master, terminal *os.File, err error) {
 	}
 	return m, s, nil
 }
+
+// unreadRequest asks how many bytes the master end has still to read: on
+// linux the master's own read buffer, FIONREAD, which the syscall package
+// names TIOCINQ. (TIOCOUTQ on a pty counts nothing: a write on the terminal
+// end goes straight to the master's buffer.)
+const unreadRequest = syscall.TIOCINQ

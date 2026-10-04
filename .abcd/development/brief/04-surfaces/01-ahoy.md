@@ -146,11 +146,45 @@ never billed.
 
 The key arrives on stdin and nowhere else. A flag would leave it in the process
 listing and the shell history, the install prompter echoes every answer into its
-transcript, a host's question tool would put it in an agent's context, and a
-terminal would echo it as it is typed, so stdin from a terminal is refused. For
-the same reason the walkthrough is this sub-verb, which the person runs with the
-key piped in, rather than a question the install pass asks: declining is not
-running it, and changes nothing.
+transcript, and a host's question tool would put it in an agent's context. Piped,
+it is read whole; at a terminal it is read on hidden input, echo off, after one
+line naming the provider, and an interrupt during the paste restores the
+terminal and writes nothing. For the same reason the walkthrough is this
+sub-verb, which the person runs, rather than a question the install pass asks:
+declining is not running it, and changes nothing.
+
+Run at a terminal with no model named, the setup lists the service's models
+with the key it holds (one request to the service's model list, which follows
+no redirect and gives up after ten seconds), offers the names abcd accepts as
+model identifiers in the plain-Terminal list, typing part of a name to narrow
+it, and verifies the model picked with one real completion before anything is
+written; a list is never taken as the verification. Off a terminal, a setup
+with no model named is refused.
+
+### The guided setup
+
+Inside a session, the guided form of the setup works its values out with the
+person one question a turn and ends by printing the one command, with every
+path it writes, for the person to paste into a terminal
+(itd-2610030821294016). It never sets the connection up itself, for any home:
+it writes nothing, reads no key home, never asks for the key, and refuses every
+flag that would set the connection up. Each turn returns one question, the
+question as the host's question tool takes it, and a resume object the next
+turn reads back; the guide replays every answer from the first question each
+turn, so an edited resume object cannot skip one. It asks for the address when
+none is given; offers to look up the service's models, showing the scheme and
+host first and sending one keyless request only on a yes; suggests the models
+the person's other connections already use that the service lists, at most
+three, and narrows the list by the typed part of a name with no second
+request, by the same rule the plain-Terminal list narrows by; carries the
+first listed ids that fit 32 KiB and the count it does not carry, asking for
+the model's full name when a typed part matches none carried; falls back to a
+typed model name, saying why, where the service publishes no list; asks
+whether the service takes a key and where the key lives, offering the
+credential store's three homes and never a key saved in the system keychain by
+hand; and, for an environment variable, offers at most three variable names
+ending in `_API_KEY`, never a value. A service that lists its models only for a
+key is picked from in the terminal step, so its command names no model.
 
 The key lives in one of the credential store's three homes (below), and a
 fourth answer, no key, sets up a local server that takes none.
@@ -208,7 +242,13 @@ credential it used.
 ## What abcd manages — repos and `~/.abcd.noindex/`
 
 abcd manages exactly one kind of folder, a **repository**, and keeps one
-user-scope directory for machine-local state.
+user-scope directory for machine-local state. Every writer creates that
+directory, and each folder in it, private to the account (`0700`), so the home
+is the same whichever command creates it first, the hook's bootstrap included;
+one that already exists keeps its mode. The records it writes there, the
+path-entry record and the registry's index among them, are `0600`, and one an
+earlier version wrote wider is narrowed when abcd next writes it
+(iss-2610032205304585).
 
 ```
 ~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
@@ -487,12 +527,12 @@ about, one question per category present, never one per item.
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
 | `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
-| `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
+| `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
-| `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a saved target or import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
+| `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
 **The artefact kind is a gap until it is declared** (itd-2609150819432059). A
@@ -526,6 +566,47 @@ terminal a human types them; off one, a caller pipes them, which is how a host
 agent drives the git-identity pin, the one approval no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
+
+**At a terminal the questions are drawn** (spc-2610030911534855,
+itd-2610030810370060). When stdin, stdout and stderr are all terminals the
+install asks through the drawn door instead of the line reader: each value
+question and each approval is built as the shared question type from core's
+own words (`ahoy.SetupValueQuestion`, `ahoy.SetupConfirmQuestion`), chipped
+"Setup Q<n>" in the order setup asks it (no total, since the gaps decide how
+many are asked), and put through the answer loop on stderr: arrow keys first,
+a number, or decide later, which answers nothing, so a config value stays
+unset and its gap listed while a question with a default takes it, as an
+unanswered question does. Ctrl-C ends the run with exit 130 and keeps the
+answers given before it. Off a terminal the line reader stays, unchanged, and
+an answers file named on the command line answers the questions wherever the
+install runs: each question is written as plain text (the drawing in Mono at
+80 columns, no escape byte), and one the file does not answer stops the run
+with exit 2, naming the question's id, the flag that answers it and the file
+line that would, with no answers record written. The file is checked before
+the first write: an entry whose question has a fixed set of answers must
+give one of them, and every config value the run would ask must be
+answered, by its flag or by the file, walked in the order and as far as the
+install asks them (`ahoy.WalkConfigValueQuestions`), so either refusal says
+that nothing was written. The adoption and the approvals are asked before the
+first write too. A stop at a question the run itself decides to ask (the
+status line's elements, the offers, the artefact kind) leaves the steps before
+it done, and says so. A file never answers the questions put only to a person
+at a terminal (the git identity, the drain rule, installing a tool).
+
+**Every answer is recorded with where it was given.** The drawn door and the
+answers file write one answers record through `interview.Write`: per question,
+the sanitised question as asked, the value, the note and `answered_in`,
+`Terminal` or `Claude Code` and nothing else. The drawn door stamps
+`Terminal`; an answers-file entry carries its own, or takes the place the
+run names for its file (`Terminal` unless it names another), which the plugin
+page names as `Claude Code` on the host path. The repository's answers go to
+`.abcd/.work.local/interviews/setup-<stamp>.json`, never creating the local
+tier; the machine-wide ones (the status line, the machine's routing table)
+to `~/.abcd/interviews/`, made through the guarded home-scope maker. The stamp
+is in the name only, so two runs given the same answers write the same bytes
+and the same configuration, whichever door asked. The line reader writes no
+record, and neither does an install that ends aborted (the adoption declined)
+or refused, which changed nothing.
 
 **Every value question carries its own explanation** (iss-163). A question that
 picks one of several values (the repo visibility, the docs target, the
@@ -570,6 +651,40 @@ project and only the person can end, such as a tool's own conventions file that
 holds their words (the `conventions-file` row above). The text render prints
 them before anything else, and every outcome past detection carries them, the
 early returns included.
+
+Install, and install alone, adds the host-reach warnings after them
+(`conventions.host_reach` and `conventions.host_version`, never resolvable and
+never a refusal): neither `Detect`, which the board and the hooks call, nor
+`Managed`, which the status line calls on every refresh, makes them, because
+the check walks every folder above the project and starts the agent tool,
+which a call made on every prompt or refresh must not. That is why the
+owner-file warnings, which ride detection's gaps, also appear in the dry run
+and the doctor report, and the host-reach ones do not. Install makes them only
+once the run is past its refusals and its adoption question, so a run that
+refuses or is declined starts nothing. A `CLAUDE.local.md` at the project root
+is named and never read, classified or offered for removal. From the root's
+parent up to the file-system root, each folder is asked with `lstat` alone for
+`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, skipping the user-level
+`.claude/CLAUDE.md` in the home folder but naming a `CLAUDE.md` directly in it.
+A `.claude` folder that cannot be searched hides only its own `CLAUDE.md`, and
+the walk goes on past it; a folder whose own entries cannot be looked for ends
+the walk quietly. Each path is shown through `fsutil.RedactHome`, and each
+warning carries one fixed sentence: "abcd reads no settings from
+folders above this project. This check only asks whether a file of this name
+exists there; it reads nothing in it and changes nothing abcd does, because the
+agent tool itself reads that folder." The presence check is not a read of
+configuration from above the working tree, which the loader's rule forbids: it
+takes nothing, so the most a hostile file above the tree can cause is a
+warning. The version warning asks the `claude` command on `PATH` once for its
+version (`host_version.go`), through the runner's one launch primitive for a
+vendor binary (`runner.Exec`): the command is refused when it resolves to a
+relative path or inside the project, or when group or other can write it or a
+folder it is reached through, and it runs with the git-scrubbed environment,
+each stream bounded, and a three-second limit that kills the process group it
+leads. The warning reads the first `major.minor.patch` the command prints on
+stdout, and warns, naming no version, when it is below the one floor constant,
+cited beside it from the 2026-10-03 research note. No command, no answer, an
+error exit or no parsable version raises nothing.
 
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
@@ -845,13 +960,16 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--answer` | string |
 | `--base-url` | string |
 | `--env` | string |
 | `--field` | string |
 | `--file` | string |
+| `--guide` | bool |
 | `--home` | string |
 | `--key` | string |
 | `--model` | stringArray |
+| `--resume` | string |
 
 ### `abcd ahoy credential`
 
@@ -878,6 +996,8 @@ Sub-verbs: none.
 |---|---|
 | `--adopt` | bool |
 | `--allow-stale-binary` | bool |
+| `--answered-in` | string |
+| `--answers` | string |
 | `--attribution` | bool |
 | `--bin-dir` | string |
 | `--dev` | bool |

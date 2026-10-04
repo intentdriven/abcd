@@ -228,7 +228,7 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	// its write are reached through that descriptor, so a link swapped in
 	// after the judgement is refused rather than written through
 	// (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), 0o700)
+	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), abcdhome.DirMode)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return false, fmt.Errorf("credential: nothing was written: %v", err)
 	}
@@ -511,3 +511,7 @@ func scanIndex(body []byte) error {
 
 // envNameRe is an environment variable's name as a pointer names it.
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// ValidEnvName reports whether name is an environment variable's name as an
+// external pointer takes it.
+func ValidEnvName(name string) bool { return envNameRe.MatchString(name) }
