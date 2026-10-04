@@ -2233,3 +2233,12 @@ Links: itd-2610031215002409 builds on itd-2610031214560142 and itd-2610030810370
 | the tense of a brief | working hypothesis | the decision log, and itd-61, itd-142, itd-143 |
 
 Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "we should file what we've decided" (one defensible routing: the mechanics are one capability; the hypothesis is not yet a ruling). Routing not put to a separate question; graded as unconfirmed.
+
+## 2026-10-04: labs run end to end (product thinker, routing decided by the facilitator)
+
+| part | type | home |
+|---|---|---|
+| a lab runs end to end from a question, with the hand-set-up steps of the first downstream lab recorded | capability | intent itd-2610040822131032 (draft) |
+| a lab in the real project rather than a snapshot | defect in the discipline | existing iss-2610040758486433 |
+
+Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "We only need an intent or something" (one defensible routing). Routing not put to a separate question; graded as unconfirmed.

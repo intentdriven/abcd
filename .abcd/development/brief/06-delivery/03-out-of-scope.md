@@ -130,6 +130,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
 - `itd-2610031348087517` — setup asks whether abcd keeps parts of the README current, and which (draft; routing confirmed 2026-10-03)
 - `itd-2610040817105016` — Every brief section shows what realises it, and a brief change names what it touches (draft; refines itd-61; revisited after the downstream lab)
+- `itd-2610040822131032` — A lab runs end to end from a question the product thinker asks (draft; builds on itd-2609212137128014; shaped after the downstream brief lab)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
