@@ -44,7 +44,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-25` — `/abcd:dredge` cross-corpus synthesist (split from itd-4 capture)
 - `itd-26` — `/abcd:loot` OSS-vendor with provenance (pulled to an earlier phase on 2026-05-08)
 - `itd-30` — Design fictions as an alternative intent capture format (`--format=fiction`)
-- `itd-33` — Agent-communication infrastructure (multi-agent coordination via `.abcd/coordination/`)
 - `itd-35` — `/abcd:audit lifeboat <path>` lifeboat-integrity verification (sibling sub-verb under itd-16's umbrella; captured 2026-05-08)
 - `itd-39` — Scope-aware memory retrieval (extends itd-3's recall hook to the memory store)
 - `itd-41` — Phase negotiator — Socratic phase-proposer (per [adr-10](../../decisions/adrs/0010-phase-negotiator-grounded-tradeoffs.md))
@@ -107,7 +106,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609151838327688` — an opt-in adapter to a local message broker brings push delivery and cross-machine reach to the session mailbox (sequenced after the mailbox)
 - `itd-2609151658486398` — a release cut publishes the security advisories its fixes close, and closes those resolved as won't-fix (the publication step the 2026-08-27 advisory-handling pilot named as its target)
 - `itd-2609091416304128` — `capture resolve` and `capture wontfix` refuse a record already terminal at the local `origin/main` ref as last fetched, stating the ref's age and performing no fetch; the same judgement rendered read-only on `abcd <record-id>` (split from itd-2609091034175565 on the same ruling; the third clause of iss-2609020716570699's remedy, RS001's answer moved earlier)
-- `itd-2609091034175565` — A record says who is working on it before anyone else starts: the claim verb, the session lease and the write-verb refusals, with the `claimed_by` stamp bounded by a two-release migration (promoted from iss-2609020716570699; the read-only listing and the upstream refusal were split out on 2026-09-09; not ready — carries the refusal-surface, liveness and pushed-price questions as open questions)
 - `itd-2609150819439571` — errata as a fourth terminal disposition on a durable record, appended rather than edited, so a correction is distinguishable from the error it corrects (promoted from iss-2609100505146979)
 - `itd-2609150819440345` — a claim record beside the machine-scoped worktree store says which session holds which worktree, branch or record, replacing the per-session handshake (promoted from iss-2609100519122086)
 - `itd-2609151138388536` — the decisions log becomes a folder of individually minted decision records with an assembled index, `DECISIONS.md` a symlink to it, in abcd and in every managed repository; the shape retires the decisions-append gate (the rule is adr-2609151138420062; promoted from iss-2609100507439414)
@@ -129,6 +127,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
 - `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
 - `itd-2610031651058674` — abcd's check reports README parts that have gone stale, and writes nothing (draft; builds on itd-2610031348087517)
+- `itd-2610031259176838` — Outside contributors reserve work through a draft pull request that abcd honours (draft; builds on itd-2609150819440345; not urgent)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
