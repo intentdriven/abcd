@@ -284,7 +284,10 @@ plugin surface, and a future MCP server share one engine.
   ship. Its native implementation is pure Go with no external dependency: a
   bundled secret-pattern set plus the probed machine identity, layered with an
   optional per-repo `.abcd/config/pii.json` override that may raise a severity
-  but never lower one past the floor. It fails closed — an override that cannot
+  but never lower one past the floor. A bundled rule is raised by its pattern
+  name, its regex and kind staying the bundled ones: `{"patterns":
+  {"sk_key_generic": {"severity": "hard_fail"}}}` makes the plain `sk-` key rule,
+  which warns by default, fail `launch` on a committed key. It fails closed — an override that cannot
   be read, parsed, or compiled marks the scanner unavailable rather than letting
   a caller sanitise with a silently weakened pattern set — and redaction masks by
   byte span, so two secrets on one line cannot leak each other through the

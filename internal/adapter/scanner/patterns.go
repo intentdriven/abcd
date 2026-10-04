@@ -220,9 +220,13 @@ func DefaultPatterns() []Pattern {
 		},
 		{
 			// OpenAI's legacy user key: sk-, 20 alphanumerics, T3BlbkFJ (the base64
-			// of "OpenAI") and 20 more. The shape is gitleaks' openai-api-key rule,
-			// its second alternative verbatim (cmd/generate/config/rules/openai.go),
-			// which also carries no trailing boundary.
+			// of "OpenAI") and 20 more. The body is gitleaks' openai-api-key rule,
+			// its second alternative (cmd/generate/config/rules/openai.go). Its end
+			// is not: gitleaks closes the rule with a terminator class (a quote, a
+			// backtick, whitespace, ';', an escaped newline or the end of input),
+			// where this rule, as every token rule here, carries no trailing
+			// boundary at all, so a key followed by '_' or a letter is still
+			// caught (trailing_boundary_test.go).
 			Name: "openai_legacy_key", Kind: "token:openai_legacy", Label: "OpenAI legacy API key (sk-...T3BlbkFJ...)",
 			Re: openAILegacyKeyRe, Severity: SeverityHardFail,
 			Suggestion: "DELETE AND ROTATE",
@@ -236,8 +240,10 @@ func DefaultPatterns() []Pattern {
 			// every store-before-commit redactor masks every finding whatever its
 			// severity (Redact), and the sweeps and backstops that guard a write
 			// treat a token: kind as a secret whatever its severity (IsTokenKind),
-			// as the guided connect does when it refuses one as a typed name. The
-			// 32-character floor keeps a model id such as sk-tuned/7b out. A key the more specific rules above name is theirs:
+			// as the guided connect does when it refuses one as a typed name. A
+			// repository that wants it to block raises it by this name in
+			// .abcd/config/pii.json. The 32-character floor keeps a model id such as
+			// sk-tuned/7b out. A key the more specific rules above name is theirs:
 			// sk-ant-, sk-proj-, sk-svcacct-, sk-admin- and sk-or-v1- break the
 			// run with a '-' before it starts, and a legacy key, all
 			// alphanumerics, is skipped here so it is reported once, as

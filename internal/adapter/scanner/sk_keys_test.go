@@ -275,3 +275,22 @@ func TestLongerOpenRouterBodyIsMaskedToItsEnd(t *testing.T) {
 		t.Errorf("the body's tail survived redaction: %q", out)
 	}
 }
+
+// TestPlainSKKeyCanBeRaisedToHardFail: the opt-in internal/README.md states.
+// A repository names the bundled rule in .abcd/config/pii.json and its plain
+// keys then hard-fail; the regex and the kind stay the bundled ones.
+func TestPlainSKKeyCanBeRaisedToHardFail(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".abcd/config/pii.json", `{"patterns": {"sk_key_generic": {"severity": "hard_fail"}}}`)
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bad, why := sc.Unavailable(); bad {
+		t.Fatalf("the override degraded the scanner: %s", why)
+	}
+	fs := sc.ScanText(plainSKKey(53, 40), "f")
+	if len(fs) != 1 || fs[0].Kind != "token:sk_generic" || fs[0].Severity != SeverityHardFail {
+		t.Fatalf("want one token:sk_generic at hard_fail, got %+v", fs)
+	}
+}
