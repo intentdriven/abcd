@@ -1,7 +1,7 @@
 ---
 id: adr-2610030720195401
 slug: abcd-keeps-its-own-folders-out-of-desktop-indexing-only-by
-status: proposed
+status: accepted
 date: 2026-10-03
 supersedes: null
 superseded_by: null
@@ -20,7 +20,7 @@ The computer's search settings, its search privacy list among them, are the pers
 
 ## Decision
 
-abcd keeps a folder out of desktop indexing only by changing that folder itself, inside the space abcd already owns (a folder name the indexer honours: the `.noindex` suffix, which the intent's decision 2 chose for the home). It never edits the computer's search settings or privacy list, never asks for administrator rights to do so, and never touches a folder outside its own space. A person who wants a system-wide exclusion sets it themselves. Routed by the itd-84 decomposition; the product thinker confirmed the routing on 2026-10-03, as the decomposition-calibration research note records. It stays `proposed` until the intent is planned.
+abcd keeps a folder out of desktop indexing only by changing that folder itself, inside the space abcd already owns (a folder name the indexer honours: the `.noindex` suffix, which the intent's decision 2 chose for the home). It never edits the computer's search settings or privacy list, never asks for administrator rights to do so, and never touches a folder outside its own space. A person who wants a system-wide exclusion sets it themselves. Routed by the itd-84 decomposition; the product thinker confirmed the routing on 2026-10-03, as the decomposition-calibration research note records. It stayed `proposed` until the intent's dated receipt (criterion D6) was taken, and was accepted with it on 2026-10-04.
 
 ## Alternatives Considered
 
@@ -31,4 +31,4 @@ abcd keeps a folder out of desktop indexing only by changing that folder itself,
 
 ## Consequences
 
-The method is limited to a name the indexer honours per folder. No interface reports whether a folder is scanned, so whether an OS version honours the name is a dated receipt per version; a version that stops honouring it is a finding put to the person, never an escalation to system settings. A brief invariant stating the rule is owed in the change that ships itd-2610030720038073.
+The method is limited to a name the indexer honours per folder. No interface reports whether a folder is scanned, so whether an OS version honours the name is a dated receipt per version; a version that stops honouring it is a finding put to the person, never an escalation to system settings. The rule is brief invariant 21, landed with this record's acceptance.
