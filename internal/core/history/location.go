@@ -155,7 +155,13 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 		}
 	} else {
 		res.Base = filepath.Join(home, filepath.FromSlash(userStoreRelPath))
-		chain = []string{abcdhome.Path(home), res.Base}
+		// abcd's home is created here, first and on its own, so the one
+		// mode every writer of it hands is visible at the call
+		// (iss-2610032205304585).
+		if err := fsutil.EnsureRealDir(abcdhome.Path(home), abcdhome.DirMode); err != nil {
+			return Resolution{}, storeDirFault(abcdhome.Path(home), err)
+		}
+		chain = []string{res.Base}
 	}
 	res.Records = filepath.Join(res.Base, rootSHA, recordsDirName)
 	res.Staging = filepath.Join(res.Base, rootSHA, stagingDirName)

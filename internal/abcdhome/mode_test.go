@@ -135,10 +135,11 @@ func homeModeCalls(fset *token.FileSet, f *ast.File, allowed map[string]bool) ([
 	return out, judged
 }
 
-// homeWriterFloor is how many home writers the tree held when the rule was
-// written; a scan judging fewer is not looking at them (a renamed helper, a
-// changed walk) and fails rather than passing on nothing.
-const homeWriterFloor = 11
+// homeWriterFloor is how many home writers the scan judged when the rule was
+// written (measured, 2026-10-04); a scan judging fewer is not looking at them
+// (a renamed helper, a changed walk) and fails rather than passing on
+// nothing. A writer removed on purpose lowers it in the same change.
+const homeWriterFloor = 14
 
 // TestEveryHomeWriterMakesTheHomePrivate is iss-2610032205304585: every
 // writer that creates abcd's home, or a folder in it, hands
@@ -166,6 +167,7 @@ func TestEveryHomeWriterMakesTheHomePrivate(t *testing.T) {
 			}
 		}
 	}
+	t.Logf("judged %d home writers (floor %d)", judged, homeWriterFloor)
 	if judged < homeWriterFloor {
 		t.Fatalf("the scan judged %d home writers, fewer than the %d the tree held; it is not looking at them", judged, homeWriterFloor)
 	}
