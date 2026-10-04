@@ -532,7 +532,10 @@ func checkOutbound(root, text, label, at string, rs *reasons) error {
 
 // checkPrivacy holds one rendered document to the bar the launch scan holds the
 // same file to: any hard_fail finding of the canonical scanner (a token, a key,
-// the caller's own home or identity) adds a reason. The documents are public
+// the caller's own home or identity) adds a reason, and so does a token whatever
+// its severity (scanner.IsTokenKind): a credential rule that only warns, so a
+// hash-like string already committed cannot fail the launch scan, still names a
+// key that newly composed public text must not carry. The documents are public
 // release text, so a finding is refused here, where the composer can drop it,
 // rather than written and found by the launch scan after a person may have
 // committed it (iss-2609290405381338). The detail names the kind and the line,
@@ -547,7 +550,7 @@ func checkPrivacy(root, text, label, at string, rs *reasons) error {
 		return fmt.Errorf("the %s's privacy check: refusing to judge with a degraded scanner config: %s", label, reason)
 	}
 	for _, f := range sc.ScanText(text, label) {
-		if f.Severity != scanner.SeverityHardFail {
+		if f.Severity != scanner.SeverityHardFail && !scanner.IsTokenKind(f.Kind) {
 			continue
 		}
 		rs.add(ReasonPrivacy, at, "the rendered %s carries a %s on line %d; remove it (release text is public, "+

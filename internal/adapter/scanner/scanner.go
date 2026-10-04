@@ -1459,7 +1459,10 @@ func (s *Scanner) byteScanDrops(f Finding, meta *metadataFields) bool {
 // secretPatterns returns the subset of patterns that is meaningful on raw
 // bytes: every hard-fail rule that is not an identity kind — the token and
 // private-key rules, the harness-leak rules, and a hard-fail override of the
-// same shape. A session URL is a long literal with no chance collision, and
+// same shape — and every token rule whatever its severity (IsTokenKind), so a
+// credential rule that only warns (sk_key_generic) is swept glued behind a word
+// character and read on bytes as the hard-fail ones are. Its severity still
+// travels with each finding, so a warn token counts as no hard-fail anywhere. A session URL is a long literal with no chance collision, and
 // AGENTS.md declares the harness-leak class as one definition reaching launch,
 // so both its rules run on bytes: the session URL is caught anywhere on a
 // line, and the attribution footer fires on bytes exactly as it does on text
@@ -1471,7 +1474,7 @@ func (s *Scanner) byteScanDrops(f Finding, meta *metadataFields) bool {
 func secretPatterns(patterns []Pattern) []Pattern {
 	out := make([]Pattern, 0, len(patterns))
 	for _, p := range patterns {
-		if p.Severity != SeverityHardFail || IsIdentityKind(p.Kind) {
+		if (p.Severity != SeverityHardFail && !IsTokenKind(p.Kind)) || IsIdentityKind(p.Kind) {
 			continue
 		}
 		out = append(out, p)
