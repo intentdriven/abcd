@@ -516,7 +516,9 @@ hook, the git configuration, HEAD and the refs, a submodule's hooks, each
 worktree's entry: its HEAD, common directory, working-tree path, own
 configuration and lock), or it is a push receipt in any worktree git lists, and
 whatever wrote it, since abcd cannot tell the role's writes from another
-program's: a second interview run in the same checkout stops this one. Only
+program's: a second interview run in the same checkout stops this one, and so
+does work in another worktree of the repository while a turn runs (a commit or
+checkout there moves its HEAD; a preflight there mints a push receipt). Only
 the run's own turn directory is the role's to write, and two paths that execute
 nothing are not watched: a file named `.DS_Store`, and
 `.claude/scheduled_tasks.lock` (every other path under `.claude/` is). The
