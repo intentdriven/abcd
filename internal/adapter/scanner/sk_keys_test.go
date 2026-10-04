@@ -257,3 +257,21 @@ func TestWarnTokenNeverCountsAsAHardFail(t *testing.T) {
 		t.Errorf("the plain key was not reported in both files (%v): %+v", seen, res.Findings)
 	}
 }
+
+// TestLongerOpenRouterBodyIsMaskedToItsEnd — from the security review of
+// iss-2610040202190813. A rule taking exactly 64 hex reports a longer body over
+// its first 64 and leaves the rest raw after Redact, so the body is a floor;
+// the 63-hex near miss stays quiet (TestSKKeyNearMissesStayQuiet).
+func TestLongerOpenRouterBodyIsMaskedToItsEnd(t *testing.T) {
+	key := "sk-or-v1-" + testsecret.SyntheticHex(54, 72)
+	line := "OPENROUTER_API_KEY=" + key + " end"
+	fs := scanLine(line)
+	got := tokenFindings(fs)
+	if len(got) != 1 || got[0].Kind != "token:openrouter" || got[0].Matched != key {
+		t.Fatalf("want one token:openrouter over the whole %d-byte key, got %+v", len(key), got)
+	}
+	out, _ := Redact(line, fs)
+	if tail := key[len(key)-8 : len(key)-2]; strings.Contains(out, tail) {
+		t.Errorf("the body's tail survived redaction: %q", out)
+	}
+}

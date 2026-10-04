@@ -208,12 +208,14 @@ func DefaultPatterns() []Pattern {
 		{
 			// OpenRouter's key: sk-or-v1- and 64 lower-case hex (iss-2610040202190813).
 			// GitHub secret scanning carries it as the partner pattern
-			// openrouter_api_key; the prefix is long and the body fixed, so the rule
-			// takes nothing else. The plain sk- rule below cannot reach it: "or" is
-			// followed by '-', which its alphanumeric run excludes. No trailing \b,
-			// as for every token rule here: a key followed by '_' keeps no boundary.
+			// openrouter_api_key. The body is a floor, not a fixed width: a longer
+			// hex run is taken whole, so its tail is masked to its end rather than
+			// left raw after the 64th character. The plain sk- rule below cannot
+			// reach it: "or" is followed by '-', which its alphanumeric run
+			// excludes. No trailing \b, as for every token rule here: a key
+			// followed by '_' keeps no boundary.
 			Name: "openrouter_key", Kind: "token:openrouter", Label: "OpenRouter API key (sk-or-v1-)",
-			Re: regexp.MustCompile(`\bsk-or-v1-[a-f0-9]{64}`), Severity: SeverityHardFail,
+			Re: regexp.MustCompile(`\bsk-or-v1-[a-f0-9]{64,}`), Severity: SeverityHardFail,
 			Suggestion: "DELETE AND ROTATE",
 		},
 		{
