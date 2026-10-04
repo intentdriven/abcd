@@ -599,3 +599,36 @@ func TestStoppedQuestionEndsTheVerb(t *testing.T) {
 	}()
 	_ = verb("not a stop")
 }
+
+// TestNewPrompterDrawsOnlyWhenAllThreeAreTerminals: the drawn door is chosen
+// only when stdin, stdout and stderr are all terminals; with any one of them
+// not a terminal the line reader stays the prompter, so a piped install
+// behaves as before.
+func TestNewPrompterDrawsOnlyWhenAllThreeAreTerminals(t *testing.T) {
+	in, _ := pipeWith(t, "")
+	out, errOut := tempStream(t, "stdout"), tempStream(t, "stderr")
+	swap := isTerminalStream
+	t.Cleanup(func() { isTerminalStream = swap })
+	for _, notTerminal := range []*os.File{nil, in, out, errOut} {
+		isTerminalStream = func(f *os.File) bool { return f != notTerminal }
+		cmd := NewRootCommand()
+		cmd.SetIn(in)
+		cmd.SetOut(out)
+		cmd.SetErr(errOut)
+		p := newPrompter(cmd)
+		_, drawn := p.(*drawnPrompter)
+		_, stream := p.(*stdinPrompter)
+		if want := notTerminal == nil; drawn != want || stream == want {
+			t.Errorf("with %v not a terminal: got %T", notTerminal, p)
+		}
+	}
+	// A writer that is no file at all is no terminal either.
+	isTerminalStream = func(*os.File) bool { return true }
+	cmd := NewRootCommand()
+	cmd.SetIn(in)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(errOut)
+	if p := newPrompter(cmd); fmt.Sprintf("%T", p) != "*cli.stdinPrompter" {
+		t.Errorf("with stdout a buffer: got %T", p)
+	}
+}
