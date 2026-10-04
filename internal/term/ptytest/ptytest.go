@@ -32,6 +32,11 @@ type Pty struct {
 	mu   sync.Mutex
 	out  bytes.Buffer
 	done chan struct{}
+	// pending counts chunks the drain has read and not yet appended, and
+	// last is when the drain last appended one: Settled reads both, so a
+	// chunk in flight is never taken for silence.
+	pending int
+	last    time.Time
 }
 
 // Open opens a pseudo-terminal, sizes it cols by rows, and starts draining the
@@ -67,7 +72,12 @@ func (p *Pty) drain() {
 		n, err := p.Master.Read(buf)
 		if n > 0 {
 			p.mu.Lock()
+			p.pending++
+			p.mu.Unlock()
+			p.mu.Lock()
 			p.out.Write(buf[:n])
+			p.pending--
+			p.last = time.Now()
 			p.mu.Unlock()
 		}
 		if err != nil {
@@ -81,6 +91,32 @@ func (p *Pty) Output() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.out.String()
+}
+
+// settleDeadline bounds how long Settled waits for the output to settle.
+const settleDeadline = 10 * time.Second
+
+// Settled is the output once it has settled: no chunk in flight in the drain
+// and no new byte for quiet. A check that something did NOT reach the
+// terminal reads this, never Output, since a read taken before the drain has
+// read the child's last bytes passes falsely. It fails the test when the
+// output has not settled within settleDeadline. A check that something DID
+// reach the terminal waits for it with WaitFor instead.
+func (p *Pty) Settled(t testing.TB, quiet time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(settleDeadline)
+	for {
+		p.mu.Lock()
+		out, pending, last := p.out.String(), p.pending, p.last
+		p.mu.Unlock()
+		if pending == 0 && time.Since(last) >= quiet {
+			return out
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the terminal's output did not settle for %s within %s; it shows:\n%q", quiet, settleDeadline, out)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // WaitFor waits until the output after offset bytes holds sub, and returns
