@@ -19,6 +19,9 @@ var linkScopeExempt = map[string]string{
 	// A block ahoy writes into another repository's CLAUDE.md; its links
 	// resolve there, not here.
 	"internal/core/ahoy/defaults/": "templates written into other repositories",
+	// A managed project's conventions file as setup planted it before the home
+	// was renamed, which the ahoy tests read as input.
+	"internal/core/ahoy/testdata/": "another repository's file, read as test input",
 }
 
 // TestEveryCommittedMarkdownFileHasItsLinksChecked is the link half of iss-46's
