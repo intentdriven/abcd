@@ -126,6 +126,8 @@ The draft's title and its file name disagree (the slug is the issue's, reused by
 
 ## Audit Notes
 
+A8 is evidenced so far by a scripted receipt (step 1: `claude -p` at the branch tip, dated, Claude Code version named, canary answered); the receipt from a person's own fresh session that the spec's Approach requires was requested on 2026-10-04 and is outstanding.
+
 <!-- abcd-review: OWED receipt=rcp-2444af75d52c -->
 Fidelity review OWED (receipt rcp-2444af75d52c).
 <!-- abcd-review-end receipt=rcp-2444af75d52c -->
