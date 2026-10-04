@@ -50,10 +50,16 @@ any row it carries is still format-checked.
 - **Audits before it touches anything.** It produces a gap report covering
   existing structure, documentation shape, decision and working-state hygiene,
   principles followed or violated, and privacy, and presents it before adopting
-  anything.
+  anything. A tool's own conventions file it finds, one an agent tool reads in
+  place of `AGENTS.md`, is named as setup names it, as holding the owner's words
+  or as only repeating `AGENTS.md`, and the report points at setup's offer to
+  retire the second kind rather than acting on it.
 - **Adopts the conventions.** The three-tier layout; a merged, never
   overwritten, `AGENTS.md` carrying verified repo facts plus a marked
   working-conventions block; a registered identity block; and the commit gates.
+  `AGENTS.md` is the one conventions file it writes: it makes no other tool's
+  conventions file, as a link or as a copy
+  ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md)).
 
 ## Where the binary does the work
 
@@ -69,11 +75,13 @@ The ahoy installer is the adopt phase's workhorse, and it does more than write
 the commit gates. In one run it writes the repo's settings file with its
 visibility, oracle backend and scan depth, writes its rule-loader overrides file,
 installs a copy of the binary on `PATH`, records the repo in the machine's own
-store, and offers to pin the git commit identity. It leaves `CLAUDE.md` and
-`AGENTS.md` as the repo wrote them: abcd's own managed rule-loader block names
-the tool, so it lands in `AGENTS.md`, and only there, where the project chooses
-that docs target, and the repo classifies as managed on its registry entry without
-it. It runs a second time, with the installer's attribution flag, where the user
+store, and offers to pin the git commit identity. abcd's own managed
+rule-loader block names the tool, so it lands in `AGENTS.md`, and only there,
+where the project chooses that docs target, and the repo classifies as managed on
+its registry entry without it. A tool's own conventions file at the root, such as
+`CLAUDE.md`, the installer never edits: one holding the repo's own words is named
+in a warning, and one that only repeats `AGENTS.md` is offered for retirement at
+a terminal and removed only on a yes. It runs a second time, with the installer's attribution flag, where the user
 opts in: that run installs the committed `prepare-commit-msg` prompt asking every
 commit to declare whether a tool assisted it, and the choice is recorded, so a
 later install without the flag keeps the hook. The flag's spelling, like the docs
