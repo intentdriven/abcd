@@ -26,7 +26,7 @@ reaches the network, even within the one command that does.
 
 Nothing about the reading is new. The installed-version reading and the floor
 are owned by
-[spc-2610031156364295](spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
+[spc-2610031156364295](../closed/spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
 step 5, which ships first; this spec widens that one reading from one harness
 to a table of them, gives each outcome a reason, and puts the result in the
 update check.

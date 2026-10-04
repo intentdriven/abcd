@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2610030814013772](../../intents/planned/itd-2610030814013772-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
+[itd-2610030814013772](../../intents/shipped/itd-2610030814013772-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
 (abcd's projects keep one conventions file, AGENTS.md, and Claude Code reads
 it directly) under its standing rule,
 [adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md).
@@ -244,8 +244,8 @@ removal is from the working tree only; the person commits it.
 
 The question is a fixed setup question, so it is held to the asking rules the
 two question specs set
-([spc-2610030944505997](../closed/spc-2610030944505997-asking-and-layout.md) and
-[spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md))
+([spc-2610030944505997](spc-2610030944505997-asking-and-layout.md) and
+[spc-2610030911534855](../open/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md))
 once they land: the file and what it repeats quoted first, the question last,
 and the decide-later answer last.
 

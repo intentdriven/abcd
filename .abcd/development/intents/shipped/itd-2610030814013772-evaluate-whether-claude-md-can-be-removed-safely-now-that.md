@@ -126,7 +126,9 @@ The draft's title and its file name disagree (the slug is the issue's, reused by
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-2444af75d52c -->
+Fidelity review OWED (receipt rcp-2444af75d52c).
+<!-- abcd-review-end receipt=rcp-2444af75d52c -->
 
 ## Grounds
 
