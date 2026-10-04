@@ -287,7 +287,11 @@ plugin surface, and a future MCP server share one engine.
   but never lower one past the floor. A bundled rule is raised by its pattern
   name, its regex and kind staying the bundled ones: `{"patterns":
   {"sk_key_generic": {"severity": "hard_fail"}}}` makes the plain `sk-` key rule,
-  which warns by default, fail `launch` on a committed key. It fails closed — an override that cannot
+  which warns by default, fail `launch` on a committed key. A pattern's `kind`
+  carries a consequence of its own: a custom pattern whose kind begins `token:`
+  is a secret at any severity, so even at warn it joins the glued sweep and
+  every write-time backstop refuses a span of it that redaction did not mask.
+  The scanner fails closed — an override that cannot
   be read, parsed, or compiled marks the scanner unavailable rather than letting
   a caller sanitise with a silently weakened pattern set — and redaction masks by
   byte span, so two secrets on one line cannot leak each other through the
