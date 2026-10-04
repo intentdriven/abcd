@@ -213,7 +213,8 @@ its number, and Ctrl-C ends the run with exit 130, keeping the answers given
 before it. Every answer is recorded, with the question as it was asked and
 where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
 and the answers that change the machine (the status line, the machine's
-routing table) in `~/.abcd/interviews/`. Through this page, put each
+routing table) in `~/.abcd/interviews/`; a run that ends aborted or
+refused changed nothing and records nothing. Through this page, put each
 question to the user with the host's question tool, quoting the question
 exactly as the install writes it, then pass their answers in an answers file
 and say where they were given:

@@ -798,3 +798,37 @@ func TestSetupStopSaysWhatWasWritten(t *testing.T) {
 		t.Fatalf("a stop after the first write: %q", after.msg)
 	}
 }
+
+// TestDeclinedOrRefusedInstallRecordsNothing: an install that ends aborted
+// (the adoption declined) or refused changed nothing, so it writes no
+// answers record and says nothing about one, even with the local tier
+// standing; one that ran writes its record.
+func TestDeclinedOrRefusedInstallRecordsNothing(t *testing.T) {
+	for _, status := range []string{"aborted", "refused", "clean"} {
+		t.Run(status, func(t *testing.T) {
+			repo, home := setupRecordsPlace(t)
+			p := &answersPrompter{
+				setupQuestions: setupQuestions{cwd: repo, w: io.Discard},
+				file:           interview.Answers{Answers: []interview.FileAnswer{{ID: "adopt", Value: "no"}}},
+				stamp:          interview.Terminal,
+			}
+			var errOut bytes.Buffer
+			if _, err := runSetup(repo, p, &errOut, func() (ahoy.InstallResult, error) {
+				p.Confirm("Adopt this unmanaged repo into abcd?")
+				return ahoy.InstallResult{Status: status}, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if status == "clean" {
+				if rec := oneRecord(t, filepath.Join(repo, filepath.FromSlash(interview.RecordsRel))); rec == nil {
+					t.Fatalf("a run that went ahead wrote no record:\n%s", errOut.String())
+				}
+				return
+			}
+			noSetupRecords(t, repo, home)
+			if errOut.Len() != 0 {
+				t.Fatalf("a %s run said %q", status, errOut.String())
+			}
+		})
+	}
+}

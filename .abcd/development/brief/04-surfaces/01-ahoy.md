@@ -565,7 +565,8 @@ tier; the machine-wide ones (the status line, the machine's routing table)
 to `~/.abcd/interviews/`, made through the guarded home-scope maker. The stamp
 is in the name only, so two runs given the same answers write the same bytes
 and the same configuration, whichever door asked. The line reader writes no
-record.
+record, and neither does an install that ends aborted (the adoption declined)
+or refused, which changed nothing.
 
 **Every value question carries its own explanation** (iss-163). A question that
 picks one of several values (the repo visibility, the docs target, the

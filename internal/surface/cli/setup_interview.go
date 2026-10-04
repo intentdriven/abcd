@@ -359,13 +359,15 @@ func readSetupAnswers(path string) (interview.Answers, error) {
 // runSetup runs the install through p and ends the interview: the answers
 // given are written to the answers record (the repository's local tier, the
 // machine-wide part to the home) and named on errOut, and a question that
-// stopped the run ends it with its code.
+// stopped the run ends it with its code. An install that ends aborted (the
+// adoption declined) or refused changed nothing, so it writes no record and
+// says nothing of one.
 func runSetup(cwd string, p ahoy.Prompter, errOut io.Writer, install func() (ahoy.InstallResult, error)) (res ahoy.InstallResult, err error) {
 	rp, recording := p.(recordingPrompter)
 	defer func() {
 		r := recover()
 		if r == nil {
-			if recording && err == nil {
+			if recording && err == nil && res.Status != "aborted" && res.Status != "refused" {
 				writeSetupRecords(cwd, rp.recorded(), errOut)
 			}
 			return
