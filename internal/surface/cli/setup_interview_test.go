@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -477,6 +478,143 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	if rec := oneRecord(t, filepath.Join(run.repo, filepath.FromSlash(interview.RecordsRel))); rec != nil {
 		t.Fatalf("a refused run wrote an answers record:\n%s", rec)
 	}
+
+	// A value the question does not offer is refused, naming the values it
+	// does offer, and never recorded.
+	out, err = pipedSetup(t, answersFileWith(t, interview.FileAnswer{ID: "visibility", Value: "privat"}), "--adopt", "--yes")
+	if !errors.As(err, &ee) || ee.Code != 2 {
+		t.Fatalf("a value the question does not offer: %v, want exit 2\n%s", err, out)
+	}
+	if !strings.Contains(ee.Msg, `"privat"`) || !strings.Contains(ee.Msg, "private|public|later") {
+		t.Fatalf("the refusal %q does not name the value given and the values offered", ee.Msg)
+	}
+	if rec := oneRecord(t, filepath.Join(run.repo, filepath.FromSlash(interview.RecordsRel))); rec != nil {
+		t.Fatalf("a refused run wrote an answers record:\n%s", rec)
+	}
+}
+
+// answersFileWith writes an answers file for setup holding entries.
+func answersFileWith(t *testing.T, entries ...interview.FileAnswer) string {
+	t.Helper()
+	body, err := json.Marshal(interview.Answers{SchemaVersion: interview.SchemaVersion, Interview: "setup", Answers: entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "answers.json")
+	if err := os.WriteFile(p, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// stopOf runs f and returns the *setupStop it panics with, failing the test
+// when it returns or panics with anything else.
+func stopOf(t *testing.T, f func()) (stop *setupStop) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		s, ok := r.(*setupStop)
+		if !ok {
+			t.Fatalf("got %v (%T), want a *setupStop", r, r)
+		}
+		stop = s
+	}()
+	f()
+	return nil
+}
+
+// TestSetupAnswerTheQuestionDoesNotOfferRefuses holds the answers door's own
+// check, whichever question it is put: a file's value the question does not
+// offer stops the run with exit 2, naming the value given and the values
+// offered, records nothing, and keeps no answer given before it.
+func TestSetupAnswerTheQuestionDoesNotOfferRefuses(t *testing.T) {
+	p := &answersPrompter{
+		setupQuestions: setupQuestions{cwd: t.TempDir(), w: io.Discard},
+		file:           interview.Answers{Answers: []interview.FileAnswer{{ID: "visibility", Value: "privat"}}},
+		stamp:          interview.Terminal,
+	}
+	stop := stopOf(t, func() { p.Prompt("visibility", []string{"private", "public"}, "") })
+	if stop.code != 2 || stop.keep || !strings.Contains(stop.msg, `"privat"`) || !strings.Contains(stop.msg, "private|public|later") {
+		t.Fatalf("stop %+v", stop)
+	}
+	if got := p.recorded(); len(got) != 0 {
+		t.Fatalf("the refused answer was recorded: %+v", got)
+	}
+}
+
+// setupRecordsPlace is a repository with its local tier standing and a home,
+// so a record runSetup writes lands in one of the two and a test can see it.
+func setupRecordsPlace(t *testing.T) (repo, home string) {
+	t.Helper()
+	repo, home = t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	return repo, home
+}
+
+// noSetupRecords fails the test when either tier holds an answers record.
+func noSetupRecords(t *testing.T, repo, home string) {
+	t.Helper()
+	for _, dir := range []string{filepath.Join(repo, filepath.FromSlash(interview.RecordsRel)), filepath.Join(home, ".abcd", "interviews")} {
+		if ents, _ := os.ReadDir(dir); len(ents) != 0 {
+			t.Fatalf("%s holds %d answers records, want none", dir, len(ents))
+		}
+	}
+}
+
+// TestRefusedAnswersFileRecordsNothing: an answers file that answers the
+// adoption and the approval and then leaves a question unanswered ends the
+// run with exit 2 and records nothing, not even the answers it did give.
+func TestRefusedAnswersFileRecordsNothing(t *testing.T) {
+	repo, home := setupRecordsPlace(t)
+	p := &answersPrompter{
+		setupQuestions: setupQuestions{cwd: repo, w: io.Discard},
+		file: interview.Answers{Answers: []interview.FileAnswer{
+			{ID: "adopt", Value: "yes"}, {ID: "approve.config-change", Value: "yes"},
+		}},
+		stamp: interview.Terminal,
+	}
+	var errOut bytes.Buffer
+	_, err := runSetup(repo, p, &errOut, func() (ahoy.InstallResult, error) {
+		p.Confirm("Adopt this unmanaged repo into abcd?")
+		p.Confirm("Apply config-change changes?")
+		p.Prompt("visibility", []string{"private", "public"}, "")
+		return ahoy.InstallResult{Status: "clean"}, nil
+	})
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 2 {
+		t.Fatalf("an unanswered question: %v, want exit 2", err)
+	}
+	if len(p.recorded()) != 2 {
+		t.Fatalf("the two answers given were not held: %+v", p.recorded())
+	}
+	noSetupRecords(t, repo, home)
+}
+
+// TestRunSetupLeavesAnotherPanicAlone: a panic that is not a stopped
+// question goes on unchanged out of runSetup, and records nothing.
+func TestRunSetupLeavesAnotherPanicAlone(t *testing.T) {
+	repo, home := setupRecordsPlace(t)
+	p := &answersPrompter{
+		setupQuestions: setupQuestions{cwd: repo, w: io.Discard},
+		file:           interview.Answers{Answers: []interview.FileAnswer{{ID: "adopt", Value: "yes"}}},
+		stamp:          interview.Terminal,
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != "boom" {
+				t.Fatalf("recovered %v, want the install's own panic", r)
+			}
+		}()
+		_, _ = runSetup(repo, p, io.Discard, func() (ahoy.InstallResult, error) {
+			p.Confirm("Adopt this unmanaged repo into abcd?")
+			panic("boom")
+		})
+		t.Fatal("runSetup returned; the panic was swallowed")
+	}()
+	noSetupRecords(t, repo, home)
 }
 
 // TestSetupAnswersFlagsAreChecked refuses an --answered-in that is neither
