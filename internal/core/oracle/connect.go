@@ -357,7 +357,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	// descriptor, and the lock and the file are reached through it, so a link
 	// swapped in after the judgement is refused rather than written through
 	// (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(home, path.Dir(rel), 0o700)
+	dir, err := fsutil.EnsureHomeScope(home, path.Dir(rel), abcdhome.DirMode)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return fmt.Errorf("oracle adapter: the provider block was not written to %s: %v", origin, err)
 	}

@@ -28,6 +28,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -63,6 +64,10 @@ type Record struct {
 	Interview     string   `json:"interview"`
 	Target        string   `json:"target"`
 	Answers       []Answer `json:"answers"`
+	// Fallbacks are the runner fallbacks an AI-written interview recorded:
+	// a runner that did not answer, or whose question abcd refused. None in
+	// a fixed interview's record.
+	Fallbacks []runner.FallbackReceipt `json:"fallbacks,omitempty"`
 }
 
 // Answer is one question's entry in the record: the question as asked, the
@@ -155,7 +160,7 @@ func Write(p Place, rec Record, at time.Time) (string, error) {
 		}
 		root, dir = r, filepath.Join(p.Repo, filepath.FromSlash(RecordsRel))
 	} else {
-		r, err := fsutil.EnsureHomeScope(p.Home, abcdhome.Rel(homeRecordsLeaf), 0o700)
+		r, err := fsutil.EnsureHomeScope(p.Home, abcdhome.Rel(homeRecordsLeaf), abcdhome.DirMode)
 		if err != nil {
 			return "", err
 		}

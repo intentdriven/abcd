@@ -66,7 +66,8 @@ const ROUTE_FAMILIES = [
   '/references/',
 ];
 
-// One representative page per record type that has its own page shape.
+// The record types whose pages have their own shape; discoverRecordRoutes
+// samples two pages of each.
 const SAMPLED_TYPES = ['adr', 'intent', 'issue'];
 
 function slug(route) {
@@ -74,10 +75,29 @@ function slug(route) {
   return s === '' ? 'index' : s;
 }
 
-// discoverRecordRoutes reads the record export the build emits and picks the
-// lowest-numbered record of each sampled type. Lowest-numbered, not random: the
-// audit must compare like with like from run to run, or a screenshot diff is
-// noise.
+// longestRun is the longest stretch of a string with no space and no hyphen in
+// it: the longest token a browser has no ordinary place to break. It is a
+// heuristic for choosing a sample, not a model of line breaking: a browser also
+// breaks after some punctuation (a slash, in some engines) and never between a
+// hyphen and a digit, so the record it picks is a likely worst case, not a
+// proven one. Pass or fail never rests on it; that is the scrollWidth below.
+function longestRun(s) {
+  let best = 0;
+  for (const part of String(s || '').split(/[\s-]+/)) {
+    if (part.length > best) best = part.length;
+  }
+  return best;
+}
+
+// discoverRecordRoutes reads the record export the build emits and picks two
+// records of each sampled type: the lowest-numbered, and the one whose title or
+// source path holds the longest unbroken token (ties to the lower number). The
+// lowest-numbered record is the oldest and plainest; the second is the worst
+// case for wrapping, which the oldest record never is — a timestamp-id record's
+// path and a title quoting a path both widened record pages that the first
+// sample alone could not see (iss-2610040732240935). Deterministic, not random:
+// the audit must compare like with like from run to run, or a screenshot diff
+// is noise.
 async function discoverRecordRoutes(page, baseUrl) {
   const res = await page.request.get(`${baseUrl}/record.json`);
   if (!res.ok()) {
@@ -98,6 +118,16 @@ async function discoverRecordRoutes(page, baseUrl) {
       throw new Error(`record.json holds no node of type '${type}'; the audit cannot sample one`);
     }
     routes.push(`/record/${type}/${of[0].id}/`);
+    let widest = of[0];
+    let widestRun = Math.max(longestRun(widest.title), longestRun(widest.path));
+    for (const n of of) {
+      const run = Math.max(longestRun(n.title), longestRun(n.path));
+      if (run > widestRun) {
+        widest = n;
+        widestRun = run;
+      }
+    }
+    if (widest !== of[0]) routes.push(`/record/${type}/${widest.id}/`);
   }
   return routes;
 }
@@ -105,23 +135,55 @@ async function discoverRecordRoutes(page, baseUrl) {
 // measure returns the widest overflow on the laid-out page, and names what
 // caused it. A bare "this page overflows" sends someone hunting; an element and
 // its class is a place to look.
+//
+// Only what can widen the DOCUMENT is named. Anything inside a scroll container
+// (an ancestor whose overflow-x is not visible) overflows that container, not
+// the page, so a chart panning in its own window or a nav bar scrolling in its
+// own strip is never a culprit; naming them sent a bisect after the wrong
+// renderer once (iss-2610040741103264). A text run is measured too, by its
+// Range, because a heading whose words have nowhere to break overflows without
+// any element box passing the edge; it is named by its parent element.
+//
+// A known limit of the naming, not of the verdict: an absolutely positioned
+// element whose containing block lies OUTSIDE the clipping ancestor escapes that
+// clip and can widen the page, yet `contained` reads only the DOM ancestors and
+// skips it. Such a page still fails on its scrollWidth; it is reported with the
+// culprit unnamed. No page of this site has one today (the board's cards sit in
+// a positioned stage).
 async function measure(page, viewportWidth, tolerance) {
   return page.evaluate(
     ({ width, tol }) => {
       const de = document.documentElement;
       const culprits = [];
+      const contained = (node) => {
+        for (let a = node.parentElement; a && a !== de && a !== document.body; a = a.parentElement) {
+          if (getComputedStyle(a).overflowX !== 'visible') return true;
+        }
+        return false;
+      };
+      const passes = (r) => r.right > width + tol || r.left < -tol;
+      const name = (el, text) => ({
+        tag: el.tagName.toLowerCase() + (text ? ' text' : ''),
+        cls: String(el.getAttribute('class') || '').slice(0, 60),
+      });
       if (de.scrollWidth > width + tol) {
         for (const el of document.querySelectorAll('body *')) {
           const r = el.getBoundingClientRect();
           if (r.width === 0 && r.height === 0) continue;
-          if (r.right > width + tol || r.left < -tol) {
-            culprits.push({
-              tag: el.tagName.toLowerCase(),
-              cls: String(el.className || '').slice(0, 60),
-              left: Math.round(r.left),
-              right: Math.round(r.right),
-            });
+          if (passes(r) && !contained(el)) {
+            culprits.push({ ...name(el, false), left: Math.round(r.left), right: Math.round(r.right) });
             if (culprits.length >= 5) break;
+          }
+        }
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let t = walker.nextNode(); t && culprits.length < 8; t = walker.nextNode()) {
+          if (!t.textContent.trim() || !t.parentElement) continue;
+          const range = document.createRange();
+          range.selectNodeContents(t);
+          const r = range.getBoundingClientRect();
+          if (r.width === 0) continue;
+          if (passes(r) && !contained(t)) {
+            culprits.push({ ...name(t.parentElement, true), left: Math.round(r.left), right: Math.round(r.right) });
           }
         }
       }

@@ -2,7 +2,6 @@ package capture
 
 import (
 	"path/filepath"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -18,9 +17,9 @@ const maxStatusBytes = 8 << 20
 // in which case nothing is marked: an unknown state is not reported as either
 // (iss-2609100508570527).
 //
-// It reads `git status --porcelain=v1 -z -uall`, whose NUL-terminated records
-// carry each path verbatim; a rename's source record is skipped, since only the
-// destination is a file in the ledger now.
+// It reads gitutil.Status narrowed to the ledger, whose entries carry each path
+// verbatim; a rename's source is not marked, since only the destination is a
+// file in the ledger now.
 func uncommittedLedgerPaths(repoRoot, issuesRoot string) (map[string]bool, bool) {
 	if !fsutil.PathWithin(issuesRoot, repoRoot, false) {
 		return nil, false
@@ -29,22 +28,13 @@ func uncommittedLedgerPaths(repoRoot, issuesRoot string) (map[string]bool, bool)
 	if err != nil {
 		return nil, false
 	}
-	out, err := gitutil.RunCapped(repoRoot, maxStatusBytes,
-		"status", "--porcelain=v1", "-z", "--untracked-files=all", "--", filepath.ToSlash(rel))
+	entries, err := gitutil.Status(repoRoot, maxStatusBytes, gitutil.StatusOptions{Pathspecs: []string{filepath.ToSlash(rel)}})
 	if err != nil {
 		return nil, false
 	}
 	set := map[string]bool{}
-	records := strings.Split(out, "\x00")
-	for i := 0; i < len(records); i++ {
-		rec := records[i]
-		if len(rec) < 4 {
-			continue
-		}
-		set[rec[3:]] = true
-		if st := rec[:2]; st[0] == 'R' || st[0] == 'C' || st[1] == 'R' || st[1] == 'C' {
-			i++
-		}
+	for _, e := range entries {
+		set[e.Path] = true
 	}
 	return set, true
 }
