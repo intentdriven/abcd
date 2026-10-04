@@ -118,6 +118,10 @@ the record rather than in a transcript that is discarded.
 
 Recorded for the product thinker; nothing here decides the question. A downstream private project's brief-authoring lab found that the present-tense-only convention makes a target-design brief read as a working product: 99 present-tense product claims against 9 "staged" markers. Its owner called this the biggest issue they face with abcd, and holds that the brief is the target design the product thinker owns. A framing chapter is one place a brief could say which of the two it is; the lab named this intent with itd-142 and itd-61.
 
+## Hypothesis 2026-10-04 (the brief's tense)
+
+Recorded from the product thinker, 2026-10-04, answering how a brief describes what is not built yet, verbatim: "this is a big open question I'm currently testing on another repo. My current hypothesis: The brief is the main 'target design' document for the PT; while written in present tense, it's a vision of what the PT assumes the final product will look like. That way, the PT can 'think' about the product in a familiar way, while abcd helps them -- via the TF -- to make it a reality (step-by-step). We need SOTA research to ensure abcd will do that in a deterministic way, e.g. by listing implemented intents and/or plumbing implementations to each brief section; if the PT then changes the brief, abcd must assess whether a new intent/issue is required (and record it) or whether an existing intent (already filed, planned, and/or build) contradicts that change, in which case the PT is owed a design decision. Makes sense?" Recorded as a working hypothesis under test, not a ruling; a state-of-the-art pass on deterministic brief-to-record traceability was started the same day.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._

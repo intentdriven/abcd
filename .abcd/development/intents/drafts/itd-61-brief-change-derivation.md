@@ -69,6 +69,12 @@ abcd already owns the right instrument: the grill — a Socratic interview that 
 - **Tense** (recorded for the product thinker, not decided). A downstream private project's brief-authoring lab found that the present-tense-only convention makes a target-design brief read as a working product: 99 present-tense product claims against 9 "staged" markers. Its owner called this the biggest issue they face with abcd, and holds that the brief is the target design the product thinker owns. The lab named this intent with itd-142 and itd-143.
 - **Brief to records.** The same lab wrote a 22-file brief over two days and drew no intent from it: no verb proposes intents, decisions or captures from a brief, and the status board did not notice a brief with no records beside it. This intent's derivation pass is the record for the first half, since a brief written from nothing is a run of brief edits; the board's silence on a brief with no records is outside its scope as written. The lab rated it major.
 
+## Hypothesis 2026-10-04 (the brief's tense)
+
+Recorded from the product thinker, 2026-10-04, answering how a brief describes what is not built yet, verbatim: "this is a big open question I'm currently testing on another repo. My current hypothesis: The brief is the main 'target design' document for the PT; while written in present tense, it's a vision of what the PT assumes the final product will look like. That way, the PT can 'think' about the product in a familiar way, while abcd helps them -- via the TF -- to make it a reality (step-by-step). We need SOTA research to ensure abcd will do that in a deterministic way, e.g. by listing implemented intents and/or plumbing implementations to each brief section; if the PT then changes the brief, abcd must assess whether a new intent/issue is required (and record it) or whether an existing intent (already filed, planned, and/or build) contradicts that change, in which case the PT is owed a design decision. Makes sense?" Recorded as a working hypothesis under test, not a ruling; a state-of-the-art pass on deterministic brief-to-record traceability was started the same day.
+
+This intent is the second half of the hypothesis: a brief change is assessed for a new intent or issue, or for a contradiction with an intent already filed, planned or built, which owes the product thinker a design decision.
+
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
