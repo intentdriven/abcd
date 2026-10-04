@@ -566,7 +566,48 @@ func keysOf(m map[string]bool) []string {
 
 // symlinkedHomeGuard is the test every install form that records the owned
 // PATH copy in ~/.abcd.noindex/path-entry runs before it fetches anything.
-const symlinkedHomeGuard = `[ ! -L "$HOME/.abcd" ]`
+const symlinkedHomeGuard = `[ ! -L "$HOME/.abcd.noindex" ]`
+
+// pathEntryRecord is the file a form writes to record the owned PATH copy, and
+// oldHome the folder abcd's home was called before the rename. A form that
+// created the old folder would leave every later abcd command stopped
+// (spc-2610031309233367, "The stop").
+const (
+	pathEntryRecord = `"$HOME/.abcd.noindex/path-entry"`
+	oldHome         = `"$HOME/.abcd"`
+)
+
+// writesPathEntry reports whether a form records the owned PATH copy, under
+// either spelling of the home, so a form that still names the old folder is
+// judged rather than skipped.
+func writesPathEntry(script string) bool {
+	return strings.Contains(script, "/path-entry")
+}
+
+// TestInstallSurfacesRecordInTheNoindexHome: a form that records the owned PATH
+// copy writes the record under ~/.abcd.noindex and never names the old
+// ~/.abcd. The binary stops while ~/.abcd stands, so a one-liner that created
+// it would install a binary whose own --version, its last step, refuses to run.
+func TestInstallSurfacesRecordInTheNoindexHome(t *testing.T) {
+	seen := 0
+	for _, s := range loadInstallSurfaces(t) {
+		if !writesPathEntry(s.script) {
+			continue
+		}
+		seen++
+		t.Run(s.name, func(t *testing.T) {
+			if !strings.Contains(s.script, "> "+pathEntryRecord) {
+				t.Errorf("%s does not write its record to %s", s.source, pathEntryRecord)
+			}
+			if strings.Contains(s.script, oldHome) || strings.Contains(s.script, `"$HOME/.abcd/`) {
+				t.Errorf("%s names the old folder %s; abcd stops while it stands", s.source, oldHome)
+			}
+		})
+	}
+	if seen == 0 {
+		t.Fatal("no install form records the owned PATH copy; the README and the install guide's one-liners each do")
+	}
+}
 
 // TestInstallSurfacesRefuseASymlinkedAbcdHome: a form that writes
 // ~/.abcd.noindex/path-entry refuses a ~/.abcd.noindex that is a symlink before it downloads
@@ -576,7 +617,7 @@ const symlinkedHomeGuard = `[ ! -L "$HOME/.abcd" ]`
 // whatever the link points at, a dotfiles checkout typically.
 func TestInstallSurfacesRefuseASymlinkedAbcdHome(t *testing.T) {
 	for _, s := range loadInstallSurfaces(t) {
-		if !strings.Contains(s.script, ".abcd/path-entry") {
+		if !writesPathEntry(s.script) {
 			continue
 		}
 		t.Run(s.name, func(t *testing.T) {
