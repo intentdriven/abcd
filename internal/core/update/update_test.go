@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 )
 
@@ -523,12 +524,12 @@ func TestApplyProceedsOnTheRecordedPathCopy(t *testing.T) {
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(oldBin)
 	rec := "path=" + target + "\nbinary_sha256=" + hex.EncodeToString(sum[:]) + "\n"
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "path-entry"), []byte(rec), 0o644); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "path-entry"), []byte(rec), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

@@ -59,6 +59,26 @@ func retiredDocsTargetRefusal(cwd string, overrides map[string]string) string {
 	return why
 }
 
+// SavedDocsTarget reads the docs.target this project's setup saved in
+// .abcd/config.json under cwd, through the reader setup itself uses (a guarded,
+// size-capped read of a regular file), so another writer of abcd's block —
+// embark — follows the same choice setup made. It returns the value as saved
+// when it is one setup reads (agents_md, skip, or a retired value
+// RetiredDocsTarget explains), and "" when setup reads none: no settings file,
+// no docs.target, or a value outside the set, which detection reports as not
+// set. err is non-nil only when the settings file cannot be read or parsed.
+func SavedDocsTarget(cwd string) (string, error) {
+	cfg, err := readConfig(cwd)
+	if err != nil {
+		return "", err
+	}
+	v, _ := stringVal(subMap(cfg, "docs"), "target")
+	if !inSet(v, docsTargetChoices) {
+		return "", nil
+	}
+	return v, nil
+}
+
 // writableMarkerTargets is markerTargets for the write side: the files a
 // docs.target plants abcd's block into, which is none for a retired value.
 // markerTargets itself still maps the retired values, because the retraction

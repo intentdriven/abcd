@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"strings"
@@ -693,7 +694,7 @@ func isDir(p string) bool {
 // ---------------------------------------------------------------------------
 
 // historyRelPath is the registry's directory relative to the caller's home.
-const historyRelPath = ".abcd/history"
+var historyRelPath = abcdhome.Rel("history")
 
 // historyRoot returns ~/.abcd/history. HOME is respected so tests can redirect.
 //

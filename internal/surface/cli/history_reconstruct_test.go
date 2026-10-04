@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // plantForReconstruct writes one record straight into the store under the HOME
@@ -25,7 +27,7 @@ func plantForReconstruct(t *testing.T, rootSHA, name string, fields []string, bo
 		"redacted_secrets: 0",
 		"redacted_home_paths: 0",
 	}, fields...)
-	dir := filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	dir := abcdhome.Path(home, "transcripts", rootSHA, "records")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

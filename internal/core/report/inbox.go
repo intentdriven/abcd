@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
@@ -22,7 +23,7 @@ import (
 )
 
 // inboxRelPath is the inbox's root relative to the caller's home.
-const inboxRelPath = ".abcd/inbox"
+var inboxRelPath = abcdhome.Rel("inbox")
 
 // Names inside the inbox.
 const (
@@ -274,7 +275,7 @@ func File(r Report, s Sender) (Filed, error) {
 		if err != nil {
 			return Filed{}, fmt.Errorf("cannot file the report: %w", err)
 		}
-		return Filed{ID: id, Path: "~/" + inboxRelPath + "/" + name}, nil
+		return Filed{ID: id, Path: abcdhome.Display("inbox", name)}, nil
 	}
 	return Filed{}, fmt.Errorf("cannot file the report: every id drawn this second is taken; try again")
 }

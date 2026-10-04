@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -426,5 +427,58 @@ func TestUnsavedSettingsKeepEarlierReceipts(t *testing.T) {
 	}
 	if a.docsTargetForced || a.visibilityForced || a.markerRetract != nil {
 		t.Errorf("an unsaved settings change left forced=%v vis=%v retract=%v", a.docsTargetForced, a.visibilityForced, a.markerRetract)
+	}
+}
+
+// TestDeclinedSettingsChangeNamesEachDroppedFlag: a person who passes a value
+// flag and then declines saving the settings, while a required value is still
+// missing, gets nothing written, and one note per flag that was not applied,
+// naming the flag and its value; a flag that already matched the saved value
+// was not dropped and is not named (iss-2610032027321900).
+func TestDeclinedSettingsChangeNamesEachDroppedFlag(t *testing.T) {
+	dir := t.TempDir()
+	writeValidConfig(t, dir, "private", "agents_md", "")
+	a := &applyCtx{
+		cwd:      dir,
+		approved: map[GapCategory]bool{},
+		overrides: map[string]string{
+			"visibility":  "public",
+			"docs_target": "skip",
+			"scan_deep":   "",
+		},
+		prompter:   RefusingPrompter{},
+		gapPresent: map[string]bool{"config.oracle_backend_missing": true},
+	}
+	if cfg := a.stepConfigValues(); cfg != nil {
+		t.Fatalf("stepConfigValues returned %+v with the settings change declined", cfg)
+	}
+	var named []string
+	for _, n := range a.notes {
+		for _, flag := range []string{"--visibility public", "--docs-target skip", "--oracle-backend", "--scan-deep"} {
+			if strings.Contains(n, flag) {
+				named = append(named, flag)
+			}
+		}
+	}
+	if !slices.Equal(named, []string{"--visibility public", "--docs-target skip"}) {
+		t.Fatalf("notes name %q, want one note for --visibility public and one for --docs-target skip: %q", named, a.notes)
+	}
+	for _, n := range a.notes {
+		if !strings.Contains(n, "not applied") || !strings.Contains(n, "declined") {
+			t.Errorf("a note does not say the flag was not applied because the settings change was declined: %q", n)
+		}
+	}
+
+	// A flag equal to the saved value drops nothing, so nothing is said.
+	b := &applyCtx{
+		cwd:        dir,
+		approved:   map[GapCategory]bool{},
+		overrides:  map[string]string{"visibility": "private"},
+		prompter:   RefusingPrompter{},
+		gapPresent: map[string]bool{"config.oracle_backend_missing": true},
+	}
+	b.stepConfigValues()
+	if len(b.notes) != 0 {
+		t.Errorf("a flag matching the saved value is named as dropped: %q", b.notes)
 	}
 }

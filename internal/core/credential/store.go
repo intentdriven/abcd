@@ -31,6 +31,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -51,10 +52,9 @@ const (
 func Homes() []string { return []string{HomeExternal, HomeABCD, HomeKeychain} }
 
 // IndexFileName is the index under ~/.abcd/, and IndexPath its tilde form.
-const (
-	IndexFileName = "credential-homes.json"
-	IndexPath     = "~/.abcd/" + IndexFileName
-)
+const IndexFileName = "credential-homes.json"
+
+var IndexPath = abcdhome.Display(IndexFileName)
 
 // Walkthrough is the command that explains a credential and stores it, named
 // by every refusal of a name that is not set.
@@ -220,20 +220,20 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	// outside the home, and the index holds names and pointers only, scanned
 	// before every write, so a home directory that is itself a working tree (a
 	// dotfiles repository) keeps those homes.
-	if c.Home == HomeABCD && workingTreeAbove(home, ".abcd") != "" {
-		return false, errors.New("credential: ~/.abcd lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
+	if c.Home == HomeABCD && workingTreeAbove(home, abcdhome.Rel()) != "" {
+		return false, errors.New("credential: " + abcdhome.Display() + " lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
 	}
 	// ~/.abcd is created, judged and opened in one walk relative to the
 	// descriptor of home (fsutil.EnsureHomeScope), and the index's lock and
 	// its write are reached through that descriptor, so a link swapped in
 	// after the judgement is refused rather than written through
 	// (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), 0o700)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return false, fmt.Errorf("credential: nothing was written: %v", err)
 	}
 	if err != nil {
-		return false, errors.New("credential: ~/.abcd could not be created, so nothing was written")
+		return false, errors.New("credential: " + abcdhome.Display() + " could not be created, so nothing was written")
 	}
 	defer dir.Close()
 	// One lock, the index's, is held across the whole write: where the name
@@ -250,7 +250,7 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	case errors.Is(err, fsutil.ErrLockContention):
 		return false, fmt.Errorf("credential: %s is being written by another abcd, so nothing was written; retry", IndexPath)
 	case errors.Is(err, fsutil.ErrLockPathUnsafe):
-		return false, fmt.Errorf("credential: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", indexLockFileName)
+		return false, fmt.Errorf("credential: the lock %s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", abcdhome.Display(indexLockFileName))
 	}
 	return changed, err
 }
@@ -390,7 +390,7 @@ const maxIndexBytes = 64 << 10
 
 // indexRel is the index's place in the home, in the slash form the
 // home-scoped primitives take.
-const indexRel = ".abcd/" + IndexFileName
+var indexRel = abcdhome.Rel(IndexFileName)
 
 // readIndex reads the index under the same refusals as the abcd home: a
 // regular file, owned by the caller, owner-only, naming each credential once,
@@ -511,3 +511,7 @@ func scanIndex(body []byte) error {
 
 // envNameRe is an environment variable's name as a pointer names it.
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// ValidEnvName reports whether name is an environment variable's name as an
+// external pointer takes it.
+func ValidEnvName(name string) bool { return envNameRe.MatchString(name) }

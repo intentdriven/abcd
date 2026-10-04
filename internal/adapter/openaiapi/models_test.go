@@ -55,7 +55,7 @@ func listError(t *testing.T, err error) *ListError {
 // never reaches a second address.
 func TestListModelsSendsNoKeyAndFollowsNoRedirect(t *testing.T) {
 	f := newFake(t, lists(t, "vendor/coder-large", "vendor/coder-small"))
-	got, err := mustClient(t, f.base(), "").Models(context.Background())
+	got, err := mustClient(t, f.base(), "").Models(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Models: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestListModelsSendsNoKeyAndFollowsNoRedirect(t *testing.T) {
 	}
 
 	// A key is sent only when one is given, and then only as the bearer token.
-	if _, err := mustClient(t, f.base(), testKey).Models(context.Background()); err != nil {
+	if _, err := mustClient(t, f.base(), testKey).Models(context.Background(), nil); err != nil {
 		t.Fatalf("keyed Models: %v", err)
 	}
 	if auth := f.last.Load().auth; auth != "Bearer "+testKey {
@@ -88,7 +88,7 @@ func TestListModelsSendsNoKeyAndFollowsNoRedirect(t *testing.T) {
 			auths = append(auths, r.Header.Get("Authorization"))
 			http.Redirect(w, r, elsewhere.srv.URL+"/v1/models", http.StatusFound)
 		})
-		got, err := mustClient(t, moved.base(), key).Models(context.Background())
+		got, err := mustClient(t, moved.base(), key).Models(context.Background(), nil)
 		if err == nil {
 			t.Fatalf("key %t: a redirect was followed to a listing %+v", key != "", got)
 		}
@@ -146,7 +146,7 @@ func TestListModelsBoundsTimeAndSize(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		start := time.Now()
-		_, err := c.Models(ctx)
+		_, err := c.Models(ctx, nil)
 		if d := time.Since(start); d > 3*time.Second {
 			t.Fatalf("headers first %t: the listing took %s against a %s bound", headersFirst, d, c.listWait)
 		}
@@ -164,7 +164,7 @@ func TestListModelsBoundsTimeAndSize(t *testing.T) {
 		ok   bool
 	}{{at, true}, {at + " ", false}} {
 		f := newFake(t, status(http.StatusOK, tc.body))
-		got, err := mustClient(t, f.base(), "").Models(context.Background())
+		got, err := mustClient(t, f.base(), "").Models(context.Background(), nil)
 		switch {
 		case tc.ok && (err != nil || len(got.IDs) != 1):
 			t.Fatalf("a %d-byte body: listing %+v, err %v; want it read", len(tc.body), got, err)
@@ -180,7 +180,7 @@ func TestListModelsBoundsTimeAndSize(t *testing.T) {
 		ids[i] = fmt.Sprintf("vendor/model-%05d", i)
 	}
 	f := newFake(t, lists(t, ids...))
-	got, err := mustClient(t, f.base(), "").Models(context.Background())
+	got, err := mustClient(t, f.base(), "").Models(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Models: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestListModelsNamesWhyThereIsNoList(t *testing.T) {
 			if base == "" {
 				base = newFake(t, tc.handler).base()
 			}
-			got, err := mustClient(t, base, "").Models(context.Background())
+			got, err := mustClient(t, base, "").Models(context.Background(), nil)
 			if err == nil {
 				t.Fatalf("Models listed %+v; want no list", got)
 			}
@@ -248,7 +248,7 @@ func TestListModelsNamesWhyThereIsNoList(t *testing.T) {
 	// Usable ids are kept in order; every other entry is dropped and counted.
 	long := "vendor/" + strings.Repeat("m", 128-len("vendor/"))
 	f := newFake(t, lists(t, "vendor/a", "", 7, nil, "esc\x1b[31m", "bidi‮name", "zw​name", long, long+"x", "  ", "vendor/b"))
-	got, err := mustClient(t, f.base(), "").Models(context.Background())
+	got, err := mustClient(t, f.base(), "").Models(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Models: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestListModelsScrubsTheKey(t *testing.T) {
 		for i, e := range echoes {
 			for _, body := range []string{`{"error":{"message":"bad key ` + e + `"}}`, `bad key ` + e} {
 				f := newFake(t, status(code, body))
-				_, err := mustClient(t, f.base(), awkwardKey).Models(context.Background())
+				_, err := mustClient(t, f.base(), awkwardKey).Models(context.Background(), nil)
 				le := listError(t, err)
 				assertNoKeyForm(t, fmt.Sprintf("HTTP %d, form %d: the error", code, i), err.Error())
 				assertNoKeyForm(t, fmt.Sprintf("HTTP %d, form %d: the reason", code, i), le.Reason)
@@ -297,7 +297,7 @@ func TestListModelsScrubsTheKey(t *testing.T) {
 	}{awkwardKey, append(awkward, "vendor/also-good")})
 	for _, tc := range cases {
 		f := newFake(t, lists(t, tc.ids...))
-		got, err := mustClient(t, f.base(), tc.key).Models(context.Background())
+		got, err := mustClient(t, f.base(), tc.key).Models(context.Background(), nil)
 		if err != nil {
 			t.Fatalf("Models: %v", err)
 		}
@@ -316,11 +316,44 @@ func TestListModelsScrubsTheKey(t *testing.T) {
 	for _, tc := range []struct{ key, split string }{{testKey, testKey}, {awkwardKey, jsonEscapeAll(awkwardKey)}} {
 		half := len(tc.split) / 2
 		f := newFake(t, lists(t, "vendor/good", "vendor/"+tc.split[:half], tc.split[half:]+"/m", "vendor/also-good"))
-		got, err := mustClient(t, f.base(), tc.key).Models(context.Background())
+		got, err := mustClient(t, f.base(), tc.key).Models(context.Background(), nil)
 		le := listError(t, err)
 		if got.IDs != nil || le.NeedsKey || !strings.Contains(le.Reason, "together") {
 			t.Fatalf("a key split across ids: listing %q, error %+v; want no listing and a reason naming the ids together", got.IDs, le)
 		}
 		assertNoKeyForm(t, "the split-key error", err.Error())
+	}
+}
+
+// TestListModelsReadsTheKeptIdsTogetherAfterKeep (security review finding
+// 1): a caller's keep runs before the split-key read, so the run read is the
+// ids returned. Two halves of the key separated by an id keep refuses are
+// refused together; with no keep, the separating id is kept between them and
+// the listing stands. A usable id keep refuses is dropped and counted, and a
+// keep that refuses every id leaves no usable model.
+func TestListModelsReadsTheKeptIdsTogetherAfterKeep(t *testing.T) {
+	half := len(testKey) / 2
+	noSemicolon := func(id string) bool { return !strings.Contains(id, ";") }
+	f := newFake(t, lists(t, testKey[:half], "vendor/m;x", testKey[half:]))
+
+	got, err := mustClient(t, f.base(), testKey).Models(context.Background(), nil)
+	if err != nil || len(got.IDs) != 3 {
+		t.Fatalf("no keep: listing %q, %v; want the three ids, the key never adjacent", got.IDs, err)
+	}
+	got, err = mustClient(t, f.base(), testKey).Models(context.Background(), noSemicolon)
+	le := listError(t, err)
+	if got.IDs != nil || le.NeedsKey || !strings.Contains(le.Reason, "together carry the key") {
+		t.Fatalf("keep dropping the separator: listing %q, error %+v; want no listing and the ids named together", got.IDs, le)
+	}
+	assertNoKeyForm(t, "the split-key error", err.Error())
+
+	g := newFake(t, lists(t, "vendor/a;b", "vendor/good", "vendor/c;d"))
+	got, err = mustClient(t, g.base(), "").Models(context.Background(), noSemicolon)
+	if err != nil || fmt.Sprint(got.IDs) != "[vendor/good]" || got.Dropped != 2 {
+		t.Fatalf("keep: listing %q, %d dropped, %v; want [vendor/good] and 2 dropped", got.IDs, got.Dropped, err)
+	}
+	_, err = mustClient(t, g.base(), "").Models(context.Background(), func(string) bool { return false })
+	if le := listError(t, err); !strings.Contains(le.Reason, "listed no usable models (3 ") {
+		t.Fatalf("a keep refusing every id: %+v", le)
 	}
 }

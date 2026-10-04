@@ -21,6 +21,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -65,6 +66,9 @@ type ConnectRequest struct {
 	Pointer credential.Pointer
 	// Timeout bounds the verification call; 0 keeps its own short bound.
 	Timeout time.Duration
+	// Pick, when Models is empty, chooses one model from the listed ids.
+	// Connect calls it after listing with the key it holds; nil refuses as today.
+	Pick func(ctx context.Context, listed []string) (string, error)
 }
 
 // ConnectResult is what the setup did. It never carries the key.
@@ -100,26 +104,39 @@ var verifyBrief = openaiapi.Brief{
 // Connect verifies the connection with one call and, only when it succeeds,
 // writes the key and the provider block. Every fault the configuration read
 // would refuse is refused first, before the call.
+//
+// With no model named and Pick given, Connect first lists the service's
+// models with the key it holds (pickModel), and the model picked is the
+// allowlist; from there the path is the same. No listing is taken as the
+// verification (itd-2610030821294016 decision 2): the completion to the model
+// picked is.
 func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
-	if err := checkConnect(&req); err != nil {
+	picking := len(req.Models) == 0 && req.Pick != nil
+	if err := checkConnect(&req, picking); err != nil {
 		return ConnectResult{}, err
 	}
-	cfg, err := LoadAPI(req.Roots)
-	if err != nil {
-		return ConnectResult{}, fmt.Errorf("%w; fix the configuration before adding a provider to it", err)
+	if err := checkConnectKey(req); err != nil {
+		return ConnectResult{}, err
 	}
-	if _, exists := cfg.providers[req.Provider]; exists {
-		return ConnectResult{}, fmt.Errorf("oracle adapter: provider %s is already configured in %s; "+
-			"abcd never replaces a block unasked, so edit or remove it there to change it", req.Provider, layered.Config.MachineOrigin())
+	cfg, err := loadForConnect(req)
+	if err != nil {
+		return ConnectResult{}, err
+	}
+	var opts []openaiapi.Option
+	if req.Timeout > 0 {
+		opts = append(opts, openaiapi.WithTimeout(req.Timeout), openaiapi.WithFirstByteTimeout(req.Timeout))
+	}
+	if picking {
+		m, err := pickModel(ctx, req, cfg.denylist, opts)
+		if err != nil {
+			return ConnectResult{}, err
+		}
+		req.Models = []string{m}
 	}
 	for _, m := range req.Models {
 		if e, denied := Denied(cfg.denylist, m); denied {
 			return ConnectResult{}, fmt.Errorf("oracle adapter: provider %s %s", req.Provider, deniedError(m, e))
 		}
-	}
-	var opts []openaiapi.Option
-	if req.Timeout > 0 {
-		opts = append(opts, openaiapi.WithTimeout(req.Timeout), openaiapi.WithFirstByteTimeout(req.Timeout))
 	}
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
 		KeyHome: req.Home, Diagnostics: append([]string(nil), cfg.Diagnostics...)}
@@ -139,7 +156,13 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 		}
 		res.KeyName = req.KeyName
 		block["key"] = req.KeyName
-		res.Wrote = append(res.Wrote, walked.Wrote...)
+		// What the key's write touched is named by the store's one list
+		// (credential.WritesFor), the list a guided setup shows before the
+		// command runs, so the two cannot drift apart; nothing, when the same
+		// key was already held there.
+		if walked.Changed {
+			res.Wrote = append(res.Wrote, credential.WritesFor(req.Home, req.KeyName)...)
+		}
 	}
 	if err := writeProviderBlock(req.Roots.Home, req.Provider, block); err != nil {
 		if len(res.Wrote) > 0 {
@@ -152,8 +175,38 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 	return res, nil
 }
 
-// checkConnect refuses a malformed request, never echoing the key.
-func checkConnect(req *ConnectRequest) error {
+// CheckConnect refuses, before the key is asked for, a request Connect would
+// refuse on what needs no key: the provider's name, the base URL, the models
+// named, the home and the key's name, the configuration in force, and a
+// provider already configured there. A front door that reads the key from
+// the person runs it first, so nobody pastes a key for a setup that cannot
+// finish. The key itself, absent here, is Connect's to check.
+func CheckConnect(req ConnectRequest) error {
+	if err := checkConnect(&req, len(req.Models) == 0 && req.Pick != nil); err != nil {
+		return err
+	}
+	_, err := loadForConnect(req)
+	return err
+}
+
+// loadForConnect reads the configuration in force for a setup and refuses a
+// provider it already configures.
+func loadForConnect(req ConnectRequest) (*APIConfig, error) {
+	cfg, err := LoadAPI(req.Roots)
+	if err != nil {
+		return nil, fmt.Errorf("%w; fix the configuration before adding a provider to it", err)
+	}
+	if _, exists := cfg.providers[req.Provider]; exists {
+		return nil, fmt.Errorf("oracle adapter: provider %s is already configured in %s; "+
+			"abcd never replaces a block unasked, so edit or remove it there to change it", req.Provider, layered.Config.MachineOrigin())
+	}
+	return cfg, nil
+}
+
+// checkConnect refuses a malformed request on everything but the key's value
+// (checkConnectKey), never echoing the key. A request that picks its model
+// after a listing (picking) names none yet.
+func checkConnect(req *ConnectRequest, picking bool) error {
 	switch {
 	case !providerNameRe.MatchString(req.Provider):
 		return fmt.Errorf("oracle adapter: provider name %q is not lower case letters, digits, - and _", layered.BoundKey(req.Provider))
@@ -163,7 +216,7 @@ func checkConnect(req *ConnectRequest) error {
 	if err := openaiapi.ValidateBaseURL(req.BaseURL); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
-	if len(req.Models) == 0 {
+	if len(req.Models) == 0 && !picking {
 		return errors.New("oracle adapter: no model is listed; a provider serves only the models it lists, so the setup lists at least one")
 	}
 	if len(req.Models) > MaxModels {
@@ -206,7 +259,13 @@ func checkConnect(req *ConnectRequest) error {
 	if !credential.ValidName(req.KeyName) {
 		return fmt.Errorf("oracle adapter: key name %q is not a plain credential name", layered.BoundKey(req.KeyName))
 	}
-	if req.Home == KeyHomeExternal {
+	return nil
+}
+
+// checkConnectKey refuses a request whose home stores a key and that carries
+// none, or one the store would refuse, before any call.
+func checkConnectKey(req ConnectRequest) error {
+	if req.Home != KeyHomeABCD && req.Home != KeyHomeKeychain {
 		return nil
 	}
 	if req.Key == "" {
@@ -214,6 +273,66 @@ func checkConnect(req *ConnectRequest) error {
 	}
 	// The store's own value check, before the call rather than after it.
 	return credential.CheckValue(req.Key)
+}
+
+// pickModel lists the service's models with the key req holds and asks
+// req.Pick for one (spc-2610031241482088, "No --model: list with the key,
+// then pick"). The key is the one the verification will use: the value given
+// for the abcd and keychain homes, the pointer's value for the external home
+// (resolved now, as the walkthrough resolves it again before its call), none
+// for a keyless server. Only the ids validModel admits and the denylist does
+// not refuse are offered: the adapter keeps ids that carry characters a shell
+// acts on, and a picked model is printed and written. The filter is the
+// adapter's keep, so its read for the key split across adjacent ids reads the
+// ids offered. A listing that fails, a listing with nothing to offer, a pick
+// that is cancelled, and a pick of an id that was not offered each return an
+// error that says which, and nothing has been written.
+func pickModel(ctx context.Context, req ConnectRequest, denylist []DenyEntry, opts []openaiapi.Option) (string, error) {
+	key := ""
+	switch req.Home {
+	case KeyHomeABCD, KeyHomeKeychain:
+		key = req.Key
+	case KeyHomeExternal:
+		// The pointer is resolved here for the listing and again by the
+		// walkthrough for the verification, so a file pointer's value can
+		// change between the two while the person picks: the listing then
+		// read with one value and the call verified with another. That is
+		// accepted, because nothing wrong persists: the external home stores
+		// the pointer, never the value, the verification is the one test of
+		// it, and a value that fails the call writes nothing.
+		v, err := credential.ResolvePointer(req.Roots.Home, req.KeyName, req.Pointer)
+		if err != nil {
+			return "", fmt.Errorf("oracle adapter: %w; the models were not listed, and nothing was written", err)
+		}
+		key = v
+	}
+	client, err := openaiapi.New(req.BaseURL, key, opts...)
+	if err != nil {
+		return "", fmt.Errorf("oracle adapter: provider %s: %w; nothing was written", req.Provider, err)
+	}
+	// Only the ids validModel admits and the denylist does not refuse are
+	// kept, and the adapter reads the key split across adjacent ids in what
+	// is kept, so the ids it checks are the ids offered.
+	listing, err := client.Models(ctx, func(id string) bool {
+		_, denied := Denied(denylist, id)
+		return validModel(id) && !denied
+	})
+	if err != nil {
+		return "", fmt.Errorf("oracle adapter: provider %s: the model list could not be read: %w; name a model with --model, and nothing was written",
+			req.Provider, err)
+	}
+	offered := listing.IDs
+	picked, err := req.Pick(ctx, offered)
+	if err != nil {
+		return "", fmt.Errorf("oracle adapter: provider %s: no model was picked (%w), so nothing was written", req.Provider, err)
+	}
+	for _, id := range offered {
+		if id == picked {
+			return picked, nil
+		}
+	}
+	return "", fmt.Errorf("oracle adapter: provider %s: the model picked, %q, is not one the service listed, so nothing was written",
+		req.Provider, layered.BoundKey(picked))
 }
 
 // configLockFileName is the lock the provider block's write takes, beside
@@ -230,7 +349,7 @@ var configLockTimeout = 5 * time.Second
 // after this one's check is refused rather than replaced.
 func writeProviderBlock(home, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
-	rel := ".abcd/" + layered.Config.MachineRel
+	rel := abcdhome.Rel(layered.Config.MachineRel)
 	// The machine layer refuses a file behind a symlinked ~/.abcd, so a block
 	// written through the link would land wherever it points (a dotfiles
 	// checkout) and never be read back.
@@ -243,7 +362,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 		return fmt.Errorf("oracle adapter: the provider block was not written to %s: %v", origin, err)
 	}
 	if err != nil {
-		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
+		return fmt.Errorf("oracle adapter: %s could not be created, so the provider block was not written", abcdhome.Display())
 	}
 	defer dir.Close()
 	err = fsutil.WithFileLockIn(dir, configLockFileName, configLockTimeout, func() error {
@@ -255,7 +374,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	case errors.Is(err, fsutil.ErrLockPathUnsafe):
 		// A retry cannot cure a symlinked or non-regular lock, so the
 		// refusal names it rather than reading as contention.
-		return fmt.Errorf("oracle adapter: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and the provider block was not written; remove it, and the next setup creates it afresh", configLockFileName)
+		return fmt.Errorf("oracle adapter: the lock %s is not a regular file (a symlink, or something else), so it is refused and the provider block was not written; remove it, and the next setup creates it afresh", abcdhome.Display(configLockFileName))
 	}
 	return err
 }
@@ -264,7 +383,7 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 // run under the file's lock.
 func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
-	rel := ".abcd/" + layered.Config.MachineRel
+	rel := abcdhome.Rel(layered.Config.MachineRel)
 	root := map[string]json.RawMessage{}
 	// Read through dir, the directory the write below goes through, never by
 	// walking ~/.abcd again: a same-uid swap of ~/.abcd between the two walks
@@ -338,7 +457,7 @@ const AdapterExplanation = "An aggregator (OpenRouter, for one) serves many vend
 // KeyHomesProse is the prose above the choice of the key's home (criterion 8):
 // the credential store's, which recommends the keychain in the prose and never
 // as a marked option.
-const KeyHomesProse = credential.HomesProse
+var KeyHomesProse = credential.HomesProse
 
 // providerService is the credential walkthrough's service for a provider's
 // key: what it unlocks, what works without it, and the adapter's own

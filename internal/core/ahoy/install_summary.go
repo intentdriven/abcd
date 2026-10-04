@@ -1,6 +1,10 @@
 package ahoy
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+)
 
 // SummaryItem explains one thing an install reports, for the person who ran it
 // rather than for abcd's implementers (iss-164): what it is, why it matters for
@@ -34,6 +38,7 @@ const (
 	writeStatusLine              writeKind = "status-line"
 	writeRouting                 writeKind = "routing"
 	writeDrainRule               writeKind = "drain-rule"
+	writeToolFileRetired         writeKind = "conventions-file-retired"
 	writeRules                   writeKind = "rules"
 	writeIdentityPin             writeKind = "identity-pin"
 	writeGitIdentity             writeKind = "git-identity"
@@ -45,7 +50,7 @@ const (
 var allWriteKinds = []writeKind{
 	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
-	writeConventionsBlockRemoved, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
+	writeConventionsBlockRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeRouting, writeDrainRule,
 }
 
@@ -101,6 +106,11 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Why:    "abcd names itself only in the files you pick.",
 		Action: "Nothing to do.",
 	},
+	writeToolFileRetired: {
+		What:   "Removed an agent tool's own conventions file that only repeated AGENTS.md, as you answered.",
+		Why:    "That tool read the file in place of AGENTS.md; without it, the tool reads AGENTS.md, the one conventions file abcd writes.",
+		Action: "Commit the removal; abcd removed the file from your working tree only.",
+	},
 	writeGitIdentity: {
 		What:   "Set the git name and email this repository commits under, in its own .git/config, to the identity you confirmed.",
 		Why:    "Commits here were about to be made under a different identity, such as a leftover test account or an agent's, and the human is the author of record.",
@@ -129,7 +139,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeStatusLine: {
 		What:   "Set up abcd's status line in your AI assistant.",
 		Why:    "In abcd repositories the line shows whether abcd is active and whose answer the work is waiting on.",
-		Action: "Nothing. Switch parts of it off in ~/.abcd/statusline.json, or remove it with abcd ahoy uninstall.",
+		Action: "Nothing. Switch parts of it off in " + abcdhome.Display("statusline.json") + ", or remove it with abcd ahoy uninstall.",
 	},
 	writeRouting: {
 		What:   "Saved which size of AI model each of abcd's review steps asks for.",
@@ -196,6 +206,11 @@ var declinedCategoryHelp = map[GapCategory]SummaryItem{
 		Why:    "abcd drain refuses to run in this repository until the rule is recorded.",
 		Action: "Nothing, unless you want to drain; then run abcd ahoy install again and answer y.",
 	},
+	ConventionsFile: {
+		What:   "You declined being asked about removing an agent tool's own conventions file that only repeats AGENTS.md.",
+		Why:    "The file stays, and that tool keeps reading it in place of AGENTS.md.",
+		Action: "Nothing, unless you want it gone; then run abcd ahoy install again at a terminal and answer y, or remove the file yourself.",
+	},
 }
 
 // optionalSkippedHelp explains each optional step an unattended run left alone.
@@ -225,6 +240,11 @@ var optionalSkippedHelp = map[string]SummaryItem{
 		Why:    "The rule decides what an unattended agent may change in this repository, so it needs your own yes; until it is recorded, abcd drain refuses to run here.",
 		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the question about the drain rule.",
 	},
+	ConventionsRetireGapID: {
+		What:   "An agent tool's own conventions file that only repeats AGENTS.md was left in place.",
+		Why:    "Removing a file from your project needs your own answer; until it goes, that tool reads it in place of AGENTS.md.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the question about the file, or remove it yourself.",
+	},
 }
 
 // remainingHelp explains the required work a run left outstanding.
@@ -253,7 +273,7 @@ var statusHeadline = map[string]string{
 func (r *InstallResult) explain() {
 	r.Headline = statusHeadline[r.Status]
 	r.Summary = []SummaryItem{}
-	for _, list := range []*[]string{&r.Writes, &r.Remaining, &r.DeclinedCategories} {
+	for _, list := range []*[]string{&r.Warnings, &r.Writes, &r.Remaining, &r.DeclinedCategories} {
 		if *list == nil {
 			*list = []string{}
 		}

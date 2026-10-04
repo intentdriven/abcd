@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -77,8 +78,8 @@ func TestInstallPersistsNoRemoteUserinfo(t *testing.T) {
 		t.Fatal("fixture has no root commit")
 	}
 	for _, rel := range []string{
-		filepath.Join(".abcd", "history", "index.json"),
-		filepath.Join(".abcd", "history", sha, "meta.json"),
+		filepath.Join(abcdhome.Rel(), "history", "index.json"),
+		filepath.Join(abcdhome.Rel(), "history", sha, "meta.json"),
 	} {
 		data, err := os.ReadFile(filepath.Join(home, rel))
 		if err != nil {
@@ -122,7 +123,7 @@ func TestInstallScrubsALegacyCredentialFromTheHistoryStore(t *testing.T) {
 	credentialed := "https://ci-bot:" + placeholderToken + "@github.com/owner/legacy.git"
 
 	// A sibling repo's entry, credentialed. Registering THIS repo never reads it.
-	indexPath := filepath.Join(home, ".abcd", "history", "index.json")
+	indexPath := abcdhome.Path(home, "history", "index.json")
 	raw, err := os.ReadFile(indexPath)
 	if err != nil {
 		t.Fatalf("reading the freshly bootstrapped index: %v", err)
@@ -141,7 +142,7 @@ func TestInstallScrubsALegacyCredentialFromTheHistoryStore(t *testing.T) {
 	}
 
 	// This repo's own meta.json, credentialed — the write-once file.
-	metaPath := filepath.Join(home, ".abcd", "history", sha, "meta.json")
+	metaPath := abcdhome.Path(home, "history", sha, "meta.json")
 	meta := map[string]any{
 		"root_commit": sha, "name": "repo", "github": credentialed,
 		"corpus": map[string]any{"transcripts": "transcripts/"},
@@ -192,7 +193,7 @@ func TestInstallScrubsALegacyCredentialFromTheHistoryStore(t *testing.T) {
 // what keeps a renderer from printing a credential it merely read.
 func TestLoadHistoryIndexScrubsAsItReads(t *testing.T) {
 	home, _ := setupHermetic(t)
-	root := filepath.Join(home, ".abcd", "history")
+	root := abcdhome.Path(home, "history")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}

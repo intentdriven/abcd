@@ -4,9 +4,10 @@ package statusline
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestASettingBehindASymlinkedAbcdHomeIsIgnored: the setting's
@@ -18,7 +19,7 @@ func TestASettingBehindASymlinkedAbcdHomeIsIgnored(t *testing.T) {
 	dotfiles := t.TempDir()
 	writeSettings(t, dotfiles, `{"schema_version":1,"previous_command":"/bin/echo hi"}`)
 	home := t.TempDir()
-	if err := os.Symlink(filepath.Join(dotfiles, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(abcdhome.Path(dotfiles), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	got, notes, err := LoadFrom(home)

@@ -34,6 +34,7 @@ import (
 
 	"github.com/minio/selfupdate"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -106,7 +107,7 @@ func (o Ownership) Prose() string {
 	case OwnedByRunningExecutable:
 		return "it is the binary running this command, so it is abcd by construction"
 	case OwnedByPathEntry:
-		return "~/.abcd/path-entry records it as this machine's abcd install"
+		return abcdhome.Display("path-entry") + " records it as this machine's abcd install"
 	default:
 		return string(o)
 	}
@@ -520,7 +521,7 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 		rep.Refusal = &Refusal{
 			Shape: "unprovenanced-file",
 			Detail: "the file at " + fsutil.RedactHome(target) + " matches no published release of abcd (digest " + targetHex +
-				"), is not the binary running this command, and no ~/.abcd/path-entry record vouches for it, so abcd will not replace it",
+				"), is not the binary running this command, and no " + abcdhome.Display("path-entry") + " record vouches for it, so abcd will not replace it",
 			Remedy: remedyReinstallOverIt,
 		}
 		return rep, nil

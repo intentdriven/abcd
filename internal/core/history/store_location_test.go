@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // virginHome points HOME at an empty temp dir — no ~/.abcd, no history root, no
@@ -34,7 +36,7 @@ func TestCaptureOnAMachineThatNeverInstalled(t *testing.T) {
 	if !res.Wrote {
 		t.Fatal("expected the transcript to be stored")
 	}
-	want := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
+	want := abcdhome.Path(home, "transcripts", testRootSHA, "records")
 	if got := filepath.Dir(res.Record.Path); got != want {
 		t.Errorf("record stored at %q, want it under the user-level default %q", got, want)
 	}
@@ -56,7 +58,7 @@ func TestStageOnAMachineThatNeverInstalled(t *testing.T) {
 	if !res.Wrote {
 		t.Fatal("expected the transcript to be staged")
 	}
-	want := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
+	want := abcdhome.Path(home, "transcripts", testRootSHA, "staging")
 	if got := filepath.Dir(res.Staged.Path); got != want {
 		t.Errorf("staged at %q, want %q", got, want)
 	}
@@ -145,7 +147,7 @@ func TestPerRepoPullInIsOptInOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
-	if !strings.HasPrefix(res.Record.Path, filepath.Join(home, ".abcd", "transcripts")) {
+	if !strings.HasPrefix(res.Record.Path, abcdhome.Path(home, "transcripts")) {
 		t.Errorf("undeclared repo stored at %q, want the user-level default", res.Record.Path)
 	}
 	if _, err := os.Stat(filepath.Join(repoRoot, ".abcd")); err == nil {
@@ -172,7 +174,7 @@ func TestPerRepoPullInIsHonouredWhenDeclared(t *testing.T) {
 	if err != nil || len(recs) != 1 {
 		t.Fatalf("List against the pulled-in store: %v (%d records)", err, len(recs))
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records", filepath.Base(res.Record.Path))); err == nil {
+	if _, err := os.Stat(abcdhome.Path(home, "transcripts", testRootSHA, "records", filepath.Base(res.Record.Path))); err == nil {
 		t.Error("the record must not also be in the user-level store")
 	}
 }
@@ -208,7 +210,7 @@ func TestPullInDeclarationAnyoneCanWriteIsIgnoredLoudly(t *testing.T) {
 func TestLegacyStoreIsMigratedNotOrphaned(t *testing.T) {
 	repoRoot, home := virginHome(t)
 
-	legacyRepo := filepath.Join(home, ".abcd", "history", testRootSHA)
+	legacyRepo := abcdhome.Path(home, "history", testRootSHA)
 	legacyRecords := filepath.Join(legacyRepo, "transcripts")
 	legacyStaging := filepath.Join(legacyRepo, "staging")
 	for _, d := range []string{legacyRecords, legacyStaging} {
@@ -278,7 +280,7 @@ func TestMigrationRefusesASymlinkedLegacyLeaf(t *testing.T) {
 			strings.Repeat("e", 64)+"\nredacted_secrets: 0\nredacted_home_paths: 0\n---\nassistant: not ours\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	legacyRepo := filepath.Join(home, ".abcd", "history", testRootSHA)
+	legacyRepo := abcdhome.Path(home, "history", testRootSHA)
 	if err := os.MkdirAll(legacyRepo, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -308,10 +310,10 @@ func TestMigrationRefusesASymlinkedLegacyLeaf(t *testing.T) {
 func TestStoreRefusesASymlinkedLevel(t *testing.T) {
 	repoRoot, home := virginHome(t)
 	elsewhere := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(home, ".abcd", "transcripts")); err != nil {
+	if err := os.Symlink(elsewhere, abcdhome.Path(home, "transcripts")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
@@ -331,10 +333,10 @@ func TestStoreRefusesASymlinkedLevel(t *testing.T) {
 // declareLocal writes the home-scoped pull-in declaration at the given mode.
 func declareLocal(t *testing.T, home, repoRoot string, mode os.FileMode) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, ".abcd", "local-transcript-roots")
+	path := abcdhome.Path(home, "local-transcript-roots")
 	body := "# transcripts for these checkouts stay in the checkout\n" + repoRoot + "\n"
 	if err := os.WriteFile(path, []byte(body), mode); err != nil {
 		t.Fatal(err)

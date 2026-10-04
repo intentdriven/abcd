@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2610030821294016](../../intents/planned/itd-2610030821294016-connecting-a-model-service-from-inside-claude-code-works-out.md):
+[itd-2610030821294016](../../intents/shipped/itd-2610030821294016-connecting-a-model-service-from-inside-claude-code-works-out.md):
 a person connecting a model service from inside Claude Code no longer types
 every value. abcd asks for the service's address, offers to look up the models
 the service lists, suggests the models the person already uses through their
@@ -63,7 +63,7 @@ In:
 
 It builds on, and reuses rather than restates:
 
-- [spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
+- [spc-2610030911534855](../open/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
   the plain-Terminal picker (itd-2610030810370060): its step 1 (the question
   type in `internal/core/question`, golang.org/x/term in `go.mod`) and its
   step 2 (the long list with typing to narrow, the numbered fallback, and the
@@ -74,7 +74,7 @@ It builds on, and reuses rather than restates:
 - The shipped credential store (itd-2609221017023290): its three homes, its
   walkthrough (`credential.Walk`) and its rule that a stored secret is never
   replaced.
-- [spc-2610030944505997](../closed/spc-2610030944505997-asking-and-layout.md), the
+- [spc-2610030944505997](spc-2610030944505997-asking-and-layout.md), the
   asking rules and the field limits: every guided question is held to them
   where they have landed.
 
@@ -113,7 +113,8 @@ sibling on the same `Client`:
 
 ```go
 // Models asks the service for the models it lists: one GET of {base}/models.
-func (c *Client) Models(ctx context.Context) (Listing, error)
+// keep, when given, is the caller's filter: a usable id it refuses is dropped.
+func (c *Client) Models(ctx context.Context, keep func(id string) bool) (Listing, error)
 
 type Listing struct {
 	IDs     []string // in the service's own order, each sanitised and bounded
@@ -151,12 +152,16 @@ loosen them:
 
 The decoder reads `data[].id`, the shape the standard list answer and its
 common variants share; any other shape, or no usable id, is a `ListError`
-saying the service listed no usable models. Each id is passed through the
-client's own scrub (so an id that carries the key becomes a redacted string)
-and `termsafe` before it is kept; `oracle` then keeps only ids its
-`validModel` admits (`config.go`, line 92), so an id carrying the key, an
-escape, or more than 128 bytes is dropped and counted in `Dropped`. At most
-`MaxListedModels` (5,000) ids are kept, in the service's order.
+saying the service listed no usable models. An id that shows the key in any
+reading the client's scrub knows, holds a rune `termsafe` masks, or is more
+than 128 bytes is dropped and counted in `Dropped`, never kept redacted; the
+ids `oracle`'s `validModel` (`config.go`) and denylist refuse are dropped the
+same way, through `keep`. At most
+`MaxListedModels` (5,000) ids are kept, in the service's order. `oracle`'s
+filter is `keep`, run inside the adapter before the kept ids are read
+together for the key split across adjacent ids, so the ids that read checks
+are the ids offered: an id the filter drops cannot separate two halves of the
+key there and leave them adjacent in the offer.
 
 The status mapping: 401 and 403 are `NeedsKey`; any other non-200 status, a
 redirect, a timeout, an unreachable host, an oversize body and an undecodable
@@ -168,12 +173,12 @@ so the key, in every form `keyForms` knows, is scrubbed from it.
 The printed command is today's verb, `abcd ahoy connect <provider>`, with two
 changes the session's command needs in order to run in a terminal.
 
-**The key on hidden input.** `readKey` (`ahoy_connect.go`, line 234) refuses
-stdin at a terminal, because the key would be echoed. It keeps reading piped
-stdin as today; at a terminal it now reads the key with echo off instead:
-one line on stderr, "Paste the key for <provider> and press Enter. It is not
-shown.", then `term.ReadHidden`, a wrapper over golang.org/x/term's password
-read in `internal/term`. The wrapper runs inside the restore guarantee step 2
+**The key on hidden input.** `readKey` (`ahoy_connect.go`) reads the key from
+piped stdin only. Connect reads it through `readConnectKey`, which keeps that
+piped read and, at a terminal, reads the key with echo off: one line on
+stderr, "Paste the key for <provider> and press Enter. It is not shown.",
+then `term.ReadHidden`, golang.org/x/term's line reader with echo off in
+`internal/term`. The read runs inside the restore guarantee step 2
 of spc-2610030911534855 builds (the idempotent restore reached from the
 deferred call, a recovered panic, and the SIGINT, SIGTERM and SIGHUP handler),
 so an interrupt during the paste never leaves the terminal with its echo off.
@@ -245,9 +250,18 @@ listed models are the only thing carried rather than re-derived: the look-up
 runs once, at the turn the replay first reaches a yes to the look-up with no
 `listed` present, and every later turn narrows over what `resume` carries
 (open question 2). A `resume` that was tampered with can change which names
-are offered and nothing else: each id is checked again with `validModel`, the
-address with `ValidateBaseURL`, and the command is shown in full and verified
-with a real completion before anything is written.
+are offered and, as built, cause one keyless request for the model list (a
+`resume` whose answers say yes to the look-up and that carries no `listed` is
+looked up again, as the first yes is: no key, no redirect, at the address the
+replay checks again), and nothing else: each id is checked again with
+`validModel`, the address with `ValidateBaseURL`, and the command is shown in
+full and verified with a real completion before anything is written.
+
+As built: `resume` carries at most 32 KiB of the listed ids as JSON
+(`oracle.MaxCarriedBytes`), the first in the service's order, with `more`, the
+count not carried, and a part of a name matching none carried while `more` is
+above zero asks for the model's full name, which is checked as any typed name
+is, so G2's one request holds (decided 2026-10-04, `.abcd/work/DECISIONS.md`).
 
 The questions, each one turn, in order. Each is a `question.Ask`, chip
 "Setup Q<n>", that the asking rules hold where spc-2610030944505997 has landed: the thing first, the
@@ -286,8 +300,10 @@ question last, decide later last, nothing marked.
 4. **Whether the service takes a key** (skipped when the look-up answered
    that it needs one). Options: "It needs a key", "No key: a server on this
    machine", decide later.
-5. **Where the key lives** (G8). Material: `KeyHomesProse` verbatim, as the
-   page relays it today. Options: the credential store's three homes,
+5. **Where the key lives** (G8). Material: `KeyHomesProse` in short (as
+   built: verbatim, it takes the question past the 24 rows the asking limits
+   hold it to, so the question says the choice is the person's and that abcd
+   recommends the keychain, and each home's meaning sits on its option). Options: the credential store's three homes,
    external (an environment variable), abcd, and keychain, each with its
    meaning, then decide later; never marked, never reordered by preference.
    The keychain option's meaning says the key is pasted into abcd's hidden
@@ -360,6 +376,17 @@ option floor counts the typed part as one option (open question 1). `Matches`
 moves into `internal/core/question` when spc-2610030911534855 step 2 keeps it
 inside `internal/surface/cli/ask`, and the picker calls it there.
 
+As built: the host's question tool takes two to four listed options, so a
+question whose only listed answer is decide later cannot be put to it as it
+stands. The field view keeps the typed part out of the options (it counts
+toward the floor only), and says its prompt in the question text just before
+the ask, since the host's free-text row carries none; the front door's mapping
+onto the host's tool (the turn's `tool` member) adds one option,
+`question.TypedRowLabel` ("Type my own answer"), only where the listed options
+fall below the tool's floor. It points at the row for typing and answers
+nothing: the guide asks the question again when it is chosen. An answer may
+name an option by its label, as the host's tool returns labels.
+
 ### What the key never touches
 
 The guided path has no key to leak: it asks no key question, lists with no
@@ -368,6 +395,15 @@ key, and its JSON has no key field. In the terminal step the key lives in
 `Authorization` header; every error passes through `openaiapi.Scrub` before
 it is printed, as today, and the listed ids through the client's scrub. G6's
 canary test holds the whole path to that.
+
+As built: the guide holds no key, so it knows one by its shape alone. A typed
+answer to any question, or a recorded one, holding a value the secret
+scanner's patterns know as a credential (a `token:` kind) is refused with
+"that looks like a key; the guide takes a name, never a key" and asked again,
+and a listed id or an offered variable's name holding one is dropped before
+the resume object carries it. A retry never quotes the typed text back: only
+the narrowing question quotes the part of a name it narrows by. A key of a
+shape the scanner does not know passes as a name.
 
 ## How each acceptance criterion is met
 

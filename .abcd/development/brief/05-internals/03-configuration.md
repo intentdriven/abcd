@@ -201,6 +201,44 @@ overrides it for one run. The delegating verb sends such a step through the
 adapter itself and ingests the answer (spc-2609251028149555), and its receipt
 names the provider as the connection used.
 
+### The interview key
+
+How a plain-Terminal interview takes a choice from a list
+(itd-2610030810370060, spc-2610030911534855) is one key, read through the
+layered resolver from the machine's file alone:
+
+```json
+{
+  "interview": {
+    "list": "numbered"                  // MACHINE LAYER ONLY: ~/.abcd/config.json
+                                        //   "arrows" (the bundled default): the arrow-key
+                                        //   list, typing to narrow it | "numbered": whole
+                                        //   lines, a number or part of a name, the
+                                        //   terminal's modes never touched
+  }
+}
+```
+
+- **It is the person's own.** How a list is read is the person's to say, so a
+  repository's `.abcd/config.json` that sets `interview.list` is refused naming
+  `~/.abcd/config.json` as where it belongs; the reader claims the `interview`
+  namespace, so a misspelt key and a value outside the two are refused naming
+  the file, never passed over for the default.
+- **A refusal never fails an interview, and never lets a repository choose.**
+  The answer loop says the refusal in one line on stderr and goes on: a fault
+  a repository's file holds (the key set there, a misspelt key under
+  `interview`, a malformed file) is passed over for the machine's own setting,
+  read from `~/.abcd/config.json` alone; a fault in the machine's own file
+  gives `numbered`.
+- **Two variables choose `numbered` for one session.** `ABCD_ACCESSIBLE`
+  non-empty, else `ACCESSIBLE` non-empty, selects it whatever the file says,
+  so a screen-reader user who cannot set a file first gets it; when both are
+  set, `ABCD_ACCESSIBLE` is the one named. Neither can select `arrows`.
+- **Where no keyboard mode is possible, the list is numbered.** `TERM=dumb`
+  cannot move its cursor, and a terminal that refuses raw mode cannot take the
+  arrow keys; each falls to `numbered` with one line on stderr saying so, and
+  the interview goes on.
+
 ### Staged config keys
 
 No shipped code reads any of the keys below. None appears in any repository's

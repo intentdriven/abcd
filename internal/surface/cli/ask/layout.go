@@ -85,12 +85,38 @@ func Draw(a question.Ask, f Frame) []string {
 		tab = 0
 	}
 	q := a.Questions[tab]
+	d := newDrawer(f)
+	all := entries(q)
+	out := d.head(a, tab)
+	out = append(out, "")
+	out = append(out, d.optionLines(all, span(len(all)), f.Current)...)
+	out = append(out, d.typed(q)...)
+	if state := d.state(q); len(state) > 0 {
+		out = append(out, "")
+		out = append(out, state...)
+	}
+	return out
+}
+
+// newDrawer is a drawer for the frame f, its marks chosen for the locale.
+func newDrawer(f Frame) drawer {
 	d := drawer{f: f, glyph: "›", sep: " · "}
 	if f.ASCII {
 		d.glyph, d.sep = ">", " | "
 	}
-	measure := min(f.Width, proseColumns) - indent
+	return d
+}
 
+// measure is the width prose is wrapped at: min(width, 80) less the indent.
+func (d drawer) measure() int {
+	return min(d.f.Width, proseColumns) - indent
+}
+
+// head draws the part of the question above its answers: the chip line, the
+// material, and the ask, one blank line between each.
+func (d drawer) head(a question.Ask, tab int) []string {
+	q := a.Questions[tab]
+	measure := d.measure()
 	sections := [][]string{{d.chipLine(a, tab)}}
 	var material []string
 	for i, b := range q.Material {
@@ -103,7 +129,31 @@ func Draw(a question.Ask, f Frame) []string {
 		sections = append(sections, material)
 	}
 	sections = append(sections, hanging(q.Ask, indent, 0, measure))
-	sections = append(sections, d.options(q))
+	var out []string
+	for i, s := range sections {
+		if i > 0 {
+			out = append(out, "")
+		}
+		out = append(out, s...)
+	}
+	return out
+}
+
+// TypedPrefix opens the line the typed part is drawn on.
+const TypedPrefix = "or type:"
+
+// typed draws the question's typed part, when it has one, as one line after
+// the options: "or type: <prompt>" (spc-2610031241482088).
+func (d drawer) typed(q question.Question) []string {
+	if q.Typed == "" {
+		return nil
+	}
+	return hanging(TypedPrefix+" "+q.Typed, indent, hang, d.measure())
+}
+
+// state draws the Now: and Change later: lines the question carries.
+func (d drawer) state(q question.Question) []string {
+	measure := d.measure()
 	var state []string
 	if q.Now != "" {
 		state = append(state, hanging(question.Default.NowPrefix+" "+q.Now, indent, hang, measure)...)
@@ -111,16 +161,24 @@ func Draw(a question.Ask, f Frame) []string {
 	if q.ChangeLater != "" {
 		state = append(state, hanging(question.Default.ChangeLaterPrefix+" "+q.ChangeLater, indent, hang, measure)...)
 	}
-	if len(state) > 0 {
-		sections = append(sections, state)
-	}
+	return state
+}
 
-	var out []string
-	for i, s := range sections {
-		if i > 0 {
-			out = append(out, "")
-		}
-		out = append(out, s...)
+// entries is what a question offers, as drawn and numbered: its options (a
+// long list's choices), then Later.
+func entries(q question.Question) []question.Option {
+	opts := q.Options
+	if q.List != nil {
+		opts = q.List.Choices
+	}
+	return append(append([]question.Option(nil), opts...), q.Later)
+}
+
+// span is the indices 0 to n-1.
+func span(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
 	}
 	return out
 }
@@ -176,18 +234,15 @@ func (d drawer) block(b question.Block, measure int) []string {
 	return out
 }
 
-// options draws the options (a long list's choices) numbered from 1, then
-// Later as the last number, the current one marked by the glyph.
-func (d drawer) options(q question.Question) []string {
-	opts := q.Options
-	if q.List != nil {
-		opts = q.List.Choices
-	}
-	opts = append(append([]question.Option(nil), opts...), q.Later)
-	numW := len(fmt.Sprint(len(opts))) + 2 // "12. "
+// optionLines draws the entries of all at idx, each numbered by its place in
+// all from 1 (so a narrowed or paged list keeps the numbers the full list
+// has), the one at current marked by the glyph. The label column is measured
+// over every entry, so it holds still as the list narrows or scrolls.
+func (d drawer) optionLines(all []question.Option, idx []int, current int) []string {
+	numW := len(fmt.Sprint(len(all))) + 2 // "12. "
 	labelAt := indent + numW
 	longest := 0
-	for _, o := range opts {
+	for _, o := range all {
 		longest = max(longest, textwidth.Columns(o.Label))
 	}
 	meaningAt := labelAt + longest + gap
@@ -198,9 +253,10 @@ func (d drawer) options(q question.Question) []string {
 	labelMeasure := min(d.f.Width, proseColumns) - labelAt
 
 	var out []string
-	for i, o := range opts {
+	for _, i := range idx {
+		o := all[i]
 		marker := strings.Repeat(" ", indent)
-		if i == d.f.Current {
+		if i == current {
 			marker = d.glyph + " "
 		}
 		number := fmt.Sprintf("%*d. ", numW-2, i+1)
@@ -224,7 +280,7 @@ func (d drawer) options(q question.Question) []string {
 			rows = append(rows, textwidth.Wrap(o.Meaning, labelMeasure)...)
 		}
 		head := marker + number + rows[0]
-		if i == d.f.Current {
+		if i == current {
 			// The colour repeats the glyph: the marker, the number and the
 			// first row of the current option.
 			head = d.colour(currentColour, head)

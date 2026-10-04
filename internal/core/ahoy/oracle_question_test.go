@@ -157,7 +157,7 @@ func TestTheOracleQuestionReturnsWithASecondAdapter(t *testing.T) {
 // no adapter exactly when it is not marked as shipped, so marking an adapter
 // means rewording its meaning in the same change.
 func TestOracleMeaningsAgreeWithTheShippedAdapters(t *testing.T) {
-	h, _ := HelpFor("oracle_backend")
+	h, _ := helpFor("oracle_backend")
 	for _, c := range h.Choices {
 		says := strings.HasSuffix(c.Meaning, noAdapterYet)
 		if says == oracleAdapterShipped[c.Value] {

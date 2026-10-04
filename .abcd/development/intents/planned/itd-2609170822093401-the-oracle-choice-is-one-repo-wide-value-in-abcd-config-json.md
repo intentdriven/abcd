@@ -170,8 +170,10 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
   the harness at `host-decides` under the agent contract's own fan-out
   ceiling, and no provider is contacted.
 - **Given** the install step on a machine with no accepted table, **when** it
-  runs, **then** it renders abcd's proposed table, one row per agent with
-  tier and fan-out bound, and writes it under `~/.abcd/` only on consent;
+  runs, **then** it says abcd's proposal in counts (how many agents, how
+  many at each tier, their fan-out bounds) and where every row can be read
+  once accepted, and writes the table, one row per agent with tier and
+  fan-out bound, under `~/.abcd/` only on consent;
   a repository-level file is offered separately and written only on
   consent.
 - **Given** an accepted row for an agent naming a tier, and a configured
@@ -222,6 +224,7 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
 
 ## Audit Notes
 
+- 2026-10-03 — Acceptance criterion 2 says the proposal in counts rather than one row per agent. The product thinker ruled on 2026-10-03, answering "setup offers a plan giving each of abcd's 16 helpers a model level; with all listed it cannot fit" (options: counts only, split into parts, let it scroll, decide later), verbatim: "Show counts only". The written table is unchanged; only the question's text is (iss-2610031236155833).
 - 2026-10-02 — Declared mutual pair with itd-2609081951381895 (the technical facilitator's ruling CY2 of 2026-10-02, verbatim: "SAME, DECLARED PAIRS — each direction names the piece it needs"). itd-2609081951381895's builds_on itd-2609170822093401 needs the routing seam: the per-agent route and the invocation-time `--route` override that point a role or a judgement type at `<provider>/<model>`, the only ways a provider is reached (the adapter's decision 9). itd-2609170822093401's builds_on itd-2609081951381895 needs the provider connections its winning rows are resolved against, and the adapter's refusal of a setting its provider does not accept (its out-of-scope list names the adapter for both). Both edges stand. The record has no field record-lint's edge_cycle rule reads as a declared pair, so the linter still reports the cycle at warn until it does (iss-2610020836255174). Each piece is read from the two records' own scope, criteria and decisions; the ruling names none. Recorded by lane rd2 of autonomous run A.
 
 ### Linkage note (2026-09-30)
