@@ -417,6 +417,7 @@ For the technical facilitator; the records do not settle these.
    coupling to the cut, but every source run on a machine with the old plugin
    stops until the next release.
    - Decided: (a): a source build ahead of the installed plugin would otherwise stop on every prompt.
+   - Refined 2026-10-04 by the technical facilitator (abcd-d7 and abcd-50, planning the cut; the product thinker ruled the step into that day's release, the intent's decision 8): "updates and renames together" cannot be done in that order, because the plugin that knows the new name exists only once the release is cut, and the cut is a source build of step 3, which stops while `~/.abcd` stands. The order is: every other change merges; every session on the machine that runs the abcd plugin stops; this step and step 4 merge; the person renames the folder and runs the repair line from a plain Terminal and runs no older abcd after it; the release is cut from a session with the abcd plugin disabled, so no older hook writes `~/.abcd` again; the release is published; the plugin is enabled and updated, and its bootstrap refreshes the owned PATH copy from the new home. Step 4 lands in the same release, because the install guide's commands would otherwise create the old folder on a fresh machine.
 6. **Who reconnects the worktrees the rename moves.** git records a
    worktree's location in absolute form, so after the rename every worktree in
    the store is listed by its repository as prunable until
