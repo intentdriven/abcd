@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The OpenAI-compatible API adapter's front door (itd-2609081951381895):
@@ -121,7 +123,7 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	}
 	home := os.Getenv("HOME")
 	for _, name := range []string{"config.json", "credentials.json"} {
-		fi, err := os.Lstat(filepath.Join(home, ".abcd", name))
+		fi, err := os.Lstat(abcdhome.Path(home, name))
 		if err != nil || fi.Mode().Perm() != 0o600 {
 			t.Fatalf("~/.abcd/%s: %v", name, err)
 		}
@@ -192,7 +194,7 @@ func TestAhoyConnectRefusals(t *testing.T) {
 			if n := calls.Load(); n != tc.wantCalls {
 				t.Fatalf("%d call(s), want %d", n, tc.wantCalls)
 			}
-			if _, statErr := os.Lstat(filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")); statErr == nil {
+			if _, statErr := os.Lstat(abcdhome.Path(os.Getenv("HOME"), "credentials.json")); statErr == nil {
 				t.Fatal("a refused setup stored the key")
 			}
 		})

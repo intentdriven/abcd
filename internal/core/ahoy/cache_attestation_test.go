@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -313,7 +314,7 @@ func TestReadCacheAttestationIgnoresMalformed(t *testing.T) {
 		if err := os.WriteFile(real, []byte(good), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Symlink(real, userCacheAttestationPath()); err != nil {

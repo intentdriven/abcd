@@ -34,6 +34,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
@@ -150,7 +151,7 @@ func runnerConfig(t *testing.T, machine, repo string) *runner.Config {
 	t.Helper()
 	r := layered.Roots{Repo: t.TempDir(), Home: t.TempDir()}
 	for path, body := range map[string]string{
-		filepath.Join(r.Home, ".abcd", "config.json"): machine,
+		abcdhome.Path(r.Home, "config.json"):          machine,
 		filepath.Join(r.Repo, ".abcd", "config.json"): repo,
 	} {
 		if body == "" {

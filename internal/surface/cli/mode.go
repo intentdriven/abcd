@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -48,7 +49,7 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			"somebody the question runs and is marked open. The next human message is\n" +
 			"its answer, so the prompt hook resets the state to `managed` and says so\n" +
 			"once on stderr. A state set by hand with no question open is left as it is.\n\n" +
-			"Where this machine has no status surface — no `~/.abcd/statusline.json`, or\n" +
+			"Where this machine has no status surface — no `" + abcdhome.Display("statusline.json") + "`, or\n" +
 			"one with `disabled` set — the set form prints one line naming whose answer\n" +
 			"is owed, once, because the verb call is the stop. Setting `managed` owes\n" +
 			"nobody and prints nothing; with a surface installed nothing is printed at\n" +

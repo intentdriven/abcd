@@ -375,3 +375,40 @@ func TestDeclinedSettingsChangeLeavesTheBlockWhereItWas(t *testing.T) {
 		t.Errorf("CLAUDE.md lost the owner's words: %q", data)
 	}
 }
+
+// TestSavedDocsTargetReadsWhatSetupReads holds the reader embark shares with
+// setup: a value setup reads comes back as saved, a value setup reads as unset
+// comes back empty, and only a settings file that cannot be parsed is an error.
+func TestSavedDocsTargetReadsWhatSetupReads(t *testing.T) {
+	cases := []struct {
+		name, config, want string
+		wantErr            bool
+	}{
+		{"no settings file", "", "", false},
+		{"no docs.target", `{"docs": {}}`, "", false},
+		{"agents_md", `{"docs": {"target": "agents_md"}}`, "agents_md", false},
+		{"skip", `{"docs": {"target": "skip"}}`, "skip", false},
+		{"retired claude_md", `{"docs": {"target": "claude_md"}}`, "claude_md", false},
+		{"retired both", `{"docs": {"target": "both"}}`, "both", false},
+		{"a value outside the set", `{"docs": {"target": "elsewhere"}}`, "", false},
+		{"not a string", `{"docs": {"target": 3}}`, "", false},
+		{"unparseable", `{"docs": `, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.config != "" {
+				if err := os.MkdirAll(filepath.Join(dir, ".abcd"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(configPath(dir), []byte(tc.config), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := SavedDocsTarget(dir)
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Errorf("SavedDocsTarget = %q, %v; want %q, error %v", got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}

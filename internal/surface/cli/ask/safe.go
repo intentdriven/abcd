@@ -11,7 +11,8 @@ import (
 // (spc-2610030911534855, "Sanitising before drawing"). Every string in a
 // question is runtime-read: a runner wrote it, a record supplied it, or a model
 // service listed it. Each single-line part (the id, the chip, the ask, every
-// option's and list choice's value, label and meaning, Now and Change later)
+// option's and list choice's value, label and meaning, Now, Change later and
+// the typed part's prompt)
 // passes termsafe.Sanitize, so a line break inside a label cannot forge a
 // line; each material block passes termsafe.SanitizeBlock. An injected escape,
 // a C1 control, a bidi override, a zero-width rune or a bare carriage return
@@ -26,6 +27,7 @@ func Safe(a question.Ask) question.Ask {
 			Later:       safeOption(q.Later),
 			Now:         termsafe.Sanitize(q.Now),
 			ChangeLater: termsafe.Sanitize(q.ChangeLater),
+			Typed:       termsafe.Sanitize(q.Typed),
 		}
 		if q.Material != nil {
 			s.Material = make([]question.Block, len(q.Material))
@@ -87,8 +89,17 @@ func (r *Refusal) Error() string {
 // Scope "Out"). A refused question is returned as a *Refusal naming every
 // finding.
 func Prepare(a question.Ask) (question.Ask, error) {
-	if fs := question.Check(a); len(fs) > 0 {
-		return question.Ask{}, &Refusal{Findings: fs}
+	if err := check(a); err != nil {
+		return question.Ask{}, err
 	}
 	return Safe(a), nil
+}
+
+// check is Prepare's structural check alone, for a caller that sanitises as
+// it draws (the answer loop keeps the question as given for its answers).
+func check(a question.Ask) error {
+	if fs := question.Check(a); len(fs) > 0 {
+		return &Refusal{Findings: fs}
+	}
+	return nil
 }

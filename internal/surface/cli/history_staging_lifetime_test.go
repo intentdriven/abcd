@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/history"
 )
 
@@ -100,13 +101,13 @@ func TestSessionStartReportsAnotherRepositorysBacklog(t *testing.T) {
 	repo, _ := sessionEndRepo(t)
 	home := os.Getenv("HOME")
 	const quietSHA = "cccccccccccccccccccccccccccccccccccccccc"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", quietSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", quietSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", quietSHA), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "history", quietSHA), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "history", quietSHA, "meta.json"),
+	if err := os.WriteFile(abcdhome.Path(home, "history", quietSHA, "meta.json"),
 		[]byte(`{"root_commit":"`+quietSHA+`","name":"abandoned-project"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -146,13 +147,13 @@ func TestHistoryStagedAllReposSurveysTheWholeStore(t *testing.T) {
 	t.Chdir(repo)
 	home := os.Getenv("HOME")
 	const quietSHA = "dddddddddddddddddddddddddddddddddddddddd"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", quietSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", quietSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", quietSHA), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "history", quietSHA), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "history", quietSHA, "meta.json"),
+	if err := os.WriteFile(abcdhome.Path(home, "history", quietSHA, "meta.json"),
 		[]byte(`{"root_commit":"`+quietSHA+`","name":"the-quiet-one"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}

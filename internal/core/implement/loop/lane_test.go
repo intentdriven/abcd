@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -16,7 +17,7 @@ import (
 func laneStore(t *testing.T, repo *gittest.Repo) string {
 	t.Helper()
 	sha := strings.TrimSpace(repo.Git("rev-list", "--max-parents=0", "HEAD"))
-	return filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees", sha)
+	return abcdhome.Path(os.Getenv("HOME"), "worktrees", sha)
 }
 
 func dirNames(t *testing.T, dir string) []string {
@@ -148,7 +149,7 @@ func TestTheWorktreeStepRefusesAPathThatCouldEscapeTheStore(t *testing.T) {
 			if r.Stage != string(StageWorktree) {
 				t.Fatalf("want the worktree stage to refuse: %+v", r)
 			}
-			if _, err := os.Lstat(filepath.Join(os.Getenv("HOME"), ".abcd")); !errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Lstat(abcdhome.Path(os.Getenv("HOME"))); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("nothing is created under the home for a refused lane: %v", err)
 			}
 		})
@@ -169,10 +170,10 @@ func TestTheWorktreeStepRefusesASymlinkedStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	elsewhere := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(os.Getenv("HOME"), ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(os.Getenv("HOME")), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees")); err != nil {
+	if err := os.Symlink(elsewhere, abcdhome.Path(os.Getenv("HOME"), "worktrees")); err != nil {
 		t.Fatal(err)
 	}
 	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
@@ -219,9 +220,9 @@ func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
 		level string
 		mode  os.FileMode
 	}{
-		{".abcd", 0o777},
-		{".abcd/worktrees", 0o777},
-		{".abcd/worktrees", 0o770},
+		{abcdhome.Rel(), 0o777},
+		{abcdhome.Rel("worktrees"), 0o777},
+		{abcdhome.Rel("worktrees"), 0o770},
 		{"<sha>", 0o722},
 	} {
 		t.Run(strings.ReplaceAll(tc.level, "/", "_")+"-"+tc.mode.String(), func(t *testing.T) {
@@ -271,7 +272,7 @@ func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := os.Getenv("HOME")
-	for _, level := range []string{filepath.Join(home, ".abcd"), filepath.Join(home, ".abcd", "worktrees"), laneStore(t, repo)} {
+	for _, level := range []string{abcdhome.Path(home), abcdhome.Path(home, "worktrees"), laneStore(t, repo)} {
 		if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != 0o700 {
 			t.Fatalf("%s is made 0700: %v %v", level, fi, err)
 		}

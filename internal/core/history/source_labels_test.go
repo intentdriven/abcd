@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestImportedTranscriptNamesItsToolAndItsRoute is ruling J13 on
@@ -98,7 +100,7 @@ func TestSourceLabelsCannotBeForgedIntoEachOther(t *testing.T) {
 			}
 		})
 	}
-	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"))
+	entries, err := os.ReadDir(abcdhome.Path(home, "transcripts", testRootSHA, "records"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +201,7 @@ func TestSourceToolIsScannedWithTheBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("a tool label the scanner redacts was stored")
 	}
-	entries, _ := os.ReadDir(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"))
+	entries, _ := os.ReadDir(abcdhome.Path(home, "transcripts", testRootSHA, "records"))
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".md") {
 			t.Errorf("the refused capture wrote %s", e.Name())
@@ -246,7 +248,7 @@ func TestLegacyFusedKindRefusesAConflictingTool(t *testing.T) {
 			t.Errorf("refusal does not name %s:\n%v", want, err)
 		}
 	}
-	entries, _ := os.ReadDir(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"))
+	entries, _ := os.ReadDir(abcdhome.Path(home, "transcripts", testRootSHA, "records"))
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".md") {
 			t.Errorf("the refused capture wrote %s", e.Name())

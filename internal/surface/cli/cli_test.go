@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/spf13/cobra"
 )
@@ -450,7 +451,7 @@ func TestHistoryCaptureWiredAndRedacts(t *testing.T) {
 	// Create the store dir exactly as `abcd ahoy install` would (Capture never
 	// bootstraps it).
 	rootSHA := gitCmd(t, repo, "rev-list", "--max-parents=0", "HEAD")
-	tdir := filepath.Join(home, ".abcd", "history", rootSHA, "transcripts")
+	tdir := abcdhome.Path(home, "history", rootSHA, "transcripts")
 	if err := os.MkdirAll(tdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +531,7 @@ func TestHistoryShowSanitisesTranscriptBody(t *testing.T) {
 	t.Chdir(repo)
 
 	rootSHA := gitCmd(t, repo, "rev-list", "--max-parents=0", "HEAD")
-	tdir := filepath.Join(home, ".abcd", "history", rootSHA, "transcripts")
+	tdir := abcdhome.Path(home, "history", rootSHA, "transcripts")
 	if err := os.MkdirAll(tdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -970,7 +971,7 @@ func TestAhoyInstallBootstrapsAndRegistersByRootSHA(t *testing.T) {
 	repo, rootSHA := hermeticGitRepo(t)
 	_ = repo
 	home := os.Getenv("HOME")
-	indexPath := filepath.Join(home, ".abcd", "history", "index.json")
+	indexPath := abcdhome.Path(home, "history", "index.json")
 	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
 		t.Fatalf("history store existed before install: %v", err)
 	}
@@ -1013,7 +1014,7 @@ func TestAhoyDoctorResolvesCentralLocationFromIndex(t *testing.T) {
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
-	indexPath := filepath.Join(os.Getenv("HOME"), ".abcd", "history", "index.json")
+	indexPath := abcdhome.Path(os.Getenv("HOME"), "history", "index.json")
 	// A freshly-registered repo reconciles cleanly: zero audit gaps.
 	out := runCLI(t, "ahoy", "doctor", "--json")
 	var clean struct {
@@ -1078,7 +1079,7 @@ func TestAhoyDoctorJSONCarriesNoHomePrefix(t *testing.T) {
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	home := os.Getenv("HOME")
-	indexPath := filepath.Join(home, ".abcd", "history", "index.json")
+	indexPath := abcdhome.Path(home, "history", "index.json")
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
 		t.Fatal(err)

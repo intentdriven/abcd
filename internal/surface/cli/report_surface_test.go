@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -30,7 +31,7 @@ func fillTemplate(t *testing.T, skeleton, title, prose string) string {
 // inboxFiles lists the report files waiting in the sandboxed home's inbox.
 func inboxFiles(t *testing.T, home string) []string {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "inbox"))
+	entries, err := os.ReadDir(abcdhome.Path(home, "inbox"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -109,7 +110,7 @@ func TestReportRefusalNamesTheFieldAndFilesNothing(t *testing.T) {
 		t.Errorf("refusal = %q, want the field named and nothing filed", err)
 	}
 	_ = out
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(abcdhome.Path(home, "inbox")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a refused report created the inbox (%v)", err)
 	}
 }
@@ -185,7 +186,7 @@ func TestInboxListsShowsAndPromotes(t *testing.T) {
 	// unreadable, naming the rune by its code point and never printing it; the
 	// other still renders whole.
 	files := inboxFiles(t, home)
-	path := filepath.Join(home, ".abcd", "inbox", files[0])
+	path := abcdhome.Path(home, "inbox", files[0])
 	data, _ := os.ReadFile(path)
 	if err := os.WriteFile(path, []byte(strings.Replace(string(data), "finding", "find\u202eing", 1)), 0o600); err != nil {
 		t.Fatal(err)
@@ -383,10 +384,10 @@ func TestAnInboxPathThatIsNotARealDirectoryExitsTwo(t *testing.T) {
 	repo, home := gitRepoNoStore(t)
 	t.Chdir(repo)
 	skeleton := string(runCLI(t, "report", "--template"))
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(t.TempDir(), filepath.Join(home, ".abcd", "inbox")); err != nil {
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, "inbox")); err != nil {
 		t.Fatal(err)
 	}
 	var coded interface{ ExitCode() int }
@@ -427,7 +428,7 @@ func TestAReportThatFailsAfterTheEditorNamesTheKeptDraft(t *testing.T) {
 	reportInteractive = func() bool { return true }
 	t.Cleanup(func() { reportInteractive = prev })
 
-	dot := filepath.Join(home, ".abcd")
+	dot := abcdhome.Path(home)
 	if err := os.MkdirAll(dot, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -458,10 +459,10 @@ func TestAReportThatFailsAfterTheEditorNamesTheKeptDraft(t *testing.T) {
 func TestARefusedInboxIsNamedAtSessionStartAndOnTheBoard(t *testing.T) {
 	repo, home := gitRepoNoStore(t)
 	noAmbientPluginRoot(t)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(t.TempDir(), filepath.Join(home, ".abcd", "inbox")); err != nil {
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, "inbox")); err != nil {
 		t.Fatal(err)
 	}
 	const want = "abcd: the inbox is not counted — ~/.abcd/inbox is not a real directory"

@@ -37,8 +37,8 @@ func boardReviews(cwd string, stderr io.Writer) *reviews.Board {
 }
 
 // renderBoardReviews writes the reviews heading, one line per dated review,
-// stalest first — a `!` on a row past the threshold, the commits since its
-// pin, the pin's short sha, and the folder — and one line for the release
+// stalest first — the commits since its pin, the pin's short sha, the folder,
+// and a `!` after a row past the threshold — and one line for the release
 // receipts. A receipt gates the release it names and is never re-run, and
 // RD002 keeps every one, so each release adds a receipt that stays past the
 // threshold for good: listed a row apiece they would grow the bare board by a
@@ -79,9 +79,9 @@ func renderBoardReviews(w io.Writer, b *reviews.Board) {
 	}
 	fmt.Fprintln(w, heading)
 	for _, r := range dated {
-		flag, since, pin := " ", "—", "unpinned"
+		flag, since, pin := "", "—", "unpinned"
 		if r.Stale {
-			flag = "!"
+			flag = "  !"
 		}
 		if r.CommitsSince != nil {
 			since = strconv.Itoa(*r.CommitsSince)
@@ -93,7 +93,10 @@ func renderBoardReviews(w io.Writer, b *reviews.Board) {
 		if r.State == reviews.StateUnreachable {
 			what += " (pin not in this history)"
 		}
-		fmt.Fprintf(w, "    %s %5s  %-8s  %s\n", flag, since, pin, termsafe.Sanitize(what))
+		// Every row begins at column four, as the receipts line below it
+		// does, and a stale row carries its mark at the end
+		// (iss-2610031207397996).
+		fmt.Fprintf(w, "    %-5s  %-8s  %s%s\n", since, pin, termsafe.Sanitize(what), flag)
 	}
 	if receipts == 0 {
 		return

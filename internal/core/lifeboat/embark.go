@@ -137,7 +137,7 @@ func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 	res.BytesWritten = bytesW
 	res.Families = families
 	// Marker last: the records land first, then the current block is re-injected
-	// (never foreign prose copied) into the target CLAUDE.md.
+	// (never foreign prose copied) into the conventions file the target chose.
 	res.Marker = embarkMarker(pr.targetAbs, false)
 	return res, nil
 }
@@ -567,25 +567,66 @@ func writeEmbark(targetAbs string, planned []PlannedEmbark) (written, unchanged,
 	return written, unchanged, bytesWritten, families, nil
 }
 
+// markerSkipNoFile is the note a marker carries when the target's setup chose
+// no conventions file for abcd's block (docs.target skip).
+const markerSkipNoFile = "this project's setup chose no conventions file for abcd's block"
+
+// markerSkipUnreadable is the note a marker carries when the target's
+// .abcd/config.json cannot be read, so its choice of file is unknown and
+// nothing is planted; the records still land, and a re-run plants the block
+// once the file reads.
+const markerSkipUnreadable = "this project's .abcd/config.json could not be read, so abcd's block was not planted; " +
+	"fix that file and run embark again"
+
+// markerFile chooses the conventions file embark plants abcd's block into,
+// from the docs.target the target's setup saved, read with setup's own reader
+// (ahoy.SavedDocsTarget): agents_md and no choice at all give AGENTS.md, the
+// one conventions file abcd writes (adr-2610030814023326); skip, a retired
+// value and an unreadable settings file give no file, with the note that says
+// why. A retired value's note is the one ahoy.RetiredDocsTarget gives every
+// front door.
+func markerFile(targetAbs string) (file, note string) {
+	v, err := ahoy.SavedDocsTarget(targetAbs)
+	if err != nil {
+		return "", markerSkipUnreadable
+	}
+	if why, retired := ahoy.RetiredDocsTarget(v); retired {
+		return "", why
+	}
+	if v == "skip" {
+		return "", markerSkipNoFile
+	}
+	return "AGENTS.md", ""
+}
+
 // embarkMarker predicts (dryRun) or performs the CURRENT abcd marker block in the
-// target CLAUDE.md via ahoy.EnsureMarker, then maps the outcome to a MarkerAction.
+// conventions file the target's setup chose (markerFile) via ahoy.EnsureMarker,
+// then maps the outcome to a MarkerAction. Probe and from both come through
+// here, so a probe cannot mispredict the file or the action: the dry run asks
+// the write's own questions, of the file and of the folder that must take its
+// lock and temporary file, without writing (iss-2610032202263648).
 // The install/refresh distinction is derived from whether the file already
 // carried a block (via the exported ahoy.StripMarkerBlock), since EnsureMarker's
-// signature reports only whether it changed. A symlinked/unwritable CLAUDE.md is
-// MarkerActionSkip (non-fatal — the records still land).
+// signature reports only whether it changed. No chosen file, a
+// symlinked/unreadable/unwritable one, and a root that cannot take a new file,
+// is MarkerActionSkip (non-fatal — the records still land).
 func embarkMarker(targetAbs string, dryRun bool) MarkerResult {
-	p := filepath.Join(targetAbs, "CLAUDE.md")
+	file, note := markerFile(targetAbs)
+	if file == "" {
+		return MarkerResult{Action: MarkerActionSkip, Note: note}
+	}
+	p := filepath.Join(targetAbs, file)
 	hadBlock := false
 	// Guarded read: the target repo is arbitrary, so a symlinked or oversize/device
-	// CLAUDE.md must not be followed or read unbounded. Any error leaves hadBlock
-	// false (best-effort), as before.
+	// conventions file must not be followed or read unbounded. Any error leaves
+	// hadBlock false (best-effort), as before.
 	if data, err := fsutil.ReadGuarded(p, maxEmbarkFileBytes); err == nil {
 		if _, had := ahoy.StripMarkerBlock(data); had {
 			hadBlock = true
 		}
 	}
 	changed, err := ahoy.EnsureMarker(p, dryRun)
-	res := MarkerResult{Target: "CLAUDE.md", Changed: changed}
+	res := MarkerResult{Target: file, Changed: changed}
 	switch {
 	case err != nil:
 		res.Action = MarkerActionSkip

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -32,7 +33,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "implement",
 		Long: "The run machinery an autonomous run calls. The shared run lives in the machine-scoped run\n" +
-			"state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions\n" +
+			"state, `" + abcdhome.Display("runs/<root-sha>/") + "`, keyed on the repository's root commit, so sessions\n" +
 			"in different worktrees of one repository share one run and no repository file.\n\n" +
 			"Bare `abcd implement` is read-only: the sessions that have joined, the claims and\n" +
 			"whether each lease still holds, and the window's division mode. It creates nothing.\n\n" +
@@ -488,7 +489,7 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:       "log <event> --session <id> [--field key=value ...]",
 		ValidArgs: implement.LoggableEvents(),
-		Long: "Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)\n" +
+		Long: "Append one event line to today's run log (`" + abcdhome.Display("runs/<root-sha>/<UTC date>.jsonl") + "`)\n" +
 			"in a single append, so two sessions writing at once each land whole lines. The line\n" +
 			"carries ts, session and event, then each --field. A value that reads as a number or\n" +
 			"a boolean is written as one when it reads back as the same text, so `sha=0123456`\n" +

@@ -32,12 +32,13 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // runsRelPath is the store's root relative to the caller's home.
-const runsRelPath = ".abcd/runs"
+var runsRelPath = abcdhome.Rel("runs")
 
 // storeDirPerm is the mode a run directory is created with: the run state is the
 // caller's own and nobody else's business.

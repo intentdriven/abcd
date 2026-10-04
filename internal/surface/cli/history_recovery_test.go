@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -51,7 +52,7 @@ func secondRepo(t *testing.T) (repo, rootSHA string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", rootSHA, "records"), 0o755); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", rootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return repo, rootSHA
@@ -94,7 +95,7 @@ func plantComposite(t *testing.T, rootSHA, stored, fullSession string) string {
 		`{"type":"user","sessionId":"` + fullSession + `"}`,
 		"",
 	}, "\n")
-	dir := filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	dir := abcdhome.Path(home, "transcripts", rootSHA, "records")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

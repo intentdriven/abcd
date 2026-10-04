@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestSessionRepoRoundTrip: the note is the whole fallback. A hook holding only
@@ -39,7 +41,7 @@ func TestSessionRepoUnknownSessionIsAnError(t *testing.T) {
 func TestSessionRepoRefusesAnAmbiguousSession(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	other := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", other, "records"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "transcripts", other, "records"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for _, sha := range []string{testRootSHA, other} {
@@ -73,7 +75,7 @@ func TestSessionNotesArePruned(t *testing.T) {
 	if err := NoteSessionRepo(repoRoot, testRootSHA, "sess-old"); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "sessions")
+	dir := abcdhome.Path(home, "transcripts", testRootSHA, "sessions")
 	old := time.Now().Add(-2 * sessionNoteTTL)
 	if err := os.Chtimes(filepath.Join(dir, "sess-old"), old, old); err != nil {
 		t.Fatal(err)
