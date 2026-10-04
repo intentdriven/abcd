@@ -511,3 +511,7 @@ func scanIndex(body []byte) error {
 
 // envNameRe is an environment variable's name as a pointer names it.
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// ValidEnvName reports whether name is an environment variable's name as an
+// external pointer takes it.
+func ValidEnvName(name string) bool { return envNameRe.MatchString(name) }

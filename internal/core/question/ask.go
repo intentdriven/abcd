@@ -35,6 +35,13 @@ type Question struct {
 	Typed string `json:"typed,omitempty"`
 }
 
+// TypedRowLabel is the label of the one option a front door adds to a
+// question with a typed part when the host's question tool takes fewer
+// listed options than the question has (a typed part and decide later alone):
+// it points at the host's free-text row and answers nothing itself, so an
+// interview that receives it asks the question again.
+const TypedRowLabel = "Type my own answer"
+
 // Block is one piece of a question's material: a paragraph, or a list.
 type Block struct {
 	Kind  string   `json:"kind"` // KindParagraph or KindList
