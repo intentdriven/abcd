@@ -460,7 +460,7 @@ var coverage = []coverageRow{
 			"the fixture's own root-commit sha, exactly where the store would be — so the " +
 			"day a walk over HOME is added, this row becomes falsifiable with no change to " +
 			"the corpus. The in-repo half is a different matter and IS falsifiable: a " +
-			"checkout declared in ~/.abcd/local-transcript-roots keeps its store under " +
+			"checkout declared in ~/.abcd.noindex/local-transcript-roots keeps its store under " +
 			".abcd/.work.local/, so the repo-side plant in this class is caught by the " +
 			"`.abcd` deny and the local-tier exclusion, which the structural rows below " +
 			"falsify directly (iss-95)",
