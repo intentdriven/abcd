@@ -636,7 +636,8 @@ whether the service takes a key; where the key lives, offering the three
 homes and never a key the person saved in the system keychain by hand; and,
 for an environment variable, its name, offering at most three variables whose
 names end in `_API_KEY`, never their values. A service that lists its models
-only for a key skips the model question: the command then has no `--model`,
+only for a key skips the model question and the key question: the command
+then has no `--model`,
 `done.picks_in_terminal` is true, and the person picks in the terminal once
 the command has the key.
 

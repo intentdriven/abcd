@@ -176,7 +176,9 @@ none is given; offers to look up the service's models, showing the scheme and
 host first and sending one keyless request only on a yes; suggests the models
 the person's other connections already use that the service lists, at most
 three, and narrows the list by the typed part of a name with no second
-request, by the same rule the plain-Terminal list narrows by; falls back to a
+request, by the same rule the plain-Terminal list narrows by; carries the
+first listed ids that fit 32 KiB and the count it does not carry, asking for
+the model's full name when a typed part matches none carried; falls back to a
 typed model name, saying why, where the service publishes no list; asks
 whether the service takes a key and where the key lives, offering the
 credential store's three homes and never a key saved in the system keychain by
