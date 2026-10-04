@@ -8,6 +8,142 @@
       "evidence": "Probes at 4d634c4f0 via guard check on stdin (scratch binary): `rm -rf ../.` ALLOWS (exit 0), and so do `rm -rf ../../.`, `rm -rf ./.`, `rm -rf /.`; while `rm -rf ./../.`, `rm -rf $PWD/../.` and `rm -rf x/../../.` WARN on rm-rf-working-directory (exit 0) and `rm -rf ..`, `rm -rf ../` warn. The chapter's own example `../.` is the one form that allows. internal/core/guard/match.go:883-885 (foldParents comment) claims a trailing `.` is folded, and no test in internal/core/guard/*_test.go names `../.`; the sentence entered the chapter in 4ef5013bd (2026-09-29), an ancestor of a76d7f52b, so it is pre-existing and outside every delta reviewed since. Every other probed claim in the chapter holds: only `guard check` speaks JSON (`guard hook --json` writes nothing on stdout and answers by exit 2/1/0 and stderr), `matches` lists every entry tripped with the fired one first (`[\"git-push-force\",\"git-clean\"]`, rendered `also matched: git-clean`), `git-stash-shared-stack` and `interpreter-reads-stream` fire (stash.go, payload.go) and are absent from `rules SHELL` (17 registry entries, none of those ids), the verdict table, `command-unparsable` on the hook, `git pus? --force`, `r[[:lower:]] -rf /`, `git clea[!n] -fd`, `rm $(true) -rf *`, `mkdir -p foo/{a,b}` (allow), `git push {--force,} origin main`, `${HOME%/*}`, `~/../*/*`, `/**`, `~/.?/*`, `~/.[a-z]/*`, `~/.?` (allow), `'/**'`, `${X:+$HOME}`, `IFS=x; rm -rf ${U:-x/x}`, `IFS=Uv; rm -rf $HOME/x`, `${X:-$'\\x2f'}`, `$!/`, `${PWD:0:1}` (block), `cat x | sh`, `pkill -u`, `kill $(pgrep make)`, `cd /tmp \u0026\u0026 rm -rf x`, `pushd /tmp; rm -rf x`, `core.hooksPath`, a same-line git alias, and the whole unseen list at lines 449-490 (`$(echo /)`, `\"$DIR\"/*`, `/?*`, `/tmp/$X/../../*`, `~/../?*`, `x/../*`, `~root/../../*`, `ps | grep | xargs kill`, `p=$(pgrep make); kill $p`, `python -c`, `$(cat msg.txt)`, `$(date)` all allow).",
       "commit": "4d634c4f0baf4d23fde0c76b811e0619ee927d48",
       "applied": "2026-09-30T23:00:13Z"
+    },
+    {
+      "chapter": "01-ahoy.md",
+      "sentence": "to `~/.abcd/interviews/`, made through the guarded home-scope maker.",
+      "replacement": "to `~/.abcd.noindex/interviews/`, made through the guarded home-scope maker.",
+      "evidence": "internal/abcdhome/abcdhome.go:35",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "03-embark.md",
+      "sentence": "(the target defaulting to the working directory), **then** the four record",
+      "replacement": "(the target defaulting to the working directory), **then** the five record",
+      "evidence": "internal/core/lifeboat/embark_types.go:322",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "05-intent.md",
+      "sentence": "disciplines follow. The seven written since (itd-190 onwards) head the rule",
+      "replacement": "disciplines follow. The eight written since (itd-190 onwards) head the rule",
+      "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:1",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "05-intent.md",
+      "sentence": "**The first trigger has fired, and the enum has not been drawn.** Fourteen",
+      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Fifteen",
+      "evidence": ".abcd/development/intents/disciplines/README.md:1",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "05-intent.md",
+      "sentence": "#   conditions AND no nullity) exits the gate non-zero, naming the field",
+      "replacement": "#   conditions AND no nullity) is reported on the advisory row, naming the field, and never withholds readiness",
+      "evidence": "internal/core/intent/ready.go:232",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "05-intent.md",
+      "sentence": "four bench drafts and seven of the fourteen disciplines carry no section",
+      "replacement": "four bench drafts and eight of the fifteen disciplines carry no section",
+      "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:1",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "10-docs.md",
+      "sentence": "blocker, and arming it from a release is a design target.**",
+      "replacement": "blocker, and the release workflow arms it.**",
+      "evidence": ".github/workflows/release.yml:148",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "10-docs.md",
+      "sentence": "Nothing in the release machinery passes it.",
+      "replacement": "One step of the release machinery passes it.",
+      "evidence": ".github/workflows/release.yml:148",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "10-docs.md",
+      "sentence": "workflow's docs-currency step, CI's, and the `docs-lint` make target each run",
+      "replacement": "workflow's docs-currency step runs `lint docs --release-gate`; CI's step and the `docs-lint` make target each run",
+      "evidence": ".github/workflows/release.yml:148; .github/workflows/ci.yml:411; Makefile:245",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "10-docs.md",
+      "sentence": "promotion is reachable only by a human typing the flag.",
+      "replacement": "promotion is reached by the release workflow's verify job and by a human typing the flag; no committed config can arm it.",
+      "evidence": ".github/workflows/release.yml:148",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "14-ingest.md",
+      "sentence": "**Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits",
+      "replacement": "**Typing it at the CLI gets a second line that redirects.** `abcd ingest` exits",
+      "evidence": "internal/surface/cli/staleusage.go:85",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "14-ingest.md",
+      "sentence": "adds its stale-surface note, reading that page as proof a newer build carries the",
+      "replacement": "adds a line saying the command has no binary verb and runs in the host agent, naming the",
+      "evidence": "internal/surface/cli/staleusage.go:85",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "14-ingest.md",
+      "sentence": "verb and telling the person to rebuild or update. For a host-delegated command",
+      "replacement": "`/abcd:ingest` invocation, never a rebuild or an update. For a host-delegated command",
+      "evidence": "internal/surface/cli/staleusage.go:85",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "14-ingest.md",
+      "sentence": "command runs in the host agent rather than at the CLI.",
+      "replacement": "command runs in the host agent rather than at the CLI, and that is what the line says.",
+      "evidence": "internal/surface/cli/staleusage.go:84",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "15-prepare-this-repo.md",
+      "sentence": "at a shell is an unknown command rather than a route in. Today that refusal also",
+      "replacement": "at a shell is an unknown command rather than a route in. That refusal",
+      "evidence": "internal/surface/cli/staleusage.go:86",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "15-prepare-this-repo.md",
+      "sentence": "blames a stale binary and asks for a rebuild, which is the wrong reading for a",
+      "replacement": "says the command has no binary verb and runs in the host agent, naming `/abcd:prepare-this-repo`: the right reading for a",
+      "evidence": "internal/surface/cli/staleusage.go:86",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "24-decide.md",
+      "sentence": "and only the citation resolver, the `abcd \u003crecord-id\u003e` dispatch and `decide`",
+      "replacement": "and the citation resolver, the `abcd \u003crecord-id\u003e` dispatch, `decide` itself and the `adr_id_unique` gate call them, as do the record resolver (`internal/core/record`), the intent start-check and reclassify readers, the drain rule and the implement loop's brief. Three readers still carry their own: the `record_schema` gate and",
+      "evidence": "internal/core/lint/adridunique.go:52",
+      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
+      "applied": "2026-10-04T23:45:50Z"
     }
   ]
 }
