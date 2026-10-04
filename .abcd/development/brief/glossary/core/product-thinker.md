@@ -27,6 +27,8 @@ facilitator is a mode, not a person — a project runs duo, with a human technic
 or solo, with abcd doing the facilitator's work — and in both the product thinker's decision
 points stay human.
 
+The *product thinker* framing is credited to a [post by signulll](https://x.com/signulll/status/2030404483897815089) (see `ACKNOWLEDGEMENTS.md`, Inspirations).
+
 ## When to use
 
 Name the product thinker wherever a sentence asks a person to decide what to build, to rule,
