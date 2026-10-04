@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -699,6 +700,43 @@ func TestIntentInterviewRoleChangingAnotherFileIsRefused(t *testing.T) {
 			}
 			if rec := readInterviewRecord(t, r.Root()); len(rec.Answers) != 1 {
 				t.Fatalf("record %+v", rec)
+			}
+		})
+	}
+}
+
+// TestInterviewRolesAreGrantedReadForTheirBrief: the runner's prompt tells
+// the role to read its turn's brief, and the claude runner denies every tool
+// its launch does not grant (dontAsk), so both roles are launched with Read
+// granted beside Write for the receipt: the retrospective's role with those
+// two alone, the planning role with its contract's tools as well.
+func TestInterviewRolesAreGrantedReadForTheirBrief(t *testing.T) {
+	for _, c := range []struct {
+		name, role, want string
+		args             []string
+		answers          func(*testing.T) string
+		setup            func(*testing.T)
+	}{
+		{"retrospective", interview.RoleReflectionComposer, "--allowedTools=Read,Write",
+			[]string{"reflect", "interview", "v0.2.0", "--proceed"}, func(t *testing.T) string { return retroAnswersFile(t, "Q1", "Q2") }, func(t *testing.T) { retroRepo(t) }},
+		{"planning", interview.RolePlanningInterviewer, "--allowedTools=Read,Edit,Grep,Glob,Write",
+			[]string{"intent", "interview", "itd-5"}, planningAnswersFile, func(t *testing.T) { planningRepo(t) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			routeMachine(t, c.role)
+			script := interviewStub(t, `{"done":{"summary":"nothing to ask"}}`)
+			c.setup(t)
+			_, _ = interviewRun(t, false, term.Mono, append(c.args, "--answers", c.answers(t))...)
+			raw, err := os.ReadFile(filepath.Join(script, "turn-1.argv.json"))
+			if err != nil {
+				t.Fatalf("the runner was not started: %v", err)
+			}
+			var argv []string
+			if err := json.Unmarshal(raw, &argv); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(argv, c.want) {
+				t.Fatalf("argv %q does not grant %s", argv, c.want)
 			}
 		})
 	}

@@ -148,6 +148,13 @@ func newReflectCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
+// retrospectiveTools are the tools the reflection-composer is granted in a
+// plain Terminal: Read alone, for its turn's brief, which the runner's prompt
+// tells it to read and the claude runner would otherwise deny (dontAsk denies
+// every tool the launch does not grant); Write is added by the loop for its
+// receipt. It edits nothing: abcd files the outcome.
+var retrospectiveTools = []string{"Read"}
+
 // maxThinRefusals bounds how often a plain-Terminal retrospective's writer
 // hands a thin answer back to the role before the refusal is the person's.
 const maxThinRefusals = 2
@@ -198,7 +205,7 @@ func newReflectInterviewCommand(asJSON *bool) *cobra.Command {
 			w := &interview.Written{
 				Name: interview.Retrospective, Verb: "abcd reflect interview", Role: interview.RoleReflectionComposer,
 				Target: tag, Repo: root, Task: interview.RetrospectiveTask, Done: interview.RetrospectiveDone,
-				Seed: seedJSON,
+				Seed: seedJSON, Tools: retrospectiveTools,
 				CheckDone: func(raw json.RawMessage) error {
 					_, err := reflect.ParseAnswers(raw)
 					return err

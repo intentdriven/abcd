@@ -47,8 +47,9 @@ func (c *ClaudeCLI) args(req Request) []string {
 	if len(req.Tools) > 0 {
 		a = append(a, "--allowedTools="+strings.Join(req.Tools, ","))
 	}
-	// The brief and the receipt sit in the run's lane directory, outside the
-	// working tree the role runs in.
+	// The brief and the receipt sit in the run's own directory: a lane's,
+	// outside the working tree the role runs in, or an interview's turns,
+	// inside the repository's local tier. Either is added explicitly.
 	dirs := []string{filepath.Dir(req.Brief)}
 	if d := filepath.Dir(req.Receipt); d != dirs[0] {
 		dirs = append(dirs, d)

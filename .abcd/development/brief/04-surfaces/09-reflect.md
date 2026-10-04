@@ -96,7 +96,8 @@ goes back to the role, at most twice, to ask the section's follow-up. A
 fault of the write that is not one of its refusals exits 1, since the answers
 record stands by then.
 
-The role changes no file of the repository: abcd reads the working tree's state
+The role is granted Read, for its turn's brief, and Write, for its receipt,
+and changes no file of the repository: abcd reads the working tree's state
 (git's listing of what differs from HEAD, each path's content hashed, the local
 tier left out) before and after each dispatch, and a dispatch that changes any
 path stops the interview, exit 1, naming each and keeping the answers given.
