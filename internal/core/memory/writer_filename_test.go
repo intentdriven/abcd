@@ -26,8 +26,8 @@ import (
 // scanner.BlockingResidual, which treats any identity-or-network span as
 // blocking whatever its severity — and `migrating-off-the-nas` is an ordinary
 // English slug that net_device_hostname matches at warn severity. A filename
-// rule at that bar would refuse ordinary pages, so it runs on hard_fail
-// findings only. The second subtest is what holds that line.
+// rule at that bar would refuse ordinary pages, so it runs on hard-fail-or-token
+// findings only. TestFilenameBarIsHardFailOrTokenOnly is what holds that line.
 //
 // The token is the same FAKE fixture the leaf tests use: `ghp_` and forty
 // literal 'A's. Nothing here is a live credential.
@@ -145,13 +145,14 @@ func TestWriteAcceptsASlugEndingInSK(t *testing.T) {
 	}
 }
 
-// TestFilenameBarIsHardFailOnly is the anti-vacuity guard. An implementation
+// TestFilenameBarIsHardFailOrTokenOnly is the anti-vacuity guard: the bar is
+// every hard_fail finding and every token, and nothing else. An implementation
 // that reused scanner.BlockingResidual — the bar every other write-side rule
 // holds — would refuse this ordinary page, because net_device_hostname matches
 // `off-the-nas` at warn severity and BlockingResidual promotes any network span
 // to blocking. If this test passes against that naive implementation it is not
 // doing its job.
-func TestFilenameBarIsHardFailOnly(t *testing.T) {
+func TestFilenameBarIsHardFailOrTokenOnly(t *testing.T) {
 	repo := t.TempDir()
 	src := writeSource(t, repo, "storage.md", "The array moved to the cloud.\n")
 

@@ -325,9 +325,10 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 // not free text: it is prose-shaped by construction, and
 // `topic_home_migrating-off-the-nas.md` matches net_device_hostname at warn on
 // the hyphen boundary — at BlockingResidual's bar every such ordinary page
-// would be refused. This rule therefore selects on the scanner's own severity
-// vocabulary alone, scanner.SeverityHardFail, which within a filename's
-// charset is the credential class plus two identity kinds: no '/', '@', ':'
+// would be refused. This rule therefore selects on the scanner's own secret
+// vocabulary alone — scanner.SeverityHardFail, and every token whatever its
+// severity (scanner.IsTokenKind). Within a filename's charset hard_fail is
+// the credential class plus two identity kinds: no '/', '@', ':'
 // or '.' can appear inside a page name, so the address kinds and the
 // home-path kinds are unreachable there and what remains at hard_fail is a
 // secret pattern, the caller's own local username, or a banned real name. The
@@ -348,7 +349,7 @@ func (r *storeRedactor) judgeFilename(filename string) error {
 	if len(kinds) == 0 {
 		return nil
 	}
-	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", r.sealedFilename(filename), len(kinds), strings.Join(kinds, ", "))
+	return newIngestError("refusing to write %s: the page filename carries %d secret span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", r.sealedFilename(filename), len(kinds), strings.Join(kinds, ", "))
 }
 
 // sealedFilename is filename with every span a hard_fail finding over
@@ -390,8 +391,8 @@ func (r *storeRedactor) sealedFilename(filename string) string {
 	return b.String()
 }
 
-// filenameHardFailKinds is the page-name verdict itself: the distinct hard_fail
-// kinds any of filenameJudgeTexts carries, in first-seen order. judgeFilename
+// filenameHardFailKinds is the page-name verdict itself: the distinct
+// hard-fail-or-token kinds any of filenameJudgeTexts carries, in first-seen order. judgeFilename
 // refuses on it at the write boundary, and the read-side MR001 lint reports on
 // it for a name already in the store (iss-2609090642035097) — one splitting and
 // one bar for both sides, so a name the write side would refuse is exactly a
@@ -446,8 +447,8 @@ func (r *storeRedactor) filenameHardFailKinds(filename string) []string {
 // a TRAILING anchor that matches a component standing alone need not match it
 // inside a suffix; dropping the component pass could therefore narrow the bar,
 // and the bar is not this function's business. Widening it is not either: this
-// changes only WHERE the patterns are matched, never which severities count —
-// hardFailResidue still selects on scanner.SeverityHardFail alone.
+// changes only WHERE the patterns are matched, never which findings count —
+// hardFailResidue still selects hard-fail-or-token findings alone.
 //
 // Offsets do not survive a suffix, and nothing downstream needs them to. Each
 // scan is labelled with the whole `filename`, and judgeFilename reports the
