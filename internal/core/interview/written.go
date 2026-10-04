@@ -301,6 +301,13 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		dir := filepath.Join(w.Repo, filepath.FromSlash(dirRel))
 		var got receipt
 		first := true
+		dctx, stop := ctx, context.CancelFunc(func() {})
+		if w.DispatchContext != nil {
+			dctx, stop = w.DispatchContext(ctx)
+		}
+		// interrupted is the front door's interrupt ending the dispatch, not
+		// the caller's own context: the runner it killed did not fail.
+		interrupted := func() bool { return dctx.Err() != nil && ctx.Err() == nil }
 		d := &runner.Dispatcher{
 			Config:      w.Config,
 			Attended:    true,
@@ -314,6 +321,9 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 				return nil
 			},
 			Record: func(fb runner.FallbackReceipt) error {
+				if interrupted() {
+					return nil
+				}
 				res.Fallbacks = append(res.Fallbacks, fb)
 				return nil
 			},
@@ -324,10 +334,6 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 			},
 			Now: w.Now,
 		}
-		dctx, stop := ctx, context.CancelFunc(func() {})
-		if w.DispatchContext != nil {
-			dctx, stop = w.DispatchContext(ctx)
-		}
 		_, err := d.Dispatch(dctx, runner.Request{
 			Role:      w.Role,
 			Brief:     filepath.Join(dir, briefRel),
@@ -337,9 +343,9 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 			SessionID: fmt.Sprintf("%s-%s-turn-%d", w.Name, start.Format(stampLayout), turn),
 			Timeout:   w.Timeout,
 		})
-		interrupted := dctx.Err() != nil && ctx.Err() == nil
+		stopped := interrupted()
 		stop()
-		if interrupted {
+		if stopped {
 			return end(errors.Join(ErrInterrupted, err))
 		}
 		if err != nil {

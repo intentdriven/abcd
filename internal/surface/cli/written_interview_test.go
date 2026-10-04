@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/interview"
@@ -32,7 +34,11 @@ const interviewStubScriptEnv = "ABCD_CLI_INTERVIEW_STUB"
 
 // interviewStubRunner plays the claude runner for one turn: it copies the
 // script's turn-<n>.json to the receipt path the prompt names (no file, no
-// receipt), keeps the turn's brief beside the script, and reports success.
+// receipt), keeps the turn's brief and its argv beside the script, and
+// reports success. A turn-<n>.also.json, a map of path to content, makes the
+// turn write those files too, relative to the directory the runner was
+// started in; a turn-<n>.sleep makes it mark turn-<n>.started beside the
+// script and sleep, so a test can stop it mid-run.
 func interviewStubRunner(dir string) int {
 	prompt := os.Args[len(os.Args)-1]
 	field := func(prefix string) string {
@@ -49,10 +55,32 @@ func interviewStubRunner(dir string) int {
 	if b, err := os.ReadFile(brief); err == nil {
 		_ = os.WriteFile(filepath.Join(dir, turn+".brief.seen.md"), b, 0o600)
 	}
+	if argv, err := json.Marshal(os.Args[1:]); err == nil {
+		_ = os.WriteFile(filepath.Join(dir, turn+".argv.json"), argv, 0o600)
+	}
 	if body, err := os.ReadFile(filepath.Join(dir, turn+".json")); err == nil {
 		if err := os.WriteFile(receipt, body, 0o600); err != nil {
 			return 3
 		}
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, turn+".also.json")); err == nil {
+		var also map[string]string
+		if err := json.Unmarshal(raw, &also); err != nil {
+			return 3
+		}
+		for p, body := range also {
+			target := filepath.FromSlash(p)
+			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+				return 3
+			}
+			if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
+				return 3
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, turn+".sleep")); err == nil {
+		_ = os.WriteFile(filepath.Join(dir, turn+".started"), nil, 0o600)
+		time.Sleep(30 * time.Second)
 	}
 	fmt.Println(`{"type":"system","subtype":"init","session_id":"stub-session-1","model":"stub-model"}`)
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"stub-session-1"}`)
@@ -500,5 +528,59 @@ func TestIntentInterviewRefusesAShippedIntent(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(script, "turn-1.brief.seen.md")); !os.IsNotExist(err) {
 		t.Fatal("the runner was started")
+	}
+}
+
+// interviewStubAlso makes the script's turn write files besides its receipt,
+// each path relative to the repository the runner runs in.
+func interviewStubAlso(t *testing.T, script string, turn int, files map[string]string) {
+	t.Helper()
+	b, err := json.Marshal(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(script, fmt.Sprintf("turn-%d.also.json", turn)), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestInterruptWhileARunnerWritesExits130: an interrupt while the second
+// turn's runner writes exits 130, keeps the first answer in the record, and
+// records no runner failure; nothing is filed.
+func TestInterruptWhileARunnerWritesExits130(t *testing.T) {
+	routeMachine(t, interview.RoleReflectionComposer)
+	script := interviewStub(t, retroReceipts()...)
+	if err := os.WriteFile(filepath.Join(script, "turn-2.sleep"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	swap := interruptContext
+	t.Cleanup(func() { interruptContext = swap })
+	n := 0
+	interruptContext = func(ctx context.Context) (context.Context, context.CancelFunc) {
+		n++
+		dctx, cancel := context.WithCancel(ctx)
+		if n == 2 {
+			go func() {
+				for dctx.Err() == nil {
+					if _, err := os.Stat(filepath.Join(script, "turn-2.started")); err == nil {
+						cancel()
+						return
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			}()
+		}
+		return dctx, cancel
+	}
+	r := retroRepo(t)
+	stderr, err := interviewRun(t, false, term.Mono, "reflect", "interview", "v0.2.0", "--proceed", "--answers", retroAnswersFile(t, "Q1", "Q2"))
+	if exitCodeOf(err) != ask.ExitInterrupted {
+		t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, stderr)
+	}
+	if rec := readInterviewRecord(t, r.Root()); len(rec.Answers) != 1 || len(rec.Fallbacks) != 0 {
+		t.Fatalf("record %+v; want the first answer and no fallback", rec)
+	}
+	if _, err := os.Stat(retroPath(r, "v0.2.0")); !os.IsNotExist(err) {
+		t.Fatal("a retrospective was written")
 	}
 }

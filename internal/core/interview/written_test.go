@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -407,5 +408,47 @@ func TestBeforeAFallbackRunnerTheFailedRunnersReceiptIsRemoved(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(dir, rel)); !os.IsNotExist(err) {
 		t.Fatalf("the failed runner's receipt still stands: %v", err)
+	}
+}
+
+// cancelWhenStarted is a DispatchContext that interrupts the given turn's
+// dispatch once its runner has started (the stub marks turn-<n>.started), as
+// the front door's interrupt relay does on Ctrl-C.
+func cancelWhenStarted(script string, turn int) func(context.Context) (context.Context, context.CancelFunc) {
+	n := 0
+	return func(ctx context.Context) (context.Context, context.CancelFunc) {
+		n++
+		dctx, cancel := context.WithCancel(ctx)
+		if n == turn {
+			go func() {
+				for dctx.Err() == nil {
+					if _, err := os.Stat(filepath.Join(script, fmt.Sprintf("turn-%d.started", turn))); err == nil {
+						cancel()
+						return
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			}()
+		}
+		return dctx, cancel
+	}
+}
+
+// TestAnInterruptIsNotRecordedAsARunnerFailure: an interrupt while the
+// second turn's runner writes ends the interview as ErrInterrupted with the
+// first answer recorded, and the runner it killed is not recorded as a
+// runner that failed.
+func TestAnInterruptIsNotRecordedAsARunnerFailure(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
+	stubSleep(t, script, 2)
+	r := newWrittenRun(t, routedToClaude)
+	r.w.DispatchContext = cancelWhenStarted(script, 2)
+	res, err := r.w.Run(context.Background())
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("err = %v, want ErrInterrupted", err)
+	}
+	rec := readRecord(t, res.Record)
+	if len(rec.Answers) != 1 || len(rec.Fallbacks) != 0 || len(res.Fallbacks) != 0 {
+		t.Fatalf("record %+v; want the one answer and no fallback", rec)
 	}
 }

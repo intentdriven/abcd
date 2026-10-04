@@ -51,6 +51,14 @@ func (f *writtenFlags) register(cmd *cobra.Command, name string) {
 		"Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 }
 
+// interruptContext relays an interrupt, a termination or a hang-up to the
+// runner while it writes the next question, so the runner is killed with its
+// process group and the answers given are kept; a test stands in for the
+// signal through it.
+var interruptContext = func(ctx context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+}
+
 // finishError is the interview's own writer refusing its outcome; the verb
 // maps it as the writer's verb would.
 type finishError struct{ err error }
@@ -89,9 +97,7 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	w.Config = cfg
 	w.Transcripts = &lazyHistoryStore{cmd: cmd}
 	w.Verbs = verbsOf(cmd.Root())
-	w.DispatchContext = func(ctx context.Context) (context.Context, context.CancelFunc) {
-		return signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	}
+	w.DispatchContext = interruptContext
 
 	switch tm, tnotes, drawn := drawnTerminal(cmd.InOrStdin(), cmd.OutOrStdout(), errOut, w.Repo); {
 	case f.answers != "":
