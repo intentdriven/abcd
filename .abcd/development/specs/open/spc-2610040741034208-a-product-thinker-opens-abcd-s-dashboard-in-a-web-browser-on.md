@@ -123,7 +123,7 @@ needs the person's sign-off:
    configuration is made, and the standard library suffices (`crypto/tls`,
    `os/exec`).
 
-- **D1 (facilitator, decided; needs the product thinker's word on T1):**
+- **D1 (facilitator, decided; the product thinker confirmed T1's rewording on 2026-10-04, the intent's decision 21):**
   option 4. It is the only standard-library route that meets T2 and the
   ADR's "never from a header", and it keeps T1's ends: nothing answers off
   the tailnet, Funnel is never involved, one package alone listens. It
