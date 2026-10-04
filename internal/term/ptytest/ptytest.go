@@ -32,11 +32,9 @@ type Pty struct {
 	mu   sync.Mutex
 	out  bytes.Buffer
 	done chan struct{}
-	// pending counts chunks the drain has read and not yet appended, and
-	// last is when the drain last appended one: Settled reads both, so a
-	// chunk in flight is never taken for silence.
-	pending int
-	last    time.Time
+	// hold, when set, keeps the drain from its first read until it is
+	// closed: a test stands in for a drain a loaded machine starves.
+	hold chan struct{}
 }
 
 // Open opens a pseudo-terminal, sizes it cols by rows, and starts draining the
@@ -44,11 +42,17 @@ type Pty struct {
 // on a full terminal. Both ends are closed when the test ends.
 func Open(t testing.TB, cols, rows int) *Pty {
 	t.Helper()
+	return openHeld(t, cols, rows, nil)
+}
+
+// openHeld is Open with the drain held until hold is closed (nil: never).
+func openHeld(t testing.TB, cols, rows int, hold chan struct{}) *Pty {
+	t.Helper()
 	m, s, err := open()
 	if err != nil {
 		t.Fatalf("opening a pseudo-terminal: %v", err)
 	}
-	p := &Pty{Master: m, Terminal: s, done: make(chan struct{})}
+	p := &Pty{Master: m, Terminal: s, done: make(chan struct{}), hold: hold}
 	if err := SetSize(s, cols, rows); err != nil {
 		m.Close()
 		s.Close()
@@ -67,17 +71,15 @@ func (p *Pty) Close() {
 
 func (p *Pty) drain() {
 	defer close(p.done)
+	if p.hold != nil {
+		<-p.hold
+	}
 	buf := make([]byte, 4096)
 	for {
 		n, err := p.Master.Read(buf)
 		if n > 0 {
 			p.mu.Lock()
-			p.pending++
-			p.mu.Unlock()
-			p.mu.Lock()
 			p.out.Write(buf[:n])
-			p.pending--
-			p.last = time.Now()
 			p.mu.Unlock()
 		}
 		if err != nil {
@@ -96,20 +98,32 @@ func (p *Pty) Output() string {
 // settleDeadline bounds how long Settled waits for the output to settle.
 const settleDeadline = 10 * time.Second
 
-// Settled is the output once it has settled: no chunk in flight in the drain
-// and no new byte for quiet. A check that something did NOT reach the
-// terminal reads this, never Output, since a read taken before the drain has
-// read the child's last bytes passes falsely. It fails the test when the
-// output has not settled within settleDeadline. A check that something DID
-// reach the terminal waits for it with WaitFor instead.
+// Settled is the output once it has settled: the kernel holds no byte for
+// the master end the drain has not read (unread), and neither that nor the
+// output has changed for quiet, watched from the call on. A check that
+// something did NOT reach the terminal reads this, never Output, since a read
+// taken before the drain has read the child's last bytes passes falsely. The
+// quiet window also covers a chunk the drain has read and not yet appended,
+// and bytes the kernel has not yet queued for the master end. It fails the
+// test when the output has not settled within settleDeadline. A check that
+// something DID reach the terminal waits for it with WaitFor instead.
 func (p *Pty) Settled(t testing.TB, quiet time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(settleDeadline)
+	seen, since := -1, time.Now()
 	for {
-		p.mu.Lock()
-		out, pending, last := p.out.String(), p.pending, p.last
-		p.mu.Unlock()
-		if pending == 0 && time.Since(last) >= quiet {
+		waiting, err := unread(p.Master)
+		if err != nil {
+			t.Fatalf("reading how many bytes the terminal holds unread: %v", err)
+		}
+		out := p.Output()
+		switch {
+		case waiting != 0 || len(out) != seen:
+			seen, since = len(out), time.Now()
+			if waiting != 0 {
+				seen = -1
+			}
+		case time.Since(since) >= quiet:
 			return out
 		}
 		if time.Now().After(deadline) {
@@ -117,6 +131,14 @@ func (p *Pty) Settled(t testing.TB, quiet time.Duration) string {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// unread is how many bytes the kernel holds for f, a master end, that no
+// read has taken yet: FIONREAD on linux, TIOCOUTQ on darwin (unreadRequest).
+func unread(f *os.File) (int, error) {
+	var n int32
+	err := ioctl(f, unreadRequest, uintptr(unsafe.Pointer(&n)))
+	return int(n), err
 }
 
 // WaitFor waits until the output after offset bytes holds sub, and returns

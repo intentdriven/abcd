@@ -48,3 +48,11 @@ func open() (master, terminal *os.File, err error) {
 	m.Close()
 	return nil, nil, syscall.EINVAL
 }
+
+// unreadRequest asks how many bytes the master end has still to read. On
+// darwin FIONREAD on the master counts the terminal's input queue, the bytes
+// typed and not yet read by the child, and reads 0 while the child's output
+// waits: a probe with the drain held showed FIONREAD 0 and TIOCOUTQ 14 for 14
+// bytes written. The child's output waits in the terminal's output queue, so
+// darwin's request is TIOCOUTQ, which counts it from either end.
+const unreadRequest = syscall.TIOCOUTQ
