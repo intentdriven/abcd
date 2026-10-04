@@ -1,0 +1,18 @@
+› Setup Q1
+
+  Whether abcd's records (decisions, intents and issues, under .abcd/) are
+  committed with your code or kept out of git, by abcd's block in .gitignore.
+
+  Which answer does this repository take?
+
+› 1. private
+     records committed, shared by all who see the repository; only per-machine
+     scratch, .abcd/.work.local/, is ignored. Suits unpublished code.
+  2. public
+     all of .abcd/ is ignored, so records stay on this machine,
+     unpublished; so is memory/ at the top, abcd's older memory home.
+  3. Decide later
+     Leaves the value unset, so the install lists it again next time.
+
+  Now: not set
+  Change later: pass --visibility private|public to answer without asking

@@ -112,6 +112,8 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 ```
       --adopt                   adopt an unmanaged repo without prompting
       --allow-stale-binary      proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix
+      --answered-in string      where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer (default "Terminal")
+      --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary

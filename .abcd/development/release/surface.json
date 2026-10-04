@@ -190,6 +190,20 @@
           "hidden": false
         },
         {
+          "name": "answered-in",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "answers",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "attribution",
           "shorthand": "",
           "type": "bool",

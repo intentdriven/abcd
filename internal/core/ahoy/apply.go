@@ -630,22 +630,16 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	}
 
 	// Collect the missing values.
-	if ic.Visibility == "" {
-		ic.Visibility = a.resolveValue("visibility", visibilityChoices, "")
-		if !inSet(ic.Visibility, visibilityChoices) {
-			return nil // no valid visibility => partial
-		}
+	got := collectMissingValues(a.cwd, ic, a.overrides, a.resolveValue)
+	if got.retired != "" {
+		// A retired answer is said, with the one explanation; a typo is never
+		// persisted either way.
+		a.refuse(got.retired)
 	}
-	if ic.DocsTarget == "" {
-		ic.DocsTarget = a.resolveValue("docs_target", docsTargetWritable, docsTargetDefault)
-		if !inSet(ic.DocsTarget, docsTargetWritable) {
-			// A retired answer is said, with the one explanation; a typo is
-			// never persisted either way.
-			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
-				a.refuse(why)
-			}
-			return nil // no writable docs target => partial
-		}
+	if !got.ok {
+		return nil // a value left unanswered or not one setup writes => partial
+	}
+	if got.docsChosen {
 		// Choosing the target is the approval to plant into it. At the skip
 		// default detection previews no marker gap, so the plugin-owned category
 		// is never offered, and a first install that names a target would persist
@@ -653,34 +647,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		// this when the config write does not land.
 		a.docsTargetForced = true
 	}
-	oracleRecorded := false
-	if ic.OracleBackend == "" {
-		if a.overrides["oracle_backend"] == "" && !oracleBackendAsked() {
-			// One answer has an adapter, so there is nothing to ask: record it
-			// and say so once the write lands (iss-2610031236155833).
-			ic.OracleBackend = oracleBackendDefault
-			oracleRecorded = true
-		} else {
-			ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
-		}
-		if !inSet(ic.OracleBackend, oracleBackendChoices) {
-			return nil // no valid oracle backend => partial
-		}
-	}
-	if ic.Visibility == "private" && onPath(a.cwd, "trufflehog") && ic.ScanDeep == nil {
-		// The prompter returns the typed line verbatim, so the answer is re-checked
-		// against the choice set exactly as the three slots above are. Comparing it
-		// to "true" instead would fold every other spelling into false: a person who
-		// answered "yes" to deep secret scanning would get it switched OFF, silently
-		// — an unparseable answer must never resolve to a WEAKER scan than the one
-		// the operator asked for. An explicit "false" still disables it deliberately.
-		ans := a.resolveValue("scan_deep", scanDeepChoices, scanDeepDefault)
-		if !inSet(ans, scanDeepChoices) {
-			return nil // no valid scan_deep => partial (never persist a typo)
-		}
-		v := ans == "true"
-		ic.ScanDeep = &v
-	}
+	oracleRecorded := got.oracleRecorded
 
 	// Persist into the config map (read-modify-write), under the file's lock and
 	// only after every prompt above has been answered: the re-read is the one
@@ -717,6 +684,164 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		a.inform(oracleBackendRecordedNote)
 	}
 	return ic
+}
+
+// collectedValues is what collecting the missing config values decided
+// beside the values themselves.
+type collectedValues struct {
+	// ok: every missing value was answered with one setup writes.
+	ok bool
+	// docsChosen: this run chose the repository's first docs target.
+	docsChosen bool
+	// oracleRecorded: the one oracle backend with an adapter was recorded
+	// without asking.
+	oracleRecorded bool
+	// retired is the explanation for a retired docs target given as the
+	// answer, which is refused.
+	retired string
+}
+
+// collectMissingValues fills each config value ic lacks, in the order setup
+// asks them, from resolve, and stops at the first answer that is not a value
+// setup writes: the values after it are not asked. It is the one sequence
+// the install's value step (stepConfigValues) and the walk before the
+// install (WalkConfigValueQuestions) both follow, so the walk puts exactly
+// the questions the install would.
+func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]string, resolve func(key string, choices []string, def string) string) collectedValues {
+	var c collectedValues
+	if ic.Visibility == "" {
+		ic.Visibility = resolve("visibility", visibilityChoices, "")
+		if !inSet(ic.Visibility, visibilityChoices) {
+			return c // no valid visibility
+		}
+	}
+	if ic.DocsTarget == "" {
+		ic.DocsTarget = resolve("docs_target", docsTargetWritable, docsTargetDefault)
+		if !inSet(ic.DocsTarget, docsTargetWritable) {
+			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
+				c.retired = why
+			}
+			return c // no writable docs target
+		}
+		c.docsChosen = true
+	}
+	if ic.OracleBackend == "" {
+		if overrides["oracle_backend"] == "" && !oracleBackendAsked() {
+			// One answer has an adapter, so there is nothing to ask: record it
+			// and say so once the write lands (iss-2610031236155833).
+			ic.OracleBackend = oracleBackendDefault
+			c.oracleRecorded = true
+		} else {
+			ic.OracleBackend = resolve("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+		}
+		if !inSet(ic.OracleBackend, oracleBackendChoices) {
+			return c // no valid oracle backend
+		}
+	}
+	if ic.Visibility == "private" && onPath(cwd, "trufflehog") && ic.ScanDeep == nil {
+		// The prompter returns the typed line verbatim, so the answer is re-checked
+		// against the choice set exactly as the three slots above are. Comparing it
+		// to "true" instead would fold every other spelling into false: a person who
+		// answered "yes" to deep secret scanning would get it switched OFF, silently
+		// — an unparseable answer must never resolve to a WEAKER scan than the one
+		// the operator asked for. An explicit "false" still disables it deliberately.
+		ans := resolve("scan_deep", scanDeepChoices, scanDeepDefault)
+		if !inSet(ans, scanDeepChoices) {
+			return c // no valid scan_deep (never persist a typo)
+		}
+		v := ans == "true"
+		ic.ScanDeep = &v
+	}
+	c.ok = true
+	return c
+}
+
+// WalkConfigValueQuestions puts to answer, writing nothing, the config value
+// questions an install at cwd with opts would ask, in the order it asks them
+// and exactly as far as it would ask them: a value a flag in
+// opts.ValueOverrides gives is not put, and an answer that is not a value
+// setup writes (deciding later included) ends the walk where it ends the
+// install's collection. It is the part of setup's questions settled before
+// the install's first write, so a front door that answers from a file checks
+// the file against it before Install runs, and a value the file leaves
+// unanswered refuses with the repository untouched (iss-2610040025088395).
+// The questions whose asking the run itself decides (the status line's
+// elements, the offers, the artefact kind) are not walked.
+//
+// Nothing is put when the install would ask no value question: cwd is not a
+// repository, an early refusal ends the install, the adoption is declined, or
+// the settings change (config-change) is not approved. approves answers the
+// adoption ("adopt") where opts.Adopt is unset, and the approval
+// ("approve.config-change") where neither opts.Yes nor
+// opts.ApprovedCategories decides it. The error is Detect's.
+func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id string) bool, answer func(key string, choices []string, def string) string) error {
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return err
+	}
+	det, err := Detect(abs)
+	if err != nil {
+		return err
+	}
+	// install's gates before its first question, in its order: each ends the
+	// run before a value is asked.
+	if det.FolderKind == UnmanagedFolder || abcdDirHazard(abs) != "" {
+		return nil
+	}
+	if !opts.AllowStaleBinary && staleBinaryRefusal(currentVintage(), abs) != "" {
+		return nil
+	}
+	if retiredDocsTargetRefusal(abs, opts.ValueOverrides) != "" {
+		return nil
+	}
+	if det.FolderKind == UnmanagedRepo {
+		if opts.Adopt != nil && !*opts.Adopt || opts.Adopt == nil && !approves("adopt") {
+			return nil
+		}
+	}
+	ic, err := loadPersistedInstallConfig(abs)
+	if err != nil {
+		return nil // a config that cannot be parsed is refused, never asked into
+	}
+	// stepConfigValues' own conditions: a value is missing and the settings
+	// change is approved, or a flag changes a value already saved (which can
+	// make the deep-scan question askable without a gap).
+	present := gapIDSet(det.Gaps)
+	hasConfigGap := present["config.visibility_missing"] || present["config.docs_target_missing"] ||
+		present["config.oracle_backend_missing"] || present["config.scan_deep_missing"]
+	if !hasConfigGap && !overridesWouldChange(abs, opts.ValueOverrides) {
+		return nil
+	}
+	if hasConfigGap {
+		switch {
+		case opts.ApprovedCategories != nil:
+			if !opts.ApprovedCategories[ConfigChange] {
+				return nil
+			}
+		case opts.Yes:
+		default:
+			if !approves(approvePrefix + string(ConfigChange)) {
+				return nil
+			}
+		}
+	}
+	// A flag overrides a value already saved, as applyOverride does.
+	for _, s := range []struct {
+		key     string
+		choices []string
+		dst     *string
+	}{{"visibility", visibilityChoices, &ic.Visibility}, {"docs_target", docsTargetWritable, &ic.DocsTarget}, {"oracle_backend", oracleBackendChoices, &ic.OracleBackend}} {
+		if v := opts.ValueOverrides[s.key]; *s.dst != "" && inSet(v, s.choices) {
+			*s.dst = v
+		}
+	}
+	collectMissingValues(abs, ic, opts.ValueOverrides, func(key string, choices []string, def string) string {
+		if v := opts.ValueOverrides[key]; v != "" {
+			return v
+		}
+		return answer(key, choices, def)
+	})
+	return nil
 }
 
 // valueFlags maps each config value an override can set to the install flag
