@@ -48,6 +48,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // OrderPick names the order Next and the head are read in: the pick order of
@@ -79,6 +80,10 @@ type Row struct {
 	Target string `json:"target_release,omitempty"`
 	// NextUp marks the pick order's head on Now.
 	NextUp bool `json:"next_up,omitempty"`
+	// SpecID is the spec the readiness gate judged for a planned intent, its
+	// own spec_id or the spec that names it; empty for a draft and for a
+	// planned intent with no spec (spc-2610031844142274, A5).
+	SpecID string `json:"spec_id,omitempty"`
 	// Lane is the lane state of a Now row the state file shows.
 	Lane *Lane `json:"lane,omitempty"`
 	// Failing names the gating readiness checks a Later planned row fails, in
@@ -102,6 +107,13 @@ type Lane struct {
 	// Waiting is what the lane waits for when it is no agent: its full check
 	// before its push, with the time the wait began (ruling DR6d-2).
 	Waiting string `json:"waiting,omitempty"`
+	// Branch is the lane's branch as the state file records it
+	// (build/<run>-<lane>), empty before the lane's worktree stage cuts it.
+	Branch string `json:"branch,omitempty"`
+	// InFlight is set when the lane's branch exists and its intent's spec is
+	// open: work is on a branch and the design it builds is still live
+	// (spc-2610031844142274, A5 and open question 3).
+	InFlight bool `json:"in_flight,omitempty"`
 }
 
 // Started is one intent the state file shows in lanes: every lane of its run
@@ -206,6 +218,7 @@ func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 		if err != nil {
 			return Block{}, err
 		}
+		r.SpecID = judgedSpec(store, res)
 		if res.Ready {
 			score, err := intent.ReadinessIn(repoRoot, store, it, res.SpecID)
 			if err != nil {
@@ -270,10 +283,18 @@ func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 			if r, err = row(it); err != nil {
 				return Block{}, err
 			}
+			if it.Bucket == intent.BucketPlanned {
+				res, err := intent.ReadyIn(repoRoot, store, it)
+				if err != nil {
+					return Block{}, fmt.Errorf("reading the readiness of %s: %w", it.ID, err)
+				}
+				r.SpecID = judgedSpec(store, res)
+			}
 		}
 		for _, lane := range s.Lanes {
 			lr := r
 			l := lane
+			l.InFlight = inFlight(repoRoot, store, r.SpecID, l.Branch)
 			lr.Lane = &l
 			b.Now = append(b.Now, lr)
 		}
@@ -286,6 +307,33 @@ func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 		b.Next = slices.DeleteFunc(b.Next, func(r Row) bool { return r.ID == head.ID })
 	}
 	return b, nil
+}
+
+// judgedSpec is the spec the readiness gate judged, when the store holds it:
+// an intent that names no spec carries its spec_id's raw "null", and one that
+// names a spec the store lacks names nothing a reader can open, so neither
+// gives the row a spec.
+func judgedSpec(store spec.Store, res intent.ReadyResult) string {
+	if _, ok := store.Lookup(res.SpecID); !ok {
+		return ""
+	}
+	return res.SpecID
+}
+
+// inFlight reports whether a lane's work is on a branch building a live
+// design: its recorded branch resolves in the checkout and its intent's spec is
+// open (spc-2610031844142274 open question 3). A lane at its worktree stage,
+// before its branch is cut, records none and is not in flight.
+func inFlight(repoRoot string, store spec.Store, specID, branch string) bool {
+	if branch == "" || specID == "" {
+		return false
+	}
+	sp, ok := store.Lookup(specID)
+	if !ok || sp.Status != spec.StatusOpen {
+		return false
+	}
+	_, err := gitutil.ResolveCommit(repoRoot, "refs/heads/"+branch)
+	return err == nil
 }
 
 // sortByID orders intents oldest first by record id (intent.IDOlder, the

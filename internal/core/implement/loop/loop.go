@@ -985,9 +985,15 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 		if id == "" {
 			id = st.Key
 		}
+		// A lane's branch is its own record's (build/<run>-<lane>), set once its
+		// worktree stage cuts it; the board marks the lane in flight from it.
+		branches := map[string]string{}
+		for _, l := range st.Lanes {
+			branches[l.ID] = l.Branch
+		}
 		var lanes []statusblock.Lane
 		for _, a := range st.alive() {
-			lane := statusblock.Lane{Run: st.RunID, Lane: a.Lane, Stage: string(a.Stage), Waiting: a.Waiting}
+			lane := statusblock.Lane{Run: st.RunID, Lane: a.Lane, Stage: string(a.Stage), Waiting: a.Waiting, Branch: branches[a.Lane]}
 			roles := make([]string, 0, len(a.Awaits))
 			for _, aw := range a.Awaits {
 				roles = append(roles, aw.Role)
