@@ -38,6 +38,21 @@ const rpRedactedPlaceholder = "<RP-SESSION-UUID-REDACTED>"
 // masks its span whole (maskedWhole).
 const kindPEMPrivateKey = "token:pem_private_key"
 
+// openAILegacyKeyBody is the legacy OpenAI key's shape after its leading
+// boundary (gitleaks' openai-api-key rule, second alternative).
+const openAILegacyKeyBody = `sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}`
+
+var (
+	openAILegacyKeyRe      = regexp.MustCompile(`\b` + openAILegacyKeyBody)
+	openAILegacyKeyWholeRe = regexp.MustCompile(`^` + openAILegacyKeyBody + `$`)
+)
+
+// openAILegacyKeyWhole reports whether a plain sk- match is exactly a legacy
+// OpenAI key, which the legacy rule already reports by its own kind. A longer
+// run that merely opens like one is not skipped: the legacy rule covers only
+// its first 51 bytes, and the plain rule's span is what masks the rest.
+func openAILegacyKeyWhole(m string) bool { return openAILegacyKeyWholeRe.MatchString(m) }
+
 // pemPrivateKeyPattern assembles the bundled pem_private_key regex from named
 // pieces: the two armour markers (the five-dash RFC 7468 / OpenSSH / PGP form,
 // and the four-dash RFC 4716 form an SSH2 private key carries), the separator a
@@ -84,7 +99,9 @@ func pemPrivateKeyPattern() string {
 
 // DefaultPatterns returns the bundled secret pattern set (spec §2.2), ported
 // verbatim from scripts/abcd/defaults/pii.json, plus the network-identifier set
-// from network.go. Every secret pattern is hard_fail and non-sanitisable. This
+// from network.go. Every secret pattern is non-sanitisable and hard_fail but
+// one: the plain sk- rule warns, its shape being too generic to fail a gate on
+// (it is still redacted wherever a finding is). This
 // set is the built-in baseline the merged config layers on top of (the Go
 // analogue of the bundled defaults/pii.json).
 func DefaultPatterns() []Pattern {
@@ -179,6 +196,54 @@ func DefaultPatterns() []Pattern {
 			Name: "openai_service_account", Kind: "token:openai_svcacct", Label: "OpenAI service account key (sk-svcacct-)",
 			Re: regexp.MustCompile(`\bsk-svcacct-[A-Za-z0-9_-]{40,}`), Severity: SeverityHardFail,
 			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// OpenAI's admin key, the third prefix gitleaks' openai-api-key rule
+			// names beside proj and svcacct (cmd/generate/config/rules/openai.go),
+			// shaped as the two rules above (iss-2610040452174484).
+			Name: "openai_admin_key", Kind: "token:openai_admin", Label: "OpenAI admin key (sk-admin-)",
+			Re: regexp.MustCompile(`\bsk-admin-[A-Za-z0-9_-]{40,}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// OpenRouter's key: sk-or-v1- and 64 lower-case hex (iss-2610040202190813).
+			// GitHub secret scanning carries it as the partner pattern
+			// openrouter_api_key; the prefix is long and the body fixed, so the rule
+			// takes nothing else. The plain sk- rule below cannot reach it: "or" is
+			// followed by '-', which its alphanumeric run excludes. No trailing \b,
+			// as for every token rule here: a key followed by '_' keeps no boundary.
+			Name: "openrouter_key", Kind: "token:openrouter", Label: "OpenRouter API key (sk-or-v1-)",
+			Re: regexp.MustCompile(`\bsk-or-v1-[a-f0-9]{64}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// OpenAI's legacy user key: sk-, 20 alphanumerics, T3BlbkFJ (the base64
+			// of "OpenAI") and 20 more. The shape is gitleaks' openai-api-key rule,
+			// its second alternative verbatim (cmd/generate/config/rules/openai.go),
+			// which also carries no trailing boundary.
+			Name: "openai_legacy_key", Kind: "token:openai_legacy", Label: "OpenAI legacy API key (sk-...T3BlbkFJ...)",
+			Re: openAILegacyKeyRe, Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// A plain sk- key: the shape older OpenAI keys and many OpenAI-compatible
+			// services issue — sk- and a long alphanumeric run (DeepSeek 32 hex,
+			// Moonshot 48, LiteLLM's virtual keys). gitleaks deliberately has no
+			// generic sk- rule, so this one WARNS rather than hard-fails: a
+			// hash-like string in a committed file cannot fail a gate on it, while
+			// every store-before-commit redactor masks every finding whatever its
+			// severity (Redact), and the guided connect refuses any token: kind as
+			// a typed name. The 32-character floor keeps a model id such as
+			// sk-tuned/7b out. A key the more specific rules above name is theirs:
+			// sk-ant-, sk-proj-, sk-svcacct-, sk-admin- and sk-or-v1- break the
+			// run with a '-' before it starts, and a legacy key, all
+			// alphanumerics, is skipped here so it is reported once, as
+			// token:openai_legacy.
+			Name: "sk_key_generic", Kind: "token:sk_generic", Label: "API key (plain sk-)",
+			Re:         regexp.MustCompile(`\bsk-[A-Za-z0-9]{32,}`),
+			Severity:   SeverityWarn,
+			Skip:       openAILegacyKeyWhole,
+			Suggestion: "Review — a plain sk- key from an OpenAI-compatible service; if it is one, DELETE AND ROTATE",
 		},
 		{
 			Name: "aws_access_key", Kind: "token:aws_access_key", Label: "AWS access key ID",
