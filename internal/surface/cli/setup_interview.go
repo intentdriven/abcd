@@ -143,17 +143,18 @@ func (p *drawnPrompter) AtTerminal() bool { return true }
 
 // put asks q at the terminal. Ctrl-C ends the run with exit 130, keeping the
 // answers already given and recording nothing for q; any other failure ends
-// it with exit 1.
+// it with exit 1. The words name no verb: ahoy remote apply and site setup
+// ask through this door too.
 func (p *drawnPrompter) put(q question.Question) ask.Answer {
 	got, err := drawnPut(p.term, question.Ask{Questions: []question.Question{q}})
 	switch {
 	case errors.Is(err, ask.ErrInterrupted):
-		panic(&setupStop{code: ask.ExitInterrupted, msg: "abcd ahoy install: interrupted at " + q.Chip +
+		panic(&setupStop{code: ask.ExitInterrupted, msg: "interrupted at " + q.Chip +
 			"; nothing is recorded for it, and the answers given before it are kept", keep: true})
 	case err != nil:
-		panic(&setupStop{code: 1, msg: "abcd ahoy install: " + q.Chip + " could not be asked: " + err.Error(), keep: true})
+		panic(&setupStop{code: 1, msg: q.Chip + " could not be asked: " + err.Error(), keep: true})
 	case len(got) != 1:
-		panic(&setupStop{code: 1, msg: "abcd ahoy install: " + q.Chip + " returned no answer", keep: true})
+		panic(&setupStop{code: 1, msg: q.Chip + " returned no answer", keep: true})
 	}
 	return got[0]
 }
