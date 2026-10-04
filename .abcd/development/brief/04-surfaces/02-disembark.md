@@ -13,7 +13,7 @@ to prove it. It refuses any destination abcd did not produce, so it cannot
 overwrite someone's directory. And it scans the planned bytes for secrets
 before writing any of them, refusing the whole pack rather than redacting.
 
-> **Model of record: [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md).** The packer is read-only and out-of-tree, the voyage log lives at the operator level (`~/.abcd/voyage/<source-root-sha>/`, never committed), and the review returns the registered `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` verdicts. The coverage experiment (itd-88) leads: the pack carries only what abcd could ground, and `coverage.{json,md}` carry what is missing, what was searched, and the question a human must answer.
+> **Model of record: [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md).** The packer is read-only and out-of-tree, the voyage log lives at the operator level (`~/.abcd.noindex/voyage/<source-root-sha>/`, never committed), and the review returns the registered `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` verdicts. The coverage experiment (itd-88) leads: the pack carries only what abcd could ground, and `coverage.{json,md}` carry what is missing, what was searched, and the question a human must answer.
 
 > **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the packer and the round-trip belong to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. The coverage experiment comes ahead of the rest of that pipeline, per adr-35; sequence is dependencies plus the lifecycle shelves ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)).
 
@@ -100,7 +100,7 @@ WRITE
                            │
                            ▼
 VOYAGE LINE (operator-local)
-  append one line to ~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl;
+  append one line to ~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl;
   a failed append never fails the pack — the written _provenance.json is authoritative
 ```
 
@@ -288,7 +288,7 @@ anything else runs, through the shared resolver (`internal/core/oracle` over
 `internal/core/layered`): the invocation's routing override, which the appendix
 lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
 over the repository's `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+`~/.abcd.noindex/oracle-routing.json`, over the bundled proposal, which applies only
 once a table is accepted. A synthesis step run in its deterministic mode
 dispatches no agent, so it reads no routing table and refuses the override. A
 step no configured provider can serve at its tier goes to the harness with the

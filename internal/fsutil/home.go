@@ -14,10 +14,10 @@ import (
 )
 
 // ErrHomeScopeSymlinked is the refusal for a home-scoped path whose DIRECTORY
-// is a symbolic link: ~/.abcd itself, or a directory below it on the way to the
+// is a symbolic link: ~/.abcd.noindex itself, or a directory below it on the way to the
 // file. It is the one rule every reader and writer of the caller's machine
 // scope applies, stated for the rules loader in AGENTS.md: a dotfiles-symlinked
-// ~/.abcd can never host a file abcd trusts. HomeScopeLink returns it wrapped
+// ~/.abcd.noindex can never host a file abcd trusts. HomeScopeLink returns it wrapped
 // in a *HomeScopeLinkError, so errors.Is finds it.
 var ErrHomeScopeSymlinked = errors.New("fsutil: a directory of this home-scoped path is a symlink")
 
@@ -25,7 +25,7 @@ var ErrHomeScopeSymlinked = errors.New("fsutil: a directory of this home-scoped 
 // is the whole operator-facing sentence, the remedy included, so every reader
 // and writer that refuses says the same thing.
 type HomeScopeLinkError struct {
-	// Link is the symlinked directory in tilde form ("~/.abcd").
+	// Link is the symlinked directory in tilde form ("~/.abcd.noindex").
 	Link string
 }
 
@@ -37,7 +37,7 @@ func (e *HomeScopeLinkError) Unwrap() error { return ErrHomeScopeSymlinked }
 
 // HomeScopeLink is the check behind that rule. rel is a slash path relative to
 // home (".abcd/path-entry", ".abcd/credentials.json"); every DIRECTORY
-// component of it — ~/.abcd first, never home itself and never the leaf, whose
+// component of it — ~/.abcd.noindex first, never home itself and never the leaf, whose
 // own guard is the reader's or the writer's — is Lstat'd, and the first that
 // is a symlink is refused with a *HomeScopeLinkError naming it in tilde form
 // (wrapping ErrHomeScopeSymlinked). A component that is absent, or that this
@@ -53,7 +53,7 @@ func (e *HomeScopeLinkError) Unwrap() error { return ErrHomeScopeSymlinked }
 //
 // It exists because every home-scoped primitive guards the LEAF (O_NOFOLLOW,
 // an Lstat of the file) and resolves the directories above it through the
-// kernel, which follows a link without comment. A ~/.abcd symlinked into a
+// kernel, which follows a link without comment. A ~/.abcd.noindex symlinked into a
 // dotfiles checkout therefore hosted a path-entry that decides which binary the
 // hook shims execute, a cache attestation that decides which binary is promoted
 // onto PATH, and a credentials.json written into a repository — while the rules
@@ -105,7 +105,7 @@ func HomeScopeLink(home, rel string) error {
 // wrapped in a *HomeScopeExposedError, so errors.Is finds it.
 //
 // A directory its group can write is deliberately not refused here: under a
-// user-private-group umask of 002, a ~/.abcd made by hand is 0775 and its
+// user-private-group umask of 002, a ~/.abcd.noindex made by hand is 0775 and its
 // group is the caller alone, and refusing it is an open question on that
 // record rather than a decision this read takes.
 var ErrHomeScopeExposed = errors.New("fsutil: a directory of this home-scoped path can be changed by another account")
@@ -113,7 +113,7 @@ var ErrHomeScopeExposed = errors.New("fsutil: a directory of this home-scoped pa
 // HomeScopeExposedError names the exposed directory in tilde form. Its message
 // is the whole operator-facing sentence, the remedy included.
 type HomeScopeExposedError struct {
-	// Dir is the exposed directory in tilde form ("~/.abcd").
+	// Dir is the exposed directory in tilde form ("~/.abcd.noindex").
 	Dir string
 	// Perm is the directory's permission bits, judged on its descriptor.
 	Perm os.FileMode
@@ -193,7 +193,7 @@ func SwapHomeScopeVettedForTest(fn func(dir string)) (restore func()) {
 // the descriptor of the level above, so HomeScopeLink's rule holds against a
 // race and not only against a layout. It is the descriptor form of that rule:
 // HomeScopeLink judges each level by path and the caller then reaches the file
-// by path again, so a process running as the same uid that swaps ~/.abcd for a
+// by path again, so a process running as the same uid that swaps ~/.abcd.noindex for a
 // symlink between the judgement and the use reads or writes through the link
 // (iss-2609281310017733). Here every use goes through the returned root, and
 // the root is the very directory each level's judgement was made about.
@@ -203,7 +203,7 @@ func SwapHomeScopeVettedForTest(fn func(dir string)) (restore func()) {
 // non-directory refused with ErrNotRealDir, then the level opened relative to
 // the same descriptor and confirmed with os.SameFile to be the directory the
 // Lstat vetted. The confirmation is what os.Root alone cannot give: it follows
-// a symlink that stays inside the root, and a dotfiles ~/.abcd usually points
+// a symlink that stays inside the root, and a dotfiles ~/.abcd.noindex usually points
 // inside home. A level replaced between its Lstat and its open is refused — as
 // a *HomeScopeLinkError when a symlink stands there now, and as
 // ErrHomeScopeSwapped otherwise. The guarantee is the one an openat with
@@ -223,8 +223,8 @@ func OpenHomeScope(home, dir string) (*os.Root, error) {
 // EnsureHomeScope is OpenHomeScope for a writer: each missing level is created
 // at perm (a single mkdir relative to the level above, which never follows a
 // link at the name it creates) before it is judged and opened, so the walk
-// that creates ~/.abcd is the same walk that proves it. It is what a writer
-// uses in place of os.MkdirAll, which follows a symlinked ~/.abcd and creates
+// that creates ~/.abcd.noindex is the same walk that proves it. It is what a writer
+// uses in place of os.MkdirAll, which follows a symlinked ~/.abcd.noindex and creates
 // under its target. A level that already exists keeps its mode.
 func EnsureHomeScope(home, dir string, perm os.FileMode) (*os.Root, error) {
 	return openHomeScope(home, dir, true, perm, nil)
@@ -324,7 +324,7 @@ func swappedLevel(parent *os.Root, part, full, shown string, err error) error {
 // (iss-2609281310017733).
 //
 // The order keeps AGENTS.md's rule exactly: a file that is not there is
-// DeclarationAbsent whatever the directories are, so a symlinked ~/.abcd
+// DeclarationAbsent whatever the directories are, so a symlinked ~/.abcd.noindex
 // holding no such file reads as absent and costs its owner nothing; a file
 // that IS there behind a symlinked directory is DeclarationBehindSymlink,
 // refused before a byte of it is read. The Lstat that decides absence follows
@@ -416,7 +416,7 @@ func ReadHomeDeclarationDenyingIn(dir *os.Root, home, rel string, limit int64, d
 // A leaf replaced between its Lstat and its open is judged again from scratch,
 // up to declarationAttempts times, exactly as ReadDeclaration judges one: the
 // benign replacement is a concurrent abcd's WriteFileAtomic, and refusing it on
-// sight made a reader refuse its own ~/.abcd/config.json
+// sight made a reader refuse its own ~/.abcd.noindex/config.json
 // (iss-2609291157309818). Every guard runs again on the replacement, so one
 // that is not a same-owner regular file this reader's mode rules admit is
 // refused by the guard that judges it; one still unsettled after the last
@@ -482,7 +482,7 @@ func readDeclarationInOnce(root *os.Root, leaf, p string, limit int64, deny os.F
 // HomeDeclarationNames reads the line-oriented path declaration at rel under
 // home through ReadHomeDeclaration and reports whether one of its entries names
 // target. It is the one reader behind every "declare this checkout" opt-in —
-// ~/.abcd/trusted-roots for the rules resolver, ~/.abcd/local-transcript-roots
+// ~/.abcd.noindex/trusted-roots for the rules resolver, ~/.abcd.noindex/local-transcript-roots
 // for the transcript store — so a hardening of what a declaration must be, or
 // of how an entry is matched, lands once and reaches every caller
 // (iss-2609090951283654).

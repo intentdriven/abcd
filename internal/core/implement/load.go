@@ -91,7 +91,7 @@ type LoadRequest struct {
 	Getenv func(string) string
 	// Read reads the machine; nil is machineload.Read.
 	Read func() (machineload.Snapshot, error)
-	// Home is the caller's home, where ~/.abcd/load-limits lives; "" resolves it.
+	// Home is the caller's home, where ~/.abcd.noindex/load-limits lives; "" resolves it.
 	Home string
 	// RepoRoot is the checkout the check runs in, whose private banned-names
 	// layer scrubs the own strays' names; "" is outside any checkout.
@@ -267,10 +267,10 @@ func CheckLoad(req LoadRequest) LoadResult {
 	return res
 }
 
-// readLimits reads ~/.abcd/load-limits through the guarded declaration read the
+// readLimits reads ~/.abcd.noindex/load-limits through the guarded declaration read the
 // other home-scope files use: a regular file, not a symlink, owned by the
 // caller, writable by nobody else, at most 4 KiB. The check never creates the
-// file or ~/.abcd/. An absent file is silent; any refusal or parse fault makes
+// file or ~/.abcd.noindex/. An absent file is silent; any refusal or parse fault makes
 // the whole file unusable, and both limits take their defaults.
 func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 	def := machineload.DefaultLimits(cores)

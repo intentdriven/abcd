@@ -653,7 +653,7 @@ through the shared resolver (`internal/core/oracle` over
 `internal/core/layered`): the invocation's routing override, which the appendix
 lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
 over the repository's `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+`~/.abcd.noindex/oracle-routing.json`, over the bundled proposal, which applies only
 once a table is accepted. The emit writes the request block into the request
 document as a `## Routing` section after the provenance block, outside the
 hashed prompt, so the verdict's `prompt_hash` does not move with the machine's

@@ -186,7 +186,7 @@ fail nothing (see the open point).
 ### A4: measure, report, and read in chunks
 
 **The limit** is `consistency.max_request_bytes`, read through `layered.Config`
-(the repository file, then `~/.abcd/config.json`, then a bundled 524288). The
+(the repository file, then `~/.abcd.noindex/config.json`, then a bundled 524288). The
 intent package claims the `consistency` namespace and its keys
 (`max_request_bytes`, and `on_finding` below), so a misspelt key is refused
 naming its file. A value below 65536 is refused, and so is a value above
@@ -277,7 +277,7 @@ is the commit's.
 
 **5. Route.** The model pass runs only where
 `oracle.Resolve("intent-auditor", …)` gives a provider leg (`OnProvider`) whose
-target comes from `~/.abcd/config.json` and which `APIConfig.Admitted` accepts.
+target comes from `~/.abcd.noindex/config.json` and which `APIConfig.Admitted` accepts.
 Each of the following is "no route", and the reason is named:
 
 - a harness route;

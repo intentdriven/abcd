@@ -7,9 +7,9 @@
 //
 // Everything lives under one directory per repository:
 //
-//	~/.abcd/runs/<root-sha>/<YYYY-MM-DD>.jsonl   the run log, one event per line
-//	~/.abcd/runs/<root-sha>/claims/<record>.json one claim per record
-//	~/.abcd/runs/<root-sha>/sessions/<id>.json   one record per joined session
+//	~/.abcd.noindex/runs/<root-sha>/<YYYY-MM-DD>.jsonl   the run log, one event per line
+//	~/.abcd.noindex/runs/<root-sha>/claims/<record>.json one claim per record
+//	~/.abcd.noindex/runs/<root-sha>/sessions/<id>.json   one record per joined session
 //
 // The key is the repository's root-commit SHA, the same key and the same full
 // form the transcript, history and voyage stores use (internal/core/history's
@@ -81,7 +81,7 @@ func refusal(format string, a ...any) error {
 // with Open (which creates the directories a mutation needs) or Peek (which
 // creates nothing, for the read-only renders).
 type Run struct {
-	// Dir is the run directory, ~/.abcd/runs/<root-sha>.
+	// Dir is the run directory, ~/.abcd.noindex/runs/<root-sha>.
 	Dir string
 	// RootSHA is the repository's root-commit SHA the directory is keyed on.
 	RootSHA string
@@ -117,7 +117,7 @@ func runDir(rootSHA string) (home, dir string, err error) {
 }
 
 // Open returns the run for rootSHA, creating its directories when absent. Every
-// level from ~/.abcd down is created one at a time and proved a real directory,
+// level from ~/.abcd.noindex down is created one at a time and proved a real directory,
 // never through a symlink (fsutil.EnsureRealDirAll), so a planted redirect is
 // refused before anything is written beneath it.
 func Open(rootSHA string) (*Run, error) {

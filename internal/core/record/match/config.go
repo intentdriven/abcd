@@ -52,7 +52,7 @@ func (c Config) Compares(field string) bool {
 }
 
 // LoadConfig resolves match.threshold and match.fields through the one layered
-// configuration reader (.abcd/config.json, then ~/.abcd/config.json, then the
+// configuration reader (.abcd/config.json, then ~/.abcd.noindex/config.json, then the
 // bundled defaults). It claims the `match` namespace, so a misspelt key is
 // refused rather than letting a default apply unannounced, and a value outside
 // its range or set is refused naming its file, never replaced by the default.

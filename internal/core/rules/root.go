@@ -348,11 +348,11 @@ func foreignOwnerRefusal(marker, cwd string) []string {
 // dataDirHazard refuses an env-supplied data directory for the same reason, and
 // GHSA-4q78-ccfv-f374's recorded remedy is to move the trust floor "from env to
 // home write", which adr-46 decision 4 already treats as the ownership root.
-// Writing ~/.abcd/trusted-roots needs write access to the caller's own home —
+// Writing ~/.abcd.noindex/trusted-roots needs write access to the caller's own home —
 // the same authority the caller already holds over everything abcd trusts, so
 // the opt-in grants an attacker nothing they did not already have.
 //
-// It follows the ~/.abcd/path-entry idiom rather than inventing one: a
+// It follows the ~/.abcd.noindex/path-entry idiom rather than inventing one: a
 // home-scoped, abcd-owned, line-oriented record, read through the guarded
 // bounded read, where an absent or unvouched-for record vouches for nothing. It
 // is a SIBLING file rather than a section of path-entry because path-entry

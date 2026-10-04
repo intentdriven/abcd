@@ -63,7 +63,7 @@ import (
 // iss-2609021833302981, iss-2609021857343626).
 // It goes 1.7.0 to 1.8.0 with the transcript store's relocation: the exclusion
 // floor's transcript-store row stops asserting an unreachability that is now
-// conditional — a checkout declared in ~/.abcd/local-transcript-roots keeps its
+// conditional — a checkout declared in ~/.abcd.noindex/local-transcript-roots keeps its
 // store inside the tree — and becomes a `directory` row naming
 // `.abcd/.work.local/transcripts`. Signal `directory` is enforced by
 // assertExclusions where `unreachable path` was enforced by nothing, so the
@@ -718,9 +718,9 @@ var Exclusions = []Exclusion{
 	{Rule: "the instrument's own output is never its input", Signal: "directory", Detail: "internal/core/reading"},
 	// The session-transcript store. The claim used to rest on unreachability —
 	// the store sits under HOME and the assembler walks no HOME path — and that
-	// still holds for the default location, ~/.abcd/transcripts/. It is no
+	// still holds for the default location, ~/.abcd.noindex/transcripts/. It is no
 	// longer the WHOLE ground: a checkout declared in
-	// ~/.abcd/local-transcript-roots keeps its store at
+	// ~/.abcd.noindex/local-transcript-roots keeps its store at
 	// .abcd/.work.local/transcripts/ inside the tree (iss-95). The exclusion is
 	// unaffected, because that path is covered by the `.abcd/.work.local`
 	// directory row above — denied by the `.abcd` segment, dropped by the

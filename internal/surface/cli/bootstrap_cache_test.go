@@ -35,7 +35,7 @@ func runBootstrapWithData(t *testing.T, root, data string, fx *bootstrapFixture,
 
 // runBootstrapWithDataHome is runBootstrapWithData with HOME pinned, so a test
 // can seed and read the home-scoped owned-copy provenance record (spc-35 keeps
-// it at $HOME/.abcd/path-entry, reachable from a terminal that has no
+// it at $HOME/.abcd.noindex/path-entry, reachable from a terminal that has no
 // CLAUDE_PLUGIN_DATA).
 func runBootstrapWithDataHome(t *testing.T, root, data, home string, fx *bootstrapFixture, extraPath string) (string, int) {
 	t.Helper()
@@ -44,7 +44,7 @@ func runBootstrapWithDataHome(t *testing.T, root, data, home string, fx *bootstr
 		append(fx.env(), "CLAUDE_PLUGIN_DATA="+data, "HOME="+home), extraPath)
 }
 
-// homePathEntry is $HOME/.abcd/path-entry, the home-scoped provenance record.
+// homePathEntry is $HOME/.abcd.noindex/path-entry, the home-scoped provenance record.
 func homePathEntry(home string) string {
 	return abcdhome.Path(home, "path-entry")
 }
@@ -932,7 +932,7 @@ func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
 // after authentication: an offline run, which trusts the cache at
 // corruption-evidence only, never writes or upgrades it.
 
-// homeCacheAttestation is $HOME/.abcd/cache-attestation.
+// homeCacheAttestation is $HOME/.abcd.noindex/cache-attestation.
 func homeCacheAttestation(home string) string {
 	return abcdhome.Path(home, "cache-attestation")
 }
@@ -1179,7 +1179,7 @@ func runBootstrapWithDataHomeAtPid(t *testing.T, root, data, home string, fx *bo
 }
 
 // TestBootstrapAttestationTempIgnoresAPlantedSymlink: the first cut wrote the
-// attestation to `$HOME/.abcd/.cache-attestation.$$` with `>` and a chmod by
+// attestation to `$HOME/.abcd.noindex/.cache-attestation.$$` with `>` and a chmod by
 // name, both of which follow a symlink pre-planted at that predictable name —
 // so a same-UID writer could have the run write the record's bytes and mode
 // onto a file of their choosing, and then rename the symlink itself into place

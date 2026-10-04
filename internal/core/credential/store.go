@@ -4,7 +4,7 @@ package credential
 // adr-2609221017021499): one reader, Store(home).Resolve, and one write, Set,
 // over the three homes a person chooses among once per credential.
 //
-//   - abcd: the owner-only ~/.abcd/credentials.json (credential.go), which
+//   - abcd: the owner-only ~/.abcd.noindex/credentials.json (credential.go), which
 //     holds the value itself.
 //   - keychain: the platform's keychain, under abcd's service name
 //     (keychain.go); the index holds only that the name lives there.
@@ -12,7 +12,7 @@ package credential
 //     a named field of a tool's JSON configuration (external.go); the index
 //     holds the pointer, never the value.
 //
-// The index, ~/.abcd/credential-homes.json, maps a name to its keychain or
+// The index, ~/.abcd.noindex/credential-homes.json, maps a name to its keychain or
 // external home. A name the index does not hold resolves from the abcd home,
 // so a store written before the index existed reads unchanged. A name held in
 // both is ambiguous and refused, never guessed.
@@ -20,7 +20,7 @@ package credential
 // The index is the one file the store writes that must never hold a secret,
 // so the secret scanner reads its bytes before they are written, and a
 // finding refuses the write. The abcd home, the one that keeps a value under
-// ~/.abcd, is never written inside a git working tree.
+// ~/.abcd.noindex, is never written inside a git working tree.
 
 import (
 	"encoding/json"
@@ -41,7 +41,7 @@ import (
 const (
 	// HomeExternal is a setup outside abcd; the store holds the pointer.
 	HomeExternal = "external"
-	// HomeABCD is abcd-only: the owner-only ~/.abcd/credentials.json.
+	// HomeABCD is abcd-only: the owner-only ~/.abcd.noindex/credentials.json.
 	HomeABCD = "abcd"
 	// HomeKeychain is the platform keychain.
 	HomeKeychain = "keychain"
@@ -51,7 +51,7 @@ const (
 // marked: the keychain is recommended in HomesProse, never in the list.
 func Homes() []string { return []string{HomeExternal, HomeABCD, HomeKeychain} }
 
-// IndexFileName is the index under ~/.abcd/, and IndexPath its tilde form.
+// IndexFileName is the index under ~/.abcd.noindex/, and IndexPath its tilde form.
 const IndexFileName = "credential-homes.json"
 
 var IndexPath = abcdhome.Display(IndexFileName)
@@ -172,7 +172,7 @@ func Where(home, name string) (string, error) {
 // Set stores a credential under name in the chosen home: the one write every
 // setup goes through (the walkthrough, Walk, is its only caller outside this
 // package's tests). It refuses, before writing a value or an index entry and
-// never echoing a value: a ~/.abcd that is a symlink, in every home, before
+// never echoing a value: a ~/.abcd.noindex that is a symlink, in every home, before
 // anything is created; the abcd home inside a git working tree; a name
 // another home already holds, or a different value in the same home, because a
 // stored secret is never replaced unasked; a keychain on a platform without
@@ -205,17 +205,17 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	default:
 		return false, fmt.Errorf("credential: home %q is not one of external, abcd, keychain", boundHome(c.Home))
 	}
-	// A ~/.abcd that is a symlink (into a dotfiles repository, say) is
+	// A ~/.abcd.noindex that is a symlink (into a dotfiles repository, say) is
 	// refused first, in every home, before anything is created: the value,
 	// the index and both locks would land wherever the link points, and a
 	// working-tree check of the lexical path below cannot see a repository
 	// the link leads into. It is the rule every other reader and writer of
-	// ~/.abcd applies (fsutil.HomeScopeLink); the walk below holds it against
+	// ~/.abcd.noindex applies (fsutil.HomeScopeLink); the walk below holds it against
 	// a race.
 	if err := fsutil.HomeScopeLink(home, indexRel); err != nil {
 		return false, fmt.Errorf("credential: nothing was written: %v", err)
 	}
-	// The abcd home is the one home that writes a value under ~/.abcd, so it
+	// The abcd home is the one home that writes a value under ~/.abcd.noindex, so it
 	// alone is refused inside a git working tree. The keychain keeps its value
 	// outside the home, and the index holds names and pointers only, scanned
 	// before every write, so a home directory that is itself a working tree (a
@@ -223,7 +223,7 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	if c.Home == HomeABCD && workingTreeAbove(home, abcdhome.Rel()) != "" {
 		return false, errors.New("credential: " + abcdhome.Display() + " lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
 	}
-	// ~/.abcd is created, judged and opened in one walk relative to the
+	// ~/.abcd.noindex is created, judged and opened in one walk relative to the
 	// descriptor of home (fsutil.EnsureHomeScope), and the index's lock and
 	// its write are reached through that descriptor, so a link swapped in
 	// after the judgement is refused rather than written through
@@ -256,7 +256,7 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 }
 
 // setUnderLock is Set's read of where name is held and its write, run under
-// the index's lock. dir is ~/.abcd as Set's walk opened it; the index is
+// the index's lock. dir is ~/.abcd.noindex as Set's walk opened it; the index is
 // written through it.
 func setUnderLock(home string, dir *os.Root, name string, c Choice) (bool, error) {
 	held, err := Where(home, name)
@@ -312,9 +312,9 @@ func setUnderLock(home string, dir *os.Root, name string, c Choice) (bool, error
 }
 
 // samePointer refuses a pointer other than the one the index holds for name.
-// Under the index's lock dir is the ~/.abcd Set holds and the index is read
+// Under the index's lock dir is the ~/.abcd.noindex Set holds and the index is read
 // through it; a caller holding no directory (Walk's check before any write)
-// passes nil and the index is read by walking ~/.abcd.
+// passes nil and the index is read by walking ~/.abcd.noindex.
 func samePointer(home string, dir *os.Root, name string, p Pointer) error {
 	read := func() (map[string]indexEntry, error) { return readIndex(home) }
 	if dir != nil {
@@ -397,18 +397,18 @@ var indexRel = abcdhome.Rel(IndexFileName)
 // every entry a known home. An absent index is empty.
 //
 // Every guard is judged by fsutil.ReadHomeDeclarationDenying, as readStore's
-// are: an index behind a symlinked ~/.abcd is refused on the descriptor walk
-// of ~/.abcd, and the leaf's type, owner and mode on the opened file's own
+// are: an index behind a symlinked ~/.abcd.noindex is refused on the descriptor walk
+// of ~/.abcd.noindex, and the leaf's type, owner and mode on the opened file's own
 // fstat, never on a path first.
 func readIndex(home string) (map[string]indexEntry, error) {
 	raw, refusal, err := fsutil.ReadHomeDeclarationDenying(home, indexRel, maxIndexBytes, 0o077)
 	return decodeIndex(raw, refusal, err)
 }
 
-// readIndexIn is readIndex through dir, ~/.abcd as Set's walk opened it. A
+// readIndexIn is readIndex through dir, ~/.abcd.noindex as Set's walk opened it. A
 // writer that holds the index's lock reads the index here, through the
-// directory it writes through, never by walking ~/.abcd again: a same-uid swap
-// of ~/.abcd between the two walks would otherwise read one directory's index
+// directory it writes through, never by walking ~/.abcd.noindex again: a same-uid swap
+// of ~/.abcd.noindex between the two walks would otherwise read one directory's index
 // and write it, with the new name, into the other (iss-2609290300313698).
 func readIndexIn(home string, dir *os.Root) (map[string]indexEntry, error) {
 	raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, indexRel, maxIndexBytes, 0o077)
@@ -467,7 +467,7 @@ var indexLockTimeout = 5 * time.Second
 
 // setIndex adds e under name to the index, or, with dryRun, judges the write
 // (the scanner included) without making it. The caller, Set, holds the index's
-// lock across the read, the scan and the write, and passes dir, ~/.abcd as its
+// lock across the read, the scan and the write, and passes dir, ~/.abcd.noindex as its
 // walk created, judged and opened it; the read and the write both go through
 // that descriptor.
 func setIndex(home string, dir *os.Root, name string, e indexEntry, dryRun bool) error {

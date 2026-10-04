@@ -32,7 +32,7 @@ type Options struct {
 	// Minter mints the run id; the zero value is production.
 	Minter recordid.Minter
 	// Session is the joined session of the shared run state
-	// (~/.abcd/runs/<root-sha>/) a new run is started for. When set, Start
+	// (~/.abcd.noindex/runs/<root-sha>/) a new run is started for. When set, Start
 	// claims the intent for it there, so a build of the same intent from any
 	// other checkout of the repository sees the run before its lane has moved
 	// or claimed anything (iss-2609252050506863). Empty, the run holds no

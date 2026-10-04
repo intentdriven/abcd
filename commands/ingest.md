@@ -1,12 +1,12 @@
 ---
 name: ingest
-description: Ingest a URL or document into the local sources corpus (the user-level home's sources store, default ~/.abcd/sources) with extracted reference metadata, keywords, and a text-quality check. Use when the user says "ingest this", "add this source/URL/paper to the corpus", "register this source", or hands over a document/link to be stored. For consulting the corpus or recording provenance, use /abcd:consult.
+description: Ingest a URL or document into the local sources corpus (the user-level home's sources store, default ~/.abcd.noindex/sources) with extracted reference metadata, keywords, and a text-quality check. Use when the user says "ingest this", "add this source/URL/paper to the corpus", "register this source", or hands over a document/link to be stored. For consulting the corpus or recording provenance, use /abcd:consult.
 argument-hint: <url-or-file>
 ---
 
 # Ingest a source
 
-Register a URL or local document in the corpus at `~/.abcd/sources/`. The
+Register a URL or local document in the corpus at `~/.abcd.noindex/sources/`. The
 `abcd source add` verb does the deterministic half (store, classify, commit);
 you do the judgment half (fetching, converting, clean metadata, real keywords,
 confidentiality, quality check). abcd fetches and converts nothing. The
@@ -88,7 +88,7 @@ recover.
 
 ## 4. Quality-check the extraction
 
-Check `~/.abcd/sources/<class>/<key>/text.md` — word count sane, real prose
+Check `~/.abcd.noindex/sources/<class>/<key>/text.md` — word count sane, real prose
 present. Known failure modes: `.mhtml` (unsupported → stub; extract by hand),
 saved SPA/artifact pages whose content sits HTML-escaped in a wrapper
 (unescape entities, `pandoc -t gfm`, rebuild text.md below its frontmatter,

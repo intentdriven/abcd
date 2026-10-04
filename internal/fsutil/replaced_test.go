@@ -260,7 +260,7 @@ func TestReadGuardedInRootRefusesANonBenignReplacement(t *testing.T) {
 }
 
 // ReadHomeDeclaration reads every home-scoped declaration abcd trusts
-// (~/.abcd/config.json, rules.json, the credential store and index) through a
+// (~/.abcd.noindex/config.json, rules.json, the credential store and index) through a
 // descriptor walk, and it closes the same lstat->open window the path read
 // does. It lost the same race to the same benign rewrite — a concurrent abcd's
 // WriteFileAtomic under the writers' lock — because the re-vetting fix went

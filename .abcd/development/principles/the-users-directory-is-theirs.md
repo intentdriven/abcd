@@ -2,7 +2,7 @@
 
 **The rule.** A user is never surprised by a directory filling with things
 they did not make. A tool creates files and directories only in space that was
-handed to it — its own machine-scoped home under `~/.abcd/`, or the tiers of a
+handed to it — its own machine-scoped home under `~/.abcd.noindex/`, or the tiers of a
 checkout the record declares — and never beside the user's projects, in a
 parent directory, or anywhere the user did not point it. What it puts in its
 own space, it can list and reclaim.
@@ -40,12 +40,14 @@ records the ruling; this file carries the stance.
 
 **Enforcement.** None on the write side. The read side exists: the loader
 refuses a configuration root the caller does not own, and only
-`~/.abcd/trusted-roots` re-admits it. The store this rule points at — a
-root-SHA-keyed `~/.abcd/worktrees/` lane, a verb that lists it, a verb that
+`~/.abcd.noindex/trusted-roots` re-admits it. The store this rule points at — a
+root-SHA-keyed `~/.abcd.noindex/worktrees/` lane, a verb that lists it, a verb that
 reclaims a merged worktree, a line on the status board — is
 [itd-2609091014076309](../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
 in drafts. Until it ships the rule is applied by hand: a session that needs a
-worktree puts it under `~/.abcd/worktrees/<root-sha>/<name>/`, a verifier's
+worktree puts it under `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, the location
+[adr-2610031751065746](../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
+sets, a verifier's
 copy goes to `.abcd/.work.local/scratch/`, and a reviewer who sees a directory
 appear beside a checkout names it.
 

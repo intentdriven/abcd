@@ -51,7 +51,7 @@ unauthenticated cache when offline. Only an empty, stale, or unavailable cache
 falls back to downloading the release binary and `checksums.txt` and verifying
 the binary's SHA-256 against the manifest. Whenever a run has established that
 manifest trust — an authenticated cache hit, or a fresh verified download — it
-also writes `~/.abcd/cache-attestation`, a small home-scoped record naming the
+also writes `~/.abcd.noindex/cache-attestation`, a small home-scoped record naming the
 data directory, the manifest-verified SHA-256, and the trust it rests on; an
 offline run writes nothing there and leaves an existing record as it was. A mismatch, a manifest that doesn't
 list the platform, or a platform outside the released matrix (darwin and linux
@@ -85,15 +85,15 @@ That `PATH` rung is narrow on purpose, and it is owned-only. A hook takes an
 outside the one the session is working in, where neither that directory nor the
 binary it holds (followed through a symlink to the file it names) is
 world-writable, **and**
-`~/.abcd/path-entry` records that exact path as the `abcd` installed on this
+`~/.abcd.noindex/path-entry` records that exact path as the `abcd` installed on this
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
 own install verb — whichever entry it leaves on `PATH`: the copy of the
 verified release binary, the track-latest shim `--dev` writes, and a symlink
 into the plugin root that an earlier release wrote and that still works. The
-copy is made only from a cache that `~/.abcd/cache-attestation` vouches for —
+copy is made only from a cache that `~/.abcd.noindex/cache-attestation` vouches for —
 the directory it names, holding the hash it names — so a data directory pointed
 at by an environment variable alone is never promoted onto `PATH`. Neither
-record counts when `~/.abcd` is a symlink — a dotfiles checkout, say — and
+record counts when `~/.abcd.noindex` is a symlink — a dotfiles checkout, say — and
 nothing abcd writes goes through one: the hooks, the install verb and the
 one-liner each refuse it and say so, as the rules loader refuses a
 `rules.json` there, so replace the link with a real directory before
@@ -147,7 +147,7 @@ honestly someone else's. If such a checkout is genuinely yours to trust,
 declare it once, from an account you control:
 
 ```sh
-mkdir -p ~/.abcd && printf '%s\n' '/path/to/checkout' >> ~/.abcd/trusted-roots
+mkdir -p ~/.abcd.noindex && printf '%s\n' '/path/to/checkout' >> ~/.abcd.noindex/trusted-roots
 ```
 
 One absolute path per line; `#` starts a comment. The declaration is read only
@@ -186,6 +186,49 @@ path. A plugin root provisioned from the cache carries no root-local
 cached provenance you control if you want a hand-built binary to stop reporting
 a release it did not come from.
 
+## abcd's own folder
+
+abcd keeps what belongs to your account rather than to one repository in one
+folder in your home directory, `~/.abcd.noindex`: the `path-entry` and
+`cache-attestation` records, the `trusted-roots` and `rules.json`
+declarations, the transcript, worktree and sources stores, and the run logs.
+The `.noindex` ending is a name the Mac's search indexer passes over, so a new
+worktree or transcript there sets off no indexing; abcd changes only the name
+of its own folder and never the computer's search settings. On Linux the
+ending changes nothing.
+
+If an earlier abcd left a `~/.abcd` folder in your home directory, every abcd
+command and hook stops before it writes anything and names the two commands
+that move you on. In an agent session no tool runs at all, because the safety
+check blocks every command, the rename included, so run them in a plain
+Terminal window, in this order, then start the session again:
+
+```sh
+mv ~/.abcd ~/.abcd.noindex
+```
+
+```sh
+for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done
+```
+
+The first renames the folder. The second reconnects the worktrees kept in it:
+git records each worktree's location in full, so until `git worktree repair`
+runs in it, its repository lists the moved worktree as prunable, and a prune
+would delete its link. A session that worked inside a worktree under the old
+folder opens from that worktree's new path.
+
+If both `~/.abcd` and `~/.abcd.noindex` exist, abcd moves neither and names
+both. That happens when something older ran after the rename and created a
+new, small `~/.abcd`: look inside it, move it out of your home folder, then run
+the repair command above again.
+
+A project abcd manages keeps naming `~/.abcd/rules.json` and
+`~/.abcd/trusted-roots` in the managed block of its conventions file until
+abcd's setup runs in that project again. `abcd ahoy` reports that block as
+outdated, and the setup, the `install` sub-verb of `abcd ahoy`, rewrites the
+block alone, leaving every line around it as it was. Scripts of your own that name `~/.abcd` are yours to
+update.
+
 ## The status line
 
 Where the agent harness renders a status line by running a command, `abcd ahoy
@@ -198,13 +241,13 @@ issue counts; in every other repository the status command you had before runs
 untouched, because abcd records it and hands the payload straight through.
 Declining writes nothing. `--yes` never takes this choice for you. Switch the
 line off, or change which elements show, at any time in
-`~/.abcd/statusline.json`; `abcd ahoy uninstall` restores the previous
+`~/.abcd.noindex/statusline.json`; `abcd ahoy uninstall` restores the previous
 command.
 
 ## Where your session transcripts are kept
 
 Session transcripts go into one store on your machine, at
-`~/.abcd/transcripts/`, filed under each repository's root-commit id so one
+`~/.abcd.noindex/transcripts/`, filed under each repository's root-commit id so one
 repository's sessions are never mixed with another's. Nothing has to be set up
 first: the store is created the first time a session ends, so a repository where
 you have only enabled the plugin still records. Every stored transcript is
@@ -215,7 +258,7 @@ If you would rather one checkout kept its own transcripts with it, say so once,
 from your own home directory:
 
 ```sh
-mkdir -p ~/.abcd && printf '%s\n' '/path/to/checkout' >> ~/.abcd/local-transcript-roots
+mkdir -p ~/.abcd.noindex && printf '%s\n' '/path/to/checkout' >> ~/.abcd.noindex/local-transcript-roots
 ```
 
 One absolute path per line; `#` starts a comment. That checkout then keeps its
@@ -225,7 +268,7 @@ above, the declaration is read only from your home directory and only while
 that file is yours and not writable by others: a file inside a checkout can
 never decide where your session record is kept.
 
-If you have transcripts from an earlier abcd under `~/.abcd/history/`, they
+If you have transcripts from an earlier abcd under `~/.abcd.noindex/history/`, they
 are moved into the store the first time abcd looks at it, with a line saying
 how many moved and a `transcripts.moved` note left at the old path.
 
@@ -241,13 +284,13 @@ single-user location.
 ### macOS
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd" ] || { echo "abcd install: ~/.abcd is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Linux
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd" ] || { echo "abcd install: ~/.abcd is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Windows
@@ -266,7 +309,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 The one-liners above take no options — they always install to `~/.local/bin`
 and print no `PATH` warning — and they record that install as this machine's
-`abcd` in `~/.abcd/path-entry`, replacing whatever the record named before, so
+`abcd` in `~/.abcd.noindex/path-entry`, replacing whatever the record named before, so
 run the one-liner only for the install you want the hooks to use. `abcd ahoy`
 reports the same gap as a named
 finding with the same one-line fix, and the `install` sub-verb it points at
@@ -283,7 +326,7 @@ not own.
 Prefer to inspect before running? The command is exactly what it says: two
 downloads from [the latest release](https://github.com/intentdriven/abcd/releases/latest),
 a checksum verification, a copy into a directory you own, and one two-line
-record in `~/.abcd/path-entry` naming what it just installed and that binary's
+record in `~/.abcd.noindex/path-entry` naming what it just installed and that binary's
 SHA-256. The record is what the plugin's hooks read before they will run an
 `abcd` off your `PATH`. You can do the same by hand — grab the binary for your
 platform plus `checksums.txt` from the releases page, run `shasum -a 256 -c`

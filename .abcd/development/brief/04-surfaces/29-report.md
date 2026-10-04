@@ -89,7 +89,7 @@ filing with the version named, and listed as unreadable in the inbox.
 ## Where it lands
 
 ```text
-~/.abcd/inbox/<received-stamp>-<sender-key>.md
+~/.abcd.noindex/inbox/<received-stamp>-<sender-key>.md
 ```
 
 The inbox is a machine-scoped store beside the history, transcript, worktree,
@@ -119,7 +119,7 @@ the session-start stdout is injected into the session's context. The bare
 silent when nothing waits. Neither is silent when the inbox cannot be counted:
 the hook names the refusal in one line among its notices on stderr, and the
 board prints the same line on stderr in place of the row —
-`abcd: the inbox is not counted — ~/.abcd/inbox is not a real directory …`,
+`abcd: the inbox is not counted — ~/.abcd.noindex/inbox is not a real directory …`,
 naming the level refused, home-redacted — so a refused inbox never reads as an
 empty one.
 

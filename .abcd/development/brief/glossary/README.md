@@ -232,7 +232,7 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | [surface](core/surface.md) | stable | A verb's front door — the markdown command file under commands/ plus the transport package under internal/surface/ that reaches the core. "A surface chapter" is the brief's design record for one such front door, and "a rendered surface" is a public text held to the repository's identity block; both are qualified. |
 | [technical-facilitator](core/technical-facilitator.md) | stable | The person who decides how the work is carried out — who runs the agents and operates the machinery between the product thinker's decisions: the gates, merges, CI, hooks, installs and the mechanics of the record. One of the two people abcd addresses; itd-97 holds that the role is a mode, not a person. |
 | [transport](core/transport.md) | stable | The mechanism by which curated context and artefacts are packaged and delivered to an oracle for review or reasoning. |
-| [voyage](core/voyage.md) | stable | The operations namespace at `~/.abcd/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried. |
+| [voyage](core/voyage.md) | stable | The operations namespace at `~/.abcd.noindex/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried. |
 
 ### distribution/
 

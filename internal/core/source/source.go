@@ -9,7 +9,7 @@
 // needs both the source's permission_status and a human-flipped ledger line.
 //
 // Layout of a corpus directory (the user-level home's `sources/`, by default
-// ~/.abcd/sources):
+// ~/.abcd.noindex/sources):
 //
 //	sources.json            CSL-JSON array; each entry's `custom` block carries
 //	                        confidential, permission_status, keywords, aliases,

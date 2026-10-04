@@ -55,7 +55,7 @@ boundary) is minted before either path ships and is a delivery of this spec.
    - packages: internal/core/implement/loop
    - landed: 72ae4a2b
 6. **The lane**
-   Worktree at `~/.abcd/worktrees/<root-sha>/<run>-<lane>` in abcd's form (the
+   Worktree at `~/.abcd.noindex/worktrees/<root-sha>/<run>-<lane>` in abcd's form (the
    store's verb once `itd-2609091014076309` ships; a plain `git worktree add`
    until then), branch off the default branch.
    - packages: internal/core/implement/loop, internal/core/peers
@@ -155,7 +155,7 @@ spec stays open until the last lane closes it.
   spec store's reader, and the peers (the peer listing and the shared run's
   live claims). The end-to-end test plays the host with fake step bodies.
 - **Landed (lane 2): pieces 5, 6 and 7.** The lane's worktree in the
-  machine-scoped store, `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a
+  machine-scoped store, `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a
   branch `build/<run-id>-<lane-id>` cut from the default branch, its path derived
   from the run and lane ids and refused on any component that could leave the
   store; the brief, rendered from that base (the intent, the spec, the

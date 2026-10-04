@@ -7,7 +7,7 @@ The cost is a few judgement calls the person handing it over is best placed to
 make, and the payoff is that [`/abcd:consult`](13-consult.md) can find the
 source months later without anyone remembering it exists.
 
-It is the write side of the corpus at `~/.abcd/sources/`; `/abcd:consult` is
+It is the write side of the corpus at `~/.abcd.noindex/sources/`; `/abcd:consult` is
 the read side and the provenance recorder.
 
 It is a **host-delegated command**: a markdown workflow that runs in the host

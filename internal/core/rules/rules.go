@@ -8,7 +8,7 @@
 // plus SHELL, generated from the guard's hazard registry in shell.go, and
 // GRILL, generated from the asking rules in grill.go) merged with two optional
 // override layers, in order: the user scope's
-// ~/.abcd/rules.json (one per machine, spc-23) and then the per-repo
+// ~/.abcd.noindex/rules.json (one per machine, spc-23) and then the per-repo
 // <repoRoot>/.abcd/rules.json, so the repo wins a field both set. Each
 // domain carries recall keywords + aliases and a list of rules; a prompt is
 // recall-matched against the active domains and only the matching rules are
@@ -235,7 +235,7 @@ func readGuarded(path string, limit int64) ([]byte, error) {
 }
 
 // Load returns the bundled defaults merged with the user scope's
-// ~/.abcd/rules.json and then with <repoRoot>/.abcd/rules.json — bundled, then
+// ~/.abcd.noindex/rules.json and then with <repoRoot>/.abcd/rules.json — bundled, then
 // user, then repo, each layer overriding per field (itd-117, spc-23). An absent
 // file contributes nothing, so a machine with neither file gets the defaults
 // unchanged; a present file that cannot be read, parsed or validated is a
@@ -379,7 +379,7 @@ func noteWithheld(rs, base RuleSet, layers []overrideLayer) RuleSet {
 
 // userHomeDir is the package's view of os.UserHomeDir, held as a var for the
 // same reason fsutil keeps its owner lookup: a test suite must be able to keep
-// the developer's own ~/.abcd/rules.json out of every test that did not lay one
+// the developer's own ~/.abcd.noindex/rules.json out of every test that did not lay one
 // out, and only a substitution can do that for tests that never set HOME.
 var userHomeDir = os.UserHomeDir
 
@@ -424,7 +424,7 @@ func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 	return over, true, nil
 }
 
-// readUserLayer reads and parses the user scope's ~/.abcd/rules.json. ok is
+// readUserLayer reads and parses the user scope's ~/.abcd.noindex/rules.json. ok is
 // false when there is no such file — or no home to hold one — which is the
 // ordinary case and costs nothing: nothing is created, nothing is reported.
 //
@@ -435,9 +435,9 @@ func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 // writable by nobody else. That is the ownership rule the repo root's trust
 // bound applies to a foreign-uid checkout (root.go, foreignOwnerRefusal): a
 // file another account could have written is not this account's convention.
-// And the ~/.abcd directory itself must not be a symlink when a rules.json sits
+// And the ~/.abcd.noindex directory itself must not be a symlink when a rules.json sits
 // behind it, the pre-check the repo's .abcd gets — checked only once a file is
-// there, because a machine whose ~/.abcd is a dotfiles symlink holding no
+// there, because a machine whose ~/.abcd.noindex is a dotfiles symlink holding no
 // rules.json reads nothing and must keep behaving exactly as it did. That check
 // is fsutil.ReadHomeDeclaration's (fsutil.HomeScopeLink), the one every other
 // home-scoped reader and writer applies, so the rule cannot drift per file.
@@ -447,14 +447,14 @@ func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 // injection is the silent shape loud-staging exists to prevent.
 func readUserLayer(home string) (over RuleSet, ok bool, err error) {
 	// No home, or a relative one, names no user scope: a relative HOME would
-	// resolve ~/.abcd against whatever directory the session happens to start
+	// resolve ~/.abcd.noindex against whatever directory the session happens to start
 	// in, which is not the machine's scope but a guess at one.
 	if home == "" || !filepath.IsAbs(home) {
 		return RuleSet{}, false, nil
 	}
 	data, refusal, err := fsutil.ReadHomeDeclaration(home, UserRelPath, maxRulesFileBytes)
 	// Absent is the lstat's answer, so a permission error here is a HOME or
-	// ~/.abcd this uid cannot search, never the file's own mode: that reads as
+	// ~/.abcd.noindex this uid cannot search, never the file's own mode: that reads as
 	// no user layer, as it does for the sibling home-scoped declarations
 	// (trusted-roots, local-transcript-roots), so a sandboxed or foreign HOME
 	// does not warn on every prompt about a file nobody can see. A rules.json

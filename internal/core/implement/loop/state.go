@@ -32,7 +32,7 @@
 //	.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json  the implementer's receipt
 //
 // and its worktree in the machine-scoped store,
-// ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>. The
+// ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>. The
 // process driver (piece 3, drive.go) is the same loop: Drive performs the next
 // stage and, when it hands the lane to a role routed to a command-line runner
 // (itd-2609201916056194), starts that agent through the runner and hands its

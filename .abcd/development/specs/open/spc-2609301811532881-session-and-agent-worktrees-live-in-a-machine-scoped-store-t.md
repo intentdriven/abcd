@@ -11,7 +11,7 @@ production_mode: hand-written
 
 This spec delivers
 [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md):
-a session's or an agent's worktree lands in `~/.abcd/worktrees/<root-sha>/<name>/`,
+a session's or an agent's worktree lands in `~/.abcd.noindex/worktrees/<root-sha>/<name>/`,
 abcd can say what that lane holds, and abcd reclaims what has merged without
 deleting anything it cannot prove belongs to it.
 
@@ -58,7 +58,7 @@ tools create; retention of the notes archive; any change to the isolation rule.
 ### One package owns both stores
 
 `internal/core/ahoy/worktree` is the only code that creates, lists or removes a
-directory under `~/.abcd/worktrees/` or `~/.abcd/notes/`. It lives under `ahoy`
+directory under `~/.abcd.noindex/worktrees/` or `~/.abcd.noindex/notes/`. It lives under `ahoy`
 because `ahoy` owns the machine's stores and their registry, and it imports
 `ahoy` for the two reads `ahoy` already owns (the scrubbed `index.json` loader,
 through a new exported `RegistryLabels`, and the `gh` runner, through a new
@@ -68,7 +68,7 @@ package never prints: it returns rows and typed refusals, and the front door
 formats them.
 
 The level-by-level store maker is one function serving both stores: each level
-of `~/.abcd/worktrees/<root-sha>/` and of `~/.abcd/notes/<root-sha>/<entry>/` is
+of `~/.abcd.noindex/worktrees/<root-sha>/` and of `~/.abcd.noindex/notes/<root-sha>/<entry>/` is
 made one at a time with `fsutil.EnsureRealDir` at `0o700`, re-read with
 `os.Lstat`, and held to `fsutil.CallersAlone` (owned by this uid, no group or
 other write bit) before the next level is made. A symlink or a file anywhere in
@@ -127,7 +127,7 @@ A worktree belongs to the store when all three hold:
 
 1. `git worktree list --porcelain` run from this checkout lists it;
 2. its real path (`filepath.EvalSymlinks`) is a direct child of the real path of
-   this repository's lane `~/.abcd/worktrees/<root-sha>/`;
+   this repository's lane `~/.abcd.noindex/worktrees/<root-sha>/`;
 3. `git -C <worktree> rev-parse --git-common-dir`, the worktree's own answer, and
    this checkout's common directory resolve to the same real path.
 
@@ -152,7 +152,7 @@ a dead `.git` pointer reads "checkout not found; run `git worktree repair` from
 the checkout", a directory git lists as prunable reads "directory gone; git
 still lists it". A directory in the lane that git does not list renders as
 "not a worktree of this repository", and a directory directly under
-`~/.abcd/worktrees/` whose name is a prefix of this repository's root commit but
+`~/.abcd.noindex/worktrees/` whose name is a prefix of this repository's root commit but
 not the full key renders as "not a lane", naming this repository's full-key
 lane and saying its worktrees are retired by hand with `git worktree remove`.
 
@@ -161,7 +161,7 @@ commit, and git's own records travel with the common directory, so the moved
 checkout lists the same lane; a worktree whose `.git` pointer still names the old
 path fails proof 3 and says to run `git worktree repair` (criterion 18).
 
-`--all` walks every directory under `~/.abcd/worktrees/` without following
+`--all` walks every directory under `~/.abcd.noindex/worktrees/` without following
 symlinks. A directory named by a full root commit is a lane, labelled with the
 repository's name from `ahoy.RegistryLabels()` (the loader that already scrubs
 `index.json`) where that commit is registered and by the SHA where it is not.
@@ -181,7 +181,7 @@ own checkout, found through its `.git` pointer.
 
 ### Paths on a machine stream
 
-A store row's path is `fsutil.RedactHome` (`~/.abcd/worktrees/…`), because the
+A store row's path is `fsutil.RedactHome` (`~/.abcd.noindex/worktrees/…`), because the
 reader must be able to `cd` into it. An outside row's path is
 `fsutil.DisplayPath`: home-relative under HOME, the base name outside it, so it
 stays recognisable wherever it lives without printing an absolute local path. A
@@ -270,7 +270,7 @@ row.
 ### The notes archive
 
 A worktree's `.abcd/.work.local/` is walked without following symlinks. When it
-holds anything, `prune` makes `~/.abcd/notes/<root-sha>/<YYYYMMDDTHHMMSSZ>-<name>/`
+holds anything, `prune` makes `~/.abcd.noindex/notes/<root-sha>/<YYYYMMDDTHHMMSSZ>-<name>/`
 through the shared level maker (the entry itself made exclusively, so two runs
 in one second cannot share it) and writes into it, inside an `os.Root` opened on
 the entry, each regular file at its relative path, `0o600`, and a
@@ -300,7 +300,7 @@ reachable; without one the window alone decides) (decision 3). Last activity is
 the later of the branch tip's committer date and the newest modification time of
 the files `git status` reports changed or untracked. The window is the layered
 configuration key `worktrees.quiet_days` in `.abcd/config.json`, read through
-`internal/core/layered` (the repository file, then `~/.abcd/config.json`, then
+`internal/core/layered` (the repository file, then `~/.abcd.noindex/config.json`, then
 the bundled default of 14), which claims the `worktrees` namespace, so a
 misspelt key or a value below 1 is refused naming its file, never replaced by
 the default.
@@ -359,7 +359,7 @@ command reference are regenerated with the sub-tree.
 
 ## How each acceptance criterion is met
 
-1. `Add` makes the worktree at `~/.abcd/worktrees/<root-sha>/<name>/` on the
+1. `Add` makes the worktree at `~/.abcd.noindex/worktrees/<root-sha>/<name>/` on the
    branch, the front door prints the path, and the only directories created are
    the store's levels and the worktree, so the checkout's parent is unchanged.
 2. The shared level maker makes and re-verifies each level in turn; a symlink at
@@ -383,7 +383,7 @@ command reference are regenerated with the sub-tree.
 9. The squash test (patch-id of the whole branch diff against the default
    branch's commits) judges it merged with no forge, and it is reclaimed.
 10. The archive writes the redacted files and the manifest under
-    `~/.abcd/notes/<root-sha>/<timestamp>-<name>/` before removal and the row
+    `~/.abcd.noindex/notes/<root-sha>/<timestamp>-<name>/` before removal and the row
     names the path; a failed archive keeps the worktree with the reason.
 11. The quiet rule lists the candidate with its dossier (dirty state first) and
     leaves it; `--yes <name>` archives and removes that one only; a dirty named
@@ -426,6 +426,11 @@ worktree rather than loses one; none changes a criterion.
 - `--dry-run` returns the exit code the real run would.
 - "Held by the build loop" is a lane of a run whose state is not complete, read
   across every checkout of the repository.
+- 2026-10-04: the store's paths are spelled under the renamed home,
+  `~/.abcd.noindex/worktrees/` and `~/.abcd.noindex/notes/`, the location
+  [adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
+  sets when it supersedes adr-2609091248200336's `~/.abcd/` spelling
+  (spc-2610031309233367, step 4). Nothing else in this record changes.
 
 ## Open point
 

@@ -28,7 +28,7 @@ This intent closes that gap by reusing infrastructure abcd already has. itd-3's 
 - **Memory `recall` frontmatter** — every `.abcd/memory/` page's `source:` frontmatter gains a `recall:` keyword list (the domain-keying CARL applies to rules, applied to memory pages).
 - **Hook extension** — `hooks/prompt_router_hook.py` (itd-3) is extended from rules-only to rules + memory. Same recall scan, same signature dedup, same force-refresh-every-N. The hook reads two indexes: `rules.json` domains and memory-page `recall:` frontmatter.
 - **Context brackets** — injection is gated by remaining context budget, after CARL's model: `FRESH` (≥70% window free) injects matched pages in full; `MODERATE` (40–70%) injects only highest-relevance pages; `DEPLETED` (<40%) injects matching `index.md` lines only (titles, not bodies). This is the bounded-retrieval counterpart to itd-36's bounded-ingest quotation budgets.
-- **Two-scope query** — the hook queries the `index.md` of both memory scopes (`<workspace>/.abcd/memory/` and `~/.abcd/memory/`). On a recall-keyword conflict, the narrower scope wins (workspace > user). The agent never loads the union of both scopes — it loads keyword-matched, budget-bracketed pages only.
+- **Two-scope query** — the hook queries the `index.md` of both memory scopes (`<workspace>/.abcd/memory/` and `~/.abcd.noindex/memory/`). On a recall-keyword conflict, the narrower scope wins (workspace > user). The agent never loads the union of both scopes — it loads keyword-matched, budget-bracketed pages only.
 - **`abcd memory recall [keyword]`** CLI subcommand — diagnostic: shows which pages a given prompt/keyword would surface, and in which bracket. Bare-command-as-render discipline (per `02-constraints/04-naming.md`).
 
 ## What's Out of Scope
@@ -40,7 +40,7 @@ This intent closes that gap by reusing infrastructure abcd already has. itd-3's 
 
 ## Reconciliation with itd-3's global-rules rejection
 
-itd-3 explicitly rejects a global `~/.abcd/rules.json` — "a personal cross-repo rules file recreates the scaffolding-accumulates-outside-the-repo failure mode." itd-39 *does* place a memory scope at `~/.abcd/memory/`. This is deliberate, not a contradiction:
+itd-3 explicitly rejects a global `~/.abcd.noindex/rules.json` — "a personal cross-repo rules file recreates the scaffolding-accumulates-outside-the-repo failure mode." itd-39 *does* place a memory scope at `~/.abcd.noindex/memory/`. This is deliberate, not a contradiction:
 
 - **Rules are procedural and project-shaped.** A rule that applies everywhere belongs in the plugin defaults, not a personal file — hence itd-3's per-repo-only stance.
 - **Memory is observational and inherently cross-project.** A personal working preference ("I prefer X phrasing in commit messages") or a principle that improves abcd development itself is *not* project-scoped knowledge — it has no per-repo home by nature. Forcing it into a repo would lose it on the next project.

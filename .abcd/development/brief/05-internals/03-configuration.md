@@ -73,7 +73,7 @@ are hand-set: the binary reads them and never writes them.
 The `match` keys are read through the layered configuration reader
 (`internal/core/layered`), as the provider adapter's `oracle` keys below are:
 `.abcd/config.json` wins, then
-`~/.abcd/config.json`, then the bundled default above, and each value is
+`~/.abcd.noindex/config.json`, then the bundled default above, and each value is
 reported with the file it came from. The reader claims the `match` namespace,
 so a misspelt key, a threshold outside its range and a field outside the set
 are refused naming the file, never passed over for the default. A refusal
@@ -94,7 +94,7 @@ rather than skipped:
 ```json
 {
   "oracle": {
-    "api": {                             // MACHINE LAYER ONLY: ~/.abcd/config.json
+    "api": {                             // MACHINE LAYER ONLY: ~/.abcd.noindex/config.json
       "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",   // https, or http to this machine
         "key": "openrouter",             // a credential NAME, resolved through the credential
@@ -113,7 +113,7 @@ rather than skipped:
   sent to, so a repository's `.abcd/config.json` declaring `oracle.api` is
   refused: a checkout must never be able to aim the person's key at a server of
   its choosing. `abcd ahoy connect` writes the block, after one verification
-  call, and it is the one write abcd makes to `~/.abcd/config.json`.
+  call, and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
@@ -129,7 +129,7 @@ rather than skipped:
   applies in its place (the technical facilitator's ruling CD3 of 2026-10-02);
   a model the denylist matches is refused from either file. A route pointed at
   a provider this machine has not configured is a diagnostic, not a refusal: a
-  repository's such route is skipped where `~/.abcd/config.json` routes the
+  repository's such route is skipped where `~/.abcd.noindex/config.json` routes the
   same name, so the owner's setting applies (ruling CD4 of 2026-10-02), and
   otherwise the step stays on the host, as it would with nothing configured
   (adr-25, amended 2026-10-02). A role outside the
@@ -141,13 +141,13 @@ rather than skipped:
   and with any non-ASCII letter spelled as an escape; the rest of the
   configuration loads, and the machine's own route to that name, if it has
   one, applies in its place (ruling CD2 of 2026-09-29). The same fault in
-  `~/.abcd/config.json` is refused, because that file is the person's own and a
+  `~/.abcd.noindex/config.json` is refused, because that file is the person's own and a
   route they set is never dropped silently.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
   route the person set up on their own machine may spend their paid key (the
   product thinker's ruling AA(b) of 2026-09-29), so a repository's
   `.abcd/config.json` pointing a role or a judgement type at such a provider is
-  skipped, with one diagnostic on stderr naming the route, `~/.abcd/config.json`
+  skipped, with one diagnostic on stderr naming the route, `~/.abcd.noindex/config.json`
   as where to set it, and the repository's file as where to remove it (the
   technical facilitator's ruling CD2 of 2026-09-29). The rest of the
   configuration loads, so every other route and every command that reads it
@@ -168,7 +168,7 @@ rather than skipped:
   `.abcd/config/oracle-routing.json` that names
   settings (`max_tokens`, `temperature`) is refused before the step runs, never
   dropped, naming each setting, the repository's file, and
-  `agents.<agent>.settings` in `~/.abcd/oracle-routing.json` as where to move
+  `agents.<agent>.settings` in `~/.abcd.noindex/oracle-routing.json` as where to move
   them, because the settings size and shape a call the person pays for. A
   keyed leg the person typed with `--route` is theirs, so there the repository
   row's settings merge within the provider's accepted set. A repository row
@@ -177,7 +177,7 @@ rather than skipped:
   machine alone.** By default a provider that holds a key takes only the
   self-contained agents, the four cold-reading positions (ruling DR5 of
   2026-09-29, adapters chapter). `oracle.bundled_context_providers` in
-  `~/.abcd/config.json` is the person's override: a list of provider names that
+  `~/.abcd.noindex/config.json` is the person's override: a list of provider names that
   may take bundled-context requests for file-reading agents. It is read from the
   machine layer alone, and a repository's `.abcd/config.json` declaring it is
   refused, as a repository's provider block is; a name this machine has not
@@ -210,7 +210,7 @@ layered resolver from the machine's file alone:
 ```json
 {
   "interview": {
-    "list": "numbered"                  // MACHINE LAYER ONLY: ~/.abcd/config.json
+    "list": "numbered"                  // MACHINE LAYER ONLY: ~/.abcd.noindex/config.json
                                         //   "arrows" (the bundled default): the arrow-key
                                         //   list, typing to narrow it | "numbered": whole
                                         //   lines, a number or part of a name, the
@@ -221,14 +221,14 @@ layered resolver from the machine's file alone:
 
 - **It is the person's own.** How a list is read is the person's to say, so a
   repository's `.abcd/config.json` that sets `interview.list` is refused naming
-  `~/.abcd/config.json` as where it belongs; the reader claims the `interview`
+  `~/.abcd.noindex/config.json` as where it belongs; the reader claims the `interview`
   namespace, so a misspelt key and a value outside the two are refused naming
   the file, never passed over for the default.
 - **A refusal never fails an interview, and never lets a repository choose.**
   The answer loop says the refusal in one line on stderr and goes on: a fault
   a repository's file holds (the key set there, a misspelt key under
   `interview`, a malformed file) is passed over for the machine's own setting,
-  read from `~/.abcd/config.json` alone; a fault in the machine's own file
+  read from `~/.abcd.noindex/config.json` alone; a fault in the machine's own file
   gives `numbered`.
 - **Two variables choose `numbered` for one session.** `ABCD_ACCESSIBLE`
   non-empty, else `ACCESSIBLE` non-empty, selects it whatever the file says,
@@ -298,7 +298,7 @@ stamps do has no version to read on those five.
 ## The history store
 
 The history store is a **user-scope** artefact, shared across every abcd-managed
-repo on the machine, living at `~/.abcd/history/`. ahoy bootstraps it once, on the
+repo on the machine, living at `~/.abcd.noindex/history/`. ahoy bootstraps it once, on the
 first install on a fresh machine. It holds a registry keyed on each repo's
 root-commit SHA, and one identity-and-lineage file per repo under that key.
 
@@ -322,9 +322,11 @@ file.
 ### The transcript corpus
 
 The transcript corpus is a **sibling** user-scope store rather than a sub-tree of
-the registry, at `~/.abcd/transcripts/<root-sha>/`, holding redacted records and a
+the registry, at `~/.abcd.noindex/transcripts/<root-sha>/`, holding redacted records and a
 staging area for raw transcripts awaiting redaction
-([adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)).
+([adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md),
+spelled under the renamed home by
+[adr-2610031751066232](../../decisions/adrs/2610031751066232-the-transcript-store-is-spelled-under-the-renamed-home-abcd.md)).
 Every machine-scoped store keyed on the root commit takes the full object name
 as its `<root-sha>`: Forty hex digits under SHA-1, sixty-four under SHA-256, the
 form `gitutil.RootCommit` returns and `gitutil.IsFullSHA` admits as a path
@@ -342,7 +344,7 @@ created individually and re-verified as a real directory on every resolve, so th
 store never creates or writes through a symlink.
 
 A repo may **pull its transcripts in**, by declaring the checkout in the caller's
-own home — one absolute path per line in `~/.abcd/local-transcript-roots`, the
+own home — one absolute path per line in `~/.abcd.noindex/local-transcript-roots`, the
 same home-scoped, abcd-owned, line-oriented idiom as the other declarations, and
 honoured only when the file is a regular file this uid owns that no one else can
 write. A declared checkout keeps its store in the gitignored per-worktree local
@@ -387,7 +389,7 @@ It is user-scope and keyed on the repository's root-commit SHA exactly as the
 transcript store is, and it is **never committed**:
 
 ```
-~/.abcd/lab/
+~/.abcd.noindex/lab/
   <root-sha>/
     index.jsonl               one registry line per lab: id, pin, question
     <lab-id>/                 one lab home: the intention, the snapshot, the lab's
@@ -415,15 +417,17 @@ apart. Three properties are load-bearing:
 
 **Design target (itd-2609091014076309, `intents/planned/`; unbuilt).** No
 `worktree` verb exists in the shipped binary, and nothing in it creates or reads
-this store. What follows is the layout the intent commits to, on the rule
+this store. What follows is the layout the intent commits to, at the location
+[adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
+sets, on the rule
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
-records: a tool never creates directories in user-owned project space, so a
+records and that record carries forward unchanged: a tool never creates directories in user-owned project space, so a
 session's or an agent's worktree is machine-scoped rather than a sibling of the
 checkout. It would be user-scope and keyed on the repository's root-commit SHA,
 exactly as the history, transcript and voyage stores are, and never committed:
 
 ```
-~/.abcd/worktrees/
+~/.abcd.noindex/worktrees/
   <root-sha>/
     <name>/                   one git worktree of that repository, on its own branch
 ```
@@ -448,12 +452,12 @@ listed as such, never moved, and retired by the user's own `git worktree remove`
 
 **One primitive owns the store and its notes archive.** One package under `ahoy`
 derives the lane from the root commit, makes every level of
-`~/.abcd/worktrees/<root-sha>/` and of the notes archive
-`~/.abcd/notes/<root-sha>/` one at a time as a real directory that is the
+`~/.abcd.noindex/worktrees/<root-sha>/` and of the notes archive
+`~/.abcd.noindex/notes/<root-sha>/` one at a time as a real directory that is the
 caller's alone, and adds, lists and removes worktrees through git. The build
 loop's lanes are made through it, so a worktree enters the store one way. Before
 `prune` removes a worktree it moves the worktree's git-ignored
-`.abcd/.work.local/` into `~/.abcd/notes/<root-sha>/<UTC timestamp>-<name>/`
+`.abcd/.work.local/` into `~/.abcd.noindex/notes/<root-sha>/<UTC timestamp>-<name>/`
 beside a manifest, redacted on write by the transcript store's pass; nothing
 reclaims the archive.
 
@@ -467,13 +471,14 @@ a tool that must not create in the user's space must not delete there either.
 
 ## The two `.abcd/` scopes
 
-`.abcd/` is **one namespace pattern instantiated at two scopes**. abcd lives in
+abcd keeps **one namespace pattern instantiated at two scopes**, under two names:
+`~/.abcd.noindex/` in the person's home directory and `.abcd/` in a repository. abcd lives in
 one repository ([adr-28](../../decisions/adrs/0028-single-repo-curated-release.md)):
 its design record is repo-scoped and in-tree, and the user scope holds only state
 that is genuinely machine-wide. `/abcd:ahoy` classifies the folder it runs in and
 acts on the scope that applies.
 
-**User scope, `~/.abcd/`** — one per machine, machine-local shared state only: the
+**User scope, `~/.abcd.noindex/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
 lab store, the staged worktree store, the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
@@ -498,26 +503,51 @@ phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
 are pulled in. **Never the design record.** The same inventory is drawn as a tree
-in [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcd);
+in [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcdnoindex);
 the two are one list and must agree.
 
-**A symlinked `~/.abcd` hosts nothing abcd trusts.** Every file in the user
+**The user scope's name keeps it out of desktop search, and its old name
+stops abcd.** The `.noindex` suffix is what the macOS indexer honours at scan
+time, for the folder and everything beneath it, so a worktree, a run log or a
+transcript created there sets off no indexing burst (itd-2610030720038073). abcd
+changes only its own folder's name and never the computer's search settings
+([adr-2610030720195401](../../decisions/adrs/2610030720195401-abcd-keeps-its-own-folders-out-of-desktop-indexing-only-by.md)),
+and on Linux the suffix is inert. One leaf package, `internal/abcdhome`, spells
+the name, and `TestOnlyTheHomeResolverNamesTheHome` holds every other Go
+package to it. The folder's earlier name, `~/.abcd`, is read by
+`abcdhome.Check` alone, with `Lstat`, and never by a reader, so no reader falls
+back to it. While any entry stands there, a folder, a file or a link, every
+command, every hook and the status line write nothing and say the stop, each in
+its own form: the line names the rename, `mv ~/.abcd ~/.abcd.noindex`, and the
+repair that reconnects the store's moved worktrees,
+`for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done`;
+with both folders standing it names both and moves neither. `cli.Run` checks
+before any command executes, the plugin hooks' shell wrapper and
+`hooks/bootstrap.sh` check before they provision or read anything, and the shell
+guard refuses every command but the exact rename while the old folder stands;
+with no plugin-root binary, the state a plugin update leaves, the `PreToolUse`
+wrapper blocks every command, the rename included, so the rename is the
+person's, in a plain terminal (spc-2610031309233367).
+abcd never moves the folder itself, and a managed project's block keeps naming
+the old paths until setup runs in that project again.
+
+**A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
 `local-transcript-roots`, `path-entry`, `cache-attestation`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
-`credential-homes.json` — is refused when `~/.abcd`, or a directory below it on the way to the file, is a
+`credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
 (`fsutil.HomeScopeLink`, read through `fsutil.ReadHomeDeclaration`) so it cannot
 drift per file. The rule holds against a race as well as a layout: a reader or
-writer opens `~/.abcd` and each level below it relative to the descriptor of the
+writer opens `~/.abcd.noindex` and each level below it relative to the descriptor of the
 level above (`fsutil.OpenHomeScope`, or `fsutil.EnsureHomeScope` to create the
 missing levels), confirms each descriptor is the real directory its judgement
 saw, and reaches the file only through that descriptor, so a process swapping
-`~/.abcd` for a link between the check and the use is refused rather than
+`~/.abcd.noindex` for a link between the check and the use is refused rather than
 followed (iss-2609281310017733). The file's own guards are judged on that
 descriptor too: the credential store's mode 0600 is judged on the fstat of the
 file that is opened (`fsutil.ReadHomeDeclarationDenying`), never on its path,
-so a store swapped for a group-readable file after any check is refused. A symlinked `~/.abcd` holding no such file reads as absent and
+so a store swapped for a group-readable file after any check is refused. A symlinked `~/.abcd.noindex` holding no such file reads as absent and
 costs nothing. A file that is there behind the link is refused the way its reader
 refuses any declaration that is not the caller's word: the rules load fails, a
 declaration is ignored with a note, the path entry and the cache attestation
@@ -528,20 +558,20 @@ and the path entry and cache attestation `hooks/bootstrap.sh` writes — refuses
 the link rather than writing through it, naming it and the repair: replace the
 link with a real directory. The path entry's removal on uninstall goes through
 the same descriptor, so it removes nothing behind the link. A credential
-setup refuses a symlinked `~/.abcd` in every home, the keychain and external
+setup refuses a symlinked `~/.abcd.noindex` in every home, the keychain and external
 homes included, before it creates anything: the index, the value and both
-locks are reached through the one walk that created and judged `~/.abcd`,
+locks are reached through the one walk that created and judged `~/.abcd.noindex`,
 with the index's lock taken there and the abcd home's lock nested inside it.
 An external home's pointer at a file under a symlinked directory (a
 `~/.config` linked into a dotfiles repository) is refused the same way,
 naming the link, and the file is read through the descriptor walk. The hook shims refuse a `path-entry` behind the link
 too, before they read it. The home directory itself may be a link; only
-`~/.abcd` and what lies under it are judged. The stores are not declarations:
+`~/.abcd.noindex` and what lies under it are judged. The stores are not declarations:
 `transcripts/`, `voyage/`, `lab/`, `inbox/` and `runs/` refuse a symlinked
 level through their own create-then-prove seam (`fsutil.EnsureRealDir`), and the
 `sources/` corpus is the caller's to place. The `history/` registry applies
-both: it is neither read nor written behind a symlinked `~/.abcd` or
-`~/.abcd/history`, and it is created, locked, read and written through
+both: it is neither read nor written behind a symlinked `~/.abcd.noindex` or
+`~/.abcd.noindex/history`, and it is created, locked, read and written through
 `fsutil.EnsureHomeScope`'s descriptor (iss-2609281129171021). `ahoy install` skips the registration with a note naming
 the link and the repair, and the detector reports it as a diagnostic rather
 than a gap install would try and fail to close.
@@ -581,7 +611,7 @@ staged memory harvest of § 2 would read from it as a source.
 
 The rules loader composes three layers, each overriding the one before it per
 field: the domains bundled in the binary, then the user scope's
-`~/.abcd/rules.json`, then the resolved repo root's `.abcd/rules.json`. Both
+`~/.abcd.noindex/rules.json`, then the resolved repo root's `.abcd/rules.json`. Both
 files take one schema — `schema_version`, the `disabled` kill switch, and a
 `domains` map whose entries override a bundled domain's `state`, `recall`,
 `aliases` or `rules` or declare a custom domain outright. A field one layer sets
@@ -593,7 +623,7 @@ overrides locally (itd-117, spc-23).
 | Layer | File | What it is for |
 |---|---|---|
 | **bundled** | none — embedded in the binary | abcd's own opinions, the same on every machine |
-| **user** | `~/.abcd/rules.json` | the delta between those opinions and one machine's house style: a definition-of-done wording, an attribution example, a custom domain wanted across that person's own projects |
+| **user** | `~/.abcd.noindex/rules.json` | the delta between those opinions and one machine's house style: a definition-of-done wording, an attribution example, a custom domain wanted across that person's own projects |
 | **repo** | `<repo>/.abcd/rules.json` | what one repository needs that differs from both |
 
 **Suppression is sticky downward.** A repo's `dormant` state beats a user layer
@@ -603,10 +633,10 @@ so a user-scope kill switch silences every repo on the machine and no repo file
 re-enables it. That is the fail-safe direction: a kill switch a lower layer
 could override is not a kill switch.
 
-**Absence costs nothing.** A machine with no `~/.abcd/rules.json` loads exactly
+**Absence costs nothing.** A machine with no `~/.abcd.noindex/rules.json` loads exactly
 the set it would without the layer, and abcd never creates the file or its
 directory: it is hand-edited, and `abcd rules` is its read-only render. A `HOME`
-or `~/.abcd` this account cannot search reads as absent too, as it does for the
+or `~/.abcd.noindex` this account cannot search reads as absent too, as it does for the
 other home-scoped declarations, so a sandboxed or foreign `HOME` never warns on
 every prompt about a file nobody can see; a `rules.json` that is there and
 cannot be read is refused.
@@ -614,11 +644,11 @@ cannot be read is refused.
 **The user file is read as the caller's word.** It injects text into every
 session on the machine, so it is read through the same guard as the home-scoped
 declarations: a regular file — never a symlink, FIFO or device — of at most
-256 KiB, owned by this account and writable by no one else, with `~/.abcd`
+256 KiB, owned by this account and writable by no one else, with `~/.abcd.noindex`
 itself refused as a symlink once a `rules.json` sits behind it. A
-dotfiles-symlinked `~/.abcd` can therefore never host a `rules.json`: the file
-is refused behind a symlinked `~/.abcd`, and only a symlinked `~/.abcd` with no
-`rules.json` in it is spared, so that a machine whose `~/.abcd` lives in a
+dotfiles-symlinked `~/.abcd.noindex` can therefore never host a `rules.json`: the file
+is refused behind a symlinked `~/.abcd.noindex`, and only a symlinked `~/.abcd.noindex` with no
+`rules.json` in it is spared, so that a machine whose `~/.abcd.noindex` lives in a
 dotfiles checkout keeps injecting exactly what it did. The repo layer's `.abcd`
 has no such exemption and is refused as a symlink unconditionally. A file failing
 any of those, or failing to parse or validate, fails the whole load: the hook
@@ -820,7 +850,7 @@ vouched for.
 
 **The opt-in.** A foreign-uid checkout, a container bind mount and a shared CI
 checkout are all legitimate, so the refusal has a supported route back: one
-absolute path per line in `~/.abcd/trusted-roots`, matched exactly both as written
+absolute path per line in `~/.abcd.noindex/trusted-roots`, matched exactly both as written
 and symlink-resolved, with `#` starting a comment. The file is read through the
 guarded bounded read, and only when it is a regular file this uid owns that no one
 else can write — a declaration anyone could have written is not the caller's word.
@@ -843,7 +873,7 @@ a home that is itself a git working tree (dotfiles in the home) is not thereby a
 project. The walk passes over the home, and a toplevel that is the home resolves
 like a directory outside any repository — the working directory, no walk — when
 nothing below the home carries a `.abcd/`. So a session beneath such a home reads
-`~/.abcd/rules.json` once, as the user layer, and never the home's `guard.json`
+`~/.abcd.noindex/rules.json` once, as the user layer, and never the home's `guard.json`
 or `config.json` as a repository's own. A toplevel that contains the home — a
 test harness that points `HOME` inside its checkout — stays the root, because it
 is a repository git vouched for, and its own `.abcd/` stays its own.
@@ -896,7 +926,7 @@ clone carries, because it is out-of-tree output.
 **Memory locations to keep straight.** Curated memory exists at both scopes, and
 there is one non-abcd location alongside them: the repo-scope `.abcd/memory/` is
 the **primary** store, holding the curated summaries `abcd memory ingest` writes
-and the canonical input for principle distillation; the user-scope `~/.abcd/memory/` is a
+and the canonical input for principle distillation; the user-scope `~/.abcd.noindex/memory/` is a
 **later phase**, which will hold personal preferences and cross-project
 principles with no single repo home (nothing in the binary resolves it today);
 and a root-level `memory/` is the legacy snapshot abcd respects and never writes

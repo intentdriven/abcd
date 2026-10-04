@@ -55,7 +55,7 @@ or name a file you wrote outside the repository's tracked tree:
 run bare `abcd report`, which opens the skeleton in `$VISUAL` or `$EDITOR`.
 
 On success, tell the user the report's `id` and its `path` (under
-`~/.abcd/inbox/`). A refusal exits 2, names the field, and files nothing: fix
+`~/.abcd.noindex/inbox/`). A refusal exits 2, names the field, and files nothing: fix
 that field and file again. A failure to file — the inbox cannot be created,
 every id drawn this second is taken, the write fails — exits 1 and files
 nothing. After the editor ran, a refusal and a failure both name where what was

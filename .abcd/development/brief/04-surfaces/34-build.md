@@ -164,7 +164,7 @@ reader (`internal/core/layered`), each key on its own, highest layer first:
 the build's own pace, sub-agent and fix-round flags, the pace written as
 `<work-minutes>/<pause-minutes>`; `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
 `pace.fix_rounds` in the
-repository's `.abcd/config.json`; the same keys in `~/.abcd/config.json`; and
+repository's `.abcd/config.json`; the same keys in `~/.abcd.noindex/config.json`; and
 the bundled default, 120 minutes of work, 300 of pause, 2 sub-agents and 3 fix
 rounds (decision 5 and ruling DR1), held in one set of constants. The files are read through the
 reader's guards (a regular file inside the checkout; on the machine, one the
@@ -403,7 +403,7 @@ A lane lands one step of the spec, and its files live in its own directory of
 the run, `.abcd/.work.local/run/<run-id>/<lane-id>/`.
 
 **The worktree** (piece 6). The lane's checkout is made in abcd's form: in the
-machine-scoped worktree store, `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`,
+machine-scoped worktree store, `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`,
 keyed on the repository's root commit in the full form the sibling stores use,
 on a branch `build/<run-id>-<lane-id>` cut from the default branch (origin's
 `HEAD` as last fetched, else the first of `main`, `master`, `trunk` and
@@ -418,7 +418,7 @@ the caller's alone (owned by the caller, writable by neither its group nor
 anyone else), and a level the stage makes is made `0700`, so a symlink anywhere
 in the chain, or a level another account owns or can write, refuses the stage
 before anything is made inside it; nothing beside the checkout, and nothing outside
-`~/.abcd/worktrees/<root-sha>/`, is created. Git runs in the isolated
+`~/.abcd.noindex/worktrees/<root-sha>/`, is created. Git runs in the isolated
 environment, with `--` before the path. Run again after a kill, the stage finds
 the worktree git lists at the lane's path on the lane's branch and adopts it;
 anything else at that path is refused and left as it is.
@@ -641,7 +641,8 @@ the remedy as fields.
   spc-2609202134341288; the layered reader it resolves through is the model
   tier's (itd-2609170822093401).
 - The worktree store the lane's checkout lives in: itd-2609091014076309 (a
-  draft), and the rule it enacts, adr-2609091248200336.
+  draft), the rule it enacts, adr-2609091248200336, and the location that
+  rule's successor sets, adr-2610031751065746.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
 - The pick: itd-2609211116005482 and its design record, spc-2609212015048113.

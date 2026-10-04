@@ -46,7 +46,7 @@ func runGit(cwd string, args ...string) (string, error) {
 	cmd := exec.Command("git", full...)
 	// Isolate: an inherited GIT_DIR/GIT_WORK_TREE overrides `-C cwd` and answers
 	// for a DIFFERENT repository, so the root-commit SHA and origin URL this feeds
-	// into RepoIdentity — which keys the cross-repo ~/.abcd/history registry and
+	// into RepoIdentity — which keys the cross-repo ~/.abcd.noindex/history registry and
 	// drives install/refounding decisions — would be silently registered against
 	// the wrong repo. rev-list/remote do not need global config, so full isolation
 	// is safe here.
@@ -324,7 +324,7 @@ func danglingPathEntry(pluginRoot string) (pathEntry, bool) {
 }
 
 // recordedDanglingPathEntry returns the first `abcd` on PATH that is a dangling
-// link ~/.abcd/path-entry names — the one owned shape that needs no plugin root
+// link ~/.abcd.noindex/path-entry names — the one owned shape that needs no plugin root
 // to recognise, so it is found when none resolves.
 func recordedDanglingPathEntry() (string, bool) {
 	for _, dir := range pathDirs() {
@@ -613,7 +613,7 @@ func strandedSiblingDest(symlinkPath, dest, pluginRoot string) bool {
 }
 
 // recordedDanglingLink reports whether the symlink at target resolves to
-// nothing AND ~/.abcd/path-entry names this very entry (iss-2609100506263330).
+// nothing AND ~/.abcd.noindex/path-entry names this very entry (iss-2609100506263330).
 // The sibling rules above recognise the stranded link only while the plugin
 // root it pointed into still shares a parent with the current one; once that
 // no longer holds, the link abcd wrote and recorded would otherwise read as
@@ -690,17 +690,17 @@ func isDir(p string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// ~/.abcd/history store
+// ~/.abcd.noindex/history store
 // ---------------------------------------------------------------------------
 
 // historyRelPath is the registry's directory relative to the caller's home.
 var historyRelPath = abcdhome.Rel("history")
 
-// historyRoot returns ~/.abcd/history. HOME is respected so tests can redirect.
+// historyRoot returns ~/.abcd.noindex/history. HOME is respected so tests can redirect.
 //
 // It is the registry's single chokepoint for the rule every reader and writer
-// of ~/.abcd applies (fsutil.HomeScopeLink): a symlinked ~/.abcd, or a
-// symlinked ~/.abcd/history, is refused with a *fsutil.HomeScopeLinkError
+// of ~/.abcd.noindex applies (fsutil.HomeScopeLink): a symlinked ~/.abcd.noindex, or a
+// symlinked ~/.abcd.noindex/history, is refused with a *fsutil.HomeScopeLinkError
 // naming the link, so no caller reads a registry through the link or creates
 // one wherever it points (iss-2609281129171021). Every caller refuses on the
 // error; stepHistory reports it and writes nothing.
@@ -715,15 +715,15 @@ func historyRoot() (string, error) {
 	return filepath.Join(home, filepath.FromSlash(historyRelPath)), nil
 }
 
-// historyDir opens ~/.abcd/history as an *os.Root through
+// historyDir opens ~/.abcd.noindex/history as an *os.Root through
 // fsutil.OpenHomeScope, after historyRoot's check, so the registry's files are
 // read and written relative to the descriptor of the directory that was judged
 // and never through a link swapped in after the judgement
 // (iss-2609281310017733). create makes each missing level first
 // (fsutil.EnsureHomeScope), one real directory at a time, where os.MkdirAll
 // would follow a link. home itself reached through a link (/home -> /usr/home)
-// is the machine's layout and is opened, never judged; ~/.abcd and
-// ~/.abcd/history are. An absent registry without create is os.ErrNotExist.
+// is the machine's layout and is opened, never judged; ~/.abcd.noindex and
+// ~/.abcd.noindex/history are. An absent registry without create is os.ErrNotExist.
 func historyDir(create bool) (*os.Root, error) {
 	if _, err := historyRoot(); err != nil {
 		return nil, err
@@ -738,7 +738,7 @@ func historyDir(create bool) (*os.Root, error) {
 	return fsutil.OpenHomeScope(home, historyRelPath)
 }
 
-// historyIndex is the ~/.abcd/history/index.json registry.
+// historyIndex is the ~/.abcd.noindex/history/index.json registry.
 type historyIndex struct {
 	Schema      int           `json:"schema"`
 	Description string        `json:"description"`
@@ -758,7 +758,7 @@ type historyRepo struct {
 
 const historyIndexDescription = "abcd history/lifeboat registry. Keyed on each repo's root-commit SHA (immutable under rename, GitHub-handle change, or remote move). Names, GitHub URLs, and paths are mutable labels held in each repo's entry and refreshed by ahoy."
 
-// loadHistoryIndex reads ~/.abcd/history/index.json and scrubs any credential
+// loadHistoryIndex reads ~/.abcd.noindex/history/index.json and scrubs any credential
 // out of every entry on the way in. Returns (nil,nil) when the store is not
 // bootstrapped yet.
 //
@@ -774,7 +774,7 @@ func loadHistoryIndex() (*historyIndex, error) {
 	return scrubHistoryIndex(readHistoryIndexFile())
 }
 
-// loadHistoryIndexIn is loadHistoryIndex through dir, ~/.abcd/history as the
+// loadHistoryIndexIn is loadHistoryIndex through dir, ~/.abcd.noindex/history as the
 // caller's walk opened it: the read under the history lock goes through the
 // directory whose lock is held, never through a second walk that a same-uid
 // swap of the directory could send elsewhere (iss-2609290300313698's pattern).
@@ -911,7 +911,7 @@ func findRefoundingCandidate(idx *historyIndex, id RepoIdentity) *historyRepo {
 	return nil
 }
 
-// historyLockFilename is the ~/.abcd/history lock file guarding the index.json
+// historyLockFilename is the ~/.abcd.noindex/history lock file guarding the index.json
 // load-modify-write. It sits beside index.json.
 const historyLockFilename = ".index.lock"
 
@@ -933,7 +933,7 @@ var afterHistoryReloadHook func()
 // deterministically.
 var beforeHistoryIndexCreateHook func()
 
-// withHistoryLock runs fn while holding the exclusive ~/.abcd/history lock, so a
+// withHistoryLock runs fn while holding the exclusive ~/.abcd.noindex/history lock, so a
 // registerRepo load-modify-write of index.json serializes across concurrent
 // `abcd ahoy install` runs from different worktrees (iss-101). It routes through
 // the shared fsutil.WithFileLock primitive; the lock file lives beside
@@ -954,7 +954,7 @@ func withHistoryLock(fn func(dir *os.Root) error) error {
 	})
 }
 
-// bootstrapHistory creates ~/.abcd/history/ + index.json when absent. Idempotent.
+// bootstrapHistory creates ~/.abcd.noindex/history/ + index.json when absent. Idempotent.
 // The seed is published atomically (iss-101): a fully-formed temp file is written,
 // synced, and os.Link'd into place. The link is the single-winner publish — it
 // fails EEXIST if index.json already exists, so under two concurrent bootstraps
@@ -1036,7 +1036,7 @@ func createHistoryTemp(dir *os.Root) (*os.File, string, error) {
 	return nil, "", errors.New("could not create a temp file in the history registry")
 }
 
-// writeHistoryIndexIn persists idx through dir, the ~/.abcd/history whose lock
+// writeHistoryIndexIn persists idx through dir, the ~/.abcd.noindex/history whose lock
 // the caller holds. It must be called from inside withHistoryLock
 // (registerRepo), with the directory withHistoryLock hands it, so a re-loaded
 // index is not clobbered by a concurrent writer and is written where its lock
@@ -1106,7 +1106,7 @@ func subMap(cfg map[string]any, name string) map[string]any {
 
 // writeJSON marshals v deterministically (map keys sorted) with a trailing
 // newline via the atomic writer. It guards the LEAF only, so it is reserved for
-// the ~/.abcd/history writers, whose paths are the user's own home and never
+// the ~/.abcd.noindex/history writers, whose paths are the user's own home and never
 // influenced by committed repo content.
 func writeJSON(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")

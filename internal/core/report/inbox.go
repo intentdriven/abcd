@@ -169,7 +169,7 @@ func ensureInbox() (string, error) {
 }
 
 // inboxNotRealDir turns fsutil's not-a-real-directory error into the inbox's
-// refusal, naming the level that was refused — the home itself, ~/.abcd, the
+// refusal, naming the level that was refused — the home itself, ~/.abcd.noindex, the
 // inbox or its promoted folder — home-redacted, so the reader is sent to the
 // path that is wrong rather than to an inbox that may not exist
 // (iss-2609261106286306). It is a refusal (exit 2), not a failure: the inbox is
@@ -186,15 +186,15 @@ func inboxNotRealDir(err error) error {
 
 // peekInbox returns the inbox directory, or "" when it does not exist yet. It
 // refuses, level by level through the same fsutil walk ensureInbox creates by,
-// every path the filing verbs refuse: the home, ~/.abcd, the inbox and its
+// every path the filing verbs refuse: the home, ~/.abcd.noindex, the inbox and its
 // promoted folder must each be a real directory, so no verb reads through a
 // symlink that another would refuse to write through (iss-2609261106287078).
 //
 // One case reads as no inbox rather than a refusal: a symlink or a file at the
-// home or at ~/.abcd with no inbox behind it. There is nothing there to read,
-// and a machine whose ~/.abcd is a dotfiles symlink must not be told so at every
+// home or at ~/.abcd.noindex with no inbox behind it. There is nothing there to read,
+// and a machine whose ~/.abcd.noindex is a dotfiles symlink must not be told so at every
 // session start for an inbox it never had — the stance the rules loader takes on
-// ~/.abcd/rules.json behind a symlinked ~/.abcd. Filing into it is refused all
+// ~/.abcd.noindex/rules.json behind a symlinked ~/.abcd.noindex. Filing into it is refused all
 // the same, because that would create the inbox through the link.
 func peekInbox() (string, error) {
 	home, dir, err := inboxDir()

@@ -21,7 +21,7 @@ import (
 // the one process that runs with the harness's real data dir and, when
 // online, has just authenticated the cache against the published release
 // manifest (adr-46 decision 3), so it records that fact where the environment
-// does not reach — a sibling of ~/.abcd/path-entry, the home write adr-46
+// does not reach — a sibling of ~/.abcd.noindex/path-entry, the home write adr-46
 // decision 4 already treats as the ownership root. A promotion out of the
 // cache now needs three things to agree: the attestation names the directory
 // being promoted from, the co-located record carries the attested hash, and
@@ -36,7 +36,7 @@ import (
 // built binary is untouched, which is why the rejected cross-check against
 // that binary is not what this does.
 
-// cacheAttestationFile is the record's name under ~/.abcd.
+// cacheAttestationFile is the record's name under ~/.abcd.noindex.
 const cacheAttestationFile = "cache-attestation"
 
 // afterCacheBound is a test seam, nil in production: it runs after the
@@ -57,7 +57,7 @@ type cacheAttestation struct {
 	trust   string
 }
 
-// userCacheAttestationPath is ~/.abcd/cache-attestation, beside path-entry
+// userCacheAttestationPath is ~/.abcd.noindex/cache-attestation, beside path-entry
 // and for the same reason: `ahoy install` runs from a terminal as well as
 // from a hook, and the record must be readable wherever the promotion runs.
 // Empty when homeScope refuses the home the environment named (every caller

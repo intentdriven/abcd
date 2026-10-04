@@ -57,7 +57,7 @@ refused to honour.
 
 `ownership` names the proof that let abcd replace the file: `release-manifest`
 (its digest is published), `running-executable` (the file is the binary that
-ran the command), or `path-entry-record` (`~/.abcd/path-entry` records it as
+ran the command), or `path-entry-record` (`~/.abcd.noindex/path-entry` records it as
 this machine's install). The last two carry no `old_version` — no published
 release names those bytes any more — and the receipt reports `old_digest`
 instead; relay it as an unpublished build with its digest, not as a missing
