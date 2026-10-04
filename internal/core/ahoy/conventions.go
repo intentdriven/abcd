@@ -48,7 +48,7 @@ const ConventionsOwnerFileGapID = "conventions.owner_file"
 const ConventionsRetireGapID = "conventions.retire_offered"
 
 // conventionsRetirePromptPrefix keys the retirement questions. The key carries
-// the file and how it repeats AGENTS.md, so HelpFor renders the question's
+// the file and how it repeats AGENTS.md, so helpFor renders the question's
 // words from the key alone and a scripted answer can name the file it answers.
 const conventionsRetirePromptPrefix = "conventions_file:"
 
@@ -470,7 +470,7 @@ func retirePromptKey(rel, how string) string {
 // retireAsk is the question itself, the last sentence of the help.
 func retireAsk(rel string) string { return "Remove " + rel + " from this project?" }
 
-// conventionsRetireHelp is HelpFor's answer for a retirement question's key:
+// conventionsRetireHelp is helpFor's answer for a retirement question's key:
 // the file and what it repeats first, the question last, then the answers
 // with decide-later last. The key names the file as it is spelt on disk, which
 // matches the registry's spelling but for letter case. A key naming a file the

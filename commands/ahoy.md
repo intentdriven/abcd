@@ -181,15 +181,19 @@ several values (`visibility`, `docs_target`, `scan_deep`, the
 house-style question and each status-line element) is printed with abcd's own
 explanation above it: one paragraph saying what is being decided, then one
 line per answer saying what that answer means, including what it asks of the
-user (keys, tools, cost). When you relay such a question, relay that
+user (keys, tools, cost). The explanation is the one for this repository: the
+`public` visibility answer adds that git cannot hide records it already tracks
+only where `.abcd/` holds tracked files. When you relay such a question, relay that
 explanation verbatim with it; never describe an answer in your own words, and
 never offer an answer the question does not list. The config values asked
 also name the flag that answers them without the question (`--visibility`,
 `--docs-target`, `--scan-deep`), and the matching gap's fix
 hint names it too: in a scripted run, pass the user's answer through the flag
-rather than lining a piped answer up with the question. `--yes` chooses no
-value, so a `--yes` run that still has a value to ask says so once, above the
-first such question.
+rather than lining a piped answer up with the question. A question no flag
+answers, such as the artefact kind, ends its explanation instead on a
+`(Change later: <where>)` line saying where the answer is changed afterwards.
+`--yes` chooses no value, so a `--yes` run that still has a value to ask says so
+once, above the first such question.
 
 **The AI reviewer is recorded, not asked.** `oracle_backend` has one answer
 abcd ships an adapter for, `host-delegated` (the assistant the user is working
@@ -316,16 +320,18 @@ or reconfigured at any time in `~/.abcd/statusline.json`.
 **The model-tier routing offer.** abcd ships a proposal for the model tier and
 fan-out bound each of its agents deserves (`frontier` for the verdicts a person
 reads, `economy` for the rest), and none of it applies until it is accepted.
-While `~/.abcd/oracle-routing.json` is absent the install renders the proposal
-as a table, one row per agent with its tier and fan-out, in one question;
-consent writes it there, owner-only. A second, separate question offers the same
+While `~/.abcd/oracle-routing.json` is absent the install says the proposal in
+counts, in one question: how many agents, how many at each tier, and their
+fan-out bounds, naming no agent, because a row per agent does not fit one
+question. Consent writes the full table there, owner-only, where every row can
+be read and edited. A second, separate question offers the same
 table for the repository at `.abcd/config/oracle-routing.json`, which is
 committed, applies to everyone working in the repository, and wins over each
-machine's table. Present the table and relay the user's answer to each question;
-never answer them for the user. Each routing question, like every question
+machine's table. Present that text and relay the user's answer to each
+question; never answer them for the user. Each routing question, like every question
 this page asks through your question tool, follows the asking rules in
-`commands/intent.md` (the block marked `generated: asking-rules`): the table
-or text being decided first, quoted in full, and the question last. Declining writes nothing and records nothing, so
+`commands/intent.md` (the block marked `generated: asking-rules`): the text
+being decided first, quoted in full, and the question last. Declining writes nothing and records nothing, so
 the next install offers again; `--yes` skips both offers and reports
 `oracle_routing.machine_offered` and `oracle_routing.repo_offered` under
 `optional_skipped`; `yes |` accepts both. Either file can be edited row by row

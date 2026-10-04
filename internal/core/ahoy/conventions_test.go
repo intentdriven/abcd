@@ -495,7 +495,7 @@ func TestConventionsRetireQuestionPassesTheLimits(t *testing.T) {
 		for _, how := range repeatKinds {
 			n++
 			key := retirePromptKey(f.Rel, how)
-			h, ok := HelpFor(key)
+			h, ok := helpFor(key)
 			if !ok {
 				t.Fatalf("no help for %s", key)
 			}
@@ -540,10 +540,10 @@ func TestConventionsRetireQuestionPassesTheLimits(t *testing.T) {
 			}
 		}
 	}
-	if _, ok := HelpFor(conventionsRetirePromptPrefix + "README.md:" + repeatsCopy); ok {
+	if _, ok := helpFor(conventionsRetirePromptPrefix + "README.md:" + repeatsCopy); ok {
 		t.Error("help is given for a file the registry does not name")
 	}
-	if _, ok := HelpFor(retirePromptKey("CLAUDE.md", "no-such-kind")); ok {
+	if _, ok := helpFor(retirePromptKey("CLAUDE.md", "no-such-kind")); ok {
 		t.Error("help is given for a way of repeating AGENTS.md that does not exist")
 	}
 	if n == 0 {
@@ -654,7 +654,7 @@ func TestToolFileNamedAsSpeltOnDisk(t *testing.T) {
 	if offer == nil || offer.Title != "gemini.md only repeats AGENTS.md" {
 		t.Errorf("the offer does not name gemini.md as spelt on disk: %+v", offer)
 	}
-	h, ok := HelpFor(retirePromptKey("gemini.md", repeatsCopy))
+	h, ok := helpFor(retirePromptKey("gemini.md", repeatsCopy))
 	if !ok || !strings.HasPrefix(h.About, "gemini.md is an exact copy") || !strings.HasSuffix(h.About, "Remove gemini.md from this project?") {
 		t.Errorf("the question does not name gemini.md as spelt on disk: %+v", h)
 	}

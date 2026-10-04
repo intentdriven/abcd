@@ -8,8 +8,9 @@
 // table (itd-2609170822093401, internal/core/oracle), the pace and the sub-agent
 // ceiling (itd-2609201925079472, pace.*), the RepoPrompt review route (itd-6,
 // oracle.review), the runner per role (itd-2609201916056194,
-// roles.<role>.runner) and the duplicate-match threshold (itd-2609212137116617,
-// match.threshold). A consumer reads through it rather than opening a file of
+// roles.<role>.runner), the duplicate-match threshold (itd-2609212137116617,
+// match.threshold) and how a plain-Terminal interview takes a choice from a
+// list (itd-2610030810370060, interview.list). A consumer reads through it rather than opening a file of
 // its own, so the precedence order, the guarded reads and the refusals are
 // spelled once.
 //
