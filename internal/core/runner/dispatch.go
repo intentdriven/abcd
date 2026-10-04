@@ -28,6 +28,13 @@ type Dispatcher struct {
 	// HostSession is true when a host session drives the loop and can take a
 	// role handed back to it.
 	HostSession bool
+	// Attended is true when the person is at the terminal with no host session
+	// (the plain-Terminal interviews, spc-2610030911534855): a role routed to a
+	// runner runs there although no runner.fallback_host is configured, and a
+	// runner that does not answer stops the run, its fallback receipt naming
+	// none as the route that ran, rather than leaving the role nowhere to land.
+	// A role on the host still needs a host session or a configured host.
+	Attended bool
 	// Validate is the contract's validator: the same check the host sub-agent's
 	// answer passes. It is handed the runner that ran the role, so a caller
 	// whose validator also records the answer (the loop's receipt verifier)
@@ -68,7 +75,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	landing := Host
 	if !d.HostSession {
 		landing = d.Config.FallbackHost()
-		if landing == "" {
+		if landing == "" && !(d.Attended && route.Runner != Host) {
 			return Outcome{}, fmt.Errorf("runner: there is no host session and no %s.%s is configured, so a role "+
 				"has nowhere to land; set it in the machine's config to the runner that stands in for the host",
 				runnerKey, fallbackKey)
@@ -98,13 +105,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		return Outcome{}, err
 	}
 	fb := FallbackReceipt{At: d.now(), Role: req.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Ran: landing}
-	if landing == route.Runner {
+	if landing == route.Runner || landing == "" {
 		fb.Ran = none
 	}
 	if rerr := d.Record(fb); rerr != nil {
 		return Outcome{}, fmt.Errorf("runner: the fallback receipt for %s was not recorded: %w", req.Role, rerr)
 	}
 	out.Fallback = &fb
+	if landing == "" {
+		return Outcome{}, fmt.Errorf("runner: %s %s for %s, and with no host session and no %s.%s configured nothing else runs it: %s",
+			route.Runner, fl.Reason, req.Role, runnerKey, fallbackKey, fl.Detail)
+	}
 	if fb.Ran == none {
 		return Outcome{}, fmt.Errorf("runner: %s %s for %s and it is the configured host, so nothing else can run it: %s",
 			route.Runner, fl.Reason, req.Role, fl.Detail)
