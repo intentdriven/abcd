@@ -81,8 +81,8 @@ where the project chooses that docs target, and the repo classifies as managed o
 its registry entry without it. A tool's own conventions file at the root, such as
 `CLAUDE.md`, the installer never edits: one holding the repo's own words is named
 in a warning, and one that only repeats `AGENTS.md` is offered for retirement at
-a terminal and removed only on a yes. It runs a second time, with the installer's attribution flag, where the user
-opts in: that run installs the committed `prepare-commit-msg` prompt asking every
+a terminal and removed only on the answer `retire`. It runs a second time, with
+the installer's attribution flag, where the user opts in: that run installs the committed `prepare-commit-msg` prompt asking every
 commit to declare whether a tool assisted it, and the choice is recorded, so a
 later install without the flag keeps the hook. The flag's spelling, like the docs
 target's, is ahoy's shape, so it lives in the generated appendix of
