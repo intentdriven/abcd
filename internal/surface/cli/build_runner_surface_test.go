@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // writeMachineConfig writes the machine layer's config under the test's HOME.
 func writeMachineConfig(t *testing.T, body string) {
 	t.Helper()
-	dir := filepath.Join(os.Getenv("HOME"), ".abcd")
+	dir := abcdhome.Path(os.Getenv("HOME"))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

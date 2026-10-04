@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 )
 
@@ -22,7 +23,7 @@ func mainStage(sessionID string) StageMeta {
 // staging lock file is not a transcript) for assertions.
 func stagedNames(t *testing.T, home string) []string {
 	t.Helper()
-	sdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
+	sdir := abcdhome.Path(home, "transcripts", testRootSHA, "staging")
 	entries, err := os.ReadDir(sdir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -75,7 +76,7 @@ func TestStagingDirIsOwnerOnly(t *testing.T) {
 	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-perm"), []byte("hello\n")); err != nil {
 		t.Fatalf("Stage failed: %v", err)
 	}
-	sdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
+	sdir := abcdhome.Path(home, "transcripts", testRootSHA, "staging")
 	fi, err := os.Stat(sdir)
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +143,7 @@ func TestStageReplacesStaleCopyOnDifferentContent(t *testing.T) {
 	if len(names) != 1 {
 		t.Fatalf("expected exactly 1 staged file after a re-stage, got %v", names)
 	}
-	sdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
+	sdir := abcdhome.Path(home, "transcripts", testRootSHA, "staging")
 	body, err := os.ReadFile(filepath.Join(sdir, names[0]))
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +314,7 @@ func TestDrainKeepsStagedOnCaptureFailure(t *testing.T) {
 	// it would not do: the store creates itself on resolve (iss-95), so the
 	// failure has to be one resolution cannot heal — here, a directory the
 	// caller cannot write.
-	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
+	tdir := abcdhome.Path(home, "transcripts", testRootSHA, "records")
 	if err := os.Chmod(tdir, 0o500); err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +422,7 @@ func TestDrainLeavesAReStagedCopyForTheNextPass(t *testing.T) {
 	if len(names) != 1 {
 		t.Fatalf("the mid-drain re-stage was removed: staging holds %v; the newer transcript is gone for good", names)
 	}
-	sdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
+	sdir := abcdhome.Path(home, "transcripts", testRootSHA, "staging")
 	body, err := os.ReadFile(filepath.Join(sdir, names[0]))
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,10 @@ abcd lives in **one repository** and ships a **curated release artifact** cut fr
 
 **`.abcd/**` stays in-tree and is present in every repository checkout — marketplace installs and release source archives included — never in the released binaries** — exclusion is a build-time filter over the one tree, not a copy between two repos; the launch bundler implements it as a structural namespace deny, which no cut release has run yet. `/abcd:launch` cuts a curated GitHub Release from this repo; **the repo is the marketplace**, so discovery, install, and the design record share one location.
 
+## One conventions file
+
+**`AGENTS.md` is the one conventions file abcd writes, in its own project and in every project it sets up** ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md)). abcd writes no `CLAUDE.md` and no other tool's own conventions file, as a copy, a link or a pointer. It still reads such a file where it finds one, for detection and uninstall, and finds one for the lifeboat packer; it takes abcd's own block back out of one where an earlier setup put it, and otherwise leaves a file holding the owner's words as it is.
+
 ## Front doors
 
 The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)) behind thin front doors. The **CLI (Cobra)** is the first front door and ships in the MVP. An **MCP server** and a **markdown plugin surface that shells to the Go binary** are later front doors — each is a new adapter over the unchanged core, not the substrate abcd is built on.

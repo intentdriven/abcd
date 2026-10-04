@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
@@ -35,7 +36,7 @@ func roots(t *testing.T, repoJSON, machineJSON string) layered.Roots {
 		put(filepath.Join(r.Repo, ".abcd", "config.json"), repoJSON)
 	}
 	if machineJSON != "" {
-		put(filepath.Join(r.Home, ".abcd", "config.json"), machineJSON)
+		put(abcdhome.Path(r.Home, "config.json"), machineJSON)
 	}
 	return r
 }

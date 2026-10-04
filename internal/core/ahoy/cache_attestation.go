@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -66,7 +67,7 @@ func userCacheAttestationPath() string {
 	if refused != "" {
 		return ""
 	}
-	return filepath.Join(home, ".abcd", cacheAttestationFile)
+	return abcdhome.Path(home, cacheAttestationFile)
 }
 
 // readCacheAttestation loads the record through fsutil.ReadDeclaration — the
@@ -92,7 +93,7 @@ func readCacheAttestation() (cacheAttestation, bool) {
 	if refused != "" {
 		return cacheAttestation{}, false
 	}
-	raw, _, err := fsutil.ReadHomeDeclaration(home, ".abcd/"+cacheAttestationFile, maxPathEntryBytes)
+	raw, _, err := fsutil.ReadHomeDeclaration(home, abcdhome.Rel(cacheAttestationFile), maxPathEntryBytes)
 	if err != nil {
 		return cacheAttestation{}, false
 	}

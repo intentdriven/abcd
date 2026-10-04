@@ -6,9 +6,10 @@ package ahoy
 // nothing of it applies until it is accepted. The install step is where it is
 // accepted:
 //
-//   - the machine offer renders the proposal as a table and, on consent,
-//     writes it to ~/.abcd/oracle-routing.json, owner-only, because the
-//     resolver refuses a machine file others can write;
+//   - the machine offer says the proposal in counts (how many agents at each
+//     tier, and their fan-out bounds) and, on consent, writes the full table
+//     to ~/.abcd/oracle-routing.json, owner-only, because the resolver
+//     refuses a machine file others can write;
 //   - a second, separate offer writes the same table to the repository's
 //     .abcd/config/oracle-routing.json, which is committed and wins over every
 //     machine's table.
@@ -27,8 +28,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -55,7 +58,7 @@ func machineRoutingPath() string {
 	if err != nil || home == "" {
 		return ""
 	}
-	return filepath.Join(home, ".abcd", filepath.FromSlash(layered.OracleRouting.MachineRel))
+	return abcdhome.Path(home, layered.OracleRouting.MachineRel)
 }
 
 // absent reports whether nothing at all is at p: not a file, not a symlink,
@@ -74,7 +77,7 @@ func detectOracleRouting(cwd string) []Gap {
 			ID: OracleRoutingMachineGapID, Category: OracleRouting, Scope: "machine",
 			Title:    "model-tier routing not accepted on this machine",
 			Detail:   "abcd proposes a model tier and a fan-out bound for each of its agents; nothing of it applies until it is accepted, so every delegated step asks the harness for host-decides.",
-			FixHint:  "ahoy install renders the proposal and writes ~/.abcd/oracle-routing.json only on consent; --yes never accepts it (run without --yes).",
+			FixHint:  "ahoy install renders the proposal and writes " + abcdhome.Display("oracle-routing.json") + " only on consent; --yes never accepts it (run without --yes).",
 			Required: false, Resolvable: true,
 		})
 	}
@@ -121,39 +124,39 @@ func (a *applyCtx) stepOracleRouting() {
 func (a *applyCtx) writeMachineRouting(body []byte) {
 	p := machineRoutingPath()
 	if p == "" {
-		a.refuse("the model-tier routing was not written: the home directory could not be resolved, so ~/.abcd/oracle-routing.json has nowhere to go.")
+		a.refuse("the model-tier routing was not written: the home directory could not be resolved, so " + abcdhome.Display("oracle-routing.json") + " has nowhere to go.")
 		return
 	}
 	// The resolver refuses a machine table behind a symlinked ~/.abcd, so a
 	// write through the link would land wherever it points and never be read.
-	if err := fsutil.HomeScopeLink(userHome(), ".abcd/"+layered.OracleRouting.MachineRel); err != nil {
+	if err := fsutil.HomeScopeLink(userHome(), abcdhome.Rel(layered.OracleRouting.MachineRel)); err != nil {
 		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
 		return
 	}
 	if !absent(p) {
-		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
+		a.refuse("the model-tier routing was not written: " + abcdhome.Display("oracle-routing.json") + " appeared while the question was open, and it is left as it is.")
 		return
 	}
 	// ~/.abcd is created, judged and opened relative to home's descriptor and
 	// the table is written through it, so a link swapped in after the check
 	// above is refused rather than written through (iss-2609281310017733).
-	dir, err := fsutil.EnsureHomeScope(userHome(), ".abcd", 0o700)
+	dir, err := fsutil.EnsureHomeScope(userHome(), abcdhome.Rel(), 0o700)
 	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
 		return
 	}
 	if err != nil {
-		a.refuse("could not create ~/.abcd for the model-tier routing (" + errText(err) + "); nothing was written.")
+		a.refuse("could not create " + abcdhome.Display() + " for the model-tier routing (" + errText(err) + "); nothing was written.")
 		return
 	}
 	defer dir.Close()
 	if _, err := dir.Lstat(layered.OracleRouting.MachineRel); !errors.Is(err, os.ErrNotExist) {
-		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
+		a.refuse("the model-tier routing was not written: " + abcdhome.Display("oracle-routing.json") + " appeared while the question was open, and it is left as it is.")
 		return
 	}
 	// 0600, never wider: the resolver refuses a machine file others can write.
 	if err := fsutil.WriteFileAtomicInRoot(dir, layered.OracleRouting.MachineRel, body, 0o600); err != nil {
-		a.refuse("could not write ~/.abcd/oracle-routing.json (" + errText(err) + "); the routing was not accepted.")
+		a.refuse("could not write " + abcdhome.Display("oracle-routing.json") + " (" + errText(err) + "); the routing was not accepted.")
 		return
 	}
 	a.note(writeRouting, p)
@@ -214,27 +217,72 @@ func proposalTable() ([]byte, error) {
 	return append(out, '\n'), nil
 }
 
-// machineRoutingQuestion is the reason, the table and the question: core never
-// prints, so the proposal travels as the text of the confirm.
+// routingTierReason says why the proposal puts an agent at a tier, for every
+// tier the bundled proposal uses; a test fails on a proposed tier without one.
+var routingTierReason = map[oracle.Tier]string{
+	oracle.Frontier: "for verdicts a person reads and acts on",
+	oracle.Economy:  "for the rest",
+}
+
+// proposalCounts says the proposal in counts, never naming an agent: how many
+// agents, how many at each tier (in the order of oracle.Tiers() reversed:
+// frontier before economy today, though a host-decides row would lead, which
+// is not a strength order) with the reason that tier is proposed, and the fan-out
+// bounds, one figure when every agent shares it and "<bound> for <number of
+// agents>" pairs when they differ. A row per agent does not fit
+// one question, so the product thinker ruled for counts on 2026-10-03
+// (iss-2610031236155833); the written table still has every row.
+func proposalCounts(roster []string, p oracle.Table) string {
+	perTier := map[oracle.Tier]int{}
+	perFanOut := map[int]int{}
+	for _, agent := range roster {
+		r := p[agent]
+		perTier[r.Tier]++
+		perFanOut[r.FanOut]++
+	}
+	var tiers []string
+	vocab := oracle.Tiers()
+	for i := len(vocab) - 1; i >= 0; i-- {
+		n := perTier[vocab[i]]
+		if n == 0 {
+			continue
+		}
+		part := fmt.Sprintf("%d %s", n, vocab[i])
+		if why := routingTierReason[vocab[i]]; why != "" {
+			part += ", " + why
+		}
+		tiers = append(tiers, part)
+	}
+	bounds := make([]int, 0, len(perFanOut))
+	for b := range perFanOut {
+		bounds = append(bounds, b)
+	}
+	sort.Ints(bounds)
+	var fanOut string
+	switch len(bounds) {
+	case 0:
+		fanOut = "no fan-out"
+	case 1:
+		fanOut = fmt.Sprintf("fan-out %d each", bounds[0])
+	default:
+		pairs := make([]string, len(bounds))
+		for i, b := range bounds {
+			pairs[i] = fmt.Sprintf("%d for %d", b, perFanOut[b])
+		}
+		fanOut = "fan-out " + strings.Join(pairs, ", ")
+	}
+	return fmt.Sprintf("%d agents: %s; %s", len(roster), strings.Join(tiers, "; "), fanOut)
+}
+
+// machineRoutingQuestion is the reason, the proposal in counts and the
+// question: core never prints, so the proposal travels as the text of the
+// confirm. It says where every row can be read once accepted, since the
+// question names no agent (proposalCounts).
 func machineRoutingQuestion() string {
-	var b strings.Builder
-	b.WriteString("abcd proposes a model tier and a fan-out bound for each of its agents: frontier for the verdicts " +
-		"a person reads and acts on, economy for the rest. Nothing of it applies until it is accepted. Accepting " +
-		"writes this table to ~/.abcd/oracle-routing.json, where any row can be edited; a repository's own table " +
-		"wins over it, and a step no configured provider can serve still runs through the harness, which is asked " +
-		"for the tier. Declining writes nothing.\n")
-	width := len("agent")
-	for _, agent := range oracle.Roster() {
-		width = max(width, len(agent))
-	}
-	fmt.Fprintf(&b, "  %-*s  %-12s  %s\n", width, "agent", "tier", "fan-out")
-	proposal := oracle.Proposal()
-	for _, agent := range oracle.Roster() {
-		r := proposal[agent]
-		fmt.Fprintf(&b, "  %-*s  %-12s  %d\n", width, agent, r.Tier, r.FanOut)
-	}
-	b.WriteString(oracleRoutingMachineQuestionTail)
-	return b.String()
+	return "abcd proposes a model tier and fan-out bound for its " + proposalCounts(oracle.Roster(), oracle.Proposal()) +
+		". Accepting writes every row to " + abcdhome.Display("oracle-routing.json") + " to read or edit; nothing applies before. " +
+		"A repository's table wins; a step no provider serves goes to the harness, asked for its tier. " +
+		"Declining writes nothing.\n" + oracleRoutingMachineQuestionTail
 }
 
 // repoRoutingQuestion is the separate repository offer.

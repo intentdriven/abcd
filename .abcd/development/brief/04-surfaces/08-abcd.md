@@ -46,6 +46,15 @@ in that name, as every other board line does (iss-2609281736483740); `dir`
 carries the name as it is, escaped by the JSON encoder where it is a control
 byte. The plugin command invokes its JSON form.
 
+The text form answers in words: `yes` or `no` for the repository and the
+record, and the work tiers named and separated by commas, or `none`. Every
+line is laid at the window's width, read through `internal/term` when stdout
+is a terminal and 80 columns otherwise, whatever `COLUMNS` says, so piped
+output is the same on every machine; a longer line breaks at a space and
+continues four columns past where it began, never at column 0, through the one
+wrap `internal/textwidth` holds (iss-2610031207397996). The levels are indented
+two, four and six columns.
+
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
 record is, where it lives, and the concrete next move for its lifecycle state.
@@ -190,8 +199,8 @@ the commits the default branch has moved since (`git rev-list --count
 HEAD where none does) and flags a row past twenty. The text render carries a
 `reviews:` heading — how many dated reviews, how many flagged, the branch
 counted against, and the instruction to re-run those marked `!` when any is —
-and one line per dated review, stalest first: `!` on a flagged row, the count,
-the pin's short sha, and the folder. The release receipts follow as one
+and one line per dated review, stalest first, each beginning at column four: the
+count, the pin's short sha, the folder, and `!` after a flagged row. The release receipts follow as one
 `receipts:` line, not a row apiece: a receipt gates the release it names and is
 never re-run, and RD002 keeps every one, so each release adds a receipt that
 stays past the threshold for good. The line gives how many receipts there are,
@@ -219,8 +228,10 @@ time and stored nowhere (adr-2609292012006845 decision 2). Now lists every
 intent the build's state file shows in a lane — a run in progress, with the
 lane the loop works on, its next stage and the role it waits on, or the stage
 `pending` between lanes — then the head of the pick order marked `next up`, so
-Now is empty only when no READY intent may start. Next lists every planned intent
-the readiness gate reports READY; Later lists every planned intent it refuses,
+Now is empty only when no READY intent may start. Next lists every other planned
+intent the readiness gate reports READY: the head is listed under Now alone,
+never also under Next (the product thinker's ruling of 2026-10-03 on
+iss-2610031207397996); Later lists every planned intent it refuses,
 naming the gating checks each fails, then every draft. An intent the state file
 shows in a lane is listed under Now only, never also under Next or Later (the
 product thinker's ruling BV2 of 2026-09-29). Next and Later are otherwise read

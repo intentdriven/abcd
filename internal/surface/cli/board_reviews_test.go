@@ -32,6 +32,7 @@ func reviewLines(text string) []string {
 // default branch has moved since its pin, and a flag past twenty; the JSON
 // carries the same rows and the threshold.
 func TestBoardListsEachReviewWithItsAgeStalestFirst(t *testing.T) {
+	setBoardWidth(t, wideBoard)
 	t.Setenv("HOME", t.TempDir())
 	r := gittest.NewRepo(t)
 	r.Commit("c0")
@@ -129,6 +130,7 @@ func TestBoardOmitsReviewsWithNoReviewFolders(t *testing.T) {
 // this history no longer holds; the imperative to re-run appears only for a
 // flagged review, and --json still carries every receipt as a row.
 func TestBoardFoldsReleaseReceiptsIntoOneTruthfulLine(t *testing.T) {
+	setBoardWidth(t, wideBoard)
 	t.Setenv("HOME", t.TempDir())
 	r := gittest.NewRepo(t)
 	var pins []string

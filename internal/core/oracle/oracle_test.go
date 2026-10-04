@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
@@ -50,7 +51,7 @@ func (f *fx) repo(agents string) {
 }
 
 func (f *fx) machine(agents string) {
-	f.put(filepath.Join(f.roots.Home, ".abcd", "oracle-routing.json"),
+	f.put(abcdhome.Path(f.roots.Home, "oracle-routing.json"),
 		`{"schema_version":1,"agents":`+agents+`}`)
 }
 
@@ -267,7 +268,7 @@ func TestMalformedRowsRefuseNamingTheFile(t *testing.T) {
 	}
 	t.Run("unknown top-level key", func(t *testing.T) {
 		f := newFx(t)
-		f.put(filepath.Join(f.roots.Home, ".abcd", "oracle-routing.json"), `{"schema_version":1,"agents":{},"backend":"x"}`)
+		f.put(abcdhome.Path(f.roots.Home, "oracle-routing.json"), `{"schema_version":1,"agents":{},"backend":"x"}`)
 		if _, err := Load(f.roots); err == nil || !strings.Contains(err.Error(), "backend") {
 			t.Fatalf("err = %v, want a refusal naming backend", err)
 		}

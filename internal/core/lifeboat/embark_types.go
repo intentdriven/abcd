@@ -160,12 +160,13 @@ type IgnoredFile struct {
 }
 
 // ---------------------------------------------------------------------------
-// CLAUDE.md marker (decision 5). Embark NEVER copies lifeboat prose into
-// CLAUDE.md; it re-injects the CURRENT abcd marker block via ahoy.EnsureMarker.
+// Conventions-file marker (decision 5). Embark NEVER copies lifeboat prose into
+// the target's conventions file; it re-injects the CURRENT abcd marker block via
+// ahoy.EnsureMarker into the file the target's setup chose: AGENTS.md, or none.
 // ---------------------------------------------------------------------------
 
-// MarkerAction is what embark would do (probe) or did (from) to the target's
-// CLAUDE.md marker block.
+// MarkerAction is what embark would do (probe) or did (from) to the marker block
+// in the target's conventions file.
 type MarkerAction string
 
 const (
@@ -175,14 +176,17 @@ const (
 	MarkerActionRefresh MarkerAction = "refresh"
 	// MarkerActionCurrent: the current block is already present; no write.
 	MarkerActionCurrent MarkerAction = "current"
-	// MarkerActionSkip: the target CLAUDE.md is a symlink or otherwise unwritable;
-	// embark reports it and writes nothing there (non-fatal to the record writes).
+	// MarkerActionSkip: the target's setup chose no conventions file, or the
+	// chosen file is a symlink or otherwise unwritable; embark reports why and
+	// writes no block (non-fatal to the record writes).
 	MarkerActionSkip MarkerAction = "skip"
 )
 
-// MarkerResult reports the marker disposition for the target CLAUDE.md.
+// MarkerResult reports the marker disposition for the target's conventions file.
+// Target names the file chosen ("AGENTS.md"), and is empty when none was chosen,
+// which always comes with MarkerActionSkip and a Note saying why.
 type MarkerResult struct {
-	Target  string       `json:"target"`  // "CLAUDE.md"
+	Target  string       `json:"target"`  // "AGENTS.md", or "" when no file was chosen
 	Action  MarkerAction `json:"action"`  // probe: predicted; from: performed
 	Changed bool         `json:"changed"` // probe: would change; from: did change
 	Note    string       `json:"note,omitempty"`

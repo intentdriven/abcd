@@ -282,7 +282,9 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:  "setup",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			// A question drawn at a terminal and stopped by Ctrl-C ends the verb (exit 130).
+			defer endOnStop(&err)
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err

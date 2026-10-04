@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 )
@@ -39,7 +40,7 @@ func managedCheckout(t *testing.T) string {
 // writeUserSettings lays ~/.abcd/statusline.json under the sandboxed HOME.
 func writeUserSettings(t *testing.T, body string) {
 	t.Helper()
-	dir := filepath.Join(os.Getenv("HOME"), ".abcd")
+	dir := abcdhome.Path(os.Getenv("HOME"))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +162,7 @@ func TestModeSetPrintsOneLineWhereNoSurfaceExists(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := os.RemoveAll(filepath.Join(os.Getenv("HOME"), ".abcd")); err != nil {
+			if err := os.RemoveAll(abcdhome.Path(os.Getenv("HOME"))); err != nil {
 				t.Fatal(err)
 			}
 			if tc.settings != "" {

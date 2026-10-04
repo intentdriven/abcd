@@ -17,7 +17,8 @@ const cliTestAsBinaryEnv = "ABCD_CLI_TEST_AS_BINARY"
 // non-dogfood value for the whole package. runCLI executes the commands
 // in-process through this unstamped go-test binary, so without the override
 // every `ahoy install` exercised here would hit the itd-111 unknown-vintage
-// refusal.
+// refusal. It also keeps the agent tool's version reading off, so no test
+// runs a vendor binary of the machine's own.
 //
 // It also keeps the developer's own ~/.abcd/rules.json out of every rules load
 // a test did not lay a user layer out for: while HOME is still the process's
@@ -31,10 +32,18 @@ func TestMain(m *testing.M) {
 	if actAsBinary(os.Getenv(cliTestAsBinaryEnv), os.Args[1:]) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
+	// The hidden key read's pseudo-terminal tests run `ahoy connect` as a
+	// child on the terminal end (ahoy_connect_pty_test.go).
+	if actAsConnectChild(os.Getenv(connectPtyChildEnv), os.Args[1:]) {
+		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
 	ahoy.SetCurrentVintageForTest(func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}
 	})
+	// No install run here starts the machine's own agent tool to read its
+	// version; the one test of that warning swaps in a stub reading.
+	ahoy.NoHostVersionForTest()
 	real := os.Getenv("HOME")
 	rules.SwapUserHomeForTest(func() (string, error) {
 		if home := os.Getenv("HOME"); home != real {

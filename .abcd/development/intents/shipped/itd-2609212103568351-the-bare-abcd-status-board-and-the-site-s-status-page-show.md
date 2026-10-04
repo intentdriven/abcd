@@ -79,6 +79,8 @@ Changed on 2026-09-29 by the product thinker's rulings BV1 and BV2 of that day (
 
 Changed on 2026-09-30 by the product thinker's ruling TG1 of that day, recorded as adr-2609301720596683: a managed repository's `site-src/ui.json` written before this intent's `status.*` labels existed keeps building, because `abcd site setup` and `abcd site build` add each declared label the file lacks with abcd's default words, name it on stderr, and change nothing else in the file. The impact stays `additive`.
 
+Changed on 2026-10-03 by the product thinker's ruling of that day (DECISIONS.md, recorded with iss-2610031207397996): the head is listed under Now alone, marked "next up", and Next lists the other READY intents in pick order, so no intent appears under both (criterion 1). The criterion text above stands as shipped.
+
 ## Grounds
 
 - pursued: phases are retired today and the record needs a place a person looks to see what is next; we expect the computed block to be read where the phase documents were not; shown wrong if Now is found naming an intent neither in a lane nor next
