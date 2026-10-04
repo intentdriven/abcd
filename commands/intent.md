@@ -512,7 +512,9 @@ reporting the readiness gate. The role may change the intent's record and
 nothing else: any other path that changes while a turn runs stops the
 interview, exit 1, naming each, whether git tracks it, ignores it (the local
 tier's push receipts and handover included) or keeps it in its own directory (a
-hook, the git configuration, HEAD and the refs, a submodule's hooks), and
+hook, the git configuration, HEAD and the refs, a submodule's hooks, each
+worktree's entry: its HEAD, common directory, working-tree path, own
+configuration and lock), or it is a push receipt in any worktree git lists, and
 whatever wrote it, since abcd cannot tell the role's writes from another
 program's: a second interview run in the same checkout stops this one. Only
 the run's own turn directory is the role's to write, and two paths that execute

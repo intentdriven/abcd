@@ -708,14 +708,20 @@ func TestIntentInterviewRoleChangingAnotherFileIsRefused(t *testing.T) {
 // TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused: what git
 // status does not list is watched too. A planning role that plants a git
 // hook, edits the git configuration, writes a push receipt into the local
-// tier, or writes a gitignored file stops the interview, exit 1, naming the
-// path, with the answer given before it recorded and no readiness reported.
+// tier or a sibling worktree's, repoints a sibling worktree's common
+// directory, or writes a gitignored file stops the interview, exit 1, naming
+// the path, with the answer given before it recorded and no readiness
+// reported.
 func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T) {
+	// laneToken in a case's path or body is the sibling worktree's path.
+	const laneToken = "{lane}"
 	for _, c := range []struct{ name, path, body string }{
 		{"hook", ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n"},
 		{"config", ".git/config", "[core]\n\trepositoryformatversion = 0\n[alias]\n\tst = !sh -c true\n"},
 		{"receipt", ".abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
 		{"ignored", "build.log", "planted\n"},
+		{"sibling receipt", laneToken + "/.abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
+		{"sibling commondir", ".git/worktrees/lane/commondir", laneToken + "-fake\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			routeMachine(t, interview.RolePlanningInterviewer)
@@ -724,6 +730,10 @@ func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T
 			r := planningRepo(t)
 			r.Write(".gitignore", "*.log\n.abcd/.work.local/\n")
 			r.Commit("ignore")
+			lane := filepath.Join(t.TempDir(), "lane")
+			r.Git("worktree", "add", "-q", "-b", "lane", lane)
+			c.path = strings.ReplaceAll(c.path, laneToken, filepath.ToSlash(lane))
+			c.body = strings.ReplaceAll(c.body, laneToken, filepath.ToSlash(lane))
 			interviewStubAlso(t, script, 2, map[string]string{c.path: c.body})
 			stdout, stderr := tempStream(t, "stdout"), tempStream(t, "stderr")
 			in, w := pipeWith(t, "")

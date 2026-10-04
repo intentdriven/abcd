@@ -11,7 +11,7 @@ package interview
 // stops it too (a second interview in the same checkout among them: one
 // checkout is one session).
 //
-// Four places are read:
+// Five places are read:
 //
 //   - What differs from HEAD, as git lists it (gitutil.Status, the one reader
 //     of `git status --porcelain=v1 -z --untracked-files=all`): each path
@@ -32,15 +32,24 @@ package interview
 //     can name a hooks directory, an alias or a credential helper, and HEAD
 //     and the refs decide what the next commit or push carries. In a linked
 //     worktree these live in the repository's common directory and are read
-//     there, besides the worktree's own HEAD and config.worktree. git follows
-//     a link there, so a link (a dotfiles-managed hooks directory, a hook or
-//     a configuration file) is read where it leads too.
+//     there, besides the worktree's own HEAD and config.worktree. Every
+//     worktree's entry under the common directory's worktrees/ is read too:
+//     the entry itself, so one made or removed is noticed, and its HEAD,
+//     commondir, gitdir, config.worktree and locked, which decide where git
+//     places that worktree, which configuration and hooks it runs there, and
+//     where git lists it. git follows a link there, so a link (a
+//     dotfiles-managed hooks directory, a hook or a configuration file) is
+//     read where it leads too.
 //   - The directory each core.hooksPath value names, in any scope the
 //     person's git reads, when it is outside the working tree (inside, the
 //     listing above already covers it), read as git's own directory is. The
 //     value is resolved through every link first, so a hooks directory
 //     reached through a link (a dotfiles-managed one, or an in-tree link to a
 //     directory elsewhere) is read where git runs its hooks from.
+//   - The push receipts (.abcd/.work.local/preflight-receipts/) of every
+//     worktree git lists, by mode, size and content hash: the pre-push gate
+//     takes a commit's receipt from any of them, so a receipt written into
+//     another worktree's local tier during a turn stops the interview too.
 //
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
@@ -67,6 +76,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -306,6 +316,9 @@ func (r *treeReader) readGitDirs() error {
 	if err := r.readModules(common); err != nil {
 		return err
 	}
+	if err := r.readWorktrees(common); err != nil {
+		return err
+	}
 	if gitDir != common {
 		for _, rel := range []string{"config.worktree", "HEAD"} {
 			if err := r.hashIn(gitDir, rel); err != nil {
@@ -329,6 +342,88 @@ func (r *treeReader) readGitDirs() error {
 		if fsutil.PathWithin(dir, r.realRepo, fold) && !fsutil.PathWithin(dir, realGitDir, fold) && !fsutil.PathWithin(dir, realCommon, fold) {
 			continue
 		}
+		if err := r.hashIn(filepath.Dir(dir), filepath.Base(dir)); err != nil {
+			return err
+		}
+	}
+	return r.readReceipts()
+}
+
+// worktreeFiles are the files of a linked worktree's entry under the common
+// directory's worktrees/ that git reads to place the worktree and run there:
+// its HEAD, the common directory it uses (and so the configuration, the
+// hooks and the refs), the working tree it belongs to (and so the place git
+// lists it, whose local tier the pre-push gate reads), its own configuration,
+// and its lock.
+var worktreeFiles = []string{"HEAD", "commondir", "gitdir", "config.worktree", "locked"}
+
+// readWorktrees records every entry of common's worktrees/ by its kind, so
+// one made or removed is noticed, and each entry's worktreeFiles by mode,
+// size and content hash. A link, there or as worktrees/ itself, is recorded
+// by its target's text and read where it leads, as git reads it.
+func (r *treeReader) readWorktrees(common string) error {
+	dir := filepath.Join(common, "worktrees")
+	fi, err := os.Lstat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		if err := r.hashAt(common, "worktrees", false); err != nil {
+			return err
+		}
+		dir = fsutil.RealExistingPath(dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		at := filepath.Join(dir, e.Name())
+		if e.Type()&fs.ModeSymlink != 0 {
+			if err := r.hashAt(dir, e.Name(), false); err != nil {
+				return err
+			}
+			at = fsutil.RealExistingPath(at)
+		} else if err := r.put(r.keyOf(dir, e.Name()), "worktree "+e.Type().String()); err != nil {
+			return err
+		}
+		if fi, err := os.Stat(at); err != nil || !fi.IsDir() {
+			continue
+		}
+		for _, f := range worktreeFiles {
+			if err := r.hashIn(at, f); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// receiptsRel is where a checkout's push receipts stand, under each worktree
+// (scripts/preflight-receipt.sh).
+const receiptsRel = ".abcd/.work.local/preflight-receipts"
+
+// readReceipts records the push receipts of every worktree git lists by
+// mode, size and content hash: the pre-push gate takes a receipt for the
+// commit being pushed from any of them, so one written into another
+// worktree's local tier, or into a worktree the role made git list, would
+// pass a push the gates never read.
+func (r *treeReader) readReceipts() error {
+	wts, err := gitutil.ListWorktrees(r.repo, maxStatusBytes)
+	if err != nil {
+		return err
+	}
+	for _, wt := range wts {
+		if wt.Path == "" {
+			continue
+		}
+		dir := filepath.Join(wt.Path, filepath.FromSlash(receiptsRel))
 		if err := r.hashIn(filepath.Dir(dir), filepath.Base(dir)); err != nil {
 			return err
 		}
@@ -411,7 +506,9 @@ func (r *treeReader) hashIn(base, rel string) error {
 // and never further than the link's own target.
 func (r *treeReader) hashAt(base, rel string, follow bool) error {
 	root, err := os.OpenRoot(base)
-	if errors.Is(err, fs.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		// Nothing can stand under a base that is absent or is not a
+		// directory.
 		return nil
 	}
 	if err != nil {

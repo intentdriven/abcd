@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/question"
 )
@@ -465,5 +467,193 @@ func TestAGitEntryReachedThroughALinkIsReadWhereItLeads(t *testing.T) {
 				t.Fatalf("err = %v, want %s, written through the link at .git/%s, named", err, named, c.link)
 			}
 		})
+	}
+}
+
+// TestAWorktreeRouteToAPushOrAHookStopsTheInterview: git keeps every linked
+// worktree's metadata in the common directory's worktrees/, and the pre-push
+// gate takes a receipt from the local tier of any worktree git lists. So a
+// role registering a worktree (one whose gitdir names the role's own turn
+// directory, holding a push receipt there), planting a receipt in a sibling
+// worktree's local tier, or repointing a sibling's commondir or gitdir (a
+// fake common directory whose configuration carries an alias), locking one
+// or giving one its own configuration, is stopped after that dispatch with
+// the path named, nothing more drawn, and the answer given before it kept.
+func TestAWorktreeRouteToAPushOrAHookStopsTheInterview(t *testing.T) {
+	receipts := receiptsRel + "/"
+	for _, c := range []struct {
+		name string
+		// write is what the role writes, given the repository, its HEAD and a
+		// sibling worktree; named is every path the refusal must name.
+		write func(r *writtenRun, head, lane string) (files map[string]string, named []string)
+		// listed: git must list the turn directory as a worktree after the
+		// run, so the probe is shown to be one git honours.
+		listed bool
+		// setup, when set, runs once the sibling worktree stands.
+		setup func(r *writtenRun, lane string)
+	}{
+		{name: "a worktree registered at the turn directory, holding a receipt", write: func(r *writtenRun, head, _ string) (map[string]string, []string) {
+			return map[string]string{
+				".git/worktrees/planted/gitdir":    turnDirToken + "/.git\n",
+				".git/worktrees/planted/HEAD":      head + "\n",
+				".git/worktrees/planted/commondir": "../..\n",
+				"turns/" + receipts + head:         "commit " + head + "\n",
+			}, []string{".git/worktrees/planted/gitdir", ".git/worktrees/planted/HEAD", ".git/worktrees/planted/commondir", receipts + head}
+		}, listed: true},
+		{name: "a receipt in a sibling worktree's local tier", write: func(r *writtenRun, head, lane string) (map[string]string, []string) {
+			p := filepath.ToSlash(filepath.Join(lane, filepath.FromSlash(receiptsRel), head))
+			return map[string]string{p: "commit " + head + "\n"}, []string{"/" + receipts + head}
+		}},
+		{name: "a sibling worktree's commondir repointed", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			fake := t.TempDir()
+			return map[string]string{
+				filepath.ToSlash(filepath.Join(fake, "HEAD")):   "ref: refs/heads/main\n",
+				filepath.ToSlash(filepath.Join(fake, "config")): "[core]\n\trepositoryformatversion = 0\n[alias]\n\tst = !sh -c true\n",
+				".git/worktrees/lane/commondir":                 fake + "\n",
+			}, []string{".git/worktrees/lane/commondir"}
+		}},
+		{name: "a sibling worktree's gitdir repointed", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			return map[string]string{".git/worktrees/lane/gitdir": turnDirToken + "/.git\n"}, []string{".git/worktrees/lane/gitdir"}
+		}},
+		{name: "a sibling worktree's own configuration", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			return map[string]string{".git/worktrees/lane/config.worktree": "[alias]\n\tst = !sh -c true\n"}, []string{".git/worktrees/lane/config.worktree"}
+		}},
+		{name: "a sibling worktree locked", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			return map[string]string{".git/worktrees/lane/locked": "kept\n"}, []string{".git/worktrees/lane/locked"}
+		}},
+		{name: "a worktree entry holding nothing git reads", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			return map[string]string{".git/worktrees/planted/index": "x\n"}, []string{".git/worktrees/planted"}
+		}},
+		{name: "a worktree registered at a file's path", write: func(r *writtenRun, head, _ string) (map[string]string, []string) {
+			return map[string]string{
+				".git/worktrees/planted/gitdir":    filepath.ToSlash(filepath.Join(r.repo, "notes.txt", ".git")) + "\n",
+				".git/worktrees/planted/HEAD":      head + "\n",
+				".git/worktrees/planted/commondir": "../..\n",
+			}, []string{".git/worktrees/planted/gitdir"}
+		}, setup: func(r *writtenRun, _ string) { r.git.Write("notes.txt", "a file\n") }},
+		{name: "the commondir of a worktree entry that is a link", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			moved := filepath.Join(filepath.Dir(r.repo), "moved-lane-entry")
+			return map[string]string{filepath.ToSlash(filepath.Join(moved, "commondir")): t.TempDir() + "\n"}, []string{"/moved-lane-entry/commondir"}
+		}, setup: func(r *writtenRun, _ string) {
+			entry := filepath.Join(r.repo, ".git", "worktrees", "lane")
+			moved := filepath.Join(filepath.Dir(r.repo), "moved-lane-entry")
+			if err := os.Rename(entry, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, entry); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "a sibling worktree's HEAD moved", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
+			return map[string]string{".git/worktrees/lane/HEAD": "ref: refs/heads/main\n"}, []string{".git/worktrees/lane/HEAD"}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+			r := newWrittenRun(t, routedToClaude)
+			r.git.Commit("base")
+			lane := filepath.Join(t.TempDir(), "lane")
+			r.git.Git("worktree", "add", "-q", "-b", "lane", lane)
+			if c.setup != nil {
+				c.setup(r, lane)
+			}
+			head := r.git.Git("rev-parse", "HEAD")
+			files, named := c.write(r, head, lane)
+			stubAlso(t, script, 2, files)
+			res, err := r.w.Run(context.Background())
+			var uc *UnexpectedChangesError
+			if !errors.As(err, &uc) {
+				t.Fatalf("err = %v, want the interview stopped on %v", err, named)
+			}
+			for _, n := range named {
+				if !slices.ContainsFunc(uc.Paths, func(got string) bool { return strings.HasSuffix(got, n) }) || !strings.Contains(err.Error(), n) {
+					t.Fatalf("the refusal does not name %s: %v", n, err)
+				}
+			}
+			if len(r.asked) != 1 || len(r.finished) != 0 {
+				t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the change", len(r.asked), len(r.finished))
+			}
+			if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
+				t.Fatalf("record %+v", rec)
+			}
+			if c.listed {
+				list := r.git.Git("worktree", "list", "--porcelain")
+				if !strings.Contains(list, "/"+TurnsRel+"/") {
+					t.Fatalf("git does not list the planted worktree, so the probe is not one git honours:\n%s", list)
+				}
+			}
+		})
+	}
+}
+
+// TestAWorktreeThePersonMakesBetweenDispatchesIsNotTheRoles: the worktrees
+// and their local tiers are read again before each dispatch, so a worktree
+// the person adds while a question is put to them, and a push receipt its
+// own preflight mints there, are not laid at the role's door.
+func TestAWorktreeThePersonMakesBetweenDispatchesIsNotTheRoles(t *testing.T) {
+	stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	r.git.Commit("base")
+	answer := r.w.Answer
+	r.w.Answer = func(a question.Ask) ([]Reply, error) {
+		lane := filepath.Join(t.TempDir(), "lane")
+		r.git.Git("worktree", "add", "-q", "-b", "lane", lane)
+		receipt := filepath.Join(lane, ".abcd", ".work.local", "preflight-receipts", r.git.Git("rev-parse", "HEAD"))
+		if err := os.MkdirAll(filepath.Dir(receipt), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(receipt, []byte("commit\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return answer(a)
+	}
+	res, err := r.w.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Changed) != 0 || len(r.finished) != 1 {
+		t.Fatalf("changed %v, finished %d", res.Changed, len(r.finished))
+	}
+}
+
+// TestALinkCycleUnderGitsOwnDirectoryIsReadOnce: a link in git's own
+// directory is followed once and never a link found where it leads, so a
+// hook that is a link to a directory holding a link back to itself is read
+// and the reading ends.
+func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
+	r := newWrittenRun(t, "")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(target, "b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(r.repo, ".git", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(r.repo, ".git", "hooks", "a")); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	var st treeState
+	go func() {
+		var err error
+		st, err = readTree(r.repo, "")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the reading did not end on a link cycle under .git/hooks")
+	}
+	if _, ok := st[".git/hooks/a"]; !ok {
+		t.Fatalf("the link itself was not read: %v", st)
+	}
+	if !slices.ContainsFunc(slices.Collect(maps.Keys(st)), func(k string) bool { return strings.HasSuffix(k, "/target/b") }) {
+		t.Fatalf("what the link leads to was not read: %v", st)
 	}
 }

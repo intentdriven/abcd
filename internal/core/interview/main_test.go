@@ -9,7 +9,8 @@ package interview
 // and prints the events of a successful run. A turn-<n>.also.json in the
 // script, a map of path to content, makes the turn write those files too: a
 // path under "turns/" lands in the turn's own directory, any other in the
-// directory the runner was started in. A turn-<n>.sleep in the script makes
+// directory the runner was started in, and turnDirToken in a file's content
+// is replaced by the turn's directory. A turn-<n>.sleep in the script makes
 // the turn mark turn-<n>.started beside the script and sleep, so a test can
 // stop it mid-run.
 
@@ -26,6 +27,10 @@ import (
 )
 
 const stubScriptEnv = "ABCD_INTERVIEW_STUB_SCRIPT"
+
+// turnDirToken in a turn-<n>.also.json file's content is replaced by the
+// turn's own directory, in full, when the turn writes it.
+const turnDirToken = "{{turn}}"
 
 func TestMain(m *testing.M) {
 	if dir := os.Getenv(stubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
@@ -71,6 +76,7 @@ func stubRunner(dir string) int {
 				fmt.Fprintln(os.Stderr, err)
 				return 3
 			}
+			body = strings.ReplaceAll(body, turnDirToken, filepath.Dir(receipt))
 			if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 3
