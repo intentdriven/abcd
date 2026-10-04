@@ -199,7 +199,9 @@ ending changes nothing.
 
 If an earlier abcd left a `~/.abcd` folder in your home directory, every abcd
 command and hook stops before it writes anything and names the two commands
-that move you on. Run them in a terminal, in this order, then run abcd again:
+that move you on. In an agent session no tool runs at all, because the safety
+check blocks every command, the rename included, so run them in a plain
+Terminal window, in this order, then start the session again:
 
 ```sh
 mv ~/.abcd ~/.abcd.noindex
@@ -212,12 +214,13 @@ for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done
 The first renames the folder. The second reconnects the worktrees kept in it:
 git records each worktree's location in full, so until `git worktree repair`
 runs in it, its repository lists the moved worktree as prunable, and a prune
-would delete its link. While the old folder stands, the shell guard in an agent
-session refuses every command but the rename.
+would delete its link. A session that worked inside a worktree under the old
+folder opens from that worktree's new path.
 
-If both `~/.abcd` and `~/.abcd.noindex` exist, abcd moves neither. Keep the
-one you want under the name `~/.abcd.noindex`, take the other out of your home
-folder, and run the repair command above.
+If both `~/.abcd` and `~/.abcd.noindex` exist, abcd moves neither and names
+both. That happens when something older ran after the rename and created a
+new, small `~/.abcd`: look inside it, move it out of your home folder, then run
+the repair command above again.
 
 A project abcd manages keeps naming `~/.abcd/rules.json` and
 `~/.abcd/trusted-roots` in the managed block of its conventions file until

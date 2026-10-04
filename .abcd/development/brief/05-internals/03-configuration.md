@@ -524,8 +524,10 @@ repair that reconnects the store's moved worktrees,
 with both folders standing it names both and moves neither. `cli.Run` checks
 before any command executes, the plugin hooks' shell wrapper and
 `hooks/bootstrap.sh` check before they provision or read anything, and the shell
-guard refuses every command but the exact rename while the old folder stands
-(spc-2610031309233367).
+guard refuses every command but the exact rename while the old folder stands;
+with no plugin-root binary, the state a plugin update leaves, the `PreToolUse`
+wrapper blocks every command, the rename included, so the rename is the
+person's, in a plain terminal (spc-2610031309233367).
 abcd never moves the folder itself, and a managed project's block keeps naming
 the old paths until setup runs in that project again.
 
