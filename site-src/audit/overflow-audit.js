@@ -131,23 +131,48 @@ async function discoverRecordRoutes(page, baseUrl) {
 // measure returns the widest overflow on the laid-out page, and names what
 // caused it. A bare "this page overflows" sends someone hunting; an element and
 // its class is a place to look.
+//
+// Only what can widen the DOCUMENT is named. Anything inside a scroll container
+// (an ancestor whose overflow-x is not visible) overflows that container, not
+// the page, so a chart panning in its own window or a nav bar scrolling in its
+// own strip is never a culprit; naming them sent a bisect after the wrong
+// renderer once (iss-2610040741103264). A text run is measured too, by its
+// Range, because a heading whose words have nowhere to break overflows without
+// any element box passing the edge; it is named by its parent element.
 async function measure(page, viewportWidth, tolerance) {
   return page.evaluate(
     ({ width, tol }) => {
       const de = document.documentElement;
       const culprits = [];
+      const contained = (node) => {
+        for (let a = node.parentElement; a && a !== de && a !== document.body; a = a.parentElement) {
+          if (getComputedStyle(a).overflowX !== 'visible') return true;
+        }
+        return false;
+      };
+      const passes = (r) => r.right > width + tol || r.left < -tol;
+      const name = (el, text) => ({
+        tag: el.tagName.toLowerCase() + (text ? ' text' : ''),
+        cls: String(el.getAttribute('class') || '').slice(0, 60),
+      });
       if (de.scrollWidth > width + tol) {
         for (const el of document.querySelectorAll('body *')) {
           const r = el.getBoundingClientRect();
           if (r.width === 0 && r.height === 0) continue;
-          if (r.right > width + tol || r.left < -tol) {
-            culprits.push({
-              tag: el.tagName.toLowerCase(),
-              cls: String(el.className || '').slice(0, 60),
-              left: Math.round(r.left),
-              right: Math.round(r.right),
-            });
+          if (passes(r) && !contained(el)) {
+            culprits.push({ ...name(el, false), left: Math.round(r.left), right: Math.round(r.right) });
             if (culprits.length >= 5) break;
+          }
+        }
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let t = walker.nextNode(); t && culprits.length < 8; t = walker.nextNode()) {
+          if (!t.textContent.trim() || !t.parentElement) continue;
+          const range = document.createRange();
+          range.selectNodeContents(t);
+          const r = range.getBoundingClientRect();
+          if (r.width === 0) continue;
+          if (passes(r) && !contained(t)) {
+            culprits.push({ ...name(t.parentElement, true), left: Math.round(r.left), right: Math.round(r.right) });
           }
         }
       }
