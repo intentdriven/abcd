@@ -347,6 +347,17 @@ func TestGuideNeverOffersAnIdValidModelRefuses(t *testing.T) {
 			t.Fatalf("the tampered list is carried on as %q", next.Resume.Listed.Models)
 		}
 	}
+	// An id carrying a key, carried back in, is dropped the same way.
+	keyed := "vendor/" + keyShapedAnswer(41)
+	tampered.Resume.Listed.Models = []string{keyed, "vendor/clean"}
+	frag := "vendor"
+	next, err := turnOf(t, f, &tampered, &frag, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(next); strings.Contains(string(b), keyed) || !reflect.DeepEqual(next.Resume.Listed.Models, []string{"vendor/clean"}) {
+		t.Fatalf("a carried id holding a key reaches the turn: %s", b)
+	}
 }
 
 // TestGuideRefusesAnAnswerItsQuestionDoesNotAdmit: an answer that is none of
@@ -429,6 +440,13 @@ func TestGuideKeyHomesAndTheCommand(t *testing.T) {
 	q = asked(t, last(drive(t, f, first, "type", "vendor/coder", "key", "external")))
 	if got := optionValues(q); !reflect.DeepEqual(got, []string{"LOCAL_API_KEY", "ALPHA_API_KEY", "BETA_API_KEY"}) {
 		t.Fatalf("the variable question offers %q", got)
+	}
+	// A variable whose name holds a key is never offered.
+	keyedName := "ghp_" + testsecret.Synthetic(42, 36) + "_API_KEY"
+	keyedFirst := GuideRequest{BaseURL: svc.base(), EnvNames: []string{keyedName, "LOCAL_API_KEY"}}
+	q = asked(t, last(drive(t, f, keyedFirst, "type", "vendor/coder", "key", "external")))
+	if got := optionValues(q); !reflect.DeepEqual(got, []string{"LOCAL_API_KEY"}) {
+		t.Fatalf("with a variable whose name holds a key, the variable question offers %q", got)
 	}
 	for home, want := range map[string]struct {
 		answers []string
