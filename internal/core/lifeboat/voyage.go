@@ -15,7 +15,7 @@ import (
 // 0o700 because ~/.abcd is the caller's private space and this ledger records
 // which repositories they packed and where they wrote them. An already-existing
 // directory keeps the mode the caller gave it.
-const voyageDirPerm = 0o700
+const voyageDirPerm = abcdhome.DirMode
 
 // rootSHARe is the operator-store key: a lowercase hex commit SHA, 40 chars for
 // git's SHA-1 object format or 64 for SHA-256. Accepting only 40 silently
