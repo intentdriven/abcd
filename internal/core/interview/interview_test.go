@@ -3,6 +3,7 @@ package interview
 import (
 	"encoding/json"
 	"errors"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,7 +112,7 @@ func TestWriteRecordsInTheLocalTierAndTheHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hp != filepath.Join(home, ".abcd", "interviews", "setup-20261004T093015Z.json") {
+	if hp != abcdhome.Path(home, "interviews", "setup-20261004T093015Z.json") {
 		t.Fatalf("home record at %s", hp)
 	}
 
@@ -135,7 +136,7 @@ func TestWriteRecordsInTheLocalTierAndTheHome(t *testing.T) {
 func TestWriteRefusesASymlinkedHome(t *testing.T) {
 	home := t.TempDir()
 	elsewhere := t.TempDir()
-	if err := os.Symlink(elsewhere, filepath.Join(home, ".abcd")); err != nil {
+	if err := os.Symlink(elsewhere, abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Write(Place{Home: home}, sampleRecord(Terminal), time.Now()); err == nil {

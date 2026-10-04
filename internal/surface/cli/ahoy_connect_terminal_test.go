@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io"
 	"io/fs"
 	"net/http"
@@ -160,7 +161,7 @@ func runConnect(t *testing.T, stdin string, args ...string) (stdout, stderr stri
 func machineWrites(t *testing.T) []string {
 	t.Helper()
 	var got []string
-	entries, _ := os.ReadDir(filepath.Join(os.Getenv("HOME"), ".abcd"))
+	entries, _ := os.ReadDir(abcdhome.Path(os.Getenv("HOME")))
 	for _, e := range entries {
 		if e.Name() == "config.json" || e.Name() == "credentials.json" || e.Name() == "credential-homes.json" {
 			got = append(got, e.Name())
@@ -208,7 +209,7 @@ func TestConnectReadsTheKeyHidden(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ahoy connect: %v\n%s", err, msg)
 				}
-				raw, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json"))
+				raw, _ := os.ReadFile(abcdhome.Path(os.Getenv("HOME"), "credentials.json"))
 				if !strings.Contains(string(raw), connectKey) {
 					t.Fatal("the hidden key was not the one stored")
 				}
@@ -256,11 +257,11 @@ func TestConnectPicksAfterAKeyedListing(t *testing.T) {
 	if got := machineWrites(t); !reflect.DeepEqual(got, []string{"config.json", "credentials.json"}) {
 		t.Fatalf("writes = %q, want the provider block and the key", got)
 	}
-	raw, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".abcd", "config.json"))
+	raw, _ := os.ReadFile(abcdhome.Path(os.Getenv("HOME"), "config.json"))
 	if !strings.Contains(string(raw), `"vendor/coder-small"`) || strings.Contains(string(raw), "coder-large") {
 		t.Fatalf("the provider block does not hold the model picked:\n%s", raw)
 	}
-	for _, want := range []string{"wrote: ~/.abcd/credentials.json", "wrote: ~/.abcd/config.json", `"example/vendor/coder-small"`} {
+	for _, want := range []string{"wrote: " + abcdhome.Display("credentials.json"), "wrote: " + abcdhome.Display("config.json"), `"example/vendor/coder-small"`} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("the result does not say %q:\n%s", want, stdout)
 		}
@@ -376,7 +377,7 @@ func TestPickedConnectKeepsTheCanaryInItsHome(t *testing.T) {
 			if strings.Contains(said, canary) {
 				t.Fatalf("the canary reached the output or the error:\n%s", said)
 			}
-			store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")
+			store := abcdhome.Path(os.Getenv("HOME"), "credentials.json")
 			found := map[string]bool{}
 			_ = filepath.WalkDir(os.Getenv("HOME"), func(p string, d fs.DirEntry, err error) error {
 				if err != nil || d.IsDir() {
@@ -421,7 +422,7 @@ func TestConnectRefusesBeforeTheKeyIsRead(t *testing.T) {
 				hermeticEnv(t)
 				t.Chdir(t.TempDir())
 				if tc.existing {
-					dir := filepath.Join(os.Getenv("HOME"), ".abcd")
+					dir := abcdhome.Path(os.Getenv("HOME"))
 					if err := os.MkdirAll(dir, 0o700); err != nil {
 						t.Fatal(err)
 					}
