@@ -232,9 +232,10 @@ func DefaultPatterns() []Pattern {
 			// generic sk- rule, so this one WARNS rather than hard-fails: a
 			// hash-like string in a committed file cannot fail a gate on it, while
 			// every store-before-commit redactor masks every finding whatever its
-			// severity (Redact), and the guided connect refuses any token: kind as
-			// a typed name. The 32-character floor keeps a model id such as
-			// sk-tuned/7b out. A key the more specific rules above name is theirs:
+			// severity (Redact), and the sweeps and backstops that guard a write
+			// treat a token: kind as a secret whatever its severity (IsTokenKind),
+			// as the guided connect does when it refuses one as a typed name. The
+			// 32-character floor keeps a model id such as sk-tuned/7b out. A key the more specific rules above name is theirs:
 			// sk-ant-, sk-proj-, sk-svcacct-, sk-admin- and sk-or-v1- break the
 			// run with a '-' before it starts, and a legacy key, all
 			// alphanumerics, is skipped here so it is reported once, as

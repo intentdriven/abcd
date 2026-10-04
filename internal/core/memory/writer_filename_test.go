@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // writer_filename_test.go — iss-2609020321100138. The store redactor judged
@@ -93,6 +95,35 @@ func TestWriteRefusesASecretShapedFilename(t *testing.T) {
 	mustNotCarry(t, "index.md", filepath.Join(mem, "index.md"), token)
 	mustNotCarry(t, "log.md", filepath.Join(mem, "log.md"), token)
 	mustNotCarry(t, "sources registry", SourcesIndexPath(repo), token)
+}
+
+// TestWriteRefusesAPlainSKKeyFilename: the filename bar is the scanner's
+// secret class, and a token is a secret whatever its severity. A plain sk- key
+// only warns, so a hash-like committed string cannot fail a gate on it, yet as
+// a page slug it was written into the store, index.md, log.md and the registry
+// back-link raw. The sample is built at runtime: nothing here is a live key.
+func TestWriteRefusesAPlainSKKeyFilename(t *testing.T) {
+	repo := t.TempDir()
+	key := "sk-" + testsecret.Synthetic(61, 40)
+	page := secretSlugPage(key)
+	src := writeSource(t, repo, "notes.md", "Rotate keys every 24 hours.\n")
+
+	_, err := Ingest(IngestRequest{
+		RepoRoot: repo, Source: src, Distiller: secretSlugDistiller(key), Now: fixedNow,
+	})
+	if err == nil {
+		t.Fatalf("a page FILENAME carrying a plain sk- key was accepted into the store")
+	}
+	if !strings.Contains(err.Error(), "token:sk_generic") || strings.Contains(err.Error(), key) {
+		t.Errorf("the refusal must name the kind and never echo the key: %v", err)
+	}
+	mem := Dir(repo)
+	if _, statErr := os.Stat(filepath.Join(mem, page)); !os.IsNotExist(statErr) {
+		t.Errorf("the page file was written despite the refusal (%v)", statErr)
+	}
+	mustNotCarry(t, "index.md", filepath.Join(mem, "index.md"), key)
+	mustNotCarry(t, "log.md", filepath.Join(mem, "log.md"), key)
+	mustNotCarry(t, "sources registry", SourcesIndexPath(repo), key)
 }
 
 // TestFilenameBarIsHardFailOnly is the anti-vacuity guard. An implementation

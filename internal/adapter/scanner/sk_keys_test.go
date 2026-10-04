@@ -33,7 +33,7 @@ func plainSKKey(seed uint64, n int) string {
 func tokenFindings(fs []Finding) []Finding {
 	var out []Finding
 	for _, f := range fs {
-		if strings.HasPrefix(f.Kind, "token:") {
+		if IsTokenKind(f.Kind) {
 			out = append(out, f)
 		}
 	}
@@ -149,5 +149,111 @@ func TestLegacyShapedRunIsMaskedToItsEnd(t *testing.T) {
 	out, _ := Redact(line, scanLine(line))
 	if strings.Contains(out, tail[:6]) {
 		t.Fatalf("the run's tail survived redaction: %q", out)
+	}
+}
+
+// TestGluedPlainSKKeyIsFoundAndMasked — the glued half of the security review
+// of iss-2610040202190813. The glued sweep took hard_fail rules only, so a plain
+// sk- key, which only warns, was invisible behind a word character: "my_",
+// "X" and "9" glued before one each gave zero findings, and every redactor let
+// it through raw. A token is a secret whatever its severity (IsTokenKind), so
+// the sweep reads the plain rule too, and the finding keeps its warn severity.
+func TestGluedPlainSKKeyIsFoundAndMasked(t *testing.T) {
+	key := plainSKKey(50, 40)
+	for _, glue := range []string{"my_", "X", "9"} {
+		line := "set " + glue + key + " now"
+		fs := scanLine(line)
+		var got []Finding
+		for _, f := range fs {
+			if f.Kind == "token:sk_generic" {
+				got = append(got, f)
+			}
+		}
+		if len(got) != 1 {
+			t.Fatalf("%q glued: want one token:sk_generic finding, got %+v", glue, fs)
+		}
+		if got[0].Severity != SeverityWarn || got[0].Matched != key {
+			t.Errorf("%q glued: reported as %s over %d bytes, want warn over the %d-byte key", glue, got[0].Severity, len(got[0].Matched), len(key))
+		}
+		out, _ := Redact(line, fs)
+		if strings.Contains(out, key[3:12]) {
+			t.Errorf("%q glued: the key survived redaction: %q", glue, out)
+		}
+		if !strings.HasPrefix(out, "set "+glue) {
+			t.Errorf("%q glued: redaction lost the text before the key: %q", glue, out)
+		}
+	}
+}
+
+// TestGluedPlainSKKeyNeverLeavesRaw: the two doors that hand redacted text
+// back out — a refusal echoed to the terminal and an artefact a routine posts —
+// return a glued plain key masked. ScrubOutbound returned it intact with a nil
+// error before the sweep read the plain rule.
+func TestGluedPlainSKKeyNeverLeavesRaw(t *testing.T) {
+	key := plainSKKey(51, 44)
+	body := key[3:12]
+	repo := t.TempDir()
+	if got := RedactRefusal(repo, `json: unknown field "notes_`+key+`"`); strings.Contains(got, body) {
+		t.Errorf("RedactRefusal echoed the glued plain key: %q", got)
+	}
+	got, _, err := ScrubOutbound(repo, "set my_"+key+" before the run\n", "pr-body")
+	if err != nil {
+		t.Fatalf("ScrubOutbound refused text it can mask: %v", err)
+	}
+	if strings.Contains(got, body) {
+		t.Errorf("ScrubOutbound handed back the glued plain key: %q", got)
+	}
+}
+
+// TestEveryWriteBackstopTreatsAWarnTokenAsASecret: the stage-two backstops a
+// committed store, a returned refusal and an outbound artefact share refuse a
+// surviving token whatever its severity. A warn span of no secret class still
+// passes each of them, so the widening is the token class and nothing else.
+func TestEveryWriteBackstopTreatsAWarnTokenAsASecret(t *testing.T) {
+	warnToken := Finding{Kind: "token:sk_generic", Severity: SeverityWarn}
+	warnOther := Finding{Kind: "generic:warn_only", Severity: SeverityWarn}
+	if !IsTokenKind(warnToken.Kind) || IsTokenKind(warnOther.Kind) || IsTokenKind(kindNetLANHost) {
+		t.Fatalf("IsTokenKind misjudges the token class")
+	}
+	if got := BlockingResidual([]Finding{warnToken, warnOther}); len(got) != 1 || got[0].Kind != warnToken.Kind {
+		t.Errorf("BlockingResidual kept %+v, want the warn token alone", got)
+	}
+	if !hasSecret([]Finding{warnToken}) || hasSecret([]Finding{warnOther}) {
+		t.Errorf("RedactRefusal's backstop: warn token secret=%v, warn other secret=%v; want true, false",
+			hasSecret([]Finding{warnToken}), hasSecret([]Finding{warnOther}))
+	}
+	if !blocksOutbound(warnToken) || blocksOutbound(warnOther) {
+		t.Errorf("ScrubOutbound's stage three: warn token blocks=%v, warn other blocks=%v; want true, false",
+			blocksOutbound(warnToken), blocksOutbound(warnOther))
+	}
+}
+
+// TestWarnTokenNeverCountsAsAHardFail: the launch scan's hard-fail count reads
+// the severity alone, so a plain key in a bundle — glued in a text file, or in
+// the bytes of a binary one — is reported at warn and never fails the launch.
+func TestWarnTokenNeverCountsAsAHardFail(t *testing.T) {
+	root := t.TempDir()
+	key := plainSKKey(52, 40)
+	text := writeFile(t, root, "notes.md", "the value my_"+key+" sits here\n")
+	bin := writeFile(t, root, "pic.png", "\x89PNG\x00\x00 "+key+" \x00")
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := sc.ScanBundle([]BundleFile{{LogicalPath: "notes.md", ResolvedPath: text}, {LogicalPath: "pic.png", ResolvedPath: bin}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HardFails != 0 {
+		t.Errorf("a warn token counted as %d hard-fail(s): %+v", res.HardFails, res.Findings)
+	}
+	seen := map[string]bool{}
+	for _, f := range res.Findings {
+		if f.Kind == "token:sk_generic" {
+			seen[f.File] = true
+		}
+	}
+	if !seen["notes.md"] || !seen["pic.png"] {
+		t.Errorf("the plain key was not reported in both files (%v): %+v", seen, res.Findings)
 	}
 }

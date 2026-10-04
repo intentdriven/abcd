@@ -468,11 +468,15 @@ func filenameJudgeTexts(filename string) []string {
 	return texts
 }
 
-// hardFailResidue is judgeFilename's narrow bar: the scanner's own hard_fail
-// SECRET findings and nothing else. It is deliberately NOT
-// scanner.BlockingResidual (see judgeFilename) and deliberately NOT a second
-// severity notion — the selection is on scanner.SeverityHardFail, the level the
-// scanner already defines, minus the identity kinds that also sit there.
+// hardFailResidue is judgeFilename's narrow bar: the scanner's own SECRET
+// findings and nothing else — every hard_fail finding, and every token whatever
+// its severity (scanner.IsTokenKind: a plain sk- key only warns, so a hash-like
+// committed string cannot fail a gate, yet it is a credential a page name must
+// not carry). It is deliberately NOT scanner.BlockingResidual (see
+// judgeFilename) and deliberately NOT a second severity notion — the selection
+// is on scanner.SeverityHardFail, the level the scanner already defines, and on
+// the token class the scanner already declares, minus the identity kinds that
+// also sit at hard_fail.
 //
 // The identity kinds are excluded because the ruling that ordered this refusal
 // asked for secrets only (iss-2609090951282192). Within a page name's charset
@@ -486,7 +490,7 @@ func filenameJudgeTexts(filename string) []string {
 func (r *storeRedactor) hardFailResidue(text, label string) []scanner.Finding {
 	var out []scanner.Finding
 	for _, f := range r.sc.ScanText(text, label) {
-		if f.Severity == scanner.SeverityHardFail && !scanner.IsIdentityKind(f.Kind) {
+		if (f.Severity == scanner.SeverityHardFail || scanner.IsTokenKind(f.Kind)) && !scanner.IsIdentityKind(f.Kind) {
 			out = append(out, f)
 		}
 	}
