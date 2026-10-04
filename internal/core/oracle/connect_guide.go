@@ -279,7 +279,7 @@ func (g *guide) put(q question.Question, admit admitFunc) (string, *stop) {
 		case len(ans) > maxGuideAnswerBytes:
 			retry = fmt.Sprintf("The answer is %d bytes; an answer here is at most %d.", len(ans), maxGuideAnswerBytes)
 		case strings.EqualFold(strings.TrimSpace(ans), question.TypedRowLabel) && q.Typed != "":
-			retry = "That choice only points at the row for typing: type the answer itself there."
+			retry = "That choice points at the row for typing: type the answer itself there."
 		default:
 			v, retry, err = admit(ans)
 		}
@@ -355,16 +355,15 @@ func (g *guide) walk() (GuideTurn, *stop) {
 	base := g.st.BaseURL
 	if base == "" {
 		q := question.Question{
-			ID: GuideQAddress,
-			Material: []question.Block{para("abcd connects to a model service through the OpenAI-compatible address the service " +
-				"publishes; the setup itself runs later, in your terminal.")},
-			Ask:   "What is the service's address?",
-			Typed: "Type the address, starting https://, or http:// for a server on this machine",
+			ID:       GuideQAddress,
+			Material: []question.Block{para("abcd reaches a model service at the OpenAI-compatible address it publishes.")},
+			Ask:      "What is the service's address?",
+			Typed:    "the address, https://, or http:// on this machine",
 		}
 		v, s := g.put(q, func(ans string) (string, string, error) {
 			t := strings.TrimSpace(ans)
 			if err := openaiapi.ValidateBaseURL(t); err != nil {
-				return "", fmt.Sprintf("%s is not an address abcd connects to: %s.", echoed(t), err), nil
+				return "", fmt.Sprintf("That address is refused: %s.", err), nil
 			}
 			return t, "", nil
 		})
@@ -425,7 +424,7 @@ func (g *guide) walk() (GuideTurn, *stop) {
 			ID:       GuideQTyped,
 			Material: []question.Block{para(why)},
 			Ask:      "Which model should abcd set up?",
-			Typed:    "Type the model's name exactly as the service spells it",
+			Typed:    "the model's name, exactly as the service spells it",
 		}
 		if model, s = g.put(q, func(ans string) (string, string, error) {
 			t := strings.TrimSpace(ans)
@@ -499,7 +498,7 @@ func (g *guide) walk() (GuideTurn, *stop) {
 			Material: []question.Block{para("The variable must be set in the terminal you paste the command into. " +
 				"abcd keeps only its name, never its value.")},
 			Ask:   "Which environment variable holds the key?",
-			Typed: "Type the variable's name",
+			Typed: "the variable's name",
 		}
 		for _, n := range g.envNames(provider) {
 			q.Options = append(q.Options, question.Option{Value: n, Label: n, Meaning: "A variable set where this guide runs; its value is never read."})
@@ -609,7 +608,7 @@ func (g *guide) pickListed(host string, ids []string) (string, *stop) {
 		ID:       GuideQModel,
 		Material: []question.Block{para(fmt.Sprintf("%s lists %d models.", host, len(ids)))},
 		Ask:      "Which model should abcd set up?",
-		Typed:    "Type part of a model's name",
+		Typed:    "part of a model's name",
 	}
 	for _, m := range g.suggestions(in) {
 		q.Options = append(q.Options, question.Option{Value: m, Label: m, Meaning: "A model one of your connections already uses."})
@@ -639,7 +638,7 @@ func (g *guide) pickListed(host string, ids []string) (string, *stop) {
 		nq := question.Question{
 			ID:    GuideQNarrow,
 			Ask:   "Which model should abcd set up?",
-			Typed: "Type more of the name, or another part",
+			Typed: "more of the name, or another part",
 		}
 		switch n := len(matches); {
 		case n == 0:

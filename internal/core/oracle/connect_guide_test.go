@@ -495,7 +495,7 @@ func TestGuideQuestionsPassTheAskingLimits(t *testing.T) {
 		first   GuideRequest
 		answers []string
 	}{
-		{GuideRequest{EnvNames: env}, []string{"ftp://nowhere", listed.base(), "lookup", "coder", "zzz", "vendor1/model-7", "key", "external", "ALPHA_API_KEY"}},
+		{GuideRequest{EnvNames: env}, []string{"ftp://nowhere", "http://192.0.2.1/v1", listed.base(), "lookup", "coder", "zzz", "vendor1/model-7", "key", "external", "ALPHA_API_KEY"}},
 		{GuideRequest{BaseURL: keyed.base()}, []string{"lookup", "abcd"}},
 		{GuideRequest{BaseURL: missing.base()}, []string{"lookup", "bad;name", "vendor/m", "none"}},
 		{GuideRequest{BaseURL: missing.base()}, []string{"type", "vendor/m", "key", "keychain"}},

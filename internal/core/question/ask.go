@@ -35,6 +35,10 @@ type Question struct {
 	Typed string `json:"typed,omitempty"`
 }
 
+// TypedTextPrefix opens the line of the question text that says what the
+// typed part takes.
+const TypedTextPrefix = "Or type in the row below:"
+
 // TypedRowLabel is the label of the one option a front door adds to a
 // question with a typed part when the host's question tool takes fewer
 // listed options than the question has (a typed part and decide later alone):
@@ -170,7 +174,8 @@ func Check(a Ask) []Finding {
 // (spc-2610030944505997, "The field view"): the chip to the header; the
 // material's blocks, then the Now: and Change later: lines, then the ask, to
 // the question text; the options (a long list's choices) and then Later to the
-// options; the typed part to the free-text row (Tab.Typed). A line the question does not carry is left out, so the limits
+// options; the typed part to the free-text row (Tab.Typed), its prompt said
+// in the text just before the ask. A line the question does not carry is left out, so the limits
 // check names the gap rather than the mapping inventing a value.
 func (a Ask) Fields() Fields {
 	f := Fields{Tabs: make([]Tab, 0, len(a.Questions))}
@@ -188,6 +193,11 @@ func (a Ask) Fields() Fields {
 		}
 		if len(state) > 0 {
 			parts = append(parts, strings.Join(state, "\n"))
+		}
+		if q.Typed != "" {
+			// The host's free-text row carries no prompt of its own, so the
+			// typed part's is said in the text, just before the question.
+			parts = append(parts, TypedTextPrefix+" "+q.Typed+".")
 		}
 		parts = append(parts, q.Ask)
 		options := q.Options

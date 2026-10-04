@@ -50,6 +50,11 @@ func TestTypedPartIsAnAnswer(t *testing.T) {
 	if got := f.Tabs[0].Typed; got != typedQuestion().Typed {
 		t.Fatalf("the field view's typed part = %q", got)
 	}
+	// The host's free-text row has no prompt of its own: the text says it,
+	// just before the question.
+	if want := question.TypedTextPrefix + " " + typedQuestion().Typed + ".\n\n" + typedQuestion().Ask; !strings.HasSuffix(f.Tabs[0].Text, want) {
+		t.Fatalf("the question text does not end with the typed prompt and the ask:\n%s", f.Tabs[0].Text)
+	}
 	if fs := question.CheckLimits(f, question.Default, question.Addressee{}); len(fs) != 0 {
 		t.Fatalf("the typed part is not counted toward the floor:\n%s", listFindings(fs))
 	}
@@ -71,6 +76,8 @@ func TestTypedPartIsAnAnswer(t *testing.T) {
 // four options and a typed part is within the limits, and five are not.
 func TestTypedPartCountsOnlyTowardTheFloor(t *testing.T) {
 	q := typedQuestion()
+	q.Typed = "Type part of a name"
+	q.Material = []question.Block{{Kind: question.KindParagraph, Text: "The service lists 300 models."}}
 	for _, v := range []string{"a", "b", "c"} {
 		q.Options = append(q.Options, question.Option{Value: v, Label: "Model " + v, Meaning: "This model."})
 	}
