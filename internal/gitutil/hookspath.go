@@ -21,7 +21,9 @@ const maxHooksPathBytes = 64 << 10
 // Reading configuration runs no hook and starts no fsmonitor. None set is an
 // empty answer; a git that cannot answer is an error.
 func HooksPaths(root string) ([]string, error) {
-	cmd := exec.Command("git", "-C", root, "config", "--type=path", "--get-all", "core.hooksPath")
+	// -z ends each value with a NUL rather than a newline: a value may hold a
+	// newline, and is one path all the same.
+	cmd := exec.Command("git", "-C", root, "config", "-z", "--type=path", "--get-all", "core.hooksPath")
 	cmd.Env = ScrubbedEnv()
 	w := &capWriter{remaining: maxHooksPathBytes}
 	e := &capWriter{remaining: 4096}
@@ -38,9 +40,9 @@ func HooksPaths(root string) ([]string, error) {
 		return nil, fmt.Errorf("git config core.hooksPath: output exceeded the %d-byte cap", maxHooksPathBytes)
 	}
 	var out []string
-	for _, ln := range strings.Split(strings.TrimRight(string(w.buf), "\n"), "\n") {
-		if ln != "" {
-			out = append(out, ln)
+	for _, v := range strings.Split(string(w.buf), "\x00") {
+		if v != "" {
+			out = append(out, v)
 		}
 	}
 	return out, nil

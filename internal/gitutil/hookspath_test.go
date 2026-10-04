@@ -52,3 +52,24 @@ func TestHooksPathsReadsThePersonsGlobalValue(t *testing.T) {
 		t.Fatalf("got %q, %v", got, err)
 	}
 }
+
+// TestHooksPathsKeepsAValueHoldingANewlineWhole: git keeps a configuration
+// value holding a newline as one value, so it is read as one path, never
+// split into two that name directories git never runs a hook from.
+func TestHooksPathsKeepsAValueHoldingANewlineWhole(t *testing.T) {
+	repo := newRepo(t, "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	if out, err := runGit(t, repo, "config", "core.hooksPath", "tools/hooks\nmore"); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if out, err := runGit(t, repo, "config", "--add", "core.hooksPath", "second"); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	got, err := gitutil.HooksPaths(repo)
+	if err != nil || !slices.Equal(got, []string{"tools/hooks\nmore", "second"}) {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
