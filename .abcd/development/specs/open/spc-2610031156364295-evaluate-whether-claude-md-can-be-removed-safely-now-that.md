@@ -450,6 +450,7 @@ decided rather than asked; the reason is given beneath each.
    - criteria: A2
    - packages: internal/core/lifeboat, internal/surface/cli, commands/embark.md, .abcd/development/brief/04-surfaces
    - tests: TestEmbarkPlantsInAgentsMD, TestEmbarkFollowsTheChosenTarget; the existing embark tests over a symlinked or unwritable target moved to AGENTS.md and still skipping; the surface's embark tests read the chosen target
+   - landed: feat/agentsmd-embark
 4. Tools' own files: the owner's-file warning and the retirement offer
    - criteria: A3, A4
    - packages: internal/core/ahoy, internal/surface/cli, docs/how-to, .abcd/development/brief/04-surfaces

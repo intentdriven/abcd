@@ -23,7 +23,7 @@ whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 
 > **Recovery humility.** The lifeboat is the highest-fidelity floor the originating session could leave behind; it is not the activity that produced it. **When something here does not make sense, hunt the originating session before trusting the lifeboat blindly**: ask the prior author, surface the conversation where the decision happened, look at the rejected alternatives. See [`01-product/03-mental-model.md § The Naurian gap`](../01-product/03-mental-model.md#the-naurian-gap--modification-axis).
 
-> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the lifeboat round-trip belongs to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md) is the model of record, and it settled four things against this chapter's earlier design: the voyage log is operator-level rather than in-tree, there is no in-tree lifeboat home and no shorthand for one, writes go through `os.Root` containment plus independent path validation rather than ordinary file writes, and a refusal path never writes (the core returns the conflicts and the surface renders them). One more, and it is the load-bearing one: **lifeboat text is never injected verbatim into `CLAUDE.md`.** The current marker block is re-injected instead. That is the difference between a data leak and a persistent instruction implant.
+> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the lifeboat round-trip belongs to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md) is the model of record, and it settled four things against this chapter's earlier design: the voyage log is operator-level rather than in-tree, there is no in-tree lifeboat home and no shorthand for one, writes go through `os.Root` containment plus independent path validation rather than ordinary file writes, and a refusal path never writes (the core returns the conflicts and the surface renders them). One more, and it is the load-bearing one: **lifeboat text is never injected verbatim into the target's conventions file.** The current marker block is re-injected instead. That is the difference between a data leak and a persistent instruction implant.
 
 ## Sub-verbs
 
@@ -123,9 +123,15 @@ scaffolder and no model sit in the write path.
    the family is reported unmapped and never written.
    Terminology, docs and the memory store are **not** embark families; they do
    not travel.
-3. **Re-inject the current abcd marker block** into the target `CLAUDE.md`
-   between its markers, idempotently. Never `AGENTS.md`, and never a verbatim
-   copy of lifeboat prose. The block is the modular-rules-loader block (itd-3);
+3. **Re-inject the current abcd marker block** into the target `AGENTS.md`
+   between its markers, idempotently, and never a verbatim copy of lifeboat
+   prose. The file follows the target's own setup choice (`docs.target` in its
+   `.abcd/config.json`, read with setup's reader): `agents_md` or no choice
+   saved gives `AGENTS.md`; `skip` gives no file; a retired `claude_md` or
+   `both` gives no file and the note setup itself shows for it
+   ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md)).
+   A skipped block, or a chosen file that is a link or not a regular file,
+   never stops the records landing. The block is the modular-rules-loader block (itd-3);
    principles surface through the loader's domain rules on demand.
 4. **Report**, blanks first: any pass the lifeboat declares exempt, then the
    coverage blanks a human must answer, then what was embarked into where, the
@@ -191,8 +197,9 @@ there is nothing to answer.
 - **Given** a lifeboat and a conflict-free target, **when** the unpack runs
   (the target defaulting to the working directory), **then** the four record
   families land at their canonical locations under the target, the current abcd
-  marker block is re-injected into the target `CLAUDE.md`, and everything else
-  in the lifeboat informs the report but is never written.
+  marker block is re-injected into the target `AGENTS.md` (or nowhere, when
+  the target's setup chose no conventions file), and everything else in the
+  lifeboat informs the report but is never written.
 - **Given** a repo disembarked to a destination, **when** the unpack runs on
   it in an empty target, **then** the round-trip completes with no shorthand and
   no special case: the destination is an ordinary explicit path.

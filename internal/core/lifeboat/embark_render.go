@@ -54,7 +54,11 @@ func (r EmbarkResult) Render() string {
 	fmt.Fprintf(&b, "embarked %s into %s\n", sanitize(r.SourceName), sanitize(r.TargetDir))
 	fmt.Fprintf(&b, "  written:   %d%s\n", r.Written, familiesSuffix(r.Families))
 	fmt.Fprintf(&b, "  unchanged: %d\n", r.Unchanged)
-	fmt.Fprintf(&b, "  marker:    %s %s\n", sanitize(r.Marker.Target), markerVerb(r.Marker.Action))
+	if r.Marker.Target == "" {
+		fmt.Fprintf(&b, "  marker:    %s\n", markerVerb(r.Marker.Action))
+	} else {
+		fmt.Fprintf(&b, "  marker:    %s %s\n", sanitize(r.Marker.Target), markerVerb(r.Marker.Action))
+	}
 	if r.Marker.Note != "" {
 		fmt.Fprintf(&b, "  marker note: %s\n", sanitize(r.Marker.Note))
 	}
@@ -143,7 +147,11 @@ func renderPlanSummary(b *strings.Builder, targetDir string, planned []PlannedEm
 			fmt.Fprintf(b, "    %-8s %d unchanged\n", fam.Name, u)
 		}
 	}
-	fmt.Fprintf(b, "  marker: %s → %s\n", sanitize(marker.Target), marker.Action)
+	if marker.Target == "" {
+		fmt.Fprintf(b, "  marker: %s\n", marker.Action)
+	} else {
+		fmt.Fprintf(b, "  marker: %s → %s\n", sanitize(marker.Target), marker.Action)
+	}
 	if marker.Note != "" {
 		fmt.Fprintf(b, "    note: %s\n", sanitize(marker.Note))
 	}
