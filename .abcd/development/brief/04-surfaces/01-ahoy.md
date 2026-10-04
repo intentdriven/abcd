@@ -146,11 +146,45 @@ never billed.
 
 The key arrives on stdin and nowhere else. A flag would leave it in the process
 listing and the shell history, the install prompter echoes every answer into its
-transcript, a host's question tool would put it in an agent's context, and a
-terminal would echo it as it is typed, so stdin from a terminal is refused. For
-the same reason the walkthrough is this sub-verb, which the person runs with the
-key piped in, rather than a question the install pass asks: declining is not
-running it, and changes nothing.
+transcript, and a host's question tool would put it in an agent's context. Piped,
+it is read whole; at a terminal it is read on hidden input, echo off, after one
+line naming the provider, and an interrupt during the paste restores the
+terminal and writes nothing. For the same reason the walkthrough is this
+sub-verb, which the person runs, rather than a question the install pass asks:
+declining is not running it, and changes nothing.
+
+Run at a terminal with no model named, the setup lists the service's models
+with the key it holds (one request to the service's model list, which follows
+no redirect and gives up after ten seconds), offers the names abcd accepts as
+model identifiers in the plain-Terminal list, typing part of a name to narrow
+it, and verifies the model picked with one real completion before anything is
+written; a list is never taken as the verification. Off a terminal, a setup
+with no model named is refused.
+
+### The guided setup
+
+Inside a session, the guided form of the setup works its values out with the
+person one question a turn and ends by printing the one command, with every
+path it writes, for the person to paste into a terminal
+(itd-2610030821294016). It never sets the connection up itself, for any home:
+it writes nothing, reads no key home, never asks for the key, and refuses every
+flag that would set the connection up. Each turn returns one question, the
+question as the host's question tool takes it, and a resume object the next
+turn reads back; the guide replays every answer from the first question each
+turn, so an edited resume object cannot skip one. It asks for the address when
+none is given; offers to look up the service's models, showing the scheme and
+host first and sending one keyless request only on a yes; suggests the models
+the person's other connections already use that the service lists, at most
+three, and narrows the list by the typed part of a name with no second
+request, by the same rule the plain-Terminal list narrows by; carries the
+first listed ids that fit 32 KiB and the count it does not carry, asking for
+the model's full name when a typed part matches none carried; falls back to a
+typed model name, saying why, where the service publishes no list; asks
+whether the service takes a key and where the key lives, offering the
+credential store's three homes and never a key saved in the system keychain by
+hand; and, for an environment variable, offers at most three variable names
+ending in `_API_KEY`, never a value. A service that lists its models only for a
+key is picked from in the terminal step, so its command names no model.
 
 The key lives in one of the credential store's three homes (below), and a
 fourth answer, no key, sets up a local server that takes none.
@@ -527,6 +561,47 @@ agent drives the git-identity pin, the one approval no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
 
+**At a terminal the questions are drawn** (spc-2610030911534855,
+itd-2610030810370060). When stdin, stdout and stderr are all terminals the
+install asks through the drawn door instead of the line reader: each value
+question and each approval is built as the shared question type from core's
+own words (`ahoy.SetupValueQuestion`, `ahoy.SetupConfirmQuestion`), chipped
+"Setup Q<n>" in the order setup asks it (no total, since the gaps decide how
+many are asked), and put through the answer loop on stderr: arrow keys first,
+a number, or decide later, which answers nothing, so a config value stays
+unset and its gap listed while a question with a default takes it, as an
+unanswered question does. Ctrl-C ends the run with exit 130 and keeps the
+answers given before it. Off a terminal the line reader stays, unchanged, and
+an answers file named on the command line answers the questions wherever the
+install runs: each question is written as plain text (the drawing in Mono at
+80 columns, no escape byte), and one the file does not answer stops the run
+with exit 2, naming the question's id, the flag that answers it and the file
+line that would, with no answers record written. The file is checked before
+the first write: an entry whose question has a fixed set of answers must
+give one of them, and every config value the run would ask must be
+answered, by its flag or by the file, walked in the order and as far as the
+install asks them (`ahoy.WalkConfigValueQuestions`), so either refusal says
+that nothing was written. The adoption and the approvals are asked before the
+first write too. A stop at a question the run itself decides to ask (the
+status line's elements, the offers, the artefact kind) leaves the steps before
+it done, and says so. A file never answers the questions put only to a person
+at a terminal (the git identity, the drain rule, installing a tool).
+
+**Every answer is recorded with where it was given.** The drawn door and the
+answers file write one answers record through `interview.Write`: per question,
+the sanitised question as asked, the value, the note and `answered_in`,
+`Terminal` or `Claude Code` and nothing else. The drawn door stamps
+`Terminal`; an answers-file entry carries its own, or takes the place the
+run names for its file (`Terminal` unless it names another), which the plugin
+page names as `Claude Code` on the host path. The repository's answers go to
+`.abcd/.work.local/interviews/setup-<stamp>.json`, never creating the local
+tier; the machine-wide ones (the status line, the machine's routing table)
+to `~/.abcd/interviews/`, made through the guarded home-scope maker. The stamp
+is in the name only, so two runs given the same answers write the same bytes
+and the same configuration, whichever door asked. The line reader writes no
+record, and neither does an install that ends aborted (the adoption declined)
+or refused, which changed nothing.
+
 **Every value question carries its own explanation** (iss-163). A question that
 picks one of several values (the repo visibility, the docs target, the
 deep-scan toggle, the house-style question and each status-line
@@ -879,13 +954,16 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--answer` | string |
 | `--base-url` | string |
 | `--env` | string |
 | `--field` | string |
 | `--file` | string |
+| `--guide` | bool |
 | `--home` | string |
 | `--key` | string |
 | `--model` | stringArray |
+| `--resume` | string |
 
 ### `abcd ahoy credential`
 
@@ -912,6 +990,8 @@ Sub-verbs: none.
 |---|---|
 | `--adopt` | bool |
 | `--allow-stale-binary` | bool |
+| `--answered-in` | string |
+| `--answers` | string |
 | `--attribution` | bool |
 | `--bin-dir` | string |
 | `--dev` | bool |

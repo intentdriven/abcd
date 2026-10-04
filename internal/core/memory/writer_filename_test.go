@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // writer_filename_test.go — iss-2609020321100138. The store redactor judged
@@ -24,8 +26,8 @@ import (
 // scanner.BlockingResidual, which treats any identity-or-network span as
 // blocking whatever its severity — and `migrating-off-the-nas` is an ordinary
 // English slug that net_device_hostname matches at warn severity. A filename
-// rule at that bar would refuse ordinary pages, so it runs on hard_fail
-// findings only. The second subtest is what holds that line.
+// rule at that bar would refuse ordinary pages, so it runs on hard-fail-or-token
+// findings only. TestFilenameBarIsHardFailOrTokenOnly is what holds that line.
 //
 // The token is the same FAKE fixture the leaf tests use: `ghp_` and forty
 // literal 'A's. Nothing here is a live credential.
@@ -95,13 +97,62 @@ func TestWriteRefusesASecretShapedFilename(t *testing.T) {
 	mustNotCarry(t, "sources registry", SourcesIndexPath(repo), token)
 }
 
-// TestFilenameBarIsHardFailOnly is the anti-vacuity guard. An implementation
+// TestWriteRefusesAPlainSKKeyFilename: the filename bar is the scanner's
+// secret class, and a token is a secret whatever its severity. A plain sk- key
+// only warns, so a hash-like committed string cannot fail a gate on it, yet as
+// a page slug it was written into the store, index.md, log.md and the registry
+// back-link raw. The sample is built at runtime: nothing here is a live key.
+func TestWriteRefusesAPlainSKKeyFilename(t *testing.T) {
+	repo := t.TempDir()
+	key := "sk-" + testsecret.Synthetic(61, 40)
+	page := secretSlugPage(key)
+	src := writeSource(t, repo, "notes.md", "Rotate keys every 24 hours.\n")
+
+	_, err := Ingest(IngestRequest{
+		RepoRoot: repo, Source: src, Distiller: secretSlugDistiller(key), Now: fixedNow,
+	})
+	if err == nil {
+		t.Fatalf("a page FILENAME carrying a plain sk- key was accepted into the store")
+	}
+	if !strings.Contains(err.Error(), "token:sk_generic") || strings.Contains(err.Error(), key) {
+		t.Errorf("the refusal must name the kind and never echo the key: %v", err)
+	}
+	mem := Dir(repo)
+	if _, statErr := os.Stat(filepath.Join(mem, page)); !os.IsNotExist(statErr) {
+		t.Errorf("the page file was written despite the refusal (%v)", statErr)
+	}
+	mustNotCarry(t, "index.md", filepath.Join(mem, "index.md"), key)
+	mustNotCarry(t, "log.md", filepath.Join(mem, "log.md"), key)
+	mustNotCarry(t, "sources registry", SourcesIndexPath(repo), key)
+}
+
+// TestWriteAcceptsASlugEndingInSK: a slug such as task-<commit sha> is a word
+// ending in "sk" followed by '-' and a long alphanumeric run, the shape the
+// plain sk- rule matches once its leading \b is dropped for the glued sweep. It
+// is an ordinary page name and is written under its own name.
+func TestWriteAcceptsASlugEndingInSK(t *testing.T) {
+	repo := t.TempDir()
+	slug := "task-" + testsecret.SyntheticHex(63, 40)
+	src := writeSource(t, repo, "notes.md", "Rotate keys every 24 hours.\n")
+
+	if _, err := Ingest(IngestRequest{
+		RepoRoot: repo, Source: src, Distiller: secretSlugDistiller(slug), Now: fixedNow,
+	}); err != nil {
+		t.Fatalf("a slug carrying a task id was refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(Dir(repo), secretSlugPage(slug))); err != nil {
+		t.Fatalf("the page was not written under its own name: %v", err)
+	}
+}
+
+// TestFilenameBarIsHardFailOrTokenOnly is the anti-vacuity guard: the bar is
+// every hard_fail finding and every token, and nothing else. An implementation
 // that reused scanner.BlockingResidual — the bar every other write-side rule
 // holds — would refuse this ordinary page, because net_device_hostname matches
 // `off-the-nas` at warn severity and BlockingResidual promotes any network span
 // to blocking. If this test passes against that naive implementation it is not
 // doing its job.
-func TestFilenameBarIsHardFailOnly(t *testing.T) {
+func TestFilenameBarIsHardFailOrTokenOnly(t *testing.T) {
 	repo := t.TempDir()
 	src := writeSource(t, repo, "storage.md", "The array moved to the cloud.\n")
 

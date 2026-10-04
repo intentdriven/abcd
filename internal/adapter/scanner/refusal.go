@@ -42,11 +42,12 @@ func RedactRefusal(repoRoot, text string) string {
 	return termsafe.Sanitize(out)
 }
 
-// hasSecret reports whether any finding is a hard_fail secret span, the class
-// Redact seals and a returned refusal must never carry.
+// hasSecret reports whether any finding is a secret span — a hard_fail one, or
+// a token whatever its severity (IsTokenKind) — the class Redact seals and a
+// returned refusal must never carry.
 func hasSecret(findings []Finding) bool {
 	for _, f := range findings {
-		if f.Severity == SeverityHardFail && !IsIdentityKind(f.Kind) {
+		if (f.Severity == SeverityHardFail || IsTokenKind(f.Kind)) && !IsIdentityKind(f.Kind) {
 			return true
 		}
 	}

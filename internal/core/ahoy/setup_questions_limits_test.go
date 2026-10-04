@@ -1,93 +1,43 @@
 package ahoy
 
 import (
-	"fmt"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/question"
 )
 
-// setupLater is the decide-later answer every setup question offers: it
-// leaves the value unset, so the gap stays listed (spc-2610030911534855, "The
-// interviews whose questions abcd fixes").
-var setupLater = question.Option{
-	Value:   "later",
-	Label:   question.Default.LaterLabels[0],
-	Meaning: "Leaves the value unset, so the install lists it again next time.",
-}
-
-// valueQuestion is the field view of one value question, built the way the
-// plain-Terminal spec maps PromptHelp onto the shared question type: the key
-// as the id, About as the material, each choice as an option whose label is
-// the value and whose description is its meaning, the change-later line (the
-// flag hint, or where a flagless answer is changed), and the decide-later
-// answer last.
-func valueQuestion(n int, h PromptHelp) question.Question {
-	opts := make([]question.Option, len(h.Choices))
+// heldQuestion is the value question h as setup builds it (valueQuestion, the
+// builder every front door uses), offering every choice the help names. A
+// question a flag answers is held with no default, as the install asks it;
+// any other with its last choice standing in for the default, so the
+// decide-later meaning that names a default is held too.
+func heldQuestion(n int, h PromptHelp) question.Question {
+	choices := make([]string, len(h.Choices))
 	for i, c := range h.Choices {
-		opts[i] = question.Option{Value: c.Value, Label: c.Value, Meaning: c.Meaning}
+		choices[i] = c.Value
 	}
-	change := h.ChangeLaterLine()
-	if change == "" {
-		change = question.Default.NotApplicable
+	def := ""
+	if h.Flag == "" && len(choices) > 0 {
+		def = choices[len(choices)-1]
 	}
-	return question.Question{
-		ID:          h.Key,
-		Chip:        fmt.Sprintf("Setup Q%d", n),
-		Material:    []question.Block{{Kind: question.KindParagraph, Text: h.About}},
-		Ask:         "Which answer does this repository take?",
-		Options:     opts,
-		Later:       setupLater,
-		Now:         "not set",
-		ChangeLater: change,
-	}
+	return valueQuestion(n, h, choices, def)
 }
 
-// confirmQuestion is the field view of one approval whose text ends on its
-// question, tail: the text before it is the material (an indented line an
-// item of a list, as the routing table is), the tail the question, and the
-// answers yes, no and decide later.
+// confirmQuestion is the approval whose text ends on its question, tail, as
+// setup builds it (SetupConfirmQuestion): the text before the tail is the
+// material (an indented line an item of a list), the tail the question, its
+// id the one given, and the answers yes, no and decide later.
 func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Question {
 	t.Helper()
-	material, ok := strings.CutSuffix(text, tail)
-	if !ok {
-		t.Fatalf("%s: the question does not end on %q", id, tail)
+	q := SetupConfirmQuestion(n, text)
+	if q.Ask != tail {
+		t.Fatalf("%s: the question is %q, not its tail %q", id, q.Ask, tail)
 	}
-	ask := tail
-	var blocks []question.Block
-	var items []string
-	flush := func() {
-		if len(items) > 0 {
-			blocks = append(blocks, question.Block{Kind: question.KindList, Items: items})
-			items = nil
-		}
+	if q.ID != id {
+		t.Fatalf("%s: setup ids the question %q", id, q.ID)
 	}
-	for _, ln := range strings.Split(material, "\n") {
-		if strings.HasPrefix(ln, "  ") {
-			items = append(items, strings.TrimSpace(ln))
-			continue
-		}
-		flush()
-		if strings.TrimSpace(ln) != "" {
-			blocks = append(blocks, question.Block{Kind: question.KindParagraph, Text: ln})
-		}
-	}
-	flush()
-	return question.Question{
-		ID:       id,
-		Chip:     fmt.Sprintf("Setup Q%d", n),
-		Material: blocks,
-		Ask:      ask,
-		Options: []question.Option{
-			{Value: "yes", Label: "Yes, make the change", Meaning: "Writes what the text above describes."},
-			{Value: "no", Label: "No, leave it", Meaning: "Writes nothing, so the next install asks again."},
-		},
-		Later:       setupLater,
-		Now:         question.Default.NotApplicable,
-		ChangeLater: question.Default.NotApplicable,
-	}
+	return q
 }
 
 // setupLimitsOwed is every limit a setup question breaks today, as
@@ -133,7 +83,7 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 
 	var qs []question.Question
 	for i, h := range helps {
-		qs = append(qs, valueQuestion(i+1, h))
+		qs = append(qs, heldQuestion(i+1, h))
 	}
 	qs = append(qs,
 		confirmQuestion(t, len(qs)+1, OracleRoutingMachineGapID, machineRoutingQuestion(), oracleRoutingMachineQuestionTail),

@@ -208,6 +208,43 @@ That is a channel for passing on an answer the technical facilitator has GIVEN
 it is never a licence to answer on their behalf. Note that `yes |` approves
 EVERY question, so only reach for it once they have agreed to all of them.
 
+**At a terminal the questions are drawn; through this page they are relayed
+in an answers file.** When stdin, stdout and stderr are all terminals, the
+install draws each question itself (the material, the question, each answer
+with its meaning, and decide later last), answered by the arrow keys or by
+its number, and Ctrl-C ends the run with exit 130, keeping the answers given
+before it. Every answer is recorded, with the question as it was asked and
+where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
+and the answers that change the machine (the status line, the machine's
+routing table) in `~/.abcd/interviews/`; a run that ends aborted or
+refused changed nothing and records nothing. Through this page, put each
+question to the user with the host's question tool, quoting the question
+exactly as the install writes it, then pass their answers in an answers file
+and say where they were given:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --answers <file> --answered-in "Claude Code" --json
+```
+
+The file is one JSON object: `{"schema_version": 1, "interview": "setup",
+"answers": [{"id": "adopt", "value": "yes"}, {"id": "visibility", "value":
+"private", "note": "<optional>"}]}`. Each answer names its question by id
+(a value question's key, `adopt`, `approve.<category>` for a kind of change,
+or the offer's gap id) and gives one of the values the question offers, or
+`later` to decide later; an unknown or repeated key is refused. With
+`--answers`, each question is written as plain text on stderr. A value
+the question does not offer, or a missing answer to the adoption, an
+approval or a setting value the run would ask (the visibility, the docs
+target, deep scanning), stops the run with exit 2 before anything is
+written, naming the question's id, the flag that answers it, if any, and the
+line to add; nothing is recorded. Put that question to the user, add their
+answer, and run again. The questions the run itself decides to ask (the
+status line's elements, the offers, the artefact kind) are checked when
+they are asked: a stop there leaves the steps before it done, says so, and
+the next run asks only what is still open. The git identity, the
+drain rule and installing a tool are never answered from a file. `--answers`
+replaces the piped answer stream for that run.
+
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
 question declines, so a run that was told nothing writes nothing — but a stdin
 that is held open and silent (a pipe from a still-running command) makes the
@@ -546,6 +583,74 @@ repository route never displaces the machine's: where `~/.abcd/config.json`
 routes the same name, that route applies.
 Declining is not running `connect`, and it changes nothing.
 
+### The guided path: `connect --guide`
+
+When the person wants to connect a service from this session, guide them
+rather than asking for every value. The guide works the values out one
+question a turn, writes nothing, never asks for the key, and ends by printing
+the one command for the person to paste into a terminal on this machine. It
+never runs that command, and no flag makes it: `--guide` with `--home`,
+`--model`, `--key`, `--env`, `--file` or `--field` is refused.
+
+Start it, with the provider's name and the address when the person has given
+them (both are optional; the guide asks for the address and names the provider
+after the host):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect [<provider>] --guide [--base-url <url>] --json
+```
+
+Each run prints one turn. A turn carries `ask`, the question, and `tool`,
+the same question as your question tool's input: ask it through your question
+tool exactly as `tool` gives it, one question a turn, never reworded, never
+with a preview and never with an option marked. A question with a typed part
+(`ask.questions[0].typed`) takes the person's own text in the tool's row for
+typing; where it lists too few options for the tool, `tool` carries one more,
+"Type my own answer", which only points at that row. Then pass the answer
+back, the turn's `resume` member unchanged on stdin and the answer as the tool
+returned it (an option's label, or the text typed). The `resume` member goes
+in a quoted heredoc, never as an argument: it carries the models the service
+listed, up to 32 KiB of their names, and the count of any it does not carry.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect --guide --resume - --answer '<answer>' --json <<'RESUME'
+<resume JSON>
+RESUME
+```
+
+Do no other bookkeeping: the guide replays every answer from the first
+question each turn, refuses (exit 2, naming the question) an answer a
+question does not take or a `resume` that was edited, and asks a typed
+question again, saying why, when the text cannot be used.
+
+The questions, in order: the address, when none was given; whether to look
+up the models the service lists, showing the scheme and host first (only a yes
+sends one request, carrying no key, following no redirect, and giving up after
+ten seconds); the model, offering the models the person's other connections
+already use that the service lists, at most three, and narrowing the list as
+they type part of a name, with no second request (when the service lists more
+models than the guide carries and a part matches none carried, it asks for the
+model's full name); where the service publishes
+no list, or the person declines the look-up, a typed model name and the reason;
+whether the service takes a key; where the key lives, offering the three
+homes and never a key the person saved in the system keychain by hand; and,
+for an environment variable, its name, offering at most three variables whose
+names end in `_API_KEY`, never their values. A service that lists its models
+only for a key skips the model question and the key question: the command
+then has no `--model`,
+`done.picks_in_terminal` is true, and the person picks in the terminal once
+the command has the key.
+
+A turn carrying `stopped` is the person's decide later: relay it verbatim,
+and keep `resume` to pick up there. A turn carrying `done` is the end: relay
+`done.command` on a line of its own and every line of `done.writes` verbatim,
+the paths the command writes, then tell the person to paste the command into a
+terminal on this machine, where it asks for the key on hidden input when the
+home stores one. **Never ask for the key, never pass it, and never run the
+command for the person.**
+
+### By hand
+
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
 [--model <model>…] --home <home> [--key <name>]`. **This writes, under
 `~/.abcd/` and, for the keychain home, into the platform keychain.** Set
@@ -554,7 +659,10 @@ your question tool, after relaying `key_homes`, and offer the three without
 marking one: `external` takes `--env <VARIABLE>` or
 `--file ~/<file>.json --field <dotted.field>` (abcd keeps only where the key
 is); `abcd` and `keychain` take the key piped in on stdin from a file or a
-variable. It verifies the provider with one call to the first model listed,
+variable, or, when the person runs the command in a terminal, pasted on hidden
+input: abcd prints one line on stderr, "Paste the key for <provider> and press
+Enter. It is not shown.", and reads the key with echo off. An empty paste is
+refused as an empty pipe is. It verifies the provider with one call to the first model listed,
 and only when that call succeeds keeps the key in that home and writes the
 provider block (the base URL, the key's name and the models, the allowlist)
 into `~/.abcd/config.json`. Nothing goes into the repository or the harness's
@@ -566,11 +674,25 @@ home and the tool's file is a symlink, wherever it leads (a `~/.config` linked
 elsewhere, say); `--env` stays open.
 `--home none` sets up a server that takes no key.
 
-The key is read from stdin and nowhere else, and never from a terminal, where it
-would be echoed. **Never ask the person for the key and never pass it
+Run in a terminal (stdin, stdout and stderr all terminals) with no `--model`,
+the command lists the service's models with the key it holds: the pasted key,
+the value the `external` pointer names, or none for `--home none`. The list is
+one request to the service's model list, which follows no redirect and gives
+up after ten seconds. Only the names abcd accepts as model identifiers are
+offered, in the plain-Terminal list, typing part of a name to narrow it, and
+the model picked is verified with one real completion before anything is
+written; a list is never taken as the verification. A list that cannot be
+read, a list with no usable name, decide later, and a completion that fails
+each write nothing and say which; Ctrl-C at the list exits 130 with nothing
+written. Off a terminal, a run with no `--model` is refused, naming both ways
+on: `--model`, or running the command in a terminal to pick there.
+
+The key is read from stdin and nowhere else: piped, or at a terminal on hidden
+input, never echoed. Ctrl-C during the paste exits 130, the terminal restored
+and nothing written. **Never ask the person for the key and never pass it
 yourself**: it would enter this conversation. Give them the command to run in
-their own shell, with the key piped in from a file or a variable they hold, and
-relay the result — `verified` (the provider, the model asked for, the model
+their own terminal, where they paste the key on hidden input or pipe it in from
+a file or a variable they hold, and relay the result — `verified` (the provider, the model asked for, the model
 it reported and the credential's name), each `wrote` path, and `dispatch`. A
 route the configuration read skips is named on stderr, in the text and the JSON
 form alike, and the setup stands: relay that line too.
