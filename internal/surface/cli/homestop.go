@@ -111,9 +111,10 @@ func admitsRename(stop *abcdhome.Stop, stdin io.Reader) bool {
 	if json.Unmarshal(raw, &in) != nil {
 		return false
 	}
-	// Only the white space a shell itself drops around a command is trimmed:
-	// strings.TrimSpace would also strip Unicode spaces (U+00A0, U+3000), which
-	// a shell keeps, so `mv` would rename the folder to a name with an
-	// invisible character in it and the stop would lift.
-	return strings.EqualFold(in.ToolName, "Bash") && strings.Trim(in.ToolInput.Command, " \t\r\n") == abcdhome.RenameCommand
+	// Only the white space a shell itself drops around a command is trimmed,
+	// its IFS (space, tab, newline): strings.TrimSpace would also strip a
+	// carriage return and Unicode spaces (U+00A0, U+3000), which a shell
+	// keeps, so `mv` would rename the folder to a name with an invisible
+	// character in it and the stop would lift.
+	return strings.EqualFold(in.ToolName, "Bash") && strings.Trim(in.ToolInput.Command, " \t\n") == abcdhome.RenameCommand
 }
