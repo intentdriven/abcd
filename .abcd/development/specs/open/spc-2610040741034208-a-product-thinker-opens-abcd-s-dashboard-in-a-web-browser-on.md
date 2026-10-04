@@ -45,9 +45,9 @@ In:
   `status` (the bare verb), `review` (the facilitator) and `confirm` (the
   product thinker), and a hidden `serve` that only `start` launches.
 - `internal/surface/dashboard` (new): the one package that opens a listener;
-  the TLS listener, the connection gate, the HTTP server and its pages.
+  the listener, the connection gate, the HTTP server and its pages.
 - `internal/adapter/tailscale` (new): the `tailscale` command as an adapter,
-  for this computer's addresses and name, its certificate, and the lookup of
+  for this computer's addresses and name, and the lookup of
   a connecting device.
 - `internal/core/dashboard` (new, transport-agnostic): the shared snapshot,
   the summary model, the brief chapter table, the note and stamp store, the
@@ -136,7 +136,19 @@ needs the person's sign-off:
   step 1. Should the product thinker prefer `tsnet` (option 3), the
   dependency is the sign-off and step 1 changes its listener alone.
 
-- **D2 (facilitator, decided): the gate is at the connection, before TLS.**
+- **D1a (the product thinker, 2026-10-04, the intent's decision 23): no
+  certificate in the first version.** Told that `tailscale cert` publishes
+  the computer's tailnet name in the public certificate-transparency logs for
+  good, and that Tailscale already encrypts and authenticates every
+  connection, the product thinker chose plain HTTP on the computer's own
+  Tailscale addresses. Option 4 holds with its TLS removed: the listener binds
+  the tailnet addresses only and serves HTTP; the gate and the lookup (D2) are
+  unchanged; D4 is retired. The browser labels the page "Not secure", and
+  writes are judged by `http.CrossOriginProtection`'s Origin-against-Host
+  check (no `Sec-Fetch-Site` over plain HTTP). A certificate stays possible
+  later, with the product thinker's consent to the publication.
+
+- **D2 (facilitator, decided): the gate is at the connection, before any byte is sent.**
   On accept, the server checks that the peer address is a tailnet address
   and that the lookup names an untagged node; otherwise it closes the
   connection having sent no byte. So a device off the tailnet, or anything
@@ -158,7 +170,7 @@ needs the person's sign-off:
   Tailscale version floor its probes established, with the source beside
   the constant.
 
-- **D4 (facilitator, decided): the certificate is held in memory only.**
+- **D4 (retired by D1a; kept as written for the later certificate): the certificate is held in memory only.**
   `start` runs `tailscale cert --cert-file - --key-file - <name>` and parses
   both from its output; no key is written to disk. The server fetches it
   again when it is within 14 days of expiry. As with Serve, issuing a
@@ -168,9 +180,8 @@ needs the person's sign-off:
 
 Step 1 opens with a dated receipt in the local tier, taken against a real
 tailnet before any code: the lookup names a phone's node by its address,
-fails for a non-tailnet address and for a loopback one, and the certificate
-command prints both blocks, on macOS (app) and Linux. If the lookup or the
-certificate does not behave so, step 1 stops and the choice goes back to the
+and fails for a non-tailnet address and for a loopback one, on macOS (app)
+and Linux. No certificate is requested (D1a). If the lookup does not behave so, step 1 stops and the choice goes back to the
 product thinker with option 3.
 
 ### The `dashboard` verb
@@ -178,15 +189,15 @@ product thinker with option 3.
 - `abcd dashboard start [--port N]`: refuses outside a managed checkout,
   when a dashboard already runs on this computer (one per computer, D5),
   when Tailscale is not running, when the port is one Tailscale's own Serve
-  or Funnel configuration names, and when the certificate cannot be had. It
+  or Funnel configuration names. It
   launches the hidden `serve` as a detached child in its own process group,
   waits on an inherited pipe for the child to report it is listening, then
   fetches its own address through the tailnet with a one-time value only
   this run knows, and only then prints one line:
-  "abcd dashboard: open https://<name>:<port> on a device on your Tailscale
+  "abcd dashboard: open http://<name>:<port> on a device on your Tailscale
   network; anyone on that network can open it. `abcd dashboard stop` stops
   it." If the self-fetch fails, it stops the child and says that the
-  address could not be reached from this computer. The default port is 8443.
+  address could not be reached from this computer. The default port is 8080.
 - `abcd dashboard stop`: reads the run file, checks that its process is the
   one `start` launched (process id, start time and executable, re-read just
   before the signal), sends it SIGTERM, waits for the listener to close, and
@@ -398,10 +409,9 @@ says the facilitator has many items to read first.
 ### Writes
 
 The two write routes accept only JSON (`application/json`, decoded with
-`jsonstrict.Decode`), only on a TLS connection (the listener speaks nothing
-else, and each handler checks), and only through Go's
-`http.CrossOriginProtection`, which over HTTPS has the browser's
-`Sec-Fetch-Site` to judge by. The text of a note is drawn as text,
+`jsonstrict.Decode`), only from a connection the gate let in (D2), and only
+through Go's `http.CrossOriginProtection`, which over plain HTTP judges by
+the request's Origin against its Host (D1a). The text of a note is drawn as text,
 escaped, everywhere it appears; it is never rendered as Markdown.
 
 ### The handback to the facilitator, and back
@@ -507,7 +517,7 @@ another package is given.
   `TestRecordsAreLookedUpByIDOnly` (traversal and encoded paths are 404 and
   open no file), `TestSecurityHeadersOnEveryResponse`.
 - **Nothing is changed over plain HTTP.** `TestPlainHTTPIsNeverAnswered`,
-  `TestWritesNeedTLS`, `TestWritesNeedCrossOriginProtection`.
+  `TestWritesNeedTailnetIdentity`, `TestWritesNeedCrossOriginProtection`.
 - **On the local network: foreground, idle stop, Wi-Fi warning; running
   unattended only behind Serve.** The home-network draft. Under D1 nothing
   is published through Serve or Funnel at all; `start` refuses a port a
@@ -550,7 +560,7 @@ another package is given.
 - **T3** (host names, timeouts, caps, one snapshot, capped live updates):
   step 1 for the first three, step 2 for the last two.
 - **T4** (one renderer, by id, no path, CSP, nothing off the host): step 2.
-- **T5** (writes over HTTPS with cross-origin protection): step 4.
+- **T5** (writes only from a tailnet device the gate let in, with cross-origin protection; reworded by decision 23): step 4.
 - **T6** (anchored by quote, offsets and commit; orphans kept): step 4.
 - **T7** (in the local tier until reviewed): step 4.
 
@@ -564,7 +574,7 @@ rather than adding to them.
 ## Footprint
 
 - packages: internal/surface/dashboard, internal/core/dashboard, internal/adapter/tailscale, internal/core/site, internal/surface/cli, commands/dashboard.md, docs/how-to, docs/reference, .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/glossary, .abcd/development/decisions/adrs
-- tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestPlainHTTPIsNeverAnswered, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, TestSummaryShowsWaitingNowNextInPlainWords, TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped, TestBriefChapterPageHeading, TestBriefCitationCounts, TestNoteReattaches, TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTLS, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime, TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the surface parity test; dated receipts in the local tier; docs-lint and record-lint clean
+- tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestPlainHTTPIsNeverAnswered, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, TestSummaryShowsWaitingNowNextInPlainWords, TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped, TestBriefChapterPageHeading, TestBriefCitationCounts, TestNoteReattaches, TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime, TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the surface parity test; dated receipts in the local tier; docs-lint and record-lint clean
 
 ## Steps
 
@@ -589,7 +599,7 @@ rather than adding to them.
    - criteria: P5, P7 (the date), T5, T6, T7
    - security review: required before landing (the only writes, and text from the network stored and drawn)
    - packages: internal/core/dashboard, internal/surface/dashboard
-   - tests: TestNoteReattaches (position, exact words, similar words, orphan, as a table), TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTLS, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, a note holding markup drawn as text
+   - tests: TestNoteReattaches (position, exact words, similar words, orphan, as a table), TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, a note holding markup drawn as text
 5. The handback: the session greeting, the board row, review and confirm
    - criteria: P6, P7 (the review)
    - security review: required before landing (the session channel, network-written text reaching a session, and the one verb that edits the brief)

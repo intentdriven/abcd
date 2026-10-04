@@ -54,6 +54,7 @@ Typed links: builds on itd-2610031214560142 (the board: the same picture, from t
 20. 2026-10-04, the facilitator (decided, not asked: a new capability, nothing removed): impact additive.
 21. 2026-10-04, the product thinker wearing the facilitator's hat, told by the spec writer that Tailscale Serve hides which device connects, so the identity check cannot be met behind it, and asked for the route (listen on the computer's own Tailscale addresses with Tailscale's certificate; embed Tailscale as its own device, a new dependency; keep Serve and trust its header; decide later): the computer's own Tailscale addresses. The first technical check is reworded to it, and no new dependency is added.
 22. 2026-10-04, the facilitator (decided, not asked: a rule is in force when the code that enforces it lands): adr-2610032150581128 is accepted in the change that lands the spec's step 1, with brief invariant 7's inbound clause.
+23. 2026-10-04, the product thinker, asked to explain and decide now, told that a certificate (the browser's padlock) publishes the computer's Tailscale name in a public register for good while Tailscale already encrypts the connection without one, and asked which for the first version (no certificate; certificate after renaming the computer; certificate as is; decide later): no certificate. The first and fifth technical checks are reworded to it; the cost accepted is the browser's "Not secure" label and the older form of cross-origin protection. A certificate stays possible later, with consent to the publication.
 
 ## Mechanism
 
@@ -80,11 +81,11 @@ _The product thinker's checks, accepted one at a time on 2026-10-04:_
 
 _Technical checks, accepted as one list on 2026-10-04 (facilitator's hat):_
 
-- Given the dashboard runs, when its listeners are enumerated, then it listens on this computer's own Tailscale addresses only, over HTTPS with Tailscale's certificate, never through Serve or Funnel, and a test proves one package alone opens a listener.
+- Given the dashboard runs, when its listeners are enumerated, then it listens on this computer's own Tailscale addresses only, never through Serve or Funnel, and requests no certificate, and a test proves one package alone opens a listener.
 - Given a request arrives through Tailscale, when the dashboard decides who it is from, then it asks Tailscale's own lookup of the connecting device and never trusts a header a local program could write.
 - Given any request, when it is served, then only expected host names are answered, server timeouts and size caps apply, every viewer shares one snapshot of the project, and live-update connections are capped.
 - Given any page, when it is drawn, then it comes from the record site's one renderer with records looked up by id, no file is served from a requested path, the content-security policy is self only with no framing, and a test proves nothing is loaded from off the host.
-- Given a note or a "Still right" tap, when it is written, then it is accepted only over HTTPS with cross-origin protection.
+- Given a note or a "Still right" tap, when it is written, then it is accepted only from a device on the person's Tailscale that the dashboard let in, with cross-origin protection.
 - Given a note, when it is stored, then it is anchored by quote, offsets and commit, and a note whose sentence is gone is kept as an orphan.
 - Given notes and stamps, when they are stored, then they live in the checkout's local tier until reviewed.
 
