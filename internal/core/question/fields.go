@@ -16,6 +16,10 @@ type Tab struct {
 	Header  string   // the chip: whom the question is for and which it is
 	Text    string   // the material, the Now: and Change later: lines, then the question
 	Options []Choice // the answers, the decide-later option last
+	// Typed is the prompt of the question's typed part, taken in the host's
+	// free-text row: it is no option the host lists, and the limits count it
+	// as one toward their floor. The host's own input carries none.
+	Typed string
 }
 
 // Choice is one option of a question, as the host shows it.

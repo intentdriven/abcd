@@ -68,9 +68,8 @@ func TestReadHiddenReadsWithoutEcho(t *testing.T) {
 		if after := attrs(t, p.Terminal); !ptytest.Same(after, before) {
 			t.Errorf("enter %q: the read left %+v, want %+v", enter, after, before)
 		}
-		time.Sleep(50 * time.Millisecond)
-		if strings.Contains(p.Output(), "hidden-0123") {
-			t.Errorf("enter %q: the key was drawn on the terminal: %q", enter, p.Output())
+		if out := p.Settled(t, 200*time.Millisecond); strings.Contains(out, "hidden-0123") {
+			t.Errorf("enter %q: the key was drawn on the terminal: %q", enter, out)
 		}
 	}
 }
