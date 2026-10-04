@@ -18,7 +18,7 @@ production_mode: hand-written
 
 > A product thinker reaches abcd's dashboard from anywhere, away from their home network, through their own private Tailscale network, seeing the same page they see at home, open only to the people they let in.
 
-_Proposed by the facilitator on filing (2026-10-03): the product thinker's request named "Tailscale network later, from anywhere in the future", filed as its own later draft at the routing they confirmed; to be confirmed at its own planning interview._
+_Proposed by the facilitator on filing (2026-10-03): the product thinker's request named "Tailscale network later, from anywhere in the future", filed as its own draft at the routing they confirmed. At the dashboard's interview (itd-2610032150577708 decision 3) the product thinker chose both ways in from the start, so this draft is planned with it._
 
 ## Why This Matters
 

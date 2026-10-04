@@ -33,6 +33,7 @@ Typed links: builds on itd-2610031214560142 (the board: the same picture, from t
 
 1. 2026-10-03, the product thinker, confirming the routing (itd-84, hand-run): split. This draft is the dashboard on the home network; who may open it and what it may change is a standing rule (adr-2610032150581128, proposed); reach from anywhere through Tailscale is a later draft (itd-2610032150580455).
 2. 2026-10-03, the product thinker, asked how the dashboard relates to itd-139 (a readable static site of the record for a team; keep both; the dashboard replaces it; decide later): the dashboard replaces it. The product thinker accepted the cost shown: no published site for a team.
+3. 2026-10-03, the product thinker, asked where the dashboard is reachable in its first version (home network first; Tailscale only; both from the start; decide later), with the cost of each shown (a home-network page is only as private as the Wi-Fi; Tailscale needs an app on each device; both is the biggest first version): both from the start. Reach through Tailscale (itd-2610032150580455) is therefore part of the first version, planned and built with this draft rather than later.
 
 ## Mechanism
 
