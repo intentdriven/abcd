@@ -236,14 +236,18 @@ var (
 // so a second copy of the admission, the group kill and the bounds is never
 // written. Zero output bounds take a harness's own.
 type Command struct {
-	// Name is the program's fixed name, looked up on PATH.
+	// Name is the program's fixed name, looked up on PATH; a name carrying a
+	// path separator is refused, so no caller can point Exec at a file.
 	Name string
 	// Args is the argument vector, never a shell line.
 	Args []string
-	// Dir is the working directory the program runs in.
+	// Dir is the working directory the program runs in; empty runs it at the
+	// file-system root, never in the caller's directory, which for abcd is
+	// usually a project whose settings a vendor binary must not read.
 	Dir string
 	// Guards are the folders a program resolving inside is refused from,
-	// lexically or through a link: repository content is never run.
+	// lexically or through a link: repository content is never run. A caller
+	// running in or for a project passes it here; Exec cannot know it.
 	Guards []string
 	// Timeout bounds the run; past it the program's group is killed. A
 	// command without one is never run.
@@ -274,11 +278,18 @@ func Exec(ctx context.Context, c Command) (Output, error) {
 	if c.Timeout <= 0 {
 		return Output{}, fail(c.Name, ReasonFailed, "%s was given no time bound, so it is never run", c.Name)
 	}
+	if c.Name == "" || filepath.Base(c.Name) != c.Name {
+		return Output{}, failAt(ErrRefused, c.Name, ReasonAbsent, "%s is not a fixed program name looked up on PATH, so it is never run", c.Name)
+	}
+	dir := c.Dir
+	if dir == "" {
+		dir = string(filepath.Separator)
+	}
 	bin, err := l.admit(c.Name, c.Name, c.Guards...)
 	if err != nil {
 		return Output{}, err
 	}
-	res, err := l.run(ctx, c.Name, bin, c.Args, nil, c.Dir, c.Timeout)
+	res, err := l.run(ctx, c.Name, bin, c.Args, nil, dir, c.Timeout)
 	return Output{Stdout: res.stdout, Stderr: res.stderr}, err
 }
 

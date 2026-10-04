@@ -97,3 +97,33 @@ func TestExecNamesTheStageThatFailed(t *testing.T) {
 		}
 	})
 }
+
+// TestExecTakesOnlyAFixedName: Name is a program's fixed name looked up on
+// PATH, so a name carrying a separator is refused before anything resolves
+// it, even when it names an admissible file directly.
+func TestExecTakesOnlyAFixedName(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	putOnPath(t, bin, "vendortool", "true")
+	for _, name := range []string{filepath.Join(bin, "vendortool"), "bin/vendortool"} {
+		_, err := Exec(context.Background(), Command{Name: name, Dir: "/", Timeout: time.Second})
+		if !errors.Is(err, ErrRefused) {
+			t.Errorf("Exec(%q) err = %v, want ErrRefused", name, err)
+		}
+	}
+}
+
+// TestExecRunsAtTheRootWithoutADir: a command naming no directory runs at the
+// file-system root, never in the caller's working directory, which for abcd
+// is usually the project a vendor binary must not read settings from.
+func TestExecRunsAtTheRootWithoutADir(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	putOnPath(t, bin, "vendortool", "pwd")
+	t.Chdir(t.TempDir())
+	out, err := Exec(context.Background(), Command{Name: "vendortool", Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if got := string(out.Stdout); got != "/\n" {
+		t.Errorf("ran in %q, want the root", got)
+	}
+}
