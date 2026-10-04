@@ -558,10 +558,14 @@ with a preview and never with an option marked. A question with a typed part
 typing; where it lists too few options for the tool, `tool` carries one more,
 "Type my own answer", which only points at that row. Then pass the answer
 back, the turn's `resume` member unchanged on stdin and the answer as the tool
-returned it (an option's label, or the text typed):
+returned it (an option's label, or the text typed). The `resume` member goes
+in a quoted heredoc, never as an argument: it carries every model the
+service listed, up to 5,000 names, which is more than one argument may hold.
 
 ```bash
-printf '%s' '<resume JSON>' | "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect --guide --resume - --answer '<answer>' --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect --guide --resume - --answer '<answer>' --json <<'RESUME'
+<resume JSON>
+RESUME
 ```
 
 Do no other bookkeeping: the guide replays every answer from the first

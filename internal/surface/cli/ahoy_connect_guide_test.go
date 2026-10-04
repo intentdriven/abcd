@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -384,4 +385,31 @@ func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T) {
 			t.Fatalf("the canary is in %v, want only %s", found, store)
 		}
 	})
+}
+
+// TestGuideCarriesAFullListThroughStdin: a service listing 5,000 ids, the
+// most a look-up keeps, is carried whole in the resume object, which the page
+// passes back on stdin (--resume -), never as one argument: a turn's JSON is
+// then larger than one argument may be on linux (MAX_ARG_STRLEN, 128 KiB).
+// The guide takes the last id listed and ends with the command.
+func TestGuideCarriesAFullListThroughStdin(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	ids := make([]string, 5000)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("vendor-%d/a-reasonably-long-model-name-%04d", i%7, i)
+	}
+	svc := newKeylessService(t, ids)
+	raw, turns, _, _ := guideTurns(t, []string{"--base-url", svc.base()}, "lookup", ids[4999], "none")
+	if len(raw[1]) <= 128<<10 {
+		t.Fatalf("a turn carrying 5,000 ids is %d bytes; the case needs one over 128 KiB", len(raw[1]))
+	}
+	t.Logf("one turn carrying 5,000 ids is %d bytes of JSON", len(raw[1]))
+	done := turns[len(turns)-1].Done
+	if done == nil || !strings.Contains(done.Command, "--model "+ids[4999]) {
+		t.Fatalf("the guide over 5,000 ids ends with %+v", turns[len(turns)-1])
+	}
+	if got := svc.requests(); len(got) != 1 {
+		t.Fatalf("the guide sent %q; want the one look-up", got)
+	}
 }
