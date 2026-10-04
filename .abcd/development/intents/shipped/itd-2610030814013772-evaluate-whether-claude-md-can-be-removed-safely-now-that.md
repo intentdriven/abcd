@@ -17,15 +17,9 @@ impact: breaking
 
 ## Press Release
 
-> When a person sets up a project with abcd, or works in abcd's own, there is one conventions file to read and keep: AGENTS.md. abcd writes no separate copy of it for Claude Code or for any other tool. If the project already holds a tool's own file with the owner's words in it, abcd leaves that file exactly as it is and warns, loudly, that AGENTS.md stays hidden until the owner moves those words across and removes the file; a file that only repeats or links to AGENTS.md is offered for removal, and goes only on a yes. Setup also warns when an older Claude Code, or a CLAUDE.md in a folder above the project, would hide AGENTS.md. A project set up earlier with a saved choice of CLAUDE.md stops at setup, and abcd explains the one setting to change.
+> When a person sets up a project with abcd, or works in abcd's own, there is one conventions file to read and keep: AGENTS.md. abcd writes no separate copy of it for any tool. If the project already holds a tool's own file with the owner's words in it, abcd leaves that file exactly as it is and warns, loudly, that AGENTS.md stays hidden until the owner moves those words across and removes the file; a file that only repeats or links to AGENTS.md is offered for removal, and goes only on a yes. Setup also warns when an older version of your agent tool, or a CLAUDE.md in a folder above the project, would hide AGENTS.md. A project set up earlier with a saved choice of CLAUDE.md stops at setup, and abcd explains the one setting to change.
 
 _Proposed by the facilitator from decisions 1 to 8; confirmed as written by the product thinker at the planning interview, 2026-10-03 (decision 9)._
-
-Previous wording (superseded at the interview):
-
-> A project abcd looks after carries one conventions file, AGENTS.md, and nothing else of its kind: Claude Code reads it directly, so there is no CLAUDE.md copy to fall out of step. Setting up a project writes AGENTS.md only, and a project that already has a CLAUDE.md is offered its retirement, with nothing lost from what Claude Code loads. abcd's own project does the same.
-
-_Proposed by the facilitator on filing (2026-10-03) from the product thinker's request "retire CLAUDE.md, use AGENTS.md instead in Claude Code"; to be confirmed or rewritten at the planning interview. Its reach ("a project abcd looks after") and "nothing else of its kind" both read as answers to questions the interview has yet to rule on (Q1, Q2 and Q5 below)._
 
 ## Why This Matters
 
@@ -124,7 +118,19 @@ Proposed acceptance criteria (agent-seeded, unconfirmed; each presupposes the po
 
 The draft's title and its file name disagree (the slug is the issue's, reused by contract); the interview should know.
 
+## Superseded press release wording
+
+Kept as history, outside the press release, so the published page renders only the confirmed text.
+
+Previous wording (superseded at the interview):
+
+> A project abcd looks after carries one conventions file, AGENTS.md, and nothing else of its kind: Claude Code reads it directly, so there is no CLAUDE.md copy to fall out of step. Setting up a project writes AGENTS.md only, and a project that already has a CLAUDE.md is offered its retirement, with nothing lost from what Claude Code loads. abcd's own project does the same.
+
+_Proposed by the facilitator on filing (2026-10-03) from the product thinker's request "retire CLAUDE.md, use AGENTS.md instead in Claude Code"; to be confirmed or rewritten at the planning interview. Its reach ("a project abcd looks after") and "nothing else of its kind" both read as answers to questions the interview has yet to rule on (Q1, Q2 and Q5 below)._
+
 ## Audit Notes
+
+Press release reworded 2026-10-04 under the product thinker's answer "Use the reworded text" (asked because the fidelity audit made this press release the site's front-page hero, and the site gate refuses a page naming a specific agent tool): "for Claude Code or for any other tool" became "for any tool", and "an older Claude Code" became "an older version of your agent tool"; every other word is as confirmed at the planning interview. The superseded filing-time wording moved out of the press release to its own section, unchanged.
 
 A8 is evidenced so far by a scripted receipt (step 1: `claude -p` at the branch tip, dated, Claude Code version named, canary answered); the receipt from a person's own fresh session that the spec's Approach requires was requested on 2026-10-04 and is outstanding.
 
