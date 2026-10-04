@@ -7,10 +7,10 @@ package interview
 // state, after the dispatch it reads it again, and a path whose state moved
 // that the interview did not grant stops the interview, naming each.
 //
-// The state is git's own listing of what differs from HEAD (`git status
-// --porcelain=v1 -z --untracked-files=all`, run through gitutil's isolated
-// environment, as the reading assembler's dirty-path gate and the capture
-// ledger's uncommitted marker read it), each listed path paired with its
+// The state is git's own listing of what differs from HEAD (gitutil.Status,
+// the one reader of `git status --porcelain=v1 -z --untracked-files=all`, as
+// the reading assembler's dirty-path gate, the capture ledger's uncommitted
+// marker and the peers listing read it), each listed path paired with its
 // content's hash and mode, so a second edit to a file already changed before
 // the dispatch moves its state too. Paths are relative to the repository's
 // root; the local tier, where abcd keeps the turns and the records, is not
@@ -53,7 +53,7 @@ func (e *UnexpectedChangesError) Error() string {
 
 // readTree reads the working tree's state under repo.
 func readTree(repo string) (treeState, error) {
-	out, err := gitutil.RunCapped(repo, maxStatusBytes, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	entries, err := gitutil.Status(repo, maxStatusBytes, gitutil.StatusOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("interview: the working tree's state cannot be read, so the role's changes cannot be held to its contract: %w", err)
 	}
@@ -74,23 +74,14 @@ func readTree(repo string) (treeState, error) {
 		st[p] = status + " " + h
 		return nil
 	}
-	records := strings.Split(out, "\x00")
-	for i := 0; i < len(records); i++ {
-		rec := records[i]
-		if len(rec) < 4 {
-			continue
-		}
-		status := rec[:2]
-		if err := add(status, rec[3:]); err != nil {
+	for _, e := range entries {
+		if err := add(e.XY, e.Path); err != nil {
 			return nil, err
 		}
-		// A rename or copy carries its source as the following record.
-		if status[0] == 'R' || status[0] == 'C' || status[1] == 'R' || status[1] == 'C' {
-			i++
-			if i < len(records) && records[i] != "" {
-				if err := add(status+"<", records[i]); err != nil {
-					return nil, err
-				}
+		// A rename's or copy's source is watched with it.
+		if e.Orig != "" {
+			if err := add(e.XY+"<", e.Orig); err != nil {
+				return nil, err
 			}
 		}
 	}

@@ -994,11 +994,11 @@ func resolveTarget(repoRoot, target string) (string, error) {
 // families decide which run it collects; an uncommitted change to any of them
 // reshapes the assembly exactly as an uncommitted change to an item does.
 func refuseDirtyIncludedPaths(repoRoot string, position Position, cands []candidate) error {
-	// -uall, not the default -unormal: git collapses an untracked DIRECTORY to a
-	// single entry, and an admitted file inside a newly created directory would
+	// gitutil.Status lists untracked files one by one (-uall), not under the
+	// default -unormal: git collapses an untracked DIRECTORY to a single entry, and an admitted file inside a newly created directory would
 	// then never be named — the prefix check below can only test paths the
 	// assembly already holds, and an untracked file is not one of them.
-	out, err := gitutil.RunCapped(repoRoot, 8<<20, "status", "--porcelain=v1", "-z", "-uall")
+	entries, err := gitutil.Status(repoRoot, 8<<20, gitutil.StatusOptions{})
 	if err != nil {
 		return fmt.Errorf("reading: reading the working-tree status: %w", err)
 	}
@@ -1018,7 +1018,7 @@ func refuseDirtyIncludedPaths(repoRoot string, position Position, cands []candid
 	// reason and by the same argument (itd-199).
 	included[PresetConfigPath] = true
 	var dirty []string
-	for _, entry := range dirtyPaths(out) {
+	for _, entry := range dirtyPaths(entries) {
 		// The comparative derivation reads the two FATE families off the
 		// filesystem — capture.ItemFate walks the dispositions and the admissions
 		// directories to decide whether a widening run is still pre-admission
@@ -1085,33 +1085,16 @@ func underFateFamily(entry string) bool {
 	return false
 }
 
-// dirtyPaths parses `git status --porcelain=v1 -z` into the paths it reports.
-//
-// The -z form is what makes this parseable: it emits each entry NUL-terminated
-// and never quotes or escapes a path, so a filename holding a space, a quote or
-// a newline arrives verbatim and core.quotepath cannot change the format under
-// the parser. A rename or copy entry carries its source as the following
-// record, which is consumed with it.
-func dirtyPaths(out string) []string {
-	records := strings.Split(out, "\x00")
+// dirtyPaths is every path a status listing reports, a rename's or copy's
+// source with its destination: the source is the path that was in the target
+// commit, so dropping it loses exactly the file whose disappearance from the
+// include set this gate exists to catch.
+func dirtyPaths(entries []gitutil.StatusEntry) []string {
 	var paths []string
-	for i := 0; i < len(records); i++ {
-		rec := records[i]
-		if len(rec) < 4 {
-			continue
-		}
-		status := rec[:2]
-		paths = append(paths, rec[3:])
-		// A rename or copy carries its SOURCE as the following record, and either
-		// status column can declare one: `R ` is a staged rename, ` R` a worktree
-		// one. The source is the path that was in the target commit, so dropping
-		// it loses exactly the file whose disappearance from the include set this
-		// gate exists to catch.
-		if status[0] == 'R' || status[0] == 'C' || status[1] == 'R' || status[1] == 'C' {
-			i++
-			if i < len(records) && records[i] != "" {
-				paths = append(paths, records[i])
-			}
+	for _, e := range entries {
+		paths = append(paths, e.Path)
+		if e.Orig != "" {
+			paths = append(paths, e.Orig)
 		}
 	}
 	return paths
