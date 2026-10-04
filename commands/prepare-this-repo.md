@@ -93,8 +93,19 @@ Then supplement with the judgement the binary does not make:
 
 - **Existing structure (mandatory):** any convention layer already present —
   a legacy `.work/` + `.work.local/` at the root, an existing `AGENTS.md`
-  router, CLAUDE.md/GEMINI.md bridges, pre-commit config — and where each
-  piece maps in the three-tier layout.
+  router, pre-commit config — and where each piece maps in the three-tier
+  layout.
+- **Tools' own conventions files:** a file at the root that an agent tool
+  reads in place of `AGENTS.md` (`CLAUDE.md`, `.claude/CLAUDE.md`,
+  `GEMINI.md`, `.rules`, `.cursorrules`, `.github/copilot-instructions.md`),
+  named as setup names it. One that holds the owner's own words hides
+  `AGENTS.md` from that tool; it is reported, with the way to end it (move
+  those words into `AGENTS.md` and remove the file), and never edited, moved
+  or removed. One that only repeats `AGENTS.md` (a link to it, that link saved
+  as a plain file, an exact copy, a single `@AGENTS.md` line, or nothing once
+  abcd's block is taken out) is reported as one setup offers to retire: point
+  the technical facilitator at that offer, which `ahoy install` asks at a
+  terminal, and leave the file in place here.
 - **Principles:** which abcd principles the repo follows, violates, or has no
   opinion on — cite files as evidence.
 - **Privacy beyond absolute paths:** real hostnames/usernames/emails, private
@@ -120,7 +131,11 @@ target's `.abcd/.work.local/scratch/` (create the directory via
    delete-and-recreate. Hard rule: never leave both `.work/` and `.abcd/work/`
    behind — complete the migration or do not start it.
 3. **AGENTS.md.** Merge — never overwrite — into the repo's `AGENTS.md`
-   (create it if absent, with `CLAUDE.md` as a symlink to it):
+   (create it if absent). It is the one conventions file this step writes: no
+   other tool's conventions file is made, as a link or as a copy, so every
+   tool's instructions live in `AGENTS.md` alone. A tool that reads
+   `AGENTS.md` only once its own settings name it is configured by the
+   technical facilitator in those settings, never by a file this step adds.
    - Repo facts: what the repo is, exact build/test/lint commands (verified by
      running them, including how to run a single test), boundaries, definition
      of done. The done-test: a fresh agent session must be able to build and
