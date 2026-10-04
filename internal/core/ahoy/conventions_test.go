@@ -677,3 +677,71 @@ func TestUpToDateInstallCarriesTheOwnersWarning(t *testing.T) {
 		t.Errorf("warnings = %q, want the owner's-file warning", res.Warnings)
 	}
 }
+
+// TestDanglingLinkToAgentsRepeats: before the root AGENTS.md exists, a link
+// that names it in the plain spelling repeats AGENTS.md, so it is never warned
+// as holding the owner's words (it holds none, and once AGENTS.md is written
+// the tool reads AGENTS.md through it). The first install, which writes
+// AGENTS.md before it asks, offers it and retires it on the answer.
+func TestDanglingLinkToAgentsRepeats(t *testing.T) {
+	for _, c := range []struct {
+		name, rel, target string
+		class             toolFileClass
+		how               string
+	}{
+		{"a link at the root", "CLAUDE.md", "AGENTS.md", toolFileRepeats, repeatsLink},
+		{"a link in a folder", ".claude/CLAUDE.md", "../AGENTS.md", toolFileRepeats, repeatsLink},
+		{"a link stepping into a folder and back", "CLAUDE.md", "docs/../AGENTS.md", toolFileOwners, ""},
+		{"a link to another absent file", "GEMINI.md", "README.md", toolFileOwners, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.Mkdir(filepath.Join(root, "docs"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			linkFixture(t, root, c.rel, c.target)
+			if class, how := classifyToolFile(root, c.rel); class != c.class || how != c.how {
+				t.Errorf("classifyToolFile(%s -> %s) = (%v, %q), want (%v, %q)", c.rel, c.target, class, how, c.class, c.how)
+			}
+		})
+	}
+
+	t.Run("detection", func(t *testing.T) {
+		root := t.TempDir()
+		linkFixture(t, root, "CLAUDE.md", "AGENTS.md")
+		gaps := detectToolConventionsFiles(root)
+		if len(gaps) != 1 || gaps[0].ID != ConventionsRetireGapID || gaps[0].Title != "CLAUDE.md only repeats AGENTS.md" {
+			t.Errorf("want only the retirement offer for CLAUDE.md, got %+v", gaps)
+		}
+	})
+
+	t.Run("first install", func(t *testing.T) {
+		setupHermetic(t)
+		repo := t.TempDir()
+		if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		linkFixture(t, repo, "CLAUDE.md", "AGENTS.md")
+		p := conventionsPrompter("retire")
+		opts := installOpts()
+		opts.Yes = false
+		res, err := Install(repo, opts, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range res.Warnings {
+			if strings.Contains(w, "holds your own words") {
+				t.Errorf("a link to AGENTS.md is warned as the owner's words: %q", w)
+			}
+		}
+		if asked := retireAsked(p.asked); len(asked) != 1 || asked[0] != retirePromptKey("CLAUDE.md", repeatsLink) {
+			t.Errorf("asked %q, want the one retirement question for CLAUDE.md", asked)
+		}
+		if _, err := os.Lstat(filepath.Join(repo, "CLAUDE.md")); !os.IsNotExist(err) {
+			t.Errorf("CLAUDE.md, answered retire, was not removed: %v", err)
+		}
+		if !hasBlock(t, filepath.Join(repo, "AGENTS.md")) {
+			t.Error("AGENTS.md was not written with abcd's block")
+		}
+	})
+}

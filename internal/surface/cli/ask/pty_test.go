@@ -186,9 +186,9 @@ func TestLongListRestoresTerminalOnInterrupt(t *testing.T) {
 		if !ws.Exited() || ws.ExitStatus() == 0 {
 			t.Errorf("wait status %v, want a failed exit", ws)
 		}
-		if out := c.pty.Output(); !strings.Contains(out, "forced inside the answer loop") {
-			t.Errorf("the panic did not reach the terminal:\n%q", out)
-		}
+		// The child has exited, but the drain may not have read its last
+		// bytes yet: wait for the message rather than reading once.
+		c.pty.WaitFor(t, 0, "forced inside the answer loop", wait)
 		c.restored(t, "after the panic")
 	})
 	t.Run("ctrl-z restores, and SIGCONT re-enters and redraws", func(t *testing.T) {
