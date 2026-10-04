@@ -83,11 +83,16 @@ func TestMachineLocalRefsCatchesAReintroduction(t *testing.T) {
 }
 
 // creatingVerb matches the words an instruction uses to make a file: create,
-// scaffold, symlink, `ln -s`, link or copy it, mirror, write. It is blunt on
+// scaffold, symlink, link or copy it, link one to another, keep a copy of one
+// as another, mirror, write, make, add, put, place, generate, produce, touch,
+// set up, save, duplicate, and the commands `ln` and `cp`. It is blunt on
 // purpose, as machineLocalRefs is: the page names a tool's own file only to
 // say what setup finds, so no sentence on it needs to pair one with a making
-// verb, and the page is worded to keep it so.
-var creatingVerb = regexp.MustCompile(`(?i)\b(creat(e|es|ed|ing)|scaffold(s|ed|ing)?|symlink(s|ed|ing)?|ln\s+-s|link(s|ed|ing)?\s+(it|them)|as\s+an?\s+(sym)?link|cop(y|ies|ied|ying)\s+(it|them|AGENTS)|mirror(s|ed|ing)?|writ(e|es|ten|ing))\b`)
+// verb, and the page is worded to keep it so. "Place" counts only with an
+// object after it, so the idiom "in place of" is not read as one. The class
+// is a tripwire for the ordinary ways of saying "make this file", proven
+// against the rewordings below; it is not a reading of the page's meaning.
+var creatingVerb = regexp.MustCompile(`(?i)\b(?:(creat(e|es|ed|ing)|scaffold(s|ed|ing)?|symlink(s|ed|ing)?|link(s|ed|ing)?\s+(it|them)|as\s+an?\s+(sym)?link|link(s|ed|ing)?\s+\S+\s+to|cop(y|ies|ied|ying)\s+(it|them|AGENTS|of\s+\S+\s+as)|mirror(s|ed|ing)?|writ(e|es|ten|ing)|mak(e|es|ing)|made|add(s|ed|ing)?|put(s|ting)?|plac(e|es|ed|ing)\s+(a|an|the|it|them)|generat(e|es|ed|ing)|produc(e|es|ed|ing)|touch(es|ed|ing)?|set(s|ting)?\s+up|sav(e|es|ed|ing)|duplicat(e|es|ed|ing))\b|(ln|cp)\s)`)
 
 // sentenceBreak splits a page into sentences and list items: a full stop,
 // question or exclamation mark before whitespace, a blank line, or the start
@@ -129,6 +134,20 @@ func TestPrepareThisRepoScaffoldsNoToolConventionsFile(t *testing.T) {
 		"Copy it to `.github/copilot-instructions.md` as well.\n",
 		"Scaffold `.claude/CLAUDE.md` beside it.\n",
 		"Write a `.cursorrules` that names AGENTS.md.\n",
+		// The rewordings review-agentsStep6 fed the first, narrower verb class,
+		// which caught none of them.
+		"Add a `CLAUDE.md` that points at it.\n",
+		"Make `GEMINI.md` a hard link: `ln AGENTS.md GEMINI.md`\n",
+		"Put a `.cursorrules` beside it.\n",
+		"Generate `.github/copilot-instructions.md` from it.\n",
+		"Keep a copy of AGENTS.md as `CLAUDE.md`.\n",
+		"Link `CLAUDE.md` to AGENTS.md.\n",
+		"Run `cp AGENTS.md CLAUDE.md` once.\n",
+		"Place a `.rules` file at the root.\n",
+		"Touch `.claude/CLAUDE.md` so Claude Code finds it.\n",
+		"Set up `GEMINI.md` for Gemini CLI.\n",
+		"Save it as `CLAUDE.md` too.\n",
+		"Duplicate it as `.cursorrules`.\n",
 	} {
 		if len(toolFileInstructions(bad)) == 0 {
 			t.Errorf("the scan missed an instruction making a tool's own file in:\n%s", bad)
@@ -138,6 +157,7 @@ func TestPrepareThisRepoScaffoldsNoToolConventionsFile(t *testing.T) {
 		"Create it if absent. No other tool's conventions file is made, as a link or a copy.\n",
 		"A `CLAUDE.md` that only repeats AGENTS.md (a link to it, or a copy of it) is named; setup offers to retire it.\n",
 		"Read `.abcd/rules.json` and `CLAUDE.local.md`; create `.abcd/work/`.\n",
+		"A file an agent tool reads in place of `AGENTS.md` (`CLAUDE.md`, `GEMINI.md`) is named as setup names it.\n",
 	} {
 		if hits := toolFileInstructions(good); len(hits) > 0 {
 			t.Errorf("the scan flags a sentence that makes no tool's file: %q", hits)
