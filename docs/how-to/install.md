@@ -338,7 +338,8 @@ only asks whether a file of that name exists: it reads nothing in it and takes
 no settings from above the repository. A settings folder it cannot search is
 passed over, and a folder it cannot look into at all ends the look. The version check runs the agent tool's own version command once, with a
 short time limit, and says nothing when the tool is absent, does not answer, or
-prints no version.
+prints no version. It never runs a command it cannot trust: one found inside
+the repository, or one that others can write, is passed over without a word.
 
 Outside `.abcd/`, a default adoption names abcd in exactly three committed
 files, and nowhere else:
