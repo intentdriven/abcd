@@ -99,11 +99,19 @@ func ScrubOutbound(repoRoot, text, label string) (string, []Finding, error) {
 	// a caller that posts what it could not sanitise is worse than one that
 	// refuses: the artefact is public the moment it is created.
 	for _, f := range sc.ScanText(redacted, label) {
-		if f.Severity == SeverityHardFail || IsHarnessLeakKind(f.Kind) {
+		if blocksOutbound(f) {
 			return "", findings, fmt.Errorf("outbound artefact %q still carries a %s after redaction; refusing to hand back text to post", label, f.Kind)
 		}
 	}
 	return redacted, findings, nil
+}
+
+// blocksOutbound is ScrubOutbound's stage-three bar: a finding that survived
+// redaction refuses the artefact when it is a hard_fail span, a harness leak,
+// or a token whatever its severity (IsTokenKind) — a credential rule that only
+// warns still names a key a public artefact must never carry.
+func blocksOutbound(f Finding) bool {
+	return f.Severity == SeverityHardFail || IsHarnessLeakKind(f.Kind) || IsTokenKind(f.Kind)
 }
 
 // CheckOutbound is the CHECK-direction twin of ScrubOutbound: it reports the

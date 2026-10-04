@@ -371,7 +371,7 @@ func keyLines(lines []string) map[int]bool {
 		return out
 	}
 	for _, f := range scanner.ScanText(strings.Join(lines, "\n"), scanner.Identity{}, secretPatterns(), nil, "") {
-		if strings.HasPrefix(f.Kind, "token:") {
+		if scanner.IsTokenKind(f.Kind) {
 			out[f.Line-1] = true
 		}
 	}

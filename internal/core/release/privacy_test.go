@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // TestCutRefusesAHardFailFindingInReleaseText — iss-2609290405381338. The
@@ -16,6 +18,7 @@ import (
 // matched text.
 func TestCutRefusesAHardFailFindingInReleaseText(t *testing.T) {
 	token := "ghp_" + strings.Repeat("A", 40) // FAKE GitHub PAT shape
+	plainKey := "sk-" + testsecret.Synthetic(62, 40)
 	home := filepath.Join(t.TempDir(), "zzcallerhome")
 	t.Setenv("HOME", home)
 	cases := []struct {
@@ -31,6 +34,14 @@ func TestCutRefusesAHardFailFindingInReleaseText(t *testing.T) {
 			p := goodPage()
 			p.Headlines[0].Text = "Releases carry " + token + " now."
 			return marshalPage(t, "v0.4.1", pageEntries(), p)
+		}},
+		// A plain sk- key only warns, so a hash-like string already committed
+		// cannot fail the launch scan, but it is a token: composed public text
+		// must not carry it.
+		{"a plain sk- key in a changelog line", "entries", plainKey, func(t *testing.T) []byte {
+			e := pageEntries()
+			e[2].Text = "Fixed the client that logged " + plainKey + " at start."
+			return marshalPage(t, "v0.4.1", e, goodPage())
 		}},
 		{"the caller's home in a changelog line", "entries", "zzcallerhome", func(t *testing.T) []byte {
 			e := pageEntries()

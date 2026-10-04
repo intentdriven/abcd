@@ -81,3 +81,19 @@ func TestAC_PrivacyHarnessLeakSparesProseAndExamples(t *testing.T) {
 		t.Fatalf("unexpected privacy-hygiene finding: %s:%d %s", f.File, f.Line, f.Message)
 	}
 }
+
+// TestAC_PrivacyLeavesAPlainSKKeyToTheRedactors: the plain sk- rule only warns,
+// so a hash-like string in a committed file cannot fail a gate on it. The
+// write-side sweeps and backstops treat it as the token it names whatever its
+// severity; abcd lint judges files already committed and stays out of it, bare
+// or glued behind a word character. The sample is built at runtime.
+func TestAC_PrivacyLeavesAPlainSKKeyToTheRedactors(t *testing.T) {
+	key := "sk-" + testsecret.Synthetic(63, 40)
+	res := newFixtureRepo(t).conforming().
+		file("reference/notes.md", "bare "+key+"\nglued my_"+key+"\n").
+		commit().
+		run()
+	if len(res.Findings) != 0 || res.ExitCode != 0 {
+		t.Fatalf("a committed plain sk- key failed lint (exit %d): %+v", res.ExitCode, res.Findings)
+	}
+}
