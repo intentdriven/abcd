@@ -14,7 +14,7 @@ import (
 // refusal promises (iss-2609100506263330): the refusal names the install
 // one-liner and says a re-run of `abcd ahoy install` then adopts what it
 // wrote. So the state the one-liner leaves — a regular 0755 file at
-// ~/.local/bin/abcd and a two-line ~/.abcd/path-entry naming it with its hash,
+// ~/.local/bin/abcd and a two-line ~/.abcd.noindex/path-entry naming it with its hash,
 // no plugin_root line — must be adopted in place by an install on the SAME
 // cold cache: no refusal, no remedy re-offered, the bytes untouched, nothing
 // left for the operator to do. A re-run that refused again would send the

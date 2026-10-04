@@ -20,7 +20,7 @@ import (
 const childEnv = "ABCD_ASK_PTY_CHILD"
 
 // childHomeEnv names the empty home the child reads interview.list from, so
-// the person's own ~/.abcd/config.json never decides the child's mode.
+// the person's own ~/.abcd.noindex/config.json never decides the child's mode.
 const childHomeEnv = "ABCD_ASK_PTY_HOME"
 
 func TestMain(m *testing.M) {

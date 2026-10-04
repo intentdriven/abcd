@@ -280,7 +280,7 @@ func proposalCounts(roster []string, p oracle.Table) string {
 // question names no agent (proposalCounts).
 func machineRoutingQuestion() string {
 	return "abcd proposes a model tier and fan-out bound for its " + proposalCounts(oracle.Roster(), oracle.Proposal()) +
-		". Accepting writes every row to " + abcdhome.Display("oracle-routing.json") + " to read or edit; nothing applies before. " +
+		". Accepting writes every row to " + abcdhome.Display("oracle-routing.json") + "; nothing applies before. " +
 		"A repository's table wins; a step no provider serves goes to the harness, asked for its tier. " +
 		"Declining writes nothing.\n" + oracleRoutingMachineQuestionTail
 }

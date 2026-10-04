@@ -159,7 +159,7 @@ func TestARepositoryRouteToARunnerIsSkippedAtTheFrontDoor(t *testing.T) {
 	if res.Awaiting == nil || res.Awaiting.Role != "implementer" || res.Fallback != nil {
 		t.Fatalf("the host is handed the implementer as if unrouted: %+v (fallback %+v)", res, res.Fallback)
 	}
-	for _, want := range []string{".abcd/config.json (repo layer)", "roles.implementer.runner", "skipped", "~/.abcd/config.json"} {
+	for _, want := range []string{".abcd/config.json (repo layer)", "roles.implementer.runner", "skipped", "~/.abcd.noindex/config.json"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("stderr does not name %q:\n%s", want, errOut)
 		}

@@ -17,7 +17,7 @@ import (
 // an entry the next plugin update strands. It now refuses the link form and
 // names a command the operator can run first (the README install one-liner,
 // which fetches the release binary and verifies it against the release's own
-// checksums). And a later run recognises an entry ~/.abcd/path-entry records
+// checksums). And a later run recognises an entry ~/.abcd.noindex/path-entry records
 // as abcd's even once it dangles, rather than calling it foreign, so the
 // repair every owned shape gets is offered for it too.
 
@@ -213,7 +213,7 @@ func TestRecordedDanglingEntryIsAbcdsAndRepairs(t *testing.T) {
 	}
 
 	if kind := classifyBinTarget(link, pluginRoot); kind != binTargetOwnedSymlink {
-		t.Errorf("classify = %v; a dangling entry ~/.abcd/path-entry records is abcd's own", kind)
+		t.Errorf("classify = %v; a dangling entry ~/.abcd.noindex/path-entry records is abcd's own", kind)
 	}
 	if got := ResolveUpdateTarget().Kind; got != UpdateTargetDangling {
 		t.Errorf("update target = %q, want %q: `abcd update` must route abcd's own dangling entry to its repair", got, UpdateTargetDangling)

@@ -15,7 +15,7 @@ import (
 
 // The two surfaces that must agree about one install. `ahoy` classifies the
 // PATH entry and reports whether the machine is installed; the hook shims read
-// `~/.abcd/path-entry` and decide whether to RUN that entry. A board that
+// `~/.abcd.noindex/path-entry` and decide whether to RUN that entry. A board that
 // reports healthy while every hook refuses is the worst shape this pair can
 // take, because neither surface says anything about the other: the user did
 // what the install guide told them to and gets a session with no rules loader,

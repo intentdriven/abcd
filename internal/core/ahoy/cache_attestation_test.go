@@ -381,7 +381,7 @@ func TestInstallRefusesPairFlippedAfterBinding(t *testing.T) {
 }
 
 // TestCacheAttestationIsIgnoredUnlessThisSessionOwnsIt: the attestation is a
-// home-scoped DECLARATION, exactly as ~/.abcd/path-entry is, and it decides the
+// home-scoped DECLARATION, exactly as ~/.abcd.noindex/path-entry is, and it decides the
 // same thing one step earlier — which bytes become the binary the hook shims
 // execute. So it is read behind the same three-part guard
 // (fsutil.ReadDeclaration): a regular file, not writable by group or other,

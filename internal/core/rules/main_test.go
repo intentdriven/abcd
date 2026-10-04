@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestMain keeps the developer's own ~/.abcd/rules.json out of every test that
+// TestMain keeps the developer's own ~/.abcd.noindex/rules.json out of every test that
 // did not lay one out: while HOME is still the process's own, the user layer
 // reads as absent, and a test that sets HOME to a fixture gets that fixture's
 // user layer (spc-23). Without it, a machine carrying a user layer would change

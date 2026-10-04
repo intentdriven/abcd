@@ -192,7 +192,10 @@ func TestSessionStartIsOneChainedCommand(t *testing.T) {
 			t.Errorf("the single SessionStart command must run %q; command = %q", want, command)
 		}
 	}
-	if strings.Index(command, "hooks/bootstrap.sh") > strings.Index(command, "hook prompt-router-reset") {
+	// The ordinary path's calls are the last ones: the stop for an old ~/.abcd,
+	// ahead of the bootstrap, hands the binary the stop without provisioning
+	// (TestHookWrapperStopsBeforeProvisioning holds that path).
+	if strings.Index(command, "hooks/bootstrap.sh") > strings.LastIndex(command, "hook prompt-router-reset") {
 		t.Error("the bootstrap must be invoked before the binary-backed calls in the chained command")
 	}
 	if _, err := exec.LookPath("sh"); err != nil {

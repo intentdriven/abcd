@@ -24,7 +24,7 @@ const prepassInvariants = `# Invariants
 1. **Transparent prompts** — every prompt shows current state and how to change it later.
 
 2. **Config stays home** — configuration is never written outside the
-   machine-scoped home under ~/.abcd/, whatever the caller asks.
+   machine-scoped home under ~/.abcd.noindex/, whatever the caller asks.
 
 3. **Remotes are read freely** — a remote is written only on explicit request.
 `

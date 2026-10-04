@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/term"
 )
@@ -54,24 +55,24 @@ func TestNumberedReaderIsSelected(t *testing.T) {
 	}
 }
 
-// roots lays a home whose ~/.abcd/config.json holds machine (none when
+// roots lays a home whose ~/.abcd.noindex/config.json holds machine (none when
 // empty), and a repository whose .abcd/config.json holds repo (none when
 // empty), for Put to read interview.list from.
 func roots(t *testing.T, machine, repo string) layered.Roots {
 	t.Helper()
 	base := t.TempDir()
 	r := layered.Roots{Repo: filepath.Join(base, "repo"), Home: filepath.Join(base, "hm-e8term2")}
-	for _, f := range []struct{ dir, rel, body string }{
-		{r.Home, ".abcd/config.json", machine},
-		{r.Repo, ".abcd/config.json", repo},
+	for _, f := range []struct{ path, body string }{
+		{abcdhome.Path(r.Home, "config.json"), machine},
+		{filepath.Join(r.Repo, ".abcd", "config.json"), repo},
 	} {
-		if err := os.MkdirAll(filepath.Join(f.dir, ".abcd"), 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Dir(f.path), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		if f.body == "" {
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(f.dir, f.rel), []byte(f.body), 0o600); err != nil {
+		if err := os.WriteFile(f.path, []byte(f.body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -235,8 +236,8 @@ func TestPutReadsTheListSetting(t *testing.T) {
 		{"a repository's misspelt key keeps the machine's arrows", "", `{"interview": {"lst": "numbered"}}`, "interview.lst", true},
 		{"a repository's malformed file keeps the machine's arrows", "", `{"interview": `, ".abcd/config.json", true},
 		{"a repository's arrows keeps the machine's numbered", numberedSetting, `{"interview": {"list": "arrows"}}`, "interview.list", false},
-		{"a malformed machine file gives numbered", `{"interview": `, "", "~/.abcd/config.json", false},
-		{"a machine value outside the two gives numbered", `{"interview": {"list": "tabs"}}`, "", "~/.abcd/config.json", false},
+		{"a malformed machine file gives numbered", `{"interview": `, "", "~/.abcd.noindex/config.json", false},
+		{"a machine value outside the two gives numbered", `{"interview": {"list": "tabs"}}`, "", "~/.abcd.noindex/config.json", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer

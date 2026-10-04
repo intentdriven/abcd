@@ -965,7 +965,7 @@ func hermeticGitRepo(t *testing.T) (repo, rootSHA string) {
 }
 
 // TestAhoyInstallBootstrapsAndRegistersByRootSHA proves itd-40 AC4: with no
-// ~/.abcd/history/ store present, the first `ahoy install` bootstraps the store
+// ~/.abcd.noindex/history/ store present, the first `ahoy install` bootstraps the store
 // (dir + index.json) and registers the repo in it keyed on the root-commit SHA.
 func TestAhoyInstallBootstrapsAndRegistersByRootSHA(t *testing.T) {
 	repo, rootSHA := hermeticGitRepo(t)

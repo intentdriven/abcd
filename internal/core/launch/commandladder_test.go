@@ -54,7 +54,7 @@ package launch
 // making the prose unreadable.
 //
 // A command file that never names the binary at all (the corpus commands, which
-// drive scripts under `~/.abcd/sources/bin/`) has no ladder to get wrong, so
+// drive scripts under `~/.abcd.noindex/sources/bin/`) has no ladder to get wrong, so
 // every rule below is vacuous for it rather than a failure.
 
 import (
@@ -138,7 +138,7 @@ func commandFiles(t *testing.T, root string) []string {
 // invokesBareBinary reports whether a fenced line hands over a command line
 // whose invoked program is the bare `abcd` name. Splitting on shell separators
 // first catches a piped invocation; comparing the first token exactly keeps a
-// path that merely contains the name (`~/.abcd/sources/bin/add-source`) from
+// path that merely contains the name (`~/.abcd.noindex/sources/bin/add-source`) from
 // reading as one.
 func invokesBareBinary(line string) bool {
 	for _, seg := range shellSeparators.Split(line, -1) {

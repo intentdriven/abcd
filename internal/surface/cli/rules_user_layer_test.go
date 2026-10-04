@@ -10,7 +10,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// userScope points HOME at a fresh directory holding body as ~/.abcd/rules.json
+// userScope points HOME at a fresh directory holding body as ~/.abcd.noindex/rules.json
 // and chdirs into a bare repo directory with no rules file of its own, so every
 // verb reads the fixture's user layer — never the developer's (spc-23).
 func userScope(t *testing.T, body string) (home, repo string) {
@@ -65,8 +65,8 @@ func TestRulesVerbLabelsTheUserLayer(t *testing.T) {
 func TestRulesVerbNamesTheUserKillSwitch(t *testing.T) {
 	userScope(t, `{"schema_version":1,"disabled":true}`)
 	out := string(runCLI(t, "rules"))
-	if !strings.Contains(out, "disabled") || !strings.Contains(out, "~/.abcd/rules.json") {
-		t.Fatalf("a user-scope kill switch must be reported against ~/.abcd/rules.json:\n%s", out)
+	if !strings.Contains(out, "disabled") || !strings.Contains(out, "~/.abcd.noindex/rules.json") {
+		t.Fatalf("a user-scope kill switch must be reported against ~/.abcd.noindex/rules.json:\n%s", out)
 	}
 }
 
@@ -75,9 +75,9 @@ func TestRulesVerbRefusesABrokenUserLayer(t *testing.T) {
 	userScope(t, `{ broken`)
 	out, err := runCLIStdinErr(t, "", "rules")
 	if err == nil {
-		t.Fatalf("a malformed ~/.abcd/rules.json must fail the verb, got:\n%s", out)
+		t.Fatalf("a malformed ~/.abcd.noindex/rules.json must fail the verb, got:\n%s", out)
 	}
-	if !strings.Contains(err.Error(), "~/.abcd/rules.json") {
+	if !strings.Contains(err.Error(), "~/.abcd.noindex/rules.json") {
 		t.Fatalf("the refusal must name the user file: %v", err)
 	}
 }
@@ -105,7 +105,7 @@ func TestHookPromptRouterRefusesABrokenUserLayer(t *testing.T) {
 	if out != "" {
 		t.Fatalf("a broken user layer must inject nothing, got:\n%s", out)
 	}
-	if !strings.Contains(errlog, "~/.abcd/rules.json") || !strings.Contains(errlog, "injecting nothing") {
+	if !strings.Contains(errlog, "~/.abcd.noindex/rules.json") || !strings.Contains(errlog, "injecting nothing") {
 		t.Fatalf("the refusal must be loud and name the user file:\n%s", errlog)
 	}
 }

@@ -261,7 +261,7 @@ func TestGuardShimPropagatesRealDecisions(t *testing.T) {
 
 // TestGuardShimFallsBackToAnOwnedPathBinary pins the resolution ladder's second
 // rung: an empty plugin root with THIS MACHINE'S abcd on PATH — the one
-// `~/.abcd/path-entry` records — still guards the session, so a block stays a
+// `~/.abcd.noindex/path-entry` records — still guards the session, so a block stays a
 // block and no UNGUARDED warning prints. (iss-275: without a controlled PATH the
 // binary-absent case above exercised this rung by accident on any machine that
 // dogfoods the install, instead of proving the shim fails open.)

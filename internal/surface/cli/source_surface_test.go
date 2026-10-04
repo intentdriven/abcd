@@ -12,7 +12,7 @@ import (
 )
 
 // sourceCheckout stands the process in a fresh repository under a temp HOME, so
-// the default corpus (~/.abcd/sources) is a temp path and never the real one, and
+// the default corpus (~/.abcd.noindex/sources) is a temp path and never the real one, and
 // gives corpus commits a fixture identity.
 func sourceCheckout(t *testing.T) (home, repo string) {
 	t.Helper()

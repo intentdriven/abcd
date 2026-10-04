@@ -56,7 +56,7 @@ func newChatFake(t *testing.T, model string, content func(body string) string) *
 	return p
 }
 
-// pointMachine writes home's ~/.abcd/config.json with provider openrouter at
+// pointMachine writes home's ~/.abcd.noindex/config.json with provider openrouter at
 // base (keyed, its key stored when keyed) and each agent pointed at its model.
 func pointMachine(t *testing.T, home, base string, keyed bool, extra string, agents ...string) {
 	t.Helper()

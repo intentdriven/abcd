@@ -159,11 +159,12 @@ func Resolve(cwd string) Resolution {
 	if real, err := filepath.EvalSymlinks(top); err == nil {
 		top = real
 	}
-	// The home is never a repo root (iss-2609020219198779): its .abcd is the
-	// USER layer, read as such by every loader that has one, and a home under
-	// version control is not thereby a project. So the walk passes over it, and
-	// a toplevel that IS the home takes the non-repo route once the walk finds
-	// nothing nearer.
+	// The home is never a repo root (iss-2609020219198779): a home under
+	// version control is not thereby a project, and the user layer lives in it
+	// (~/.abcd.noindex since the rename, which this walk's ".abcd" never
+	// names; an old ~/.abcd stops every entry point before this runs). So the
+	// walk passes over the home whatever it holds, and a toplevel that IS the
+	// home takes the non-repo route once the walk finds nothing nearer.
 	isHome := homeMatcher()
 	for inside(dir, top) {
 		if !isHome(dir) {

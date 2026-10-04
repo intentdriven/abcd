@@ -10,7 +10,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// virginHome points HOME at an empty temp dir — no ~/.abcd, no history root, no
+// virginHome points HOME at an empty temp dir — no ~/.abcd.noindex, no history root, no
 // per-repo dir — which is the state iss-95 describes: a machine where
 // `abcd ahoy install` has never run.
 func virginHome(t *testing.T) (repoRoot, home string) {
@@ -156,7 +156,7 @@ func TestPerRepoPullInIsOptInOnly(t *testing.T) {
 }
 
 // TestPerRepoPullInIsHonouredWhenDeclared: with the repo root declared in the
-// home-scoped ~/.abcd/local-transcript-roots, the same capture lands inside the
+// home-scoped ~/.abcd.noindex/local-transcript-roots, the same capture lands inside the
 // repo's gitignored local tier instead.
 func TestPerRepoPullInIsHonouredWhenDeclared(t *testing.T) {
 	repoRoot, home := virginHome(t)
@@ -204,7 +204,7 @@ func TestPullInDeclarationAnyoneCanWriteIsIgnoredLoudly(t *testing.T) {
 }
 
 // TestLegacyStoreIsMigratedNotOrphaned: a corpus written under the old
-// ~/.abcd/history/<root-sha>/transcripts/ layout is moved into the store, is
+// ~/.abcd.noindex/history/<root-sha>/transcripts/ layout is moved into the store, is
 // visible through the read verbs afterwards, and leaves a tombstone at the old
 // path so the move is discoverable there too.
 func TestLegacyStoreIsMigratedNotOrphaned(t *testing.T) {

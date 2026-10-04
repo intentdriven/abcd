@@ -70,7 +70,7 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 		{"conceptual single word", "conventions"},
 		{"path with a parenthetical", "internal/core/lint (the <!-- marker scan)"},
 		{"list of paths", "internal/a.go, internal/b.go"},
-		{"home-relative location", "~/.abcd/history"},
+		{"home-relative location", "~/.abcd.noindex/history"},
 		{"url", "https://example.com/some/page"},
 		{"version string", "v0.9.0"},
 	}

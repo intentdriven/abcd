@@ -24,7 +24,7 @@ func userHome(t *testing.T) string {
 	return home
 }
 
-// writeUserRules writes body as ~/.abcd/rules.json under home, owner-only
+// writeUserRules writes body as ~/.abcd.noindex/rules.json under home, owner-only
 // writable (the shape a hand-edited file ordinarily has).
 func writeUserRules(t *testing.T, home, body string) string {
 	t.Helper()
@@ -129,7 +129,7 @@ func TestUserLayerNoHomeIsAbsent(t *testing.T) {
 	}
 }
 
-// AC1, the untraversable scope: a HOME or ~/.abcd this uid cannot search is
+// AC1, the untraversable scope: a HOME or ~/.abcd.noindex this uid cannot search is
 // read as no user layer, exactly as the sibling home-scoped declarations
 // (trusted-roots, local-transcript-roots) read it, so a sandboxed or foreign
 // HOME does not warn on every prompt about a file nobody can see. A rules.json
@@ -138,12 +138,12 @@ func TestUserLayerUntraversableScopeIsAbsent(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root reads through a mode-000 directory")
 	}
-	for _, name := range []string{"HOME", "~/.abcd"} {
+	for _, name := range []string{"HOME", "~/.abcd.noindex"} {
 		t.Run(name, func(t *testing.T) {
 			home := userHome(t)
 			writeUserRules(t, home, `{"schema_version":1,"domains":{"PII":{"rules":["unreachable pii"]}}}`)
 			dir := home
-			if name == "~/.abcd" {
+			if name == "~/.abcd.noindex" {
 				dir = abcdhome.Path(home)
 			}
 			if err := os.Chmod(dir, 0); err != nil {
@@ -300,7 +300,7 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 			if err := os.Symlink(real, abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
-		}, "~/.abcd is a symlink"},
+		}, "~/.abcd.noindex is a symlink"},
 		{"writable by others", func(t *testing.T, home string) {
 			p := writeUserRules(t, home, `{"schema_version":1,"domains":{}}`)
 			if err := os.Chmod(p, 0o666); err != nil {
@@ -332,7 +332,7 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 				t.Fatalf("a %s user file must be refused, not skipped; loaded %d domains", tc.name, len(rs.Domains))
 			}
 			msg := err.Error()
-			if !strings.Contains(msg, "~/.abcd") {
+			if !strings.Contains(msg, "~/.abcd.noindex") {
 				t.Errorf("the refusal must name the user file in tilde form: %s", msg)
 			}
 			if !strings.Contains(msg, tc.want) {
@@ -345,7 +345,7 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 	}
 }
 
-// A symlinked ~/.abcd with no rules.json behind it is the ordinary state of a
+// A symlinked ~/.abcd.noindex with no rules.json behind it is the ordinary state of a
 // machine whose user scope lives in a dotfiles checkout: nothing is read, so
 // nothing is refused, and the injected rules stay what they were (AC1).
 func TestUserLayerSymlinkedScopeWithoutFileIsAbsent(t *testing.T) {
@@ -359,7 +359,7 @@ func TestUserLayerSymlinkedScopeWithoutFileIsAbsent(t *testing.T) {
 	}
 	rs, err := Load(t.TempDir())
 	if err != nil {
-		t.Fatalf("a symlinked ~/.abcd holding no rules.json must read as absent: %v", err)
+		t.Fatalf("a symlinked ~/.abcd.noindex holding no rules.json must read as absent: %v", err)
 	}
 	if !reflect.DeepEqual(rs, Defaults()) {
 		t.Fatal("the defaults must be untouched")

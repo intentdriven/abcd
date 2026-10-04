@@ -13,8 +13,8 @@ import (
 // TestLocalTranscriptRootsBehindASymlinkedAbcdHomePullNothingIn: the
 // declaration that moves a checkout's transcripts into its own tree is a
 // home-scoped declaration like trusted-roots, and was read through a symlinked
-// ~/.abcd the rules loader refuses (iss-2609281017573862). Behind the link it
-// pulls nothing in, and says why; in a real ~/.abcd it is honoured.
+// ~/.abcd.noindex the rules loader refuses (iss-2609281017573862). Behind the link it
+// pulls nothing in, and says why; in a real ~/.abcd.noindex it is honoured.
 func TestLocalTranscriptRootsBehindASymlinkedAbcdHomePullNothingIn(t *testing.T) {
 	repo := t.TempDir()
 	dotfiles := t.TempDir()
@@ -26,14 +26,14 @@ func TestLocalTranscriptRootsBehindASymlinkedAbcdHomePullNothingIn(t *testing.T)
 	t.Setenv("HOME", home)
 	ok, note := localDeclared(repo)
 	if ok {
-		t.Fatal("a local-transcript-roots declaration behind a symlinked ~/.abcd pulled the checkout in")
+		t.Fatal("a local-transcript-roots declaration behind a symlinked ~/.abcd.noindex pulled the checkout in")
 	}
-	if !strings.Contains(note, LocalRootsDisplay) || !strings.Contains(note, "~/.abcd is a symlink") {
+	if !strings.Contains(note, LocalRootsDisplay) || !strings.Contains(note, "~/.abcd.noindex is a symlink") {
 		t.Errorf("the ignored declaration must say it was refused for the link: %q", note)
 	}
 
 	t.Setenv("HOME", dotfiles)
 	if ok, note := localDeclared(repo); !ok {
-		t.Fatalf("the same declaration in a real ~/.abcd must be honoured; note %q", note)
+		t.Fatalf("the same declaration in a real ~/.abcd.noindex must be honoured; note %q", note)
 	}
 }

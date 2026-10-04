@@ -118,7 +118,7 @@ plugin surface, and a future MCP server share one engine.
   constants by a test here.
 - **`core/layered/`** — the one layered configuration resolver: a value comes
   from the invocation's flag, else the repository's file, else the machine's file
-  under `~/.abcd/`, else the bundled default, and returns with the layer and the
+  under `~/.abcd.noindex/`, else the bundled default, and returns with the layer and the
   origin that supplied it. Any configuration more than one party may set reads
   through it (the routing table in `core/oracle`, and the pace, runner, review
   and match keys in `.abcd/config.json`), so the precedence, the guarded reads
@@ -292,7 +292,9 @@ plugin surface, and a future MCP server share one engine.
   external scanners stay config-selected plug-ins behind the same seam.
 - **`abcdhome/`** — the one place the user-level home's name is spelled: the
   folder abcd keeps in the person's home directory for its machine-scoped
-  records and stores. `Rel` gives the slash path the `fsutil` home-scope
+  records and stores, `~/.abcd.noindex`. `Check` is the stop: while the old
+  `~/.abcd` stands it reports the line every entry point says, from `cli.Run`
+  to the hooks' shell wrapper, before anything writes. `Rel` gives the slash path the `fsutil` home-scope
   primitives take, so every reader keeps their guards; `Path` joins it under a
   home directory; `Display` gives the `~/`-form a message names it by. A leaf
   importing only the standard library, outside `core/` because the spellings

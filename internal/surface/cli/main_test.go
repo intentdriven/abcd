@@ -19,7 +19,7 @@ const cliTestAsBinaryEnv = "ABCD_CLI_TEST_AS_BINARY"
 // every `ahoy install` exercised here would hit the itd-111 unknown-vintage
 // refusal.
 //
-// It also keeps the developer's own ~/.abcd/rules.json out of every rules load
+// It also keeps the developer's own ~/.abcd.noindex/rules.json out of every rules load
 // a test did not lay a user layer out for: while HOME is still the process's
 // own, the user layer reads as absent, and a test that sets HOME to a fixture
 // gets that fixture's user layer (spc-23).

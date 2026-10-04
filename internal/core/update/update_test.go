@@ -510,7 +510,7 @@ func TestApplyProceedsWhenTheTargetIsTheRunningExecutable(t *testing.T) {
 // TestApplyProceedsOnTheRecordedPathCopy is the second forge-independent
 // proof, and the one that carries the case the running executable cannot: the
 // verb invoked from somewhere else (a plugin-root binary, a source checkout)
-// acting on the PATH copy. ~/.abcd/path-entry — written by `ahoy install` and
+// acting on the PATH copy. ~/.abcd.noindex/path-entry — written by `ahoy install` and
 // by both README install one-liners — names the file and its digest, so abcd
 // installed it and may replace it, whatever the forge still serves.
 func TestApplyProceedsOnTheRecordedPathCopy(t *testing.T) {

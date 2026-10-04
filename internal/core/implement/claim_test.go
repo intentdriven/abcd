@@ -32,7 +32,7 @@ func (c *clock) advance(d time.Duration) {
 	c.t = c.t.Add(d)
 }
 
-// newRun opens a run under a temporary HOME — never the real ~/.abcd — with a
+// newRun opens a run under a temporary HOME — never the real ~/.abcd.noindex — with a
 // settable clock.
 func newRun(t *testing.T) (*Run, *clock) {
 	t.Helper()

@@ -57,7 +57,7 @@ func packFixture(t *testing.T) string {
 }
 
 // packInto packs repo into a fresh dest under a temp HOME (so voyage writes land
-// in the test sandbox, never the real ~/.abcd). Returns the dest path.
+// in the test sandbox, never the real ~/.abcd.noindex). Returns the dest path.
 func packInto(t *testing.T, repo string, scan SecretScan) (string, PackResult) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())

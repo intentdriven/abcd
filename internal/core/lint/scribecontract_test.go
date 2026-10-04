@@ -286,7 +286,7 @@ func TestScribeAccessCheckRefusesEveryBypass(t *testing.T) {
 		{"a backslash separator", "\n- `internal\\core\\lint\\agentcontract.go` — the rule.\n", "path"},
 		{"a traversal out of the ledger", "\n- `.abcd/work/issues/../../development/readings/` — the run record.\n", "traversal"},
 		{"the shared decision log", "\n- `.abcd/work/DECISIONS.md` — the decisions.\n", "path"},
-		{"a session-transcript store path", "\n- `~/.abcd/history/aaaa/transcripts/` — prior sessions.\n", "path"},
+		{"a session-transcript store path", "\n- `~/.abcd.noindex/history/aaaa/transcripts/` — prior sessions.\n", "path"},
 		{"a bare shipped-tree directory", "\n- `internal/core` — where the rule lives.\n", "path"},
 		{"a bare docs directory", "\n- `docs/` — the user-facing tree.\n", "path"},
 		{"a directory-and-file pair with no extension", "\n- `internal/README` — the package map.\n", "path"},
@@ -359,14 +359,17 @@ func TestScribeInputsAreLedgerOnly(t *testing.T) {
 
 // transcriptStoreNeedles are the spellings of the session-transcript store's
 // path. Invariant 15 reserves that store to an enumerated consumer list the
-// scribe is not on, so the definition names no path into it at all. Both
-// vintages are held: the store the corpus lives in now, its per-repo pull-in,
-// and the location it was moved out of, because a definition that names a path
+// scribe is not on, so the definition names no path into it at all. Every
+// vintage is held: the store the corpus lives in now, under the renamed home
+// and under the home's old name, its per-repo pull-in, and the location it was
+// moved out of, because a definition that names a path
 // the corpus has left still declares an access this scribe may not have.
 var transcriptStoreNeedles = []string{
 	".abcd/transcripts",
+	".abcd.noindex/transcripts",
 	".work.local/transcripts",
 	".abcd/history",
+	".abcd.noindex/history",
 	"history/transcripts",
 }
 
@@ -391,8 +394,10 @@ func TestScribeDeclaresNoTranscriptStoreAccess(t *testing.T) {
 			scribePromptRel, f)
 	}
 	for _, path := range []string{
+		"~/.abcd.noindex/transcripts/aaaa/records/",
 		"~/.abcd/transcripts/aaaa/records/",
 		"repo/.abcd/.work.local/transcripts/aaaa/records/",
+		"~/.abcd.noindex/history/aaaa/transcripts/",
 		"~/.abcd/history/aaaa/transcripts/",
 	} {
 		hostile := scribeConformingBase + "\n- `" + path + "` — prior sessions.\n"

@@ -37,7 +37,7 @@ func managedCheckout(t *testing.T) string {
 	return repo
 }
 
-// writeUserSettings lays ~/.abcd/statusline.json under the sandboxed HOME.
+// writeUserSettings lays ~/.abcd.noindex/statusline.json under the sandboxed HOME.
 func writeUserSettings(t *testing.T, body string) {
 	t.Helper()
 	dir := abcdhome.Path(os.Getenv("HOME"))

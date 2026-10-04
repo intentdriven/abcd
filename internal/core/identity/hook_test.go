@@ -47,7 +47,7 @@ func hookGit(t *testing.T, dir string, env []string, args ...string) error {
 // never fall through (the F1 regression this test guards).
 func TestPreCommitHook_IdentityGate(t *testing.T) {
 	hook := locateHook(t)
-	// Isolate from the machine's git global/system config and ~/.abcd corpus so
+	// Isolate from the machine's git global/system config and ~/.abcd.noindex corpus so
 	// the hook only sees the temp repo (gittest.Env pins HOME/XDG to a temp dir
 	// and neutralises global/system config).
 	env := hookEnv(t)

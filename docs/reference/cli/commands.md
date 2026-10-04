@@ -58,7 +58,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.
+Verify a model provider with one call, then set it up: Writes its block in ~/.abcd.noindex/ and its key to the home chosen; refuses a key typed at a terminal.
 
 **Usage:** `abcd ahoy connect <provider> [flags]`
 
@@ -69,7 +69,7 @@ Verify a model provider with one call, then configure it: Writes its block under
       --env string          for --home external: the environment variable that holds the value
       --field string        for --home external: the dotted field of --file that holds the value (auth.token)
       --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
 ```
@@ -92,7 +92,7 @@ List the credentials abcd reads, explain one, or verify and store it: Writes the
       --env string     for --home external: the environment variable that holds the value
       --field string   for --home external: the dotted field of --file that holds the value (auth.token)
       --file string    for --home external: a tool's JSON configuration file under the home directory, written from ~/
-      --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain)
+      --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd.noindex/credentials.json) | keychain (read from stdin into the platform keychain)
 ```
 
 #### `abcd ahoy doctor`
@@ -262,7 +262,7 @@ validators alive at once, and the fix rounds a lane may take before it is handed
 four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,
 --sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,
 pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in
-~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run
+~/.abcd.noindex/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run
 record name each number's layer. A malformed pace or ceiling, typed or configured, is
 refused naming the value and the accepted form, and writes nothing. Starting again keeps
 the run's pace; a flag naming another is refused. The window and the pause bind through
@@ -275,12 +275,12 @@ The run then moves one step per `abcd implement step`, driven by the host sessio
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
 the default, or a runner) and the runners this machine enables under runner.<name> in
-~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,
+~/.abcd.noindex/config.json, each model route admitted against its provider's allowlist. A fault,
 a model route the allowlist does not admit included, is refused at the runner stage and
-nothing is created or launched. Only a route in ~/.abcd/config.json hands a role to a
+nothing is created or launched. Only a route in ~/.abcd.noindex/config.json hands a role to a
 runner, which spends the person's own key: one the repository's .abcd/config.json sets to
 a runner is skipped with a warning on stderr, and the role runs on the host as if unrouted.
-One it sets to host keeps the role on the host over a runner route in ~/.abcd/config.json,
+One it sets to host keeps the role on the host over a runner route in ~/.abcd.noindex/config.json,
 since that spends nothing of the person's, with a warning naming both routes.
 
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
@@ -1497,7 +1497,7 @@ Share one autonomous run between sessions and drive the implement loop: Writes n
 **Usage:** `abcd implement`
 
 The run machinery an autonomous run calls. The shared run lives in the machine-scoped run
-state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions
+state, `~/.abcd.noindex/runs/<root-sha>/`, keyed on the repository's root commit, so sessions
 in different worktrees of one repository share one run and no repository file.
 
 Bare `abcd implement` is read-only: the sessions that have joined, the claims and
@@ -1666,7 +1666,7 @@ appear only as a count and a total CPU share. The check's own parent chain is ne
 a stray. Inside an autonomous run (a run state with a joined session) a warning is
 also written to the run log as a `load` event.
 
-The limits are per machine, in `~/.abcd/load-limits`, which the check reads and
+The limits are per machine, in `~/.abcd.noindex/load-limits`, which the check reads and
 never creates. `#` starts a comment; every other line is `<key> <value>`:
 
   stray-minutes 30   minutes at nearly all its share before a program is a stray (1 to 10080)
@@ -1695,7 +1695,7 @@ Append one of the run's events to today's run log: Writes one line; refuses the 
 
 **Usage:** `abcd implement log <event> --session <id> [--field key=value ...] [flags]`
 
-Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)
+Append one event line to today's run log (`~/.abcd.noindex/runs/<root-sha>/<UTC date>.jsonl`)
 in a single append, so two sessions writing at once each land whole lines. The line
 carries ts, session and event, then each --field. A value that reads as a number or
 a boolean is written as one when it reads back as the same text, so `sha=0123456`
@@ -1924,7 +1924,7 @@ rebase) and judged by a fresh round, and a conflicting sync goes to a fresh impl
 a sync counts no fix round.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
-store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
+store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
 cut from the default branch; brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
@@ -1971,7 +1971,7 @@ A stage whose body this abcd does not carry is refused naming the spec piece tha
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
 so the next invocation performs it again; a completed stage is never repeated.
 
-A role routed to a command-line runner (roles.<role>.runner in ~/.abcd/config.json:
+A role routed to a command-line runner (roles.<role>.runner in ~/.abcd.noindex/config.json:
 claude or opencode, enabled under runner.<name> there) is started by the step itself when the stage
 hands the lane out: the runner gets the brief and the receipt path the host would get,
 runs in the lane's worktree (claude with the role's tools granted and nothing else asked,
@@ -2016,7 +2016,7 @@ List the reports managed repositories filed back to abcd, newest first: Writes n
 **Usage:** `abcd inbox`
 
 Read the reports repositories abcd manages filed with `abcd report`, from the
-inbox in the user account's machine store (`~/.abcd/inbox/`).
+inbox in the user account's machine store (`~/.abcd.noindex/inbox/`).
 
 Bare `abcd inbox` lists the waiting reports newest first, naming each sender
 repository plainly; `abcd inbox show <id>` renders one whole. Both are
@@ -2307,7 +2307,7 @@ List this repository's labs with their pins, probe counts and halts: Writes noth
 
 A lab is a throwaway world pinned at one commit of this repository, run to
 answer one question. Its evidence lives at the operator level, in
-~/.abcd/lab/<root-sha>/<lab-id>/ (the same root-commit key the transcript
+~/.abcd.noindex/lab/<root-sha>/<lab-id>/ (the same root-commit key the transcript
 store uses), and its knowledge enters the record only through capture:
 nothing any lab verb does writes into the repository.
 
@@ -2694,7 +2694,7 @@ somebody the question runs and is marked open. The next human message is
 its answer, so the prompt hook resets the state to `managed` and says so
 once on stderr. A state set by hand with no question open is left as it is.
 
-Where this machine has no status surface — no `~/.abcd/statusline.json`, or
+Where this machine has no status surface — no `~/.abcd.noindex/statusline.json`, or
 one with `disabled` set — the set form prints one line naming whose answer
 is owed, once, because the verb call is the stop. Setting `managed` owes
 nobody and prints nothing; with a surface installed nothing is printed at
@@ -2889,7 +2889,7 @@ File a defect report or an enhancement proposal about abcd: Writes it into your 
 **Usage:** `abcd report [<file>|-] [flags]`
 
 File a written account about abcd itself, from a repository abcd manages, into
-the inbox in the user account's machine store (`~/.abcd/inbox/`). Nothing is
+the inbox in the user account's machine store (`~/.abcd.noindex/inbox/`). Nothing is
 written into this repository or into abcd's, and nothing becomes a record until
 a person or a session runs `abcd inbox promote`.
 
@@ -2924,7 +2924,7 @@ Render the active rule set, or the one domain named: Writes nothing; refuses an 
 **Usage:** `abcd rules [domain]`
 
 Render the rule set the modular-rules loader injects: the bundled default
-domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+domains, overridden by this machine's ~/.abcd.noindex/rules.json and then by this repo's
 .abcd/rules.json, each layer per field, so the repo wins a field both set.
 Either file may be absent. Bare, it renders every active domain; a positional
 DOMAIN (case-insensitive) renders that one domain regardless of its state or the
@@ -3103,7 +3103,7 @@ Render the sources corpus and its ledgers, read-only: Writes nothing; refuses wi
 
 The personal sources corpus: documents you may consult, a CSL-JSON bibliography, and one
 append-only influence ledger per repository, in a local-only git repository with no
-remote (~/.abcd/sources by default; --corpus names another). The folder a source sits
+remote (~/.abcd.noindex/sources by default; --corpus names another). The folder a source sits
 in — confidential/<key>/ or public/<key>/ — is its classification.
 
 Consult freely, cite deliberately: confidential entries are projected into this
@@ -3117,7 +3117,7 @@ Bare `abcd source` is read-only. Exit 3 when there is no corpus, on every verb b
 **Flags:**
 
 ```
-      --corpus string   the corpus directory (absolute; default ~/.abcd/sources)
+      --corpus string   the corpus directory (absolute; default ~/.abcd.noindex/sources)
 ```
 
 #### `abcd source add`
@@ -3315,7 +3315,7 @@ the technical facilitator` or `waiting on the product thinker`, from the state
 repository name, the branch, the model, the context percentage, the
 five-hour and seven-day usage percentages, and the record's counts of
 intents not yet shipped and open issues. Each element after the badge is
-switchable in `~/.abcd/statusline.json`; a payload field the harness did not
+switchable in `~/.abcd.noindex/statusline.json`; a payload field the harness did not
 supply drops its element with no placeholder.
 
 Outside a managed checkout, or with `disabled` set in the user-level
@@ -3341,7 +3341,7 @@ swaps the PATH-installed copy atomically. The verb is the only ask: abcd
 never checks for or applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
 command that owns them. The file being replaced must be provably abcd's:
-the binary running the command, an install ~/.abcd/path-entry records, or
+the binary running the command, an install ~/.abcd.noindex/path-entry records, or
 a digest a published release still names. Anything else is refused with a
 remedy that reinstalls over it — never one that deletes it.
 

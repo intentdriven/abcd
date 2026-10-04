@@ -23,7 +23,7 @@ var cacheArtefact = []byte("#!/bin/sh\n# abcd release artefact fixture\nexit 0\n
 
 // writeUserPathEntry writes the home-scoped provenance record (spc-35 moved it
 // out of the harness data dir, which is unreachable from a terminal). The
-// parent ~/.abcd is created first, matching writePathEntry.
+// parent ~/.abcd.noindex is created first, matching writePathEntry.
 func writeUserPathEntry(t *testing.T, body string) {
 	t.Helper()
 	p := userPathEntryPath()

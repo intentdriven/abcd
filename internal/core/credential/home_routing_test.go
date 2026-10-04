@@ -12,10 +12,10 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// linkedDotfilesHome returns a home whose ~/.abcd is a symlink into a git
+// linkedDotfilesHome returns a home whose ~/.abcd.noindex is a symlink into a git
 // working tree (a dotfiles repository beside it, the layout AGENTS.md names),
 // and the directory the link points at. The home itself is not a working
-// tree, so a judgement of ~/.abcd by its lexical path sees no repository.
+// tree, so a judgement of ~/.abcd.noindex by its lexical path sees no repository.
 func linkedDotfilesHome(t *testing.T) (home, target string) {
 	t.Helper()
 	home = t.TempDir()
@@ -33,7 +33,7 @@ func linkedDotfilesHome(t *testing.T) (home, target string) {
 }
 
 // TestSetRefusesEveryHomeThroughAnAbcdHomeLinkedIntoARepository is the
-// review's probe A (itd-2609221017023290, criterion 3): a ~/.abcd symlinked
+// review's probe A (itd-2609221017023290, criterion 3): a ~/.abcd.noindex symlinked
 // into a dotfiles repository is refused, naming the link, in every home, before
 // anything is created: not the value, not the index, not either lock. A
 // working-tree check on the lexical path does not see the repository, so the
@@ -54,9 +54,9 @@ func TestSetRefusesEveryHomeThroughAnAbcdHomeLinkedIntoARepository(t *testing.T)
 			home, target := linkedDotfilesHome(t)
 			changed, err := Set(home, "svc", c.choice)
 			if err == nil || changed {
-				t.Fatalf("Set wrote through a ~/.abcd linked into a repository: changed %v, err %v", changed, err)
+				t.Fatalf("Set wrote through a ~/.abcd.noindex linked into a repository: changed %v, err %v", changed, err)
 			}
-			if !strings.Contains(err.Error(), "~/.abcd is a symlink") {
+			if !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
 				t.Errorf("the refusal must name the link: %v", err)
 			}
 			if strings.Contains(err.Error(), secretValue) {
@@ -117,19 +117,19 @@ func TestAPointerWhoseDirectoryLinksIntoARepositoryIsRefused(t *testing.T) {
 }
 
 // TestSetWritesNoIndexThroughAnAbcdHomeSwappedForALink is the index's half of
-// iss-2609281310017733: ~/.abcd is a real directory when Set judges it and a
+// iss-2609281310017733: ~/.abcd.noindex is a real directory when Set judges it and a
 // symlink into a dotfiles checkout by a later use (a same-uid race, staged
-// through the vetting hook of the ~/.abcd walk). The index, its lock and the
+// through the vetting hook of the ~/.abcd.noindex walk). The index, its lock and the
 // read of the index are reached through the walk of the directory that was
 // judged, so the swap is refused, the link is named, and the checkout is left
-// as it was. A Set that judges ~/.abcd by path and writes by path never
+// as it was. A Set that judges ~/.abcd.noindex by path and writes by path never
 // reaches the walk at all, which the test reports as a race it could not stage.
 func TestSetWritesNoIndexThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 	const envName = "ABCD_TEST_ROUTING_SWAP_TOKEN"
 	t.Setenv(envName, secretValue)
 	for _, c := range []struct {
 		name string
-		// swapAt is the vetting of ~/.abcd (1-based) that swaps it: the first
+		// swapAt is the vetting of ~/.abcd.noindex (1-based) that swaps it: the first
 		// is Set's own walk, before the lock; the second is the index read
 		// under the lock, once an index is there to read.
 		swapAt    int
@@ -170,10 +170,10 @@ func TestSetWritesNoIndexThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 			}))
 			changed, err := Set(home, "svc", Choice{Home: HomeExternal, Pointer: Pointer{Env: envName}})
 			if !swapped {
-				t.Fatalf("Set never reached ~/.abcd through the walk that judges it (%d vetting(s) seen), so the race could not be staged: changed %v, err %v", seen, changed, err)
+				t.Fatalf("Set never reached ~/.abcd.noindex through the walk that judges it (%d vetting(s) seen), so the race could not be staged: changed %v, err %v", seen, changed, err)
 			}
-			if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd is a symlink") {
-				t.Errorf("Set must refuse a ~/.abcd swapped for a link, naming it: changed %v, err %v", changed, err)
+			if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+				t.Errorf("Set must refuse a ~/.abcd.noindex swapped for a link, naming it: changed %v, err %v", changed, err)
 			}
 			entries, rerr := os.ReadDir(dotfiles)
 			if rerr != nil {
@@ -279,9 +279,9 @@ func TestAPointerThroughALinkIsRefusedInAPointersWords(t *testing.T) {
 }
 
 // TestSetKeepsTheIndexInTheDirectoryItHolds is iss-2609290300313698
-// (review-integ14 item 4, LOW (b)): ~/.abcd is renamed aside and a different
+// (review-integ14 item 4, LOW (b)): ~/.abcd.noindex is renamed aside and a different
 // real directory, carrying an index of its own, is put in its place after Set
-// has opened ~/.abcd and taken the index's lock, and before the index is read
+// has opened ~/.abcd.noindex and taken the index's lock, and before the index is read
 // (a same-uid race, staged when the keychain home locates its tool). The index
 // is written through the directory Set holds, so it must be READ through that
 // directory too: the held index keeps its own entries and gains the new name,
@@ -349,8 +349,8 @@ func TestSetKeepsTheIndexInTheDirectoryItHolds(t *testing.T) {
 }
 
 // TestSetMachineKeepsTheStoreInTheDirectoryItHolds is the store's half of
-// iss-2609290300313698: setLocked writes the store through the ~/.abcd
-// SetMachine's walk opened, so it reads the store through it too. ~/.abcd is
+// iss-2609290300313698: setLocked writes the store through the ~/.abcd.noindex
+// SetMachine's walk opened, so it reads the store through it too. ~/.abcd.noindex is
 // swapped for a different real directory, carrying a store of its own, after
 // that walk; the held store keeps its own entries and gains the new one, and
 // neither the swapped-in directory's entries nor the new value cross between

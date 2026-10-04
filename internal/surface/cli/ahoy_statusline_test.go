@@ -90,7 +90,7 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
 	}
-	if !contains(res.Writes, "~/.abcd/statusline.json") {
+	if !contains(res.Writes, "~/.abcd.noindex/statusline.json") {
 		t.Errorf("writes = %v, want the user-level setting", res.Writes)
 	}
 	raw, _ := os.ReadFile(settings)

@@ -81,7 +81,7 @@ func TestReportTemplateThenFileLandsInTheInbox(t *testing.T) {
 		t.Fatalf("template:\n%s", skeleton)
 	}
 	out := string(runCLIStdin(t, fillTemplate(t, skeleton, "capture refuses", "It went wrong."), "report", "-"))
-	if !strings.Contains(out, "filed rpt-") || !strings.Contains(out, "~/.abcd/inbox/") {
+	if !strings.Contains(out, "filed rpt-") || !strings.Contains(out, "~/.abcd.noindex/inbox/") {
 		t.Errorf("report output = %q, want the id and where it landed", out)
 	}
 	if strings.Contains(out, home) {
@@ -465,7 +465,7 @@ func TestARefusedInboxIsNamedAtSessionStartAndOnTheBoard(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), abcdhome.Path(home, "inbox")); err != nil {
 		t.Fatal(err)
 	}
-	const want = "abcd: the inbox is not counted — ~/.abcd/inbox is not a real directory"
+	const want = "abcd: the inbox is not counted — ~/.abcd.noindex/inbox is not a real directory"
 	stdout, stderr, code := runSessionStart(startPayload("s1", repo), "hook", "session-start")
 	if code != 0 {
 		t.Fatalf("exit %d", code)

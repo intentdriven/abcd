@@ -140,7 +140,7 @@ func TestBootstrapHistoryNoEmptyReadWindow(t *testing.T) {
 	}
 }
 
-// lockProbingPrompter records, on each Confirm, whether the ~/.abcd/history lock
+// lockProbingPrompter records, on each Confirm, whether the ~/.abcd.noindex/history lock
 // is held at prompt time — the no-lock-across-prompt guard for iss-101.
 type lockProbingPrompter struct {
 	t         *testing.T
@@ -219,12 +219,12 @@ func TestRegisterRepoDoesNotHoldLockAcrossPrompt(t *testing.T) {
 
 // TestRegisterRepoWritesTheIndexItLocked is the history registry's case of
 // iss-2609290300313698's pattern: registerRepo takes the lock beside
-// ~/.abcd/history/index.json through one walk of ~/.abcd/history, and the
+// ~/.abcd.noindex/history/index.json through one walk of ~/.abcd.noindex/history, and the
 // load and the write under it must go through that same directory. Here the
 // directory is swapped for a different real one, carrying an index of its
 // own, once the lock is held; the registration lands in the index whose lock
 // was taken, and the directory swapped in is left as it was. Loading and
-// writing by walking ~/.abcd/history again wrote the swapped-in index, which
+// writing by walking ~/.abcd.noindex/history again wrote the swapped-in index, which
 // the lock never covered.
 func TestRegisterRepoWritesTheIndexItLocked(t *testing.T) {
 	home := t.TempDir()
