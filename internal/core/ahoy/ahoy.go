@@ -174,7 +174,13 @@ type InstallOptions struct {
 
 // InstallResult is the outcome of Install.
 type InstallResult struct {
-	Status             string   `json:"status"` // already_up_to_date | clean | partial | aborted | refused
+	Status string `json:"status"` // already_up_to_date | clean | partial | aborted | refused
+	// Warnings names what keeps abcd's rules from reaching an agent tool in
+	// this project and only the person can end: a tool's own conventions file
+	// holding the person's words, which that tool reads in place of AGENTS.md
+	// and abcd never edits or removes (itd-2610030814013772). Each is one line;
+	// a front door prints them first, before the headline.
+	Warnings           []string `json:"warnings"`
 	Writes             []string `json:"writes"`
 	Changes            []string `json:"changes,omitempty"`   // value overwrites an explicit override forced ("visibility: private -> public")
 	Remaining          []string `json:"remaining"`           // required+resolvable gap ids left

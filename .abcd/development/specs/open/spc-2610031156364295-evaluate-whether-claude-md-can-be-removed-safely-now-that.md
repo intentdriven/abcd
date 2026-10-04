@@ -456,6 +456,7 @@ decided rather than asked; the reason is given beneath each.
    - packages: internal/core/ahoy, internal/surface/cli, docs/how-to, .abcd/development/brief/04-surfaces
    - tests: TestOwnersToolFileIsUntouchedAndNamed, TestRepeatingToolFileIsOfferedForRetirement, TestRetireRechecksTheFile, TestToolFileClassification; the existing piped-install tests unchanged in their answer order, since the offer is asked only at a terminal
    - lands after step 2; it adds `Warnings` to `InstallResult`, and its question meets the asking rules of the two question specs where those have landed
+   - landed: feat/agentsmd-tool-files
 5. The host-reach warnings: presence above the root, the personal file, and the version
    - criteria: A5
    - packages: internal/core/ahoy, docs/how-to, .abcd/development/brief/04-surfaces
