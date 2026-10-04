@@ -30,9 +30,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// maxResumeBytes bounds the resume object read back: a look-up keeps at most
-// 5,000 ids of at most 128 bytes, with room for the JSON around them.
-const maxResumeBytes = 2 << 20
+// maxResumeBytes bounds the resume object read back: the listed ids it
+// carries (oracle.MaxCarriedBytes), with 64 KiB more for the answers and the
+// JSON around them, which keeps it below the 128 KiB one argument may hold on
+// linux (MAX_ARG_STRLEN), with room for the rest of the command.
+const maxResumeBytes = oracle.MaxCarriedBytes + 64<<10
 
 // guideSetupFlags are the flags that set a connection up: the guide prints
 // the command that carries them and takes none of them itself.

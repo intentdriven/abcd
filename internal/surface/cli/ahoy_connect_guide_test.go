@@ -387,29 +387,118 @@ func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T) {
 	})
 }
 
-// TestGuideCarriesAFullListThroughStdin: a service listing 5,000 ids, the
-// most a look-up keeps, is carried whole in the resume object, which the page
-// passes back on stdin (--resume -), never as one argument: a turn's JSON is
-// then larger than one argument may be on linux (MAX_ARG_STRLEN, 128 KiB).
-// The guide takes the last id listed and ends with the command.
-func TestGuideCarriesAFullListThroughStdin(t *testing.T) {
-	hermeticEnv(t)
-	t.Chdir(t.TempDir())
-	ids := make([]string, 5000)
-	for i := range ids {
-		ids[i] = fmt.Sprintf("vendor-%d/a-reasonably-long-model-name-%04d", i%7, i)
+// carriedList is the listed member of a turn's resume object.
+type carriedList struct {
+	Listed struct {
+		Host   string   `json:"host"`
+		Models []string `json:"models"`
+		More   int      `json:"more"`
+	} `json:"listed"`
+}
+
+// TestGuideCarriesAListWithinItsBudget (G2, open question 2): the resume
+// object carries at most 32 KiB of listed ids as JSON, the first in the
+// service's order, and the count it does not carry, so a turn stays well under
+// the 128 KiB one argument may hold on linux (MAX_ARG_STRLEN) when the host
+// runs the page's command as sh -c, and the session does not re-emit a 270 KB
+// list every turn. A fragment matching only an id not carried says how many
+// more the service listed and asks for the model's full name; the full name
+// typed is taken as any typed model is, with no second request. A list of 300,
+// as real services list, is carried whole.
+func TestGuideCarriesAListWithinItsBudget(t *testing.T) {
+	const budget = 32 << 10
+	listOf := func(n int) []string {
+		ids := make([]string, n)
+		for i := range ids {
+			ids[i] = fmt.Sprintf("vendor-%d/a-reasonably-long-model-name-%04d", i%7, i)
+		}
+		return ids
 	}
-	svc := newKeylessService(t, ids)
-	raw, turns, _, _ := guideTurns(t, []string{"--base-url", svc.base()}, "lookup", ids[4999], "none")
-	if len(raw[1]) <= 128<<10 {
-		t.Fatalf("a turn carrying 5,000 ids is %d bytes; the case needs one over 128 KiB", len(raw[1]))
+	carried := func(t *testing.T, resume json.RawMessage) carriedList {
+		t.Helper()
+		var c carriedList
+		if err := json.Unmarshal(resume, &c); err != nil {
+			t.Fatalf("the resume object: %v\n%s", err, resume)
+		}
+		return c
 	}
-	t.Logf("one turn carrying 5,000 ids is %d bytes of JSON", len(raw[1]))
-	done := turns[len(turns)-1].Done
-	if done == nil || !strings.Contains(done.Command, "--model "+ids[4999]) {
-		t.Fatalf("the guide over 5,000 ids ends with %+v", turns[len(turns)-1])
-	}
-	if got := svc.requests(); len(got) != 1 {
-		t.Fatalf("the guide sent %q; want the one look-up", got)
-	}
+	t.Run("5000", func(t *testing.T) {
+		hermeticEnv(t)
+		t.Chdir(t.TempDir())
+		ids := listOf(5000)
+		svc := newKeylessService(t, ids)
+		_, turns, _, _ := guideTurns(t, []string{"--base-url", svc.base()}, "lookup", "name-4999", ids[4999], "none")
+		c := carried(t, turns[1].Resume)
+		models, err := json.Marshal(c.Listed.Models)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("5,000 ids listed: %d carried in %d bytes of JSON, more %d; the resume is %d bytes",
+			len(c.Listed.Models), len(models), c.Listed.More, len(turns[1].Resume))
+		if len(models) > budget || len(c.Listed.Models) == 0 {
+			t.Fatalf("the carried ids are %d bytes of JSON (%d ids); the budget is %d", len(models), len(c.Listed.Models), budget)
+		}
+		if !reflect.DeepEqual(c.Listed.Models, ids[:len(c.Listed.Models)]) {
+			t.Fatal("the carried ids are not the first listed, in the service's order")
+		}
+		if c.Listed.More != len(ids)-len(c.Listed.Models) {
+			t.Fatalf("more = %d; %d of %d are carried", c.Listed.More, len(c.Listed.Models), len(ids))
+		}
+		if next, _ := json.Marshal(append(c.Listed.Models, ids[len(c.Listed.Models)])); len(next) <= budget {
+			t.Fatalf("one more id fits the budget (%d bytes), yet it was not carried", len(next))
+		}
+		for i, turn := range turns {
+			if len(turn.Resume) > 2*budget {
+				t.Fatalf("turn %d's resume object is %d bytes", i, len(turn.Resume))
+			}
+		}
+		// A fragment that matches only an id not carried asks for the full name.
+		q := turns[2].Ask
+		if q == nil || len(q.Questions) != 1 {
+			t.Fatalf("the fragment of an id not carried ends with %+v", turns[2])
+		}
+		host := strings.TrimPrefix(strings.TrimSuffix(svc.base(), "/v1"), "http://")
+		want := fmt.Sprintf("%s listed %d more models than the guide carries; type the model's full name.", host, c.Listed.More)
+		var said strings.Builder
+		for _, m := range q.Questions[0].Material {
+			said.WriteString(m.Text + "\n")
+		}
+		if !strings.Contains(said.String(), want) {
+			t.Fatalf("the question after a fragment matching no carried id says %q; want %q", said.String(), want)
+		}
+		// The full name typed is taken; the guide ends with it in the command.
+		done := turns[len(turns)-1].Done
+		if done == nil || !strings.Contains(done.Command, "--model "+ids[4999]) {
+			t.Fatalf("the full name typed ends with %+v", turns[len(turns)-1])
+		}
+		if got := svc.requests(); len(got) != 1 {
+			t.Fatalf("the guide sent %q; want the one look-up", got)
+		}
+	})
+	t.Run("bound", func(t *testing.T) {
+		// The resume object read back is bounded below one argument's limit.
+		if maxResumeBytes >= 128<<10 || maxResumeBytes < 2*budget {
+			t.Fatalf("maxResumeBytes = %d; want room for the carried list and below 128 KiB", maxResumeBytes)
+		}
+		hermeticEnv(t)
+		t.Chdir(t.TempDir())
+		over := `{"schema_version":1,"answers":[],"base_url":"` + strings.Repeat("a", maxResumeBytes) + `"}`
+		_, stderr, err, _ := runConnect(t, over, "--guide", "--resume", "-", "--answer", "x")
+		if err == nil || !strings.Contains(stderr+err.Error(), fmt.Sprintf("larger than %d bytes", maxResumeBytes)) {
+			t.Fatalf("a resume object over the bound = %v\n%s", err, stderr)
+		}
+	})
+	t.Run("300", func(t *testing.T) {
+		hermeticEnv(t)
+		t.Chdir(t.TempDir())
+		ids := listOf(300)
+		svc := newKeylessService(t, ids)
+		_, turns, _, _ := guideTurns(t, []string{"--base-url", svc.base()}, "lookup", ids[299], "none")
+		if c := carried(t, turns[1].Resume); !reflect.DeepEqual(c.Listed.Models, ids) || c.Listed.More != 0 {
+			t.Fatalf("300 ids listed: %d carried, more %d; want all 300 and none more", len(c.Listed.Models), c.Listed.More)
+		}
+		if done := turns[len(turns)-1].Done; done == nil || !strings.Contains(done.Command, "--model "+ids[299]) {
+			t.Fatalf("the guide over 300 ids ends with %+v", turns[len(turns)-1])
+		}
+	})
 }

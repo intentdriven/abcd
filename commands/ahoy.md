@@ -572,8 +572,8 @@ typing; where it lists too few options for the tool, `tool` carries one more,
 "Type my own answer", which only points at that row. Then pass the answer
 back, the turn's `resume` member unchanged on stdin and the answer as the tool
 returned it (an option's label, or the text typed). The `resume` member goes
-in a quoted heredoc, never as an argument: it carries every model the
-service listed, up to 5,000 names, which is more than one argument may hold.
+in a quoted heredoc, never as an argument: it carries the models the service
+listed, up to 32 KiB of their names, and the count of any it does not carry.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect --guide --resume - --answer '<answer>' --json <<'RESUME'
@@ -591,7 +591,9 @@ up the models the service lists, showing the scheme and host first (only a yes
 sends one request, carrying no key, following no redirect, and giving up after
 ten seconds); the model, offering the models the person's other connections
 already use that the service lists, at most three, and narrowing the list as
-they type part of a name, with no second request; where the service publishes
+they type part of a name, with no second request (when the service lists more
+models than the guide carries and a part matches none carried, it asks for the
+model's full name); where the service publishes
 no list, or the person declines the look-up, a typed model name and the reason;
 whether the service takes a key; where the key lives, offering the three
 homes and never a key the person saved in the system keychain by hand; and,

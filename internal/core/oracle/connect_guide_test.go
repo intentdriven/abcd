@@ -277,6 +277,89 @@ func TestGuideNarrowsWithoutASecondRequest(t *testing.T) {
 	}
 }
 
+// TestGuideCapsTheCarriedList (G2, open question 2): a look-up listing more
+// ids than MaxCarriedBytes holds carries the first that fit, in the service's
+// order, and the count of the rest; the model question says how many the
+// service lists and how many are carried. A part of a name matching none
+// carried asks for the full name, which is taken as any typed name is
+// (validModel and the key check ask again; an exact name ends the guide). A
+// resume object's count is checked on the way back in, and a carried list over
+// the budget is cut to it again.
+func TestGuideCapsTheCarriedList(t *testing.T) {
+	ids := make([]string, 2000)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("vendor%d/a-long-enough-model-name-%04d", i%3, i)
+	}
+	svc := newGuideFake(t, http.StatusOK, ids)
+	f := newFx(t)
+	first := GuideRequest{BaseURL: svc.base()}
+	turn := last(drive(t, f, first, "lookup"))
+	l := turn.Resume.Listed
+	if l == nil || l.More == 0 || len(l.Models)+l.More != len(ids) || !reflect.DeepEqual(l.Models, ids[:len(l.Models)]) {
+		t.Fatalf("2,000 ids listed carry %+v", l)
+	}
+	if b, _ := json.Marshal(l.Models); len(b) > MaxCarriedBytes {
+		t.Fatalf("the carried ids are %d bytes of JSON; the budget is %d", len(b), MaxCarriedBytes)
+	}
+	host := strings.TrimPrefix(strings.TrimSuffix(svc.base(), "/v1"), "http://")
+	if m := material(asked(t, turn)); !strings.Contains(m, fmt.Sprintf("%s lists 2000 models; the guide carries the first %d.", host, len(l.Models))) {
+		t.Fatalf("the model question over a capped list says %q", m)
+	}
+	uncarried := ids[len(ids)-1]
+	turns := drive(t, f, first, "lookup", "name-1999", "bad;name", keyShapedAnswer(7), uncarried, "none")
+	full := fmt.Sprintf("%s listed %d more models than the guide carries; type the model's full name.", host, l.More)
+	for i, want := range []string{full, "is not a model name abcd accepts", "looks like a key"} {
+		if q := asked(t, turns[2+i]); q.ID != GuideQTyped || !strings.Contains(material(q), want) {
+			t.Fatalf("turn %d asks %q: %q; want the full name asked for, saying %q", 2+i, q.ID, material(q), want)
+		}
+	}
+	if done := last(turns).Done; done == nil || !strings.Contains(done.Command, "--model "+uncarried) {
+		t.Fatalf("the full name typed ends with %+v", last(turns))
+	}
+	// A part matching a carried id still narrows over the carried list.
+	if q := asked(t, last(drive(t, f, first, "lookup", "name-0001"))); q.ID != GuideQNarrow {
+		t.Fatalf("a part matching carried ids asks %q", q.ID)
+	}
+
+	var refusal *GuideRefusal
+	frag := "name-1999"
+	for _, tc := range []struct {
+		name string
+		edit func(*GuideListed)
+		want string
+	}{
+		{"a negative count", func(l *GuideListed) { l.More = -1 }, "counts -1 more names"},
+		{"a count on a list it did not get", func(l *GuideListed) { l.Status, l.Models, l.More = ListedNeedsKey, nil, 3 }, "counts 3 more names"},
+		{"a count past what a look-up keeps", func(l *GuideListed) { l.More = 5000 }, "a look-up keeps at most 5000"},
+	} {
+		edited := turn
+		cp := *turn.Resume.Listed
+		edited.Resume.Listed = &cp
+		tc.edit(edited.Resume.Listed)
+		if _, err := turnOf(t, f, &edited, &frag, first); !errors.As(err, &refusal) || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s = %v; want a refusal saying %q", tc.name, err, tc.want)
+		}
+	}
+	// A list carried whole, over the budget, is cut to it again.
+	before, _ := svc.requests()
+	edited := turn
+	edited.Resume.Listed = &GuideListed{Status: ListedListed, Host: host, Models: ids}
+	next, err := turnOf(t, f, &edited, &frag, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := next.Resume.Listed
+	if got == nil {
+		t.Fatalf("a carried list over the budget comes back as none: %+v", next)
+	}
+	if !reflect.DeepEqual(got.Models, l.Models) || got.More != l.More {
+		t.Fatalf("a carried list over the budget comes back as %d ids, more %d; want %d, more %d", len(got.Models), got.More, len(l.Models), l.More)
+	}
+	if after, _ := svc.requests(); len(after) != len(before) {
+		t.Fatalf("a carried list sent %d requests", len(after)-len(before))
+	}
+}
+
 // TestGuideFallsBackToTyping (G7): a list answered not found, an empty list
 // and a body that is not a list each reach the typed model question, its
 // material giving the reason; a name validModel refuses asks again.

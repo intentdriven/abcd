@@ -257,6 +257,12 @@ replay checks again), and nothing else: each id is checked again with
 `validModel`, the address with `ValidateBaseURL`, and the command is shown in
 full and verified with a real completion before anything is written.
 
+As built: `resume` carries at most 32 KiB of the listed ids as JSON
+(`oracle.MaxCarriedBytes`), the first in the service's order, with `more`, the
+count not carried, and a part of a name matching none carried while `more` is
+above zero asks for the model's full name, which is checked as any typed name
+is, so G2's one request holds (decided 2026-10-04, `.abcd/work/DECISIONS.md`).
+
 The questions, each one turn, in order. Each is a `question.Ask`, chip
 "Setup Q<n>", that the asking rules hold where spc-2610030944505997 has landed: the thing first, the
 question last, decide later last, nothing marked.

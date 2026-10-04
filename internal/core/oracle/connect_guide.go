@@ -15,11 +15,12 @@ package oracle
 // question, re-deriving each question and checking each answer against it, so
 // an edited resume object cannot skip a question. The listed models are the
 // one thing carried rather than re-derived (open question 2, decided (a)):
-// the look-up runs once, keyless, and each listed id is checked again on the
-// way back in.
+// the look-up runs once, keyless, at most MaxCarriedBytes of its ids are
+// carried, and each carried id is checked again on the way back in.
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -59,6 +60,14 @@ const (
 	guideEcho = 64
 )
 
+// MaxCarriedBytes bounds the listed ids a resume object carries, as JSON:
+// the first ids in the service's order that fit, and the count of the rest.
+// A look-up keeps up to 5,000 ids, about 270 KB of JSON a turn: more than one
+// argument may hold on linux (MAX_ARG_STRLEN, 128 KiB) when the host runs the
+// page's command as sh -c, and more than a session should re-emit every turn.
+// Real services list tens to a few hundred ids, which fit whole.
+const MaxCarriedBytes = 32 << 10
+
 // The ids of the guide's questions, as the resume object's answers name them.
 const (
 	GuideQAddress = "address"
@@ -94,7 +103,9 @@ type GuideListed struct {
 	Status string   `json:"status"`
 	Host   string   `json:"host"`
 	Models []string `json:"models,omitempty"`
-	Reason string   `json:"reason,omitempty"`
+	// More is how many of the ids listed are not carried (MaxCarriedBytes).
+	More   int    `json:"more,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // GuideState is the resume object: everything the next turn needs, written
@@ -465,7 +476,7 @@ func (g *guide) walk() (GuideTurn, *stop) {
 	case listed != nil && listed.Status == ListedNeedsKey:
 		picks = true
 	case listed != nil && listed.Status == ListedListed:
-		if model, s = g.pickListed(host, listed.Models); s != nil {
+		if model, s = g.pickListed(host, listed.Models, listed.More); s != nil {
 			return GuideTurn{}, s
 		}
 	default:
@@ -479,13 +490,7 @@ func (g *guide) walk() (GuideTurn, *stop) {
 			Ask:      "Which model should abcd set up?",
 			Typed:    "the model's name, exactly as the service spells it",
 		}
-		if model, s = g.put(q, func(ans string) (string, string, error) {
-			t := strings.TrimSpace(ans)
-			if retry := g.modelRefusal(t); retry != "" {
-				return "", retry, nil
-			}
-			return t, "", nil
-		}); s != nil {
+		if model, s = g.put(q, g.typedModel); s != nil {
 			return GuideTurn{}, s
 		}
 	}
@@ -583,10 +588,13 @@ func (g *guide) listed(base, host string) (*GuideListed, error) {
 		if l.Host != host {
 			return nil, refuse("the resume object's model list is for %q, not %q", layered.BoundKey(l.Host), host)
 		}
+		if l.More < 0 || (l.More > 0 && l.Status != ListedListed) {
+			return nil, refuse("the resume object's model list counts %d more names than it carries", l.More)
+		}
 		switch l.Status {
 		case ListedListed:
-			if len(l.Models) > openaiapi.MaxListedModels {
-				return nil, refuse("the resume object's model list holds %d names; a look-up keeps at most %d", len(l.Models), openaiapi.MaxListedModels)
+			if n := len(l.Models) + l.More; n > openaiapi.MaxListedModels {
+				return nil, refuse("the resume object's model list holds %d names; a look-up keeps at most %d", n, openaiapi.MaxListedModels)
 			}
 			kept := make([]string, 0, len(l.Models))
 			seen := map[string]bool{}
@@ -599,7 +607,8 @@ func (g *guide) listed(base, host string) (*GuideListed, error) {
 			if kept = dropKeyShaped(kept); len(kept) == 0 {
 				return &GuideListed{Status: ListedNone, Host: host, Reason: "listed no usable models"}, nil
 			}
-			return &GuideListed{Status: ListedListed, Host: host, Models: kept}, nil
+			kept, more := carry(kept)
+			return &GuideListed{Status: ListedListed, Host: host, Models: kept, More: l.More + more}, nil
 		case ListedNeedsKey, ListedNone:
 			return &GuideListed{Status: l.Status, Host: host, Reason: termsafe.CleanProseLine(l.Reason, 256)}, nil
 		}
@@ -630,7 +639,38 @@ func (g *guide) listed(base, host string) (*GuideListed, error) {
 	if ids = dropKeyShaped(ids); len(ids) == 0 {
 		return &GuideListed{Status: ListedNone, Host: host, Reason: "listed no usable models"}, nil
 	}
-	return &GuideListed{Status: ListedListed, Host: host, Models: ids}, nil
+	ids, more := carry(ids)
+	return &GuideListed{Status: ListedListed, Host: host, Models: ids, More: more}, nil
+}
+
+// carry is the ids a resume object carries: the first, in the order given,
+// whose JSON array fits MaxCarriedBytes, and how many of the rest it does not
+// carry.
+func carry(ids []string) (kept []string, more int) {
+	size := len("[]")
+	for i, id := range ids {
+		b, err := json.Marshal(id)
+		if err != nil {
+			return ids[:i], len(ids) - i
+		}
+		if i > 0 {
+			size++ // the comma before it
+		}
+		if size += len(b); size > MaxCarriedBytes {
+			return ids[:i], len(ids) - i
+		}
+	}
+	return ids, 0
+}
+
+// typedModel admits a model's name as typed: one validModel and the
+// denylist take (modelRefusal), else the question is asked again saying why.
+func (g *guide) typedModel(ans string) (string, string, error) {
+	t := strings.TrimSpace(ans)
+	if retry := g.modelRefusal(t); retry != "" {
+		return "", retry, nil
+	}
+	return t, "", nil
 }
 
 // modelRefusal is why a model name cannot be offered or printed: one
@@ -650,8 +690,10 @@ func (g *guide) modelRefusal(m string) string {
 
 // pickListed is the model question over a listed service (G2): the models
 // the person already uses that the service lists, then typing part of a name
-// to narrow the whole list, with no second request.
-func (g *guide) pickListed(host string, ids []string) (string, *stop) {
+// to narrow the carried list, with no second request. more is how many ids
+// the service listed that are not carried: a part of a name matching none
+// carried then asks for the model's full name, taken as any typed name is.
+func (g *guide) pickListed(host string, ids []string, more int) (string, *stop) {
 	in := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		in[id] = true
@@ -667,6 +709,9 @@ func (g *guide) pickListed(host string, ids []string) (string, *stop) {
 		Material: []question.Block{para(fmt.Sprintf("%s lists %d models.", host, len(ids)))},
 		Ask:      "Which model should abcd set up?",
 		Typed:    "part of a model's name",
+	}
+	if more > 0 {
+		q.Material = []question.Block{para(fmt.Sprintf("%s lists %d models; the guide carries the first %d.", host, len(ids)+more, len(ids)))}
 	}
 	for _, m := range g.suggestions(in) {
 		q.Options = append(q.Options, question.Option{Value: m, Label: m, Meaning: "A model one of your connections already uses."})
@@ -699,6 +744,17 @@ func (g *guide) pickListed(host string, ids []string) (string, *stop) {
 			Typed: "more of the name, or another part",
 		}
 		switch n := len(matches); {
+		case n == 0 && more > 0:
+			tq := question.Question{
+				ID: GuideQTyped,
+				Material: []question.Block{
+					para(fmt.Sprintf("None of the %d models the guide carries matches %q.", len(ids), echoed(v))),
+					para(fmt.Sprintf("%s listed %d more models than the guide carries; type the model's full name.", host, more)),
+				},
+				Ask:   "Which model should abcd set up?",
+				Typed: "the model's full name, exactly as the service spells it",
+			}
+			return g.put(tq, g.typedModel)
 		case n == 0:
 			nq.Material = []question.Block{para(fmt.Sprintf("None of the %d models %s lists matches %q.", len(ids), host, echoed(v)))}
 		case n > maxNarrowShown:
