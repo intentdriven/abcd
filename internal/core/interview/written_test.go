@@ -343,3 +343,19 @@ func TestAStopThatRecordsNothingLeavesNoRecord(t *testing.T) {
 		})
 	}
 }
+
+// TestAnAskBreakingTheAskingLimitsIsInvalid: a question that passes the
+// structural check but breaks an asking limit (a chip outside the chip
+// grammar) is refused before it is drawn, as the structural check's is.
+func TestAnAskBreakingTheAskingLimitsIsInvalid(t *testing.T) {
+	stubOnPath(t, stubAsk("Whoever Q1", "Is that answer complete?"))
+	r := newWrittenRun(t, routedToClaude)
+	res, err := r.w.Run(context.Background())
+	if err == nil || len(r.asked) != 0 {
+		t.Fatalf("err = %v, asked %d", err, len(r.asked))
+	}
+	rec := readRecord(t, res.Record)
+	if len(rec.Fallbacks) != 1 || rec.Fallbacks[0].Reason != runner.ReasonInvalid || !strings.Contains(rec.Fallbacks[0].Detail, "header") {
+		t.Fatalf("fallbacks %+v", rec.Fallbacks)
+	}
+}
