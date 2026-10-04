@@ -379,6 +379,36 @@ func TestGuideRefusesAnAnswerItsQuestionDoesNotAdmit(t *testing.T) {
 	if _, err := turnOf(t, f, &edited, &ans, first); !errors.As(err, &refusal) {
 		t.Fatalf("a resume object of another schema = %v", err)
 	}
+	// The answer is for the question the resume object leaves open, and that
+	// must be the question the replay reaches. (The cases above edited the
+	// answers turns shares, so the guide is driven afresh.)
+	turns = drive(t, f, first, "type", "vendor/coder")
+	edited = last(turns)
+	edited.Resume.Open = GuideQHome
+	if _, err := turnOf(t, f, &edited, &ans, first); !errors.As(err, &refusal) || !strings.Contains(err.Error(), `the answer is for "home", and the guide asks "takes-key"`) {
+		t.Fatalf("an answer for another open question = %v", err)
+	}
+	// More answers than a guided setup takes are refused before any replay.
+	edited = last(turns)
+	edited.Resume.Answers = nil
+	for range maxGuideAnswers + 1 {
+		edited.Resume.Answers = append(edited.Resume.Answers, GuideAnswer{ID: GuideQLookup, Value: "type"})
+	}
+	if _, err := turnOf(t, f, &edited, &ans, first); !errors.As(err, &refusal) || !strings.Contains(err.Error(), "carries 65 answers; a guided setup takes at most 64") {
+		t.Fatalf("a resume object carrying 65 answers = %v", err)
+	}
+	// An answer over the bound is asked again, saying the bound.
+	q := asked(t, last(drive(t, f, first, "type", strings.Repeat("a", maxGuideAnswerBytes+1))))
+	if q.ID != GuideQTyped || !strings.Contains(material(q), "The answer is 2049 bytes; an answer here is at most 2048.") {
+		t.Fatalf("an answer over the bound asks %q: %q", q.ID, material(q))
+	}
+	// The carried model list is for the address the replay reaches.
+	listed := last(drive(t, f, first, "lookup"))
+	listed.Resume.Listed.Host = "elsewhere.example"
+	frag := "coder"
+	if _, err := turnOf(t, f, &listed, &frag, first); !errors.As(err, &refusal) || !strings.Contains(err.Error(), `model list is for "elsewhere.example"`) {
+		t.Fatalf("a carried list for another host = %v", err)
+	}
 }
 
 // TestGuideKeyHomesAndTheCommand: the home question offers exactly the
