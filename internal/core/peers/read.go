@@ -527,12 +527,12 @@ func commonDir(dir string) (string, error) {
 // change, tracked or not. A git that cannot answer reads as not clean, so the
 // peer is read rather than skipped.
 func recordsClean(dir string) bool {
-	args := []string{"status", "--porcelain", "-z", "--untracked-files=all", "--"}
+	var specs []string
 	for _, fam := range families {
-		args = append(args, fam.rel)
+		specs = append(specs, fam.rel)
 	}
-	out, err := gitutil.RunCapped(dir, maxListing, args...)
-	return err == nil && out == ""
+	entries, err := gitutil.Status(dir, maxListing, gitutil.StatusOptions{Pathspecs: specs})
+	return err == nil && len(entries) == 0
 }
 
 // listWorktrees is this repository's working trees, git's canonical listing

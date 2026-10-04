@@ -75,6 +75,7 @@ var examples = map[string]string{
 	"abcd intent hold":               `abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"`,
 	"abcd intent link":               "abcd intent link itd-2609010000000001 spc-2609010000000002",
 	"abcd intent plan":               "abcd intent plan itd-2609010000000001",
+	"abcd intent interview":          "abcd intent interview itd-2609010000000001",
 	"abcd intent prepass":            "abcd intent prepass itd-2609010000000001 --json",
 	"abcd intent ready":              "abcd intent ready itd-2609010000000001",
 	"abcd intent reclassify":         `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`,
@@ -96,8 +97,9 @@ var examples = map[string]string{
 	"abcd reading assemble": "abcd reading assemble --position widening --target HEAD",
 	"abcd reading ingest":   "abcd reading ingest --reading-json reading.json",
 
-	"abcd reflect":       "abcd reflect v0.11.0",
-	"abcd reflect write": "abcd reflect write v0.11.0 --answers answers.json",
+	"abcd reflect":           "abcd reflect v0.11.0",
+	"abcd reflect interview": "abcd reflect interview v0.11.0",
+	"abcd reflect write":     "abcd reflect write v0.11.0 --answers answers.json",
 
 	"abcd scribe assemble": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
 	"abcd scribe ingest":   "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",

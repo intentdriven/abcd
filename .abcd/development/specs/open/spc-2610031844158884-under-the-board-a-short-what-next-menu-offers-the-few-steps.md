@@ -79,7 +79,7 @@ Builds on and reuses:
   `internal/core/question` holds the field view and the limits only
   (`Fields`, `Limits`, `CheckLimits` at `check.go`, line 118).
 - The plain-Terminal answer loop of
-  [spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md)
+  [spc-2610030911534855](../closed/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md)
   step 2, which exists nowhere yet: the arrow-key list, choosing by number, the
   numbered reader chosen by `interview.list: numbered` or `ABCD_ACCESSIBLE` and
   forced by `TERM=dumb`, and `term.RawSession`, whose restore runs on every

@@ -63,7 +63,7 @@ In:
 
 It builds on, and reuses rather than restates:
 
-- [spc-2610030911534855](../open/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
+- [spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
   the plain-Terminal picker (itd-2610030810370060): its step 1 (the question
   type in `internal/core/question`, golang.org/x/term in `go.mod`) and its
   step 2 (the long list with typing to narrow, the numbered fallback, and the

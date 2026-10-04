@@ -22,6 +22,7 @@ type proposed struct {
 // itd-2609221009495079, not to this table.
 var proposal = map[string]proposed{
 	"intent-auditor":             {Frontier, 1},
+	"planning-interviewer":       {Frontier, 1},
 	"lifeboat-reviewer":          {Frontier, 1},
 	"ruthless-reviewer":          {Frontier, 1},
 	"security-reviewer":          {Frontier, 1},
