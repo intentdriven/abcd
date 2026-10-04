@@ -16,6 +16,10 @@ import (
 // every list it draws.
 const NumberedHint = "Type a number, or part of a name to narrow the list, then Enter."
 
+// TypedHint is the numbered reader's instruction beneath a question with a
+// typed part: a line that is not a number is the answer itself.
+const TypedHint = "Type a number, or type your answer, then Enter."
+
 // numberedPage is how many answers the numbered reader lists at a time.
 const numberedPage = 20
 
@@ -27,7 +31,9 @@ const numberedPage = 20
 // A typed number chooses the answer with that number, which is its place in
 // the full list, Later being the last. "n" and "p" page a long list 20 at a
 // time; on a list with one page they narrow, like other text. Other typed text narrows the list by question.Matches and lists it
-// again, numbered as before; an empty line clears the narrowing. Each part of
+// again, numbered as before; an empty line clears the narrowing. On a
+// question with a typed part, a line that is not a number (nor a page key on
+// a list with pages) is the typed answer instead (spc-2610031241482088). Each part of
 // a tabbed Ask is asked in turn. Input that ends before an answer is an
 // error, never a default taken silently.
 func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
@@ -71,11 +77,16 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 					from+1, to, len(matches), numberedPage))
 			}
 			ls = append(ls, d.optionLines(all, []int{len(all) - 1}, -1)...)
+			ls = append(ls, d.typed(q)...)
 			if state := d.state(q); len(state) > 0 {
 				ls = append(ls, "")
 				ls = append(ls, state...)
 			}
-			ls = append(ls, "", NumberedHint)
+			hint := NumberedHint
+			if q.Typed != "" {
+				hint = TypedHint
+			}
+			ls = append(ls, "", hint)
 			w.lines(ls)
 		}
 		// paged reports whether the list on screen has pages: only then is a
@@ -83,8 +94,8 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 		// narrows like any other text.
 		paged := func() bool { return len(narrow(filter, answers)) > numberedPage }
 		show("")
-		chosen := -1
-		for chosen < 0 {
+		chosen, typed := -1, ""
+		for chosen < 0 && typed == "" {
 			if w.err != nil {
 				return nil, w.err
 			}
@@ -112,13 +123,21 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 			case text == "":
 				filter, page = "", 0
 				show("")
+			case q.Typed != "":
+				// A line that is not a number is the typed answer.
+				typed = text
 			default:
 				filter, page = text, 0
 				show("")
 			}
 		}
-		out = append(out, answerFor(a.Questions[i], all, chosen))
-		w.lines([]string{d.glyph + " " + q.Chip + ": " + all[chosen].Label, ""})
+		if typed != "" {
+			out = append(out, Answer{ID: a.Questions[i].ID, Value: typed, Label: termsafe.Sanitize(typed), Typed: true})
+			w.lines([]string{d.glyph + " " + q.Chip + ": " + termsafe.Sanitize(typed), ""})
+		} else {
+			out = append(out, answerFor(a.Questions[i], all, chosen))
+			w.lines([]string{d.glyph + " " + q.Chip + ": " + all[chosen].Label, ""})
+		}
 		if w.err != nil {
 			return nil, w.err
 		}

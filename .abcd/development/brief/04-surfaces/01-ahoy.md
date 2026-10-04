@@ -146,11 +146,45 @@ never billed.
 
 The key arrives on stdin and nowhere else. A flag would leave it in the process
 listing and the shell history, the install prompter echoes every answer into its
-transcript, a host's question tool would put it in an agent's context, and a
-terminal would echo it as it is typed, so stdin from a terminal is refused. For
-the same reason the walkthrough is this sub-verb, which the person runs with the
-key piped in, rather than a question the install pass asks: declining is not
-running it, and changes nothing.
+transcript, and a host's question tool would put it in an agent's context. Piped,
+it is read whole; at a terminal it is read on hidden input, echo off, after one
+line naming the provider, and an interrupt during the paste restores the
+terminal and writes nothing. For the same reason the walkthrough is this
+sub-verb, which the person runs, rather than a question the install pass asks:
+declining is not running it, and changes nothing.
+
+Run at a terminal with no model named, the setup lists the service's models
+with the key it holds (one request to the service's model list, which follows
+no redirect and gives up after ten seconds), offers the names abcd accepts as
+model identifiers in the plain-Terminal list, typing part of a name to narrow
+it, and verifies the model picked with one real completion before anything is
+written; a list is never taken as the verification. Off a terminal, a setup
+with no model named is refused.
+
+### The guided setup
+
+Inside a session, the guided form of the setup works its values out with the
+person one question a turn and ends by printing the one command, with every
+path it writes, for the person to paste into a terminal
+(itd-2610030821294016). It never sets the connection up itself, for any home:
+it writes nothing, reads no key home, never asks for the key, and refuses every
+flag that would set the connection up. Each turn returns one question, the
+question as the host's question tool takes it, and a resume object the next
+turn reads back; the guide replays every answer from the first question each
+turn, so an edited resume object cannot skip one. It asks for the address when
+none is given; offers to look up the service's models, showing the scheme and
+host first and sending one keyless request only on a yes; suggests the models
+the person's other connections already use that the service lists, at most
+three, and narrows the list by the typed part of a name with no second
+request, by the same rule the plain-Terminal list narrows by; carries the
+first listed ids that fit 32 KiB and the count it does not carry, asking for
+the model's full name when a typed part matches none carried; falls back to a
+typed model name, saying why, where the service publishes no list; asks
+whether the service takes a key and where the key lives, offering the
+credential store's three homes and never a key saved in the system keychain by
+hand; and, for an environment variable, offers at most three variable names
+ending in `_API_KEY`, never a value. A service that lists its models only for a
+key is picked from in the terminal step, so its command names no model.
 
 The key lives in one of the credential store's three homes (below), and a
 fourth answer, no key, sets up a local server that takes none.
@@ -920,13 +954,16 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--answer` | string |
 | `--base-url` | string |
 | `--env` | string |
 | `--field` | string |
 | `--file` | string |
+| `--guide` | bool |
 | `--home` | string |
 | `--key` | string |
 | `--model` | stringArray |
+| `--resume` | string |
 
 ### `abcd ahoy credential`
 

@@ -34,6 +34,10 @@ type ptyConnect struct {
 
 const ptyWait = 20 * time.Second
 
+// ptySettle is how long the terminal must stay quiet before a check that the
+// key never reached it reads the output (ptytest.Settled).
+const ptySettle = 200 * time.Millisecond
+
 func startPtyConnect(t *testing.T, args ...string) *ptyConnect {
 	t.Helper()
 	p := ptytest.Open(t, 80, 24)
@@ -127,8 +131,8 @@ func TestConnectReadsTheKeyHiddenAtARealTerminal(t *testing.T) {
 	if calls.Load() != 1 || auth.Load() != "Bearer "+connectKey {
 		t.Fatalf("verification: %d call(s), auth %v", calls.Load(), auth.Load())
 	}
-	if strings.Contains(c.pty.Output(), connectKey) {
-		t.Fatalf("the key was drawn on the terminal:\n%q", c.pty.Output())
+	if out := c.pty.Settled(t, ptySettle); strings.Contains(out, connectKey) {
+		t.Fatalf("the key was drawn on the terminal:\n%q", out)
 	}
 	c.restored(t, "after the setup")
 	raw, err := os.ReadFile(c.home + "/.abcd/credentials.json")
@@ -160,8 +164,8 @@ func TestHiddenKeyRestoresTerminalOnInterrupt(t *testing.T) {
 		if _, err := os.Lstat(c.home + "/.abcd"); err == nil {
 			t.Error("an interrupted setup wrote under ~/.abcd")
 		}
-		if strings.Contains(c.pty.Output(), "half-a-pas") {
-			t.Errorf("the paste was drawn:\n%q", c.pty.Output())
+		if out := c.pty.Settled(t, ptySettle); strings.Contains(out, "half-a-pas") {
+			t.Errorf("the paste was drawn:\n%q", out)
 		}
 	})
 	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
@@ -228,8 +232,8 @@ func TestConnectPicksAtARealTerminal(t *testing.T) {
 		if err != nil || !strings.Contains(string(raw), `"vendor/coder-small"`) || strings.Contains(string(raw), "coder-large") {
 			t.Fatalf("the provider block does not hold the model picked: %v\n%s", err, raw)
 		}
-		if strings.Contains(c.pty.Output(), connectKey) {
-			t.Fatalf("the key was drawn on the terminal:\n%q", c.pty.Output())
+		if out := c.pty.Settled(t, ptySettle); strings.Contains(out, connectKey) {
+			t.Fatalf("the key was drawn on the terminal:\n%q", out)
 		}
 		c.restored(t, "after the pick")
 	})
@@ -254,8 +258,8 @@ func TestConnectPicksAtARealTerminal(t *testing.T) {
 				t.Errorf("an interrupted pick wrote ~/.abcd/%s", name)
 			}
 		}
-		if strings.Contains(c.pty.Output(), connectKey) {
-			t.Fatalf("the key was drawn on the terminal:\n%q", c.pty.Output())
+		if out := c.pty.Settled(t, ptySettle); strings.Contains(out, connectKey) {
+			t.Fatalf("the key was drawn on the terminal:\n%q", out)
 		}
 		c.restored(t, "after Ctrl-C at the list")
 	})
