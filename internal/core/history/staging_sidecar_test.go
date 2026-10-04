@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // subAgentStage is the StageMeta a SubagentStop hook produces once its sidecar
@@ -28,7 +30,7 @@ func subAgentStage(sessionID, agentID string) StageMeta {
 
 // stagingDir is the staging directory for the test store.
 func stagingDir(home string) string {
-	return filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
+	return abcdhome.Path(home, "transcripts", testRootSHA, "staging")
 }
 
 // TestStageWritesLineageSidecar is the point of step 2. A staged file used to be

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestJSONErrorEnvelopeNoAbsolutePathLeak is the iss-76 detector: cli.Run routes
@@ -361,7 +363,7 @@ func TestScrubPaths(t *testing.T) {
 		},
 		{
 			name:        "custom-type home path (history class)",
-			err:         homeRootedErr{path: filepath.Join(home, ".abcd", "history", "x")},
+			err:         homeRootedErr{path: abcdhome.Path(home, "history", "x")},
 			wantAbsent:  home,
 			wantPresent: []string{".abcd", "history: store unreadable"},
 		},

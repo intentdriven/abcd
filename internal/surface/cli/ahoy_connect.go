@@ -21,6 +21,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -37,7 +38,7 @@ import (
 var dispatchNote = "a delegating verb whose agent's oracle.roles entry points at a provider sends the step there itself " +
 	"and ingests the answer, and every other step runs on the host; a provider whose block names a key takes only " +
 	"self-contained agents (" + strings.Join(oracle.SelfContained(), ", ") + "), under ruling DR5 of 2026-09-29, " +
-	"and oracle.bundled_context_providers in ~/.abcd/config.json is the person's override for file-reading agents " +
+	"and oracle.bundled_context_providers in " + abcdhome.Display("config.json") + " is the person's override for file-reading agents " +
 	"whose bundle abcd builds (none yet)"
 
 // providerView is one configured provider as the board shows it: the block,
@@ -223,7 +224,7 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "the provider's OpenAI-compatible base URL: https, or http to a server on this machine")
 	cmd.Flags().StringArrayVar(&models, "model", nil, "a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)")
-	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)")
+	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only "+credential.StorePath+") | keychain (read from stdin into the platform keychain) | none (a server that takes no key)")
 	cmd.Flags().StringVar(&keyName, "key", "", "the credential's name (default: the provider's name)")
 	pointerFlags(cmd, &ptr)
 	return cmd

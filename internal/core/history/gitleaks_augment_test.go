@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/adapter/scanner/augmenttest"
@@ -165,7 +166,7 @@ func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 	if res.Wrote {
 		t.Error("Capture reported Wrote=true alongside a refusal")
 	}
-	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
+	tdir := abcdhome.Path(home, "transcripts", testRootSHA, "records")
 	entries, err := os.ReadDir(tdir)
 	if err != nil {
 		t.Fatal(err)

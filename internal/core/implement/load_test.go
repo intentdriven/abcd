@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -240,7 +241,7 @@ func TestRunLogFailureIsReportedAndTheWarningStands(t *testing.T) {
 func writeLimits(t *testing.T, body string, mode os.FileMode) string {
 	t.Helper()
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".abcd", machineload.LimitsFileName)
+	path := abcdhome.Path(home, machineload.LimitsFileName)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}

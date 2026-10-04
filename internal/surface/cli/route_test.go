@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/spf13/cobra"
@@ -36,7 +37,7 @@ func routeWorld(t *testing.T, repoTable, machineTable string) string {
 		put(filepath.Join(repo, ".abcd", "config", "oracle-routing.json"), repoTable)
 	}
 	if machineTable != "" {
-		put(filepath.Join(home, ".abcd", "oracle-routing.json"), machineTable)
+		put(abcdhome.Path(home, "oracle-routing.json"), machineTable)
 	}
 	return repo
 }

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The pre-commit guard refreshes the sources corpus's generated block before it
@@ -70,7 +72,7 @@ func makeCorpusDir(t *testing.T) {
 	if home == "" {
 		t.Skip("no HOME")
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "sources"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home, "sources"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 }

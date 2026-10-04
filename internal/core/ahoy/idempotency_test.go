@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // treeHash walks root and returns a stable map of relpath -> content hash. It
@@ -92,7 +94,7 @@ func TestInstallThenReinstallIsExactNoOp(t *testing.T) {
 			t.Errorf("expected %s after install: %v", rel, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd", "history", "index.json")); err != nil {
+	if _, err := os.Stat(abcdhome.Path(home, "history", "index.json")); err != nil {
 		t.Errorf("history store not bootstrapped: %v", err)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"slices"
 	"sort"
@@ -1333,7 +1334,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			remedy := "Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`."
 			switch _, herr := homeScopeErr(); {
 			case errors.Is(herr, fsutil.ErrHomeScopeSymlinked):
-				remedy = "Replace the symlinked ~/.abcd with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
+				remedy = "Replace the symlinked " + abcdhome.Display() + " with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
 			case herr != nil:
 				remedy = "Re-run from a session whose HOME names your own home directory: the hooks refuse to write the attestation into this one for the same reason, so no further session will produce it."
 			}

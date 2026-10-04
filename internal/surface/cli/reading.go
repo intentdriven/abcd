@@ -36,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -737,7 +738,7 @@ func runReadingDispatch(cmd *cobra.Command, rf *routeFlag, runID string, asJSON 
 	if !route.OnProvider() {
 		return &exitError{Code: 2, Msg: fmt.Sprintf("%s: --dispatch sends a run to the provider its position is pointed at, "+
 			"and %s resolves to the %s: dispatch the reader on the host with the run's bundle and ingest what it returns "+
-			"with --reading-json, or point oracle.roles.%s at <provider>/<model> in ~/.abcd/config.json",
+			"with --reading-json, or point oracle.roles.%s at <provider>/<model> in "+abcdhome.Display("config.json"),
 			verb, agent, oracle.Harness, agent)}
 	}
 	if err := rf.admit(verb, route); err != nil {

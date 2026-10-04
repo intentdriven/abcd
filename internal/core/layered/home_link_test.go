@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestMachineLayerBehindASymlinkedAbcdHomeIsRefused: what the machine layer
@@ -17,7 +19,7 @@ import (
 func TestMachineLayerBehindASymlinkedAbcdHomeIsRefused(t *testing.T) {
 	f := newFixture(t)
 	dotfiles := t.TempDir()
-	if err := os.Symlink(dotfiles, filepath.Join(f.roots.Home, ".abcd")); err != nil {
+	if err := os.Symlink(dotfiles, abcdhome.Path(f.roots.Home)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Load(Config, f.roots); err != nil {

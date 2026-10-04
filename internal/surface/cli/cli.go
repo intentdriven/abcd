@@ -23,6 +23,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -2270,7 +2271,7 @@ func newRulesCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
-domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+domains, overridden by this machine's ` + abcdhome.Display("rules.json") + ` and then by this repo's
 .abcd/rules.json, each layer per field, so the repo wins a field both set.
 Either file may be absent. Bare, it renders every active domain; a positional
 DOMAIN (case-insensitive) renders that one domain regardless of its state or the

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 func providerGap(gaps []Gap, id string) (Gap, bool) {
@@ -53,11 +55,11 @@ func TestAhoyExplainsTheProviderAdapterWhenNoneIsConfigured(t *testing.T) {
 func TestAConfiguredProviderClosesTheGap(t *testing.T) {
 	home, _ := setupHermetic(t)
 	repo := installedRepo(t)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	cfg := `{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter","models":["typesafe/jev-1.13"]}}}}`
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	det, err := Detect(repo)
@@ -75,11 +77,11 @@ func TestAConfiguredProviderClosesTheGap(t *testing.T) {
 func TestARefusedProviderConfigurationIsNamed(t *testing.T) {
 	home, _ := setupHermetic(t)
 	repo := installedRepo(t)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	cfg := `{"oracle":{"denylist":["anthropic/*"],"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","models":["anthropic/claude-opus-4"]}}}}`
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	det, err := Detect(repo)
@@ -102,11 +104,11 @@ func TestARefusedProviderConfigurationIsNamed(t *testing.T) {
 func TestASkippedProviderRouteIsNamed(t *testing.T) {
 	home, _ := setupHermetic(t)
 	repo := installedRepo(t)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	cfg := `{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter","models":["typesafe/jev-1.13"]}}}}`
-	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
