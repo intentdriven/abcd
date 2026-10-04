@@ -205,10 +205,11 @@ from the [2026-10-03 note](../../research/notes/2026-10-03-agents-md-native-read
 | `.rules`, `.cursorrules`, `.github/copilot-instructions.md` | Zed, which reads the first match in a fixed order |
 
 Each file found at the project root is classified with one guarded read
-(`fsutil.ReadGuarded`, `maxAhoyFileBytes`), never followed through a link:
+(`fsutil.ReadGuardedInRoot`, `maxAhoyFileBytes`), never followed through a link:
 
 - **Repeats AGENTS.md** (open question 3): a link whose target resolves to the
-  root AGENTS.md; a regular file holding only the text `AGENTS.md`, which is
+  root AGENTS.md, or, while there is no root AGENTS.md, a link whose target
+  text names it in the plain spelling; a regular file holding only the text `AGENTS.md`, which is
   such a link checked out where links are not supported; a byte-for-byte copy
   of AGENTS.md; a file whose only non-blank line is `@AGENTS.md`; or a file
   that is blank once abcd's own block is stripped (`StripMarkerBlock`), which

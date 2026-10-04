@@ -304,9 +304,20 @@ func (s *conventionsScan) repeats(dir *os.Root, shown, name string, fi fs.FileIn
 		// root's AGENTS.md itself. Its target text alone could name AGENTS.md
 		// through a linked folder (docs/../AGENTS.md with docs a link out of
 		// the project) and so reach a file outside it.
+		agents := s.agentsResolvedPath()
 		resolved, err := filepath.EvalSymlinks(filepath.Join(s.root, filepath.FromSlash(shown)))
-		if err == nil && resolved != "" && resolved == s.agentsResolvedPath() {
+		if err == nil && resolved != "" && resolved == agents {
 			return repeatsLink
+		}
+		// Before the root AGENTS.md exists there is nothing to resolve to, and
+		// the link dangles: it holds no words, and once AGENTS.md is written
+		// the tool reads AGENTS.md through it. Its target text alone is judged
+		// then, by the plain spelling only (namesRootAgents), and a check made
+		// after AGENTS.md is written judges it by resolution again.
+		if agents == "" {
+			if text, lerr := dir.Readlink(name); lerr == nil && s.namesRootAgents(shown, text) {
+				return repeatsLink
+			}
 		}
 		return ""
 	}
