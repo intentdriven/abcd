@@ -15,7 +15,7 @@ The design record for itd-2609221009495079: the decision interface, the shadow l
 
 1. **The interface** (`internal/core/decide/judge.go`, distinct from the ADR verb's package): `Judge(state, question) (value, prob)`, three question kinds; the host implementation renders the question as a prompt and parses the answer with probability 1 (criteria 1, 6).
 2. **The callers**: each judgement-shaped step names its type and calls the interface; the registry of types is the closed list in scope (criterion 1).
-3. **Shadow**: the router reads the configuration per type (`host` | `shadow:<provider/model>` | `<provider/model>`); shadow runs both and appends the pair to `~/.abcd/lab/<lab-id>/pairs.jsonl` (criteria 1, 5).
+3. **Shadow**: the router reads the configuration per type (`host` | `shadow:<provider/model>` | `<provider/model>`); shadow runs both and appends the pair to `~/.abcd.noindex/lab/<lab-id>/pairs.jsonl` (criteria 1, 5).
 4. **Harvest**: `abcd lab harvest` gains the agreement report for a pairs file (criterion 2).
 5. **Turned on**: the router calls the adapter and records the route; fallback with a receipt (criterion 3).
 6. **Allowlist**: the resolver of adr-2609221009491186 runs before any call (criterion 4).
