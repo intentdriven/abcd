@@ -442,22 +442,23 @@ decided rather than asked; the reason is given beneath each.
    - criteria: A7, A8; lands first, as iss-2609291925136841's fix, with a `Resolves: iss-2609291925136841` trailer and the issue moved to resolved/ in the same change (decision 5)
    - packages: CLAUDE.md, GEMINI.md, AGENTS.md, .abcd/development/brief/02-constraints, internal/core/lint (tests only), .github/workflows, .abcd/work/issues
    - tests: TestRepositoryKeepsOneConventionsFile and TestAgentsMDCanarySitsInTheFirstSection, each watched fail first; TestEveryCommittedMarkdownFileHasItsLinksChecked and the two preflight surface tests pass with the link rows gone; record-lint clean with the brief's link re-pointed; the dated receipt taken at the branch tip before the pull request
+   - landed: #786
 2. Setup writes AGENTS.md alone, and a saved retired choice stops setup
    - criteria: A6, and the install half of A1
    - packages: internal/core/ahoy, internal/surface/cli, docs/how-to, docs/reference, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals
    - tests: TestInstallWritesNoToolConventionsFile, TestSavedRetiredTargetStopsSetup, TestRetiredTargetStillReadsAsManaged, TestUninstallStripsARetiredTargetsBlocks, TestChangingTheOneSettingMovesTheBlock, TestDocsTargetFlagRefusesRetiredValues; the 29 test files that build CLAUDE.md fixtures pass, those that install at `claude_md` or `both` moved to `agents_md` or kept as read-side cases; the command reference regenerated with `go generate ./internal/surface/cli`
-   - landed: feat/agentsmd-setup-writes
+   - landed: #792
 3. Embark follows the conventions target
    - criteria: A2
    - packages: internal/core/lifeboat, internal/surface/cli, commands/embark.md, .abcd/development/brief/04-surfaces
    - tests: TestEmbarkPlantsInAgentsMD, TestEmbarkFollowsTheChosenTarget; the existing embark tests over a symlinked or unwritable target moved to AGENTS.md and still skipping; the surface's embark tests read the chosen target
-   - landed: feat/agentsmd-embark
+   - landed: #794
 4. Tools' own files: the owner's-file warning and the retirement offer
    - criteria: A3, A4
    - packages: internal/core/ahoy, internal/surface/cli, docs/how-to, .abcd/development/brief/04-surfaces
    - tests: TestOwnersToolFileIsUntouchedAndNamed, TestRepeatingToolFileIsOfferedForRetirement, TestRetireRechecksTheFile, TestToolFileClassification; the existing piped-install tests unchanged in their answer order, since the offer is asked only at a terminal
    - lands after step 2; it adds `Warnings` to `InstallResult`, and its question meets the asking rules of the two question specs where those have landed
-   - landed: feat/agentsmd-tool-files
+   - landed: #800
 5. The host-reach warnings: presence above the root, the personal file, and the version
    - criteria: A5
    - packages: internal/core/ahoy, docs/how-to, .abcd/development/brief/04-surfaces
@@ -468,3 +469,4 @@ decided rather than asked; the reason is given beneath each.
    - criteria: the page half of A1; the intent's close
    - packages: commands/prepare-this-repo.md, internal/core/ahoy (test only), .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals
    - tests: TestPrepareThisRepoScaffoldsNoToolConventionsFile; docs-lint and record-lint clean; a docs-fidelity review recorded for HEAD, then `abcd spec close spc-2610031156364295` (the intent already declares `impact: breaking`) with a `Delivers: itd-2610030814013772` trailer
+   - landed: feat/agentsmd-close
