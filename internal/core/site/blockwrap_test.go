@@ -11,30 +11,16 @@ package site
 // only where the line would otherwise overflow, and — unlike `anywhere` — leaves
 // min-content sizing alone, so tables, grids and flex rows lay out as before.
 
-import (
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-)
+import "testing"
 
 // TestTheStylesheetBreaksAnOverflowingTokenInEveryBlock holds the net in abcd's
 // own stylesheet and in the copy setup seeds a managed repository with, at the
 // top level so it applies at every width.
 func TestTheStylesheetBreaksAnOverflowingTokenInEveryBlock(t *testing.T) {
-	own, err := os.ReadFile(filepath.Join("..", "..", "..", "site-src", "site.css"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	seed, err := setupSources.ReadFile("setupsrc/site.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, src := range map[string]string{"site-src/site.css": string(own), "setupsrc/site.css": string(seed)} {
-		body := strings.ReplaceAll(topLevelRules(src)["body"], " ", "")
-		if !strings.Contains(body, "overflow-wrap:break-word") {
-			t.Errorf("%s gives body no overflow-wrap:break-word: a title or path with nowhere to break widens the page (body %q)",
-				name, body)
+	for name, src := range bothStylesheets(t) {
+		if got := cascadeOf(src).top["body"]["overflow-wrap"].value; got != "break-word" {
+			t.Errorf("%s gives body overflow-wrap:%q, want break-word: a title or path with nowhere to break widens the page",
+				name, got)
 		}
 	}
 }
