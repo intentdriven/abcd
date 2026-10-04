@@ -255,6 +255,9 @@ func helpFor(key string) (PromptHelp, bool) {
 	if h, ok := promptHelp[key]; ok {
 		return h, true
 	}
+	if h, ok := conventionsRetireHelp(key); ok {
+		return h, true
+	}
 	if el, ok := strings.CutPrefix(key, elementPromptPrefix); ok {
 		shows, known := statusLineElementAbout[statusline.ElementKey(el)]
 		if !known {

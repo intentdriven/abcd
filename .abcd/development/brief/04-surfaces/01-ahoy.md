@@ -492,6 +492,7 @@ about, one question per category present, never one per item.
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
+| `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a saved target or import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
 **The artefact kind is a gap until it is declared** (itd-2609150819432059). A
@@ -597,7 +598,12 @@ undone, each saying what it is, why it matters and what, if anything, to do, and
 naming the paths or identifiers it explains. The words are core's, written for
 the product thinker and the technical facilitator rather than abcd's
 implementers, with no raw environment names; the text render leads with them and
-prints the exact record after as detail.
+prints the exact record after as detail. Ahead of the headline come the
+`warnings`: one line each for what keeps abcd's rules from an agent tool in this
+project and only the person can end, such as a tool's own conventions file that
+holds their words (the `conventions-file` row above). The text render prints
+them before anything else, and every outcome past detection carries them, the
+early returns included.
 
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
