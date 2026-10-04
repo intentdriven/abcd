@@ -291,8 +291,10 @@ question last, decide later last, nothing marked.
 4. **Whether the service takes a key** (skipped when the look-up answered
    that it needs one). Options: "It needs a key", "No key: a server on this
    machine", decide later.
-5. **Where the key lives** (G8). Material: `KeyHomesProse` verbatim, as the
-   page relays it today. Options: the credential store's three homes,
+5. **Where the key lives** (G8). Material: `KeyHomesProse` in short (as
+   built: verbatim, it takes the question past the 24 rows the asking limits
+   hold it to, so the question says the choice is the person's and that abcd
+   recommends the keychain, and each home's meaning sits on its option). Options: the credential store's three homes,
    external (an environment variable), abcd, and keychain, each with its
    meaning, then decide later; never marked, never reordered by preference.
    The keychain option's meaning says the key is pasted into abcd's hidden
@@ -364,6 +366,17 @@ part and no options; where spc-2610030944505997's limits have landed, its
 option floor counts the typed part as one option (open question 1). `Matches`
 moves into `internal/core/question` when spc-2610030911534855 step 2 keeps it
 inside `internal/surface/cli/ask`, and the picker calls it there.
+
+As built: the host's question tool takes two to four listed options, so a
+question whose only listed answer is decide later cannot be put to it as it
+stands. The field view keeps the typed part out of the options (it counts
+toward the floor only), and says its prompt in the question text just before
+the ask, since the host's free-text row carries none; the front door's mapping
+onto the host's tool (the turn's `tool` member) adds one option,
+`question.TypedRowLabel` ("Type my own answer"), only where the listed options
+fall below the tool's floor. It points at the row for typing and answers
+nothing: the guide asks the question again when it is chosen. An answer may
+name an option by its label, as the host's tool returns labels.
 
 ### What the key never touches
 
