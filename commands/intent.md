@@ -880,7 +880,7 @@ example or an HTML comment is not review state.
 dispatch the `intent-auditor` agent, and each resolves that agent's model tier
 before anything else runs: an invocation override, over the repository's
 `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+`~/.abcd.noindex/oracle-routing.json`, over abcd's bundled proposal (which applies only
 once a table is accepted). The override is `--route
 <agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
 dispatches (a second `--route` is refused, not merged), with the tier one of
@@ -906,7 +906,7 @@ anything is written. With no table accepted and no `--route`, the step asks for
 `host-decides` and nothing is printed.
 
 **A step routed to a provider has already run.** When the person has pointed
-`oracle.roles.intent-auditor` at a provider in `~/.abcd/config.json`, `intent
+`oracle.roles.intent-auditor` at a provider in `~/.abcd.noindex/config.json`, `intent
 audit <itd-N>`, `intent consistency` and `intent audit --owed` (its head) send
 the request they emitted there themselves, ingest the answer, and print the
 ingest's result with a `route` receipt whose `connection_used` names the

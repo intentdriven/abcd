@@ -508,7 +508,7 @@ func TestResolveRootIgnoresATrustDeclarationInsideTheRootItself(t *testing.T) {
 }
 
 // TestResolveRootHonoursOnlyACallerOwnedDeclaration: the declaration is
-// caller-controlled or it is nothing. A ~/.abcd/trusted-roots this process does
+// caller-controlled or it is nothing. A ~/.abcd.noindex/trusted-roots this process does
 // not own, or one anyone can write, was not necessarily written by the caller —
 // so it re-admits nothing, and says why.
 func TestResolveRootHonoursOnlyACallerOwnedDeclaration(t *testing.T) {

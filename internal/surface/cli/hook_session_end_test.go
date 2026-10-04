@@ -18,7 +18,7 @@ import (
 )
 
 // sessionEndRepo builds an isolated git repo with one commit (so it has a
-// root-commit SHA, the history store's key) and a hermetic ~/.abcd history store
+// root-commit SHA, the history store's key) and a hermetic ~/.abcd.noindex history store
 // keyed on it. Returns the repo dir and its root SHA.
 func sessionEndRepo(t *testing.T) (repo, rootSHA string) {
 	t.Helper()
@@ -50,7 +50,7 @@ func sessionEndRepo(t *testing.T) (repo, rootSHA string) {
 	}
 	rootSHA = strings.TrimSpace(string(out))
 
-	// Hermetic store: HOME drives ~/.abcd/transcripts/, and nothing is created
+	// Hermetic store: HOME drives ~/.abcd.noindex/transcripts/, and nothing is created
 	// here. The store bootstraps itself on first use, so this harness is also
 	// the "machine where `abcd ahoy install` never ran" case (iss-95): every
 	// test built on it captures from a home holding nothing at all.

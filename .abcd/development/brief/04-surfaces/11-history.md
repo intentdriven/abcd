@@ -11,8 +11,8 @@ transcript is stored on the native scanner and the capture's `scan_gap` names
 what is missing ([dependencies](../02-constraints/02-dependencies.md)).
 
 The store is **user-level** and lives outside every repo at
-`~/.abcd/transcripts/<root-sha>/records/`, keyed on the repo's root-commit SHA.
-ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
+`~/.abcd.noindex/transcripts/<root-sha>/records/`, keyed on the repo's root-commit SHA.
+ahoy's registry stays under `~/.abcd.noindex/history/` and holds no transcripts.
 The store is private to the account: each level it creates is `0o700`, and each
 record is written `0o600`, including a record a migration rewrites or a legacy
 record it moves in. An ancestor level that already exists keeps its mode; the
@@ -297,7 +297,7 @@ already hold, and it keeps the discipline it replaces: every level of the chain
 is created individually and re-verified as a real directory on every resolve, so
 the store never creates or writes *through* a symlink.
 
-**The per-repo location is an opt-in pull.** `~/.abcd/local-transcript-roots`
+**The per-repo location is an opt-in pull.** `~/.abcd.noindex/local-transcript-roots`
 holds one absolute checkout path per line; a declared checkout keeps its
 transcripts under `.abcd/.work.local/transcripts/` instead, in the gitignored,
 per-worktree local tier, so a pulled-in transcript is never a commit candidate
@@ -360,7 +360,7 @@ projects.
 - Plugin command: [`commands/history.md`](../../../../commands/history.md)
 - Store and redaction engine: `internal/core/history`
 - Install-time provisioning of the **registry**, not of the store:
-  [`01-ahoy.md`](01-ahoy.md). Install lays out `~/.abcd/history/` and opens this
+  [`01-ahoy.md`](01-ahoy.md). Install lays out `~/.abcd.noindex/history/` and opens this
   repo's store so a freshly installed machine has one on disk; the transcript
   corpus itself is `internal/core/history`'s to create, on first use, from any
   verb (iss-95)

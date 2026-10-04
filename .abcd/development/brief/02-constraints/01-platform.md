@@ -24,7 +24,7 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 
 ## Embark sources
 
-**Input lifeboats are external by default.** Embark reads from `embark from <lifeboat-dir> [target-dir]`: the lifeboat at whatever destination a disembark wrote it to. The unpack takes no modifiers of its own. Two operator-level additions are a design target ([`03-embark.md` § The design-target surface](../04-surfaces/03-embark.md#the-design-target-surface)): an `embark/provenance.json` under `~/.abcd/voyage/<source-root-sha>/` holding the source path and manifest hash (never committed, because voyage records absolute source paths, per adr-35), and an opt-in archive modifier that copies the input lifeboat verbatim into `~/.abcd/voyage/<source-root-sha>/embark/from/<timestamp>/` for the rare case where the source repo will disappear.
+**Input lifeboats are external by default.** Embark reads from `embark from <lifeboat-dir> [target-dir]`: the lifeboat at whatever destination a disembark wrote it to. The unpack takes no modifiers of its own. Two operator-level additions are a design target ([`03-embark.md` § The design-target surface](../04-surfaces/03-embark.md#the-design-target-surface)): an `embark/provenance.json` under `~/.abcd.noindex/voyage/<source-root-sha>/` holding the source path and manifest hash (never committed, because voyage records absolute source paths, per adr-35), and an opt-in archive modifier that copies the input lifeboat verbatim into `~/.abcd.noindex/voyage/<source-root-sha>/embark/from/<timestamp>/` for the rare case where the source repo will disappear.
 
 **Embark sources, in order (post bare-as-help refactor — see [`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)):**
 
@@ -32,9 +32,9 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 2. *Design target, not built:* an `embark scan` discovery sub-verb, with a deep mode, that walks sibling directories (`../`), lists **lifeboat destinations** — directories carrying a parseable `_provenance.json`, the same marker the destination safety gate keys on — ranked by mtime; does not unpack; pass the chosen path to `embark from <path>`
 3. *Design target, not built:* free-text path input via the embark interview; `from` requires the lifeboat path
 
-> **Open question (adr-35):** where `scan` searches. Walking `../` made sense when a lifeboat lived inside its producing repo, so siblings-of-cwd *were* the candidate set. Destinations are now operator-chosen and need not sit beside the repo being embarked into. Either the sibling walk is kept as a cheap heuristic, or scan is given explicit roots (an argument, a configured search path, or the voyage records under `~/.abcd/voyage/`). adr-35 does not settle this; it must be decided before `scan` is specified.
+> **Open question (adr-35):** where `scan` searches. Walking `../` made sense when a lifeboat lived inside its producing repo, so siblings-of-cwd *were* the candidate set. Destinations are now operator-chosen and need not sit beside the repo being embarked into. Either the sibling walk is kept as a cheap heuristic, or scan is given explicit roots (an argument, a configured search path, or the voyage records under `~/.abcd.noindex/voyage/`). adr-35 does not settle this; it must be decided before `scan` is specified.
 
-**No global lifeboat archive (`~/.abcd/archive/`).** A lifeboat lives at the destination its operator chose and abcd keeps no registry of them; the only operator-level state is voyage (`~/.abcd/voyage/<source-root-sha>/`), which records what was done, not the artefacts themselves. Share externally by copy.
+**No global lifeboat archive (`~/.abcd.noindex/archive/`).** A lifeboat lives at the destination its operator chose and abcd keeps no registry of them; the only operator-level state is voyage (`~/.abcd.noindex/voyage/<source-root-sha>/`), which records what was done, not the artefacts themselves. Share externally by copy.
 
 ## Validation corpus
 

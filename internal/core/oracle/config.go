@@ -10,7 +10,7 @@ package oracle
 //     internal/core/credential; omitted for a server that needs none) and
 //     models (the allowlist: the only models the provider may serve, and
 //     alone what decides which models it serves). A block
-//     is read from the machine's ~/.abcd/config.json alone. A repository
+//     is read from the machine's ~/.abcd.noindex/config.json alone. A repository
 //     declaring one is refused, because a block names the address a key is sent
 //     to, and a checkout must never be able to aim the person's key at a
 //     server of its choosing.

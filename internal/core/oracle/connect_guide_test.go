@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -536,10 +537,10 @@ func TestGuideKeyHomesAndTheCommand(t *testing.T) {
 		command string
 		writes  []string
 	}{
-		"none":     {[]string{"none"}, "--model vendor/coder --home none", []string{"~/.abcd/config.json"}},
-		"abcd":     {[]string{"key", "abcd"}, "--model vendor/coder --home abcd", []string{credential.StorePath, "~/.abcd/config.json"}},
-		"keychain": {[]string{"key", "keychain"}, "--model vendor/coder --home keychain", []string{credential.KeychainItem("local"), credential.IndexPath, "~/.abcd/config.json"}},
-		"external": {[]string{"key", "external", "MY_API_KEY"}, "--model vendor/coder --home external --env MY_API_KEY", []string{credential.IndexPath, "~/.abcd/config.json"}},
+		"none":     {[]string{"none"}, "--model vendor/coder --home none", []string{abcdhome.Display("config.json")}},
+		"abcd":     {[]string{"key", "abcd"}, "--model vendor/coder --home abcd", []string{credential.StorePath, abcdhome.Display("config.json")}},
+		"keychain": {[]string{"key", "keychain"}, "--model vendor/coder --home keychain", []string{credential.KeychainItem("local"), credential.IndexPath, abcdhome.Display("config.json")}},
+		"external": {[]string{"key", "external", "MY_API_KEY"}, "--model vendor/coder --home external --env MY_API_KEY", []string{credential.IndexPath, abcdhome.Display("config.json")}},
 	} {
 		d := last(drive(t, f, first, append([]string{"type", "vendor/coder"}, want.answers...)...)).Done
 		if d == nil {

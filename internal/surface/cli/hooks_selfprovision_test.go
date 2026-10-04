@@ -97,7 +97,7 @@ func hookRunIn(t *testing.T, event, root, pathDir, dir string) (string, string, 
 }
 
 // hookRunHome is hookRunIn with an explicit HOME. The PATH rung's ownership
-// check reads `$HOME/.abcd/path-entry`, so a test that vouches for a planted
+// check reads `$HOME/.abcd.noindex/path-entry`, so a test that vouches for a planted
 // binary has to control the home the shim reads. An empty home gets a fresh
 // temporary one, which carries no record — the shape every caller that predates
 // the ownership rung wants.
@@ -440,7 +440,7 @@ func TestTheBriefNamesSessionEndAsTheBootstrapException(t *testing.T) {
 
 // The PATH rung is the shims' last resort, and it is OWNED-ONLY
 // (GHSA-gx3m-3224-qqcv, CWE-426): a hook takes an `abcd` from PATH only when
-// `~/.abcd/path-entry` records that exact path as the binary this machine
+// `~/.abcd.noindex/path-entry` records that exact path as the binary this machine
 // installed. Before the ownership rule the rung ran whatever `command -v abcd`
 // resolved, so a hijack directory early on PATH became the session's rules
 // loader and — through PreToolUse, which passes the guard's 0/1/2 verdict
@@ -472,7 +472,7 @@ func writeHookPathEntry(t *testing.T, home, target string) {
 }
 
 // TestBinaryHooksRunAnOwnedPathBinary: the documented rescue still works. With
-// the plugin root unprovisionable and `~/.abcd/path-entry` naming the abcd that
+// the plugin root unprovisionable and `~/.abcd.noindex/path-entry` naming the abcd that
 // PATH resolves, every binary-invoking hook runs it.
 func TestBinaryHooksRunAnOwnedPathBinary(t *testing.T) {
 	for _, h := range binaryHooks {
@@ -590,12 +590,12 @@ var pathRefusalReasons = []string{
 // It is separate from pathRefusalUnowned because the two say different things to
 // an operator: "you never recorded this binary" versus "you recorded it, but the
 // file saying so is one another local uid can rewrite" (iss-2609091927085132).
-const pathRefusalUnownedRecord = "its ~/.abcd/path-entry record is not owned by you or is writable by others"
+const pathRefusalUnownedRecord = "its ~/.abcd.noindex/path-entry record is not owned by you or is writable by others"
 
 // pathRefusalUnowned is the ownership refusal — the rung's last gate and the
 // one GHSA-gx3m-3224-qqcv turns on. It is spelled once here and asserted
 // against the shipped manifest's own wording.
-const pathRefusalUnowned = "~/.abcd/path-entry does not record it as the abcd installed here"
+const pathRefusalUnowned = "~/.abcd.noindex/path-entry does not record it as the abcd installed here"
 
 // assertPathBinaryRefused: the stub never ran, the shim still failed loudly with
 // its own remedy line, and one line names the ignored PATH binary AND the reason
@@ -897,13 +897,13 @@ func TestSubagentStopNeverBootstraps(t *testing.T) {
 }
 
 // pathRefusalSymlinkedHome is the refusal when the record sits behind a
-// symlinked ~/.abcd: the file itself may be well-formed and owned, but the
+// symlinked ~/.abcd.noindex: the file itself may be well-formed and owned, but the
 // directory holding it is a link the rules loader refuses too.
-const pathRefusalSymlinkedHome = "~/.abcd is a symlink, so its path-entry record is not read"
+const pathRefusalSymlinkedHome = "~/.abcd.noindex is a symlink, so its path-entry record is not read"
 
 // TestBinaryHooksRefuseAPathBinaryVouchedForBehindASymlinkedAbcdHome is
 // iss-2609281017573862 at the shim. `[ -f "$e" ]` and the `find` guard judge
-// the record and follow the directory above it, so a ~/.abcd symlinked into a
+// the record and follow the directory above it, so a ~/.abcd.noindex symlinked into a
 // dotfiles checkout hosted a record that decides which binary every hook runs
 // — while the rules loader in the same home refuses its rules.json. The record
 // here is well-formed, owned and owner-only; the ONLY defect is the link.

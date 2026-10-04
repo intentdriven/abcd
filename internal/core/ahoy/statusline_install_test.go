@@ -158,7 +158,7 @@ func statusLineGaps(gaps []Gap) []string {
 
 // TestDetectStatusLineNoHarnessOffersNothing pins the fail-closed default: no
 // settings file means no harness was detected, so nothing is offered and an
-// install writes nothing under ~/.abcd for the status line.
+// install writes nothing under ~/.abcd.noindex for the status line.
 func TestDetectStatusLineNoHarnessOffersNothing(t *testing.T) {
 	home, _ := setupHermetic(t)
 	harnessFixture(t, "")
@@ -175,7 +175,7 @@ func TestDetectStatusLineNoHarnessOffersNothing(t *testing.T) {
 		t.Errorf("gaps raised with no harness: %v", ids)
 	}
 	if _, err := os.Stat(abcdhome.Path(home, "statusline.json")); err == nil {
-		t.Error("~/.abcd/statusline.json was written with no harness present")
+		t.Error("~/.abcd.noindex/statusline.json was written with no harness present")
 	}
 }
 
@@ -324,7 +324,7 @@ func TestStatusLineConsentWiresBothFiles(t *testing.T) {
 		}
 	}
 	wrote := strings.Join(res.Writes, "\n")
-	if !strings.Contains(wrote, "~/.abcd/statusline.json") {
+	if !strings.Contains(wrote, "~/.abcd.noindex/statusline.json") {
 		t.Errorf("writes do not name the user-level setting in tilde form: %v", res.Writes)
 	}
 	if !strings.Contains(wrote, "settings.json") || strings.Contains(wrote, home) {
@@ -702,7 +702,7 @@ func TestUninstallRestoresTheStatusLine(t *testing.T) {
 		}
 		// The user's configuration stays.
 		if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "statusline.json")); err != nil {
-			t.Error("uninstall removed ~/.abcd/statusline.json")
+			t.Error("uninstall removed ~/.abcd.noindex/statusline.json")
 		}
 	})
 	t.Run("key removed when there was none before", func(t *testing.T) {

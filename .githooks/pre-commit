@@ -505,7 +505,7 @@ fi
 # whatever was last released, stale by construction and possibly without the
 # `source` verb at all. The corpus location is the default one; relocating the
 # user-level home is a separate design (itd-77).
-sources_corpus="${HOME:-}/.abcd/sources"
+sources_corpus="${HOME:-}/.abcd.noindex/sources"
 sources_noticed="$banlist_dir/sources-legacy-noticed"
 
 # sources_relay runs one refresh binary and relays what it says, prefixed. A binary
@@ -590,7 +590,7 @@ sources_refresh() {
 }
 
 if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
-  echo "pre-commit: no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)" >&2
+  echo "pre-commit: no sources corpus at ~/.abcd.noindex/sources — generated banlist block not refreshed (skipped)" >&2
 elif [ ! -f "$banlist" ]; then
   echo "pre-commit: this working tree has no private store at $banlist, and the sources refresh never creates one; run 'abcd source sync-banlist' here to opt in (skipped)" >&2
 else

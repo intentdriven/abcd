@@ -57,5 +57,5 @@ copy.
 
 - [record families](record-families.md) — the one page that maps the record families and how they relate
 - [lifeboat](lifeboat.md) — the artefact disembark packs, at a destination outside the source repo
-- [voyage](voyage.md) — the operations namespace at `~/.abcd/voyage/<source-root-sha>/` that
+- [voyage](voyage.md) — the operations namespace at `~/.abcd.noindex/voyage/<source-root-sha>/` that
   records each disembark run

@@ -6,14 +6,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // versionControlledHome is the dotfiles-in-home fixture (iss-2609020219198779):
-// a HOME that is itself a git working tree, carrying a user-scope .abcd whose
-// guard.json switches the hazard registry off, and a plain directory beneath it
-// that is not a repository of its own. It returns the home and that directory.
+// a HOME that is itself a git working tree, carrying a .abcd whose guard.json
+// switches the hazard registry off, and a plain directory beneath it that is
+// not a repository of its own. It returns the home and that directory. The
+// .abcd is the repository tier's spelling, which is also the home's old name:
+// the walk looks for exactly that name, so it is the shape that would stop the
+// walk at the home. The renamed home, ~/.abcd.noindex, is a name the walk never
+// looks for (TestResolveRootNeverAdoptsTheRenamedHome).
 func versionControlledHome(t *testing.T) (home, plain string) {
 	t.Helper()
 	outer := mustDir(t, t.TempDir())
@@ -29,11 +34,10 @@ func versionControlledHome(t *testing.T) (home, plain string) {
 }
 
 // TestResolveRootNeverAdoptsTheHomeDirectory: a home under version control is
-// not a project. The user-scope ~/.abcd is the USER layer (rules.json there is
-// read as such whatever the root), and it must not govern a session a second
-// time as the repo root — which is what adopting the home's git toplevel did,
-// handing a plain directory beneath it the home's guard.json and config.json
-// as though they were that directory's repository's own.
+// not a project. A .abcd at the home must not govern a session as the repo
+// root — which is what adopting the home's git toplevel did, handing a plain
+// directory beneath it the home's guard.json and config.json as though they
+// were that directory's repository's own.
 func TestResolveRootNeverAdoptsTheHomeDirectory(t *testing.T) {
 	home, plain := versionControlledHome(t)
 
@@ -216,5 +220,38 @@ func TestResolveRootNeverAdoptsTheHomeAtAnySpelling(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestResolveRootNeverAdoptsTheRenamedHome: the home renamed to
+// ~/.abcd.noindex (itd-2610030720038073) holds the user layer under a name the
+// walk never looks for, so a version-controlled home carrying it, whatever its
+// guard.json says, is still not a session's repo root: the walk takes the
+// non-repo route and the home's registry governs nothing beneath it.
+func TestResolveRootNeverAdoptsTheRenamedHome(t *testing.T) {
+	outer := mustDir(t, t.TempDir())
+	home := filepath.Join(outer, "home")
+	gitInitAt(t, home)
+	t.Setenv("HOME", home)
+	renamed := mustDir(t, abcdhome.Path(home))
+	if err := os.WriteFile(filepath.Join(renamed, "guard.json"),
+		[]byte(`{"schema_version":1,"disabled":true,"entries":{}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plain := mustDir(t, filepath.Join(home, "scratch", "notes"))
+	if top, err := gitutil.Run(plain, "rev-parse", "--show-toplevel"); err != nil || resolvedPath(top) != resolvedPath(home) {
+		t.Skipf("git does not name the home as the toplevel for the fixture (%q, %v)", top, err)
+	}
+
+	res := Resolve(plain)
+	if res.Root != plain {
+		t.Fatalf("Resolve(%q).Root = %q, want cwd (the non-repo route): the renamed home is not a project", plain, res.Root)
+	}
+	reg, err := guard.Load(res.Root)
+	if err != nil {
+		t.Fatalf("guard.Load(%q): %v", res.Root, err)
+	}
+	if reg.Disabled {
+		t.Errorf("the renamed home's guard.json governs a session beneath it at %q", res.Root)
 	}
 }

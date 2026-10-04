@@ -55,7 +55,7 @@ func TestConnectVerifiesThenWritesTheBlockAndTheKey(t *testing.T) {
 	if res.Verified != want || res.KeyName != "openrouter" || res.KeyHome != KeyHomeABCD {
 		t.Fatalf("result = %+v", res)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{credential.StorePath, "~/.abcd/config.json"}) {
+	if !reflect.DeepEqual(res.Wrote, []string{credential.StorePath, "~/.abcd.noindex/config.json"}) {
 		t.Fatalf("wrote = %v", res.Wrote)
 	}
 	for _, name := range []string{"config.json", credential.StoreFileName} {
@@ -141,7 +141,7 @@ func TestConnectKeepsAKeyInTheExternalHome(t *testing.T) {
 	if res.KeyHome != KeyHomeExternal || res.KeyName != "openrouter" || res.Verified.Credential != "openrouter" {
 		t.Fatalf("result = %+v", res)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{credential.IndexPath, "~/.abcd/config.json"}) {
+	if !reflect.DeepEqual(res.Wrote, []string{credential.IndexPath, "~/.abcd.noindex/config.json"}) {
 		t.Fatalf("wrote = %v", res.Wrote)
 	}
 	if _, err := os.Lstat(machineFile(f, credential.StoreFileName)); !errors.Is(err, os.ErrNotExist) {
@@ -242,7 +242,7 @@ func TestConnectHoldsTheSetupToTheMachinesDenylist(t *testing.T) {
 		req := connectReq(f, p.base())
 		req.Models = models
 		_, err := Connect(context.Background(), req)
-		if err == nil || !strings.Contains(err.Error(), "(anthropic/*, from ~/.abcd/config.json)") {
+		if err == nil || !strings.Contains(err.Error(), "(anthropic/*, from ~/.abcd.noindex/config.json)") {
 			t.Fatalf("%s: err = %v, want the machine's entry named", name, err)
 		}
 		if name == "listed model denied" && p.calls.Load() != 0 {
@@ -258,7 +258,7 @@ func TestConnectHoldsTheSetupToTheMachinesDenylist(t *testing.T) {
 }
 
 // TestConnectRefusesAProviderAlreadyConfigured: a block is never replaced
-// unasked; the person edits ~/.abcd/config.json to change one.
+// unasked; the person edits ~/.abcd.noindex/config.json to change one.
 func TestConnectRefusesAProviderAlreadyConfigured(t *testing.T) {
 	p := newProvFake(t, 200, chat("m", "ok"))
 	f := newFx(t)
@@ -303,7 +303,7 @@ func TestConnectToALocalServerNeedsNoKey(t *testing.T) {
 	if a := p.auth.Load(); a != "" {
 		t.Fatalf("Authorization = %v", a)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{"~/.abcd/config.json"}) || res.KeyName != "" {
+	if !reflect.DeepEqual(res.Wrote, []string{"~/.abcd.noindex/config.json"}) || res.KeyName != "" {
 		t.Fatalf("result = %+v", res)
 	}
 	if got, _ := f.loadAPI().Provider("desk"); got.Key != "" {
@@ -413,7 +413,7 @@ func TestConcurrentConnectsOfOneProviderWriteOneBlock(t *testing.T) {
 }
 
 // TestConnectNamesAnUnsafeConfigLockRatherThanContention: a lock beside
-// ~/.abcd/config.json that is a symlink is refused, and the refusal says so;
+// ~/.abcd.noindex/config.json that is a symlink is refused, and the refusal says so;
 // it is not the contention message, because retrying cannot cure a symlink.
 // The symlink's target is never created and no block is written.
 func TestConnectNamesAnUnsafeConfigLockRatherThanContention(t *testing.T) {
@@ -437,7 +437,7 @@ func TestConnectNamesAnUnsafeConfigLockRatherThanContention(t *testing.T) {
 	if strings.Contains(msg, "retry") || strings.Contains(msg, "another abcd") {
 		t.Fatalf("err = %v, want the unsafe lock named, not contention", err)
 	}
-	if !strings.Contains(msg, "~/.abcd/"+configLockFileName) || !strings.Contains(msg, "not a regular file") {
+	if !strings.Contains(msg, "~/.abcd.noindex/"+configLockFileName) || !strings.Contains(msg, "not a regular file") {
 		t.Fatalf("err = %v, want it to name the lock and that it is not a regular file", err)
 	}
 	if strings.Contains(msg, f.roots.Home) {
@@ -484,8 +484,8 @@ func TestTheProviderBlockWriteRefusesAConfigNamingAKeyTwice(t *testing.T) {
 
 // TestTheProviderBlockIsReadWhereItIsWritten is iss-2609290300313698's
 // sibling in the machine configuration: writeProviderBlockLocked writes
-// ~/.abcd/config.json through the ~/.abcd its walk opened, so it reads the
-// file through it too. ~/.abcd is swapped for a different real directory,
+// ~/.abcd.noindex/config.json through the ~/.abcd.noindex its walk opened, so it reads the
+// file through it too. ~/.abcd.noindex is swapped for a different real directory,
 // carrying a configuration of its own, after that walk; the held file keeps
 // its own keys and gains the provider block, and the swapped-in directory is
 // left as it was.

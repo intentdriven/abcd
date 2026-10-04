@@ -9,7 +9,7 @@ import (
 )
 
 // The PATH rung of every hook shim is owned-only: it runs an `abcd` off PATH
-// only when `~/.abcd/path-entry` records the path `command -v abcd` printed.
+// only when `~/.abcd.noindex/path-entry` records the path `command -v abcd` printed.
 // So the record is not a detail of the owned-copy shape — it is the thing that
 // makes ANY install reachable from a hook. Every install path that leaves a
 // usable binary on PATH therefore writes it, and `ahoy`'s own classification
@@ -40,7 +40,7 @@ func recordedPathEntry(t *testing.T) pathEntryRecord {
 	rec, ok := readPathEntry()
 	if !ok {
 		raw, err := os.ReadFile(userPathEntryPath())
-		t.Fatalf("no usable ~/.abcd/path-entry record after the install; file = %q (%v)", raw, err)
+		t.Fatalf("no usable ~/.abcd.noindex/path-entry record after the install; file = %q (%v)", raw, err)
 	}
 	return rec
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// linkBareAbcdHome makes home's ~/.abcd a symlink to an EMPTY directory
+// linkBareAbcdHome makes home's ~/.abcd.noindex a symlink to an EMPTY directory
 // elsewhere (the dotfiles shape before abcd has written anything) and returns
 // that directory, so a test can see whether anything was written through the
 // link.
@@ -29,9 +29,9 @@ func linkBareAbcdHome(t *testing.T, home string) string {
 }
 
 // TestInstallRegistersNothingThroughASymlinkedAbcdHome is iss-2609281129171021:
-// every reader and writer of a file abcd trusts in ~/.abcd refuses a symlinked
-// ~/.abcd, and the history registry was the one writer left following it —
-// `ahoy install` created ~/.abcd/history/index.json and the per-repo meta.json
+// every reader and writer of a file abcd trusts in ~/.abcd.noindex refuses a symlinked
+// ~/.abcd.noindex, and the history registry was the one writer left following it —
+// `ahoy install` created ~/.abcd.noindex/history/index.json and the per-repo meta.json
 // wherever the link pointed (a dotfiles checkout). The registration is skipped,
 // nothing lands behind the link, and the install says why, naming the link and
 // the remedy.
@@ -54,16 +54,16 @@ func TestInstallRegistersNothingThroughASymlinkedAbcdHome(t *testing.T) {
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}
-		t.Errorf("install wrote through the symlinked ~/.abcd: the link target holds %v", names)
+		t.Errorf("install wrote through the symlinked ~/.abcd.noindex: the link target holds %v", names)
 	}
 	var registry string
 	for _, n := range res.Notes {
-		if strings.Contains(n, "registration") && strings.Contains(n, "~/.abcd is a symlink") {
+		if strings.Contains(n, "registration") && strings.Contains(n, "~/.abcd.noindex is a symlink") {
 			registry = n
 		}
 	}
 	if registry == "" {
-		t.Fatalf("no note names the skipped registration and the symlinked ~/.abcd; notes = %v", res.Notes)
+		t.Fatalf("no note names the skipped registration and the symlinked ~/.abcd.noindex; notes = %v", res.Notes)
 	}
 	if !strings.Contains(registry, "replace the link with a real directory") {
 		t.Errorf("the registration note must carry the remedy; got %q", registry)
@@ -74,7 +74,7 @@ func TestInstallRegistersNothingThroughASymlinkedAbcdHome(t *testing.T) {
 }
 
 // TestDetectReportsASymlinkedHistoryStoreAsADiagnostic: the detector must not
-// answer a symlinked ~/.abcd with "~/.abcd/history/ not bootstrapped", a
+// answer a symlinked ~/.abcd.noindex with "~/.abcd.noindex/history/ not bootstrapped", a
 // required gap install would then try, and refuse, to close on every run. It
 // raises one diagnostic instead — not required, not resolvable — naming the
 // link and the remedy.
@@ -90,7 +90,7 @@ func TestDetectReportsASymlinkedHistoryStoreAsADiagnostic(t *testing.T) {
 	for i, g := range det.Gaps {
 		switch g.ID {
 		case "history.bootstrap_missing", "history.meta_missing":
-			t.Errorf("a symlinked ~/.abcd raised the actionable gap %q", g.ID)
+			t.Errorf("a symlinked ~/.abcd.noindex raised the actionable gap %q", g.ID)
 		case "history.home_symlinked":
 			diag = &det.Gaps[i]
 		}
@@ -101,8 +101,8 @@ func TestDetectReportsASymlinkedHistoryStoreAsADiagnostic(t *testing.T) {
 	if diag.Required || diag.Resolvable {
 		t.Errorf("the diagnostic must be neither required nor resolvable: %+v", *diag)
 	}
-	if !strings.Contains(diag.Detail, "~/.abcd is a symlink") {
-		t.Errorf("the diagnostic must name the symlinked ~/.abcd; got %q", diag.Detail)
+	if !strings.Contains(diag.Detail, "~/.abcd.noindex is a symlink") {
+		t.Errorf("the diagnostic must name the symlinked ~/.abcd.noindex; got %q", diag.Detail)
 	}
 }
 

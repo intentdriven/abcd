@@ -7,9 +7,9 @@
 // a filled one against it (Parse), and files it into the user account's machine
 // store:
 //
-//	~/.abcd/inbox/<received-stamp>-<sender-key>.md   one waiting report
-//	~/.abcd/inbox/promoted/<same name>               a report filed as a capture
-//	~/.abcd/inbox/promoted.jsonl                     which capture each became
+//	~/.abcd.noindex/inbox/<received-stamp>-<sender-key>.md   one waiting report
+//	~/.abcd.noindex/inbox/promoted/<same name>               a report filed as a capture
+//	~/.abcd.noindex/inbox/promoted.jsonl                     which capture each became
 //
 // The inbox lives beside the history, transcript, worktree, sources, labs and
 // run stores, never in either repository's tree. The sender key is the sending

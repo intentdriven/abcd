@@ -91,7 +91,7 @@ func TestAhoyProvidersExplainsWithNothingConfigured(t *testing.T) {
 
 // TestAhoyConnectVerifiesThenWrites is criterion 8's write, end to end
 // through the front door: the key arrives on stdin, one verification call is
-// made with it, the block and the key are written under ~/.abcd/ and nowhere
+// made with it, the block and the key are written under ~/.abcd.noindex/ and nowhere
 // else, the output names what was written and never the key, and the board
 // reads the provider back with its key set.
 func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
@@ -110,8 +110,8 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	if calls.Load() != 1 || auth.Load() != "Bearer "+connectKey {
 		t.Fatalf("verification: %d call(s), auth %v", calls.Load(), auth.Load())
 	}
-	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd/credentials.json", "~/.abcd/config.json", "DR5",
-		`= "openrouter/typesafe/jev-1.13" in ~/.abcd/config.json`} {
+	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd.noindex/credentials.json", "~/.abcd.noindex/config.json", "DR5",
+		`= "openrouter/typesafe/jev-1.13" in ~/.abcd.noindex/config.json`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("ahoy connect does not say %q:\n%s", want, out)
 		}
@@ -125,7 +125,7 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	for _, name := range []string{"config.json", "credentials.json"} {
 		fi, err := os.Lstat(abcdhome.Path(home, name))
 		if err != nil || fi.Mode().Perm() != 0o600 {
-			t.Fatalf("~/.abcd/%s: %v", name, err)
+			t.Fatalf("~/.abcd.noindex/%s: %v", name, err)
 		}
 	}
 	if entries, _ := os.ReadDir(repo); len(entries) != 0 {
@@ -152,7 +152,7 @@ func TestAhoyConnectKeylessOffersBothFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ahoy connect: %v\n%s", err, out)
 	}
-	if calls.Load() != 1 || !strings.Contains(string(out), `= "local/qwen/qwen3-8b" in .abcd/config.json or ~/.abcd/config.json`) {
+	if calls.Load() != 1 || !strings.Contains(string(out), `= "local/qwen/qwen3-8b" in .abcd/config.json or ~/.abcd.noindex/config.json`) {
 		t.Fatalf("ahoy connect (%d call(s)):\n%s", calls.Load(), out)
 	}
 }

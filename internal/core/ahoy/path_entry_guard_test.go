@@ -8,10 +8,10 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// ~/.abcd/path-entry decides which binary the hook shims execute, so of the three
+// ~/.abcd.noindex/path-entry decides which binary the hook shims execute, so of the three
 // home-scoped declaration files it is the one where the consequence is code
 // execution rather than a location choice. It is therefore read behind the same
-// three-part guard as ~/.abcd/trusted-roots and ~/.abcd/local-transcript-roots:
+// three-part guard as ~/.abcd.noindex/trusted-roots and ~/.abcd.noindex/local-transcript-roots:
 // a regular file, not writable by group or other, owned by this session's uid.
 // "A declaration this process does not own, or one anyone can write, is not the
 // caller's word" — and a record that is not the caller's word vouches for

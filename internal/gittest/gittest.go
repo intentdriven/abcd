@@ -44,7 +44,7 @@ const isolatedSentinel = "ABCD_GITTEST_ISOLATED"
 // resolving the repo's own user.name/user.email.
 //
 // If the test has ALREADY pointed HOME at a temp dir it owns (the common case for
-// tests that stand up a hermetic ~/.abcd store), Env reuses that HOME rather than
+// tests that stand up a hermetic ~/.abcd.noindex store), Env reuses that HOME rather than
 // replacing it — replacing it would leave the process HOME and the test's captured
 // home var pointing at different directories, so a store the test wrote under its
 // own HOME would be invisible to the in-process production code under test. Env

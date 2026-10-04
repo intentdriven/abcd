@@ -46,12 +46,12 @@ func TestLabVerbRunsEverySubverbFromTheCLI(t *testing.T) {
 		Question string `json:"question"`
 		Home     string `json:"home"`
 	}
-	if err := json.Unmarshal([]byte(out), &m); err != nil || m.Question != "does the procedure transfer?" || !strings.HasPrefix(m.Home, "~/.abcd/lab/") {
+	if err := json.Unmarshal([]byte(out), &m); err != nil || m.Question != "does the procedure transfer?" || !strings.HasPrefix(m.Home, "~/.abcd.noindex/lab/") {
 		t.Fatalf("mint JSON = %s (%v)", out, err)
 	}
 
 	code, out, _ = runLab(t, "lab")
-	if code != 0 || !strings.Contains(out, m.ID) || !strings.Contains(out, "1 lab in ~/.abcd/lab/") {
+	if code != 0 || !strings.Contains(out, m.ID) || !strings.Contains(out, "1 lab in ~/.abcd.noindex/lab/") {
 		t.Errorf("bare lab (exit %d):\n%s", code, out)
 	}
 
@@ -69,7 +69,7 @@ func TestLabVerbRunsEverySubverbFromTheCLI(t *testing.T) {
 		t.Errorf("sweep (exit %d):\n%s", code, out)
 	}
 	code, out, _ = runLab(t, "lab", "harvest", m.ID)
-	if code != 0 || !strings.Contains(out, "written ~/.abcd/lab/") || !strings.Contains(out, "halted by its preflight") {
+	if code != 0 || !strings.Contains(out, "written ~/.abcd.noindex/lab/") || !strings.Contains(out, "halted by its preflight") {
 		t.Errorf("harvest (exit %d):\n%s", code, out)
 	}
 

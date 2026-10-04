@@ -45,7 +45,7 @@ func cacheMetaPath(dataDir string) string {
 }
 
 // homeScope resolves the directory abcd's home-scoped DECLARATION records live
-// under — ~/.abcd/path-entry and ~/.abcd/cache-attestation — or, when it will
+// under — ~/.abcd.noindex/path-entry and ~/.abcd.noindex/cache-attestation — or, when it will
 // not use the one the environment named, the reason.
 //
 // Both records rest on the same argument: the record is a write into the
@@ -54,7 +54,7 @@ func cacheMetaPath(dataDir string) string {
 // os.UserHomeDir() hands it back verbatim, so the argument holds only for a
 // value that actually names a home:
 //
-//   - a RELATIVE HOME resolves ~/.abcd against whatever directory the verb
+//   - a RELATIVE HOME resolves ~/.abcd.noindex against whatever directory the verb
 //     happens to run in, which for a hook is the checkout the session opened.
 //     `HOME=fakehome` would make a committed fakehome/.abcd/cache-attestation
 //     the caller's own home, and the class the attestation closed reopens
@@ -72,9 +72,9 @@ func cacheMetaPath(dataDir string) string {
 // told only "start a session with network access" would re-run hooks that
 // decline to write the record for the same reason.
 //
-// A ~/.abcd that is a SYMLINK is refused here too, through the rule every
+// A ~/.abcd.noindex that is a SYMLINK is refused here too, through the rule every
 // home-scoped reader and writer applies (fsutil.HomeScopeLink), the one AGENTS.md
-// states for the rules loader: a dotfiles-symlinked ~/.abcd hosts no record abcd
+// states for the rules loader: a dotfiles-symlinked ~/.abcd.noindex hosts no record abcd
 // trusts, so it neither vouches for which binary the hooks run nor binds the
 // cache a release binary is promoted out of (iss-2609281017573862). The hook
 // shims and hooks/bootstrap.sh refuse the same link.
@@ -87,7 +87,7 @@ func homeScope() (string, string) {
 }
 
 // homeScopeErr is homeScope with the refusal as an error, so a caller can tell
-// the symlinked ~/.abcd (errors.Is fsutil.ErrHomeScopeSymlinked), whose remedy
+// the symlinked ~/.abcd.noindex (errors.Is fsutil.ErrHomeScopeSymlinked), whose remedy
 // is replacing the link, from a HOME that names no home at all.
 func homeScopeErr() (string, error) {
 	home, err := os.UserHomeDir()
@@ -111,7 +111,7 @@ func homeScopeErr() (string, error) {
 var pathEntryRel = abcdhome.Rel("path-entry")
 
 // userPathEntryPath is the PATH-copy provenance record, home-scoped and
-// abcd-owned (~/.abcd/path-entry, alongside the history store). It deliberately
+// abcd-owned (~/.abcd.noindex/path-entry, alongside the history store). It deliberately
 // does NOT live in the harness data dir: CLAUDE_PLUGIN_DATA is exported only to
 // hook processes, yet `ahoy install`, `ahoy uninstall`, and `abcd update` all
 // run from a terminal where it is unset — so a record readable only from a hook
@@ -166,7 +166,7 @@ type pathEntryRecord struct {
 // read, rather than the bare guarded read: this record decides which binary the
 // hook shims EXECUTE, so a copy of it that group or other can write, or that
 // another uid owns, is not this session's word and vouches for nothing — the same
-// bar ~/.abcd/trusted-roots and ~/.abcd/local-transcript-roots are held to. An
+// bar ~/.abcd.noindex/trusted-roots and ~/.abcd.noindex/local-transcript-roots are held to. An
 // unowned record reports not-ok exactly as a truncated one does
 // (iss-2609091927085132); that is NOT the accepted same-uid residual
 // (iss-2609012039107700), which this check neither closes nor claims to.
@@ -215,7 +215,7 @@ func writePathEntry(target, shaHex, pluginRoot string) error {
 	if pluginRoot != "" {
 		body += "plugin_root=" + pluginRoot + "\n"
 	}
-	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// ~/.abcd.noindex is created, judged and opened relative to home's descriptor and
 	// the record is written through it, so a link swapped in after
 	// homeScopeErr's check is refused rather than written through
 	// (iss-2609281310017733).
@@ -227,10 +227,10 @@ func writePathEntry(target, shaHex, pluginRoot string) error {
 	return fsutil.WriteFileAtomicInRoot(dir, path.Base(pathEntryRel), []byte(body), abcdhome.FileMode)
 }
 
-// removePathEntry drops the provenance record; absent is fine. ~/.abcd is
+// removePathEntry drops the provenance record; absent is fine. ~/.abcd.noindex is
 // judged and opened relative to home's descriptor and the record is removed
 // through it, so a link swapped in after homeScopeErr's check removes nothing
-// behind the link (iss-2609281310017733). A ~/.abcd that is a symlink, or is
+// behind the link (iss-2609281310017733). A ~/.abcd.noindex that is a symlink, or is
 // not there, leaves nothing to remove.
 func removePathEntry() {
 	home, err := homeScopeErr()
@@ -305,7 +305,7 @@ func isOwnedCopyFile(target string) bool {
 }
 
 // IsOwnedPathCopy reports whether target is the regular file abcd installed as
-// this machine's PATH entry: ~/.abcd/path-entry names that very entry and the
+// this machine's PATH entry: ~/.abcd.noindex/path-entry names that very entry and the
 // bytes still hash to the recorded value. It is the exported face of the same
 // predicate `ahoy` classifies with, published for `abcd update`, which needs a
 // proof of ownership that no release deletion can revoke (iss-2609012000222546,
@@ -321,7 +321,7 @@ func IsOwnedPathCopy(target string) bool {
 // whose hooks provisioned the cache" is a condition the operator cannot check,
 // create or observe; this is a command they can type. The one-liner fetches the release binary and verifies it against that
 // release's own checksums.txt, writes it to ~/.local/bin/abcd and records it in
-// ~/.abcd/path-entry, which is exactly the owned-copy shape `ahoy install` then
+// ~/.abcd.noindex/path-entry, which is exactly the owned-copy shape `ahoy install` then
 // adopts where it stands. One string, shared by the install refusal and the
 // symlink.legacy fix hint, so the two cannot drift apart.
 var coldCacheRemedy = "Install a verified copy first with the install one-liner in the README " +

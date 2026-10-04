@@ -11,7 +11,7 @@ import (
 )
 
 // TestTrustedRootsBehindASymlinkedAbcdHomeReAdmitNothing: the rules loader
-// refuses a rules.json behind a symlinked ~/.abcd, and trusted-roots — which
+// refuses a rules.json behind a symlinked ~/.abcd.noindex, and trusted-roots — which
 // re-admits a root the loader would otherwise refuse — sat in the same home and
 // was read through the link (iss-2609281017573862). A well-formed, owned,
 // owner-only declaration naming the marker: the ONLY defect is the link. It
@@ -27,15 +27,15 @@ func TestTrustedRootsBehindASymlinkedAbcdHomeReAdmitNothing(t *testing.T) {
 	t.Setenv("HOME", home)
 	ok, note := trustedRootDeclared(marker)
 	if ok {
-		t.Fatal("a trusted-roots declaration behind a symlinked ~/.abcd re-admitted a root")
+		t.Fatal("a trusted-roots declaration behind a symlinked ~/.abcd.noindex re-admitted a root")
 	}
-	if !strings.Contains(note, TrustedRootsDisplay) || !strings.Contains(note, "~/.abcd is a symlink") {
+	if !strings.Contains(note, TrustedRootsDisplay) || !strings.Contains(note, "~/.abcd.noindex is a symlink") {
 		t.Errorf("the ignored declaration must say it was refused for the link: %q", note)
 	}
 
-	// The control: the same declaration in a real ~/.abcd is honoured.
+	// The control: the same declaration in a real ~/.abcd.noindex is honoured.
 	t.Setenv("HOME", dotfiles)
 	if ok, note := trustedRootDeclared(marker); !ok {
-		t.Fatalf("the same declaration in a real ~/.abcd must re-admit the root; note %q", note)
+		t.Fatalf("the same declaration in a real ~/.abcd.noindex must re-admit the root; note %q", note)
 	}
 }

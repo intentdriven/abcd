@@ -27,7 +27,7 @@ Bare, the word means the **issue ledger**: the structured per-repo capture store
 |---|---|---|
 | The captured-issue store | **the issue ledger**, or bare "the ledger" | [`.abcd/work/issues/`](../../../../work/issues/README.md), via [`commands/capture.md`](../../../../../commands/capture.md) |
 | Origin, grounds and disposition stamped at the point of commitment | **the provenance ledger** | [`roadmap/phases/phase-7-ledger.md`](../../../roadmap/phases/phase-7-ledger.md) |
-| The append-only record of every disembark and embark run | **the voyage ledger** | [voyage](voyage.md), `~/.abcd/voyage/<source-root-sha>/` |
+| The append-only record of every disembark and embark run | **the voyage ledger** | [voyage](voyage.md), `~/.abcd.noindex/voyage/<source-root-sha>/` |
 | Source-to-decision provenance for the local sources corpus | **the sources ledger** | [`04-surfaces/13-consult.md`](../../04-surfaces/13-consult.md) |
 | The warm material a cold reading must not see, and its stores | **ledger content**, or **the warm side** | [warm](../ledger/warm.md) and [read-block](../ledger/read-block.md) in the ledger context, which govern this sense |
 | The uncommitted side where framing traces stay | **the local ledger side** | [adr-50](../../../decisions/adrs/0050-framing-traces-never-enter-the-record.md), [adr-55](../../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md) |

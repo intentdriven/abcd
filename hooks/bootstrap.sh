@@ -50,15 +50,15 @@ binary_quoted="'$(printf '%s' "$binary" | sed "s/'/'\\\\''/g")'"
 # checked before it is used as that place, and the two shapes refused here are
 # the two the Go readers refuse (ahoy.homeScope):
 #
-#   - a RELATIVE HOME resolves ~/.abcd against whatever directory this hook
+#   - a RELATIVE HOME resolves ~/.abcd.noindex against whatever directory this hook
 #     happens to run in, which is the checkout the session opened — so a
-#     committed fakehome/.abcd/cache-attestation would become the record the
+#     committed fakehome/.abcd.noindex/cache-attestation would become the record the
 #     PATH promotion trusts, reopening through repository content the very class
 #     the attestation exists to outrank;
 #   - a HOME INSIDE that directory is the same shape by another spelling;
-#   - a ~/.abcd that is a SYMLINK (a dotfiles checkout, typically) is the rule
+#   - a ~/.abcd.noindex that is a SYMLINK (a dotfiles checkout, typically) is the rule
 #     the rules loader applies to rules.json and every Go reader and writer of
-#     ~/.abcd applies through fsutil.HomeScopeLink: a record written through
+#     ~/.abcd.noindex applies through fsutil.HomeScopeLink: a record written through
 #     the link lands wherever it points and is one every reader refuses, so
 #     `ahoy install` would send the reader back here for a record this script
 #     would write the same way (iss-2609281017573862).
@@ -118,15 +118,40 @@ home_refusal=''
 if [ -z "$home_dir" ]; then
 	home_refusal='HOME is unset, so there is no home directory to write it into'
 elif [ "${home_dir#/}" = "$home_dir" ]; then
-	home_refusal='HOME is a relative path, so ~/.abcd would resolve against whatever directory this hook happens to run in rather than naming one home'
+	home_refusal='HOME is a relative path, so ~/.abcd.noindex would resolve against whatever directory this hook happens to run in rather than naming one home'
 	home_dir=''
 elif home_inside_cwd; then
-	home_refusal='HOME lies inside the directory this hook is running in, so its ~/.abcd records would be repository content rather than a write into your own home'
+	home_refusal='HOME lies inside the directory this hook is running in, so its ~/.abcd.noindex records would be repository content rather than a write into your own home'
 	home_dir=''
-elif [ -L "$home_dir/.abcd" ]; then
-	home_refusal='~/.abcd is a symlink, which abcd refuses rather than follows (replace the link with a real directory)'
+elif [ -L "$home_dir/.abcd.noindex" ]; then
+	home_refusal='~/.abcd.noindex is a symlink, which abcd refuses rather than follows (replace the link with a real directory)'
 	home_dir=''
 fi
+
+# The old home stops the script here, before any download and before any record
+# is written (itd-2610030720038073 decision 6, spc-2610031309233367 "The
+# stop"). abcd's home is ~/.abcd.noindex; while an old ~/.abcd stands, of
+# whatever kind, a link included and never followed, abcd moves nothing and
+# writes into neither folder until the person renames it, so this run must not
+# create a fresh ~/.abcd.noindex beside it either. The two lines are the
+# binary's own (internal/abcdhome), and TestBootstrapWritesNothingBesideTheOldHome
+# holds them to it; the repair loop's own variable is printed through %s, so the
+# script names no environment reference it does not read (the allowlist in
+# TestBootstrapFetchOriginsAreConstants). HOME is judged as the binary judges it: an absolute HOME is
+# checked, even one refused above as a place to write, and an empty or relative
+# one is no stop, its refusal above standing.
+case "${HOME:-}" in
+/*)
+	if [ -e "$HOME/.abcd" ] || [ -L "$HOME/.abcd" ]; then
+		if [ -e "$HOME/.abcd.noindex" ] || [ -L "$HOME/.abcd.noindex" ]; then
+			printf 'abcd: Both ~/.abcd and ~/.abcd.noindex exist, so abcd has written nothing and moves neither. Keep the one you want, named ~/.abcd.noindex, and take the other out of your home folder, reconnect the working copies kept there with `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "%sw" worktree repair; done`, then run abcd again.\n' '$' >&2
+		else
+			printf 'abcd: abcd'\''s folder is now ~/.abcd.noindex, a name the Mac'\''s search indexer passes over, and ~/.abcd still stands, so abcd has written nothing. Rename it with `mv ~/.abcd ~/.abcd.noindex`, reconnect the working copies kept there with `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "%sw" worktree repair; done`, then run abcd again.\n' '$' >&2
+		fi
+		exit 1
+	fi
+	;;
+esac
 
 # The persistent data dir is taken from the harness or not at all. Its
 # documented path shape could be derived from the plugin root, but a wrong
@@ -474,13 +499,13 @@ fi
 # exactly where those verbs run (iss-2608210934566230, adr-46 decision 4).
 # Empty when HOME is unset, which every use below guards.
 path_entry=''
-[ -n "$home_dir" ] && path_entry="$home_dir/.abcd/path-entry"
+[ -n "$home_dir" ] && path_entry="$home_dir/.abcd.noindex/path-entry"
 
 # path_entry_owned: the record is honoured only when it is THIS user's word — a
 # regular file (never a symlink, which `[ -f ]` follows), owned by the caller, and
 # not writable by group or other. The same three-part guard the Go reader applies
 # through fsutil.ReadDeclaration, and the one the two sibling declaration records
-# (~/.abcd/trusted-roots, ~/.abcd/local-transcript-roots) have always applied.
+# (~/.abcd.noindex/trusted-roots, ~/.abcd.noindex/local-transcript-roots) have always applied.
 #
 # It matters at BOTH uses below even though neither executes the recorded binary:
 # the first reads `path=` and then writes the release copy to it, and the second
@@ -964,7 +989,7 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 	if [ -n "$attest" ] && [ -z "$home_dir" ]; then
 		attest_note=" (the cache attestation could not be written because $home_refusal, so \`ahoy install\` will not promote this cache to an owned PATH copy)"
 	elif [ -n "$attest" ]; then
-		attest_dir="$home_dir/.abcd"
+		attest_dir="$home_dir/.abcd.noindex"
 		attest_path="$attest_dir/cache-attestation"
 		if [ -e "$attest_path" ] && [ ! -f "$attest_path" ]; then
 			attest_note=' (the cache attestation could not be written because its path is occupied by something that is not a regular file, so `ahoy install` will not promote this cache to an owned PATH copy)'

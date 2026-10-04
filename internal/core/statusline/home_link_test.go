@@ -12,9 +12,9 @@ import (
 
 // TestASettingBehindASymlinkedAbcdHomeIsIgnored: the setting's
 // previous_command is a shell command the harness runs, and it was read
-// through a symlinked ~/.abcd the rules loader refuses (iss-2609281017573862).
+// through a symlinked ~/.abcd.noindex the rules loader refuses (iss-2609281017573862).
 // Behind the link the setting is not the caller's word: the defaults render
-// and a note says why. The same file in a real ~/.abcd is taken.
+// and a note says why. The same file in a real ~/.abcd.noindex is taken.
 func TestASettingBehindASymlinkedAbcdHomeIsIgnored(t *testing.T) {
 	dotfiles := t.TempDir()
 	writeSettings(t, dotfiles, `{"schema_version":1,"previous_command":"/bin/echo hi"}`)
@@ -27,13 +27,13 @@ func TestASettingBehindASymlinkedAbcdHomeIsIgnored(t *testing.T) {
 		t.Fatalf("LoadFrom: %v", err)
 	}
 	if got.PreviousCommand != "" || got.Installed {
-		t.Fatalf("a setting behind a symlinked ~/.abcd was taken: %+v", got)
+		t.Fatalf("a setting behind a symlinked ~/.abcd.noindex was taken: %+v", got)
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "~/.abcd is a symlink") {
-		t.Fatalf("notes = %q, want one naming the symlinked ~/.abcd", notes)
+	if len(notes) != 1 || !strings.Contains(notes[0], "~/.abcd.noindex is a symlink") {
+		t.Fatalf("notes = %q, want one naming the symlinked ~/.abcd.noindex", notes)
 	}
 
 	if got, _, err := LoadFrom(dotfiles); err != nil || got.PreviousCommand != "/bin/echo hi" {
-		t.Fatalf("the same setting in a real ~/.abcd must be taken: %+v, %v", got, err)
+		t.Fatalf("the same setting in a real ~/.abcd.noindex must be taken: %+v, %v", got, err)
 	}
 }

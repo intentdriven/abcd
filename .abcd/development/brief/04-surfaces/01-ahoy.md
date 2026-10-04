@@ -137,7 +137,7 @@ model it may serve) and where its key lives. It verifies the provider with one
 call to the first model listed and, only when that call succeeds, keeps the key
 in the home chosen through the credential store's walkthrough and then writes
 the provider block (base URL, the key's name, the models) into
-`~/.abcd/config.json`. A failed verification writes nothing. Nothing reaches the
+`~/.abcd.noindex/config.json`. A failed verification writes nothing. Nothing reaches the
 repository or the harness's settings. Every fault the configuration read would
 refuse (a model an `oracle.denylist` entry matches, a malformed model, a base URL that is plain HTTP to
 another machine, a provider already configured, a key name already holding a
@@ -216,11 +216,11 @@ The three homes:
 - `external` — a setup outside abcd: an environment variable, or a dotted
   field of a tool's JSON configuration file under the home directory. The
   store keeps only the pointer, in
-  `~/.abcd/credential-homes.json`, and follows it on every read. A file
+  `~/.abcd.noindex/credential-homes.json`, and follows it on every read. A file
   pointer is refused, naming the link, when any directory between the home and
   the tool's file is a symlink, wherever the link leads; the
   environment-variable pointer stays open.
-- `abcd` — the owner-only `~/.abcd/credentials.json`, which holds the value.
+- `abcd` — the owner-only `~/.abcd.noindex/credentials.json`, which holds the value.
 - `keychain` — the platform keychain under the service name `abcd` (the
   Keychain through `/usr/bin/security` on macOS, the secret service through
   `/usr/bin/secret-tool` on Linux), the value handed over on stdin, never in an
@@ -232,14 +232,14 @@ name no home holds is a refusal naming the walkthrough, and the caller makes no
 call. A test walks the production tree for any other read (a store file named,
 a keychain command run, a secret-shaped environment variable read). One write,
 `credential.Set`, is reached only through the walkthrough: it refuses the abcd
-home when `~/.abcd` lies inside a git working tree, since that home alone keeps
+home when `~/.abcd.noindex` lies inside a git working tree, since that home alone keeps
 a value there, a name another home already holds, and a different
 value for a name already kept, and the secret scanner reads the index's bytes
 before they are written, refusing any finding. A value is read from stdin only,
 and never printed, logged or written to a record; a call's record names the
 credential it used.
 
-## What abcd manages — repos and `~/.abcd/`
+## What abcd manages — repos and `~/.abcd.noindex/`
 
 abcd manages exactly one kind of folder, a **repository**, and keeps one
 user-scope directory for machine-local state. Every writer creates that
@@ -251,12 +251,12 @@ earlier version wrote wider is narrowed when abcd next writes it
 (iss-2610032205304585).
 
 ```
-~/.abcd/                       USER SCOPE — one per machine (machine-local state only)
+~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
   history/                       the REGISTRY only: identity and lineage keyed on the
                                  root-commit SHA. ahoy owns it; it holds no transcripts
   transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
                                  registry, creating itself on first use
-                                 (adr-2609091248201071, superseding adr-2609090717039680)
+                                 (adr-2610031751066232, superseding adr-2609091248201071)
   voyage/<root-sha>/             disembark/embark operations log, never committed
                                  (adr-35)
   lab/<root-sha>/<lab-id>/       one lab's evidence: snapshot, probe records, findings,
@@ -327,17 +327,17 @@ does not parse, is reported loudly and both of its limits take their defaults.
 `rules.json` is read through that guard too, because it injects text into every
 session on the machine, but a file failing it — or failing to parse — fails the
 rules load outright: nothing injects until it is fixed, and the file is named on
-stderr. None of these files is honoured behind a `~/.abcd` that is itself a
+stderr. None of these files is honoured behind a `~/.abcd.noindex` that is itself a
 symlink, and nothing ahoy or the bootstrap writes there goes through one: each
 refuses the link and names it, as the rules loader does for `rules.json`, while a
-symlinked `~/.abcd` holding none of them reads as absent (the rule is stated once,
+symlinked `~/.abcd.noindex` holding none of them reads as absent (the rule is stated once,
 under *The two `.abcd/` scopes* in
 [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes)).
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd
 lives in one repository (adr-28): the design record is repo-scoped and in-tree.
-Everything genuinely machine-wide lives under `~/.abcd/`, which an install
+Everything genuinely machine-wide lives under `~/.abcd.noindex/`, which an install
 bootstraps transparently before registering, so a user is never blocked by
 missing user-scope state. Each repo's marker block stands alone: there is no
 inheritance chain to resolve.
@@ -530,7 +530,7 @@ about, one question per category present, never one per item.
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
-| `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
+| `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
@@ -921,7 +921,7 @@ byte-identical to a fresh install save for the setup date.
 - **Given** the user runs the doctor on an installed repo whose registered path no
   longer matches the registry, **then** an audit gap citing both paths appears
   in the JSON envelope, reported read-only, and no files are modified.
-- **Given** a fresh machine with no `~/.abcd/`, **when** the install runs in a
+- **Given** a fresh machine with no `~/.abcd.noindex/`, **when** the install runs in a
   repo, **then** the user-scope directory is bootstrapped before the repo is
   registered, so the user is not blocked by missing user-scope state.
 - **Given** a registered repo that has been moved on disk, **when** the install or

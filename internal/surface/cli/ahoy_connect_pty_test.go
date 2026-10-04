@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"os"
 	"os/exec"
 	"strings"
@@ -135,7 +136,7 @@ func TestConnectReadsTheKeyHiddenAtARealTerminal(t *testing.T) {
 		t.Fatalf("the key was drawn on the terminal:\n%q", out)
 	}
 	c.restored(t, "after the setup")
-	raw, err := os.ReadFile(c.home + "/.abcd/credentials.json")
+	raw, err := os.ReadFile(abcdhome.Path(c.home, "credentials.json"))
 	if err != nil || !strings.Contains(string(raw), connectKey) {
 		t.Fatalf("the key was not stored: %v", err)
 	}
@@ -161,8 +162,8 @@ func TestHiddenKeyRestoresTerminalOnInterrupt(t *testing.T) {
 		if calls.Load() != 0 {
 			t.Errorf("an interrupted setup made %d call(s)", calls.Load())
 		}
-		if _, err := os.Lstat(c.home + "/.abcd"); err == nil {
-			t.Error("an interrupted setup wrote under ~/.abcd")
+		if _, err := os.Lstat(abcdhome.Path(c.home)); err == nil {
+			t.Errorf("an interrupted setup wrote under %s", abcdhome.Display())
 		}
 		if out := c.pty.Settled(t, ptySettle); strings.Contains(out, "half-a-pas") {
 			t.Errorf("the paste was drawn:\n%q", out)
@@ -228,7 +229,7 @@ func TestConnectPicksAtARealTerminal(t *testing.T) {
 		if len(listAuth) != 1 || listAuth[0] != "Bearer "+connectKey || len(chatModel) != 1 || chatModel[0] != "vendor/coder-small" {
 			t.Fatalf("listed with %d request(s), completion asked for %q; want one keyed listing and the model picked", len(listAuth), chatModel)
 		}
-		raw, err := os.ReadFile(c.home + "/.abcd/config.json")
+		raw, err := os.ReadFile(abcdhome.Path(c.home, "config.json"))
 		if err != nil || !strings.Contains(string(raw), `"vendor/coder-small"`) || strings.Contains(string(raw), "coder-large") {
 			t.Fatalf("the provider block does not hold the model picked: %v\n%s", err, raw)
 		}
@@ -254,8 +255,8 @@ func TestConnectPicksAtARealTerminal(t *testing.T) {
 			t.Errorf("an interrupted pick made a completion: %q", chatModel)
 		}
 		for _, name := range []string{"config.json", "credentials.json", "credential-homes.json"} {
-			if _, err := os.Lstat(c.home + "/.abcd/" + name); err == nil {
-				t.Errorf("an interrupted pick wrote ~/.abcd/%s", name)
+			if _, err := os.Lstat(abcdhome.Path(c.home, name)); err == nil {
+				t.Errorf("an interrupted pick wrote %s", abcdhome.Display(name))
 			}
 		}
 		if out := c.pty.Settled(t, ptySettle); strings.Contains(out, connectKey) {

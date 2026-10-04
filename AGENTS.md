@@ -9,14 +9,14 @@ reading any file loaded this file as its instructions (itd-2610030814013772).
   Do NOT hand-edit content inside the abcd-managed fences — `/abcd:ahoy`
   silently overwrites this block on drift (per itd-3). Per-repo rule
   customisation goes in <repo>/.abcd/rules.json instead, and machine-wide
-  customisation in ~/.abcd/rules.json.
+  customisation in ~/.abcd.noindex/rules.json.
 -->
 
 ## abcd rule loader
 
 This repository uses the abcd modular rules loader. On `UserPromptSubmit`, a hook
 recall-matches the prompt against keyword triggers declared in the plugin-bundled
-default domains, the machine's `~/.abcd/rules.json` and `<repo>/.abcd/rules.json`,
+default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
 and injects only the matched domain rules into context — instead of
 force-loading the full ruleset every turn.
 A prompt that matches no domain injects nothing (zero added tokens).
@@ -32,18 +32,18 @@ A prompt that matches no domain injects nothing (zero added tokens).
   diagnostic on stderr naming it — it would otherwise inject a heading-only
   block, which reads as a domain that says nothing. The rest of the file still
   loads; `{"state": "dormant"}` is the way to silence a domain deliberately.
-- Machine-wide overrides: `~/.abcd/rules.json` takes the same schema and holds
+- Machine-wide overrides: `~/.abcd.noindex/rules.json` takes the same schema and holds
   the conventions shared by every repo on the machine. The layers apply in
-  order — bundled defaults, then `~/.abcd/rules.json`, then
+  order — bundled defaults, then `~/.abcd.noindex/rules.json`, then
   `<repo>/.abcd/rules.json` — each replacing a field wholesale, so the repo wins
   a field both set and a repo `dormant` state or kill switch holds against a
   user layer. The file is read only when it is a regular file this account owns
   that no one else can write, within 256 KiB; a file failing that, or failing to
   parse or validate, fails the load loudly and the hook injects nothing. Absent,
-  it costs nothing and nothing is created; a `HOME` or `~/.abcd` this account
-  cannot search reads as absent. A dotfiles-symlinked `~/.abcd` can never host
-  a `rules.json`: the file is refused behind a symlinked `~/.abcd`, and only a
-  symlinked `~/.abcd` with no `rules.json` in it is spared, reading as absent.
+  it costs nothing and nothing is created; a `HOME` or `~/.abcd.noindex` this account
+  cannot search reads as absent. A dotfiles-symlinked `~/.abcd.noindex` can never host
+  a `rules.json`: the file is refused behind a symlinked `~/.abcd.noindex`, and only a
+  symlinked `~/.abcd.noindex` with no `rules.json` in it is spared, reading as absent.
 - Provenance: a domain an override names (rules replaced, state changed, or a
   custom domain) renders as `## NAME (user override)` or
   `## NAME (repo override)`, after the last layer that named it, wherever it
@@ -51,7 +51,7 @@ A prompt that matches no domain injects nothing (zero added tokens).
   `abcd rules --json` carries `"source": "user"` or `"source": "repo"` for it
   and `"source": "bundled"` for an untouched default.
 - Kill switch: set `"disabled": true` at the top of `.abcd/rules.json`; at the
-  top of `~/.abcd/rules.json` it silences every repo on the machine, and no repo
+  top of `~/.abcd.noindex/rules.json` it silences every repo on the machine, and no repo
   file re-enables it.
 - Foreign-uid roots: the loader and the shell guard read `.abcd/` from the
   repository root resolved for the session, never from a directory above the
@@ -61,10 +61,10 @@ A prompt that matches no domain injects nothing (zero added tokens).
   takes its own working directory as the root, nothing above it is read, and one
   line on stderr names what was refused. The refusal bounds the walk, not the
   working directory: a `.abcd/` there is still read, so a session started AT the
-  refused root reads that root's configuration, over `~/.abcd/rules.json` for
+  refused root reads that root's configuration, over `~/.abcd.noindex/rules.json` for
   the rules. Re-admit such a checkout deliberately, from
   an account you control:
-  `mkdir -p ~/.abcd && printf '%s\n' '<checkout>' >> ~/.abcd/trusted-roots`
+  `mkdir -p ~/.abcd.noindex && printf '%s\n' '<checkout>' >> ~/.abcd.noindex/trusted-roots`
   (one absolute path per line; `#` starts a comment). Only your home declares
   it — a file inside the checkout can never vouch for the checkout.
 - Explicit activation: start a prompt with `*<DOMAIN>` (e.g. `*COMMITTING`,
@@ -203,8 +203,8 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
 - `.abcd/.work.local/` — **local ephemeral** (gitignored): `NEXT.md` handover,
   `scratch/`, `logs/`, `reviews/` (intent-audit receipts), `private-names.txt`
   (per-machine banlist layer), and `transcripts/` when this checkout is declared
-  in `~/.abcd/local-transcript-roots` (session transcripts default to the
-  user-level `~/.abcd/transcripts/<root-sha>/records/` store, which creates
+  in `~/.abcd.noindex/local-transcript-roots` (session transcripts default to the
+  user-level `~/.abcd.noindex/transcripts/<root-sha>/records/` store, which creates
   itself; the per-repo location is an opt-in pull). Per-worktree, so it never
   merge-conflicts.
 
@@ -242,8 +242,9 @@ irreversible; guessing downward costs nothing.**
   three under whoever else is using them. The lint gates read the whole tree,
   so foreign work-in-progress fails them in both directions.
 - **That worktree goes in the machine-scoped store, and nowhere else.** A
-  session's own checkout lives at `~/.abcd/worktrees/<root-sha>/<name>/`, keyed
-  on the repository's root commit the way the history, transcript and voyage
+  session's own checkout lives at
+  `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the repository's
+  root commit the way the history, transcript and voyage
   stores already are — a checkout moves, is renamed and is cloned twice on one
   machine, while its root commit does none of that. `<root-sha>` is the full
   object name (forty hex digits under SHA-1, sixty-four under SHA-256), as the
@@ -253,8 +254,10 @@ irreversible; guessing downward costs nothing.**
   working tree, which every tree scan walks. A tool never creates a directory
   in space the user did not hand it, and beside a checkout there is no declared
   tier at all:
+  [adr-2610031751065746](.abcd/development/decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
+  is the rule, carrying
   [adr-2609091248200336](.abcd/development/decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
-  is the rule and
+  forward under the renamed home, and
   [`the-users-directory-is-theirs`](.abcd/development/principles/the-users-directory-is-theirs.md)
   is the stance. **The store has no verbs yet.** Aim a plain `git worktree add`
   at the path and create the lane by hand; the store's own `add`, its listing

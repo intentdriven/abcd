@@ -12,7 +12,7 @@ import (
 )
 
 // voyageDirPerm is the mode the voyage store's own directories are created with.
-// 0o700 because ~/.abcd is the caller's private space and this ledger records
+// 0o700 because ~/.abcd.noindex is the caller's private space and this ledger records
 // which repositories they packed and where they wrote them. An already-existing
 // directory keeps the mode the caller gave it.
 const voyageDirPerm = abcdhome.DirMode
@@ -42,7 +42,7 @@ type voyageEntry struct {
 }
 
 // appendVoyage appends one line to the operator-level voyage ledger at
-// ~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl. It is genuinely
+// ~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl. It is genuinely
 // append-only (O_APPEND, one line, no whole-file rewrite) and keyed on the
 // source's root-commit SHA, mirroring the history store's per-repo scoping. It
 // reports whether it appended and, if not, a short reason — a failure here never
@@ -59,7 +59,7 @@ func appendVoyage(lb Lifeboat, dest, manifestSHA string, files, bytesWritten int
 	}
 
 	// Create and verify the two top directories one level at a time, BEFORE any
-	// deeper mkdir, so a symlinked ~/.abcd or ~/.abcd/voyage is refused rather
+	// deeper mkdir, so a symlinked ~/.abcd.noindex or ~/.abcd.noindex/voyage is refused rather
 	// than traversed (a bare MkdirAll of the leaf would follow a symlinked base
 	// and create directories under its target first). EnsureRealDir is that
 	// create-then-prove step, and it is the canonical one — this file used to

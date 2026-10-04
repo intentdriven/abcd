@@ -40,7 +40,7 @@ func routingPaths(home, repo string) (machine, repoFile string) {
 // step renders abcd's proposal in counts (how many agents, how many at each
 // tier, and their fan-out bounds: the product thinker's 2026-10-03 ruling on
 // iss-2610031236155833, since a row per agent cannot fit one question), and on
-// consent writes the full table under ~/.abcd/ (owner-only), then offers the
+// consent writes the full table under ~/.abcd.noindex/ (owner-only), then offers the
 // repository file in a separate question and writes it on consent. What it
 // writes is exactly the bundled proposal, read back through the resolver every
 // delegating verb uses.
@@ -64,7 +64,7 @@ func TestOracleRoutingConsentWritesTheProposal(t *testing.T) {
 			for _, agent := range roster {
 				perTier[proposal[agent].Tier]++
 			}
-			want := []string{fmt.Sprintf("%d agents: ", len(roster)), "~/.abcd/oracle-routing.json"}
+			want := []string{fmt.Sprintf("%d agents: ", len(roster)), "~/.abcd.noindex/oracle-routing.json"}
 			for tier, n := range perTier {
 				want = append(want, fmt.Sprintf("%d %s", n, tier))
 			}

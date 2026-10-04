@@ -348,7 +348,7 @@ func nearestExistingDir(dir string) string {
 // location to write, and inventing a privileged one is what iss-171 removes.
 //
 // With no plugin root the one shape still found on PATH is the dangling link
-// ~/.abcd/path-entry records: the record vouches for it without a root, and it
+// ~/.abcd.noindex/path-entry records: the record vouches for it without a root, and it
 // is exactly what is left when abcd is gone, the case the owned dangling gap
 // sends to `ahoy uninstall`.
 func adoptedBinTarget(pluginRoot string) string {
@@ -1036,12 +1036,12 @@ func (a *applyCtx) stepVisibility(cfg *InstallConfig) {
 	}
 }
 
-// stepHistory bootstraps ~/.abcd/history/ (the registry: index.json and the
+// stepHistory bootstraps ~/.abcd.noindex/history/ (the registry: index.json and the
 // per-repo meta.json), opens this repo's transcript store, and
 // registers/refreshes the repo entry.
 //
 // The transcript corpus itself is NOT ahoy's to lay out: it lives at
-// ~/.abcd/transcripts/<root-sha>/records/ (or, opted in, inside the repo) and is
+// ~/.abcd.noindex/transcripts/<root-sha>/records/ (or, opted in, inside the repo) and is
 // created by internal/core/history, which is also the only package that may
 // judge that path. Install still opens it, so a freshly installed machine has
 // the store on disk and the receipt names it — but capture no longer depends on
@@ -1054,7 +1054,7 @@ func (a *applyCtx) stepHistory() {
 	// the store and the reason, never a silent omission.
 	root, err := historyRoot()
 	if err != nil {
-		// A symlinked ~/.abcd (or ~/.abcd/history) is refused like every other
+		// A symlinked ~/.abcd.noindex (or ~/.abcd.noindex/history) is refused like every other
 		// file abcd keeps there: the registry would land wherever the link
 		// points. The error is the whole sentence, the link and the remedy
 		// included (iss-2609281129171021).
@@ -1431,7 +1431,7 @@ func entryAnswers(target, pluginRoot string) bool {
 // hook's CLAUDE_PLUGIN_DATA or, from the terminal the bootstrap's notice sends
 // the reader to, through the plugin root's .data-dir stamp
 // (iss-2609012111168716). Both are ROUTES, not trust: the cache is promoted
-// only when ~/.abcd/cache-attestation — written by the bootstrap after it
+// only when ~/.abcd.noindex/cache-attestation — written by the bootstrap after it
 // authenticated the cache against the published release manifest — names that
 // directory and the hash its record carries (cacheBindingProblem,
 // GHSA-4q78-ccfv-f374); the re-verification below is then the same either way.
@@ -1546,7 +1546,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	a.note(writeCommandEntry, target)
 }
 
-// recordEntry stamps ~/.abcd/path-entry for the entry abcd just installed at
+// recordEntry stamps ~/.abcd.noindex/path-entry for the entry abcd just installed at
 // target, and says so loudly when it cannot. It is the ONE install-time route
 // to writePathEntry: the record is what the hook shims read before they will
 // run an abcd off PATH, so a second writer would be a second answer to "is
@@ -1601,7 +1601,7 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 	a.note(writeCommandEntry, target)
 }
 
-// stepPathEntry records the installed PATH entry in ~/.abcd/path-entry, for the
+// stepPathEntry records the installed PATH entry in ~/.abcd.noindex/path-entry, for the
 // two shapes whose ownership does not already rest on that record: the spc-21
 // pinned symlink an earlier release wrote, which install records when it finds
 // one working, and the --dev shim. The owned copy stamps itself inside

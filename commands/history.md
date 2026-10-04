@@ -8,7 +8,7 @@ block: agents
 # `/abcd:history` — session-transcript store
 
 The native session-transcript store at
-`~/.abcd/transcripts/<root-sha>/records/`, keyed on this repo's root-commit SHA.
+`~/.abcd.noindex/transcripts/<root-sha>/records/`, keyed on this repo's root-commit SHA.
 The store is **user-level and self-creating**: it belongs to the machine rather
 than to any checkout, and the first verb to reach it makes it, so no install
 step stands between a wired hook and a stored transcript. `list`, `show` and
@@ -26,14 +26,14 @@ step: relay it.
 
 A repo whose transcripts should stay with the repo instead is an **opt-in
 pull**, declared in the caller's own home — one absolute checkout path per line
-in `~/.abcd/local-transcript-roots`. A declared checkout keeps its transcripts
+in `~/.abcd.noindex/local-transcript-roots`. A declared checkout keeps its transcripts
 at `<repo>/.abcd/.work.local/transcripts/<root-sha>/records/`, inside the
 gitignored per-worktree local tier. The declaration is home-scoped so a checkout
 can never assert where the machine's session record is kept; a declaration that
 is not a regular file this uid owns, or that anyone can write, is ignored and
 says so on stderr.
 
-A corpus at the earlier `~/.abcd/history/<root-sha>/` location is moved into the
+A corpus at the earlier `~/.abcd.noindex/history/<root-sha>/` location is moved into the
 store the first time any verb resolves it, reported on stderr, and a
 `transcripts.moved` tombstone is left at the old path naming the new one. **Both
 leaves move**: the redacted records under `transcripts/`, and `staging/`, which

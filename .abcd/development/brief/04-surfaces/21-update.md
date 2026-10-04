@@ -54,7 +54,7 @@ tried in order:
 |---|---|
 | `release-manifest` | the file's digest appears in a published release's checksums. The strongest, and the only one that also DATES the file, so it is tried first |
 | `running-executable` | the file IS the executable this process runs from. Nothing else can be, so no forge object is consulted |
-| `path-entry-record` | `~/.abcd/path-entry` records this exact file as the copy abcd installed, and the bytes still hash to what was recorded |
+| `path-entry-record` | `~/.abcd.noindex/path-entry` records this exact file as the copy abcd installed, and the bytes still hash to what was recorded |
 
 The last two exist because the first one dies with the release object
 (iss-2609012000222546). Release assets are deletable, and an ownership proof

@@ -430,7 +430,7 @@ func toolRoles(res identity.Result) string {
 }
 
 // historyHomeLinkGapID is the diagnostic for a history registry behind a
-// symlinked ~/.abcd (iss-2609281129171021).
+// symlinked ~/.abcd.noindex (iss-2609281129171021).
 const historyHomeLinkGapID = "history.home_symlinked"
 
 func detectHistoryStore(rootSHA string) []Gap {
@@ -484,7 +484,7 @@ func detectHistoryStore(rootSHA string) []Gap {
 //
 // It exists so the heal is REACHABLE. Without a gap, a repo that is otherwise
 // fully installed short-circuits on the idempotency early return and never runs
-// the history step, so a token sits in ~/.abcd/history for the life of the
+// the history step, so a token sits in ~/.abcd.noindex/history for the life of the
 // machine no matter how often the operator re-installs. Required and resolvable,
 // because `ahoy install` closes it.
 //
@@ -826,7 +826,7 @@ func danglingEntryGap(path string, owned bool) Gap {
 	}
 }
 
-// unrecordedEntryGap reports an entry abcd owns that ~/.abcd/path-entry does
+// unrecordedEntryGap reports an entry abcd owns that ~/.abcd.noindex/path-entry does
 // not name. It is the one state where the board and the hooks disagree in
 // silence: the entry is a working install by every filesystem test detection
 // makes, so it reports installed, while every hook shim refuses it at the

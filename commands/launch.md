@@ -507,7 +507,7 @@ around a refusal.
 `release-changelog-composer` agent, and each resolves that agent's model tier
 before anything else runs: an invocation override, over the repository's
 `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+`~/.abcd.noindex/oracle-routing.json`, over abcd's bundled proposal (which applies only
 once a table is accepted). The override is `--route
 <agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
 dispatches (a second `--route` is refused, not merged), with the tier one of
@@ -529,7 +529,7 @@ cannot be read exits 2 before anything is written. With no table accepted and no
 
 **A step routed to a provider has already run.** When the person has pointed
 `oracle.roles.release-changelog-composer` at a provider in
-`~/.abcd/config.json`, the emit step sends the emitted cut there itself,
+`~/.abcd.noindex/config.json`, the emit step sends the emitted cut there itself,
 ingests the answer as the ingest step would, and prints the ingest's result
 with a `route` receipt whose `connection_used` names the provider. **When
 `route.connection_used` is not `harness`, the cut is already ingested: skip

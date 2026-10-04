@@ -1,9 +1,9 @@
 ---
 id: adr-2610031751065746
 slug: the-worktree-store-lives-under-the-renamed-home-abcd-noindex
-status: proposed
+status: accepted
 date: 2026-10-03
-supersedes: null
+supersedes: adr-2609091248200336
 superseded_by: null
 related_intents: [itd-2610030720038073, itd-2609091014076309]
 related_rfcs: []

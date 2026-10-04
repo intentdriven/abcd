@@ -12,7 +12,7 @@ package oracle
 // manifest-hashed bundle and reads nothing else. Every other agent is refused
 // before any call, with a reason naming the rule and the override.
 //
-// The override is oracle.bundled_context_providers in ~/.abcd/config.json: the
+// The override is oracle.bundled_context_providers in ~/.abcd.noindex/config.json: the
 // providers the person lets take bundled-context requests for file-reading
 // agents. It is read from the machine layer alone, and a repository declaring
 // it is refused, as a repository's provider block is. It inherits the machine

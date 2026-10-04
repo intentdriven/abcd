@@ -35,7 +35,7 @@ func runBootstrapWithData(t *testing.T, root, data string, fx *bootstrapFixture,
 
 // runBootstrapWithDataHome is runBootstrapWithData with HOME pinned, so a test
 // can seed and read the home-scoped owned-copy provenance record (spc-35 keeps
-// it at $HOME/.abcd/path-entry, reachable from a terminal that has no
+// it at $HOME/.abcd.noindex/path-entry, reachable from a terminal that has no
 // CLAUDE_PLUGIN_DATA).
 func runBootstrapWithDataHome(t *testing.T, root, data, home string, fx *bootstrapFixture, extraPath string) (string, int) {
 	t.Helper()
@@ -44,7 +44,7 @@ func runBootstrapWithDataHome(t *testing.T, root, data, home string, fx *bootstr
 		append(fx.env(), "CLAUDE_PLUGIN_DATA="+data, "HOME="+home), extraPath)
 }
 
-// homePathEntry is $HOME/.abcd/path-entry, the home-scoped provenance record.
+// homePathEntry is $HOME/.abcd.noindex/path-entry, the home-scoped provenance record.
 func homePathEntry(home string) string {
 	return abcdhome.Path(home, "path-entry")
 }
@@ -868,7 +868,7 @@ func TestBootstrapCacheProvisionRecordsDataDirInRoot(t *testing.T) {
 
 // TestBootstrapRefreshesAOneLinerInstalledPathCopy is the verification half of
 // iss-2609012111159045, which reported that a PATH copy installed by the README
-// one-liner "writes no ~/.abcd/path-entry provenance record", so nothing ever
+// one-liner "writes no ~/.abcd.noindex/path-entry provenance record", so nothing ever
 // refreshes it. The one-liners now write that record — two lines, `path=` and
 // `binary_sha256=`, and deliberately NO `plugin_root` — and this pins the
 // consequence the record doubted: a copy installed that way is refreshed by the
@@ -924,7 +924,7 @@ func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
 // one process that runs with the harness's real CLAUDE_PLUGIN_DATA and, when
 // online, has just authenticated the cache against the published release
 // manifest. It records that fact in a HOME-scoped attestation —
-// ~/.abcd/cache-attestation, beside path-entry — naming the data dir, the
+// ~/.abcd.noindex/cache-attestation, beside path-entry — naming the data dir, the
 // manifest-authenticated binary_sha256 and the trust it established. `ahoy
 // install` promotes a cache into the owned PATH copy only when the
 // attestation names that directory and that hash, so an environment variable
@@ -932,7 +932,7 @@ func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
 // after authentication: an offline run, which trusts the cache at
 // corruption-evidence only, never writes or upgrades it.
 
-// homeCacheAttestation is $HOME/.abcd/cache-attestation.
+// homeCacheAttestation is $HOME/.abcd.noindex/cache-attestation.
 func homeCacheAttestation(home string) string {
 	return abcdhome.Path(home, "cache-attestation")
 }
@@ -1179,7 +1179,7 @@ func runBootstrapWithDataHomeAtPid(t *testing.T, root, data, home string, fx *bo
 }
 
 // TestBootstrapAttestationTempIgnoresAPlantedSymlink: the first cut wrote the
-// attestation to `$HOME/.abcd/.cache-attestation.$$` with `>` and a chmod by
+// attestation to `$HOME/.abcd.noindex/.cache-attestation.$$` with `>` and a chmod by
 // name, both of which follow a symlink pre-planted at that predictable name —
 // so a same-UID writer could have the run write the record's bytes and mode
 // onto a file of their choosing, and then rename the symlink itself into place
@@ -1380,7 +1380,7 @@ func assertHomeRefusalNamed(t *testing.T, out string) {
 }
 
 // TestBootstrapRefusesASymlinkedAbcdHome is iss-2609281017573862 at the
-// writer. The Go readers refuse a record behind a symlinked ~/.abcd, as the
+// writer. The Go readers refuse a record behind a symlinked ~/.abcd.noindex, as the
 // rules loader refuses rules.json there, so an attestation written through the
 // link lands in whatever the link points at (a dotfiles checkout) and is then a
 // record nobody honours — and `ahoy install` would send the reader back to the
@@ -1395,13 +1395,13 @@ func TestBootstrapRefusesASymlinkedAbcdHome(t *testing.T) {
 	}
 	out, code := runBootstrapInHome(t, t.TempDir(), root, data, home, fx)
 	if code != 0 {
-		t.Fatalf("a refused ~/.abcd is a note on a successful install, not a fault: got %d (output %q)", code, out)
+		t.Fatalf("a refused ~/.abcd.noindex is a note on a successful install, not a fault: got %d (output %q)", code, out)
 	}
 	if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {
-		t.Fatalf("the bootstrap wrote %d file(s) behind the symlinked ~/.abcd, first %q", len(entries), entries[0].Name())
+		t.Fatalf("the bootstrap wrote %d file(s) behind the symlinked ~/.abcd.noindex, first %q", len(entries), entries[0].Name())
 	}
-	if !strings.Contains(out, "~/.abcd is a symlink") || !strings.Contains(out, "cache attestation") {
-		t.Errorf("the notice must say the cache attestation was not written because ~/.abcd is a symlink; output %q", out)
+	if !strings.Contains(out, "~/.abcd.noindex is a symlink") || !strings.Contains(out, "cache attestation") {
+		t.Errorf("the notice must say the cache attestation was not written because ~/.abcd.noindex is a symlink; output %q", out)
 	}
 }
 

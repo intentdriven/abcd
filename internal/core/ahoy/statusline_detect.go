@@ -289,7 +289,7 @@ func statusCommandFor(entry string) string {
 	return shSingleQuote(entry) + " " + statusVerb
 }
 
-// userStatusLineSettingPath is ~/.abcd/statusline.json, or "" when no home
+// userStatusLineSettingPath is ~/.abcd.noindex/statusline.json, or "" when no home
 // resolves.
 func userStatusLineSettingPath() string {
 	home := userHome()

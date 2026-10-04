@@ -121,7 +121,7 @@ agent's role does not point at names no model and is refused, naming the
 accepted set is refused naming the setting, where it was set and what the
 adapter accepts, never dropped; and on a connection that holds a key and that
 the person did not type with `--route`, a setting the repository's routing row
-names is refused, never dropped, naming it and `~/.abcd/oracle-routing.json` as
+names is refused, never dropped, naming it and `~/.abcd.noindex/oracle-routing.json` as
 where to move it, because only the person's own machine configuration shapes a
 call that spends their key. A keyed leg the person typed with `--route` is
 theirs, and there the repository row's settings merge within the accepted set. `model` is the adapter's own and is never a setting, so no setting can
@@ -174,7 +174,7 @@ review store and are never swept here). Vendor filesystem layout lives here with
 the adapter, not in the core config brief:
 
 - **Chat store** — `~/Library/Application Support/RepoPrompt/Workspaces/Workspace-<project>-<UUID>/Chats/ChatSession-*.json` (plain JSON, well-structured).
-- **Prompt exports** — RepoPrompt's `export_response: true` writes ad-hoc reviews to `<cwd>/prompt-exports/` with a **hardcoded, non-configurable path**, which ahoy redirects into `~/.abcd/history/<root-sha>/prompt-exports/` via the `<repo>/prompt-exports` symlink.
+- **Prompt exports** — RepoPrompt's `export_response: true` writes ad-hoc reviews to `<cwd>/prompt-exports/` with a **hardcoded, non-configurable path**, which ahoy redirects into `~/.abcd.noindex/history/<root-sha>/prompt-exports/` via the `<repo>/prompt-exports` symlink.
 
 **Workspace matching.** One project may map to multiple RepoPrompt workspaces —
 match by content of `workspace.json` (RepoPrompt's own on-disk workspace file),

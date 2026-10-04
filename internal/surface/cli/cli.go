@@ -6345,10 +6345,24 @@ func repoRootSHA() (string, error) {
 // process exit code, so main stays a thin shell. stdout/stderr are injected so
 // the whole front door (including its error surface) is testable.
 func Run(args []string, stdout, stderr io.Writer) int {
+	return run(args, os.Stdin, stdout, stderr)
+}
+
+// run is Run with stdin injected, so a test can hand a hook its payload
+// through the same front door the binary uses.
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	root := NewRootCommand()
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
+	root.SetIn(stdin)
+
+	// The old home stops everything before anything runs (homestop.go): no
+	// verb, hook or status line executes while ~/.abcd stands, so none can
+	// write into either folder.
+	if stop := homeStop(); stop != nil {
+		return renderHomeStop(root, args, stop, stdin, stdout, stderr)
+	}
 
 	err := root.Execute()
 	if err == nil {

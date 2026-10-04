@@ -45,7 +45,7 @@ This intent commits abcd to taking lifeboat portability seriously: schemas evolv
 - **Given** a newer-schema lifeboat, **when** an older abcd binary tries to embark from it, **then** the binary fails fast with a "lifeboat is from a newer abcd version; upgrade abcd to embark this lifeboat" message — two-way compatibility is explicitly not supported and the failure mode is clear.
 - **Given** a successful migration during embark, **when** the migration log is written, **then** it records: source schema version, target schema version, list of migrators applied (in order), per-artefact field changes, and any non-fatal warnings.
 - **Given** the registered v1→v2 migrator, **when** it runs against a v1 artefact, **then** it produces a v2 artefact that round-trips cleanly through the v2 schema validator (no unknown fields, no missing required fields, all enums valid).
-- **Given** a lifeboat is migrated during embark, **when** the resulting `~/.abcd/voyage/<source-root-sha>/embark/provenance.json` (the operator-level voyage store adr-35 moved it to) is written, **then** it records the migration history (`was_schema: 1`, `now_schema: 2`, `migrators_applied: [...]`) so future audits can reconstruct what was changed.
+- **Given** a lifeboat is migrated during embark, **when** the resulting `~/.abcd.noindex/voyage/<source-root-sha>/embark/provenance.json` (the operator-level voyage store adr-35 moved it to) is written, **then** it records the migration history (`was_schema: 1`, `now_schema: 2`, `migrators_applied: [...]`) so future audits can reconstruct what was changed.
 
 ## Open Questions
 

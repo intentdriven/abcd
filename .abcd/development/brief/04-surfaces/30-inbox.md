@@ -119,8 +119,8 @@ so none reaches the inbox or a capture: a comment renders as nothing, and would
 be text in the record no reader sees. A comment opened and never closed is
 refused.
 
-One line in `~/.abcd/inbox/promoted.jsonl` records the capture the report
-became and its path, and the report is then moved to `~/.abcd/inbox/promoted/`
+One line in `~/.abcd.noindex/inbox/promoted.jsonl` records the capture the report
+became and its path, and the report is then moved to `~/.abcd.noindex/inbox/promoted/`
 and kept; showing it names the capture. The line is written before the move, so a
 move that fails leaves the report waiting with its capture on record: promoting
 it again files nothing, finishes the move, and answers with that capture and
@@ -132,14 +132,14 @@ a symlinked ledger, a slug that normalises to nothing — is refused too: captur
 sweeps its reservation, so nothing is written and the report still waits.
 
 Every inbox verb, and a report filed into the inbox, refuses a symlink or a
-file where a level of it belongs — the home directory, `~/.abcd`, the inbox,
+file where a level of it belongs — the home directory, `~/.abcd.noindex`, the inbox,
 or its `promoted/` folder — and the refusal names that level, home-redacted.
 The reading verbs walk the levels through the same check the filing verbs
 create them by, so nothing is read through a link a filing verb would refuse
-to write through. A symlink or a file at the home or at `~/.abcd` with no inbox
+to write through. A symlink or a file at the home or at `~/.abcd.noindex` with no inbox
 behind it holds nothing to read: the list and the count read it as no inbox,
-the stance the rules loader takes on `~/.abcd/rules.json` behind a symlinked
-`~/.abcd`, and filing into it is refused.
+the stance the rules loader takes on `~/.abcd.noindex/rules.json` behind a symlinked
+`~/.abcd.noindex`, and filing into it is refused.
 
 ## Exit codes
 

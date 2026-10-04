@@ -90,7 +90,7 @@ const (
 	// loaded out of those very bytes, so the file is abcd by construction and
 	// no forge object is consulted to know it.
 	OwnedByRunningExecutable Ownership = "running-executable"
-	// OwnedByPathEntry: ~/.abcd/path-entry records this exact file as the copy
+	// OwnedByPathEntry: ~/.abcd.noindex/path-entry records this exact file as the copy
 	// abcd installed, and the bytes still hash to what was recorded. Local,
 	// written at install time by every install route, and equally independent
 	// of what the forge still serves.

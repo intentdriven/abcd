@@ -1,6 +1,6 @@
 // Package layered is the one layered configuration resolver: a value is taken
 // from the invocation's flag, else the repository's committed file, else the
-// machine's file under ~/.abcd/, else the bundled default the caller supplies,
+// machine's file under ~/.abcd.noindex/, else the bundled default the caller supplies,
 // and it comes back with the layer and the origin that supplied it.
 //
 // It is the canonical primitive for every configuration that more than one
@@ -16,7 +16,7 @@
 //
 // Two file families, one shape of resolution (DECISIONS, 2026-09-25):
 //
-//   - Config: .abcd/config.json in the checkout and ~/.abcd/config.json on the
+//   - Config: .abcd/config.json in the checkout and ~/.abcd.noindex/config.json on the
 //     machine, holding scalar keys under a namespace (pace.work_minutes,
 //     oracle.review, roles.<role>.runner, match.threshold). The repository file
 //     is shared with the keys ahoy writes (docs, meta, oracle.backend, repo,
@@ -24,7 +24,7 @@
 //     its namespace and every key in it, and an unknown key under a claimed
 //     namespace is refused.
 //   - OracleRouting: .abcd/config/oracle-routing.json and
-//     ~/.abcd/oracle-routing.json, the per-agent routing table the model-tier
+//     ~/.abcd.noindex/oracle-routing.json, the per-agent routing table the model-tier
 //     intent names. It carries a top-level schema_version, and its reader
 //     claims the whole file.
 //
@@ -71,7 +71,7 @@ const (
 	None Layer = iota
 	// Bundled: the default the binary ships, supplied by the caller.
 	Bundled
-	// Machine: the file under ~/.abcd/.
+	// Machine: the file under ~/.abcd.noindex/.
 	Machine
 	// Repo: the file committed in the checkout the session resolved.
 	Repo
@@ -97,11 +97,11 @@ func (l Layer) String() string {
 }
 
 // File names one configuration file family: where it sits in a checkout and
-// where it sits under ~/.abcd/.
+// where it sits under ~/.abcd.noindex/.
 type File struct {
 	// RepoRel is the slash path relative to the checkout root.
 	RepoRel string
-	// MachineRel is the slash path relative to ~/.abcd/.
+	// MachineRel is the slash path relative to ~/.abcd.noindex/.
 	MachineRel string
 	// SchemaVersion, when non-zero, is the top-level schema_version every
 	// layer's file must declare.
@@ -251,7 +251,7 @@ func readRepo(repoRoot, rel string) ([]byte, error) {
 	return nil, fmt.Errorf("it could not be read inside the checkout: %w", err)
 }
 
-// readMachine reads ~/.abcd/<rel> through the home-declaration guard: a regular
+// readMachine reads ~/.abcd.noindex/<rel> through the home-declaration guard: a regular
 // file, owned by the caller and writable by nobody else, reached through no
 // symlinked directory, because what it says decides which model a step
 // reaches. An absent file returns (nil, nil).

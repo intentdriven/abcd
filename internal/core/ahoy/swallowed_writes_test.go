@@ -110,7 +110,7 @@ func TestMarkerStepPlantsNothingUnderARetiredTarget(t *testing.T) {
 // TestSessionStoreFailureIsNoted is the history step's share of the rule the
 // brief states for every install write: a session store abcd could not create
 // is a note naming the store and the reason, never a silent omission. Both
-// halves are driven — the store's directory refused (a file where ~/.abcd
+// halves are driven — the store's directory refused (a file where ~/.abcd.noindex
 // belongs) and a home directory the process cannot name at all.
 func TestSessionStoreFailureIsNoted(t *testing.T) {
 	t.Run("the store cannot be created", func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 		a.stepHistory()
 		// The registry is created one real directory at a time
 		// (fsutil.EnsureRealDirAll), so the reason is the level it refused.
-		if !notesCarryAll(a.notes, "session store", "~/.abcd", "not a real directory") {
+		if !notesCarryAll(a.notes, "session store", "~/.abcd.noindex", "not a real directory") {
 			t.Errorf("no note says the session store was not created, and why; notes: %v", a.notes)
 		}
 	})

@@ -18,7 +18,7 @@ func fakeCapture(calls *[]string) TranscriptCapturer {
 			return Transcript{}, errors.New("the transcript does not redact")
 		}
 		base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		return Transcript{Path: path, Session: base, Stored: "~/.abcd/transcripts/x/records/" + base + ".jsonl", Wrote: true}, nil
+		return Transcript{Path: path, Session: base, Stored: "~/.abcd.noindex/transcripts/x/records/" + base + ".jsonl", Wrote: true}, nil
 	}
 }
 

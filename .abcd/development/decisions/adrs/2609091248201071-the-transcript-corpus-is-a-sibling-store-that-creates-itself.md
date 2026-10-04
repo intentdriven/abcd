@@ -1,10 +1,10 @@
 ---
 id: adr-2609091248201071
 slug: the-transcript-corpus-is-a-sibling-store-that-creates-itself
-status: accepted
+status: superseded
 date: 2026-09-09
 supersedes: adr-2609090717039680
-superseded_by: null
+superseded_by: adr-2610031751066232
 related_intents: []
 related_rfcs: []
 related_adrs: [adr-22, adr-29, adr-56, adr-2609090717039680, adr-2609091248200336]

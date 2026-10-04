@@ -339,7 +339,7 @@ abcd ahoy connect example --base-url https://api.example.com/v1 --model coder-la
 
 and `writes` lists, in the tilde form, every path it writes, in the order a
 run reports them: `credential.WritesFor(home, name)` (none for `--home none`),
-then `~/.abcd/config.json` (`layered.Config.MachineOrigin()`), so the keychain
+then `~/.abcd.noindex/config.json` (`layered.Config.MachineOrigin()`), so the keychain
 home lists the keychain item, the index, and the settings file. The text form prints the command on a line of its own,
 then "When it runs, this command writes:" and one line per path, then, for a
 keyed home, "It asks for the key there, hidden as you paste it." There is no
@@ -426,7 +426,7 @@ answers "coder" and asserts the narrowing question offers the first three of
 the names containing it, says how many match, and that the stand-in received
 one request across every turn.
 
-**G3.** `TestGuideWritesNothing` snapshots the fake home's `~/.abcd`, the
+**G3.** `TestGuideWritesNothing` snapshots the fake home's `~/.abcd.noindex`, the
 index, the abcd credential file and the fake keychain (through the existing
 `locateKeychain` seam) before and after a guided run to its end against a
 keyless stand-in on loopback, for each home, and asserts every byte

@@ -30,7 +30,7 @@ production_mode: hand-written
 > fan-out bound that may tighten the ceiling the agent's own trust contract
 > declares but never raise it. Nothing is applied until it is accepted: the
 > install step renders the proposal and writes it, on consent, as the
-> machine's table under `~/.abcd/`; a repository may commit its own rows at
+> machine's table under `~/.abcd.noindex/`; a repository may commit its own rows at
 > `.abcd/config/oracle-routing.json`, and a repo row wins over a machine row,
 > which wins over the bundled proposal. Above all three sits a manual
 > override for one invocation — `--route <agent>=<tier>[@<connection>]`,
@@ -99,7 +99,7 @@ several routes, each receipt naming the route that governed it.
 - The bundled proposal: one row per agent, tier and fan-out bound, shipped
   with the binary.
 - Rendering the proposal and writing it only on consent, at machine level
-  (`~/.abcd/`) and, offered separately, at repository level
+  (`~/.abcd.noindex/`) and, offered separately, at repository level
   (`.abcd/config/oracle-routing.json`); repo over machine over bundled.
 - Run-time resolution of the winning row against the machine's configured
   connections: provider where reachable and able to serve the tier, harness
@@ -173,7 +173,7 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
   runs, **then** it says abcd's proposal in counts (how many agents, how
   many at each tier, their fan-out bounds) and where every row can be read
   once accepted, and writes the table, one row per agent with tier and
-  fan-out bound, under `~/.abcd/` only on consent;
+  fan-out bound, under `~/.abcd.noindex/` only on consent;
   a repository-level file is offered separately and written only on
   consent.
 - **Given** an accepted row for an agent naming a tier, and a configured

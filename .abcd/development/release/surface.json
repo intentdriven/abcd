@@ -76,7 +76,7 @@
     {
       "path": "abcd ahoy connect",
       "hidden": false,
-      "sentence": "Verify a model provider with one call and configure it, or guide setup: Writes ~/.abcd/ and the key's home, nothing guided; refuses no --model off a terminal.",
+      "sentence": "Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.",
       "flags": [
         {
           "name": "answer",

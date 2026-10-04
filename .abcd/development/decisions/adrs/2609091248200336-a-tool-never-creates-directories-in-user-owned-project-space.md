@@ -1,10 +1,10 @@
 ---
 id: adr-2609091248200336
 slug: a-tool-never-creates-directories-in-user-owned-project-space
-status: accepted
+status: superseded
 date: 2026-09-09
 supersedes: adr-2609091014087993
-superseded_by: null
+superseded_by: adr-2610031751065746
 related_intents: [itd-2609091014076309, itd-118]
 related_rfcs: []
 related_adrs: [adr-2609091014087993, adr-2609090717039680, adr-35]

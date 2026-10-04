@@ -26,7 +26,7 @@ For each entry:
 
 ### `--resume` flag removed from `/abcd:disembark`
 
-- **Chose:** no resume sub-verb, and no checkpoint state to resume from. A pack is a single deterministic pass that either completes or writes nothing, and no run writes a `_state.json` at any path. The only run-level record is the operator-local voyage log, `~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl`, appended after a pack lands.
+- **Chose:** no resume sub-verb, and no checkpoint state to resume from. A pack is a single deterministic pass that either completes or writes nothing, and no run writes a `_state.json` at any path. The only run-level record is the operator-local voyage log, `~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl`, appended after a pack lands.
 - **Over:** earlier drafts had a `--resume` flag that would re-attempt a previously failed disembark from the last checkpoint.
 - **Why:** Resume semantics across the three-pass agent pipeline (Pass A spine + Pass B chat-distill + Pass C synthesis) require partial-output handling, agent-state restoration, and idempotency guarantees that the current release doesn't yet have. Re-running `disembark pack <source-repo> <dest>` from scratch is fast enough at current corpus sizes that resume is overhead, not value.
 - **Reconsider when:** disembark runs become long enough on real-world corpora that re-running from scratch is noticeably expensive AND a clear restart-after-failure user moment surfaces (autonomous overnight runs hitting rate limits; CI integration where re-running is expensive).

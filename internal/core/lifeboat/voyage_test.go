@@ -28,7 +28,7 @@ func TestPackAppendsVoyageForGitSource(t *testing.T) {
 
 	rootSHA := res.ManifestSHA256 // placeholder; real key is source root sha
 	_ = rootSHA
-	// Find the single ledger under ~/.abcd/voyage/<sha>/disembark/history.jsonl.
+	// Find the single ledger under ~/.abcd.noindex/voyage/<sha>/disembark/history.jsonl.
 	var ledger string
 	err = filepath.Walk(abcdhome.Path(home, "voyage"), func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && filepath.Base(p) == "history.jsonl" {
@@ -88,7 +88,7 @@ func TestPackVoyageAppendsNotRewrites(t *testing.T) {
 	}
 }
 
-// TestPackVoyageRefusesSymlinkedBase: a symlinked ~/.abcd/voyage is refused, and
+// TestPackVoyageRefusesSymlinkedBase: a symlinked ~/.abcd.noindex/voyage is refused, and
 // crucially no directories are created under the symlink target — the real-dir
 // guard runs before any mkdir. The pack itself still succeeds (voyage is
 // non-fatal).

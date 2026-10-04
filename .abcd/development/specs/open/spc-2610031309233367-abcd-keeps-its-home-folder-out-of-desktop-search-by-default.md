@@ -169,11 +169,15 @@ stand. The two lines, written once in the resolver:
 
 > abcd's folder is now ~/.abcd.noindex, a name the Mac's search indexer passes
 > over, and ~/.abcd still stands, so abcd has written nothing. Rename it with
-> `mv ~/.abcd ~/.abcd.noindex`, then run abcd again.
+> `mv ~/.abcd ~/.abcd.noindex`, reconnect the working copies kept there with
+> `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done`,
+> then run abcd again.
 
 > Both ~/.abcd and ~/.abcd.noindex exist, so abcd has written nothing and
 > moves neither. Keep the one you want, named ~/.abcd.noindex, and take the
-> other out of your home folder, then run abcd again.
+> other out of your home folder, reconnect the working copies kept there with
+> `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done`,
+> then run abcd again.
 
 Where it is checked, before any write:
 
@@ -203,7 +207,11 @@ Where it is checked, before any write:
   executable plugin-root binary, the wrapper skips the bootstrap and runs the
   binary, which renders the stop in its own form. With no plugin-root binary, the wrapper
   provisions nothing, reads no path-entry record, prints the line on stderr
-  and exits as its missing-binary branch does today. The PATH fallback reads
+  and exits as its missing-binary branch does today, except the PreToolUse
+  wrapper, which exits 2, the blocking status: a plugin update lands in a fresh
+  root with no binary and the stop provisions none, so a non-blocking exit there
+  would run every command unguarded until the rename (open question 3; found by
+  the step's security review, 2026-10-04). The PATH fallback reads
   `~/.abcd.noindex/path-entry`, and its symlink refusal names
   `~/.abcd.noindex`.
 - **`hooks/bootstrap.sh`**, which a person can also run by hand: right after
@@ -413,11 +421,23 @@ For the technical facilitator; the records do not settle these.
    coupling to the cut, but every source run on a machine with the old plugin
    stops until the next release.
    - Decided: (a): a source build ahead of the installed plugin would otherwise stop on every prompt.
+   - Refined 2026-10-04 by the technical facilitator (abcd-d7 and abcd-50, planning the cut; the product thinker ruled the step into that day's release, the intent's decision 8): "updates and renames together" cannot be done in that order, because the plugin that knows the new name exists only once the release is cut, and the cut is a source build of step 3, which stops while `~/.abcd` stands. The order is: every other change merges; every session on the machine that runs the abcd plugin stops; this step and step 4 merge; the person renames the folder and runs the repair line from a plain Terminal and runs no older abcd after it; the release is cut from a session with the abcd plugin disabled, so no older hook writes `~/.abcd` again; the release is published; the plugin is enabled and updated, and its bootstrap refreshes the owned PATH copy from the new home. Step 4 lands in the same release, because the install guide's commands would otherwise create the old folder on a fresh machine.
+6. **Who reconnects the worktrees the rename moves.** git records a
+   worktree's location in absolute form, so after the rename every worktree in
+   the store is listed by its repository as prunable until
+   `git -C <worktree> worktree repair` runs in it, and a prune deletes its link
+   (iss-2610040147016103, reproduced on a scratch repository). (a) The stop's
+   lines print one ready command that repairs every store worktree, run by the
+   person after the rename: abcd still writes nothing outside its home
+   (decision 6). (b) abcd repairs them itself on its first run after the
+   rename: nothing for the person to do, at the cost of a write into each
+   repository's `.git/worktrees`, outside the home.
+   - Decided: the technical facilitator, 2026-10-04, asked who repairs them (the person, one printed command; abcd, on its first run; decide later): the person, one printed command. `TestOldHomeStopsEveryVerb` and `TestBothHomesStopAndNameBoth` assert the command in both lines, and `TestPrintedRepairReconnectsMovedWorktrees` runs the printed loop against a store worktree moved by the rename and asserts its repository no longer lists it as prunable.
 
 ## Footprint
 
 - packages: internal/abcdhome, internal/core/ahoy, internal/core/credential, internal/core/history, internal/core/implement, internal/core/implement/loop, internal/core/lab, internal/core/layered, internal/core/lifeboat, internal/core/report, internal/core/rules, internal/core/source, internal/core/statusline, internal/surface/cli, internal/README.md, hooks/, .githooks/pre-commit, AGENTS.md, README.md, commands/, docs/how-to, docs/reference, .abcd/development/brief, .abcd/development/decisions/adrs, .abcd/development/principles, .abcd/development/intents/planned, .abcd/development/specs/open, .abcd/development/research/notes
-- tests: TestOnlyTheHomeResolverNamesTheHome, TestHomeNameScannerIsArmed, TestNoCodeNamesTheSearchSettings, TestSearchSettingsScannerIsArmed, TestOnlyTheHistoryPackageNamesTheStorePath and TestStorePathBoundaryScannerIsArmed (reshaped), TestHomeStopCheck, TestFirstRunCreatesOnlyTheNoindexHome, TestOldHomeStopsEveryVerb, TestOldHomeStopsEveryHook, TestBothHomesStopAndNameBoth, TestHookWrapperStopsBeforeProvisioning, TestBootstrapWritesNothingBesideTheOldHome, TestSetupRefreshesTheBlocksHomePaths, TestEmbeddedDefaultsNameTheNewHome; the dated D6 receipt; the command reference regenerated; docs-lint and record-lint clean
+- tests: TestOnlyTheHomeResolverNamesTheHome, TestHomeNameScannerIsArmed, TestNoCodeNamesTheSearchSettings, TestSearchSettingsScannerIsArmed, TestOnlyTheHistoryPackageNamesTheStorePath and TestStorePathBoundaryScannerIsArmed (reshaped), TestHomeStopCheck, TestFirstRunCreatesOnlyTheNoindexHome, TestOldHomeStopsEveryVerb, TestOldHomeStopsEveryHook, TestBothHomesStopAndNameBoth, TestPrintedRepairReconnectsMovedWorktrees, TestHookWrapperStopsBeforeProvisioning, TestBootstrapWritesNothingBesideTheOldHome, TestSetupRefreshesTheBlocksHomePaths, TestEmbeddedDefaultsNameTheNewHome; the dated D6 receipt; the command reference regenerated; docs-lint and record-lint clean
 
 ## Steps
 
@@ -434,7 +454,7 @@ For the technical facilitator; the records do not settle these.
    - criteria: D1, D2, D4
    - waits on steps 1 and 2; lands as the last change before a release cut (open question 5)
    - packages: internal/abcdhome, internal/surface/cli, internal/core/ahoy, internal/core/rules, hooks/, .githooks/pre-commit, AGENTS.md, .abcd/development/decisions/adrs, .abcd/development/brief/02-constraints
-   - tests: TestHomeStopCheck, TestFirstRunCreatesOnlyTheNoindexHome, TestOldHomeStopsEveryVerb, TestOldHomeStopsEveryHook, TestBothHomesStopAndNameBoth, TestHookWrapperStopsBeforeProvisioning, TestBootstrapWritesNothingBesideTheOldHome, TestSetupRefreshesTheBlocksHomePaths, TestEmbeddedDefaultsNameTheNewHome, each watched fail first; the existing hook-plane, wrapper and bootstrap tests passing on the new path; the two records accepted with both supersession directions, invariant 15 and `AGENTS.md` changed in the same diff; record-lint clean
+   - tests: TestHomeStopCheck, TestFirstRunCreatesOnlyTheNoindexHome, TestOldHomeStopsEveryVerb, TestOldHomeStopsEveryHook, TestBothHomesStopAndNameBoth, TestPrintedRepairReconnectsMovedWorktrees, TestHookWrapperStopsBeforeProvisioning, TestBootstrapWritesNothingBesideTheOldHome, TestSetupRefreshesTheBlocksHomePaths, TestEmbeddedDefaultsNameTheNewHome, each watched fail first; the existing hook-plane, wrapper and bootstrap tests passing on the new path; the two records accepted with both supersession directions, invariant 15 and `AGENTS.md` changed in the same diff; record-lint clean
 4. Every other text names the new folder
    - criteria: the docs half of D4 (the press release's "a project … keeps pointing at the old folder until abcd's setup runs in that project again", said in the install guide)
    - packages: commands/, docs/how-to, docs/reference, README.md, .abcd/development/brief, .abcd/development/principles, .abcd/development/intents/planned, .abcd/development/specs/open

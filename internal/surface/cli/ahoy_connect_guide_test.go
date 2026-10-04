@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io"
 	"io/fs"
 	"net/http"
@@ -316,7 +317,7 @@ func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T) {
 			if strings.Contains(said, canary) {
 				t.Fatal("the canary reached a turn, the output or an error")
 			}
-			store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")
+			store := abcdhome.Path(os.Getenv("HOME"), "credentials.json")
 			found := map[string]bool{}
 			_ = filepath.WalkDir(os.Getenv("HOME"), func(p string, d fs.DirEntry, err error) error {
 				if err != nil || d.IsDir() {
@@ -370,7 +371,7 @@ func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T) {
 		if strings.Contains(strings.Join(raw, "\n")+text+said+stdout+stderr, keyed) {
 			t.Fatal("the canary reached a turn, the output or an error")
 		}
-		store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")
+		store := abcdhome.Path(os.Getenv("HOME"), "credentials.json")
 		found := map[string]bool{}
 		_ = filepath.WalkDir(os.Getenv("HOME"), func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {

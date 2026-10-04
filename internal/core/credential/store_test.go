@@ -195,7 +195,7 @@ func TestAnUnsetNameRefusesNamingTheWalkthrough(t *testing.T) {
 	}
 }
 
-// TestAValueIntoAWorkingTreeIsRefused (criterion 3): a home whose ~/.abcd
+// TestAValueIntoAWorkingTreeIsRefused (criterion 3): a home whose ~/.abcd.noindex
 // sits inside a git working tree would put credentials.json where a commit can
 // reach it, so the abcd home's write is refused and nothing is written. The
 // abcd home is the one home that writes a value there.
@@ -212,7 +212,7 @@ func TestAValueIntoAWorkingTreeIsRefused(t *testing.T) {
 		t.Fatal("the refusal echoes the value")
 	}
 	if _, statErr := os.Stat(abcdhome.Path(home)); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatal("~/.abcd was created")
+		t.Fatal("~/.abcd.noindex was created")
 	}
 	// A tool file inside a working tree is refused as a pointer too.
 	home = t.TempDir()

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// The machine's settings file, ~/.abcd/load-limits, is line-oriented like its
+// The machine's settings file, ~/.abcd.noindex/load-limits, is line-oriented like its
 // siblings in the caller's machine tier (trusted-roots, local-transcript-roots):
 // `#` starts a comment, blank lines are ignored, and every other line is
 // `<key><space or tab><value>`. This file holds the format; the guarded read of
@@ -15,7 +15,7 @@ import (
 // the caller's, because it goes through the module's shared declaration read and
 // this package imports only the standard library.
 
-// LimitsFileName is the settings file's name under ~/.abcd/.
+// LimitsFileName is the settings file's name under ~/.abcd.noindex/.
 const LimitsFileName = "load-limits"
 
 // The two keys, and their bounds.

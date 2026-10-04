@@ -36,7 +36,7 @@ func TestSetMachineWritesAnOwnerOnlyStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if di.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("~/.abcd created at %o; a directory abcd creates for a secret is owner-only", di.Mode().Perm())
+		t.Fatalf("~/.abcd.noindex created at %o; a directory abcd creates for a secret is owner-only", di.Mode().Perm())
 	}
 	got, err := Machine(home).Resolve("openrouter")
 	if err != nil || got != secretValue {
@@ -221,7 +221,7 @@ func TestSetMachineNamesAnUnsafeLockRatherThanContention(t *testing.T) {
 	if strings.Contains(msg, "retry") || strings.Contains(msg, "another abcd") {
 		t.Fatalf("err = %v, want the unsafe lock named, not contention", err)
 	}
-	if !strings.Contains(msg, "~/.abcd/"+storeLockFileName) || !strings.Contains(msg, "not a regular file") ||
+	if !strings.Contains(msg, "~/.abcd.noindex/"+storeLockFileName) || !strings.Contains(msg, "not a regular file") ||
 		!strings.Contains(msg, "nothing was written") {
 		t.Fatalf("err = %v, want it to name the lock, that it is not a regular file, and that nothing was written", err)
 	}

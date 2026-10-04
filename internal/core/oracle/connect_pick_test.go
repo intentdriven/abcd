@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -135,7 +136,7 @@ func TestConnectPicksFromAKeyedListing(t *testing.T) {
 		t.Fatalf("the completion asked for %q, want the model picked", chatModel)
 	}
 	if !reflect.DeepEqual(res.Models, []string{"vendor/coder-small"}) ||
-		!reflect.DeepEqual(res.Wrote, []string{credential.StorePath, "~/.abcd/config.json"}) {
+		!reflect.DeepEqual(res.Wrote, []string{credential.StorePath, abcdhome.Display("config.json")}) {
 		t.Fatalf("result = %+v", res)
 	}
 	got, ok := f.loadAPI().Provider("openrouter")
@@ -320,14 +321,14 @@ func TestConnectReportsOnlyTheWritesItMade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{"~/.abcd/config.json"}) {
+	if !reflect.DeepEqual(res.Wrote, []string{abcdhome.Display("config.json")}) {
 		t.Fatalf("wrote = %q, want only the provider block", res.Wrote)
 	}
 	req.Provider, req.KeyName = "second", "second"
 	if res, err = Connect(context.Background(), req); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	if want := append(credential.WritesFor(KeyHomeABCD, "second"), "~/.abcd/config.json"); !reflect.DeepEqual(res.Wrote, want) {
+	if want := append(credential.WritesFor(KeyHomeABCD, "second"), abcdhome.Display("config.json")); !reflect.DeepEqual(res.Wrote, want) {
 		t.Fatalf("wrote = %q, want %q", res.Wrote, want)
 	}
 }

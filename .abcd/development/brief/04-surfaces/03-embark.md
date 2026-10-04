@@ -257,7 +257,7 @@ and the acceptance criteria that name it are gated on it shipping.
 ## 7. Voyage layout — embark/disembark provenance and history
 
 Lifeboat *operations* write provenance and history to
-**`~/.abcd/voyage/<source-root-sha>/`**: the operator level, keyed on the
+**`~/.abcd.noindex/voyage/<source-root-sha>/`**: the operator level, keyed on the
 root-commit SHA exactly as the history store is, and therefore never committed
 (adr-35, superseding adr-4's in-tree location). The lifeboat itself is written
 out-of-tree to the operator-chosen destination
@@ -265,7 +265,7 @@ out-of-tree to the operator-chosen destination
 latest snapshot; it does not accumulate.
 
 ```
-~/.abcd/voyage/<source-root-sha>/            ← operator level, keyed like the history store; never committed
+~/.abcd.noindex/voyage/<source-root-sha>/            ← operator level, keyed like the history store; never committed
 ├── embark/                                  ← not built yet
 │   ├── provenance.json                      ← source path, manifest hash, timestamp, files written
 │   └── from/<timestamp>/                    ← archive modifier: verbatim copy of input lifeboat (opt-in)

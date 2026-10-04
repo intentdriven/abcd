@@ -228,7 +228,7 @@ func TestPeekCreatesNothing(t *testing.T) {
 		t.Fatalf("mode on an empty run: %v %v", ok, err)
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("Peek created ~/.abcd: %v", err)
+		t.Fatalf("Peek created ~/.abcd.noindex: %v", err)
 	}
 	if _, err := Peek("not-a-sha"); !errors.Is(err, ErrRefused) {
 		t.Fatalf("Peek of a malformed key = %v; want a refusal", err)
@@ -304,7 +304,7 @@ func TestOpenJoinedCreatesNothingForARunNobodyStarted(t *testing.T) {
 		t.Fatalf("OpenJoined on no run = %v; want a refusal naming the session", err)
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("OpenJoined created ~/.abcd: %v", err)
+		t.Fatalf("OpenJoined created ~/.abcd.noindex: %v", err)
 	}
 	if _, err := Open(testSHA); err != nil {
 		t.Fatal(err)

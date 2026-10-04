@@ -14,7 +14,7 @@ import (
 )
 
 // implementRepo stands up a committed repository under a temporary HOME — the
-// run state lands under that HOME, never the real ~/.abcd — and changes into it.
+// run state lands under that HOME, never the real ~/.abcd.noindex — and changes into it.
 // It returns the HOME and the run directory the verbs should use.
 func implementRepo(t *testing.T) (home, runDir string) {
 	t.Helper()
@@ -89,17 +89,17 @@ func TestImplementBareRendersAndCreatesNothing(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &st); err != nil {
 		t.Fatalf("bare --json: %v\n%s", err, out)
 	}
-	if !strings.HasPrefix(st.Dir, "~/.abcd/runs/") || st.Sessions == nil || st.Claims == nil || st.Window != nil {
+	if !strings.HasPrefix(st.Dir, "~/.abcd.noindex/runs/") || st.Sessions == nil || st.Claims == nil || st.Window != nil {
 		t.Fatalf("bare render = %+v", st)
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("bare implement created ~/.abcd: %v", err)
+		t.Fatalf("bare implement created ~/.abcd.noindex: %v", err)
 	}
 	if code, _, _ := implementCLI(t, "implement", "report"); code != 0 {
 		t.Fatalf("report on an empty run exited %d", code)
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("report created ~/.abcd: %v", err)
+		t.Fatalf("report created ~/.abcd.noindex: %v", err)
 	}
 }
 
@@ -209,7 +209,7 @@ func TestImplementWritersRefuseMalformedInvocations(t *testing.T) {
 		refusalEnvelope(t, 2, args...)
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a refused invocation created ~/.abcd: %v", err)
+		t.Fatalf("a refused invocation created ~/.abcd.noindex: %v", err)
 	}
 	// Unjoined: a session no run knows is refused before anything is created —
 	// no run directory, no lock, no log.
@@ -223,7 +223,7 @@ func TestImplementWritersRefuseMalformedInvocations(t *testing.T) {
 	} {
 		refusalEnvelope(t, 2, args...)
 		if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("abcd %s created ~/.abcd: %v", strings.Join(args, " "), err)
+			t.Fatalf("abcd %s created ~/.abcd.noindex: %v", strings.Join(args, " "), err)
 		}
 	}
 	// In a run that exists, the ghost still writes nothing.
@@ -245,7 +245,7 @@ func TestImplementRefusesOutsideACheckout(t *testing.T) {
 	refusalEnvelope(t, 2, "implement", "join", "--session", "alpha", "--role", "first", "--json")
 	refusalEnvelope(t, 2, "implement", "--json")
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a refusal outside a checkout created ~/.abcd: %v", err)
+		t.Fatalf("a refusal outside a checkout created ~/.abcd.noindex: %v", err)
 	}
 }
 

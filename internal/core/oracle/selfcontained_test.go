@@ -86,7 +86,7 @@ func TestAFileReadingAgentIsRefusedOnAKeyedProvider(t *testing.T) {
 			if err == nil {
 				t.Fatal("Dispatch admitted a file-reading agent on a keyed provider")
 			}
-			for _, want := range []string{agent, "DR5", "self-contained", "oracle.bundled_context_providers", "~/.abcd/config.json"} {
+			for _, want := range []string{agent, "DR5", "self-contained", "oracle.bundled_context_providers", "~/.abcd.noindex/config.json"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("refusal %q does not name %q", err, want)
 				}
@@ -133,7 +133,7 @@ func TestAKeylessProviderIsOutsideDR5(t *testing.T) {
 }
 
 // TestTheOverrideIsReadFromTheMachineAlone: the override list is the person's,
-// so it is read from ~/.abcd/config.json, and a repository's
+// so it is read from ~/.abcd.noindex/config.json, and a repository's
 // .abcd/config.json declaring it is refused the way a repository's provider
 // block is.
 func TestTheOverrideIsReadFromTheMachineAlone(t *testing.T) {
@@ -141,7 +141,7 @@ func TestTheOverrideIsReadFromTheMachineAlone(t *testing.T) {
 	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}}}`)
 	f.repoConfig(`{"oracle":{"bundled_context_providers":["openrouter"]}}`)
 	err := f.loadAPIErr()
-	for _, want := range []string{"oracle.bundled_context_providers", "repo layer", "~/.abcd/config.json"} {
+	for _, want := range []string{"oracle.bundled_context_providers", "repo layer", "~/.abcd.noindex/config.json"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("refusal %q does not name %q", err, want)
 		}

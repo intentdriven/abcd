@@ -11,7 +11,7 @@ Memory exists at the two `.abcd/` scopes (see [`03-configuration.md`](03-configu
 | Scope | Location | What lands here |
 |---|---|---|
 | **repo** | in-tree `.abcd/memory/` | **The primary home.** Project-shaped knowledge — pitfalls, decisions, principles tied to the project being built. Most memory is repo-scoped. |
-| **user** | `~/.abcd/memory/` | **Personal preferences** and cross-project principles that have no single repo home (e.g. a preferred phrasing convention, or a lesson that applies to every project). |
+| **user** | `~/.abcd.noindex/memory/` | **Personal preferences** and cross-project principles that have no single repo home (e.g. a preferred phrasing convention, or a lesson that applies to every project). |
 
 **Routing rule.** Which scope a curated page lands in is decided by `principle-distiller` at curation time, by the *kind* of knowledge — not by where the source happened to sit:
 

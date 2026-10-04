@@ -8,7 +8,7 @@ package ahoy
 //
 //   - the machine offer says the proposal in counts (how many agents at each
 //     tier, and their fan-out bounds) and, on consent, writes the full table
-//     to ~/.abcd/oracle-routing.json, owner-only, because the resolver
+//     to ~/.abcd.noindex/oracle-routing.json, owner-only, because the resolver
 //     refuses a machine file others can write;
 //   - a second, separate offer writes the same table to the repository's
 //     .abcd/config/oracle-routing.json, which is committed and wins over every
@@ -51,7 +51,7 @@ const (
 	oracleRoutingRepoQuestionTail    = "Also write it to this repository's " + ".abcd/config/oracle-routing.json?"
 )
 
-// machineRoutingPath is ~/.abcd/oracle-routing.json, or "" when no home
+// machineRoutingPath is ~/.abcd.noindex/oracle-routing.json, or "" when no home
 // resolves.
 func machineRoutingPath() string {
 	home, err := os.UserHomeDir()
@@ -127,7 +127,7 @@ func (a *applyCtx) writeMachineRouting(body []byte) {
 		a.refuse("the model-tier routing was not written: the home directory could not be resolved, so " + abcdhome.Display("oracle-routing.json") + " has nowhere to go.")
 		return
 	}
-	// The resolver refuses a machine table behind a symlinked ~/.abcd, so a
+	// The resolver refuses a machine table behind a symlinked ~/.abcd.noindex, so a
 	// write through the link would land wherever it points and never be read.
 	if err := fsutil.HomeScopeLink(userHome(), abcdhome.Rel(layered.OracleRouting.MachineRel)); err != nil {
 		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
@@ -137,7 +137,7 @@ func (a *applyCtx) writeMachineRouting(body []byte) {
 		a.refuse("the model-tier routing was not written: " + abcdhome.Display("oracle-routing.json") + " appeared while the question was open, and it is left as it is.")
 		return
 	}
-	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// ~/.abcd.noindex is created, judged and opened relative to home's descriptor and
 	// the table is written through it, so a link swapped in after the check
 	// above is refused rather than written through (iss-2609281310017733).
 	dir, err := fsutil.EnsureHomeScope(userHome(), abcdhome.Rel(), abcdhome.DirMode)
@@ -280,7 +280,7 @@ func proposalCounts(roster []string, p oracle.Table) string {
 // question names no agent (proposalCounts).
 func machineRoutingQuestion() string {
 	return "abcd proposes a model tier and fan-out bound for its " + proposalCounts(oracle.Roster(), oracle.Proposal()) +
-		". Accepting writes every row to " + abcdhome.Display("oracle-routing.json") + " to read or edit; nothing applies before. " +
+		". Accepting writes every row to " + abcdhome.Display("oracle-routing.json") + "; nothing applies before. " +
 		"A repository's table wins; a step no provider serves goes to the harness, asked for its tier. " +
 		"Declining writes nothing.\n" + oracleRoutingMachineQuestionTail
 }

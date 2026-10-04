@@ -1,6 +1,6 @@
 package statusline
 
-// The user-level setting: ~/.abcd/statusline.json.
+// The user-level setting: ~/.abcd.noindex/statusline.json.
 //
 // It holds four things and no more (spc-70): the off switch, the per-element
 // switches, the presence badge's foreground and background, and the status
@@ -308,8 +308,8 @@ func refusedPresence(why string, fallback Pair) string {
 //     the cap, an I/O error). The error names the file in tilde form.
 //
 // The guard is the one every home-scoped declaration uses, because it IS
-// that read: fsutil.ReadHomeDeclaration, which opens ~/.abcd through
-// fsutil.OpenHomeScope (a symlinked ~/.abcd refused, fsutil.HomeScopeLink's
+// that read: fsutil.ReadHomeDeclaration, which opens ~/.abcd.noindex through
+// fsutil.OpenHomeScope (a symlinked ~/.abcd.noindex refused, fsutil.HomeScopeLink's
 // rule) and then judges the file on that descriptor — lstat, the three
 // refusals above, the open, and os.SameFile tying the bytes to the lstat that
 // was judged — under the byte cap. A file renamed into place after any look

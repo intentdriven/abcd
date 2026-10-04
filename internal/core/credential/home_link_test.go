@@ -13,7 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// dotfilesHome returns a home whose ~/.abcd is a symlink to a directory in a
+// dotfilesHome returns a home whose ~/.abcd.noindex is a symlink to a directory in a
 // "dotfiles checkout", and that directory.
 func dotfilesHome(t *testing.T) (home, dotfiles string) {
 	t.Helper()
@@ -25,16 +25,16 @@ func dotfilesHome(t *testing.T) (home, dotfiles string) {
 }
 
 // TestSetMachineRefusesASymlinkedAbcdHome is iss-2609260958587561: a secret
-// written through a ~/.abcd symlinked into a dotfiles checkout lands in that
+// written through a ~/.abcd.noindex symlinked into a dotfiles checkout lands in that
 // repository. The write is refused loudly, names the link and the repair, and
 // leaves nothing behind the link — not the store and not its lock.
 func TestSetMachineRefusesASymlinkedAbcdHome(t *testing.T) {
 	home, dotfiles := dotfilesHome(t)
 	changed, err := SetMachine(home, "openrouter", "sk-example-0123456789")
 	if err == nil || changed {
-		t.Fatalf("SetMachine wrote through a symlinked ~/.abcd: changed %v, err %v", changed, err)
+		t.Fatalf("SetMachine wrote through a symlinked ~/.abcd.noindex: changed %v, err %v", changed, err)
 	}
-	for _, want := range []string{"~/.abcd is a symlink", "real directory"} {
+	for _, want := range []string{"~/.abcd.noindex is a symlink", "real directory"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal must say %q: %v", want, err)
 		}
@@ -51,21 +51,21 @@ func TestSetMachineRefusesASymlinkedAbcdHome(t *testing.T) {
 	}
 }
 
-// A store that is there behind a symlinked ~/.abcd is refused on read too,
-// loudly; a symlinked ~/.abcd holding no store reads as no store.
+// A store that is there behind a symlinked ~/.abcd.noindex is refused on read too,
+// loudly; a symlinked ~/.abcd.noindex holding no store reads as no store.
 func TestResolveRefusesAStoreBehindASymlinkedAbcdHome(t *testing.T) {
 	home, dotfiles := dotfilesHome(t)
 	if _, err := Machine(home).Resolve("openrouter"); err != ErrNotSet {
-		t.Fatalf("a symlinked ~/.abcd with no store must resolve to ErrNotSet, got %v", err)
+		t.Fatalf("a symlinked ~/.abcd.noindex with no store must resolve to ErrNotSet, got %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dotfiles, StoreFileName), []byte(`{"openrouter":"sk-example-0123456789"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	v, err := Machine(home).Resolve("openrouter")
 	if err == nil || err == ErrNotSet || v != "" {
-		t.Fatalf("a store behind a symlinked ~/.abcd must be refused loudly: value %q, err %v", v, err)
+		t.Fatalf("a store behind a symlinked ~/.abcd.noindex must be refused loudly: value %q, err %v", v, err)
 	}
-	if !strings.Contains(err.Error(), "~/.abcd is a symlink") {
+	if !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
 		t.Errorf("the refusal must name the link: %v", err)
 	}
 }
@@ -103,7 +103,7 @@ func assertOwnerOnly(t *testing.T, p string) {
 }
 
 // TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink is
-// iss-2609281310017733: ~/.abcd is a real directory when SetMachine judges it
+// iss-2609281310017733: ~/.abcd.noindex is a real directory when SetMachine judges it
 // and a symlink into a dotfiles checkout by the time it writes. A check by path
 // followed by a create by path lands the secret (and its lock) in the checkout;
 // the write through the descriptor of the directory that was judged is refused,
@@ -133,8 +133,8 @@ func TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 	if !swapped {
 		t.Fatal("the vetting hook never ran, so the race was not staged")
 	}
-	if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd is a symlink") {
-		t.Errorf("SetMachine must refuse a ~/.abcd swapped for a link, naming it: changed %v, err %v", changed, err)
+	if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+		t.Errorf("SetMachine must refuse a ~/.abcd.noindex swapped for a link, naming it: changed %v, err %v", changed, err)
 	}
 	entries, rerr := os.ReadDir(dotfiles)
 	if rerr != nil {
@@ -148,7 +148,7 @@ func TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 // TestResolveRefusesAStoreSwappedForAGroupReadableOneAfterItsCheck is the
 // mode half of iss-2609281310017733: the store is 0600 when a check by path
 // judges it and a group- and other-readable file by the time it is opened (a
-// same-uid race, staged through the vetting hook of the ~/.abcd walk). A mode
+// same-uid race, staged through the vetting hook of the ~/.abcd.noindex walk). A mode
 // judged by path vouches for a file other than the one read; the mode judged
 // on the opened file's own fstat refuses it, and the value is never returned.
 func TestResolveRefusesAStoreSwappedForAGroupReadableOneAfterItsCheck(t *testing.T) {

@@ -17,7 +17,7 @@ import (
 // routeWorld isolates a route test: a fresh home (with the machine routing
 // table it is given, "" for none) and a fresh checkout as the working
 // directory (with the repository table it is given), so no developer's own
-// ~/.abcd/oracle-routing.json reaches a verb under test.
+// ~/.abcd.noindex/oracle-routing.json reaches a verb under test.
 func routeWorld(t *testing.T, repoTable, machineTable string) string {
 	t.Helper()
 	home := t.TempDir()

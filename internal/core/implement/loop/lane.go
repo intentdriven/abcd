@@ -2,7 +2,7 @@ package loop
 
 // lane.go is the lane's worktree (spec piece 6): the checkout a lane's
 // implementer works in, made in abcd's form. It lives in the machine-scoped
-// worktree store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, keyed on the
+// worktree store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, keyed on the
 // repository's root commit in the full form the sibling stores use, on a branch
 // cut from the default branch. The store's own verbs are a draft
 // (itd-2609091014076309), so the lane is a plain `git worktree add` into the
@@ -11,7 +11,7 @@ package loop
 // The path is derived, never taken: the run id and the lane id are each held to
 // their own shape and the name they compose to a single safe path segment, so
 // no component can walk out of the store, and nothing outside
-// ~/.abcd/worktrees/<root-sha>/ is ever created (the user's directory is
+// ~/.abcd.noindex/worktrees/<root-sha>/ is ever created (the user's directory is
 // theirs; adr-2609091248200336). Every level of the store is made one at a time
 // and proved a real directory that is the caller's alone, and git runs through
 // the isolated environment.

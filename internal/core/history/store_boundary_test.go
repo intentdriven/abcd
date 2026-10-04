@@ -48,7 +48,7 @@ import (
 //     value begins "transcripts" or "local-transcript-roots". A leaf held in a
 //     variable or a constant passes unseen; the literal needles above still
 //     catch a constant that spells the whole path.
-//   - `~/.abcd/history` is NOT a needle. That tree is ahoy's registry — index.json
+//   - `~/.abcd.noindex/history` is NOT a needle. That tree is ahoy's registry — index.json
 //     and the per-repo meta.json — and ahoy owns it. Only the corpus moved out,
 //     so the legacy spelling held here is the corpus leaf, `history/transcripts`.
 var storePathNeedles = []string{
@@ -278,7 +278,7 @@ func TestStorePathBoundaryScannerIsArmed(t *testing.T) {
 	if got := storePathLiterals(t, "benign.go", otherLeaf); len(got) != 0 {
 		t.Errorf("the scanner reports %q from a resolver call naming another leaf; only the store's leaves are its", got)
 	}
-	commented := "package p\n\n// the store lives at ~/.abcd/transcripts/<root-sha>/records/, laid out\n" +
+	commented := "package p\n\n// the store lives at ~/.abcd.noindex/transcripts/<root-sha>/records/, laid out\n" +
 		"// by internal/core/history and by nothing else.\nvar x = \"unrelated\"\n"
 	if got := storePathLiterals(t, "commented.go", commented); len(got) != 0 {
 		t.Errorf("the scanner reports %q from a comment; it judges literals, not prose", got)

@@ -7,7 +7,7 @@ block: agents
 # `/abcd:lab`
 
 Run a lab against a pinned snapshot of this repository. The lab's evidence lives
-in the machine-scoped lab store (`~/.abcd/lab/<root-sha>/<lab-id>/`), its
+in the machine-scoped lab store (`~/.abcd.noindex/lab/<root-sha>/<lab-id>/`), its
 knowledge enters the record only through capture, and **no lab verb writes into
 the repository**. The procedure the verbs encode is the discipline record
 `itd-2609251624540864` in `.abcd/development/intents/disciplines/`.

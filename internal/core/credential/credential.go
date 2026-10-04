@@ -2,15 +2,15 @@
 // adr-2609221017021499): the one reader every adapter resolves an external
 // credential through, by NAME (Store, store.go), the one write (Set), and the
 // walkthrough that chooses a credential's home (Walk, walk.go). This file is
-// the abcd home: one machine-scoped file, ~/.abcd/credentials.json, a JSON
+// the abcd home: one machine-scoped file, ~/.abcd.noindex/credentials.json, a JSON
 // object mapping a credential name to its value. The keychain and external
 // homes are keychain.go and external.go.
 //
 // The file is refused, loudly and never treated as absent, unless it is a
 // regular file (not a symlink), owned by the caller, and readable and writable
-// by the owner alone (mode 0600 or tighter), in a ~/.abcd that is not itself a
+// by the owner alone (mode 0600 or tighter), in a ~/.abcd.noindex that is not itself a
 // symlink: a secret that group or other can read is not kept, one that
-// somebody else wrote is not the caller's, and one behind a symlinked ~/.abcd
+// somebody else wrote is not the caller's, and one behind a symlinked ~/.abcd.noindex
 // lives in whatever the link points at.
 //
 // The value never leaves Resolve except as its return: no error formats it,
@@ -35,7 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// StoreFileName is the abcd home's file under ~/.abcd/.
+// StoreFileName is the abcd home's file under ~/.abcd.noindex/.
 const StoreFileName = "credentials.json"
 
 // maxStoreBytes bounds the store read.
@@ -98,10 +98,10 @@ func (m machine) Resolve(name string) (string, error) {
 //
 // Every guard is judged by fsutil.ReadHomeDeclarationDenying on the store it
 // reads, never on a path first: absence on the Lstat that decides it (a
-// symlinked ~/.abcd holding no store is no store), a store behind a symlinked
-// ~/.abcd — which sits wherever the link points, a dotfiles checkout
+// symlinked ~/.abcd.noindex holding no store is no store), a store behind a symlinked
+// ~/.abcd.noindex — which sits wherever the link points, a dotfiles checkout
 // typically, and is refused as the rules loader refuses a rules.json there —
-// on the descriptor walk of ~/.abcd, and the leaf's type, owner and mode on
+// on the descriptor walk of ~/.abcd.noindex, and the leaf's type, owner and mode on
 // the opened file's own fstat. A mode judged by path would vouch for a file
 // other than the one read: a store swapped for a group-readable file after
 // that check would be read once (iss-2609281310017733).
@@ -110,10 +110,10 @@ func readStore(home string) (map[string]string, error) {
 	return decodeStore(raw, refusal, err)
 }
 
-// readStoreIn is readStore through dir, ~/.abcd as SetMachine's walk opened
+// readStoreIn is readStore through dir, ~/.abcd.noindex as SetMachine's walk opened
 // it. The writer under the store's lock reads the store here, through the
-// directory it writes through, never by walking ~/.abcd again: a same-uid swap
-// of ~/.abcd between the two walks would otherwise read one directory's
+// directory it writes through, never by walking ~/.abcd.noindex again: a same-uid swap
+// of ~/.abcd.noindex between the two walks would otherwise read one directory's
 // entries and write them, with the new value, into the other
 // (iss-2609290300313698).
 func readStoreIn(home string, dir *os.Root) (map[string]string, error) {
@@ -163,7 +163,7 @@ func decodeStore(raw []byte, refusal fsutil.DeclarationRefusal, err error) (map[
 const MaxValueBytes = 4096
 
 // SetMachine writes value under name in the abcd home at home
-// (~/.abcd/credentials.json): the abcd home's write, which Set makes for it
+// (~/.abcd.noindex/credentials.json): the abcd home's write, which Set makes for it
 // and no reader outside this package calls.
 //
 // It refuses, before writing anything and without echoing either value: a
@@ -171,12 +171,12 @@ const MaxValueBytes = 4096
 // padded with white space or carrying a control, bidirectional or zero-width
 // character; a store Resolve would refuse (a symlink, group- or other-
 // readable, not owned by the caller, malformed), so a write never launders an
-// unsafe file; a ~/.abcd that is a symlink, because the secret would land
+// unsafe file; a ~/.abcd.noindex that is a symlink, because the secret would land
 // wherever the link points (fsutil.EnsureHomeScope); and a name already holding a
 // different value, because a stored secret is never replaced by a second one
 // unasked. The same value already
 // stored is no change (changed is false). The file is written atomically at
-// mode 0600, and ~/.abcd is created owner-only when it is absent. The read,
+// mode 0600, and ~/.abcd.noindex is created owner-only when it is absent. The read,
 // the change and the write hold the store's lock (fsutil.WithFileLockIn, beside
 // the store), so concurrent writers never lose each other's entries.
 func SetMachine(home, name, value string) (changed bool, err error) {
@@ -189,11 +189,11 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	if err := CheckValue(value); err != nil {
 		return false, err
 	}
-	// A ~/.abcd symlinked into a dotfiles checkout would carry the secret into
+	// A ~/.abcd.noindex symlinked into a dotfiles checkout would carry the secret into
 	// that repository, and the store's own read refuses a file behind the link
 	// (iss-2609260958587561). Refused before anything is created, the lock
 	// included.
-	// ~/.abcd is created, judged and opened in one walk relative to the
+	// ~/.abcd.noindex is created, judged and opened in one walk relative to the
 	// descriptor of home (fsutil.EnsureHomeScope), and the lock and the store
 	// are reached through that descriptor, so a link swapped in after the
 	// judgement is refused rather than written through (iss-2609281310017733).

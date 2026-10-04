@@ -1,9 +1,9 @@
 ---
 id: adr-2610031751066232
 slug: the-transcript-store-is-spelled-under-the-renamed-home-abcd
-status: proposed
+status: accepted
 date: 2026-10-03
-supersedes: null
+supersedes: adr-2609091248201071
 superseded_by: null
 related_intents: [itd-2610030720038073]
 related_rfcs: []

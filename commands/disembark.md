@@ -95,7 +95,7 @@ Summarise the JSON result for the user:
 - `files_written` / `bytes_written` — the size of the lifeboat.
 - `manifest_sha256` — the pinned hash over every file (matches `<dest>/_provenance.json`).
 - `voyage_appended` — whether the operator-level voyage ledger recorded the pack
-  (`~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl`); `voyage_note`
+  (`~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl`); `voyage_note`
   explains a skip (e.g. a source with no root-commit SHA).
 - `omissions` — any records deliberately left out, declared rather than dropped.
 
@@ -254,7 +254,7 @@ payload). The audit files are a mutable synthesis layer and are **not** part of
 `press-release` and `review` given their payload flag) dispatches its agent, and
 each resolves that agent's model tier before anything else runs: an invocation
 override, over the repository's `.abcd/config/oracle-routing.json`, over the
-machine's `~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which
+machine's `~/.abcd.noindex/oracle-routing.json`, over abcd's bundled proposal (which
 applies only once a table is accepted). The override is `--route
 <agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
 dispatches (a second `--route` is refused, not merged), with the tier one of
@@ -275,7 +275,7 @@ asks for `host-decides` and nothing is printed.
 
 **No lifeboat agent is sent to a provider.** The four agents read the packed
 lifeboat's files, and abcd builds no request carrying them, so a person who
-points one of them at a provider in `~/.abcd/config.json` finds its ingest
+points one of them at a provider in `~/.abcd.noindex/config.json` finds its ingest
 refused at exit 2, naming the setting to remove; `--route <agent>=host-decides`
 keeps one run on the harness. Relay the refusal.
 

@@ -52,6 +52,6 @@ and nothing above the intent groups specs for sequence; the unit below a spec is
 > **Open question (adr-35):** this entry previously related a spec to a *voyage*, glossed as "a full
 > lifecycle that contains many specs". [adr-35](../../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)
 > retires that sense: [`voyage`](voyage.md) is now the operations namespace at
-> `~/.abcd/voyage/<source-root-sha>/`, and it contains no specs. Whether abcd still needs a term for
+> `~/.abcd.noindex/voyage/<source-root-sha>/`, and it contains no specs. Whether abcd still needs a term for
 > the end-to-end project lifecycle — the container the old gloss reached for — is not settled by
 > adr-35 and is not decided here.

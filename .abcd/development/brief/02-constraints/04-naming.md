@@ -17,7 +17,7 @@ record, so an exemption is a decision rather than an omission.
 | `/abcd:launch` | put the (cleaned) ship to sea publicly |
 | `/abcd:dredge` | cross-corpus synthesis: surface latent patterns from accumulated captures (itd-25, a later phase). Maritime: dredging the seabed for what has settled. Pairs with `lifeboat` (per-project rescue) as the cross-corpus counterpart |
 | `lifeboat` | the portable artefact (rescue from a sinking project). Written to an **operator-chosen destination**, never back into the source repo, per [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md). The in-tree `.abcd/lifeboat/` home is superseded |
-| `~/.abcd/voyage/` | record of voyages: the operator-level, per-source-root operations namespace, keyed on the root-commit SHA and never committed. See the `voyage/` row in the reserved-vocabulary table below |
+| `~/.abcd.noindex/voyage/` | record of voyages: the operator-level, per-source-root operations namespace, keyed on the root-commit SHA and never committed. See the `voyage/` row in the reserved-vocabulary table below |
 
 **Sense disambiguation:** `/abcd:launch` uses the *nautical* sense (a ship's first
 entry to water, the public maiden voyage of a cleaned repo), not the generic
@@ -77,7 +77,7 @@ here as a name and is not yet in the tree) are exempt — no metaphor needed.
 **Retired maritime names.** `.abcd/logbook/` was the maritime name for per-run
 logs, state and reports. It is retired and must not be re-minted: run output goes
 to the local ephemeral tier, and the operator-level voyage record to
-`~/.abcd/voyage/<source-root-sha>/`. `TestNoRetiredLogbookLocationInSource` in
+`~/.abcd.noindex/voyage/<source-root-sha>/`. `TestNoRetiredLogbookLocationInSource` in
 `internal/adapter/scanner` fails the build if any Go source names the retired
 location (iss-73).
 
@@ -215,12 +215,12 @@ Two things to read the table with:
 | `unmanaged-repo` | Folder kind: a git repo without abcd management; bare `/abcd:ahoy` offers install to adopt. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.3` |
 | `unmanaged-folder` | Folder kind: not a git repo and no abcd markers; nothing to act on. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.3` |
 | `root_commit` | Immutable repo identity key in `index.json`, computed via `git rev-list --max-parents=0 HEAD`. Survives rename, remote move, and GitHub-handle change. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.2` |
-| `index.json` | History-store registry at `~/.abcd/history/index.json` recording each repo's identity + lineage. The **sole user-scope registry** (abcd is single-repo, adr-28 — there is no `workspaces.json`). Keyed on immutable `root_commit`. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
+| `index.json` | History-store registry at `~/.abcd.noindex/history/index.json` recording each repo's identity + lineage. The **sole user-scope registry** (abcd is single-repo, adr-28 — there is no `workspaces.json`). Keyed on immutable `root_commit`. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
 | `aliases` | Array of prior names a repo has had (e.g., renamed on GitHub). Recorded in per-root-sha `meta.json`. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
 | `supersedes` | Lineage cross-ref in `index.json` repo entry: this entry was re-founded from another root-sha. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
 | `superseded_by` | Lineage cross-ref in `index.json` repo entry: this entry was superseded by another root-sha (re-founding produces a new entry). | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
-| `voyage/` | The **operations** namespace (verb-side: what we did), as against `lifeboat` (noun-side: what gets carried). Lives at the **operator level**, `~/.abcd/voyage/<source-root-sha>/`, keyed on the root-commit SHA like the history store — never inside the source repo, and therefore never committed. Split by operation: `disembark/history.jsonl`, `embark/provenance.json`, `embark/from/<timestamp>/`. (adr-4 placed it at `.abcd/development/voyage/`; that collided with the `privacy-hygiene` audit rule, since voyage records absolute source paths.) | adr-35 (supersedes adr-4) |
-| `history.jsonl` | The append-only log at `~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl` — one line per disembark run: `manifest_sha256`, file list, oracle backend used, verdict. Genuinely appended, never rewritten whole. | adr-35 |
+| `voyage/` | The **operations** namespace (verb-side: what we did), as against `lifeboat` (noun-side: what gets carried). Lives at the **operator level**, `~/.abcd.noindex/voyage/<source-root-sha>/`, keyed on the root-commit SHA like the history store — never inside the source repo, and therefore never committed. Split by operation: `disembark/history.jsonl`, `embark/provenance.json`, `embark/from/<timestamp>/`. (adr-4 placed it at `.abcd/development/voyage/`; that collided with the `privacy-hygiene` audit rule, since voyage records absolute source paths.) | adr-35 (supersedes adr-4) |
+| `history.jsonl` | The append-only log at `~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl` — one line per disembark run: `manifest_sha256`, file list, oracle backend used, verdict. Genuinely appended, never rewritten whole. | adr-35 |
 | `_provenance.json` | The lifeboat's own record of how it was produced: `schema_version`, source, tiers present, declared exemptions, and `manifest_sha256`. Written **last** — it is both the commit marker for a completed pack and the key to the destination safety gate (abcd never overwrites a directory it did not produce). Excluded from its own hash. | adr-35 |
 | `manifest_sha256` | SHA-256 over the concatenation of `"<sha256>  <path>\n"` for every manifest entry, sorted lexicographically by path, POSIX separators, LF only, with `_provenance.json` excluded. adr-4 asserted this chain without defining it; adr-35 pins it. | adr-35 |
 | `coverage.json` / `coverage.md` | The lifeboat's **first-class** report of what could *not* be filled: per brief section, the status, the confidence, the evidence cited, what was searched, and the question a human must answer. Schema aggregates across repositories — that aggregate is the experiment's readout. | adr-35, itd-88 |

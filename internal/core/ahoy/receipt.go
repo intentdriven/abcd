@@ -33,7 +33,7 @@ func (a *applyCtx) note(kind writeKind, path string) {
 //
 //   - a path under the repo becomes repo-relative (".abcd/config.json");
 //   - a path under the home directory becomes "~/…"
-//     ("~/.abcd/history/index.json") — the user-scope store's absolute form is
+//     ("~/.abcd.noindex/history/index.json") — the user-scope store's absolute form is
 //     exactly the leak, since its second segment IS the username;
 //   - anything else is left alone, save for a redaction of either root found
 //     EMBEDDED in it. A system location such as /usr/local/bin/abcd names no

@@ -295,7 +295,7 @@ func TestMalformedLimitsFileFallsBackWhole(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "not a regular file"},
-		// iss-2609281017573862: behind a ~/.abcd symlinked into a dotfiles
+		// iss-2609281017573862: behind a ~/.abcd.noindex symlinked into a dotfiles
 		// checkout the file is not the caller's word, as rules.json is not.
 		"symlinked abcd home": {func(t *testing.T) {
 			path := writeLimits(t, "stray-minutes 5\n", 0o600)
@@ -312,7 +312,7 @@ func TestMalformedLimitsFileFallsBackWhole(t *testing.T) {
 				_ = os.Remove(dir)
 				_ = os.Rename(moved, dir)
 			})
-		}, "~/.abcd is a symlink"},
+		}, "~/.abcd.noindex is a symlink"},
 		"another owner": {func(t *testing.T) {
 			writeLimits(t, "stray-minutes 5\n", 0o600)
 			restore := fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })

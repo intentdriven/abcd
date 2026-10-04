@@ -1,5 +1,5 @@
 // Package history is abcd's native session-transcript store: the write/read/
-// redact engine that populates ~/.abcd/transcripts/<root-sha>/records/ and
+// redact engine that populates ~/.abcd.noindex/transcripts/<root-sha>/records/ and
 // retires the specstory shim (adr-29). It is transport-agnostic — no stdout, no
 // os.Exit, no CLI knowledge — so any surface can drive it and marshal its
 // structured results.
@@ -11,7 +11,7 @@
 // of capture (iss-95).
 //
 // The index.json registry and per-repo meta.json are owned by
-// internal/core/ahoy and stay under ~/.abcd/history/; this package owns the
+// internal/core/ahoy and stay under ~/.abcd.noindex/history/; this package owns the
 // corpus and nothing else.
 //
 // Redaction is NOT reimplemented here. Every transcript is sanitised through
@@ -171,7 +171,7 @@ func (e *RedactionResidualError) Error() string {
 
 // Capture reads a raw session transcript, redacts it through the scanner
 // (two-stage, fail-closed), and writes a record into this repo's lane of the
-// store — ~/.abcd/transcripts/<rootSHA>/records/ by default.
+// store — ~/.abcd.noindex/transcripts/<rootSHA>/records/ by default.
 //
 // It is idempotent on the source's sha256: an identical source already stored
 // is a no-op (Wrote=false, existing record returned, mtime preserved). It is

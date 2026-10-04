@@ -311,8 +311,8 @@ question as asked (the sanitised `Ask`), the value chosen, the note if any, and
 `answered_in`, which is `Terminal` or `Claude Code` (decision 4) and nothing
 else. The record is written to the repository's local tier,
 `.abcd/.work.local/interviews/<interview>-<stamp>.json`, or for the
-machine-wide part of setup to `~/.abcd/interviews/`, each level made through
-the guarded store maker the other `~/.abcd` stores use.
+machine-wide part of setup to `~/.abcd.noindex/interviews/`, each level made through
+the guarded store maker the other `~/.abcd.noindex` stores use.
 
 `answered_in` is stamped by the front door that collected the answer: The
 drawing and the numbered reader stamp `Terminal`; an answers file entry carries
@@ -379,7 +379,7 @@ The turn loop in `internal/core/interview`:
    "abcd intent interview: the planning interview's questions are written by
    an AI, and no route of yours reaches one. Set roles.planning-interviewer.runner
    to claude or opencode, with that runner enabled under runner.<name>, in
-   ~/.abcd/config.json; it runs on your own paid key, so a repository's setting
+   ~/.abcd.noindex/config.json; it runs on your own paid key, so a repository's setting
    cannot do it. The setup and routing interviews need no route:
    `abcd ahoy install`."
 3. Each turn writes a brief to the local tier (the seed, the answers so far,

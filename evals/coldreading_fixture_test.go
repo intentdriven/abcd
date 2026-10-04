@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -140,12 +141,12 @@ var sentinelClasses = []sentinelClass{
 		Name: "TRANSCRIPT",
 		Homes: []string{
 			// The repo-side plant stands for the in-repo half of the store: a
-			// checkout declared in ~/.abcd/local-transcript-roots keeps its
+			// checkout declared in ~/.abcd.noindex/local-transcript-roots keeps its
 			// transcripts under this same .work.local tier (iss-95), which the
 			// assembler denies by segment, drops by the tracked-set
 			// intersection, and refuses by asserted exclusion.
 			"repo:.abcd/.work.local/scratch/session-notes.md",
-			"home:.abcd/transcripts/ROOT_COMMIT_SHA/records/ses-0001-a-stored-session.md",
+			"home:.abcd.noindex/transcripts/ROOT_COMMIT_SHA/records/ses-0001-a-stored-session.md",
 		},
 		Count: 2,
 		Why: "brief invariant 15: the session-transcript store has an enumerated consumer " +
@@ -1205,7 +1206,7 @@ func trackedFiles(t *testing.T, root string) map[string]bool {
 // fixture's own root-commit sha.
 func renamePlaceholder(t *testing.T, home, sha string) {
 	t.Helper()
-	parent := filepath.Join(home, ".abcd", "transcripts")
+	parent := abcdhome.Path(home, "transcripts")
 	from := filepath.Join(parent, rootSHAPlaceholder)
 	if err := os.Rename(from, filepath.Join(parent, sha)); err != nil {
 		t.Fatalf("keying the fixture transcript store on the root commit: %v", err)

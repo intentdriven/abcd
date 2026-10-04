@@ -1,5 +1,5 @@
 // Package fsutil holds the durable-write and path-safety primitives shared by
-// the ~/.abcd and repo .abcd store writers. It is transport-agnostic: no
+// the ~/.abcd.noindex and repo .abcd store writers. It is transport-agnostic: no
 // stdout, no os.Exit, no CLI knowledge.
 //
 // It is the single home for the atomic temp-file+fsync+rename write and the
@@ -117,7 +117,7 @@ func readGuarded(path string, limit int64, vetted os.FileInfo) ([]byte, error) {
 // DeclarationRefusal names which of ReadDeclaration's guards refused a
 // home-scoped declaration file. It exists so each caller can render the refusal
 // in its own voice — the rules loader says a root "re-admitted nothing", the
-// transcript store says "transcripts stay in ~/.abcd/transcripts" — while the
+// transcript store says "transcripts stay in ~/.abcd.noindex/transcripts" — while the
 // judgement itself is made in exactly one place.
 //
 // DeclarationAbsent is separated from DeclarationUnreadable deliberately: no
@@ -139,14 +139,14 @@ const (
 	// DeclarationUnreadable: it passed the guards but the read itself failed.
 	DeclarationUnreadable
 	// DeclarationBehindSymlink: the file is there, but a directory between the
-	// home and it (~/.abcd first) is a symlink (ReadHomeDeclaration only).
+	// home and it (~/.abcd.noindex first) is a symlink (ReadHomeDeclaration only).
 	DeclarationBehindSymlink
 	// DeclarationExposed: the opened file's mode carries a permission bit its
 	// reader denies — a secret group or other can read
 	// (ReadHomeDeclarationDenying only). The error is a *DeclarationModeError.
 	DeclarationExposed
 	// DeclarationDirectoryExposed: the file is there, but a directory between
-	// the home and it (~/.abcd first) can be written by every account or is
+	// the home and it (~/.abcd.noindex first) can be written by every account or is
 	// owned by another (ReadHomeDeclaration only). The error is a
 	// *HomeScopeExposedError naming the directory.
 	DeclarationDirectoryExposed
@@ -221,8 +221,8 @@ const declarationAttempts = 8
 
 // ReadDeclaration is the guarded read for a HOME-SCOPED DECLARATION FILE — a
 // record in the caller's own home that re-admits something abcd would otherwise
-// refuse (~/.abcd/trusted-roots re-admits a marker root, ~/.abcd/path-entry
-// names the binary the hook shims execute, ~/.abcd/local-transcript-roots pulls
+// refuse (~/.abcd.noindex/trusted-roots re-admits a marker root, ~/.abcd.noindex/path-entry
+// names the binary the hook shims execute, ~/.abcd.noindex/local-transcript-roots pulls
 // a repo's transcripts into its own tree).
 //
 // It is ReadGuarded plus the two facts that make the file the CALLER'S WORD:

@@ -280,7 +280,7 @@ the output came from and sets nothing the output carries.
 position the output names (`cold-reading-<position>`), and resolves that agent's
 model tier before anything else runs: an invocation override, over the
 repository's `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+`~/.abcd.noindex/oracle-routing.json`, over abcd's bundled proposal (which applies only
 once a table is accepted). The override is `--route
 <agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
 dispatches (a second `--route` is refused, not merged), with the tier one of
@@ -306,7 +306,7 @@ asks for `host-decides` and nothing is printed.
 ```
 
 When the person has pointed `oracle.roles.cold-reading-<position>` at a
-provider in `~/.abcd/config.json`, the reading runs there instead of on the
+provider in `~/.abcd.noindex/config.json`, the reading runs there instead of on the
 host. `--dispatch` takes the `run_id` an assembly parked, sends the provider
 the position's definition as its instructions and the run's bundle as its
 input, with the run's identifiers the output must cite, and ingests the answer

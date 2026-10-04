@@ -14,7 +14,7 @@ import (
 // the environment does not reach. But HOME *is* the environment, and neither
 // home-scoped reader pinned it: os.UserHomeDir() hands back $HOME verbatim, so
 //
-//   - a RELATIVE HOME resolves ~/.abcd against whatever directory the verb
+//   - a RELATIVE HOME resolves ~/.abcd.noindex against whatever directory the verb
 //     happens to run in. `HOME=fakehome` in a hook makes a committed
 //     `fakehome/.abcd/cache-attestation` in the checkout the caller's "own
 //     home", and the class the attestation closed is reopened by the same
@@ -155,7 +155,7 @@ func TestInstallSendsARefusedHomeToTheRightRemedy(t *testing.T) {
 	}
 }
 
-// symlinkAbcdHome replaces home's ~/.abcd with a symlink to a directory
+// symlinkAbcdHome replaces home's ~/.abcd.noindex with a symlink to a directory
 // elsewhere holding the same records — the dotfiles shape — and returns that
 // directory, so a test can see what a write through the link would land in.
 func symlinkAbcdHome(t *testing.T, home string) string {
@@ -172,19 +172,19 @@ func symlinkAbcdHome(t *testing.T, home string) string {
 }
 
 // TestHomeScopedRecordsRefuseASymlinkedAbcdHome is iss-2609281017573862: the
-// rules loader refuses a rules.json behind a symlinked ~/.abcd, and the two
+// rules loader refuses a rules.json behind a symlinked ~/.abcd.noindex, and the two
 // records that decide which binary the hooks run and which binary is promoted
 // onto PATH were read through the very same link. Well-formed records, owned
-// and owner-only: the ONLY defect is that ~/.abcd is a link.
+// and owner-only: the ONLY defect is that ~/.abcd.noindex is a link.
 func TestHomeScopedRecordsRefuseASymlinkedAbcdHome(t *testing.T) {
 	home, _ := setupHermetic(t)
 	target := symlinkAbcdHome(t, home)
 	t.Chdir(adoptableRepo(t))
-	assertHomeScopeRefused(t, "reaches its records through a symlinked ~/.abcd")
+	assertHomeScopeRefused(t, "reaches its records through a symlinked ~/.abcd.noindex")
 
 	_, problem := cacheBindingProblem("/harness/data")
-	if !strings.Contains(problem, "~/.abcd is a symlink") {
-		t.Errorf("the binding refusal must name the symlinked ~/.abcd, got %q", problem)
+	if !strings.Contains(problem, "~/.abcd.noindex is a symlink") {
+		t.Errorf("the binding refusal must name the symlinked ~/.abcd.noindex, got %q", problem)
 	}
 
 	// The writer refuses too: a record written through the link is one every
@@ -193,14 +193,14 @@ func TestHomeScopedRecordsRefuseASymlinkedAbcdHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := writePathEntry(filepath.Join(t.TempDir(), "abcd"), strings.Repeat("b", 64), ""); err == nil {
-		t.Error("writePathEntry wrote through a symlinked ~/.abcd")
+		t.Error("writePathEntry wrote through a symlinked ~/.abcd.noindex")
 	}
 	if _, err := os.Lstat(filepath.Join(target, "path-entry")); !os.IsNotExist(err) {
-		t.Errorf("a path-entry landed behind the symlinked ~/.abcd: %v", err)
+		t.Errorf("a path-entry landed behind the symlinked ~/.abcd.noindex: %v", err)
 	}
 }
 
-// TestInstallSendsASymlinkedAbcdHomeToTheRightRemedy: a symlinked ~/.abcd is a
+// TestInstallSendsASymlinkedAbcdHomeToTheRightRemedy: a symlinked ~/.abcd.noindex is a
 // refused home like the two shapes above, and its remedy is replacing the
 // link, never "start a session with network access" — the hooks decline to
 // write the attestation through the link for the same reason this run declines
@@ -219,10 +219,10 @@ func TestInstallSendsASymlinkedAbcdHomeToTheRightRemedy(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := notesJoined(res.Notes)
-	if !strings.Contains(joined, "~/.abcd is a symlink") {
-		t.Errorf("the refusal must name the symlinked ~/.abcd; notes = %v", res.Notes)
+	if !strings.Contains(joined, "~/.abcd.noindex is a symlink") {
+		t.Errorf("the refusal must name the symlinked ~/.abcd.noindex; notes = %v", res.Notes)
 	}
 	if strings.Contains(joined, "Start a session with network access") {
-		t.Errorf("a symlinked ~/.abcd must not be answered with the re-authenticate remedy; notes = %v", res.Notes)
+		t.Errorf("a symlinked ~/.abcd.noindex must not be answered with the re-authenticate remedy; notes = %v", res.Notes)
 	}
 }

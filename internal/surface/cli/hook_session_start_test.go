@@ -14,7 +14,7 @@ import (
 )
 
 // gitRepoNoStore builds an isolated git repo with one commit and a hermetic HOME
-// whose ~/.abcd does NOT exist — the "plugin enabled but never installed" state
+// whose ~/.abcd.noindex does NOT exist — the "plugin enabled but never installed" state
 // iss-95 is about. Returns the repo dir and that HOME.
 func gitRepoNoStore(t *testing.T) (string, string) {
 	t.Helper()
@@ -34,7 +34,7 @@ func gitRepoNoStore(t *testing.T) (string, string) {
 			t.Fatalf("git %v: %v: %s", args, err, out)
 		}
 	}
-	home := t.TempDir() // hermetic, empty: no ~/.abcd
+	home := t.TempDir() // hermetic, empty: no ~/.abcd.noindex
 	t.Setenv("HOME", home)
 	return repo, home
 }

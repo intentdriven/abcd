@@ -344,7 +344,7 @@ runs, through the shared resolver (`internal/core/oracle` over
 `internal/core/layered`): the invocation's routing override, which the appendix
 lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
 over the repository's `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+`~/.abcd.noindex/oracle-routing.json`, over the bundled proposal, which applies only
 once a table is accepted. The assembler takes no routing operand: its invocation
 is a position and a target and nothing else, and routing is the host's concern
 at dispatch, recorded on the ingest's receipt. A step no configured provider can

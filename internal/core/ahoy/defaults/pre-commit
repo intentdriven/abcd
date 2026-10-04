@@ -442,7 +442,7 @@ fi
 # Otherwise the refresh runs and its own output is RELAYED, never discarded: its
 # one-line count is how a refresh that wrote fewer patterns than the last one
 # becomes visible, and its refusals name keys only.
-sources_corpus="${HOME:-}/.abcd/sources"
+sources_corpus="${HOME:-}/.abcd.noindex/sources"
 sources_noticed="$banlist_dir/sources-legacy-noticed"
 
 # sources_relay runs one refresh binary and relays what it says, prefixed. A binary
@@ -477,7 +477,7 @@ sources_relay() {
 
 sources_bin=$(git config --local --get abcd.sourcesBinary 2>/dev/null || true)
 if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
-  echo "pre-commit: no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)" >&2
+  echo "pre-commit: no sources corpus at ~/.abcd.noindex/sources — generated banlist block not refreshed (skipped)" >&2
 elif [ -z "$sources_bin" ]; then
   echo "pre-commit: a sources corpus exists; this hook refreshes its banlist block only on opt-in: git config --local abcd.sourcesBinary /absolute/path/to/abcd (skipped)" >&2
 else

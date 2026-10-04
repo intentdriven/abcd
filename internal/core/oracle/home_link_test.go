@@ -14,7 +14,7 @@ import (
 )
 
 // TestConnectRefusesASymlinkedAbcdHome: the provider block (and, in the abcd
-// home, the key beside it) is written into ~/.abcd, so through a ~/.abcd
+// home, the key beside it) is written into ~/.abcd.noindex, so through a ~/.abcd.noindex
 // symlinked into a dotfiles checkout it would land in that repository — and
 // the machine layer that reads it back refuses it there (iss-2609260958587561's
 // shape, in the setup's other writer). Refused loudly, and nothing is left
@@ -34,8 +34,8 @@ func TestConnectRefusesASymlinkedAbcdHome(t *testing.T) {
 				req.Key = ""
 			}
 			_, err := Connect(context.Background(), req)
-			if err == nil || !strings.Contains(err.Error(), "~/.abcd is a symlink") {
-				t.Fatalf("err = %v, want a refusal naming the symlinked ~/.abcd", err)
+			if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+				t.Fatalf("err = %v, want a refusal naming the symlinked ~/.abcd.noindex", err)
 			}
 			if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {
 				t.Fatalf("Connect left %d file(s) behind the link, first %q", len(entries), entries[0].Name())
@@ -45,7 +45,7 @@ func TestConnectRefusesASymlinkedAbcdHome(t *testing.T) {
 }
 
 // TestProviderBlockIsNotWrittenThroughAnAbcdHomeSwappedForALink is
-// iss-2609281310017733: ~/.abcd is a real directory when the provider block's
+// iss-2609281310017733: ~/.abcd.noindex is a real directory when the provider block's
 // writer judges it and a symlink into a dotfiles checkout by the time it
 // writes. The lock and the file are reached through the descriptor of the
 // directory that was judged, so the write is refused, names the link, and
@@ -74,10 +74,10 @@ func TestProviderBlockIsNotWrittenThroughAnAbcdHomeSwappedForALink(t *testing.T)
 	}))
 	err := writeProviderBlock(home, "desk", map[string]any{"base_url": "http://127.0.0.1:1"})
 	if !swapped {
-		t.Fatal("the writer never judged ~/.abcd, so the race was not staged")
+		t.Fatal("the writer never judged ~/.abcd.noindex, so the race was not staged")
 	}
-	if err == nil || !strings.Contains(err.Error(), "~/.abcd is a symlink") {
-		t.Errorf("err = %v, want a refusal naming the symlinked ~/.abcd", err)
+	if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+		t.Errorf("err = %v, want a refusal naming the symlinked ~/.abcd.noindex", err)
 	}
 	if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {
 		t.Fatalf("the provider block went through the swapped link: the checkout holds %q", entries[0].Name())
