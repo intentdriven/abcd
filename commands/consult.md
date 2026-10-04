@@ -1,11 +1,11 @@
 ---
 name: consult
-description: Consult the local sources corpus (the user-level home's sources store, default ~/.abcd/sources) and record source→decision provenance in its append-only ledger. Use when the user says "consult sources", "check the corpus", "what do my sources say", or when a design/research decision arises where prior literature or private working material plausibly matters. Confidential sources are NEVER cited or named in public artifacts.
+description: Consult the local sources corpus (the user-level home's sources store, default ~/.abcd.noindex/sources) and record source→decision provenance in its append-only ledger. Use when the user says "consult sources", "check the corpus", "what do my sources say", or when a design/research decision arises where prior literature or private working material plausibly matters. Confidential sources are NEVER cited or named in public artifacts.
 ---
 
 # Consult sources
 
-A local-only corpus at `~/.abcd/sources/` holds source documents (working
+A local-only corpus at `~/.abcd.noindex/sources/` holds source documents (working
 papers, private-repo notes, PDFs, books) the agent may **consult** but must
 never **cite** publicly. Metadata lives in `sources.json` (CSL-JSON; the
 `custom` block carries `confidential`, `permission_status`, `keywords`,
@@ -33,8 +33,8 @@ Conversation with the user is fine — discuss confidential sources freely there
 
 ## Consult
 
-1. Search the corpus: `grep -ril "<term>" ~/.abcd/sources/confidential/
-   ~/.abcd/sources/public/` — try keywords, author surnames, and CSL keys.
+1. Search the corpus: `grep -ril "<term>" ~/.abcd.noindex/sources/confidential/
+   ~/.abcd.noindex/sources/public/` — try keywords, author surnames, and CSL keys.
    The path IS the classification: any hit under `confidential/` falls under
    the hard rule above. Each source is a folder (`<class>/<key>/`) holding
    `original.<ext>`, `text.md`, and any summaries/notes.

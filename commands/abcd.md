@@ -48,7 +48,7 @@ line. Relay the count and point at `/abcd:inbox`, which lists them; the field is
 omitted when nothing waits.
 
 Once a model-tier routing table is accepted — `.abcd/config/oracle-routing.json`
-in the repository or `~/.abcd/oracle-routing.json` on the machine — the board
+in the repository or `~/.abcd.noindex/oracle-routing.json` on the machine — the board
 carries an `oracle` array, one object per agent (`agent`, `winner`, `layers`,
 each layer with `layer`, `origin`, `tier` and `fan_out`), rendered as an
 `oracle:` heading and one line per agent: every layer that holds a row as

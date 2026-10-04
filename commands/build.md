@@ -165,7 +165,7 @@ run starts, each from the highest layer that sets it:
    `--sub-agents <n>` and `--fix-rounds <n>` (0 to 64), for this run only;
 2. `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
    `pace.fix_rounds` in the repository's `.abcd/config.json`;
-3. the same keys in `~/.abcd/config.json`, for every checkout on the machine;
+3. the same keys in `~/.abcd.noindex/config.json`, for every checkout on the machine;
 4. the bundled 120/300 with 2 sub-agents and 3 fix rounds.
 
 The payload's `pace` carries each number as `value`, `layer` (`flag`, `repo`,
@@ -214,7 +214,7 @@ worktree is made just before its implementer takes the slot, and the run record
 gets a line naming it, as the start line names the first.
 
 A role can run through a command-line runner instead of an agent you start.
-`roles.<role>.runner` in `~/.abcd/config.json` names `host` (the default) or a
+`roles.<role>.runner` in `~/.abcd.noindex/config.json` names `host` (the default) or a
 runner, `claude` or `opencode`, that the machine enables under `runner.<name>`
 in the same file (with an optional `model` route, `<provider>/<model>`,
 admitted against that provider's allowlist). Only the person's own file hands a
@@ -258,7 +258,7 @@ their full home-relative paths, because the agent acts on them.
 A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
-   `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
+   `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
    `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
    beside the checkout. In a run `build next` started, the first lane's
    worktree stage also commits the pick's reason as the branch's first commit.

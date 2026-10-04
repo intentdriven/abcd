@@ -15,7 +15,7 @@ machinery a driving session calls; the verb a person types to build an intent
 is `/abcd:build`, and the implement loop it starts is driven from here (see
 [Drive the implement loop](#drive-the-implement-loop)).
 
-The shared run lives in the machine-scoped run state, `~/.abcd/runs/<root-sha>/`,
+The shared run lives in the machine-scoped run state, `~/.abcd.noindex/runs/<root-sha>/`,
 keyed on the repository's root commit, so sessions in different worktrees of
 one repository share one run and no repository file. The shared run never
 writes to the checkout; the implement loop writes only its state file, in the
@@ -257,7 +257,7 @@ advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in
-`~/.abcd/config.json` routes to a command-line runner (`claude` or `opencode`,
+`~/.abcd.noindex/config.json` routes to a command-line runner (`claude` or `opencode`,
 enabled under `runner.<name>` there), `step` starts it itself, in the lane's
 worktree, with the same brief and receipt path; the claude runner runs in print
 mode with `--bare`, so the repository's hooks, plugins and configured servers do
@@ -294,7 +294,7 @@ before the error envelope, naming `refusal.stage`, `refusal.reason` and
 `refusal.remedy`.
 
 The lane's stages are `worktree` (the lane's worktree in
-`~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
+`~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
 `build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
 brief, rendered from that base into
 `.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`, naming the spec step the
@@ -456,7 +456,7 @@ the person's. Other accounts' strays (`other_strays`) are only a count and a CPU
 total; say nothing more about them. A name the private banned-names layer
 matches reads `[private name]`.
 
-The limits are per machine, in `~/.abcd/load-limits`, which the check reads and
+The limits are per machine, in `~/.abcd.noindex/load-limits`, which the check reads and
 never creates: `stray-minutes <1 to 10080>` and `extreme-load <load>`, one per
 line, `#` for comments. An unusable file is reported (`limits.malformed`) and
 both defaults are used. Inside an autonomous run, a warning is also written to

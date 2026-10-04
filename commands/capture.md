@@ -156,7 +156,7 @@ never proposes `reverses` or `supersedes`: a reversal is a person's judgement.
 
 The threshold and the compared fields are configuration: `match.threshold`
 and `match.fields` (any of `issue.body`, `intent.title`,
-`intent.press_release`) in `.abcd/config.json`, or in `~/.abcd/config.json`
+`intent.press_release`) in `.abcd/config.json`, or in `~/.abcd.noindex/config.json`
 for every checkout on the machine.
 
 ## Disclosure: where a record came from and how its text was produced

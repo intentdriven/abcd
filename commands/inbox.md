@@ -8,7 +8,7 @@ block: agents
 # `/abcd:inbox` — read and promote reports
 
 Repositories abcd manages file reports about abcd with `/abcd:report`; they
-wait in the user account's inbox (`~/.abcd/inbox/`), and the session-start
+wait in the user account's inbox (`~/.abcd.noindex/inbox/`), and the session-start
 greeting says how many wait and from how many repositories. This page reads
 them, and files one when the user decides it should become a record.
 
@@ -73,10 +73,10 @@ person to confirm by leaving it or remove by deleting its line. The report is ke
 refusal exits 2 and writes nothing: a promotion outside a checkout of abcd, an
 unreadable report, one already promoted (the refusal names its capture), an id
 with no report, a capture the ledger refuses (the report still waits), or a
-symlink or a file where a level of the inbox belongs (the home, `~/.abcd`, the
+symlink or a file where a level of the inbox belongs (the home, `~/.abcd.noindex`, the
 inbox or its `promoted/` folder), which every inbox verb refuses, naming that
 level; relay the level it names. A symlink or a file at the home or at
-`~/.abcd` with no inbox behind it holds nothing to read, so the reading verbs
+`~/.abcd.noindex` with no inbox behind it holds nothing to read, so the reading verbs
 read it as no inbox (the list says nothing waits, and `show` and `promote` find
 no report) while `abcd report` still refuses, naming the level. A
 failure after the capture is written exits 1 and names the capture: if the

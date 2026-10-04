@@ -62,7 +62,7 @@ one the set form refuses (exit 2) and creates nothing — say so, and point at
 
 The set form prints one line naming whose answer is owed — for example `abcd:
 waiting on the product thinker — an answer is owed` — when this machine has no
-status line installed (no `~/.abcd/statusline.json`, or `disabled` set in it).
+status line installed (no `~/.abcd.noindex/statusline.json`, or `disabled` set in it).
 It prints once, because the verb call is the stop; setting `managed` owes
 nobody and prints nothing, and with a surface installed nothing is printed.
 With `--json` the line arrives as the `notice` field: relay it to the user

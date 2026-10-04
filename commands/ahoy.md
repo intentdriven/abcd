@@ -137,7 +137,7 @@ Relay that note verbatim. A `symlink.legacy` gap is a symlink into the plugin
 root that an earlier release wrote: it works until the next plugin update, and
 its fix hint says whether install replaces it now or which command comes first.
 A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an
-entry `~/.abcd/path-entry` records — is repaired by install the same way. When
+entry `~/.abcd.noindex/path-entry` records — is repaired by install the same way. When
 that entry is not the one install acts on (a link a plugin update stranded ahead
 of the copy the one-liner wrote), install removes it with its record once the
 entry it does act on is working, and a note names what it removed.
@@ -300,7 +300,7 @@ question, then one on/off prompt per element after the badge (repository,
 branch, model, context, five-hour and seven-day usage, intent and issue
 counts; default on). Present the reason to the user and relay their answer;
 never answer it for them. Consent writes exactly two files: the user-level
-setting `~/.abcd/statusline.json` (the bundled defaults with the switches
+setting `~/.abcd.noindex/statusline.json` (the bundled defaults with the switches
 taken, plus `previous_command` recording whatever the harness ran before) and
 the harness's `settings.json`, whose `statusLine` is pointed at
 `'<entry>' statusline` with every other key preserved. In an abcd-managed
@@ -312,12 +312,12 @@ it under `optional_skipped`; `yes |` answers it (and keeps every element on). A
 `statusLine` of a type abcd does not understand, or a `settings.json` that
 does not parse, is refused with a note and nothing is written on either side.
 `ahoy uninstall` restores the previous command. The line can be switched off
-or reconfigured at any time in `~/.abcd/statusline.json`.
+or reconfigured at any time in `~/.abcd.noindex/statusline.json`.
 
 **The model-tier routing offer.** abcd ships a proposal for the model tier and
 fan-out bound each of its agents deserves (`frontier` for the verdicts a person
 reads, `economy` for the rest), and none of it applies until it is accepted.
-While `~/.abcd/oracle-routing.json` is absent the install says the proposal in
+While `~/.abcd.noindex/oracle-routing.json` is absent the install says the proposal in
 counts, in one question: how many agents, how many at each tier, and their
 fan-out bounds, naming no agent, because a row per agent does not fit one
 question. Consent writes the full table there, owner-only, where every row can
@@ -408,10 +408,10 @@ repo's record survives. The persistent download cache is left to the harness's
 own uninstall to delete. Report `marker.removed` and the entry note; the
 receipt's `symlink.target` is already rendered in tilde form, so relay it as
 given rather than expanding it. When the harness's `statusLine` is abcd's, it
-is handed back to the command recorded in `~/.abcd/statusline.json` before
+is handed back to the command recorded in `~/.abcd.noindex/statusline.json` before
 abcd took the row — or removed, when none was recorded — and the receipt's
 `status_line` says which; a status line that is not abcd's is left alone, and
-`~/.abcd/statusline.json` itself stays, because it is the user's
+`~/.abcd.noindex/statusline.json` itself stays, because it is the user's
 configuration. It never touches `hooks.json`. An entry that was
 installed with `--bin-dir` into a directory outside `PATH` cannot be found by a
 `PATH` scan — pass the same `--bin-dir <dir>` to `uninstall` to remove it.
@@ -514,7 +514,7 @@ points at a provider sends the step there itself and ingests the answer, and
 every other step runs on the host. A provider whose block names a key takes
 only the self-contained agents, the four cold-reading positions (ruling DR5 of
 2026-09-29); every other agent pointed at one is refused before any call.
-`oracle.bundled_context_providers` in `~/.abcd/config.json` is the person's
+`oracle.bundled_context_providers` in `~/.abcd.noindex/config.json` is the person's
 override, naming providers that may take bundled-context requests for
 file-reading agents; it is read from the machine alone, a repository declaring
 it is refused, and it admits an agent only once abcd builds that agent's
@@ -529,13 +529,13 @@ name is not a plain lower-case name, a repository's route to a model a provider
 holding no key does not list, a route to a provider this machine has not
 configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
 `detail` one line per skipped route; relay each line. A skipped
-repository route never displaces the machine's: where `~/.abcd/config.json`
+repository route never displaces the machine's: where `~/.abcd.noindex/config.json`
 routes the same name, that route applies.
 Declining is not running `connect`, and it changes nothing.
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
 [--model <model>…] --home <home> [--key <name>]`. **This writes, under
-`~/.abcd/` and, for the keychain home, into the platform keychain.** Set
+`~/.abcd.noindex/` and, for the keychain home, into the platform keychain.** Set
 `abcd mode facilitator` and ask the technical facilitator which home through
 your question tool, after relaying `key_homes`, and offer the three without
 marking one: `external` takes `--env <VARIABLE>` or
@@ -544,8 +544,8 @@ is); `abcd` and `keychain` take the key piped in on stdin from a file or a
 variable. It verifies the provider with one call to the first model listed,
 and only when that call succeeds keeps the key in that home and writes the
 provider block (the base URL, the key's name and the models, the allowlist)
-into `~/.abcd/config.json`. Nothing goes into the repository or the harness's
-settings, and a failed verification writes nothing. A `~/.abcd` that is a
+into `~/.abcd.noindex/config.json`. Nothing goes into the repository or the harness's
+settings, and a failed verification writes nothing. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the
@@ -592,7 +592,7 @@ your question tool; never ask for the value, and never pass it yourself: give
 the person the command to run in their own shell and relay `name`, `home`,
 `verified` and each `wrote` entry. A name another home already holds, or a
 different value for a name already kept, is refused: abcd never replaces a
-stored secret. The abcd home is refused when `~/.abcd` lies inside a git
+stored secret. The abcd home is refused when `~/.abcd.noindex` lies inside a git
 working tree (the keychain and an external home stay open
 there), and a platform with no keychain tool refuses the keychain home and
 names the other two.
