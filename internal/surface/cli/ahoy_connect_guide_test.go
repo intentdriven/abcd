@@ -81,10 +81,11 @@ type guideJSON struct {
 
 // guideTurns runs the guide the way the page does: the first turn with
 // first, then each answer with the last turn's resume object on stdin. It
-// returns every turn's JSON (raw and decoded) and the text the last turn
-// prints without --json.
-func guideTurns(t *testing.T, first []string, answers ...string) (raw []string, turns []guideJSON, lastText string) {
+// returns every turn's JSON (raw and decoded), the text the last turn prints
+// without --json, and everything every run printed, stdout and stderr.
+func guideTurns(t *testing.T, first []string, answers ...string) (raw []string, turns []guideJSON, lastText, said string) {
 	t.Helper()
+	var all strings.Builder
 	run := func(stdin string, asJSON bool, args ...string) string {
 		if asJSON {
 			args = append(args, "--json")
@@ -93,6 +94,7 @@ func guideTurns(t *testing.T, first []string, answers ...string) (raw []string, 
 		if err != nil {
 			t.Fatalf("ahoy connect %q: %v\n%s", args, err, stderr)
 		}
+		all.WriteString(stdout + stderr)
 		return stdout
 	}
 	out := run("", true, append([]string{"--guide"}, first...)...)
@@ -103,7 +105,7 @@ func guideTurns(t *testing.T, first []string, answers ...string) (raw []string, 
 		}
 		raw, turns = append(raw, out), append(turns, turn)
 		if i == len(answers) {
-			return raw, turns, lastText
+			return raw, turns, lastText, all.String()
 		}
 		args := []string{"--guide", "--resume", "-", "--answer", answers[i]}
 		if i == len(answers)-1 {
@@ -173,12 +175,32 @@ func TestGuideShowsTheCommandAndEveryPath(t *testing.T) {
 		t.Run(tc.home, func(t *testing.T) {
 			hermeticEnv(t)
 			t.Chdir(t.TempDir())
-			t.Setenv("GUIDE_TEST_API_KEY", "an-external-value-not-a-key")
 			svc := newKeylessService(t, []string{"vendor/coder", "vendor/other"})
-			_, turns, text := guideTurns(t, []string{"--base-url", svc.base()}, tc.answers...)
+			// Only the test's own variable ends in _API_KEY here, whatever
+			// the environment the tests run in holds.
+			for _, kv := range os.Environ() {
+				if n, _, _ := strings.Cut(kv, "="); strings.HasSuffix(n, "_API_KEY") {
+					t.Setenv(n, "")
+					os.Unsetenv(n)
+				}
+			}
+			const value = "an-external-value-not-a-key"
+			t.Setenv("GUIDE_TEST_API_KEY", value)
+			raw, turns, text, said := guideTurns(t, []string{"--base-url", svc.base()}, tc.answers...)
 			done := turns[len(turns)-1].Done
 			if done == nil {
 				t.Fatalf("no done turn: %+v", turns[len(turns)-1])
+			}
+			// The variable's name is offered from this process's environment,
+			// and its value reaches no turn, no text and no error.
+			if tc.home == "external" {
+				q := turns[len(turns)-2].Ask.Questions[0]
+				if q.ID != "env" || len(q.Options) != 1 || q.Options[0].Value != "GUIDE_TEST_API_KEY" {
+					t.Fatalf("the variable question is %q offering %+v; want GUIDE_TEST_API_KEY offered", q.ID, q.Options)
+				}
+			}
+			if strings.Contains(strings.Join(raw, "\n")+text+said, value) {
+				t.Fatal("a variable's value reached a turn, the text or stderr")
 			}
 			lines := strings.Split(strings.TrimSpace(text), "\n")
 			want := append([]string{done.Command, "When it runs, this command writes:"}, func() []string {
@@ -222,7 +244,7 @@ func TestGuideToolPassesTheQuestionGuard(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
 	svc := newKeylessService(t, []string{"vendor/coder"})
-	raw, turns, _ := guideTurns(t, nil, question.TypedRowLabel, "http://192.0.2.1/v1", svc.base(), "lookup", "cod", "vendor/coder", "key", "external", "GUIDE_API_KEY")
+	raw, turns, _, _ := guideTurns(t, nil, question.TypedRowLabel, "http://192.0.2.1/v1", svc.base(), "lookup", "cod", "vendor/coder", "key", "external", "GUIDE_API_KEY")
 	asked := 0
 	for i, turn := range turns {
 		if turn.Tool == nil {
@@ -272,7 +294,7 @@ func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T) {
 			hermeticEnv(t)
 			t.Chdir(t.TempDir())
 			svc := newListingService(t, []string{"vendor/" + canary, "vendor/coder-large"}, tc.chatCode)
-			raw, turns, text := guideTurns(t, []string{"example", "--base-url", svc.base()}, "lookup", "abcd")
+			raw, turns, text, _ := guideTurns(t, []string{"example", "--base-url", svc.base()}, "lookup", "abcd")
 			done := turns[len(turns)-1].Done
 			if done == nil || !done.PicksInTerminal || strings.Contains(done.Command, "--model") {
 				t.Fatalf("a service listing only for a key ends with %+v", turns[len(turns)-1])
