@@ -27,8 +27,10 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
@@ -253,6 +255,9 @@ func (g *guide) put(q question.Question, admit admitFunc) (string, *stop) {
 		if isLater(a.Value) {
 			return "", &stop{err: refuse("the resume object records decide later for %q; run the guide again from that turn", q.ID)}
 		}
+		if keyShaped(a.Value) {
+			return "", &stop{err: refuse("the answer recorded for %q: %s", q.ID, lookedLikeKey)}
+		}
 		v, retry, err := admit(a.Value)
 		if err == nil && retry != "" {
 			err = refuse("the answer recorded for %q is one it does not take: %s", q.ID, retry)
@@ -278,6 +283,8 @@ func (g *guide) put(q question.Question, admit admitFunc) (string, *stop) {
 		switch {
 		case len(ans) > maxGuideAnswerBytes:
 			retry = fmt.Sprintf("The answer is %d bytes; an answer here is at most %d.", len(ans), maxGuideAnswerBytes)
+		case keyShaped(ans):
+			retry = "That " + lookedLikeKey + "."
 		case strings.EqualFold(strings.TrimSpace(ans), question.TypedRowLabel) && q.Typed != "":
 			retry = "That choice points at the row for typing: type the answer itself there."
 		default:
@@ -330,8 +337,54 @@ func optionList(q question.Question) string {
 func para(s string) question.Block { return question.Block{Kind: question.KindParagraph, Text: s} }
 
 // echoed is a typed answer as a question quotes it back: one sanitised line,
-// bounded.
+// bounded. Only the narrowing question quotes one, the part of a name it
+// narrows by; a retry never does, so a value pasted in the wrong place is not
+// carried into the next turn.
 func echoed(s string) string { return termsafe.CleanProseLine(s, guideEcho) }
+
+// lookedLikeKey is why the guide refuses a typed value the secret scanner
+// knows as a credential.
+const lookedLikeKey = "looks like a key; the guide takes a name, never a key"
+
+// secretPatterns is the secret scanner's pattern set, built once.
+var secretPatterns = sync.OnceValue(scanner.DefaultPatterns)
+
+// keyLines are the indexes of the lines among lines that hold a value the
+// secret scanner knows as a credential (a token: kind; its network and
+// identity kinds are no key), judged in one scan. The guide asks for names and
+// never for a key, so such a value is the key pasted in the wrong place, or an
+// id that carries one.
+func keyLines(lines []string) map[int]bool {
+	out := map[int]bool{}
+	if len(lines) == 0 {
+		return out
+	}
+	for _, f := range scanner.ScanText(strings.Join(lines, "\n"), scanner.Identity{}, secretPatterns(), nil, "") {
+		if strings.HasPrefix(f.Kind, "token:") {
+			out[f.Line-1] = true
+		}
+	}
+	return out
+}
+
+// keyShaped reports whether a typed value holds a key (keyLines).
+func keyShaped(s string) bool { return len(keyLines([]string{s})) != 0 }
+
+// dropKeyShaped is ids without those that carry a key (keyLines). Each id is
+// one line: none holds a line break.
+func dropKeyShaped(ids []string) []string {
+	bad := keyLines(ids)
+	if len(bad) == 0 {
+		return ids
+	}
+	out := make([]string, 0, len(ids)-len(bad))
+	for i, id := range ids {
+		if !bad[i] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
 
 // run replays the guide from its first question.
 func (g *guide) run() (GuideTurn, error) {
@@ -505,7 +558,7 @@ func (g *guide) walk() (GuideTurn, *stop) {
 		}
 		v, s := g.put(q, options(q, func(t string) (string, string, error) {
 			if !credential.ValidEnvName(t) {
-				return "", fmt.Sprintf("%s is not a variable's name: letters, digits and _, not starting with a digit.", echoed(t)), nil
+				return "", "That is not a variable's name: letters, digits and _, not starting with a digit.", nil
 			}
 			return t, "", nil
 		}))
@@ -543,7 +596,7 @@ func (g *guide) listed(base, host string) (*GuideListed, error) {
 					kept = append(kept, id)
 				}
 			}
-			if len(kept) == 0 {
+			if kept = dropKeyShaped(kept); len(kept) == 0 {
 				return &GuideListed{Status: ListedNone, Host: host, Reason: "listed no usable models"}, nil
 			}
 			return &GuideListed{Status: ListedListed, Host: host, Models: kept}, nil
@@ -574,18 +627,23 @@ func (g *guide) listed(base, host string) (*GuideListed, error) {
 			ids = append(ids, id)
 		}
 	}
+	if ids = dropKeyShaped(ids); len(ids) == 0 {
+		return &GuideListed{Status: ListedNone, Host: host, Reason: "listed no usable models"}, nil
+	}
 	return &GuideListed{Status: ListedListed, Host: host, Models: ids}, nil
 }
 
 // modelRefusal is why a model name cannot be offered or printed: one
 // validModel refuses (the adapter keeps characters a shell acts on), or one
-// the denylist refuses; "" admits it.
+// the denylist refuses; "" admits it. It never quotes the name: a typed name
+// is asked for again without it. An id carrying a key is dropped apart, in
+// one scan of the whole list (dropKeyShaped).
 func (g *guide) modelRefusal(m string) string {
 	if !validModel(m) {
-		return fmt.Sprintf("%s is not a model name abcd accepts: letters, digits and . _ : @ + ~ -, in parts separated by /.", echoed(m))
+		return "That is not a model name abcd accepts: letters, digits and . _ : @ + ~ -, in parts separated by /."
 	}
 	if e, denied := Denied(g.cfg.denylist, m); denied {
-		return fmt.Sprintf("%s is refused by %s (%s, from %s), even when a service lists it.", echoed(m), denylistKey, e.Pattern, e.Origin)
+		return fmt.Sprintf("That name is refused by %s (%s, from %s), even when a service lists it.", denylistKey, e.Pattern, e.Origin)
 	}
 	return ""
 }
@@ -701,7 +759,7 @@ func (g *guide) envNames(provider string) []string {
 	}
 	sort.Strings(named)
 	sort.Strings(other)
-	all := append(named, other...)
+	all := dropKeyShaped(append(named, other...))
 	return all[:min(len(all), maxEnvNames)]
 }
 

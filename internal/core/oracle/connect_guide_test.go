@@ -14,6 +14,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // The guided path in the session (spc-2610031241482088, step 3): one turn
@@ -549,5 +550,70 @@ func TestGuideQuestionsPassTheAskingLimits(t *testing.T) {
 	}
 	if n < 12 {
 		t.Fatalf("only %d questions were checked", n)
+	}
+}
+
+// keyShapedAnswer is a value of the shape the secret scanner knows, built at
+// runtime so no key-shaped literal is committed.
+func keyShapedAnswer(seed uint64) string { return "sk-proj-" + testsecret.Synthetic(seed, 48) }
+
+// TestGuideNeverEchoesATypedValueThatIsNotAName: a key pasted where the guide
+// asks for a name (the model typed, part of a listed model's name, the
+// variable's name, or any other question) is refused with the one message
+// that says why, and asked again; no turn after it carries the value, and a
+// typed text the question cannot take is never quoted back in the retry.
+func TestGuideNeverEchoesATypedValueThatIsNotAName(t *testing.T) {
+	const keyMsg = "looks like a key; the guide takes a name, never a key"
+	pasted := keyShapedAnswer(31)
+	asName := "ghp_" + testsecret.Synthetic(32, 36) // a valid variable name in form
+	listed := newGuideFake(t, http.StatusOK, []string{"vendor/coder"})
+	f := newFx(t)
+	first := GuideRequest{BaseURL: listed.base(), EnvNames: []string{"LOCAL_API_KEY"}}
+	for _, tc := range []struct {
+		name    string
+		before  []string
+		bad     string
+		id      string
+		after   []string
+		message string
+	}{
+		{"the typed model", []string{"type"}, pasted, GuideQTyped, []string{"vendor/coder", "none"}, keyMsg},
+		{"part of a listed name", []string{"lookup"}, pasted, GuideQModel, []string{"vendor/coder", "none"}, keyMsg},
+		{"an options question", nil, pasted, GuideQLookup, []string{"type", "vendor/coder", "none"}, keyMsg},
+		{"the variable's name", []string{"type", "vendor/coder", "key", "external"}, pasted, GuideQEnv, []string{"MY_API_KEY"}, keyMsg},
+		{"a key shaped as a name", []string{"type", "vendor/coder", "key", "external"}, asName, GuideQEnv, []string{"MY_API_KEY"}, keyMsg},
+		{"a variable name it cannot take", []string{"type", "vendor/coder", "key", "external"}, "not a name!", GuideQEnv, []string{"MY_API_KEY"}, "is not a variable's name"},
+		{"a model name it cannot take", []string{"type"}, "bad;name", GuideQTyped, []string{"vendor/coder", "none"}, "is not a model name abcd accepts"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			answers := append(append(append([]string{}, tc.before...), tc.bad), tc.after...)
+			turns := drive(t, f, first, answers...)
+			retry := turns[len(tc.before)+1]
+			q := asked(t, retry)
+			if q.ID != tc.id || !strings.Contains(material(q), tc.message) {
+				t.Fatalf("%q at %q asks %q: %q; want it asked again saying %q", tc.bad, tc.id, q.ID, material(q), tc.message)
+			}
+			if last(turns).Done == nil {
+				t.Fatalf("the guide did not end after the retry: %+v", last(turns))
+			}
+			for i, turn := range turns[len(tc.before)+1:] {
+				b, err := json.Marshal(turn)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(b), tc.bad) {
+					t.Fatalf("turn %d after the answer quotes it back: %s", i, b)
+				}
+			}
+		})
+	}
+	// A resume object carrying a key as an answer is refused without it.
+	turns := drive(t, f, first, "type", "vendor/coder")
+	edited := last(turns)
+	edited.Resume.Answers[1].Value = pasted
+	ans := "none"
+	_, err := turnOf(t, f, &edited, &ans, first)
+	if err == nil || !strings.Contains(err.Error(), keyMsg) || strings.Contains(err.Error(), pasted) {
+		t.Fatalf("a resume object carrying a key = %v", err)
 	}
 }

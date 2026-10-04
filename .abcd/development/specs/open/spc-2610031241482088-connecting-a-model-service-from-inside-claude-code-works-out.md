@@ -387,6 +387,15 @@ key, and its JSON has no key field. In the terminal step the key lives in
 it is printed, as today, and the listed ids through the client's scrub. G6's
 canary test holds the whole path to that.
 
+As built: the guide holds no key, so it knows one by its shape alone. A typed
+answer to any question, or a recorded one, holding a value the secret
+scanner's patterns know as a credential (a `token:` kind) is refused with
+"that looks like a key; the guide takes a name, never a key" and asked again,
+and a listed id or an offered variable's name holding one is dropped before
+the resume object carries it. A retry never quotes the typed text back: only
+the narrowing question quotes the part of a name it narrows by. A key of a
+shape the scanner does not know passes as a name.
+
 ## How each acceptance criterion is met
 
 **G1.** `TestListModelsSendsNoKeyAndFollowsNoRedirect` (in

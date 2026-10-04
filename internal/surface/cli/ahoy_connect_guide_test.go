@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // The guided connect's front door (spc-2610031241482088, step 3): one turn a
@@ -334,4 +335,53 @@ func TestKeyCanaryAppearsOnlyInItsHome(t *testing.T) {
 			}
 		})
 	}
+	// The guide itself: a service listing keyless, one of its ids carrying a
+	// key-shaped canary. The guide holds no key, so it knows the canary by its
+	// shape alone: the look-up's keep drops the id before the resume object
+	// carries it, and the canary reaches no turn, no output and no file but
+	// the credential file the printed command writes.
+	t.Run("the service lists keyless, one id carrying the key", func(t *testing.T) {
+		hermeticEnv(t)
+		t.Chdir(t.TempDir())
+		keyed := "sk-proj-" + testsecret.Synthetic(61, 48)
+		svc := newKeylessService(t, []string{"vendor/" + keyed, "vendor/coder-large"})
+		raw, turns, text, said := guideTurns(t, []string{"example", "--base-url", svc.base()}, "lookup", "vendor/coder-large", "key", "abcd")
+		var st struct {
+			Listed struct {
+				Models []string `json:"models"`
+			} `json:"listed"`
+		}
+		if err := json.Unmarshal(turns[1].Resume, &st); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(st.Listed.Models, []string{"vendor/coder-large"}) {
+			t.Fatalf("the resume object carries %q; the id carrying the key must be dropped", st.Listed.Models)
+		}
+		done := turns[len(turns)-1].Done
+		if done == nil || !strings.Contains(done.Command, "--model vendor/coder-large") {
+			t.Fatalf("the guide ends with %+v", turns[len(turns)-1])
+		}
+		atTerminal(t, keyed, nil)
+		stdout, stderr, err, _ := runConnect(t, "", commandArgs(t, done.Command)...)
+		if err != nil {
+			t.Fatalf("the printed command = %v\n%s%s", err, stdout, stderr)
+		}
+		if strings.Contains(strings.Join(raw, "\n")+text+said+stdout+stderr, keyed) {
+			t.Fatal("the canary reached a turn, the output or an error")
+		}
+		store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")
+		found := map[string]bool{}
+		_ = filepath.WalkDir(os.Getenv("HOME"), func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if b, rerr := os.ReadFile(p); rerr == nil && strings.Contains(string(b), keyed) {
+				found[p] = true
+			}
+			return nil
+		})
+		if !reflect.DeepEqual(found, map[string]bool{store: true}) {
+			t.Fatalf("the canary is in %v, want only %s", found, store)
+		}
+	})
 }
