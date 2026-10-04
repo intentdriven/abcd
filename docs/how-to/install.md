@@ -225,8 +225,8 @@ the repair command above again.
 A project abcd manages keeps naming `~/.abcd/rules.json` and
 `~/.abcd/trusted-roots` in the managed block of its conventions file until
 abcd's setup runs in that project again. `abcd ahoy` reports that block as
-outdated, and `abcd ahoy install` rewrites the block alone, leaving every line
-around it as it was. Scripts of your own that name `~/.abcd` are yours to
+outdated, and the setup, the `install` sub-verb of `abcd ahoy`, rewrites the
+block alone, leaving every line around it as it was. Scripts of your own that name `~/.abcd` are yours to
 update.
 
 ## The status line
