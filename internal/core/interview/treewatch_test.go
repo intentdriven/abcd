@@ -31,7 +31,7 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 	// linkedHooks is a hooks directory reached through a link, as a
 	// dotfiles-managed ~/.githooks is; linkedFromTree is one an in-tree link
 	// points at.
-	linkedHooks, linkedFromTree := t.TempDir(), t.TempDir()
+	linkedHooks, linkedFromTree, linkedFromRealTree := t.TempDir(), t.TempDir(), t.TempDir()
 	linkTo := func(target, link string) {
 		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 			t.Fatal(err)
@@ -101,6 +101,16 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 			r.git.Git("config", "core.hooksPath", "tools/hooks")
 		}, write: func(*writtenRun) (string, string, string) {
 			return filepath.ToSlash(filepath.Join(linkedFromTree, "post-checkout")), "#!/bin/sh\nexit 0\n", "/post-checkout"
+		}},
+		{name: "a hook under an in-tree core.hooksPath that links outside, spelled by the tree's real path", setup: func(r *writtenRun) {
+			linkTo(linkedFromRealTree, filepath.Join(r.repo, "tools", "hooks"))
+			real, err := filepath.EvalSymlinks(r.repo)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.git.Git("config", "core.hooksPath", filepath.Join(real, "tools", "hooks"))
+		}, write: func(*writtenRun) (string, string, string) {
+			return filepath.ToSlash(filepath.Join(linkedFromRealTree, "pre-rebase")), "#!/bin/sh\nexit 0\n", "/pre-rebase"
 		}},
 		{name: "HEAD pointed at another branch", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(*writtenRun) (string, string, string) {
 			return ".git/HEAD", "ref: refs/heads/other\n", ".git/HEAD"
@@ -221,6 +231,28 @@ func TestALinkedWorktreesGitFileIsWatched(t *testing.T) {
 	var uc *UnexpectedChangesError
 	if !errors.As(err, &uc) || !slices.Equal(uc.Paths, []string{".git"}) {
 		t.Fatalf("err = %v, want the worktree's .git file named", err)
+	}
+}
+
+// TestALinkedWorktreesOwnHEADIsWatched: a linked worktree keeps its own HEAD
+// in its own git directory, apart from the common one, and it decides what
+// the next commit there extends, so a role moving it is stopped.
+func TestALinkedWorktreesOwnHEADIsWatched(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	r.git.Commit("base")
+	lane := filepath.Join(t.TempDir(), "lane")
+	r.git.Git("worktree", "add", "-q", "-b", "lane", lane)
+	if err := os.MkdirAll(filepath.Join(lane, ".abcd", ".work.local"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	r.w.Repo = lane
+	head := filepath.ToSlash(filepath.Join(r.repo, ".git", "worktrees", "lane", "HEAD"))
+	stubAlso(t, script, 2, map[string]string{head: "ref: refs/heads/main\n"})
+	_, err := r.w.Run(context.Background())
+	var uc *UnexpectedChangesError
+	if !errors.As(err, &uc) || len(uc.Paths) != 1 || !strings.HasSuffix(uc.Paths[0], "/.git/worktrees/lane/HEAD") {
+		t.Fatalf("err = %v, want the worktree's own HEAD named", err)
 	}
 }
 
