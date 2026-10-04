@@ -809,7 +809,7 @@ through the shared resolver (`internal/core/oracle` over
 `internal/core/layered`): the invocation's routing override, which the appendix
 lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
 over the repository's `.abcd/config/oracle-routing.json`, over the machine's
-`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+`~/.abcd.noindex/oracle-routing.json`, over the bundled proposal, which applies only
 once a table is accepted. The emit step's result carries the request block when
 the cut is ready: a `routing` member in the JSON and a `routing:` line in the
 text, naming the tier, the fan-out bound, the deciding layer and its origin, the

@@ -39,7 +39,7 @@ and call these verbs for every write.
 Bare `abcd source` is read-only: where the corpus is, how many sources sit in
 each class, the ledgers and their line counts, and any entry whose folder and
 metadata disagree. The corpus is the default one under the user-level home,
-`~/.abcd/sources`, unless the invocation names another directory.
+`~/.abcd.noindex/sources`, unless the invocation names another directory.
 
 ## The store
 

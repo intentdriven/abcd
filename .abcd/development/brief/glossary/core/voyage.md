@@ -1,12 +1,12 @@
 ---
 term: voyage
 bounded_context: core
-definition: The operations namespace at `~/.abcd/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried.
+definition: The operations namespace at `~/.abcd.noindex/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried.
 aliases: ["voyage log", "voyage namespace"]
 forbidden_synonyms: ["lifeboat", "project", "sprint"]
 status: stable
 introduced_in: phase-1
-starts_when: The first `abcd disembark` against a source repository creates `~/.abcd/voyage/<source-root-sha>/`, keyed on that repository's root-commit SHA.
+starts_when: The first `abcd disembark` against a source repository creates `~/.abcd.noindex/voyage/<source-root-sha>/`, keyed on that repository's root-commit SHA.
 ends_when: Never by abcd's hand — the log is append-only, outlives any single lifeboat, and is removed only if the operator deletes the directory.
 not_to_be_confused_with: [core/lifeboat, core/record-families]
 versions: null
@@ -25,9 +25,9 @@ A voyage lives at the **operator level**, never inside the source repository and
 committed:
 
 ```
-~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl   # one line per disembark run
-~/.abcd/voyage/<source-root-sha>/embark/provenance.json
-~/.abcd/voyage/<source-root-sha>/embark/from/<timestamp>/
+~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl   # one line per disembark run
+~/.abcd.noindex/voyage/<source-root-sha>/embark/provenance.json
+~/.abcd.noindex/voyage/<source-root-sha>/embark/from/<timestamp>/
 ```
 
 It is keyed on the source repository's root-commit SHA, matching the convention the history store
@@ -63,7 +63,7 @@ or a "sprint" (a time box, not a record of runs).
 
 | Phase | Condition |
 |-------|-----------|
-| Starts when | The first `abcd disembark pack <source-repo> <dest>` creates `~/.abcd/voyage/<source-root-sha>/` |
+| Starts when | The first `abcd disembark pack <source-repo> <dest>` creates `~/.abcd.noindex/voyage/<source-root-sha>/` |
 | Ends when | Only if the operator deletes it — the log is appended to, never rewritten or truncated |
 
 ## Examples

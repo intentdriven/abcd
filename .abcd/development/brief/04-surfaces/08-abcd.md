@@ -177,7 +177,7 @@ one line on stderr names the refusal instead.
 
 **The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
 model-tier routing once a table is accepted, at the repository
-(`.abcd/config/oracle-routing.json`) or the machine (`~/.abcd/oracle-routing.json`).
+(`.abcd/config/oracle-routing.json`) or the machine (`~/.abcd.noindex/oracle-routing.json`).
 The text render carries an `oracle:` heading and one line per agent in the
 roster, listing every layer that holds a row for it as `layer=tier`, flag over
 repo over machine over bundled, with the row that applies marked `*`; the JSON
@@ -323,7 +323,7 @@ temporary directories.
 this section's only source: there is no in-tree lifeboat directory to stat,
 because disembark is read-only and writes to an operator-chosen destination,
 with the record of what was disembarked living at the operator level under
-`~/.abcd/voyage/`. The natural replacement is to read that log, keyed on this
+`~/.abcd.noindex/voyage/`. The natural replacement is to read that log, keyed on this
 repo's root-commit SHA. That is unsettled, and three things have to be decided:
 whether the board reads outside the repo at all, when every other section is a
 local read; whether showing an absolute destination path on screen is

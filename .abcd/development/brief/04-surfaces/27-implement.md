@@ -41,9 +41,9 @@ own state lives in the checkout's local tier, not in the shared run state below;
 ## Where the run lives
 
 ```text
-~/.abcd/runs/<root-sha>/<YYYY-MM-DD>.jsonl    the run log, one event per line, per UTC day
-~/.abcd/runs/<root-sha>/claims/<record>.json  one claim per record
-~/.abcd/runs/<root-sha>/sessions/<id>.json    one record per joined session
+~/.abcd.noindex/runs/<root-sha>/<YYYY-MM-DD>.jsonl    the run log, one event per line, per UTC day
+~/.abcd.noindex/runs/<root-sha>/claims/<record>.json  one claim per record
+~/.abcd.noindex/runs/<root-sha>/sessions/<id>.json    one record per joined session
 ```
 
 The key is the full root-commit SHA, the key the transcript, history and voyage
@@ -240,7 +240,7 @@ a kill and never match by pattern; the group form is offered only for a group
 whose every live member is named and which is neither the check's own group nor
 an ancestor's. Other accounts' strays are a count and a CPU total, by type.
 
-The limits live in the caller's machine tier, `~/.abcd/load-limits`
+The limits live in the caller's machine tier, `~/.abcd.noindex/load-limits`
 (`stray-minutes`, default 30; `extreme-load`, default four times the online core
 count), read through the guarded declaration read and never created; an
 unusable file is reported loudly and both defaults are used. On a CI runner

@@ -35,10 +35,10 @@ The commands this context turns on are these; the generated [CLI reference](../.
         ▼
 [target repo: files placed at canonical locations]
 
-  operations log (never in either repo): ~/.abcd/voyage/<source-root-sha>/
+  operations log (never in either repo): ~/.abcd.noindex/voyage/<source-root-sha>/
 ```
 
-Lifeboats are portable directories; share by copy/tar/git, not by global archive. **The lifeboat is always *output*** — written out-of-tree to an operator-chosen `<dest>`, never back into the repo being read (adr-35); it is the latest disembark snapshot, regenerable from current state. Embark/disembark provenance and history live separately at the operator level, `~/.abcd/voyage/<source-root-sha>/` (see [`02-constraints/01-platform.md`](../02-constraints/01-platform.md) and [`04-surfaces/03-embark.md § 7`](../04-surfaces/03-embark.md#7-voyage-layout--embarkdisembark-provenance-and-history)); the lifeboat itself never accumulates past versions.
+Lifeboats are portable directories; share by copy/tar/git, not by global archive. **The lifeboat is always *output*** — written out-of-tree to an operator-chosen `<dest>`, never back into the repo being read (adr-35); it is the latest disembark snapshot, regenerable from current state. Embark/disembark provenance and history live separately at the operator level, `~/.abcd.noindex/voyage/<source-root-sha>/` (see [`02-constraints/01-platform.md`](../02-constraints/01-platform.md) and [`04-surfaces/03-embark.md § 7`](../04-surfaces/03-embark.md#7-voyage-layout--embarkdisembark-provenance-and-history)); the lifeboat itself never accumulates past versions.
 
 **Repo:**
 

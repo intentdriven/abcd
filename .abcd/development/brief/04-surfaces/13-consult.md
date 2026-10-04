@@ -39,7 +39,7 @@ any row it carries is still format-checked.
 
 ## What it does
 
-The corpus lives at `~/.abcd/sources/`, each source held as a folder
+The corpus lives at `~/.abcd.noindex/sources/`, each source held as a folder
 `<class>/<key>/` under `confidential/` or `public/`. **The path IS the
 classification**: any hit under `confidential/` falls under the hard rule
 below. Metadata lives in `sources.json` as CSL-JSON. If the corpus is absent

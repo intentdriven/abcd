@@ -239,7 +239,7 @@ verb the binary registers apart from the framework's own `help`.
 ### The rules verb
 
 `abcd rules` renders the rule set the prompt router draws on, read-only. It loads
-the bundled default domains, then the machine's `~/.abcd/rules.json`, then the
+the bundled default domains, then the machine's `~/.abcd.noindex/rules.json`, then the
 checkout's `.abcd/rules.json`, each layer replacing a field wholesale, and reads
 the checkout from the root the loader resolves for the working directory.
 
