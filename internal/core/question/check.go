@@ -192,8 +192,14 @@ func (c checker) tab(n int, t Tab) []Finding {
 		}
 	}
 
-	// 3. Options.
-	if k := len(t.Options); k < l.OptionsPerQ[0] || k > l.OptionsPerQ[1] {
+	// 3. Options. A typed part is the host's free-text row: it counts as one
+	// option toward the floor (spc-2610031241482088, open question 1), never
+	// toward the ceiling, which is what the host lists.
+	floor := len(t.Options)
+	if strings.TrimSpace(t.Typed) != "" {
+		floor++
+	}
+	if k := len(t.Options); floor < l.OptionsPerQ[0] || k > l.OptionsPerQ[1] {
 		add("options", RuleOptions, fmt.Sprintf("%d options", k),
 			fmt.Sprintf("%d to %d options, the decide-later option included", l.OptionsPerQ[0], l.OptionsPerQ[1]),
 			"Offer only the answers each defensible on the record, then the decide-later option.")

@@ -90,6 +90,7 @@ func Draw(a question.Ask, f Frame) []string {
 	out := d.head(a, tab)
 	out = append(out, "")
 	out = append(out, d.optionLines(all, span(len(all)), f.Current)...)
+	out = append(out, d.typed(q)...)
 	if state := d.state(q); len(state) > 0 {
 		out = append(out, "")
 		out = append(out, state...)
@@ -136,6 +137,18 @@ func (d drawer) head(a question.Ask, tab int) []string {
 		out = append(out, s...)
 	}
 	return out
+}
+
+// TypedPrefix opens the line the typed part is drawn on.
+const TypedPrefix = "or type:"
+
+// typed draws the question's typed part, when it has one, as one line after
+// the options: "or type: <prompt>" (spc-2610031241482088).
+func (d drawer) typed(q question.Question) []string {
+	if q.Typed == "" {
+		return nil
+	}
+	return hanging(TypedPrefix+" "+q.Typed, indent, hang, d.measure())
 }
 
 // state draws the Now: and Change later: lines the question carries.

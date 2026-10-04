@@ -4,7 +4,8 @@ package cli
 // (itd-2609081951381895): `abcd ahoy --providers`, the read that explains the
 // adapter, lists what is configured and says where a key can live, and
 // `abcd ahoy connect <provider>`, the write that verifies a provider with one
-// call and then stores its block and its key.
+// call and then stores its block and its key. Its --guide form
+// (ahoy_connect_guide.go) writes nothing and ends by printing that command.
 //
 // The key arrives on stdin and nowhere else: never as a flag (a process
 // listing and a shell history keep argv), and never at a prompt that echoes
@@ -176,13 +177,20 @@ func keyState(home, name string) (state, from string) {
 
 // newAhoyConnectCommand builds `ahoy connect <provider>`.
 func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
-	var baseURL, home, keyName string
+	var baseURL, home, keyName, resume, answer string
+	var guide bool
 	var models []string
 	var ptr credential.Pointer
 	cmd := &cobra.Command{
-		Use:  "connect <provider>",
+		Use:  "connect [<provider>]",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if guide {
+				return runConnectGuide(cmd, args, baseURL, resume, cmd.Flags().Changed("answer"), answer, *asJSON)
+			}
+			if resume != "" || cmd.Flags().Changed("answer") {
+				return &exitError{Code: 2, Msg: "abcd ahoy connect: --resume and --answer take the guided setup's next turn; add --guide"}
+			}
 			if len(args) == 0 {
 				return &exitError{Code: 2, Msg: "abcd ahoy connect: name the provider to set up; `abcd ahoy --providers` explains the adapter and where its key can live"}
 			}
@@ -261,6 +269,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only "+credential.StorePath+") | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)")
 	cmd.Flags().StringVar(&keyName, "key", "", "the credential's name (default: the provider's name)")
 	pointerFlags(cmd, &ptr)
+	cmd.Flags().BoolVar(&guide, "guide", false, "work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional")
+	cmd.Flags().StringVar(&resume, "resume", "", "with --guide: the last turn's resume object, or - to read it from stdin")
+	cmd.Flags().StringVar(&answer, "answer", "", "with --guide and --resume: the answer to the question the resume object leaves open")
 	return cmd
 }
 

@@ -115,7 +115,9 @@ None open: the interview of 2026-10-03 answered them (decisions 1 to 8). Owed at
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-8c051b55af1b -->
+Fidelity review OWED (receipt rcp-8c051b55af1b).
+<!-- abcd-review-end receipt=rcp-8c051b55af1b -->
 
 ## Grounds
 

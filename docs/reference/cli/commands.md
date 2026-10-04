@@ -58,20 +58,23 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses no --model off a terminal.
+Verify a model provider with one call and configure it, or guide setup: Writes ~/.abcd/ and the key's home, nothing guided; refuses no --model off a terminal.
 
-**Usage:** `abcd ahoy connect <provider> [flags]`
+**Usage:** `abcd ahoy connect [<provider>] [flags]`
 
 **Flags:**
 
 ```
+      --answer string       with --guide and --resume: the answer to the question the resume object leaves open
       --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
       --env string          for --home external: the environment variable that holds the value
       --field string        for --home external: the dotted field of --file that holds the value (auth.token)
       --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --guide               work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional
       --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
+      --resume string       with --guide: the last turn's resume object, or - to read it from stdin
 ```
 
 **Example:**

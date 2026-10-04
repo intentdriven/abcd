@@ -583,6 +583,74 @@ repository route never displaces the machine's: where `~/.abcd/config.json`
 routes the same name, that route applies.
 Declining is not running `connect`, and it changes nothing.
 
+### The guided path: `connect --guide`
+
+When the person wants to connect a service from this session, guide them
+rather than asking for every value. The guide works the values out one
+question a turn, writes nothing, never asks for the key, and ends by printing
+the one command for the person to paste into a terminal on this machine. It
+never runs that command, and no flag makes it: `--guide` with `--home`,
+`--model`, `--key`, `--env`, `--file` or `--field` is refused.
+
+Start it, with the provider's name and the address when the person has given
+them (both are optional; the guide asks for the address and names the provider
+after the host):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect [<provider>] --guide [--base-url <url>] --json
+```
+
+Each run prints one turn. A turn carries `ask`, the question, and `tool`,
+the same question as your question tool's input: ask it through your question
+tool exactly as `tool` gives it, one question a turn, never reworded, never
+with a preview and never with an option marked. A question with a typed part
+(`ask.questions[0].typed`) takes the person's own text in the tool's row for
+typing; where it lists too few options for the tool, `tool` carries one more,
+"Type my own answer", which only points at that row. Then pass the answer
+back, the turn's `resume` member unchanged on stdin and the answer as the tool
+returned it (an option's label, or the text typed). The `resume` member goes
+in a quoted heredoc, never as an argument: it carries the models the service
+listed, up to 32 KiB of their names, and the count of any it does not carry.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy connect --guide --resume - --answer '<answer>' --json <<'RESUME'
+<resume JSON>
+RESUME
+```
+
+Do no other bookkeeping: the guide replays every answer from the first
+question each turn, refuses (exit 2, naming the question) an answer a
+question does not take or a `resume` that was edited, and asks a typed
+question again, saying why, when the text cannot be used.
+
+The questions, in order: the address, when none was given; whether to look
+up the models the service lists, showing the scheme and host first (only a yes
+sends one request, carrying no key, following no redirect, and giving up after
+ten seconds); the model, offering the models the person's other connections
+already use that the service lists, at most three, and narrowing the list as
+they type part of a name, with no second request (when the service lists more
+models than the guide carries and a part matches none carried, it asks for the
+model's full name); where the service publishes
+no list, or the person declines the look-up, a typed model name and the reason;
+whether the service takes a key; where the key lives, offering the three
+homes and never a key the person saved in the system keychain by hand; and,
+for an environment variable, its name, offering at most three variables whose
+names end in `_API_KEY`, never their values. A service that lists its models
+only for a key skips the model question and the key question: the command
+then has no `--model`,
+`done.picks_in_terminal` is true, and the person picks in the terminal once
+the command has the key.
+
+A turn carrying `stopped` is the person's decide later: relay it verbatim,
+and keep `resume` to pick up there. A turn carrying `done` is the end: relay
+`done.command` on a line of its own and every line of `done.writes` verbatim,
+the paths the command writes, then tell the person to paste the command into a
+terminal on this machine, where it asks for the key on hidden input when the
+home stores one. **Never ask for the key, never pass it, and never run the
+command for the person.**
+
+### By hand
+
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
 [--model <model>…] --home <home> [--key <name>]`. **This writes, under
 `~/.abcd/` and, for the keychain home, into the platform keychain.** Set
