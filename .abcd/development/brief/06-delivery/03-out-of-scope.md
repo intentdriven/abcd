@@ -131,6 +131,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610040740108331` — The dashboard on the home network, without Tailscale (draft; builds on itd-2610032150577708; later, by the product thinker's choice of Tailscale first)
 - `itd-2610040740122709` — Acting from the dashboard: rewriting the brief and approving intents (draft; builds on itd-2610032150577708)
 - `itd-2610040740135705` — The dashboard for more people: the facilitator's view and the team's, configurable (draft; builds on itd-2610032150577708)
+- `itd-2610040754440360` — The private dashboard for every abcd-managed project (draft; builds on itd-2610032150577708; proven on a second, sparse sample project; later)
+- `itd-2610040754453237` — The public record site for every abcd-managed project (draft; later, by the product thinker's ruling)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

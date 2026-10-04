@@ -2236,3 +2236,13 @@ Links: itd-2610031215002409 builds on itd-2610031214560142 and itd-2610030810370
 Links: builds on itd-2610031214560142 (the board); supersedes itd-139 (the static team site), as the product thinker ruled ("Dashboard replaces it"). Verdict proposed: SPLIT. Routing survived confirmation: yes (unchanged: "Split as shown").
 
 Addendum (2026-10-04, appended): at the dashboard's interview the product thinker chose Tailscale first ("revert my decision: tailscale only first"), so the Tailscale draft itd-2610032150580455 was folded into itd-2610032150577708 and superseded; the home network without Tailscale became the later draft itd-2610040740108331. The product thinker named later additions in their own words, routed by the facilitator as two more drafts: acting from the dashboard (itd-2610040740122709) and the dashboard for more people (itd-2610040740135705). The original SPLIT survived as to the ADR; the capability split was re-cut by the product thinker's revision.
+
+## 2026-10-04: the dashboard and the public site for every abcd-managed project (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| the private dashboard works on any abcd-managed project, proven on a second, sparse sample project | capability | intent itd-2610040754440360 (draft, later) |
+| the public record site for any abcd-managed project | capability | intent itd-2610040754453237 (draft, later) |
+| no genericity claim without a second instance | standing rule | existing discipline itd-140, reused |
+
+Links: itd-2610040754440360 builds on itd-2610032150577708; both return, for later, the promise given up at that intent's decision 13 (reversal flag raised in the routing question, confirmed). Verdict proposed: FILE-AS-IS, offered beside two ideas and later; the product thinker chose one idea with the proof inside, then filed the public site as "a separate intent for later, not now". Routing survived confirmation: yes.
