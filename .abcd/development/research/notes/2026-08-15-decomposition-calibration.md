@@ -2223,3 +2223,13 @@ Links: refines itd-3's setup interview. Verdict proposed: SPLIT, offered beside 
 | one wrap-to-window helper extended from the banner's fixed-width wrap | plumbing | the issue's remedy (one-canonical-primitive) |
 
 Links: itd-2610031215002409 builds on itd-2610031214560142 and itd-2610030810370060; interacts with iss-2609201954342967 (board rows) and itd-200 (role colours). Verdict proposed: SPLIT, offered beside tidy only, the board alone, and later; the product thinker chose the board plus a menu, then asked "two drafts, one bundle?", answered as two drafts with the bundle decided at planning, since a new bundle forms only there. Routing survived confirmation: yes (the menu was kept as its own draft). The reversal flag (the board setting the status would reverse the board's zero-writes promise and the status's "answer owed" meaning) was put as an option and not chosen; the product thinker added a "view for" label in the role colours instead.
+
+## 2026-10-04: the brief as target design, traced to what realises it (product thinker, routing decided by the facilitator)
+
+| part | type | home |
+|---|---|---|
+| each brief section shows what realises it; a brief change names what it touches and proposes its meaning | capability | intent itd-2610040817105016 (draft) |
+| a brief edit's implied intents drawn out | capability | existing itd-61, refined |
+| the tense of a brief | working hypothesis | the decision log, and itd-61, itd-142, itd-143 |
+
+Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "we should file what we've decided" (one defensible routing: the mechanics are one capability; the hypothesis is not yet a ruling). Routing not put to a separate question; graded as unconfirmed.
