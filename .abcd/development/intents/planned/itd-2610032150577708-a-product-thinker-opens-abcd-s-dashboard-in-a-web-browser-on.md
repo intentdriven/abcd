@@ -52,6 +52,8 @@ Typed links: builds on itd-2610031214560142 (the board: the same picture, from t
 18. 2026-10-04, the facilitator (decided, not asked: one split by what each needs): the later additions are three drafts: the home network without Tailscale (itd-2610040740108331); acting from the dashboard, rewriting the brief and approving intents (itd-2610040740122709); the dashboard for more people, the technical facilitator's view and other team members, configurable (itd-2610040740135705).
 19. 2026-10-04, the product thinker accepted the eight criteria below one at a time (criterion 6 as rewritten), and, wearing the facilitator's hat, the technical checks as one list.
 20. 2026-10-04, the facilitator (decided, not asked: a new capability, nothing removed): impact additive.
+21. 2026-10-04, the product thinker wearing the facilitator's hat, told by the spec writer that Tailscale Serve hides which device connects, so the identity check cannot be met behind it, and asked for the route (listen on the computer's own Tailscale addresses with Tailscale's certificate; embed Tailscale as its own device, a new dependency; keep Serve and trust its header; decide later): the computer's own Tailscale addresses. The first technical check is reworded to it, and no new dependency is added.
+22. 2026-10-04, the facilitator (decided, not asked: a rule is in force when the code that enforces it lands): adr-2610032150581128 is accepted in the change that lands the spec's step 1, with brief invariant 7's inbound clause.
 
 ## Mechanism
 
@@ -78,7 +80,7 @@ _The product thinker's checks, accepted one at a time on 2026-10-04:_
 
 _Technical checks, accepted as one list on 2026-10-04 (facilitator's hat):_
 
-- Given the dashboard runs, when its listeners are enumerated, then it listens on loopback only, published by Tailscale Serve and never Funnel, and a test proves one package alone opens a listener.
+- Given the dashboard runs, when its listeners are enumerated, then it listens on this computer's own Tailscale addresses only, over HTTPS with Tailscale's certificate, never through Serve or Funnel, and a test proves one package alone opens a listener.
 - Given a request arrives through Tailscale, when the dashboard decides who it is from, then it asks Tailscale's own lookup of the connecting device and never trusts a header a local program could write.
 - Given any request, when it is served, then only expected host names are answered, server timeouts and size caps apply, every viewer shares one snapshot of the project, and live-update connections are capped.
 - Given any page, when it is drawn, then it comes from the record site's one renderer with records looked up by id, no file is served from a requested path, the content-security policy is self only with no framing, and a test proves nothing is loaded from off the host.
