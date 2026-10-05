@@ -23,9 +23,9 @@ import "strings"
 //
 //	'\''
 //
-// The empty string is the empty word, ”. (The spelling sits in a code block
-// because gofmt rewrites a doubled apostrophe in doc-comment prose to a
-// typographic quote.)
+// The empty string is the empty word, two quotes with nothing between. (The
+// escape's spelling sits in a code block because gofmt rewrites a doubled
+// apostrophe in doc-comment prose to a typographic quote.)
 func Single(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

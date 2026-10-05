@@ -57,9 +57,10 @@ const quoteSpelling = `'\''`
 
 // quotingCopies reports each place f spells the single-quote escape as the
 // REPLACEMENT of a strings call, which is the shape of a private copy of
-// Single: strings.ReplaceAll(s, "'", `'\”`), strings.Replace(..., n), or a
-// strings.NewReplacer pair. The inverse, a parser turning the four bytes back
-// into a quote, passes the spelling as the text to find, and is not a copy.
+// Single: a strings.ReplaceAll that replaces a quote with the four bytes, a
+// strings.Replace with a count, or a strings.NewReplacer pair. The inverse, a
+// parser turning the four bytes back into a quote, passes the spelling as the
+// text to find, and is not a copy.
 func quotingCopies(fset *token.FileSet, f *ast.File) []int {
 	var lines []int
 	isSpelling := func(e ast.Expr) bool {
