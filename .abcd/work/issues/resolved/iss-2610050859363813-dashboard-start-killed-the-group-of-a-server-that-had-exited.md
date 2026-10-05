@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/dashboard/control.go"
 remedy: "Give a failed configuration write the exit grace a closed readiness pipe gets, and have start reap the server itself with wait4(WNOHANG) so it signals a group only while the server is unreaped."
+resolution: "fixed in #828: a failed configuration write gets the exit grace, and start reaps the server itself so it never signals a reaped group"
+impact: fix
+resolved_by:
+  commit: "2cfb18d8a599f24653dc416ee1cd8ec7f3abc1ee"
 ---
 
 On the Linux CI race lane, TestStartNeverSignalsAServerThatAlreadyExited failed in 0.03s: dashboard start killed the process group of a server that had already exited. A server that exits at once closes its configuration pipe before start writes to it; on Linux the write fails with EPIPE, and start treated that error as a stuck server and killed its group at once, while a concurrent cmd.Wait could already have reaped it, so the group number could by then name another program's processes. macOS passed only because the write lands in the pipe first.
