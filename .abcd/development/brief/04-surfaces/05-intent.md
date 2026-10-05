@@ -150,7 +150,7 @@ role of intent-auditor populates findings here.>
 ```
 
 **Two body idioms are in the tree.** The template above is what the first seven
-disciplines follow. The seven written since (itd-190 onwards) head the rule
+disciplines follow. The eight written since (itd-190 onwards) head the rule
 `## The rule` and carry `## The gate`, `## Fit` and `## Staging` in place of the
 scope, acceptance and reference sections: a shorter shape that says what the rule
 is, what holds it, where it fits and how far it is armed. Nothing arbitrates
@@ -166,7 +166,7 @@ is open work.
 
 Until then, `kind_notes` is the free-text descriptor.
 
-**The first trigger has fired, and the enum has not been drawn.** Fourteen
+**The first trigger has fired, and the enum has not been drawn.** Fifteen
 disciplines are in the tree and every one of them carries a `kind_notes` value,
 against a threshold of three. What is outstanding is the judgement the trigger
 asks for: whether those descriptors fall into shapes a closed enum could name.
@@ -404,7 +404,8 @@ production_mode: hand-written # how the text was produced: hand-written | dictat
                             #   the population/platform/scale/assumptions the claim holds under, each
                             #   condition carrying a persistent identity that survives edits to its
                             #   text — or the explicit nullity "none stated". An absent section (no
-                            #   conditions AND no nullity) exits the gate non-zero, naming the field
+                            #   conditions AND no nullity) is reported on the advisory row, naming the
+                            #   field, and never withholds readiness
 
 ## Grounds                  # Required at the readiness gate for a press-release intent (a discipline
                             #   record is exempt). One bullet per gate decision, appended by
@@ -491,7 +492,7 @@ Both the press-release intent and the frozen PRD are immutable input artefacts p
 
 The invariants below are the contract the tree is held to, and each names what holds it. A bullet marked **(convention)** is practice the corpus follows by hand, with no shipped check behind it:
 
-- **Acceptance criteria present and well-formed** (per the itd-1 discipline): an intent cannot be planned without a `## Acceptance Criteria` section carrying at least one Given-When-Then bullet. The block is at plan time, not in the record-lint: the refusal is the intent package's own `hasAcceptanceCriteria` check on a draft, plus the `acceptance_criteria` row of the readiness gate. Everything in `planned/` and `shipped/` has therefore passed it. The two buckets the plan step never crosses are held by hand and are **(convention)**: a draft still on the bench may carry none, and so may a discipline, whose route into `disciplines/` does not run through planning at all. Both are true of this corpus today — four bench drafts and seven of the fourteen disciplines carry no section. No record-lint rule reads it, so a committed intent that lost one still passes the gate.
+- **Acceptance criteria present and well-formed** (per the itd-1 discipline): an intent cannot be planned without a `## Acceptance Criteria` section carrying at least one Given-When-Then bullet. The block is at plan time, not in the record-lint: the refusal is the intent package's own `hasAcceptanceCriteria` check on a draft, plus the `acceptance_criteria` row of the readiness gate. Everything in `planned/` and `shipped/` has therefore passed it. The two buckets the plan step never crosses are held by hand and are **(convention)**: a draft still on the bench may carry none, and so may a discipline, whose route into `disciplines/` does not run through planning at all. Both are true of this corpus today — four bench drafts and eight of the fifteen disciplines carry no section. No record-lint rule reads it, so a committed intent that lost one still passes the gate.
 - **A planned intent declares the state of the art** (per [sota-per-intent](../../principles/sota-per-intent.md)): a `## SOTA` section naming the existing alternatives, each one's rough maturity, and the path taken. `intent_sota` flags a `planned/` intent with no such section, or with a heading and nothing under it, at warn severity — the warn-first rung of a ratchet whose next rung is blocker once the planned bucket is back-filled. It judges presence, not the path's spelling, and reads neither `drafts/` (not yet shaped) nor `shipped/` (history, most of it older than the principle).
 - **`kind` is set on intents in `planned/`, `shipped/`, `disciplines/`, and `superseded/`.** Intents in `drafts/` may have `kind: null`. The shipped plan step neither infers a kind nor asks for one: it writes `standalone` wherever the draft left the field null, so `standalone` is what an unstated kind becomes. **A later phase** replaces that default with the proposal the user confirms or overrides (§ 1, "Later phase — plan grows a PRD-freeze front end and multi-kind dispatch"). What the record lint holds meanwhile is the value set per bucket: a draft's kind must be null, `standalone` or `bundle-member`, and a planned or shipped record's must be one of the latter two, non-null (`intent_lifecycle`).
 - **`kind: bundle-member` requires a `bundle:` field** pointing to a bundle ID; *all* members of a bundle reference the same bundle ID, and bundles are bidirectional in their members' frontmatter. `record_schema` refuses a bundle-member naming a bundle no other record names, unless its `reclassification_history` states the bundle now has one member (the survivor a supersession leaves); a bundle-member carrying no `bundle:` at all is **(convention)**, since both writers stamp the name and the shipped records without one are settled. **Exception for superseded bundle-members:** intents in `superseded/` with `kind_at_supersession: bundle-member` carry `bundle: null` AND `bundle_at_supersession: <bundle-id>` (preserves the bundle the intent was part of when retired, while signalling the bundle is no longer active); the reclassify verb writes both, and no lint reads `bundle_at_supersession`.
