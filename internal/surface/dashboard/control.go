@@ -45,6 +45,36 @@ const (
 	childConfigWire = 1
 )
 
+// killGroup kills the process group start launched the server in. Only a
+// test replaces it, to see whether start signals.
+var killGroup = func(pid int) error { return syscall.Kill(-pid, syscall.SIGKILL) }
+
+// setKillGroupForTest replaces killGroup and returns the restore.
+func setKillGroupForTest(f func(pid int) error) (restore func()) {
+	old := killGroup
+	killGroup = f
+	return func() { killGroup = old }
+}
+
+// exitGrace is how long start waits for a server that said it is exiting
+// to exit, before it kills its group.
+const exitGrace = 2 * time.Second
+
+// errServerExited is readReady's answer when the readiness pipe closes with
+// nothing on it: the server exited before it was listening.
+var errServerExited = errors.New("the dashboard server exited before it was listening")
+
+// serverRefusal is the server's own refusal, reported over the readiness
+// pipe before it exits. It is a Refusal to the front door.
+type serverRefusal struct{ Refusal }
+
+func (r *serverRefusal) Unwrap() error { return &r.Refusal }
+
+func isServerRefusal(err error) bool {
+	var r *serverRefusal
+	return errors.As(err, &r)
+}
+
 // errProcessGone is readProcess's answer for a pid with no live process.
 var errProcessGone = errors.New("no such process")
 
@@ -245,8 +275,27 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 	// returns and exits, the server belongs to the system.
 	exited := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(exited) }()
+	// fail stops the server and returns err. A server that has exited is
+	// never signalled: Wait has reaped it, and its process group's number
+	// may already name another program's processes. One that said it is
+	// exiting (its readiness pipe closed, or it refused) is given exitGrace
+	// to do so before its group is killed.
 	fail := func(err error) (StartResult, error) {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		select {
+		case <-exited:
+			return StartResult{}, err
+		default:
+		}
+		if errors.Is(err, errServerExited) || isServerRefusal(err) {
+			grace := time.NewTimer(exitGrace)
+			defer grace.Stop()
+			select {
+			case <-exited:
+				return StartResult{}, err
+			case <-grace.C:
+			}
+		}
+		_ = killGroup(cmd.Process.Pid)
 		<-exited
 		return StartResult{}, err
 	}
@@ -262,7 +311,7 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 		return fail(err)
 	}
 	if !msg.OK {
-		return fail(refuse("the dashboard server refused to start: %s", msg.Error))
+		return fail(&serverRefusal{Refusal{msg: "the dashboard server refused to start: " + msg.Error}})
 	}
 	port := msg.Port
 	for _, a := range addrs {
@@ -299,7 +348,7 @@ func readReady(r *os.File) (readyMessage, error) {
 	go func() {
 		line, err := bufio.NewReader(io.LimitReader(r, 4096)).ReadBytes('\n')
 		if err != nil && len(line) == 0 {
-			ch <- result{err: errors.New("the dashboard server exited before it was listening")}
+			ch <- result{err: errServerExited}
 			return
 		}
 		var m readyMessage

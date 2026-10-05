@@ -193,6 +193,50 @@ func TestStartChecksItCanReachItself(t *testing.T) {
 	}
 }
 
+// TestStartNeverSignalsAServerThatAlreadyExited holds start's clean-up to
+// the server it launched: a server that has exited was reaped, so its
+// process group's number may by now name another program's processes, and
+// start must not kill that group. A server still running when start gives up
+// is killed through its group.
+func TestStartNeverSignalsAServerThatAlreadyExited(t *testing.T) {
+	var killed []int
+	restore := setKillGroupForTest(func(pid int) error {
+		killed = append(killed, pid)
+		return syscall.Kill(-pid, syscall.SIGKILL)
+	})
+	defer restore()
+	f := newFakeTailscale(t)
+	for _, c := range []struct {
+		name   string
+		script string
+	}{
+		{"exits at once", "exit 0"},
+		{"refuses and exits", `printf '%s\n' '{"ok":false,"error":"refused by the test"}' >&3`},
+	} {
+		killed = nil
+		opts := startOpts(t, f, t.TempDir())
+		opts.Launch = Launcher{Path: "/bin/sh", Args: []string{"-c", c.script}}
+		if _, err := Start(context.Background(), opts); err == nil {
+			t.Fatalf("%s: Start succeeded with a server that never listened", c.name)
+		}
+		if len(killed) != 0 {
+			t.Errorf("%s: start killed process group %v of a server that had already exited", c.name, killed)
+		}
+	}
+
+	// A server that reported it listens, on a port where nothing answers,
+	// is still running when the self-fetch fails: start kills its group.
+	killed = nil
+	opts := startOpts(t, f, t.TempDir())
+	opts.Launch = Launcher{Path: "/bin/sh", Args: []string{"-c", `printf '%s\n' '{"ok":true,"port":1}' >&3; exec sleep 30`}}
+	if _, err := Start(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "could not be reached") {
+		t.Fatalf("Start = %v, want the could-not-reach failure", err)
+	}
+	if len(killed) != 1 {
+		t.Errorf("start killed %v, want the one running server's group", killed)
+	}
+}
+
 func TestStartRefusesAServedPort(t *testing.T) {
 	f := newFakeTailscale(t)
 	f.write(t, "serve.json", `{"TCP":{"8080":{"HTTP":true}},"AllowFunnel":{"`+testName+`:8443":true}}`)
