@@ -143,9 +143,9 @@ case "${HOME:-}" in
 /*)
 	if [ -e "$HOME/.abcd" ] || [ -L "$HOME/.abcd" ]; then
 		if [ -e "$HOME/.abcd.noindex" ] || [ -L "$HOME/.abcd.noindex" ]; then
-			printf 'abcd: Both ~/.abcd and ~/.abcd.noindex exist, so abcd has written nothing and moves neither. Keep the one you want, named ~/.abcd.noindex, and take the other out of your home folder, reconnect the working copies kept there with `find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \\; -prune -exec git -C {} worktree repair \\;` (each `repair: gitdir incorrect` line it prints is a link it fixed), then run abcd again.\n' >&2
+			printf 'abcd: Both ~/.abcd and ~/.abcd.noindex exist, so abcd has written nothing and moves neither. Keep the one you want, named ~/.abcd.noindex, and take the other out of your home folder, reconnect the working copies kept there with `find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \\; -prune -exec test -f {}/.git \\; -exec git -C {} worktree repair \\;` (each `repair: gitdir incorrect` line it prints is a link it fixed), then run abcd again.\n' >&2
 		else
-			printf 'abcd: abcd'\''s folder is now ~/.abcd.noindex, a name the Mac'\''s search indexer passes over, and ~/.abcd still stands, so abcd has written nothing. Rename it with `mv ~/.abcd ~/.abcd.noindex`, reconnect the working copies kept there with `find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \\; -prune -exec git -C {} worktree repair \\;` (each `repair: gitdir incorrect` line it prints is a link it fixed), then run abcd again.\n' >&2
+			printf 'abcd: abcd'\''s folder is now ~/.abcd.noindex, a name the Mac'\''s search indexer passes over, and ~/.abcd still stands, so abcd has written nothing. Rename it with `mv ~/.abcd ~/.abcd.noindex`, reconnect the working copies kept there with `find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \\; -prune -exec test -f {}/.git \\; -exec git -C {} worktree repair \\;` (each `repair: gitdir incorrect` line it prints is a link it fixed), then run abcd again.\n' >&2
 		fi
 		exit 1
 	fi

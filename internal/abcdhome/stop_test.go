@@ -119,7 +119,7 @@ func TestStopLinesNameTheRenameAndTheRepair(t *testing.T) {
 	if RenameCommand != "mv ~/.abcd ~/.abcd.noindex" {
 		t.Errorf("RenameCommand = %q", RenameCommand)
 	}
-	if RepairCommand != `find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;` {
+	if RepairCommand != `find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;` {
 		t.Errorf("RepairCommand = %q", RepairCommand)
 	}
 	const fixedNote = "each `repair: gitdir incorrect` line it prints is a link it fixed"

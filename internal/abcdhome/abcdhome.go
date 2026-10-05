@@ -53,13 +53,15 @@ const RenameCommand = "mv ~/" + oldName + " ~/" + name
 // It finds each worktree by its .git file at any depth (iss-2610050728100598):
 // a worktree sits at worktrees/<root-sha>/<name>, one named after a slashed
 // branch a level or more deeper, and one left from before the root-sha key
-// directly under worktrees/. -prune stops the walk at each worktree it finds,
-// so the walk never enters a worktree's files and never runs git on a nested
-// repository inside one. It is one find with no shell variable and no quote,
-// so it runs as printed from sh, bash and zsh, and a path holding a space
-// reaches git as one argument. The "repair: gitdir incorrect" line git prints
+// directly under worktrees/. -prune stops the walk at every .git it meets, a
+// file or a folder, so the walk never enters a worktree's files, never runs
+// git on a nested repository inside one, and never enters a clone someone
+// placed in the store; the repair then runs only where .git is a file, a
+// linked worktree, so a clone's submodules keep their relative links. It is
+// one find with no shell variable and no quote, so it runs as printed from
+// sh, bash and zsh, and a path holding a space reaches git as one argument. The "repair: gitdir incorrect" line git prints
 // for each worktree is the link it fixed, and the stop lines say so.
-const RepairCommand = `find ~/` + name + `/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;`
+const RepairCommand = `find ~/` + name + `/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;`
 
 // repairFixedNote is what the stop lines add after RepairCommand: git words
 // each link it fixes as "repair: gitdir incorrect", which reads like a failure.

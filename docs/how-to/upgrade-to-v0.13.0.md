@@ -39,7 +39,7 @@ Do this once on each machine.
    delete their links:
 
    ```sh
-   find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;
+   find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;
    ```
 
    Each `repair: gitdir incorrect` line it prints is a link it fixed, not a
@@ -63,7 +63,7 @@ with the earlier plugin, it creates a new, small `~/.abcd` beside
 3. Run the repair line again:
 
    ```sh
-   find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;
+   find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;
    ```
 
 ## Refresh each managed project

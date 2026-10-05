@@ -208,7 +208,7 @@ mv ~/.abcd ~/.abcd.noindex
 ```
 
 ```sh
-find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;
+find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;
 ```
 
 The first renames the folder. The second reconnects the worktrees kept in it,

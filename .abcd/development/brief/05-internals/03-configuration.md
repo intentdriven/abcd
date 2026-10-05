@@ -522,8 +522,9 @@ back to it. While any entry stands there, a folder, a file or a link, every
 command, every hook and the status line write nothing and say the stop, each in
 its own form: the line names the rename, `mv ~/.abcd ~/.abcd.noindex`, and the
 repair that reconnects the store's moved worktrees, found by their `.git`
-file at any depth,
-`find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;`,
+file at any depth, its walk stopping at every `.git` so it never enters a
+worktree or a clone placed in the store,
+`find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;`,
 and says that each `repair: gitdir incorrect` line the repair prints is a link
 it fixed (`abcd ahoy` then names, read-only, any store worktree its repository
 still does not link back to, as the `store.worktree_unlinked` gap with that
