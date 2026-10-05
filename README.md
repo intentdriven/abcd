@@ -118,18 +118,13 @@ In a plugin session, inside a repository you own, `/abcd:prepare-this-repo` audi
 
 ```text
 $ abcd
-abcd — ~/code/your-repo
-  git repo:   yes
-  record:     yes
-  work tiers: development, work, work.local
-  presence:   abcd-managed · your-repo · main · itd 0 · iss 0
-  status:     Now 0 · Next 0 · Later 0
-    Now:
-      (none)
-    Next:
-      (none)
-    Later: 0 intents
+view for the product thinker
+● building: nothing right now
+○ next: nothing is ready
+• no more ready, nothing parked
 ```
+
+`abcd --view facilitator` shows the full board: the repository, the record, the work tiers, the presence line and every intent with its spec.
 
 
 ### Recording your first issue

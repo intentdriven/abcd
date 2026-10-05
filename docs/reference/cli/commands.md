@@ -35,10 +35,12 @@ and staleness it reports are unchanged.
 **Flags:**
 
 ```
-      --agent      with --help, list the verbs agents and hosts call as well, each naming the page to read next
-      --json       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
-      --no-color   render the banner without color
-      --version    print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
+      --agent           with --help, list the verbs agents and hosts call as well, each naming the page to read next
+      --format string   the board's form: text (the default) or markdown, a list a host session pastes unchanged
+      --json            emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
+      --no-color        render the banner and the board without color
+      --version         print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
+      --view string     the board's view: product (the default) or facilitator
 ```
 
 ### `abcd ahoy`

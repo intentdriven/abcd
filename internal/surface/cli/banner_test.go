@@ -67,7 +67,7 @@ func TestBareInvocationMachineStreamClean(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(io.Discard)
-	root.SetArgs([]string{})
+	root.SetArgs([]string{"--view", "facilitator"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("bare invocation: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestBareInvocationMachineStreamClean(t *testing.T) {
 	}
 	// The heading breaks after the dash when the checkout's path is longer
 	// than the window (iss-2610031207397996), so the shape is its lead.
-	if !strings.HasPrefix(s, "abcd —") {
+	if !strings.HasPrefix(s, "view for the facilitator\nabcd —") {
 		t.Fatalf("status board changed shape: %q", bannerFirstLine(s))
 	}
 }
@@ -102,12 +102,16 @@ func TestBannerRendersAboveBoard(t *testing.T) {
 	// worktrees of the checkout it runs in, and a peer session creating one
 	// between the two renders below would change the board's bytes.
 	t.Chdir(t.TempDir())
+	// On a Terminal the board paints its own view label (spc-2610031844142274),
+	// so both renders are drawn without colour: what differs is then the banner
+	// alone.
+	t.Setenv("NO_COLOR", "1")
 	bare := func() string {
 		root := NewRootCommand()
 		var out bytes.Buffer
 		root.SetOut(&out)
 		root.SetErr(io.Discard)
-		root.SetArgs([]string{})
+		root.SetArgs([]string{"--view", "facilitator"})
 		if err := root.Execute(); err != nil {
 			t.Fatalf("bare invocation: %v", err)
 		}

@@ -22,6 +22,9 @@ import (
 // consumer of the render, not a third owner of its words.
 type boardOutput struct {
 	core.StatusInfo
+	// View names the view asked for (spc-2610031844142274): product-thinker
+	// or facilitator. --json carries every field whichever view it names.
+	View string `json:"view"`
 	// Statusline is present in a managed checkout and omitted — not null —
 	// everywhere else, the collection convention of every --json envelope.
 	Statusline *boardStatusline `json:"statusline,omitempty"`

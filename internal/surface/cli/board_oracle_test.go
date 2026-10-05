@@ -61,7 +61,7 @@ func TestBoardOracleLinesShowEveryLayerWithTheWinnerMarked(t *testing.T) {
 		`{"schema_version":1,"agents":{"scribe":{"tier":"frontier"}}}`,
 		`{"schema_version":1,"agents":{"scribe":{"tier":"local"}}}`)
 
-	stdout, stderr, err := runCLISplit(t)
+	stdout, stderr, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatalf("board: %v\n%s", err, stderr)
 	}
@@ -116,7 +116,7 @@ func TestBoardOracleLinesShowEveryLayerWithTheWinnerMarked(t *testing.T) {
 // board is unchanged, and the JSON omits the member rather than nulling it.
 func TestBoardOmitsOracleLinesWhenNothingIsAccepted(t *testing.T) {
 	oracleBoardCheckout(t, "", "")
-	stdout, _, err := runCLISplit(t)
+	stdout, _, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestBoardOmitsOracleLinesWhenNothingIsAccepted(t *testing.T) {
 func TestBoardReportsAnOrphanRowAndAMalformedTableOnStderr(t *testing.T) {
 	setBoardWidth(t, wideBoard)
 	oracleBoardCheckout(t, `{"schema_version":1,"agents":{"ghost-agent":{"tier":"local"}}}`, "")
-	stdout, stderr, err := runCLISplit(t)
+	stdout, stderr, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestBoardReportsAnOrphanRowAndAMalformedTableOnStderr(t *testing.T) {
 	}
 
 	oracleBoardCheckout(t, `{"schema_version":1,"agents":{"scribe":{"tier":"cheap"}}}`, "")
-	stdout, stderr, err = runCLISplit(t)
+	stdout, stderr, err = runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatalf("a malformed routing table failed the board: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestBoardReadsTheRoutingTableFromTheRulesRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(member)
-	stdout, stderr, err := runCLISplit(t)
+	stdout, stderr, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatalf("board: %v\n%s", err, stderr)
 	}

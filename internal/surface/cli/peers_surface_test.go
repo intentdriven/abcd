@@ -135,7 +135,7 @@ func TestTheBoardCarriesAPeersLineOnlyWhenPeersHoldSomething(t *testing.T) {
 	if out := string(runCLI(t, "peers")); !strings.Contains(out, "no peers") {
 		t.Fatalf("a checkout with no peers must say so:\n%s", out)
 	}
-	if out := string(runCLI(t)); strings.Contains(out, "peers:") {
+	if out := string(runCLI(t, "--view", "facilitator")); strings.Contains(out, "peers:") {
 		t.Fatalf("the board carries a peers line with no peers:\n%s", out)
 	}
 	var board map[string]any
@@ -147,7 +147,7 @@ func TestTheBoardCarriesAPeersLineOnlyWhenPeersHoldSomething(t *testing.T) {
 	}
 
 	addPeer(t, home, repo, "a")
-	out := string(runCLI(t))
+	out := string(runCLI(t, "--view", "facilitator"))
 	if !strings.Contains(out, "peers:") || !strings.Contains(out, "1 record") || !strings.Contains(out, "1 live peer") {
 		t.Fatalf("the board lacks the peers line (live-peer and id counts):\n%s", out)
 	}
