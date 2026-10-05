@@ -512,7 +512,8 @@ reporting the readiness gate. The role may change the intent's record and
 nothing else: any other path that changes while a turn runs stops the
 interview, exit 1, naming each, whether git tracks it, ignores it (the local
 tier's push receipts and handover included) or keeps it in its own directory (a
-hook, the git configuration, HEAD and the refs, a submodule's hooks, each
+hook, the git configuration, HEAD and the refs, a submodule's hooks,
+configuration, HEAD and refs, each
 worktree's entry: its HEAD, common directory, working-tree path, own
 configuration and lock), or it is a push receipt in any worktree git lists, and
 whatever wrote it, since abcd cannot tell the role's writes from another
@@ -531,14 +532,17 @@ stops the interview, exit 1, naming the link, the `core.hooksPath` value or
 the receipts directory. git's own directory and common directory are the ones
 the interview's first reading found: a linked worktree's `.git` file or a
 `commondir` file changed during a turn stops the interview, naming the file,
-and neither git nor abcd reads where it leads. What one reading hashes (the
+and neither git nor abcd reads where it leads; a working tree git names other
+than the first reading's (a `core.worktree` set since) stops the interview
+before git reads it. What one reading hashes (the
 paths git lists, git's own directory) is held to 2 GiB, and the files git
 reads whole on every command (`HEAD`, the configuration, the packed refs,
-`info/exclude`) are sized against the same 2 GiB before git runs; a reading
+`info/exclude`, in git's own directory and in each submodule's) are sized
+against the same 2 GiB before git runs; a reading
 past it stops the interview, exit 1, naming the file (the largest, when the
-paths git lists hold more). A large file of the person's own belongs in
-`.gitignore`: an ignored path is read by its size and modification time, never
-its content. The changed-paths
+paths git lists hold more). A large untracked file of the person's own belongs
+in `.gitignore`: an ignored path is read by its size and modification time,
+never its content; a large tracked one is restored or committed. The changed-paths
 refusal is `refused: "unexpected_changes"` under `--json`, with every path
 changed in the turn in `changed_paths`; relay the paths to the person to read
 and restore. The plan act (step 10) stays the product thinker's, at the command
