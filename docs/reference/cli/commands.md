@@ -270,9 +270,9 @@ pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else 
 ~/.abcd.noindex/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run
 record name each number's layer. A malformed pace or ceiling, typed or configured, is
 refused naming the value and the accepted form, and writes nothing. Starting again keeps
-the run's pace; a flag naming another is refused. The window and the pause bind through
-`abcd implement step`; the ceiling is recorded with the run, and this build does not
-count lanes against it. A lane whose validators still do not pass after its fix rounds is
+the run's pace; a flag naming another is refused. The window, the pause and the ceiling
+bind through `abcd implement step`, which hands out work only while a slot under the
+ceiling is free. A lane whose validators still do not pass after its fix rounds is
 handed back: it stops as unachievable with the last round's findings, the run starts nothing
 further for it, and `abcd implement step` refuses naming the hand-back.
 
