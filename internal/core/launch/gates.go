@@ -923,7 +923,10 @@ func DirtyTreeFiles(repoRoot string) ([]string, error) {
 	if _, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "HEAD^{commit}"); err != nil {
 		return nil, fmt.Errorf("no commit to compare the working tree against: %w", err)
 	}
-	changed, err := gitutil.Run(repoRoot, "diff", "--name-only", "-z", "HEAD")
+	// --no-renames: with git's default rename detection a staged move is
+	// listed by its destination alone, so a file moved out of a folder a
+	// caller filters on would vanish from the list; both halves are named.
+	changed, err := gitutil.Run(repoRoot, "diff", "--no-renames", "--name-only", "-z", "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
 	}

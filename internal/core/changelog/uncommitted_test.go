@@ -1,6 +1,8 @@
 package changelog
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -57,6 +59,36 @@ func TestDeriveRefusesUncommittedRecords(t *testing.T) {
 		}
 		if d.RefusalKind != RefusalUncommittedRecords || !strings.Contains(d.RefusalReason, shippedDir+"itd-2-second.md") {
 			t.Fatalf("kind=%q reason=%q, want the uncommitted-records refusal naming the deleted record", d.RefusalKind, d.RefusalReason)
+		}
+	})
+
+	// git's default rename detection reports a staged move by its destination
+	// alone, so a record pulled back out of a terminal folder would leave only
+	// a path the cut does not read: the move must name its source too.
+	t.Run("a staged move out of a terminal folder is refused, naming the source", func(t *testing.T) {
+		r := releasedRepo(t)
+		r.record(shippedDir+"itd-2-second.md", "itd-2", "fix")
+		r.record(resolvedDir+"iss-9-nine.md", "iss-9", "fix")
+		r.commit("ship a fix and resolve an issue")
+		for _, dir := range []string{plannedDir, wontfixDir} {
+			if err := os.MkdirAll(filepath.Join(r.root, dir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r.git("mv", shippedDir+"itd-2-second.md", plannedDir+"itd-2-second.md")
+		r.git("mv", resolvedDir+"iss-9-nine.md", wontfixDir+"iss-9-nine.md")
+
+		d, err := Derive(r.root)
+		if err != nil {
+			t.Fatalf("Derive: %v", err)
+		}
+		if d.RefusalKind != RefusalUncommittedRecords {
+			t.Fatalf("Refused=%v kind=%q next=%q, want the uncommitted-records refusal", d.Refused, d.RefusalKind, d.NextTag)
+		}
+		for _, want := range []string{shippedDir + "itd-2-second.md", resolvedDir + "iss-9-nine.md"} {
+			if !strings.Contains(d.RefusalReason, want) {
+				t.Errorf("reason does not name the moved record's source %q: %s", want, d.RefusalReason)
+			}
 		}
 	})
 
