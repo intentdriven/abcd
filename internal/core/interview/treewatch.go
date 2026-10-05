@@ -26,13 +26,15 @@ package interview
 //     by the role stops the interview.
 //   - git's own directory, which no status lists: every entry of hooks/ and
 //     info/, the configuration (config, and config.worktree), HEAD, the refs
-//     (refs/ and packed-refs), each submodule's hooks and configuration under
-//     modules/, and a linked worktree's .git file, by mode, size and content
-//     hash. A hook runs on the person's next git command, the configuration
-//     can name a hooks directory, an alias or a credential helper, and HEAD
-//     and the refs decide what the next commit or push carries. In a linked
-//     worktree these live in the repository's common directory and are read
-//     there, besides the worktree's own HEAD and config.worktree. Every
+//     (refs/ and packed-refs), each submodule's git directory under modules/
+//     (read as the common directory is: git status runs status inside a
+//     populated submodule), and a linked worktree's .git file, by mode, size
+//     and content hash. A hook runs on the person's next git command, the
+//     configuration can name a hooks directory, an alias or a credential
+//     helper, and HEAD and the refs decide what the next commit or push
+//     carries. In a linked worktree these live in the repository's common
+//     directory and are read there, besides the worktree's own HEAD and
+//     config.worktree. Every
 //     worktree's entry under the common directory's worktrees/ is read too:
 //     the entry itself, so one made or removed is noticed, and its HEAD,
 //     commondir, gitdir, config.worktree and locked, which decide where git
@@ -60,10 +62,11 @@ package interview
 // that place them, a linked worktree's .git file and the git directory's
 // commondir: one changed since is named as a change, and neither git nor the
 // reading follows where it leads. It then sizes the files git reads whole on
-// every command (HEAD, the configuration, the packed refs, info/exclude)
-// against maxHashedBytes, which also bounds what the reading hashes of the
-// paths git lists and of git's own directory, so a file a role grows there is
-// refused, named, before it is read.
+// every command (HEAD, the configuration, the packed refs, info/exclude), in
+// those directories and in each submodule's git directory, against
+// maxHashedBytes, which also bounds what the reading hashes of the paths git
+// lists and of git's own directory, so a file a role grows there is refused,
+// named, before it is read.
 //
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
@@ -206,6 +209,9 @@ type treeReader struct {
 	// pin placed them when it is set and as git names them when it is not.
 	gitDir, common string
 	pin            *gitPin
+	// modules are the submodules' git directories under common's modules/,
+	// relative to common, as sizeGitReads found them.
+	modules []string
 }
 
 // gitPin is where a run's first reading found git's own directory and
@@ -356,26 +362,38 @@ func (r *treeReader) placeGitDirs() error {
 
 // gitDirReadsWhole and commonReadsWhole are the files git reads whole on
 // every command, the status listing's included, in git's own directory and
-// in the common directory. Other files git reads there bound themselves: a
-// loose ref and the index are refused at their first bytes when they are not
-// one, and the configuration at its first line.
+// in the common directory, and in each submodule's git directory, which git
+// status reads as it runs status inside the submodule. Other files git reads
+// there bound themselves: a loose ref and the index are refused at their
+// first bytes when they are not one, and the configuration at its first line.
 var (
 	gitDirReadsWhole = []string{"HEAD", "commondir", "config.worktree"}
 	commonReadsWhole = []string{"config", "packed-refs", "info/exclude"}
 )
 
 // sizeGitReads sizes what git reads whole on every command, where links
-// lead, refusing past what is left of maxHashedBytes before git runs, naming
-// the largest: git reads it before the reading can bound its own hashing of
-// it, so a file a role grows there would otherwise hold the turn while git
-// read it.
+// lead, in git's own directory, the common directory and every submodule's
+// git directory under the common directory's modules/, refusing past what is
+// left of maxHashedBytes before git runs, naming the largest: git reads it
+// before the reading can bound its own hashing of it, so a file a role grows
+// there would otherwise hold the turn while git read it.
 func (r *treeReader) sizeGitReads() error {
-	var total, largest int64
-	var largestKey string
-	for _, at := range []struct {
+	mods, err := moduleGitDirs(r.common)
+	if err != nil {
+		return err
+	}
+	r.modules = mods
+	type place struct {
 		dir   string
 		files []string
-	}{{r.gitDir, gitDirReadsWhole}, {r.common, commonReadsWhole}} {
+	}
+	places := []place{{r.gitDir, gitDirReadsWhole}, {r.common, commonReadsWhole}}
+	for _, m := range mods {
+		places = append(places, place{filepath.Join(r.common, filepath.FromSlash(m)), slices.Concat(gitDirReadsWhole, commonReadsWhole)})
+	}
+	var total, largest int64
+	var largestKey string
+	for _, at := range places {
 		for _, f := range at.files {
 			fi, err := os.Stat(filepath.Join(at.dir, filepath.FromSlash(f)))
 			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
@@ -672,12 +690,12 @@ func (r *treeReader) readGitDirs() error {
 			return err
 		}
 	}
-	for _, rel := range []string{"hooks", "info", "config", "config.worktree", "HEAD", "packed-refs", "refs"} {
+	for _, rel := range gitDirEntries {
 		if err := r.hashIn(common, rel); err != nil {
 			return err
 		}
 	}
-	if err := r.readModules(common); err != nil {
+	if err := r.readModules(); err != nil {
 		return err
 	}
 	if err := r.readWorktrees(common); err != nil {
@@ -827,25 +845,47 @@ func (r *treeReader) readReceipts() error {
 	return nil
 }
 
-// readModules records the hooks and the configuration of every submodule's
-// git directory under common's modules/. A directory there holding a HEAD, a
-// config or a hooks entry is a submodule's git directory, and its own
-// modules/ is read the same way; any other directory is the leading part of
-// a submodule's name, which may hold a slash, and is read through. A link is
-// never followed.
-func (r *treeReader) readModules(common string) error {
-	root, err := os.OpenRoot(common)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+// gitDirEntries are the entries of a common directory, and of each
+// submodule's git directory, read by mode, size and content hash.
+var gitDirEntries = []string{"hooks", "info", "config", "config.worktree", "HEAD", "packed-refs", "refs"}
+
+// readModules records every submodule's git directory sizeGitReads found
+// under the common directory's modules/ as the common directory is read
+// (gitDirEntries): git status runs status inside a populated submodule, and
+// the submodule's hooks, configuration, HEAD and refs decide what runs there
+// and what its next commit or push carries.
+func (r *treeReader) readModules() error {
+	for _, m := range r.modules {
+		for _, rel := range gitDirEntries {
+			if err := r.hashIn(r.common, path.Join(m, rel)); err != nil {
+				return err
+			}
+		}
 	}
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-	return r.readModulesIn(root.FS(), common, "modules")
+	return nil
 }
 
-func (r *treeReader) readModulesIn(fsys fs.FS, common, dir string) error {
+// moduleGitDirs is every submodule's git directory under common's modules/,
+// relative to common and slash-separated. A directory there holding a HEAD, a
+// config or a hooks entry is a submodule's git directory, and its own
+// modules/ is read the same way; any other directory is the leading part of a
+// submodule's name, which may hold a slash, and is read through. A link is
+// never followed.
+func moduleGitDirs(common string) ([]string, error) {
+	root, err := os.OpenRoot(common)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	var out []string
+	err = moduleGitDirsIn(root.FS(), "modules", &out)
+	return out, err
+}
+
+func moduleGitDirsIn(fsys fs.FS, dir string, out *[]string) error {
 	entries, err := fs.ReadDir(fsys, dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -858,18 +898,11 @@ func (r *treeReader) readModulesIn(fsys fs.FS, common, dir string) error {
 			continue
 		}
 		sub := path.Join(dir, e.Name())
-		if !isGitDir(fsys, sub) {
-			if err := r.readModulesIn(fsys, common, sub); err != nil {
-				return err
-			}
-			continue
+		if isGitDir(fsys, sub) {
+			*out = append(*out, sub)
+			sub = path.Join(sub, "modules")
 		}
-		for _, rel := range []string{"hooks", "config"} {
-			if err := r.hashIn(common, path.Join(sub, rel)); err != nil {
-				return err
-			}
-		}
-		if err := r.readModulesIn(fsys, common, path.Join(sub, "modules")); err != nil {
+		if err := moduleGitDirsIn(fsys, sub, out); err != nil {
 			return err
 		}
 	}

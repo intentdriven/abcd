@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview: the guard
@@ -1299,4 +1300,78 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 			t.Fatalf("record %+v", rec)
 		}
 	})
+}
+
+// withSubmodule adds a tracked, populated submodule named sub to r, whose
+// git directory git places under the common directory's modules/: git status
+// in the checkout runs status inside it, which reads that git directory too.
+func withSubmodule(t *testing.T, r *writtenRun) {
+	t.Helper()
+	src := gittest.NewRepo(t)
+	src.Write("lib.txt", "lib\n")
+	src.Commit("lib")
+	r.git.Git("-c", "protocol.file.allow=always", "submodule", "add", "-q", src.Root(), "sub")
+	r.git.Commit("submodule")
+	if _, err := os.Stat(filepath.Join(r.repo, ".git", "modules", "sub", "HEAD")); err != nil {
+		t.Fatalf("the submodule's git directory is not under modules/: %v", err)
+	}
+}
+
+// TestASubmodulesGitDirectoryIsSizedAndWatched: git status runs status inside
+// every populated submodule, which reads the submodule's git directory under
+// modules/ whole as it reads the checkout's own, so those files are sized
+// before git runs, against the same bound, and read as the common directory
+// is. A role growing a submodule's packed refs is refused promptly, the file
+// named, rather than held while git reads it, and a small write there is
+// named.
+func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
+	t.Run("a submodule's packed refs grown past the bound is refused before git runs", func(t *testing.T) {
+		r := newWrittenRun(t, "")
+		withSubmodule(t, r)
+		pin := &gitPin{}
+		if _, err := readTreePinned(r.repo, "", pin); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.OpenFile(filepath.Join(r.repo, ".git", "modules", "sub", "packed-refs"), os.O_RDWR|os.O_CREATE, 0o644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
+			t.Fatal(err)
+		}
+		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
+		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
+			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/modules/sub/packed-refs", err)
+		}
+	})
+
+	for _, c := range []struct{ name, path string }{
+		{name: "a small write to a submodule's packed refs", path: ".git/modules/sub/packed-refs"},
+		{name: "a submodule's HEAD moved", path: ".git/modules/sub/HEAD"},
+		{name: "a new ref in a submodule", path: ".git/modules/sub/refs/heads/planted"},
+	} {
+		t.Run(c.name+" is named", func(t *testing.T) {
+			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+			r := newWrittenRun(t, routedToClaude)
+			withSubmodule(t, r)
+			head := r.git.Git("-C", "sub", "rev-parse", "HEAD")
+			body := map[string]string{
+				".git/modules/sub/packed-refs":        head + " refs/heads/packed\n",
+				".git/modules/sub/HEAD":               head + "\n",
+				".git/modules/sub/refs/heads/planted": head + "\n",
+			}[c.path]
+			stubAlso(t, script, 2, map[string]string{c.path: body})
+			res, err := r.w.Run(context.Background())
+			var uc *UnexpectedChangesError
+			if !errors.As(err, &uc) || !slices.Equal(uc.Paths, []string{c.path}) {
+				t.Fatalf("err = %v, want the interview stopped on %s alone", err, c.path)
+			}
+			if len(r.asked) != 1 || len(r.finished) != 0 {
+				t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the change", len(r.asked), len(r.finished))
+			}
+			if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
+				t.Fatalf("record %+v", rec)
+			}
+		})
+	}
 }
