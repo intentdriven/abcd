@@ -1,6 +1,8 @@
 package ahoy
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,4 +140,33 @@ func treeListing(t *testing.T, dir string) string {
 		t.Fatal(err)
 	}
 	return strings.Join(names, "\n")
+}
+
+// TestManagedContextReportsAnEndedContextAsItself: in a checkout with no
+// marker block, Managed asks git for the root commit. Under a context that
+// has ended it says so with the context's error, never a plain "not managed",
+// so the status verb cannot read a slow git as "outside abcd" and run the
+// person's previous command over a checkout abcd manages. With time to
+// answer it agrees with Managed.
+func TestManagedContextReportsAnEndedContextAsItself(t *testing.T) {
+	setupHermetic(t)
+	registered := committedRepo(t)
+	if _, err := bootstrapHistory(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHistoryIndex(&historyIndex{Schema: 1, Repos: []historyRepo{{RootCommit: gitutil.RootCommit(registered), Path: registered, Status: "active"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := ManagedContext(context.Background(), registered); !ok || err != nil {
+		t.Errorf("ManagedContext = %v, %v; want true, nil", ok, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := ManagedContext(ctx, registered); !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+	// The marker settles it without git, so an ended context is no obstacle.
+	if ok, err := ManagedContext(ctx, managedRepo(t)); !ok || err != nil {
+		t.Errorf("marker under an ended context: %v, %v; want true, nil", ok, err)
+	}
 }

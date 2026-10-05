@@ -6,9 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The second half of "the status line must never do damage"
@@ -185,5 +190,77 @@ func TestStatuslineSlowPreviousCommandIsStopped(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	if _, err := os.Lstat(late); err == nil {
 		t.Errorf("a child of the previous command outlived the stop and wrote %s", late)
+	}
+}
+
+// TestStatuslineKillsTheRootCommitGit: a checkout managed through the history
+// index alone carries no marker block, so whether abcd manages it needs git's
+// root commit. That git hangs. The verb returns within its budget with
+// nothing printed — whether abcd manages the checkout is unknown, so neither
+// abcd's row nor the previous command can be vouched for — and the git it
+// started is gone when it returns: killed at the deadline, not left to run on
+// after every refresh.
+func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ABCD_PLUGIN_ROOT", "")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv(statuslineFallbackEnv, "")
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	gitCommitAt(t, repo, "one")
+	repo = realPath(t, repo)
+	t.Chdir(repo)
+	sha, err := gitutil.Run(repo, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
+	if err != nil || !gitutil.IsFullSHA(sha) {
+		t.Fatalf("fixture root commit = %q, %v", sha, err)
+	}
+	histDir := abcdhome.Path(home, "history")
+	if err := os.MkdirAll(histDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	index := `{"schema":1,"repos":[{"root_commit":"` + sha + `","path":"` + repo + `","status":"active"}]}`
+	if err := os.WriteFile(filepath.Join(histDir, "index.json"), []byte(index), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeUserSettings(t, `{"schema_version":1,"previous_command":"printf previous"}`)
+	// Control: with a git that answers, the checkout is abcd's.
+	if out, _, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo)), statuslineBudget+deadlineMargin); code != 0 || !strings.Contains(out, "abcd-managed") {
+		t.Fatalf("control: stdout %q exit %d, want abcd's row for a registered checkout", out, code)
+	}
+
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	fakeGit(t, `for a in "$@"; do case "$a" in rev-list) echo $$ > '`+pidFile+`'; exec sleep 10;; esac; done
+exec "$REAL_GIT" "$@"`)
+
+	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo)), statuslineBudget+deadlineMargin)
+	if code != 0 || stdout != "" {
+		t.Errorf("exit %d stdout %q (stderr %q), want nothing and exit 0", code, stdout, stderr)
+	}
+	if !strings.HasPrefix(stderr, "abcd statusline:") || !strings.Contains(stderr, "whether abcd manages this checkout") {
+		t.Errorf("stderr = %q, want one note saying git did not say whether abcd manages the checkout", stderr)
+	}
+	raw, err := os.ReadFile(pidFile)
+	if os.IsNotExist(err) {
+		// Killed before its first line ran (a loaded machine): nothing of it
+		// is left to outlive the verb.
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Give an abandoned git no excuse: a killed one is already reaped.
+	time.Sleep(100 * time.Millisecond)
+	if err := syscall.Kill(pid, 0); err == nil {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Errorf("the root-commit git (pid %d) outlived the verb", pid)
 	}
 }

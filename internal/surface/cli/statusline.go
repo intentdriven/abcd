@@ -53,13 +53,11 @@ const statuslineFallbackEnv = "ABCD_STATUSLINE_FALLBACK"
 // What the goroutine was blocked in ends with the process.
 //
 // statuslineGitBudget is the share of that ceiling git may take, spent across
-// all of the row's git questions (statusline.CheckoutRoot and the branch). A
-// git still running at it is KILLED rather than abandoned, and it ends early
-// enough that the rest of the row still renders inside the ceiling: a slow
-// branch costs the row its branch, not the row. One git question is outside
-// it: the root commit ahoy.Managed asks gitutil for when a checkout carries
-// no marker block, through a call with no context seam. The ceiling stops
-// waiting for that one, but cannot kill it; it ends on its own.
+// all of the row's git questions (statusline.CheckoutRoot, the root commit
+// ahoy.ManagedContext asks for when a checkout carries no marker block, and
+// the branch). A git still running at it is KILLED rather than abandoned, and
+// it ends early enough that the rest of the row still renders inside the
+// ceiling: a slow branch costs the row its branch, not the row.
 //
 // previousCommandBudget bounds the person's own previous status command, run
 // outside managed checkouts. It is the person's command, not abcd's work, so
@@ -228,7 +226,15 @@ func decideStatus(gitCtx context.Context, stdin io.Reader) statusDecision {
 		d.blank = true
 		return d
 	}
-	managed := rootErr == nil && ahoy.Managed(root)
+	managed := false
+	if rootErr == nil {
+		var mErr error
+		if managed, mErr = ahoy.ManagedContext(gitCtx, root); mErr != nil {
+			d.notes = append(d.notes, fmt.Sprintf("git did not say within %s whether abcd manages this checkout, so the status line is empty for this refresh", statuslineGitBudget))
+			d.blank = true
+			return d
+		}
+	}
 	if !managed || set.Disabled {
 		d.previous = true
 		return d
