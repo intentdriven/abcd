@@ -261,7 +261,10 @@ land by (itd-2609212103572513 criterion 4); then `Later: N intents`, Later as a 
 2026-09-29), its rows left to the JSON and the site's Status page. The JSON
 carries a `status` object with `now`, `next` and `later` in full, each row
 `id`, `title`, `bucket`, and
-`next_up`, `lane` (`run`, `lane`, `stage`, `awaiting`), `failing_checks` or
+`next_up`, `spec_id` (the spec the readiness gate judged, on a planned
+intent that has one), `lane` (`run`, `lane`, `stage`, `awaiting`, and
+`branch` and `in_flight` once the lane's branch is cut: in flight while that
+branch exists and the intent's spec is open), `failing_checks` or
 `target_release` (a planned intent's target, `next` or `vX.Y.Z`) when they
 apply, and `order`. The block is present in a repository abcd manages and
 absent elsewhere, and a record that cannot be read omits it with the reason on
