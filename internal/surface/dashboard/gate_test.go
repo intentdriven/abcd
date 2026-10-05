@@ -279,7 +279,9 @@ func TestTailscaleHeadersAreIgnored(t *testing.T) {
 func TestUnexpectedHostIsRefusedBeforeAnyRead(t *testing.T) {
 	ts := startTestServer(t, passing().lookup, loopbackPrefixes)
 	port := ts.addr[strings.LastIndex(ts.addr, ":")+1:]
-	for _, host := range []string{"evil.example", "127.0.0.1", ts.addr, "dash.example-tailnet.ts.net.evil.example", "localhost"} {
+	// The right name on another port is refused too: it is not this server's
+	// address, so a page holding it is not one this server drew.
+	for _, host := range []string{"evil.example", "127.0.0.1", ts.addr, "dash.example-tailnet.ts.net.evil.example", "localhost", testName + ":1", strings.ToUpper(testName) + ":1", testName + ".:1"} {
 		resp := parse(t, exchange(t, ts.addr, get("/", host)))
 		if resp.StatusCode != http.StatusMisdirectedRequest {
 			t.Errorf("Host %q answered %d, want 421", host, resp.StatusCode)
