@@ -389,6 +389,7 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 func execRun(ctx context.Context, path string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Stdin = nil
+	cmd.Env = commandEnv(os.Environ())
 	out := &boundedBuffer{limit: maxOutput}
 	errOut := &boundedBuffer{limit: maxStderr}
 	cmd.Stdout = out
@@ -405,6 +406,29 @@ func execRun(ctx context.Context, path string, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("its answer is larger than %d bytes", maxOutput)
 	}
 	return out.buf.Bytes(), nil
+}
+
+// commandEnv is the environment a tailscale command runs with: the caller's,
+// with TERM set to "dumb" when it is unset or empty. The macOS app's bundled
+// CLI takes a launch carrying no terminal-shaped variable for a GUI launch
+// and prints a GUI error instead of answering, which the dashboard's server,
+// started with a minimal environment, would otherwise always meet.
+func commandEnv(base []string) []string {
+	out := make([]string, 0, len(base)+1)
+	set := false
+	for _, kv := range base {
+		if strings.HasPrefix(kv, "TERM=") {
+			if kv == "TERM=" {
+				continue
+			}
+			set = true
+		}
+		out = append(out, kv)
+	}
+	if !set {
+		out = append(out, "TERM=dumb")
+	}
+	return out
 }
 
 func firstLine(s string) string {

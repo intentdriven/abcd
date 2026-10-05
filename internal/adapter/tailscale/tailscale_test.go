@@ -282,3 +282,22 @@ func TestResolveFallsBackToTheAppsBundledCommand(t *testing.T) {
 		t.Errorf("Resolve with nothing installed = %v, want ErrNotInstalled", err)
 	}
 }
+
+// TestCommandEnvCarriesATerminal: the macOS app's bundled CLI takes a
+// launch with no terminal-shaped variable for a GUI launch and prints a GUI
+// error instead of answering, so every command runs with TERM set: the
+// caller's own when it has one, else "dumb".
+func TestCommandEnvCarriesATerminal(t *testing.T) {
+	got := commandEnv([]string{"PATH=/usr/bin", "HOME=/h"})
+	if !reflect.DeepEqual(got, []string{"PATH=/usr/bin", "HOME=/h", "TERM=dumb"}) {
+		t.Fatalf("no TERM in the environment: commandEnv = %q, want TERM=dumb added", got)
+	}
+	kept := commandEnv([]string{"PATH=/usr/bin", "TERM=xterm-256color"})
+	if !reflect.DeepEqual(kept, []string{"PATH=/usr/bin", "TERM=xterm-256color"}) {
+		t.Fatalf("a TERM already set: commandEnv = %q, want it kept as it is", kept)
+	}
+	empty := commandEnv([]string{"PATH=/usr/bin", "TERM="})
+	if !reflect.DeepEqual(empty, []string{"PATH=/usr/bin", "TERM=dumb"}) {
+		t.Fatalf("an empty TERM: commandEnv = %q, want it replaced by TERM=dumb", empty)
+	}
+}
