@@ -17,14 +17,14 @@ CLI flags of its own. The write it ends in is the source verb's add
 it and fetches and converts nothing.
 
 
-**Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
+**Typing it at the CLI gets a second line that redirects.** `abcd ingest` exits
 on an unknown command, and because a command page of that name exists, the binary
-adds its stale-surface note, reading that page as proof a newer build carries the
-verb and telling the person to rebuild or update. For a host-delegated command
-that advice can never come true, because there is no Go verb for a rebuild to
+adds a line saying the command has no binary verb and runs in the host agent, naming the
+`/abcd:ingest` invocation, never a rebuild or an update. For a host-delegated command
+that advice could never come true, because there is no Go verb for a rebuild to
 bring in. Every host-delegated page has the same shape, `/abcd:consult` and
 `/abcd:prepare-this-repo` alongside this one. What the note should say is that the
-command runs in the host agent rather than at the CLI.
+command runs in the host agent rather than at the CLI, and that is what the line says.
 
 ## Sub-verbs
 
