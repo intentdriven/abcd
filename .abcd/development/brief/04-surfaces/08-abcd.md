@@ -43,17 +43,18 @@ intent in a lane), the next three things to build (the `next_up` intent first,
 then Next in pick order), and how many more are ready or parked, each state a
 word and a symbol (`●`, `○`, `•`, or `*`, `o`, `-` without a UTF-8 locale),
 each title fitted to one line of the window up to 100 columns, with no record
-id, lane, target or command in it. `--view facilitator` draws the full board
-described below, each Now and Next row with its spec id and a lane in flight
-marked so. `--format markdown` draws either view as a list a host session pastes
-unchanged, every line the label, a blank or a list item, so a title cannot open
-or close a fence; `--json` beside `--format` is refused, exit 2, and so is either
-flag beside a record id. On a Terminal the view label is painted in the role's
-badge colours at true colour only, `building` and `next` repeat their word in
-green and cyan, and `NO_COLOR` or `--no-color` paints nothing; in a pipe the
+id, lane, target or command in it. The view for the facilitator, asked for by
+name, is the full board described below, each Now and Next row with its spec
+id and a lane in flight marked so. Either view can be drawn as a markdown list
+a host session pastes unchanged, every line the label, a blank or a list item,
+so a title cannot open or close a fence; asking for the JSON form and a drawn
+form at once is refused, exit 2, and so is asking for a view or a form beside a
+record id. On a Terminal the view label is painted in the role's badge colours
+at true colour only, `building` and `next` repeat their word in green and cyan,
+and `NO_COLOR` or the board's no-colour switch paints nothing; in a pipe the
 board is drawn without colour at 80 columns. One core renderer,
-`internal/core/board`, draws both views in both forms; `--json` carries every
-field whichever view it names, with `view` naming it.
+`internal/core/board`, draws both views in both forms; the JSON form carries
+every field whichever view it names, with `view` naming it.
 
 The full board, the facilitator's view, is a snapshot of the current
 directory: the directory itself, whether it is a git repo, whether an abcd
