@@ -21,4 +21,4 @@ Spent, with the work on origin/main and the worktree clean:
 
 Unlanded and unruled: worktrees A, B, C, D, E1, E2, F and integration (the 2 September security-sweep lanes, 10 to 124 commits each, none on main) and 18 local branches with no worktree (phase-9/* and readings/opening-run, 18 to 190 commits each, the cold-reading Iteration 2 work). Nobody has said whether they are kept or dropped. The September worktrees also sit under the abbreviated store key 488a0aa9, which AGENTS.md says names a directory no verb reads.
 
-itd-118 (draft) is the automated form of this cleanup; until it ships, the release cut has no step that does it by hand. Related: iss-2609021054275863, held only on the unlanded September branches, says nothing maintains the worktree convention.
+itd-118 (draft) is the automated form of this cleanup; until it ships, the release cut has no step that does it by hand. Related: a record captured on 2 September and held only on those unlanded branches says nothing maintains the worktree convention.
