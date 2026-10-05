@@ -1,0 +1,47 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "c6441dc0199c89c28ede68eaa93f28ae4380a0c0"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-05T01:19:26Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:288f8266cf6836cde71740a7dc538b6ada75cac3c7134df21c8317218c73fc02",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.13.0"
+  },
+  "categories": {
+    "false-claim": 1,
+    "stale-record": 0,
+    "stale-count": 0,
+    "incomplete": 1,
+    "criterion-violation": 0
+  },
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1) read the first roll 317cd0cc3a1366dd81b5e12507c87640378ad938, which differs from this content commit only by the re-cut for cross-check finding x-065 (build's help sentence on the sub-agent ceiling, its regenerated CLI reference page and a pinning test) and the re-cut CHANGELOG. Both of its findings carry a disposition.",
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "CHANGELOG.md:25; docs/how-to/install.md:202-203; docs/how-to/upgrade-to-v0.13.0.md:19-22: The docs say the agent-session safety check blocks every command 'the rename included' while ~/.abcd stands; the binary's guard deliberately admits the exact rename command.",
+      "disposition": "accepted as written: in every reachable state while only ~/.abcd stands the plugin root holds no abcd binary (bootstrap provisions none while ~/.abcd stands; TestHookWrapperStopsBeforeProvisioning), so the hook refuses the rename too; the admitsRename path needs a binary that cannot be present then, and the page describes what the person meets",
+      "note": "CHANGELOG.md:25; docs/how-to/install.md:202-203; upgrade guide"
+    },
+    {
+      "id": "dc-2",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "CHANGELOG.md:58: 'only the prompt-submit salvage hook declares the 120-second timeout, while the other two keep the host's default' names neither which three hooks are meant nor that SessionStart declares 240.",
+      "disposition": "deferred: nitpick in the changelog wording (the two hooks with the default timeout are not named); next release notes",
+      "note": "CHANGELOG.md:58"
+    }
+  ]
+}
