@@ -144,6 +144,70 @@
       "evidence": "internal/core/lint/adridunique.go:52",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
+    },
+    {
+      "chapter": "23-reading.md",
+      "sentence": "Writes are staged. Nothing durable is written or deleted until the whole payload",
+      "replacement": "Writes are staged. Save a refusal's own record and its rollback of the same run, nothing durable is written or deleted until the whole payload",
+      "evidence": "internal/core/reading/ingest.go:466-471 (the protocol's own statement names two exceptions: the refusal record and the rollback of this run's own earlier attempt); refuse() runs rollbackThisRun (ingest.go:1110) and writes the refusal record into the committed ledger (ingest.go:1130-1133), both before write() at :704 and before the general sweep at :696",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "27-implement.md",
+      "sentence": "one) blocks nothing but its own record, and that only for a one-minute grace",
+      "replacement": "one) blocks nothing but its own record — the claim verb for a one-minute grace, the build's peers check until a claim replaces the file — counted",
+      "evidence": "internal/core/implement/loop/check.go:358-364 counts `c.Live || c.Unreadable` as a holder ('an unreadable claim file holds it') with no time bound; claim.go:363-364 keeps Unreadable true after LapsesAt; the one-minute grace governs only the claim verb (claim.go:61, 182-200)",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "16-lint.md",
+      "sentence": "| `privacy-hygiene` | error (network-identifier findings mapped from a scanner `warn`/`info` land as `warn`) |",
+      "replacement": "| `privacy-hygiene` | error (network-identifier findings mapped from a scanner `warn`/`info` land as `warn`, and so do the two not-scanned findings: a file over the cap, and one that could not be opened) |",
+      "evidence": "internal/core/repolint/rule_privacy.go:190-207: the over-cap finding and the could-not-be-opened finding are SeverityWarn, a second warn exception the column does not name",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "Anything else is a build error naming file and line. Passing an unknown construct",
+      "replacement": "Anything else is a build error naming file and line, save an HTML comment, dropped as every reader drops it, and a link reference definition, consumed to resolve the links that name it. Passing an unknown construct",
+      "evidence": "internal/core/mdrender/render.go:244,288-296 (a terminated HTML comment is dropped; only an unterminated one is refused); render.go:77-85,246-249 (a link reference definition block is consumed to resolve references, not refused)",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "04-launch.md",
+      "sentence": "verifies and tags only. Every scaffolded file is drift-checked the same way. A",
+      "replacement": "verifies only (it tags too when the caller passes `create_tag: true`). Every scaffolded workflow, runbook and script is drift-checked the same way; the changelog anchor and the re-authoring declaration are seeds, laid when absent and never checked again. A",
+      "evidence": "internal/core/launch/scaffold/kind.go:42-50 (the printed stanza passes publish: false and no create_tag; its comment: 'with create_tag and publish false those jobs are skipped'); templates/release.yml.tmpl:68-71 (create_tag default false), :342-344 (tag job `if: inputs.create_tag`); scaffold.go:165-172 (CHANGELOG anchor 'never drift-checked afterwards'), :186-197 and :252-253 (the re-author conf is a Seed, kept as it is)",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "04-launch.md",
+      "sentence": "workflows ship from a single embedded template that abcd's own release workflows",
+      "replacement": "workflows ship from embedded templates, one per file, that abcd's own release workflows",
+      "evidence": "internal/core/launch/scaffold/render.go:34-36 embeds seven templates, one per file (release.yml.tmpl, auto-release.yml.tmpl, runbook.md.tmpl, check-reviews.sh.tmpl, dependency-reauthor.{yml,sh,conf}.tmpl); scaffold_test.go:39-48 pins release.yml and auto-release.yml separately",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "04-launch.md",
+      "sentence": "the caller confirms, and a structural fault, a missing declaration or an unknown",
+      "replacement": "the caller confirms, and a structural fault before the writes, a missing declaration or an unknown",
+      "evidence": "internal/core/launch/scaffold/scaffold.go:276-290 (a write fault part-way leaves the files written before it on disk and reports them); internal/surface/cli/scaffold.go:50-60 ('A structural fault (unreadable repo/template, failed write): exit 2 ... A mid-write fault still carries a partial per-file report (which files landed before the fault)')",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "04-launch.md",
+      "sentence": "  anything and records the refusal reason. *(Not built: the shipped cut renders",
+      "replacement": "  anything and records the refusal reason. *(Not built: only the preview renders",
+      "evidence": "retention is computed only by the preview (internal/core/launch/dryrun.go:139, called from cli.go:416) and by launch.Ship (ship.go:88), which 'has no production caller' (ship.go:56-57); the ship verb's path is launch.RenderPayload (internal/surface/cli/ship.go:140) and PrecheckPayload's gate list carries no retention (render.go:235-247)",
+      "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
+      "applied": "2026-10-05T00:04:19Z"
     }
   ]
 }
