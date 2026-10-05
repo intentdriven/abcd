@@ -2288,6 +2288,17 @@ Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "We onl
 
 Verdict: FILE-AS-IS. The product thinker chose "abcd owns it" over fixing or removing the personal hook in the harness's user folder, and confirmed the routing ("agreed"). The personal hook is removed once the intent ships; the same day the product thinker ruled that nothing in that folder calls abcd except the consented status line.
 
+## 2026-10-05: an abcdesign.app page for editing a public project's brief (product thinker, routing confirmed in part)
+
+| part | type | home |
+|---|---|---|
+| anyone opens a public project's brief, edits it on their own device and submits it as a proposal | capability | intent itd-2610052000411162 (draft) |
+| several people edit one brief together, add notes and export the combined work | capability | intent itd-2610052000424067 (draft), builds on the first |
+| what a submission may do in someone else's project (a proposal only, never a direct write) | trust rule | open question on itd-2610052000411162; a decision record and brief invariant at planning |
+| the state-of-the-art pass on shared, offline editing | research | open question on both; a dated research note before planning |
+
+Verdict: SPLIT. The product thinker chose two intents over one ("Two intents"), a new site abcdesign.app over abcd's own site, and filing now with the research owed before planning ("File now, research later"). The trust-rule and research rows were not put to a separate question; graded as unconfirmed.
+
 ## 2026-10-07: abcd works natively on Windows (product thinker, routing confirmed in part)
 
 | part | type | home |
