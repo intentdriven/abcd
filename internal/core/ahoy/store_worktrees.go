@@ -126,8 +126,8 @@ func unlinkedWorktreeGap(home, wt string) (Gap, bool) {
 	}
 	return Gap{
 		ID: StoreWorktreeUnlinkedGapID, Category: UserState, Scope: "machine",
-		Title: "worktree not linked back from its repository",
-		Detail: termsafe.Sanitize(shown + ": " + why + ", so git lists it as prunable and a `git worktree prune` there would drop its entry."),
+		Title:   "worktree not linked back from its repository",
+		Detail:  termsafe.Sanitize(shown + ": " + why + ", so git lists it as prunable and a `git worktree prune` there would drop its entry."),
 		FixHint: termsafe.Sanitize("Run `" + abcdhome.WorktreeRepairCommand(filepath.ToSlash(relWT)) + "`; abcd only reports it."),
 	}, true
 }
