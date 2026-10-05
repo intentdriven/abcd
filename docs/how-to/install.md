@@ -208,14 +208,17 @@ mv ~/.abcd ~/.abcd.noindex
 ```
 
 ```sh
-for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done
+find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;
 ```
 
-The first renames the folder. The second reconnects the worktrees kept in it:
-git records each worktree's location in full, so until `git worktree repair`
-runs in it, its repository lists the moved worktree as prunable, and a prune
-would delete its link. A session that worked inside a worktree under the old
-folder opens from that worktree's new path.
+The first renames the folder. The second reconnects the worktrees kept in it,
+at any depth: git records each worktree's location in full, so until
+`git worktree repair` runs in it, its repository lists the moved worktree as
+prunable, and a prune would delete its link. Each `repair: gitdir incorrect`
+line it prints is a link it fixed, not a failure, and `abcd ahoy` names any
+worktree still unlinked, with the command that repairs it. A session that
+worked inside a worktree under the old folder opens from that worktree's new
+path.
 
 If both `~/.abcd` and `~/.abcd.noindex` exist, abcd moves neither and names
 both. That happens when something older ran after the rename and created a

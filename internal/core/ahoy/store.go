@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // pluginVersion is the version ahoy stamps into config.json["meta"] and
@@ -492,12 +493,6 @@ func exportPathLine(dir string) string {
 // and uninstall removes only a file that carries it.
 const devShimMarker = "# abcd-dev-shim"
 
-// shSingleQuote wraps s for safe interpolation inside single quotes in a POSIX
-// shell, so a source-repo path containing a quote cannot break out of the string.
-func shSingleQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 // renderDevShim returns the POSIX-sh track-latest shim body. On every call it
 // rebuilds abcd from sourceRepo's tip into freshBin and execs it; a failed build
 // fails loudly and NEVER execs a stale binary (loud-staging). The absolute paths
@@ -509,8 +504,8 @@ func renderDevShim(sourceRepo, freshBin string) string {
 		"# Rebuilds abcd from the source tip on every call, then execs the fresh\n" +
 		"# binary. A broken build fails loudly and never execs a stale binary.\n" +
 		"# Do not edit; run `abcd ahoy install` to pin a built binary instead.\n" +
-		"ABCD_DEV_REPO=" + shSingleQuote(sourceRepo) + "\n" +
-		"ABCD_DEV_BIN=" + shSingleQuote(freshBin) + "\n" +
+		"ABCD_DEV_REPO=" + shellquote.Single(sourceRepo) + "\n" +
+		"ABCD_DEV_BIN=" + shellquote.Single(freshBin) + "\n" +
 		"if ! go build -C \"$ABCD_DEV_REPO\" -o \"$ABCD_DEV_BIN\" ./cmd/abcd; then\n" +
 		"\tprintf 'abcd dev shim: build failed in %s — refusing to run a stale binary\\n' \"$ABCD_DEV_REPO\" >&2\n" +
 		"\texit 1\n" +

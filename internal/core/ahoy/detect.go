@@ -111,6 +111,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectIdentity(identity, idx)...)
 		gaps = append(gaps, detectGitIdentity(abs)...)
 		gaps = append(gaps, detectHistoryStore(identity.RootSHA)...)
+		gaps = append(gaps, detectStoreWorktrees()...)
 		gaps = append(gaps, detectConfigIntegrity(abs)...)
 		gaps = append(gaps, detectConfigValues(abs)...)
 		gaps = append(gaps, detectMarkerDrift(abs)...)

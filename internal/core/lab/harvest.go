@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -124,7 +125,7 @@ func Harvest(repoRoot, id string) (Harvested, error) {
 		case KindProduct:
 			res.Candidates = append(res.Candidates, Candidate{
 				Finding: f.ID, Title: f.Title, FoundDuring: found, Refutation: f.Refutation,
-				Command: "abcd capture " + shellQuote(f.Title) + " --found-during " + shellQuote(found),
+				Command: "abcd capture " + shellquote.Single(f.Title) + " --found-during " + shellquote.Single(found),
 			})
 		case KindProcedure:
 			res.Amendments = append(res.Amendments, f.ID+" "+f.Title)
@@ -301,9 +302,4 @@ func harvestDoc(e Entry, intention string, findings []Finding, probes map[string
 	}
 	b.WriteString("\nCost: this harvest records what the lab's records hold and claims no token or\nmoney cost the lab did not measure.\n")
 	return b.String()
-}
-
-// shellQuote quotes s for a POSIX shell, single-quoted.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

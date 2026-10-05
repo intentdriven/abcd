@@ -135,18 +135,17 @@ fi
 # writes into neither folder until the person renames it, so this run must not
 # create a fresh ~/.abcd.noindex beside it either. The two lines are the
 # binary's own (internal/abcdhome), and TestBootstrapWritesNothingBesideTheOldHome
-# holds them to it; the repair loop's own variable is printed through %s, so the
-# script names no environment reference it does not read (the allowlist in
-# TestBootstrapFetchOriginsAreConstants). HOME is judged as the binary judges it: an absolute HOME is
+# holds them to it; the repair's two backslashes are doubled because printf reads
+# its format's escapes. HOME is judged as the binary judges it: an absolute HOME is
 # checked, even one refused above as a place to write, and an empty or relative
 # one is no stop, its refusal above standing.
 case "${HOME:-}" in
 /*)
 	if [ -e "$HOME/.abcd" ] || [ -L "$HOME/.abcd" ]; then
 		if [ -e "$HOME/.abcd.noindex" ] || [ -L "$HOME/.abcd.noindex" ]; then
-			printf 'abcd: Both ~/.abcd and ~/.abcd.noindex exist, so abcd has written nothing and moves neither. Keep the one you want, named ~/.abcd.noindex, and take the other out of your home folder, reconnect the working copies kept there with `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "%sw" worktree repair; done`, then run abcd again.\n' '$' >&2
+			printf 'abcd: Both ~/.abcd and ~/.abcd.noindex exist, so abcd has written nothing and moves neither. Keep the one you want, named ~/.abcd.noindex, and take the other out of your home folder, reconnect the working copies kept there with `find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \\; -prune -exec test -f {}/.git \\; -exec git -C {} worktree repair \\;` (each `repair: gitdir incorrect` line it prints is a link it fixed), then run abcd again.\n' >&2
 		else
-			printf 'abcd: abcd'\''s folder is now ~/.abcd.noindex, a name the Mac'\''s search indexer passes over, and ~/.abcd still stands, so abcd has written nothing. Rename it with `mv ~/.abcd ~/.abcd.noindex`, reconnect the working copies kept there with `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "%sw" worktree repair; done`, then run abcd again.\n' '$' >&2
+			printf 'abcd: abcd'\''s folder is now ~/.abcd.noindex, a name the Mac'\''s search indexer passes over, and ~/.abcd still stands, so abcd has written nothing. Rename it with `mv ~/.abcd ~/.abcd.noindex`, reconnect the working copies kept there with `find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \\; -prune -exec test -f {}/.git \\; -exec git -C {} worktree repair \\;` (each `repair: gitdir incorrect` line it prints is a link it fixed), then run abcd again.\n' >&2
 		fi
 		exit 1
 	fi
