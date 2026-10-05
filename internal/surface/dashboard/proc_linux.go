@@ -44,5 +44,5 @@ func readProcess(pid int) (processID, error) {
 		}
 		return processID{}, err
 	}
-	return processID{Start: fields[19], Exe: exe}, nil
+	return processID{Start: fields[19], Exe: executableOf(exe)}, nil
 }

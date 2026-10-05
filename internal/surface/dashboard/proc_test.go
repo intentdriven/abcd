@@ -27,3 +27,20 @@ func TestProcessIdentityIgnoresTheTimeZone(t *testing.T) {
 		}
 	}
 }
+
+// TestReplacedExecutableIsTheSameProcess holds stop to the server after the
+// binary it runs was replaced: Linux reads that executable as the old path
+// with " (deleted)" appended, and stop must still take it for the process
+// start launched rather than remove its run file and leave it listening.
+func TestReplacedExecutableIsTheSameProcess(t *testing.T) {
+	for _, c := range []struct{ link, want string }{
+		{"/usr/local/bin/abcd", "/usr/local/bin/abcd"},
+		{"/usr/local/bin/abcd (deleted)", "/usr/local/bin/abcd"},
+		{"/opt/a (deleted) b", "/opt/a (deleted) b"},
+		{"/opt/abcd (deleted) (deleted)", "/opt/abcd (deleted)"},
+	} {
+		if got := executableOf(c.link); got != c.want {
+			t.Errorf("executableOf(%q) = %q, want %q", c.link, got, c.want)
+		}
+	}
+}
