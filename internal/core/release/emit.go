@@ -95,6 +95,9 @@ const (
 	RefusalReleaseInFlight RefusalKind = "release-in-flight"
 	// RefusalUnlabelled: a record added by the cut carries no valid impact.
 	RefusalUnlabelled RefusalKind = "unlabelled-record"
+	// RefusalUncommittedRecords: a record in a terminal folder differs from
+	// HEAD, where the cut reads it, so the cut would leave the change out.
+	RefusalUncommittedRecords RefusalKind = "uncommitted-records"
 	// RefusalStaleIntent: an intent in planned/ has no open spec left — every
 	// spec realising it has closed and the record never moved.
 	RefusalStaleIntent RefusalKind = "stale-intent"
@@ -196,8 +199,9 @@ type Cut struct {
 // door owns the walk; this owns the judgement.
 //
 // The order is deliberate. The derivation runs first, and if it refuses this
-// returns THAT refusal alone: its three refusals (no tag, release in flight, an
-// unlabelled record) all mean the anchor or the record set cannot be trusted, and
+// returns THAT refusal alone: its four refusals (no tag, release in flight, an
+// unlabelled record, a record move left uncommitted) all mean the anchor or the
+// record set cannot be trusted, and
 // every later check reads the same inputs — so continuing would restate one fault
 // as three and send the operator hunting for bugs that are not there. Once the
 // derivation holds, the remaining checks all run and accumulate, because they are
@@ -337,6 +341,8 @@ func derivationRefusal(d changelog.Derivation) Refusal {
 		for _, rec := range d.Records.UnlabelledAdded() {
 			ref.Records = append(ref.Records, rec.ID)
 		}
+	case changelog.RefusalUncommittedRecords:
+		ref.Kind = RefusalUncommittedRecords
 	default:
 		ref.Kind = RefusalKind(d.RefusalKind)
 	}
