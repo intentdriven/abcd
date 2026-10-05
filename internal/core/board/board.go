@@ -12,6 +12,7 @@ package board
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/statusblock"
@@ -111,9 +112,37 @@ func Render(in Input, f Frame) []string {
 		out = append(out, "")
 	}
 	if f.View == Facilitator {
-		return append(out, facilitator(in, f)...)
+		out = append(out, facilitator(in, f)...)
+	} else {
+		out = append(out, product(in, f)...)
 	}
-	return append(out, product(in, f)...)
+	if f.Form == Text {
+		out = fitWindow(out, f.Width)
+	}
+	return out
+}
+
+// escape matches one SGR colour sequence, the only escape the board draws.
+var escape = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// fitWindow keeps every text line within width columns: a line already inside
+// is left as drawn, and one wider (a label or a count line in a window too
+// narrow for it) is drawn without its colour and broken by display width, so
+// the window bounds the board whatever its size (A7).
+func fitWindow(lines []string, width int) []string {
+	if width < 1 {
+		return lines
+	}
+	var out []string
+	for _, l := range lines {
+		plain := escape.ReplaceAllString(l, "")
+		if textwidth.Columns(plain) <= width {
+			out = append(out, l)
+			continue
+		}
+		out = append(out, textwidth.Break(plain, width)...)
+	}
+	return out
 }
 
 // symbols are the three state marks and the ellipsis, in UTF-8 or plain text.
@@ -222,14 +251,16 @@ const labelWidth = 12
 // each Now and Next row carrying its spec and a lane's in-flight mark.
 func facilitator(in Input, f Frame) []string {
 	es := []entry{{0, "abcd — " + termsafe.Sanitize(in.Dir)}}
+	// Every row is masked here, whoever worded it, so a row can never add a
+	// line or touch the page's fence.
 	for _, r := range in.Rows {
-		text := r.Text
+		text := termsafe.Sanitize(r.Text)
 		if r.Label != "" {
-			text = fmt.Sprintf("%-*s%s", labelWidth, r.Label+":", r.Text)
+			text = fmt.Sprintf("%-*s%s", labelWidth, termsafe.Sanitize(r.Label)+":", text)
 		}
 		es = append(es, entry{1, text})
 		for _, it := range r.Items {
-			es = append(es, entry{2, it})
+			es = append(es, entry{2, termsafe.Sanitize(it)})
 		}
 	}
 	if b := in.Status; b != nil {

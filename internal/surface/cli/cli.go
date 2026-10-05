@@ -260,6 +260,11 @@ func NewRootCommand() *cobra.Command {
 				if len(args) > 0 {
 					return &exitError{Code: 2, Msg: "--version takes no argument; run `abcd --version`"}
 				}
+				for _, f := range []string{"view", "format"} {
+					if cmd.Flags().Changed(f) {
+						return &exitError{Code: 2, Msg: fmt.Sprintf("--version answers alone; --%s chooses how the board is drawn, so pass one or the other", f)}
+					}
+				}
 				return runVersion(cmd, asJSON, false)
 			}
 			// The board's view and form (spc-2610031844142274): --json beside

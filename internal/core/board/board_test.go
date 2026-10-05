@@ -181,7 +181,10 @@ func TestFenceSafeMarkdownTitles(t *testing.T) {
 	b.Now[2].Title = "```\n~~~ close the fence ``` and ~~~"
 	b.Next[0].Title = "~~~"
 	for _, v := range []View{Product, Facilitator} {
-		lines := Render(Input{Dir: "```", Status: b, Rows: []Row{{Label: "git repo", Text: "```"}}}, Frame{View: v, Form: Markdown})
+		rows := []Row{{Label: "git repo", Text: "```"}, {Label: "presence", Text: "x\n```", Items: []string{"y\n~~~ an item"}}}
+		// The lines as a reader sees them: an element carrying a newline is
+		// two lines on the page.
+		lines := strings.Split(strings.Join(Render(Input{Dir: "```", Status: b, Rows: rows}, Frame{View: v, Form: Markdown}), "\n"), "\n")
 		if !strings.Contains(strings.Join(lines, "\n"), "close the fence") {
 			t.Fatalf("view %d drew no title to hold the rule over:\n%s", v, strings.Join(lines, "\n"))
 		}
@@ -248,6 +251,26 @@ func TestBoardWithoutColourKeepsWordsAndSymbols(t *testing.T) {
 	}
 	if strings.ContainsAny(ascii, "●○•…") {
 		t.Errorf("the plain-text board carries a UTF-8 symbol:\n%s", ascii)
+	}
+}
+
+// TestNarrowWindowsKeepEveryLineInside: below the width a product line needs,
+// every line, the label and the count included, still fits the window, and a
+// title too long for the room keeps its ellipsis rather than vanishing.
+func TestNarrowWindowsKeepEveryLineInside(t *testing.T) {
+	strip := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	for _, w := range []int{12, 20, 30} {
+		for _, r := range []Rung{Mono, TrueColor} {
+			lines := Render(Input{Status: fixture(2, 40)}, Frame{View: Product, Width: w, Rung: r})
+			for _, l := range lines {
+				if n := textwidth.Columns(strip.ReplaceAllString(l, "")); n > w {
+					t.Errorf("width %d rung %d: a line takes %d columns: %q", w, r, n, l)
+				}
+			}
+		}
+	}
+	if got := textwidth.Fit("a title", 1, "…"); got != "…" {
+		t.Errorf("Fit with room for the ellipsis alone = %q, want the ellipsis", got)
 	}
 }
 

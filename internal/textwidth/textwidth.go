@@ -103,14 +103,16 @@ func fill(words []string, first, rest int) []string {
 
 // Fit returns s whole when it takes at most limit columns, and otherwise s cut
 // by display width and ended with ellipsis, the whole within limit: a wide rune
-// is never split, and a space left before the cut is dropped. It is how the
+// is never split, and a space left before the cut is dropped. When the limit
+// holds the ellipsis and nothing more, the ellipsis alone says a text was cut;
+// when it cannot hold even that, nothing is drawn. It is how the
 // status board fits a title to one line (spc-2610031844142274).
 func Fit(s string, limit int, ellipsis string) string {
 	if Columns(s) <= limit {
 		return s
 	}
 	room := limit - Columns(ellipsis)
-	if room <= 0 {
+	if room < 0 {
 		return ""
 	}
 	var b strings.Builder
