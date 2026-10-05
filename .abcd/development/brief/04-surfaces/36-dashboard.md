@@ -82,7 +82,9 @@ sits in the working tree or in a folder anyone can write, and when the port is
 Serve's or Funnel's. It finds the command on the path, then in the macOS app's
 bundle. It launches the server as a detached process in its own session, so
 closing the Terminal does not stop it, hands it its configuration and a
-one-time value over a pipe rather than its command line, and waits for it to
+one-time value over a pipe rather than its command line, passes it nothing of
+its own environment but the path and the home folder, so no token in the
+Terminal lives on in a process that faces the network, and waits for it to
 report that it is listening. It then fetches its own address through
 Tailscale, so the gate judges this computer as it judges any device, and only
 when that answers does it print one line: where to open it, that anyone on the

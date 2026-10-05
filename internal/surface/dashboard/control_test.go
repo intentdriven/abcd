@@ -26,6 +26,16 @@ import (
 const childEnv = "ABCD_DASHBOARD_TEST_CHILD"
 
 func TestMain(m *testing.M) {
+	if os.Getenv(childEnv) == "env" && len(os.Args) == 3 && os.Args[1] == "dashboard" && os.Args[2] == "serve" {
+		// Report the names in this server's environment as its refusal.
+		var names []string
+		for _, kv := range os.Environ() {
+			names = append(names, strings.SplitN(kv, "=", 2)[0])
+		}
+		data, _ := json.Marshal(readyMessage{Error: "environment: " + strings.Join(names, ",")})
+		_, _ = os.NewFile(readyFD, "ready").Write(append(data, '\n'))
+		os.Exit(2)
+	}
 	if os.Getenv(childEnv) == "1" && len(os.Args) == 3 && os.Args[1] == "dashboard" && os.Args[2] == "serve" {
 		setTailnetForTest(loopbackPrefixes)
 		if err := Serve(context.Background()); err != nil {
@@ -234,6 +244,45 @@ func TestStartNeverSignalsAServerThatAlreadyExited(t *testing.T) {
 	}
 	if len(killed) != 1 {
 		t.Errorf("start killed %v, want the one running server's group", killed)
+	}
+}
+
+// TestServerInheritsOnlyWhatItNeeds holds the long-lived, network-facing
+// server to the environment it needs (the path and home its Tailscale
+// lookups run with, and start's marker): a token or credential in the
+// environment start was run from does not live on in it.
+func TestServerInheritsOnlyWhatItNeeds(t *testing.T) {
+	t.Setenv("ABCD_TEST_SECRET_TOKEN", "a value the server must not hold")
+	f := newFakeTailscale(t)
+	opts := startOpts(t, f, t.TempDir())
+	opts.Launch.Env = []string{childEnv + "=env"}
+	_, err := Start(context.Background(), opts)
+	if err == nil {
+		t.Fatal("Start succeeded with a server that reports its environment and exits")
+	}
+	_, list, ok := strings.Cut(err.Error(), "environment: ")
+	if !ok {
+		t.Fatalf("Start = %v, want the server's report of its environment", err)
+	}
+	got := map[string]bool{}
+	for _, name := range strings.Split(list, ",") {
+		got[name] = true
+	}
+	want := map[string]bool{serveMarkerEnv: true, childEnv: true}
+	for _, name := range []string{"PATH", "HOME"} {
+		if _, set := os.LookupEnv(name); set {
+			want[name] = true
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("the server inherited %s from start's environment", name)
+		}
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("the server's environment lacks %s", name)
+		}
 	}
 }
 

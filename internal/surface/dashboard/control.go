@@ -256,7 +256,7 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 		return StartResult{}, err
 	}
 	cmd := exec.Command(opts.Launch.Path, opts.Launch.Args...)
-	cmd.Env = append(append(os.Environ(), opts.Launch.Env...), serveMarkerEnv+"=1")
+	cmd.Env = serverEnv(opts.Launch.Env)
 	cmd.Dir = opts.Root
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, devnull
 	cmd.ExtraFiles = []*os.File{readyW, cfgR} // fd 3 and fd 4
@@ -335,6 +335,25 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 	res := StartResult{URL: run.URL(), Name: name, Port: port, Addrs: run.Addrs, PID: pid}
 	res.Line = StartLine(res)
 	return res, nil
+}
+
+// serverEnvKeep names what the server keeps of start's environment: the path
+// and home the Tailscale command it runs for each lookup reads.
+var serverEnvKeep = []string{"PATH", "HOME"}
+
+// serverEnv is the whole environment the server runs with: serverEnvKeep
+// from start's, the launcher's own additions (a test's), and start's marker.
+// Nothing else of start's environment, a token or a credential included,
+// lives on in a long-lived process that faces the network.
+func serverEnv(extra []string) []string {
+	var env []string
+	for _, k := range serverEnvKeep {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	env = append(env, extra...)
+	return append(env, serveMarkerEnv+"=1")
 }
 
 // readReady reads the server's one line from the readiness pipe, bounded in
