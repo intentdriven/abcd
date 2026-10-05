@@ -45,11 +45,14 @@ package interview
 //     listing above already covers it), read as git's own directory is. The
 //     value is resolved through every link first, so a hooks directory
 //     reached through a link (a dotfiles-managed one, or an in-tree link to a
-//     directory elsewhere) is read where git runs its hooks from.
+//     directory elsewhere) is read where git runs its hooks from, held to
+//     the budget maxFollowedEntries and maxFollowedBytes set.
 //   - The push receipts (.abcd/.work.local/preflight-receipts/) of every
 //     worktree git lists, by mode, size and content hash: the pre-push gate
 //     takes a commit's receipt from any of them, so a receipt written into
 //     another worktree's local tier during a turn stops the interview too.
+//     They are held to the same budget, since a worktree stands where its
+//     registration says.
 //
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
@@ -94,21 +97,29 @@ const maxStatusBytes = 8 << 20
 // reaching it has something in it worth clearing.
 var maxWatched = 500_000
 
-// maxFollowedEntries and maxFollowedBytes bound what the links one reading
-// follows lead to, in all: every entry read where a link leads (the
-// directory it leads to included) and every byte of the files hashed there.
-// A reading past either is refused, naming the link, before the entry past
-// it is read, rather than walking toward maxWatched: a role can plant a link
-// to a large tree in one write where the guard follows links (its own turn
-// directory's push receipts, registered as a worktree, among them), and
-// hashing what that link leads to whole would hold the turn for minutes
-// before the guard refused. What the guard legitimately follows is small:
-// git's sample hooks are 14 files and 26 KiB, a checkout keeps at most 50
-// push receipts of 76 bytes each (scripts/preflight-receipt.sh), and a
-// dotfiles-managed hooks directory holds tens of scripts. The budget is
-// some twenty times the receipts' cap and holds a compiled hook binary, and
-// reading all of it takes tens of milliseconds. It is shared by every link
-// one reading follows, so planting many links does not multiply it.
+// maxFollowedEntries and maxFollowedBytes bound what one reading reads
+// outside what it owns: what the links it follows lead to, every hooks
+// directory core.hooksPath names outside the tree, and the push receipts of
+// every worktree git lists. Every entry read there (a directory included)
+// and every byte of the files hashed there is counted. A reading past either
+// is refused, naming the link, the core.hooksPath value or the receipts
+// directory, before the entry past it is read, rather than walking toward
+// maxWatched: a role can plant a link to a large tree in one write where the
+// guard follows links (its own turn directory's push receipts, registered as
+// a worktree, among them), point core.hooksPath at one, or register a
+// worktree whose receipts directory is one, and hashing that whole would
+// hold the turn for minutes before the guard refused. What the guard
+// legitimately reads there is small: git's sample hooks are 14 files and
+// 26 KiB, a checkout keeps at most 50 push receipts of 76 bytes each
+// (scripts/preflight-receipt.sh), and a dotfiles-managed hooks directory
+// holds tens of scripts. The budget is some twenty times the receipts' cap
+// and holds a compiled hook binary, and reading all of it takes tens of
+// milliseconds. It is shared by everything one reading reads there, so
+// planting many links or hooks directories does not multiply it, with one
+// exception: each receipts directory is held to the entry budget on its own,
+// since a checkout's receipts grow with its worktrees (twenty worktrees each
+// keeping their 50 would pass a shared count), while their bytes, a few KiB
+// for any real checkout, stay shared.
 var (
 	maxFollowedEntries       = 1024
 	maxFollowedBytes   int64 = 64 << 20
@@ -150,11 +161,28 @@ type treeReader struct {
 	// under them.
 	skip []string
 	st   treeState
-	// followedEntries and followedBytes are what the links this reading
-	// followed have led to so far, held to maxFollowedEntries and
+	// followedEntries and followedBytes are what this reading has read
+	// outside what it owns so far, held to maxFollowedEntries and
 	// maxFollowedBytes.
 	followedEntries int
 	followedBytes   int64
+}
+
+// reach is what took a reading outside what it owns, and so to the budget: a
+// followed link, a hooks directory core.hooksPath names outside the tree, or
+// a worktree's push receipts.
+type reach struct {
+	// what names it in a refusal, and fix says how to clear it.
+	what, fix string
+	// own holds the reach to the entry budget on its own, counted in
+	// entries, rather than sharing the reading's count.
+	own     bool
+	entries int
+}
+
+// linkReach is the link key, followed.
+func linkReach(key string) *reach {
+	return &reach{what: "the link " + key, fix: "remove the link, or point it at what git should read there"}
 }
 
 // readTree reads the state of every watched place under repo, leaving out
@@ -233,22 +261,26 @@ func (r *treeReader) put(key, state string) error {
 	return nil
 }
 
-// charge counts fi, an entry about to be read where the link via leads,
-// against the budget for what one reading's links lead to, refusing past it
-// before the entry is read. An entry not reached through a link (via empty)
-// costs nothing.
-func (r *treeReader) charge(via string, fi fs.FileInfo) error {
-	if via == "" {
+// charge counts fi, an entry about to be read where via leads, against the
+// budget for what one reading reads outside what it owns, refusing past it
+// before the entry is read. An entry not reached that way (via nil) costs
+// nothing.
+func (r *treeReader) charge(via *reach, fi fs.FileInfo) error {
+	if via == nil {
 		return nil
 	}
-	r.followedEntries++
+	entries, limit := &r.followedEntries, fmt.Sprintf("%d entries and %d MiB in all", maxFollowedEntries, maxFollowedBytes>>20)
+	if via.own {
+		entries, limit = &via.entries, fmt.Sprintf("%d entries for each worktree's push receipts and %d MiB in all", maxFollowedEntries, maxFollowedBytes>>20)
+	}
+	*entries++
 	if fi.Mode().IsRegular() {
 		r.followedBytes += fi.Size()
 	}
-	if r.followedEntries > maxFollowedEntries || r.followedBytes > maxFollowedBytes {
-		return fmt.Errorf("the link %s leads past what one reading follows links to (%d entries and %d MiB in all), "+
+	if *entries > maxFollowedEntries || r.followedBytes > maxFollowedBytes {
+		return fmt.Errorf("%s leads past what one reading follows links to (%s), "+
 			"more than git's own directory, a hooks directory or the push receipts hold, so it is not read; "+
-			"remove the link, or point it at what git should read there, and run the interview again", via, maxFollowedEntries, maxFollowedBytes>>20)
+			"%s, and run the interview again", via.what, limit, via.fix)
 	}
 	return nil
 }
@@ -349,7 +381,7 @@ func (r *treeReader) readGitDirs() error {
 	// The git directory it names is read below, so a link there is not
 	// followed.
 	if fi, err := os.Lstat(filepath.Join(r.repo, ".git")); err == nil && !fi.IsDir() {
-		if err := r.hashAt(r.repo, ".git", false, ""); err != nil {
+		if err := r.hashAt(r.repo, ".git", false, nil); err != nil {
 			return err
 		}
 	}
@@ -387,7 +419,14 @@ func (r *treeReader) readGitDirs() error {
 		if fsutil.PathWithin(dir, r.realRepo, fold) && !fsutil.PathWithin(dir, realGitDir, fold) && !fsutil.PathWithin(dir, realCommon, fold) {
 			continue
 		}
-		if err := r.hashIn(filepath.Dir(dir), filepath.Base(dir)); err != nil {
+		// Outside the tree it is held to the budget, named by the value as
+		// configured: a hooks directory is tens of scripts, so one past the
+		// budget is not one git should run from unread.
+		via := &reach{
+			what: "the hooks directory core.hooksPath names, " + hp + ",",
+			fix:  "point core.hooksPath at a hooks directory, or unset it where it is set (git config --show-origin --get-all core.hooksPath names where)",
+		}
+		if err := r.hashAt(filepath.Dir(dir), filepath.Base(dir), true, via); err != nil {
 			return err
 		}
 	}
@@ -417,12 +456,12 @@ func (r *treeReader) readWorktrees(common string) error {
 	}
 	// via is the link the entries are reached through, when worktrees/ is
 	// one: what it leads to is held to the followed-link budget.
-	via := ""
+	var via *reach
 	if fi.Mode()&fs.ModeSymlink != 0 {
-		if err := r.hashAt(common, "worktrees", false, ""); err != nil {
+		if err := r.hashAt(common, "worktrees", false, nil); err != nil {
 			return err
 		}
-		via = r.keyOf(common, "worktrees")
+		via = linkReach(r.keyOf(common, "worktrees"))
 		dir = fsutil.RealExistingPath(dir)
 	}
 	entries, err := os.ReadDir(dir)
@@ -434,7 +473,7 @@ func (r *treeReader) readWorktrees(common string) error {
 	}
 	for _, e := range entries {
 		at, entryVia := filepath.Join(dir, e.Name()), via
-		if via != "" {
+		if via != nil {
 			fi, err := e.Info()
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
@@ -447,10 +486,10 @@ func (r *treeReader) readWorktrees(common string) error {
 			}
 		}
 		if e.Type()&fs.ModeSymlink != 0 {
-			if err := r.hashAt(dir, e.Name(), false, ""); err != nil {
+			if err := r.hashAt(dir, e.Name(), false, nil); err != nil {
 				return err
 			}
-			entryVia = r.keyOf(dir, e.Name())
+			entryVia = linkReach(r.keyOf(dir, e.Name()))
 			at = fsutil.RealExistingPath(at)
 		} else if err := r.put(r.keyOf(dir, e.Name()), "worktree "+e.Type().String()); err != nil {
 			return err
@@ -486,7 +525,15 @@ func (r *treeReader) readReceipts() error {
 			continue
 		}
 		dir := filepath.Join(wt.Path, filepath.FromSlash(receiptsRel))
-		if err := r.hashIn(filepath.Dir(dir), filepath.Base(dir)); err != nil {
+		// Held to the budget: a worktree's path is what its registration
+		// says, which a role can write, so its receipts directory may be any
+		// tree on the machine.
+		via := &reach{
+			what: "the push receipts directory " + filepath.ToSlash(dir),
+			fix:  "remove what is not a push receipt from it, or the worktree registration that names it if you did not make that worktree (git worktree list names each)",
+			own:  true,
+		}
+		if err := r.hashAt(filepath.Dir(dir), filepath.Base(dir), true, via); err != nil {
 			return err
 		}
 	}
@@ -561,14 +608,14 @@ func isGitDir(fsys fs.FS, dir string) bool {
 // directory, a configuration file or a hook that is a link (a
 // dotfiles-managed one) runs or is read where it leads.
 func (r *treeReader) hashIn(base, rel string) error {
-	return r.hashAt(base, rel, true, "")
+	return r.hashAt(base, rel, true, nil)
 }
 
 // hashAt is hashIn, following each link it meets only when follow is set,
-// and never further than the link's own target. via, when set, is the link
-// base and rel are reached through: every entry read is held to the
-// followed-link budget before it is read.
-func (r *treeReader) hashAt(base, rel string, follow bool, via string) error {
+// and never further than the link's own target. via, when set, is what took
+// the reading to base and rel: every entry read is held to the budget before
+// it is read.
+func (r *treeReader) hashAt(base, rel string, follow bool, via *reach) error {
 	root, err := os.OpenRoot(base)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 		// Nothing can stand under a base that is absent or is not a
@@ -611,7 +658,7 @@ func (r *treeReader) hashAt(base, rel string, follow bool, via string) error {
 			}
 			return err
 		}
-		if via != "" {
+		if via != nil {
 			fi, err := d.Info()
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
@@ -646,7 +693,7 @@ func (r *treeReader) hashAt(base, rel string, follow bool, via string) error {
 // reads as nothing.
 func (r *treeReader) followLink(base, rel string) error {
 	target := fsutil.RealExistingPath(filepath.Join(base, filepath.FromSlash(rel)))
-	return r.hashAt(filepath.Dir(target), filepath.Base(target), false, r.keyOf(base, rel))
+	return r.hashAt(filepath.Dir(target), filepath.Base(target), false, linkReach(r.keyOf(base, rel)))
 }
 
 // keyOf is the key of rel under base: its path relative to the repository

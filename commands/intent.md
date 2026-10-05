@@ -523,9 +523,12 @@ the run's own turn directory is the role's to write, and two paths that execute
 nothing are not watched: a file named `.DS_Store`, and
 `.claude/scheduled_tasks.lock` (every other path under `.claude/` is). A link
 where git follows one (a hook, the hooks directory, a worktree's entry, a
-push-receipts directory) is read where it leads, within 1,024 entries and
-64 MiB for all the links one reading follows; a reading past that stops the
-interview, exit 1, naming the link. The changed-paths
+push-receipts directory) is read where it leads, and a hooks directory
+`core.hooksPath` names outside the tree and each worktree's push receipts are
+read where they stand, within 1,024 entries and 64 MiB for all of it in one
+reading (1,024 entries for each worktree's push receipts); a reading past that
+stops the interview, exit 1, naming the link, the `core.hooksPath` value or
+the receipts directory. The changed-paths
 refusal is `refused: "unexpected_changes"` under `--json`, with every path
 changed in the turn in `changed_paths`; relay the paths to the person to read
 and restore. The plan act (step 10) stays the product thinker's, at the command
