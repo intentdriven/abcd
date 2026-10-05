@@ -118,7 +118,16 @@ lead to, a hooks directory `core.hooksPath` names outside the tree, and each
 worktree's push receipts are read within 1,024 entries and 64 MiB in all (1,024
 entries for each worktree's push receipts), and a reading past that stops the
 interview, exit 1, naming the link, the `core.hooksPath` value or the receipts
-directory.
+directory. git's own directory and common directory are the ones the
+interview's first reading found: a linked worktree's `.git` file or a
+`commondir` file changed during a turn stops the interview, naming the file,
+and neither git nor abcd reads where it leads. What one reading hashes (the
+paths git lists, git's own directory) is held to 2 GiB, and the files git
+reads whole on every command (`HEAD`, the configuration, the packed refs,
+`info/exclude`) are sized against the same 2 GiB before git runs; a reading
+past it stops the interview, exit 1, naming the file (the largest, when the
+paths git lists hold more), and a large file of the person's own belongs in
+`.gitignore`, where only its size and modification time are read.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.

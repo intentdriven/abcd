@@ -528,7 +528,17 @@ push-receipts directory) is read where it leads, and a hooks directory
 read where they stand, within 1,024 entries and 64 MiB for all of it in one
 reading (1,024 entries for each worktree's push receipts); a reading past that
 stops the interview, exit 1, naming the link, the `core.hooksPath` value or
-the receipts directory. The changed-paths
+the receipts directory. git's own directory and common directory are the ones
+the interview's first reading found: a linked worktree's `.git` file or a
+`commondir` file changed during a turn stops the interview, naming the file,
+and neither git nor abcd reads where it leads. What one reading hashes (the
+paths git lists, git's own directory) is held to 2 GiB, and the files git
+reads whole on every command (`HEAD`, the configuration, the packed refs,
+`info/exclude`) are sized against the same 2 GiB before git runs; a reading
+past it stops the interview, exit 1, naming the file (the largest, when the
+paths git lists hold more). A large file of the person's own belongs in
+`.gitignore`: an ignored path is read by its size and modification time, never
+its content. The changed-paths
 refusal is `refused: "unexpected_changes"` under `--json`, with every path
 changed in the turn in `changed_paths`; relay the paths to the person to read
 and restore. The plan act (step 10) stays the product thinker's, at the command

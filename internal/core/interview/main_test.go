@@ -11,17 +11,20 @@ package interview
 // path under "turns/" lands in the turn's own directory, any other in the
 // directory the runner was started in, and turnDirToken in a file's content
 // is replaced by the turn's directory. A content starting with linkToken
-// makes the path a link to the rest of it. A turn-<n>.sleep in the script makes
-// the turn mark turn-<n>.started beside the script and sleep, so a test can
-// stop it mid-run.
+// makes the path a link to the rest of it, and one starting with sparseToken
+// makes it a sparse file of the size the rest of it gives. A turn-<n>.sleep
+// in the script makes the turn mark turn-<n>.started beside the script and
+// sleep, so a test can stop it mid-run.
 
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +39,11 @@ const turnDirToken = "{{turn}}"
 // linkToken leading a turn-<n>.also.json file's content makes the turn plant
 // a link to the rest of the content at that path instead of writing a file.
 const linkToken = "{{link}}"
+
+// sparseToken leading a turn-<n>.also.json file's content makes the turn
+// write a sparse file at that path, of the byte count the rest of the content
+// gives: one costing nothing to make that takes minutes to hash whole.
+const sparseToken = "{{sparse}}"
 
 func TestMain(m *testing.M) {
 	if dir := os.Getenv(stubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
@@ -84,6 +92,20 @@ func stubRunner(dir string) int {
 			body = strings.ReplaceAll(body, turnDirToken, filepath.Dir(receipt))
 			if to, ok := strings.CutPrefix(body, linkToken); ok {
 				if err := os.Symlink(to, target); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 3
+				}
+				continue
+			}
+			if n, ok := strings.CutPrefix(body, sparseToken); ok {
+				size, err := strconv.ParseInt(n, 10, 64)
+				if err == nil {
+					var f *os.File
+					if f, err = os.Create(target); err == nil {
+						err = errors.Join(f.Truncate(size), f.Close())
+					}
+				}
+				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					return 3
 				}

@@ -54,6 +54,17 @@ package interview
 //     They are held to the same budget, since a worktree stands where its
 //     registration says.
 //
+// git's own directory and common directory are placed by the run's first
+// reading, taken before any role ran, and every later reading reads those
+// same directories. Before it runs git, a later reading reads the two files
+// that place them, a linked worktree's .git file and the git directory's
+// commondir: one changed since is named as a change, and neither git nor the
+// reading follows where it leads. It then sizes the files git reads whole on
+// every command (HEAD, the configuration, the packed refs, info/exclude)
+// against maxHashedBytes, which also bounds what the reading hashes of the
+// paths git lists and of git's own directory, so a file a role grows there is
+// refused, named, before it is read.
+//
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
 // receipt, and the local transcript store a checkout can pull its runners'
@@ -74,9 +85,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -125,6 +138,26 @@ var (
 	maxFollowedBytes   int64 = 64 << 20
 )
 
+// maxHashedBytes bounds the bytes one reading hashes of what it owns: the
+// paths git lists as differing from HEAD, and git's own directory. Each
+// listed path's size is counted from its Lstat before any is hashed, and a
+// listing past the bound is refused, naming its largest path, so a tree the
+// person already holds past it is refused before the first dispatch and a
+// file a role writes past it is refused before it is read: a sparse file
+// costs one write to make and minutes to hash whole. A file in git's own
+// directory is counted as it is reached, before it is read. The bound is far
+// past what a source tree's changes and git's own directory hold (a large
+// repository's packed refs are tens of MiB), and hashing all of it takes
+// about a second. A large file the person keeps in the tree belongs in
+// .gitignore: an ignored path is read by its mode, size and modification
+// time, never its content, which a role cannot set back without running a
+// command, and a role whose contract allows no command cannot.
+var maxHashedBytes int64 = 2 << 30
+
+// maxPointerBytes bounds a file that places git's own directory (a linked
+// worktree's .git file, a git directory's commondir): each holds one path.
+const maxPointerBytes = 64 << 10
+
 // treeState is each watched path mapped to its status and its state.
 type treeState map[string]string
 
@@ -166,6 +199,39 @@ type treeReader struct {
 	// maxFollowedBytes.
 	followedEntries int
 	followedBytes   int64
+	// hashedBytes is what this reading has hashed of what it owns so far,
+	// held to maxHashedBytes.
+	hashedBytes int64
+	// gitDir and common are git's own directory and common directory, as
+	// pin placed them when it is set and as git names them when it is not.
+	gitDir, common string
+	pin            *gitPin
+}
+
+// gitPin is where a run's first reading found git's own directory and
+// common directory, and the state of each file that places them: a linked
+// worktree's .git file and the git directory's commondir. Every later reading
+// of the run reads those same directories, and before it runs git it reads
+// those files: one changed since is named, as a change, without git or the
+// reading following where it leads. So a role writing a commondir, or a .git
+// file, that leads to a large tree cannot make the next reading read it.
+type gitPin struct {
+	gitDir, common string
+	// pointers maps each placing file's key to its state.
+	pointers map[string]string
+}
+
+// redirectedError is a reading refused because a file that places git's own
+// directory changed since the run's first reading: git would now read
+// another directory than the one the reading holds the role to.
+type redirectedError struct {
+	// Paths are the files changed, keyed as the reading keys them.
+	Paths []string
+}
+
+func (e *redirectedError) Error() string {
+	return fmt.Sprintf("%s changed since the interview's first reading, so git would read its own directory elsewhere; "+
+		"the reading does not follow it: restore it and run the interview again", strings.Join(e.Paths, ", "))
 }
 
 // reach is what took a reading outside what it owns, and so to the budget: a
@@ -186,9 +252,16 @@ func linkReach(key string) *reach {
 }
 
 // readTree reads the state of every watched place under repo, leaving out
-// turnDir, the run's own turn directory (relative to repo, slash-separated).
+// turnDir, the run's own turn directory (relative to repo, slash-separated),
+// placing git's own directories afresh.
 func readTree(repo, turnDir string) (treeState, error) {
-	r := &treeReader{repo: repo, realRepo: fsutil.RealExistingPath(repo), skip: []string{history.LocalStoreRelPath}, st: treeState{}}
+	return readTreePinned(repo, turnDir, nil)
+}
+
+// readTreePinned is readTree reading git's own directories where pin placed
+// them. An empty pin is filled by this reading, the run's first.
+func readTreePinned(repo, turnDir string, pin *gitPin) (treeState, error) {
+	r := &treeReader{repo: repo, realRepo: fsutil.RealExistingPath(repo), skip: []string{history.LocalStoreRelPath}, st: treeState{}, pin: pin}
 	if turnDir != "" {
 		r.skip = append(r.skip, turnDir)
 	}
@@ -199,6 +272,14 @@ func readTree(repo, turnDir string) (treeState, error) {
 }
 
 func (r *treeReader) read() error {
+	// git's own directories are placed first: git reads where they lead on
+	// every command, the status listing's included.
+	if err := r.placeGitDirs(); err != nil {
+		return err
+	}
+	if err := r.sizeGitReads(); err != nil {
+		return err
+	}
 	entries, err := gitutil.Status(r.repo, maxStatusBytes, gitutil.StatusOptions{Ignored: true})
 	if err != nil {
 		return err
@@ -208,6 +289,9 @@ func (r *treeReader) read() error {
 		return err
 	}
 	defer root.Close()
+	if err := r.sizeListed(root, entries); err != nil {
+		return err
+	}
 	for _, e := range entries {
 		switch {
 		case strings.HasSuffix(e.Path, "/"):
@@ -228,6 +312,223 @@ func (r *treeReader) read() error {
 		}
 	}
 	return r.readGitDirs()
+}
+
+// placeGitDirs places git's own directory and common directory: where pin
+// placed them, once the files that place them are read unchanged, or as git
+// names them, filling an empty pin.
+func (r *treeReader) placeGitDirs() error {
+	if r.pin != nil && r.pin.gitDir != "" {
+		var moved []string
+		for _, key := range slices.Sorted(maps.Keys(r.pin.pointers)) {
+			if pointerState(r.pointerPath(key)) != r.pin.pointers[key] {
+				moved = append(moved, key)
+			}
+		}
+		if len(moved) > 0 {
+			return &redirectedError{Paths: moved}
+		}
+	}
+	gitDir, common, err := r.namedGitDirs()
+	if err != nil {
+		return err
+	}
+	switch {
+	case r.pin == nil:
+	case r.pin.gitDir == "":
+		r.pin.gitDir, r.pin.common, r.pin.pointers = gitDir, common, map[string]string{}
+		for _, p := range []string{filepath.Join(r.repo, ".git"), filepath.Join(gitDir, "commondir")} {
+			st := pointerState(p)
+			if strings.HasPrefix(st, "past ") {
+				return fmt.Errorf("%s holds more than %d KiB, more than the one path it names; restore it and run the interview again", r.keyOf(filepath.Dir(p), filepath.Base(p)), maxPointerBytes>>10)
+			}
+			r.pin.pointers[r.keyOf(filepath.Dir(p), filepath.Base(p))] = st
+		}
+	case gitDir != r.pin.gitDir || common != r.pin.common:
+		// The files that place them read unchanged, so something else
+		// redirected git: refused rather than read.
+		return fmt.Errorf("git names %s and %s as its own directory and common directory, not %s and %s as at the interview's first reading; "+
+			"the reading does not follow it: restore where git reads its directories and run the interview again", gitDir, common, r.pin.gitDir, r.pin.common)
+	}
+	r.gitDir, r.common = gitDir, common
+	return nil
+}
+
+// gitDirReadsWhole and commonReadsWhole are the files git reads whole on
+// every command, the status listing's included, in git's own directory and
+// in the common directory. Other files git reads there bound themselves: a
+// loose ref and the index are refused at their first bytes when they are not
+// one, and the configuration at its first line.
+var (
+	gitDirReadsWhole = []string{"HEAD", "commondir", "config.worktree"}
+	commonReadsWhole = []string{"config", "packed-refs", "info/exclude"}
+)
+
+// sizeGitReads sizes what git reads whole on every command, where links
+// lead, refusing past what is left of maxHashedBytes before git runs, naming
+// the largest: git reads it before the reading can bound its own hashing of
+// it, so a file a role grows there would otherwise hold the turn while git
+// read it.
+func (r *treeReader) sizeGitReads() error {
+	var total, largest int64
+	var largestKey string
+	for _, at := range []struct {
+		dir   string
+		files []string
+	}{{r.gitDir, gitDirReadsWhole}, {r.common, commonReadsWhole}} {
+		for _, f := range at.files {
+			fi, err := os.Stat(filepath.Join(at.dir, filepath.FromSlash(f)))
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if !fi.Mode().IsRegular() {
+				continue
+			}
+			total += fi.Size()
+			if fi.Size() > largest {
+				largest, largestKey = fi.Size(), r.keyOf(at.dir, f)
+			}
+		}
+	}
+	if total > maxHashedBytes-r.hashedBytes {
+		return fmt.Errorf("%s holds %d MiB, and git reads it whole on every command, past the %d MiB one reading hashes of the tree and git's own directory, so git is not run; "+
+			"restore it and run the interview again", largestKey, largest>>20, maxHashedBytes>>20)
+	}
+	return nil
+}
+
+// pointerPath is the full path of a placing file's key.
+func (r *treeReader) pointerPath(key string) string {
+	if filepath.IsAbs(filepath.FromSlash(key)) {
+		return filepath.FromSlash(key)
+	}
+	return filepath.Join(r.repo, filepath.FromSlash(key))
+}
+
+// namedGitDirs is git's own directory and common directory, as git names
+// them, in full.
+func (r *treeReader) namedGitDirs() (gitDir, common string, err error) {
+	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir")
+	if err != nil {
+		return "", "", err
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) != 2 || lines[0] == "" || lines[1] == "" {
+		return "", "", fmt.Errorf("git named no git directory and common directory (%q)", out)
+	}
+	return r.abs(lines[0]), r.abs(lines[1]), nil
+}
+
+// abs is p in full, a relative p taken from the repository.
+func (r *treeReader) abs(p string) string {
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(r.repo, p)
+	}
+	return filepath.Clean(p)
+}
+
+// pointerState is the state of a file that places git's own directory: its
+// kind, and a file's mode, size and content hash, or "past" and its size,
+// unread, when it holds more than one path can.
+func pointerState(p string) string {
+	fi, err := os.Lstat(p)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "absent"
+	case err != nil:
+		return "unreadable " + err.Error()
+	case fi.Mode().IsRegular() && fi.Size() > maxPointerBytes:
+		return fmt.Sprintf("past %d", fi.Size())
+	case fi.IsDir():
+		return fi.Mode().String()
+	}
+	root, err := os.OpenRoot(filepath.Dir(p))
+	if err != nil {
+		return "unreadable " + err.Error()
+	}
+	defer root.Close()
+	st, _, err := contentState(root, filepath.Base(p), maxPointerBytes)
+	if err != nil {
+		return "unreadable " + err.Error()
+	}
+	return st
+}
+
+// sizeListed counts the bytes the listed paths git hashes would take,
+// refusing past maxHashedBytes before any is read, naming the largest.
+func (r *treeReader) sizeListed(root *os.Root, entries []gitutil.StatusEntry) error {
+	var total, largest int64
+	var largestPath string
+	count := func(rel string) error {
+		if r.skipped(rel) || exempt(rel) {
+			return nil
+		}
+		fi, err := root.Lstat(rel)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !fi.Mode().IsRegular() {
+			return nil
+		}
+		total += fi.Size()
+		if fi.Size() > largest {
+			largest, largestPath = fi.Size(), rel
+		}
+		return nil
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Path, "/") || e.XY == "!!" {
+			continue
+		}
+		if err := count(e.Path); err != nil {
+			return err
+		}
+		if e.Orig != "" {
+			if err := count(e.Orig); err != nil {
+				return err
+			}
+		}
+	}
+	if total > maxHashedBytes {
+		return fmt.Errorf("the paths git lists as differing from HEAD hold %d MiB, past the %d MiB one reading hashes of the tree and git's own directory, so none is read; "+
+			"the largest is %s (%d MiB): remove it, or add it to .gitignore if git need not track it (an ignored path is read by its size and modification time, never its content), and run the interview again",
+			total>>20, maxHashedBytes>>20, largestPath, largest>>20)
+	}
+	return nil
+}
+
+// hash is the state of rel under root, keyed key, hashed within what is left
+// to hash of it: for an entry reached through via, the size its charge
+// counted, so a file grown since is not read past it; for one the reading
+// owns, what is left of maxHashedBytes, which it then counts.
+func (r *treeReader) hash(root *os.Root, rel, key string, via *reach, charged int64) (string, error) {
+	limit := maxHashedBytes - r.hashedBytes
+	if via != nil {
+		limit = charged
+	}
+	st, n, err := contentState(root, rel, limit)
+	if errors.Is(err, errPastBound) {
+		if via != nil {
+			return "", fmt.Errorf("%s leads past what one reading follows links to (%s grew to %d MiB as it was read), so it is not read; %s, and run the interview again",
+				via.what, key, n>>20, via.fix)
+		}
+		return "", fmt.Errorf("%s holds %d MiB, which takes one reading past the %d MiB one reading hashes of the tree and git's own directory, so it is not read; "+
+			"remove it, or add it to .gitignore if it is the tree's and git need not track it (an ignored path is read by its size and modification time, never its content), and run the interview again",
+			key, n>>20, maxHashedBytes>>20)
+	}
+	if err != nil {
+		return "", err
+	}
+	if via == nil {
+		r.hashedBytes += n
+	}
+	return st, nil
 }
 
 // skipped reports whether rel is left out of the reading.
@@ -263,8 +564,8 @@ func (r *treeReader) put(key, state string) error {
 
 // charge counts fi, an entry about to be read where via leads, against the
 // budget for what one reading reads outside what it owns, refusing past it
-// before the entry is read. An entry not reached that way (via nil) costs
-// nothing.
+// before the entry is read. An entry not reached that way (via nil) is held
+// to maxHashedBytes as it is hashed instead.
 func (r *treeReader) charge(via *reach, fi fs.FileInfo) error {
 	if via == nil {
 		return nil
@@ -287,10 +588,10 @@ func (r *treeReader) charge(via *reach, fi fs.FileInfo) error {
 
 // hashOne records a path git lists by its content's mode and hash.
 func (r *treeReader) hashOne(root *os.Root, xy, rel string) error {
-	if r.skipped(rel) {
+	if r.skipped(rel) || exempt(rel) {
 		return nil
 	}
-	h, err := contentState(root, rel)
+	h, err := r.hash(root, rel, rel, nil, 0)
 	if err != nil {
 		return err
 	}
@@ -362,21 +663,7 @@ func statState(fi fs.FileInfo) string {
 // core.hooksPath names outside the working tree, each entry by its mode,
 // size and content hash.
 func (r *treeReader) readGitDirs() error {
-	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir")
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(out, "\n")
-	if len(lines) != 2 || lines[0] == "" || lines[1] == "" {
-		return fmt.Errorf("git named no git directory and common directory (%q)", out)
-	}
-	abs := func(p string) string {
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(r.repo, p)
-		}
-		return filepath.Clean(p)
-	}
-	gitDir, common := abs(lines[0]), abs(lines[1])
+	gitDir, common := r.gitDir, r.common
 	// A linked worktree's .git is a file naming its git directory.
 	// The git directory it names is read below, so a link there is not
 	// followed.
@@ -413,7 +700,7 @@ func (r *treeReader) readGitDirs() error {
 		// git runs a hook from where the value leads, so a link on the way
 		// (the directory itself, or one above it) is resolved before the
 		// directory is placed and read.
-		dir := fsutil.RealExistingPath(abs(filepath.FromSlash(hp)))
+		dir := fsutil.RealExistingPath(r.abs(filepath.FromSlash(hp)))
 		// Inside the working tree, and outside git's own directory, the
 		// status listing already reads it.
 		if fsutil.PathWithin(dir, r.realRepo, fold) && !fsutil.PathWithin(dir, realGitDir, fold) && !fsutil.PathWithin(dir, realCommon, fold) {
@@ -639,11 +926,12 @@ func (r *treeReader) hashAt(base, rel string, follow bool, via *reach) error {
 		if err := r.charge(via, fi); err != nil {
 			return err
 		}
-		h, err := contentState(root, rel)
+		key := r.keyOf(base, rel)
+		h, err := r.hash(root, rel, key, via, fi.Size())
 		if err != nil {
 			return err
 		}
-		if err := r.put(r.keyOf(base, rel), "git "+h); err != nil {
+		if err := r.put(key, "git "+h); err != nil {
 			return err
 		}
 		if follow && fi.Mode()&fs.ModeSymlink != 0 {
@@ -658,6 +946,7 @@ func (r *treeReader) hashAt(base, rel string, follow bool, via *reach) error {
 			}
 			return err
 		}
+		var charged int64
 		if via != nil {
 			fi, err := d.Info()
 			if errors.Is(err, fs.ErrNotExist) {
@@ -669,15 +958,17 @@ func (r *treeReader) hashAt(base, rel string, follow bool, via *reach) error {
 			if err := r.charge(via, fi); err != nil {
 				return err
 			}
+			charged = fi.Size()
 		}
 		if d.IsDir() {
 			return nil
 		}
-		h, err := contentState(root, p)
+		key := r.keyOf(base, p)
+		h, err := r.hash(root, p, key, via, charged)
 		if err != nil {
 			return err
 		}
-		if err := r.put(r.keyOf(base, p), "git "+h); err != nil {
+		if err := r.put(key, "git "+h); err != nil {
 			return err
 		}
 		if follow && d.Type()&fs.ModeSymlink != 0 {
@@ -709,36 +1000,47 @@ func (r *treeReader) keyOf(base, rel string) string {
 	return filepath.ToSlash(full)
 }
 
-// contentState is rel's kind, mode, size and content hash: a link's target is
-// hashed, never followed.
-func contentState(root *os.Root, rel string) (string, error) {
+// errPastBound is a file larger than what is left to hash of it.
+var errPastBound = errors.New("past what is left to hash")
+
+// contentState is rel's kind, mode, size and content hash, and the bytes
+// hashed: a link's target is hashed, never followed. A regular file larger
+// than limit is not read: errPastBound is returned with its size. A file is
+// hashed no further than the size its Lstat gave, so one growing as it is
+// read is not read past the limit; its size or content differs at the next
+// reading.
+func contentState(root *os.Root, rel string, limit int64) (string, int64, error) {
 	fi, err := root.Lstat(rel)
 	if errors.Is(err, os.ErrNotExist) {
-		return "absent", nil
+		return "absent", 0, nil
 	}
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	h := sha256.New()
+	var n int64
 	switch {
 	case fi.Mode()&os.ModeSymlink != 0:
 		target, err := root.Readlink(rel)
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
 		h.Write([]byte(target))
 	case fi.Mode().IsRegular():
+		if fi.Size() > limit {
+			return "", fi.Size(), errPastBound
+		}
 		f, err := root.Open(rel)
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
-		_, err = io.Copy(h, f)
+		n, err = io.CopyN(h, f, fi.Size())
 		f.Close()
-		if err != nil {
-			return "", err
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", 0, err
 		}
 	}
-	return fmt.Sprintf("%v %d %s", fi.Mode(), fi.Size(), hex.EncodeToString(h.Sum(nil))), nil
+	return fmt.Sprintf("%v %d %s", fi.Mode(), fi.Size(), hex.EncodeToString(h.Sum(nil))), n, nil
 }
 
 // changedSince is every path whose state differs between before and after,
