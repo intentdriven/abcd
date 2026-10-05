@@ -1974,6 +1974,14 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			if n := binarySkewNotice(); n != "" {
 				notices = append(notices, n)
 			}
+			// The harness's user settings (iss-2610050556323779): a hook there
+			// that runs abcd, or an abcd status line that is gone or fails the
+			// trust checks, runs (or blanks) in every session. Named here, read
+			// only — abcd never edits that file — and a machine fact, so it
+			// stands whatever the repo detection above could answer.
+			if n := ahoy.HarnessNotice(); n != "" {
+				notices = append(notices, n)
+			}
 			// itd-111: a dogfood binary behind (or dirty against) its own source
 			// checkout tip. os.Executable names the binary; the comparison is
 			// git-only and never touches the network (adr-38 tier 1).
