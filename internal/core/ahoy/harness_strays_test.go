@@ -30,7 +30,7 @@ func homeHarnessSettings(t *testing.T, body string) string {
 func strayGaps(gaps []Gap) map[string]Gap {
 	out := map[string]Gap{}
 	for _, g := range gaps {
-		if strings.HasPrefix(g.ID, harnessStrayHookGapPrefix) {
+		if strings.HasPrefix(g.ID, HarnessStrayHookGapPrefix) {
 			out[g.ID] = g
 		}
 	}
@@ -78,9 +78,9 @@ func TestDetectReportsAbcdHooksInTheHarnessSettings(t *testing.T) {
 	}
 	got := strayGaps(det.Gaps)
 	want := []string{
-		harnessStrayHookGapPrefix + ".PreToolUse",
-		harnessStrayHookGapPrefix + ".SubagentStop",
-		harnessStrayHookGapPrefix + ".UserPromptSubmit",
+		HarnessStrayHookGapPrefix + ".PreToolUse",
+		HarnessStrayHookGapPrefix + ".SubagentStop",
+		HarnessStrayHookGapPrefix + ".UserPromptSubmit",
 	}
 	if strings.Join(sortedKeys(got), ",") != strings.Join(want, ",") {
 		t.Fatalf("stray-hook gaps = %v, want %v", sortedKeys(got), want)
@@ -98,13 +98,13 @@ func TestDetectReportsAbcdHooksInTheHarnessSettings(t *testing.T) {
 			t.Errorf("%s does not name the file and the remedy: %+v", id, g)
 		}
 	}
-	sub := got[harnessStrayHookGapPrefix+".SubagentStop"]
+	sub := got[HarnessStrayHookGapPrefix+".SubagentStop"]
 	if !strings.Contains(sub.Detail, "SubagentStop") || !strings.Contains(sub.Detail, "~/ABCDevelopment/abcd/bin/abcd-darwin-arm64 hook subagent-stop") {
 		t.Errorf("the SubagentStop gap does not name the event and the command: %q", sub.Detail)
 	}
 	// The plugin's manifest (validHooksJSON) registers UserPromptSubmit but not
 	// SubagentStop, and the remedy says only what is true of each.
-	if ups := got[harnessStrayHookGapPrefix+".UserPromptSubmit"]; !strings.Contains(ups.FixHint, "the abcd plugin already runs UserPromptSubmit itself") {
+	if ups := got[HarnessStrayHookGapPrefix+".UserPromptSubmit"]; !strings.Contains(ups.FixHint, "the abcd plugin already runs UserPromptSubmit itself") {
 		t.Errorf("UserPromptSubmit remedy = %q", ups.FixHint)
 	}
 	if strings.Contains(sub.FixHint, "already runs") || !strings.Contains(sub.FixHint, "abcd's hooks belong in its plugin") {
@@ -119,7 +119,7 @@ func TestDetectReportsAbcdHooksInTheHarnessSettings(t *testing.T) {
 		t.Errorf("install edited the harness settings:\n%s", after)
 	}
 	for _, id := range res.Remaining {
-		if strings.HasPrefix(id, harnessStrayHookGapPrefix) {
+		if strings.HasPrefix(id, HarnessStrayHookGapPrefix) {
 			t.Errorf("a report-only gap reached install's remaining list: %v", res.Remaining)
 		}
 	}
@@ -146,7 +146,7 @@ func TestDetectReportsTwoAbcdHooksOnOneEventApart(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := sortedKeys(strayGaps(det.Gaps))
-	want := []string{harnessStrayHookGapPrefix + ".SessionEnd", harnessStrayHookGapPrefix + ".SessionEnd.2"}
+	want := []string{HarnessStrayHookGapPrefix + ".SessionEnd", HarnessStrayHookGapPrefix + ".SessionEnd.2"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("gaps = %v, want %v", got, want)
 	}
@@ -184,18 +184,18 @@ func TestDetectReportsAnUntrustedStatusLine(t *testing.T) {
 			}
 			var found *Gap
 			for i, g := range det.Gaps {
-				if g.ID == statusLineUntrustedGapID {
+				if g.ID == StatusLineUntrustedGapID {
 					found = &det.Gaps[i]
 				}
 			}
 			if tc.reason == "" {
 				if found != nil {
-					t.Errorf("unexpected %s: %+v", statusLineUntrustedGapID, *found)
+					t.Errorf("unexpected %s: %+v", StatusLineUntrustedGapID, *found)
 				}
 				return
 			}
 			if found == nil {
-				t.Fatalf("no %s gap; gaps = %v", statusLineUntrustedGapID, gapIDs(det.Gaps))
+				t.Fatalf("no %s gap; gaps = %v", StatusLineUntrustedGapID, gapIDs(det.Gaps))
 			}
 			g := *found
 			if !g.Required || g.Resolvable || g.Category != ConfigChange || g.Scope != "machine" {

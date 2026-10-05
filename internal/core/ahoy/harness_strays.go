@@ -27,13 +27,13 @@ import (
 )
 
 const (
-	// harnessStrayHookGapPrefix keys one gap per abcd hook in the user
+	// HarnessStrayHookGapPrefix keys one gap per abcd hook in the user
 	// settings: <prefix>.<Event>, and <prefix>.<Event>.<n> for the n-th entry
 	// on one event, so no finding hides another.
-	harnessStrayHookGapPrefix = "harness.stray_hook"
-	// statusLineUntrustedGapID is a status line running an abcd that fails
+	HarnessStrayHookGapPrefix = "harness.stray_hook"
+	// StatusLineUntrustedGapID is a status line running an abcd that fails
 	// statusLineEntryTrust. A dangling line keeps its own repair gap.
-	statusLineUntrustedGapID = "statusline.untrusted"
+	StatusLineUntrustedGapID = "statusline.untrusted"
 	// maxShownCommand bounds the command a finding quotes: a hook command can
 	// run to kilobytes, and the finding needs only enough to recognise it.
 	maxShownCommand = 120
@@ -86,7 +86,7 @@ func harnessFindings(hs harnessSettings, pluginEvents map[string]bool) []harness
 				continue
 			}
 			n++
-			id := harnessStrayHookGapPrefix + "." + idSafe(ev)
+			id := HarnessStrayHookGapPrefix + "." + idSafe(ev)
 			if n > 1 {
 				id += "." + strconv.Itoa(n)
 			}
@@ -117,7 +117,7 @@ func harnessFindings(hs harnessSettings, pluginEvents map[string]bool) []harness
 			if bin := statusLineBinary(hs); bin != "" {
 				if ok, reason := statusLineEntryTrust(expandHome(bin)); !ok {
 					out = append(out, harnessFinding{
-						kind: findingStatusLineUntrusted, id: statusLineUntrustedGapID, settings: settings,
+						kind: findingStatusLineUntrusted, id: StatusLineUntrustedGapID, settings: settings,
 						key: harnessStatusKey, command: shownCommand(hs.command), reason: reason,
 						remedy: "re-run `abcd ahoy install` to repoint the status line at the abcd the install recorded",
 					})

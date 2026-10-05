@@ -3679,6 +3679,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// The provider adapter's explanation (itd-2609081951381895
 				// criterion 6): optional, and named so a person meets it here.
 				for _, g := range res.Gaps {
+					// abcd commands in the harness's user settings: report-only,
+					// so the board is the place a person learns of them, and a
+					// count alone would hide which entry and what to do. The
+					// command is the person's own text, so it is sanitised.
+					if strings.HasPrefix(g.ID, ahoy.HarnessStrayHookGapPrefix+".") || g.ID == ahoy.StatusLineUntrustedGapID {
+						fmt.Fprintf(w, "  harness:     %s — %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
+					}
 					switch g.ID {
 					case ahoy.ProviderAdapterGapID:
 						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")

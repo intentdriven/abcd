@@ -81,7 +81,7 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 	}
 	rec, recorded := readPathEntry()
 	if !recorded {
-		return false, recordShown + " records no abcd install it can vouch for (it is absent, incomplete, or not yours alone)"
+		return false, recordShown + " records no abcd install (it is absent, incomplete, or not yours alone)"
 	}
 	if !sameEntry(rec.path, path) {
 		return false, recordShown + " does not record it as the abcd installed here"
