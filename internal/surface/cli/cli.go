@@ -3680,6 +3680,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						for _, d := range strings.Split(g.Detail, "\n") {
 							fmt.Fprintf(w, "  provider:    route skipped — %s\n", termsafe.Sanitize(d))
 						}
+					case ahoy.StoreWorktreeUnlinkedGapID:
+						// Report-only, so `ahoy install` never closes it and
+						// this line is where a person meets it: the worktree,
+						// home-relative, and the one repair for it
+						// (iss-2610050728100598).
+						fmt.Fprintf(w, "  worktree:    unlinked — %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {

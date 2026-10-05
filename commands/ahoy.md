@@ -79,6 +79,15 @@ Then summarise the JSON for the user:
   and `effects` (what the install does on the machine and over the network,
   Homebrew's own analytics included) rather than a bare command, so the
   person can judge the install.
+- A report-only gap, one with `resolvable` false, is a note abcd only reports:
+  `install` never closes it, and the person has to act. Relay each one's
+  `detail` and `fix_hint` as they stand, rather than folding it into the
+  count. A `store.worktree_unlinked` gap, for one, names a worktree in abcd's
+  store that its repository no longer links back to, with the
+  `git -C … worktree repair` line for that worktree, and a
+  `history.home_symlinked` gap names the history registry abcd leaves alone
+  behind a linked home folder. Never tell the user `/abcd:ahoy install` closes
+  a report-only gap.
 
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply
 them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
