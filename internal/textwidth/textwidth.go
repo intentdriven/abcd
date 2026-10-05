@@ -100,3 +100,51 @@ func fill(words []string, first, rest int) []string {
 	}
 	return lines
 }
+
+// Fit returns s whole when it takes at most limit columns, and otherwise s cut
+// by display width and ended with ellipsis, the whole within limit: a wide rune
+// is never split, and a space left before the cut is dropped. It is how the
+// status board fits a title to one line (spc-2610031844142274).
+func Fit(s string, limit int, ellipsis string) string {
+	if Columns(s) <= limit {
+		return s
+	}
+	room := limit - Columns(ellipsis)
+	if room <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	cols := 0
+	for _, r := range s {
+		w := Columns(string(r))
+		if cols+w > room {
+			break
+		}
+		b.WriteRune(r)
+		cols += w
+	}
+	return strings.TrimRight(b.String(), " ") + ellipsis
+}
+
+// Break splits s into pieces of at most limit display columns each, never
+// splitting a wide rune: the way a word wider than any line is laid out when it
+// must not run past the window. A limit below one leaves s whole.
+func Break(s string, limit int) []string {
+	if limit < 1 || Columns(s) <= limit {
+		return []string{s}
+	}
+	var out []string
+	var b strings.Builder
+	cols := 0
+	for _, r := range s {
+		w := Columns(string(r))
+		if cols+w > limit && cols > 0 {
+			out = append(out, b.String())
+			b.Reset()
+			cols = 0
+		}
+		b.WriteRune(r)
+		cols += w
+	}
+	return append(out, b.String())
+}
