@@ -46,6 +46,17 @@ func recordPathEntry(t *testing.T, bin string) {
 	}
 }
 
+// relink replaces the fixture's binary at link with a symlink to target.
+func relink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestStatusLineEntryTrust pins the checks the status line's wired binary must
 // pass — the ones the plugin's hook shims apply before they run a PATH abcd
 // (hooks/hooks.json), plus the plugin cache's versioned directory, which the
@@ -138,6 +149,31 @@ func TestStatusLineEntryTrust(t *testing.T) {
 			}
 			return bin
 		}, "versioned directory"},
+		// The recorded entry may be a link (binTargetOwnedSymlink), and
+		// whoever can write the directory its TARGET sits in chooses what the
+		// line runs as surely as whoever can write the link's own directory.
+		{"a link into a world-writable directory", func(t *testing.T, bin string) string {
+			open := t.TempDir()
+			if err := os.Chmod(open, 0o777); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(open, 0o700) })
+			target := filepath.Join(open, binName)
+			writeTrustBinary(t, target)
+			relink(t, target, bin)
+			return bin
+		}, "world-writable"},
+		{"a link into a working tree", func(t *testing.T, bin string) string {
+			repo := t.TempDir()
+			if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(repo, "bin", binName)
+			writeTrustBinary(t, target)
+			relink(t, target, bin)
+			t.Chdir(repo)
+			return bin
+		}, "inside the working tree"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

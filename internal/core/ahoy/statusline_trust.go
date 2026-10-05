@@ -48,27 +48,47 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 		}
 		return false, "it could not be examined (" + errText(err) + ")"
 	}
+	// The recorded entry may be a link to the binary (an owned symlink is one
+	// of the install shapes statusLineEntry admits), and what the line runs is
+	// the link's target: every binary check below judges the target, and the
+	// directory checks judge the target's directory as well as the link's,
+	// since whoever can write either one chooses what runs.
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false, "it could not be resolved (" + errText(err) + ")"
+	}
+	if target != filepath.Clean(path) {
+		if fi, err = os.Stat(target); err != nil {
+			return false, "it could not be examined (" + errText(err) + ")"
+		}
+	}
 	if !fi.Mode().IsRegular() {
 		return false, "it is not a regular file"
 	}
 	// A link into the cache dies with the cache just the same.
-	if inVersionedPluginCache(resolvePath(path)) {
+	if inVersionedPluginCache(target) {
 		return false, versionedCacheReason
 	}
-	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	linkDir, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
 		return false, "its directory could not be resolved"
 	}
-	if insideWorkingTree(dir) {
-		return false, "it lives inside the working tree, so the project could replace it"
+	dirs := []string{linkDir}
+	if targetDir := filepath.Dir(target); targetDir != linkDir {
+		dirs = append(dirs, targetDir)
 	}
-	if dfi, err := os.Stat(dir); err != nil || dfi.Mode().Perm()&0o002 != 0 {
-		return false, "its directory is world-writable"
+	for _, dir := range dirs {
+		if insideWorkingTree(dir) {
+			return false, "it lives inside the working tree, so the project could replace it"
+		}
+		if dfi, err := os.Stat(dir); err != nil || dfi.Mode().Perm()&0o002 != 0 {
+			return false, "its directory is world-writable"
+		}
 	}
 	if fi.Mode().Perm()&0o002 != 0 {
 		return false, "the binary itself is world-writable"
 	}
-	if err := fsutil.CallersAlone(path, fi); err != nil {
+	if err := fsutil.CallersAlone(target, fi); err != nil {
 		if errors.Is(err, fsutil.ErrDeclarationWritable) {
 			return false, "it is writable by your group, so another account could replace it"
 		}
