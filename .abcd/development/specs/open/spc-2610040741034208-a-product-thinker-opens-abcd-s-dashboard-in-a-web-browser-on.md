@@ -479,9 +479,31 @@ another package is given.
   the identity from Tailscale's lookup, never a header): the connection gate
   (D2). `TestListensOnTailnetAddressesOnly`,
   `TestConnectionWithoutIdentityGetsNoBytes`, `TestTaggedNodeIsRefused`,
-  `TestTailscaleHeadersAreIgnored` (a forged `Tailscale-User-Login` with a
-  failing lookup is refused; with a passing one, the header's name is not
-  the one recorded). This computer itself, at one of the listening
+  `TestTailscaleHeadersAreIgnored` (a forged `Tailscale-User-Login` is
+  refused, at the connection with a failing lookup and as a relay with a
+  passing one, and reaches no route). Two cases decision 4 did not settle
+  are refused until the product thinker decides (the facilitator's safe
+  default, `.abcd/work/DECISIONS.md` 2026-10-05). A device shared into the
+  tailnet from another account (the lookup's `Node.Sharer` set) belongs to
+  someone else and is refused at the connection with no byte, like a tagged
+  one: `TestASharedInNodeIsRefused`, and `TestWhoIsReportsASharer`
+  (`internal/adapter/tailscale`). A request another of the person's nodes
+  relays with its own Serve, or puts on the open internet with Funnel,
+  comes from that node, which the lookup names as the person's; it is
+  dropped with no byte, before the host check, when it carries any header
+  only a proxy adds: the ones Tailscale's Serve and Funnel set
+  (`X-Forwarded-Host` on every proxied request, `X-Forwarded-For`,
+  `X-Forwarded-Proto`, `Tailscale-Funnel-Request`, `Tailscale-User-Login`,
+  `Tailscale-User-Name`, `Tailscale-User-Profile-Pic`,
+  `Tailscale-Headers-Info`, `Tailscale-App-Capabilities`; read from
+  `ipn/ipnlocal/serve.go` at tailscale commit 9128778b6515 and Tailscale's
+  Serve documentation, 2026-10-05), any other `Tailscale-` or
+  `X-Forwarded-` header, `Forwarded` and `Via`:
+  `TestARelayedRequestIsRefused`. **Residual:** a raw TCP relay (Serve's
+  TCP forwarding; with the PROXY protocol turned on, Go's HTTP server
+  answers the preamble 400 Bad Request and serves nothing) adds no header and reaches the
+  dashboard as the relaying node itself, so it cannot be told apart from
+  that node opening the dashboard and is let in like it. This computer itself, at one of the listening
   addresses, may make `start`'s single-use self-check and nothing else, and
   is refused before any lookup once it has answered (D7: another account on
   the same computer, or a Serve or Funnel configured after `start`):
@@ -583,7 +605,7 @@ rather than adding to them.
 ## Footprint
 
 - packages: internal/surface/dashboard, internal/core/dashboard, internal/adapter/tailscale, internal/core/site, internal/surface/cli, commands/dashboard.md, docs/how-to, docs/reference, .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/glossary, .abcd/development/decisions/adrs
-- tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestThisComputerIsRefusedOnceTheSelfCheckAnswered, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, TestSummaryShowsWaitingNowNextInPlainWords, TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped, TestBriefChapterPageHeading, TestBriefCitationCounts, TestNoteReattaches, TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime, TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the surface parity test; dated receipts in the local tier; docs-lint and record-lint clean
+- tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestASharedInNodeIsRefused, TestARelayedRequestIsRefused, TestWhoIsReportsASharer, TestThisComputerIsRefusedOnceTheSelfCheckAnswered, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, TestSummaryShowsWaitingNowNextInPlainWords, TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped, TestBriefChapterPageHeading, TestBriefCitationCounts, TestNoteReattaches, TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime, TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the surface parity test; dated receipts in the local tier; docs-lint and record-lint clean
 
 ## Steps
 
@@ -593,7 +615,7 @@ rather than adding to them.
    - security review: required before landing (listener, identity, process control)
    - record: adr-2610032150581128 moved to accepted with its interview paragraph amended to D1, and invariant 7 given its inbound clause, in the same change
    - packages: internal/surface/dashboard, internal/adapter/tailscale, internal/surface/cli, commands/dashboard.md, docs/reference, .abcd/development/decisions/adrs, .abcd/development/brief/02-constraints
-   - tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestThisComputerIsRefusedOnceTheSelfCheckAnswered, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestWritesNeedTailnetIdentity, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, each against a fake `tailscale` on PATH and watched fail first; the surface parity test with the new page; the command reference regenerated
+   - tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestASharedInNodeIsRefused, TestARelayedRequestIsRefused, TestWhoIsReportsASharer, TestThisComputerIsRefusedOnceTheSelfCheckAnswered, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestWritesNeedTailnetIdentity, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, each against a fake `tailscale` on PATH and watched fail first; the surface parity test with the new page; the command reference regenerated
 2. The summary and item pages, from one snapshot through the site's renderer
    - criteria: P1, P3, T3's shared snapshot and capped live updates, T4
    - security review: required before landing (routing, rendering of record text, live-update streams)

@@ -251,6 +251,11 @@ func TestConnectionWithoutIdentityGetsNoBytes(t *testing.T) {
 		if !strings.Contains(b, "Product Thinker") || !strings.Contains(b, "pt@example.com") {
 			t.Errorf("the page does not name the person let in:\n%s", b)
 		}
+		ts.seen.mu.Lock()
+		defer ts.seen.mu.Unlock()
+		if len(ts.seen.ids) != 1 || ts.seen.ids[0] != person {
+			t.Errorf("the device recorded is %+v, want the lookup's %+v", ts.seen.ids, person)
+		}
 	})
 }
 
@@ -267,29 +272,128 @@ func TestTaggedNodeIsRefused(t *testing.T) {
 	}
 }
 
-func TestTailscaleHeadersAreIgnored(t *testing.T) {
-	forged := "Tailscale-User-Login: forged@example.com\r\nTailscale-User-Name: Forged Name\r\nX-Forwarded-For: 100.101.102.104\r\n"
-	t.Run("failing lookup", func(t *testing.T) {
-		ts := startTestServer(t, failing().lookup, loopbackPrefixes)
-		if got := exchange(t, ts.addr, get("/", testName, forged)); len(got) != 0 {
-			t.Errorf("a forged identity header let a refused connection through: %q", got)
+// TestASharedInNodeIsRefused: a device shared into the person's tailnet from
+// another account belongs to someone else. Decision 4 did not settle it, and
+// until the product thinker does it is refused at the connection like a tagged
+// one: no byte, no request reaching the routes, no device recorded. The lookup
+// is Tailscale's own command (a fake answering the whois the live receipt
+// recorded, with the Sharer Tailscale sets on a shared-in node), so the parse
+// and the gate are proved together.
+func TestASharedInNodeIsRefused(t *testing.T) {
+	const own = `{"Node":{"StableID":"nPhone","ComputedName":"phone","User":2},"UserProfile":{"LoginName":"pt@example.com","DisplayName":"Product Thinker"}}`
+	const shared = `{"Node":{"StableID":"nLaptop","ComputedName":"laptop","User":6,"Sharer":7},"UserProfile":{"LoginName":"someone@example.org","DisplayName":"Someone Else"}}`
+	t.Run("shared in from another account", func(t *testing.T) {
+		f := newFakeTailscale(t)
+		f.write(t, "whois-127.0.0.1.json", shared)
+		ts := startTestServer(t, tailscale.New(f.path).WhoIs, loopbackPrefixes)
+		if got := exchange(t, ts.addr, get("/", testName)); len(got) != 0 {
+			t.Errorf("a device shared in from another account got %d bytes: %q", len(got), got)
 		}
-	})
-	t.Run("passing lookup", func(t *testing.T) {
-		ts := startTestServer(t, passing().lookup, loopbackPrefixes)
-		b := body(t, parse(t, exchange(t, ts.addr, get("/", testName, forged))))
-		if strings.Contains(b, "forged") || strings.Contains(b, "Forged") {
-			t.Errorf("the page names the header's identity:\n%s", b)
+		if !closedAtOnce(t, ts.addr) {
+			t.Error("a device shared in from another account was not closed at once")
 		}
-		if !strings.Contains(b, "pt@example.com") {
-			t.Errorf("the page does not name the lookup's identity:\n%s", b)
+		if n := ts.spy.n.Load(); n != 0 {
+			t.Errorf("%d requests from a shared-in device reached the routes", n)
 		}
 		ts.seen.mu.Lock()
 		defer ts.seen.mu.Unlock()
-		if len(ts.seen.ids) != 1 || ts.seen.ids[0] != person {
-			t.Errorf("the device recorded is %+v, want the lookup's %+v", ts.seen.ids, person)
+		if len(ts.seen.ids) != 0 {
+			t.Errorf("a shared-in device was recorded: %+v", ts.seen.ids)
 		}
 	})
+	t.Run("the tailnet's own device", func(t *testing.T) {
+		// The same lookup without a sharer is let in: the refusal is the
+		// sharer's, not the fake's.
+		f := newFakeTailscale(t)
+		f.write(t, "whois-127.0.0.1.json", own)
+		ts := startTestServer(t, tailscale.New(f.path).WhoIs, loopbackPrefixes)
+		if resp := parse(t, exchange(t, ts.addr, get("/", testName))); resp.StatusCode != http.StatusOK {
+			t.Errorf("the tailnet's own device answered %d, want 200", resp.StatusCode)
+		}
+	})
+}
+
+// relayRequests are requests as a proxy forwards them: each header
+// Tailscale's Serve or Funnel adds (ipn/ipnlocal/serve.go), the standard
+// proxy headers, and Funnel's whole set at once. A browser opening the
+// dashboard itself sends none of them.
+var relayRequests = map[string]string{
+	"Serve's X-Forwarded-Host":           "X-Forwarded-Host: relay.example-tailnet.ts.net\r\n",
+	"Serve's X-Forwarded-For":            "X-Forwarded-For: 100.101.102.104\r\n",
+	"Serve's X-Forwarded-Proto":          "X-Forwarded-Proto: https\r\n",
+	"Serve's Tailscale-User-Login":       "Tailscale-User-Login: pt@example.com\r\n",
+	"Serve's Tailscale-User-Name":        "Tailscale-User-Name: Product Thinker\r\n",
+	"Serve's Tailscale-User-Profile-Pic": "Tailscale-User-Profile-Pic: https://example.com/p.png\r\n",
+	"Serve's Tailscale-Headers-Info":     "Tailscale-Headers-Info: https://tailscale.com/s/serve-headers\r\n",
+	"Serve's Tailscale-App-Capabilities": "Tailscale-App-Capabilities: {}\r\n",
+	"Funnel's Tailscale-Funnel-Request":  "Tailscale-Funnel-Request: ?1\r\n",
+	"Forwarded":                          "Forwarded: for=192.0.2.1;proto=https\r\n",
+	"Via":                                "Via: 1.1 relay\r\n",
+	"a header in another case":           "x-FORWARDED-for: 192.0.2.1\r\n",
+	"another X-Forwarded- header":        "X-Forwarded-Port: 443\r\n",
+	"Funnel's whole set":                 "X-Forwarded-Host: relay.example-tailnet.ts.net\r\nX-Forwarded-For: 192.0.2.1\r\nX-Forwarded-Proto: https\r\nTailscale-Funnel-Request: ?1\r\n",
+}
+
+// TestARelayedRequestIsRefused: another of the person's nodes can relay the
+// dashboard with its own Tailscale Serve, or put it on the open internet with
+// Funnel; the connection then comes from that node, which the lookup names as
+// the person's own. Decision 4 did not settle a relay, and until the product
+// thinker does, a request carrying any header only a proxy adds is dropped
+// with no byte sent, whatever it asks for and before the host check, and
+// reaches no route and records no device.
+func TestARelayedRequestIsRefused(t *testing.T) {
+	ts := startTestServer(t, passing().lookup, loopbackPrefixes)
+	for name, extra := range relayRequests {
+		for _, path := range []string{"/", "/self-check", "/missing"} {
+			if got := exchange(t, ts.addr, get(path, testName, extra)); len(got) != 0 {
+				t.Errorf("%s: GET %s got %d bytes: %q", name, path, len(got), got)
+			}
+		}
+		// A relay keeps the relaying node's own name as the Host: refused
+		// all the same, before the host check could answer it.
+		if got := exchange(t, ts.addr, get("/", "relay.example-tailnet.ts.net", extra)); len(got) != 0 {
+			t.Errorf("%s: with the relay's own Host it got %d bytes: %q", name, len(got), got)
+		}
+	}
+	if n := ts.spy.n.Load(); n != 0 {
+		t.Errorf("%d relayed requests reached the routes", n)
+	}
+	func() {
+		ts.seen.mu.Lock()
+		defer ts.seen.mu.Unlock()
+		if len(ts.seen.ids) != 0 {
+			t.Errorf("a relayed request recorded a device: %+v", ts.seen.ids)
+		}
+	}()
+	// The same request without a proxy's header is served: the refusal is
+	// the header's.
+	if resp := parse(t, exchange(t, ts.addr, get("/", testName))); resp.StatusCode != http.StatusOK {
+		t.Errorf("a direct request answered %d, want 200", resp.StatusCode)
+	}
+}
+
+// TestTailscaleHeadersAreIgnored: no header ever says who is connecting. A
+// forged identity header with a failing lookup is refused at the connection,
+// and with a passing one the request is refused as relayed: neither reaches a
+// route or names the header's person.
+func TestTailscaleHeadersAreIgnored(t *testing.T) {
+	forged := "Tailscale-User-Login: forged@example.com\r\nTailscale-User-Name: Forged Name\r\nX-Forwarded-For: 100.101.102.104\r\n"
+	for name, l := range map[string]*lookupSpy{"failing lookup": failing(), "passing lookup": passing()} {
+		t.Run(name, func(t *testing.T) {
+			ts := startTestServer(t, l.lookup, loopbackPrefixes)
+			if got := exchange(t, ts.addr, get("/", testName, forged)); len(got) != 0 {
+				t.Errorf("a forged identity header got %d bytes: %q", len(got), got)
+			}
+			if n := ts.spy.n.Load(); n != 0 {
+				t.Errorf("%d requests with a forged identity header reached the routes", n)
+			}
+			ts.seen.mu.Lock()
+			defer ts.seen.mu.Unlock()
+			if len(ts.seen.ids) != 0 {
+				t.Errorf("a forged identity header recorded a device: %+v", ts.seen.ids)
+			}
+		})
+	}
 }
 
 func TestUnexpectedHostIsRefusedBeforeAnyRead(t *testing.T) {

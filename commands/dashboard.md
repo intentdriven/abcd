@@ -18,6 +18,14 @@ This computer itself gets no answer either once start has checked its own
 address, whichever account on it connects, so the dashboard is opened from
 another device.
 
+Two cases are refused until the product thinker decides them. A device shared
+into the Tailscale network from another account belongs to someone else, and
+gets no answer at all. A request that another device relays with its own
+Tailscale Serve or Funnel (Funnel is the open internet) arrives carrying the
+headers a proxy adds, Tailscale's own among them, and is dropped with nothing
+served. A raw TCP relay adds no header and looks like the relaying device
+itself, so it cannot be told apart from that device opening the dashboard.
+
 In this version the dashboard serves one page naming the person it let in, and
 nothing of the project yet.
 

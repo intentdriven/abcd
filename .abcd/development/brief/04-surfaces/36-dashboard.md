@@ -49,17 +49,29 @@ Tailscale prefixes is closed at once, with no lookup. Otherwise Tailscale's own
 lookup is asked who is at that address, and the connection is let in only when
 it names an untagged device of a person: a tag names a machine, not a person.
 Any untagged device on the person's Tailscale network is let in, whoever's it
-is, which is the cost decision 4 accepted. A lookup that fails, a tagged
-device, and a connection past the cap are closed having been sent nothing, so a
-device off the network gets no answer at all. A connection from one of the
+is, which is the cost decision 4 accepted. A device shared into the network
+from another account belongs to someone else, which decision 4 did not settle,
+and is refused like a tagged one until the product thinker decides. A lookup
+that fails, a tagged or shared-in device, and a connection past the cap are
+closed having been sent nothing, so a device off the network gets no answer at
+all. A connection from one of the
 dashboard's own addresses is this computer itself: it may make start's
 one-time check of its own address and nothing else, and once that check has
 answered it is closed before any lookup. So neither another account on this
 computer nor a Tailscale Serve or Funnel set up later to forward to the
-dashboard gets an answer, and the dashboard is opened from another device. No
-request header ever decides
-who is connecting: a forged identity header with a failing lookup is refused,
-and with a passing one the page names the lookup's person, not the header's.
+dashboard gets an answer, and the dashboard is opened from another device. Another of the person's devices can relay the dashboard with its own Serve, or
+put it on the open internet with Funnel; the connection then comes from that
+device, which the lookup names as the person's. Decision 4 did not settle a
+relay either, so until the product thinker decides, a request carrying a header
+only a proxy adds is dropped with nothing served, before the host check: the
+headers Tailscale's Serve and Funnel add (X-Forwarded-Host, X-Forwarded-For and
+X-Forwarded-Proto, Tailscale-Funnel-Request, and Serve's Tailscale-User-*,
+Tailscale-Headers-Info and Tailscale-App-Capabilities; any Tailscale- or
+X-Forwarded- header is read as one), and the standard Forwarded and Via. A raw
+TCP relay, Serve's TCP forwarding, adds no header and looks like the relaying
+device itself: it cannot be told apart, and stays a residual. No request header
+ever decides who is connecting: a forged identity header is refused, with a
+failing lookup at the connection and with a passing one as a relay.
 Lookups are cached for each address for thirty seconds and at most four run at
 once; a connection waiting on one counts against the cap of thirty-two open
 connections.

@@ -60,7 +60,9 @@ type handlerConfig struct {
 }
 
 // newHandler is the request path, outermost first: the security headers on
-// every response; the host check, answering 421 before anything else runs;
+// every response; the relay check, dropping a request another node's
+// Tailscale Serve or Funnel (or any proxy) forwarded, sending nothing; the
+// host check, answering 421 before anything else runs;
 // the identity the gate attached, without which the connection is dropped;
 // this computer's own connections held to the self-check; the body cap; Go's
 // cross-origin protection, which over plain HTTP judges a write by its Origin
@@ -72,6 +74,7 @@ func newHandler(cfg handlerConfig) http.Handler {
 	h = selfCheckOnly(h)
 	h = requireIdentity(h)
 	h = hostCheck(cfg.name, cfg.port, h)
+	h = refuseRelayed(h)
 	return securityHeaders(h)
 }
 
@@ -95,6 +98,59 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, kv := range securityHeaderValues {
 			w.Header().Set(kv[0], kv[1])
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// relayHeaderPrefixes and relayHeaders name the request headers a proxy adds
+// and a browser opening the dashboard itself never sends, matched without
+// regard to case. Tailscale's Serve and Funnel, proxying HTTP, set
+// X-Forwarded-Host on every request, X-Forwarded-For and, behind HTTPS,
+// X-Forwarded-Proto; Funnel adds Tailscale-Funnel-Request; Serve adds
+// Tailscale-User-Login, Tailscale-User-Name, Tailscale-User-Profile-Pic and
+// Tailscale-Headers-Info for a person's device, and Tailscale-App-Capabilities
+// when asked to (ipn/ipnlocal/serve.go, addProxyForwardedHeaders,
+// addTailscaleIdentityHeaders and addAppCapabilitiesHeader, at tailscale
+// commit 9128778b6515; the Serve page of Tailscale's documentation lists the
+// identity and capability headers). The "Tailscale-" prefix covers that
+// family whole. Forwarded and Via are the standard proxy headers (RFC 7239,
+// RFC 9110 section 7.6.3).
+var (
+	relayHeaderPrefixes = []string{"tailscale-", "x-forwarded-"}
+	relayHeaders        = []string{"forwarded", "via"}
+)
+
+// relayed reports whether h carries a header only a proxy adds.
+func relayed(h http.Header) bool {
+	for k := range h {
+		k = strings.ToLower(k)
+		for _, p := range relayHeaderPrefixes {
+			if strings.HasPrefix(k, p) {
+				return true
+			}
+		}
+		for _, n := range relayHeaders {
+			if k == n {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// refuseRelayed drops, sending nothing, a request that carries a header only
+// a proxy adds. Another of the person's nodes can relay the dashboard with
+// its own Tailscale Serve, or put it on the open internet with Funnel, and
+// the connection then comes from that node, which the lookup names as the
+// person's own. Decision 4 did not settle such a relay, and it is refused
+// until the product thinker decides (the facilitator's safe default,
+// 2026-10-05). A raw TCP relay (Serve's TCP forwarding) adds no header and
+// looks like the relaying node itself: that one cannot be told apart.
+func refuseRelayed(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if relayed(r.Header) {
+			panic(http.ErrAbortHandler)
 		}
 		next.ServeHTTP(w, r)
 	})

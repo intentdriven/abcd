@@ -120,9 +120,12 @@ type cacheEntry struct {
 }
 
 // gate decides, for each connection, whether its peer is let in: an address
-// inside the tailnet, which Tailscale's lookup names as an untagged device
-// with a person (D2). Every untagged device the lookup names is let in,
-// whoever's it is: decision 4's accepted cost.
+// inside the tailnet, which Tailscale's lookup names as an untagged device of
+// the tailnet's own, with a person (D2). Every such device is let in, whoever
+// on the tailnet it belongs to: decision 4's accepted cost. A device shared
+// into the tailnet from another account belongs to someone else, which
+// decision 4 did not settle, and is refused like a tagged one until the
+// product thinker decides (the facilitator's safe default, 2026-10-05).
 type gate struct {
 	lookup   Lookup
 	prefixes []netip.Prefix
@@ -175,7 +178,7 @@ func (g *gate) admit(ctx context.Context, remote net.Addr) (tailscale.Identity, 
 	}
 	id, err := g.lookup(ctx, a)
 	<-g.sem
-	ok = err == nil && !id.Tagged && id.Node != "" && id.Login != ""
+	ok = err == nil && !id.Tagged && !id.Shared && id.Node != "" && id.Login != ""
 	if !ok {
 		id = tailscale.Identity{}
 	}

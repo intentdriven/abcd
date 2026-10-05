@@ -759,7 +759,9 @@ HTTP with no certificate, never through Serve or Funnel. Every connection is let
 in only when Tailscale's own lookup of its address names a device of a person,
 never from a header; any device on the Tailscale network can open it but a
 tagged machine and this computer itself, which start checks once and then
-refuses, so the dashboard is opened from another device.
+refuses, so the dashboard is opened from another device. Until the product
+thinker decides, a device shared in from another account and a request
+another device's Serve or Funnel relays are refused too.
 
 Bare `abcd dashboard` is `abcd dashboard status`. The server runs until `abcd
 dashboard stop`, and never starts by itself. Its run file and the devices that

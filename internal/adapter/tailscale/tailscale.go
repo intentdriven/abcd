@@ -89,6 +89,9 @@ type Identity struct {
 	// Tagged is set when the device carries a tag: it names a machine, not
 	// a person.
 	Tagged bool `json:"tagged"`
+	// Shared is set when the device was shared into this tailnet from
+	// another account: it belongs to someone else.
+	Shared bool `json:"shared"`
 }
 
 // runner runs the command at path with args and returns its standard output.
@@ -165,6 +168,10 @@ type whoisJSON struct {
 		Name         string
 		ComputedName string
 		Tags         []string
+		// Sharer is the account that shared the device into this tailnet,
+		// zero (and left out) for a device of the tailnet's own (Tailscale's
+		// tailcfg.Node.Sharer, a numeric user id).
+		Sharer int64
 	}
 	UserProfile *struct {
 		LoginName   string
@@ -202,6 +209,7 @@ func (c *Client) WhoIs(ctx context.Context, addr netip.Addr) (Identity, error) {
 		Login:  w.UserProfile.LoginName,
 		Person: w.UserProfile.DisplayName,
 		Tagged: len(w.Node.Tags) > 0,
+		Shared: w.Node.Sharer != 0,
 	}, nil
 }
 

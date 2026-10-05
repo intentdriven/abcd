@@ -50,6 +50,20 @@ const whoisTagged = `{
   "UserProfile": {"ID": 4, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices"}
 }`
 
+// whoisShared is a device shared into the tailnet from another account: its
+// Sharer names that account's user (tailcfg.Node.Sharer, omitted when zero).
+const whoisShared = `{
+  "Node": {
+    "ID": 5,
+    "StableID": "nStable5",
+    "Name": "laptop.example-tailnet.ts.net.",
+    "ComputedName": "laptop",
+    "User": 6,
+    "Sharer": 7
+  },
+  "UserProfile": {"ID": 6, "LoginName": "someone@example.org", "DisplayName": "Someone Else"}
+}`
+
 // fakeRun answers each argument list from a table, recording every call.
 type fakeRun struct {
 	out   map[string]string
@@ -152,6 +166,28 @@ func TestWhoIsReportsTags(t *testing.T) {
 	}
 	if !id.Tagged {
 		t.Errorf("a node with tags read as untagged: %+v", id)
+	}
+}
+
+func TestWhoIsReportsASharer(t *testing.T) {
+	addr := netip.MustParseAddr("100.101.102.106")
+	f := &fakeRun{out: map[string]string{
+		"whois --json 100.101.102.106": whoisShared,
+		"whois --json 100.101.102.104": whoisPerson,
+	}}
+	id, err := client(f).WhoIs(context.Background(), addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !id.Shared || id.Tagged {
+		t.Errorf("a device shared in from another account read as %+v, want shared and untagged", id)
+	}
+	own, err := client(f).WhoIs(context.Background(), netip.MustParseAddr("100.101.102.104"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.Shared {
+		t.Errorf("a device of the tailnet's own read as shared: %+v", own)
 	}
 }
 
