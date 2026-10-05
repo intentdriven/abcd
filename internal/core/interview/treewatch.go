@@ -94,6 +94,26 @@ const maxStatusBytes = 8 << 20
 // reaching it has something in it worth clearing.
 var maxWatched = 500_000
 
+// maxFollowedEntries and maxFollowedBytes bound what the links one reading
+// follows lead to, in all: every entry read where a link leads (the
+// directory it leads to included) and every byte of the files hashed there.
+// A reading past either is refused, naming the link, before the entry past
+// it is read, rather than walking toward maxWatched: a role can plant a link
+// to a large tree in one write where the guard follows links (its own turn
+// directory's push receipts, registered as a worktree, among them), and
+// hashing what that link leads to whole would hold the turn for minutes
+// before the guard refused. What the guard legitimately follows is small:
+// git's sample hooks are 14 files and 26 KiB, a checkout keeps at most 50
+// push receipts of 76 bytes each (scripts/preflight-receipt.sh), and a
+// dotfiles-managed hooks directory holds tens of scripts. The budget is
+// some twenty times the receipts' cap and holds a compiled hook binary, and
+// reading all of it takes tens of milliseconds. It is shared by every link
+// one reading follows, so planting many links does not multiply it.
+var (
+	maxFollowedEntries       = 1024
+	maxFollowedBytes   int64 = 64 << 20
+)
+
 // treeState is each watched path mapped to its status and its state.
 type treeState map[string]string
 
@@ -130,6 +150,11 @@ type treeReader struct {
 	// under them.
 	skip []string
 	st   treeState
+	// followedEntries and followedBytes are what the links this reading
+	// followed have led to so far, held to maxFollowedEntries and
+	// maxFollowedBytes.
+	followedEntries int
+	followedBytes   int64
 }
 
 // readTree reads the state of every watched place under repo, leaving out
@@ -205,6 +230,26 @@ func (r *treeReader) put(key, state string) error {
 			"too many to read around each turn; remove what it no longer needs (a scratch directory, a build's output) and run the interview again", maxWatched)
 	}
 	r.st[key] = state
+	return nil
+}
+
+// charge counts fi, an entry about to be read where the link via leads,
+// against the budget for what one reading's links lead to, refusing past it
+// before the entry is read. An entry not reached through a link (via empty)
+// costs nothing.
+func (r *treeReader) charge(via string, fi fs.FileInfo) error {
+	if via == "" {
+		return nil
+	}
+	r.followedEntries++
+	if fi.Mode().IsRegular() {
+		r.followedBytes += fi.Size()
+	}
+	if r.followedEntries > maxFollowedEntries || r.followedBytes > maxFollowedBytes {
+		return fmt.Errorf("the link %s leads past what one reading follows links to (%d entries and %d MiB in all), "+
+			"more than git's own directory, a hooks directory or the push receipts hold, so it is not read; "+
+			"remove the link, or point it at what git should read there, and run the interview again", via, maxFollowedEntries, maxFollowedBytes>>20)
+	}
 	return nil
 }
 
@@ -304,7 +349,7 @@ func (r *treeReader) readGitDirs() error {
 	// The git directory it names is read below, so a link there is not
 	// followed.
 	if fi, err := os.Lstat(filepath.Join(r.repo, ".git")); err == nil && !fi.IsDir() {
-		if err := r.hashAt(r.repo, ".git", false); err != nil {
+		if err := r.hashAt(r.repo, ".git", false, ""); err != nil {
 			return err
 		}
 	}
@@ -370,10 +415,14 @@ func (r *treeReader) readWorktrees(common string) error {
 	if err != nil {
 		return err
 	}
+	// via is the link the entries are reached through, when worktrees/ is
+	// one: what it leads to is held to the followed-link budget.
+	via := ""
 	if fi.Mode()&fs.ModeSymlink != 0 {
-		if err := r.hashAt(common, "worktrees", false); err != nil {
+		if err := r.hashAt(common, "worktrees", false, ""); err != nil {
 			return err
 		}
+		via = r.keyOf(common, "worktrees")
 		dir = fsutil.RealExistingPath(dir)
 	}
 	entries, err := os.ReadDir(dir)
@@ -384,11 +433,24 @@ func (r *treeReader) readWorktrees(common string) error {
 		return err
 	}
 	for _, e := range entries {
-		at := filepath.Join(dir, e.Name())
-		if e.Type()&fs.ModeSymlink != 0 {
-			if err := r.hashAt(dir, e.Name(), false); err != nil {
+		at, entryVia := filepath.Join(dir, e.Name()), via
+		if via != "" {
+			fi, err := e.Info()
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
 				return err
 			}
+			if err := r.charge(via, fi); err != nil {
+				return err
+			}
+		}
+		if e.Type()&fs.ModeSymlink != 0 {
+			if err := r.hashAt(dir, e.Name(), false, ""); err != nil {
+				return err
+			}
+			entryVia = r.keyOf(dir, e.Name())
 			at = fsutil.RealExistingPath(at)
 		} else if err := r.put(r.keyOf(dir, e.Name()), "worktree "+e.Type().String()); err != nil {
 			return err
@@ -397,7 +459,7 @@ func (r *treeReader) readWorktrees(common string) error {
 			continue
 		}
 		for _, f := range worktreeFiles {
-			if err := r.hashIn(at, f); err != nil {
+			if err := r.hashAt(at, f, true, entryVia); err != nil {
 				return err
 			}
 		}
@@ -499,12 +561,14 @@ func isGitDir(fsys fs.FS, dir string) bool {
 // directory, a configuration file or a hook that is a link (a
 // dotfiles-managed one) runs or is read where it leads.
 func (r *treeReader) hashIn(base, rel string) error {
-	return r.hashAt(base, rel, true)
+	return r.hashAt(base, rel, true, "")
 }
 
 // hashAt is hashIn, following each link it meets only when follow is set,
-// and never further than the link's own target.
-func (r *treeReader) hashAt(base, rel string, follow bool) error {
+// and never further than the link's own target. via, when set, is the link
+// base and rel are reached through: every entry read is held to the
+// followed-link budget before it is read.
+func (r *treeReader) hashAt(base, rel string, follow bool, via string) error {
 	root, err := os.OpenRoot(base)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 		// Nothing can stand under a base that is absent or is not a
@@ -525,6 +589,9 @@ func (r *treeReader) hashAt(base, rel string, follow bool) error {
 	if !fi.IsDir() {
 		// A file, or a link standing where a directory is expected: recorded
 		// as itself, never followed.
+		if err := r.charge(via, fi); err != nil {
+			return err
+		}
 		h, err := contentState(root, rel)
 		if err != nil {
 			return err
@@ -544,6 +611,18 @@ func (r *treeReader) hashAt(base, rel string, follow bool) error {
 			}
 			return err
 		}
+		if via != "" {
+			fi, err := d.Info()
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := r.charge(via, fi); err != nil {
+				return err
+			}
+		}
 		if d.IsDir() {
 			return nil
 		}
@@ -562,11 +641,12 @@ func (r *treeReader) hashAt(base, rel string, follow bool) error {
 }
 
 // followLink reads what the link rel under base leads to, every link on the
-// way resolved, without following any link it finds there. A link leading
-// nowhere reads as nothing.
+// way resolved, without following any link it finds there, held to the
+// followed-link budget and naming the link past it. A link leading nowhere
+// reads as nothing.
 func (r *treeReader) followLink(base, rel string) error {
 	target := fsutil.RealExistingPath(filepath.Join(base, filepath.FromSlash(rel)))
-	return r.hashAt(filepath.Dir(target), filepath.Base(target), false)
+	return r.hashAt(filepath.Dir(target), filepath.Base(target), false, r.keyOf(base, rel))
 }
 
 // keyOf is the key of rel under base: its path relative to the repository

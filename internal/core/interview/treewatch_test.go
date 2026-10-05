@@ -657,3 +657,143 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 		t.Fatalf("what the link leads to was not read: %v", st)
 	}
 }
+
+// TestAFollowedLinkIsBounded: what the links one reading follows lead to is
+// read within a small budget of entries and bytes, shared by every link that
+// reading follows, and a reading past it is refused promptly, naming the
+// link, rather than walking toward the general bound. So a role planting a
+// link to a large tree where the guard follows links (its own turn
+// directory's push receipts with the turn directory registered as a
+// worktree, a hook, the hooks directory, the worktrees directory or one
+// worktree's entry) cannot slow a turn for minutes before the guard refuses.
+func TestAFollowedLinkIsBounded(t *testing.T) {
+	// within runs read and fails the test when it does not end within the
+	// time bound: reading the large trees below whole takes minutes.
+	within := func(t *testing.T, read func() error) error {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- read() }()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(20 * time.Second):
+			t.Fatal("the reading did not end within 20s: a followed link was read past its budget")
+			return nil
+		}
+	}
+	// huge is a directory holding name, a sparse file far past the byte
+	// budget: making it costs nothing, hashing it whole takes minutes.
+	huge := func(t *testing.T, name string) string {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "huge")
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	// many is a directory holding n empty files.
+	many := func(t *testing.T, n int) string {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "many")
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for i := range n {
+			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%05d", i)), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	link := func(t *testing.T, target, at string) {
+		t.Helper()
+		if err := os.RemoveAll(at); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(at), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refused := func(t *testing.T, err error, named string) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "leads past what one reading follows links to") || !strings.Contains(err.Error(), named) {
+			t.Fatalf("err = %v, want the reading refused past the followed-link budget, naming %s", err, named)
+		}
+	}
+
+	t.Run("a turn directory's receipts link, the turn directory registered as a worktree", func(t *testing.T) {
+		script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+		r := newWrittenRun(t, routedToClaude)
+		r.git.Commit("base")
+		head := r.git.Git("rev-parse", "HEAD")
+		stubAlso(t, script, 2, map[string]string{
+			".git/worktrees/planted/gitdir":    turnDirToken + "/.git\n",
+			".git/worktrees/planted/HEAD":      head + "\n",
+			".git/worktrees/planted/commondir": "../..\n",
+			"turns/" + receiptsRel:             linkToken + huge(t, head),
+		})
+		var res WrittenResult
+		err := within(t, func() (err error) {
+			res, err = r.w.Run(context.Background())
+			return err
+		})
+		refused(t, err, receiptsRel)
+		if !strings.Contains(err.Error(), TurnsRel+"/") {
+			t.Fatalf("err = %v, want the link in the turn directory named", err)
+		}
+		if len(r.asked) != 1 || len(r.finished) != 0 {
+			t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the refusal", len(r.asked), len(r.finished))
+		}
+		if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
+			t.Fatalf("record %+v", rec)
+		}
+	})
+
+	for _, c := range []struct {
+		name string
+		// plant makes the links under the repository, returning the path the
+		// refusal must name.
+		plant func(t *testing.T, repo string) string
+	}{
+		{name: "a hook linked to a file past the byte budget", plant: func(t *testing.T, repo string) string {
+			link(t, filepath.Join(huge(t, "pre-push"), "pre-push"), filepath.Join(repo, ".git", "hooks", "pre-push"))
+			return ".git/hooks/pre-push"
+		}},
+		{name: "the hooks directory linked to a tree past the entry budget", plant: func(t *testing.T, repo string) string {
+			link(t, many(t, maxFollowedEntries+1), filepath.Join(repo, ".git", "hooks"))
+			return ".git/hooks"
+		}},
+		{name: "two hook links within the budget alone, past it together", plant: func(t *testing.T, repo string) string {
+			link(t, many(t, maxFollowedEntries/2+1), filepath.Join(repo, ".git", "hooks", "a"))
+			if _, err := readTree(repo, ""); err != nil {
+				t.Fatalf("one link within the budget is refused: %v", err)
+			}
+			link(t, many(t, maxFollowedEntries/2+1), filepath.Join(repo, ".git", "hooks", "b"))
+			return ".git/hooks/b"
+		}},
+		{name: "the worktrees directory linked to a tree past the entry budget", plant: func(t *testing.T, repo string) string {
+			link(t, many(t, maxFollowedEntries+1), filepath.Join(repo, ".git", "worktrees"))
+			return ".git/worktrees"
+		}},
+		{name: "a worktree entry linked to a directory whose HEAD is past the byte budget", plant: func(t *testing.T, repo string) string {
+			link(t, huge(t, "HEAD"), filepath.Join(repo, ".git", "worktrees", "planted"))
+			return ".git/worktrees/planted"
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newWrittenRun(t, "")
+			named := c.plant(t, r.repo)
+			refused(t, within(t, func() error { _, err := readTree(r.repo, ""); return err }), named)
+		})
+	}
+}

@@ -113,7 +113,9 @@ the root, which execute nothing, every other `.claude/` path watched) before
 and after each dispatch, and any path that changes during a dispatch stops the
 interview, whatever changed it (abcd cannot tell the role's writes from another
 program's, so two interviews run in one checkout stop each other), exit 1,
-naming each and keeping the answers given.
+naming each and keeping the answers given. What the links one reading follows
+lead to is read within 1,024 entries and 64 MiB in all, and a reading past that
+stops the interview, exit 1, naming the link.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.

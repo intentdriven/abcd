@@ -521,7 +521,11 @@ does work in another worktree of the repository while a turn runs (a commit or
 checkout there moves its HEAD; a preflight there mints a push receipt). Only
 the run's own turn directory is the role's to write, and two paths that execute
 nothing are not watched: a file named `.DS_Store`, and
-`.claude/scheduled_tasks.lock` (every other path under `.claude/` is). The
+`.claude/scheduled_tasks.lock` (every other path under `.claude/` is). A link
+where git follows one (a hook, the hooks directory, a worktree's entry, a
+push-receipts directory) is read where it leads, within 1,024 entries and
+64 MiB for all the links one reading follows; a reading past that stops the
+interview, exit 1, naming the link. The changed-paths
 refusal is `refused: "unexpected_changes"` under `--json`, with every path
 changed in the turn in `changed_paths`; relay the paths to the person to read
 and restore. The plan act (step 10) stays the product thinker's, at the command
