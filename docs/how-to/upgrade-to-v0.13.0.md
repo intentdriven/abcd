@@ -16,9 +16,10 @@ this.
 
 Once you update the plugin, and while `~/.abcd` still stands, abcd stops
 everything before it writes anything: every command, every hook and the status
-line. In an agent session no tool runs at all, because the safety check blocks
-every command, the rename included. So the rename is done in a plain Terminal
-window, outside any agent session.
+line. In an agent session the safety check blocks every other command, so no
+tool runs; the one command it lets through is the rename itself, typed exactly
+as below. You can run it there, or in a plain Terminal window outside any agent
+session.
 
 ## Move the folder
 
@@ -26,13 +27,13 @@ Do this once on each machine.
 
 1. Update the plugin with `/plugin update abcd`, or a binary in
    `~/.local/bin` with `abcd update`.
-2. Open a plain Terminal window and rename the folder:
+2. Rename the folder, in a plain Terminal window or in the agent session:
 
    ```sh
    mv ~/.abcd ~/.abcd.noindex
    ```
 
-3. In the same window, reconnect the worktrees kept in it. git records each
+3. In the same place, reconnect the worktrees kept in it. git records each
    worktree's location in full, so until this runs, each repository lists its
    moved worktrees as prunable, and a prune would delete their links:
 
