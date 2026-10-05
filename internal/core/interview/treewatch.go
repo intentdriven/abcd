@@ -66,7 +66,10 @@ package interview
 // those directories and in each submodule's git directory, against
 // maxHashedBytes, which also bounds what the reading hashes of the paths git
 // lists and of git's own directory, so a file a role grows there is refused,
-// named, before it is read.
+// named, before it is read. Only then does it ask git where its directories
+// and its working tree are, refusing an answer other than the first
+// reading's: a core.worktree written since would have git status walk
+// another tree.
 //
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
@@ -222,7 +225,8 @@ type treeReader struct {
 // reading following where it leads. So a role writing a commondir, or a .git
 // file, that leads to a large tree cannot make the next reading read it.
 type gitPin struct {
-	gitDir, common string
+	// top is the working tree git names, which git status walks.
+	gitDir, common, top string
 	// pointers maps each placing file's key to its state.
 	pointers map[string]string
 }
@@ -283,9 +287,6 @@ func (r *treeReader) read() error {
 	if err := r.placeGitDirs(); err != nil {
 		return err
 	}
-	if err := r.sizeGitReads(); err != nil {
-		return err
-	}
 	entries, err := gitutil.Status(r.repo, maxStatusBytes, gitutil.StatusOptions{Ignored: true})
 	if err != nil {
 		return err
@@ -320,11 +321,16 @@ func (r *treeReader) read() error {
 	return r.readGitDirs()
 }
 
-// placeGitDirs places git's own directory and common directory: where pin
-// placed them, once the files that place them are read unchanged, or as git
-// names them, filling an empty pin.
+// placeGitDirs places git's own directory and common directory, and sizes
+// what git reads whole there (sizeGitReads): where pin placed them, once the
+// files that place them are read unchanged and what git reads there is sized,
+// or as git names them, filling an empty pin. A pinned reading sizes before it
+// asks git where its directories are, since git reads the configuration whole
+// to answer, and asks for the working tree with them, so a core.worktree
+// pointed at another tree is refused before git status walks it.
 func (r *treeReader) placeGitDirs() error {
-	if r.pin != nil && r.pin.gitDir != "" {
+	pinned := r.pin != nil && r.pin.gitDir != ""
+	if pinned {
 		var moved []string
 		for _, key := range slices.Sorted(maps.Keys(r.pin.pointers)) {
 			if pointerState(r.pointerPath(key)) != r.pin.pointers[key] {
@@ -334,15 +340,19 @@ func (r *treeReader) placeGitDirs() error {
 		if len(moved) > 0 {
 			return &redirectedError{Paths: moved}
 		}
+		r.gitDir, r.common = r.pin.gitDir, r.pin.common
+		if err := r.sizeGitReads(); err != nil {
+			return err
+		}
 	}
-	gitDir, common, err := r.namedGitDirs()
+	gitDir, common, top, err := r.namedGitDirs()
 	if err != nil {
 		return err
 	}
 	switch {
 	case r.pin == nil:
 	case r.pin.gitDir == "":
-		r.pin.gitDir, r.pin.common, r.pin.pointers = gitDir, common, map[string]string{}
+		r.pin.gitDir, r.pin.common, r.pin.top, r.pin.pointers = gitDir, common, top, map[string]string{}
 		for _, p := range []string{filepath.Join(r.repo, ".git"), filepath.Join(gitDir, "commondir")} {
 			st := pointerState(p)
 			if strings.HasPrefix(st, "past ") {
@@ -350,14 +360,19 @@ func (r *treeReader) placeGitDirs() error {
 			}
 			r.pin.pointers[r.keyOf(filepath.Dir(p), filepath.Base(p))] = st
 		}
-	case gitDir != r.pin.gitDir || common != r.pin.common:
+	case gitDir != r.pin.gitDir || common != r.pin.common || top != r.pin.top:
 		// The files that place them read unchanged, so something else
-		// redirected git: refused rather than read.
-		return fmt.Errorf("git names %s and %s as its own directory and common directory, not %s and %s as at the interview's first reading; "+
-			"the reading does not follow it: restore where git reads its directories and run the interview again", gitDir, common, r.pin.gitDir, r.pin.common)
+		// redirected git (core.worktree among them): refused rather than
+		// read.
+		return fmt.Errorf("git names %s, %s and %s as its own directory, common directory and working tree, not %s, %s and %s as at the interview's first reading; "+
+			"the reading does not follow it: restore where git reads its directories and its working tree (core.worktree) and run the interview again",
+			gitDir, common, top, r.pin.gitDir, r.pin.common, r.pin.top)
 	}
 	r.gitDir, r.common = gitDir, common
-	return nil
+	if pinned {
+		return nil
+	}
+	return r.sizeGitReads()
 }
 
 // gitDirReadsWhole and commonReadsWhole are the files git reads whole on
@@ -365,7 +380,7 @@ func (r *treeReader) placeGitDirs() error {
 // in the common directory, and in each submodule's git directory, which git
 // status reads as it runs status inside the submodule. Other files git reads
 // there bound themselves: a loose ref and the index are refused at their
-// first bytes when they are not one, and the configuration at its first line.
+// first bytes when they are not one.
 var (
 	gitDirReadsWhole = []string{"HEAD", "commondir", "config.worktree"}
 	commonReadsWhole = []string{"config", "packed-refs", "info/exclude"}
@@ -426,18 +441,18 @@ func (r *treeReader) pointerPath(key string) string {
 	return filepath.Join(r.repo, filepath.FromSlash(key))
 }
 
-// namedGitDirs is git's own directory and common directory, as git names
-// them, in full.
-func (r *treeReader) namedGitDirs() (gitDir, common string, err error) {
-	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir")
+// namedGitDirs is git's own directory, its common directory and the working
+// tree, as git names them, in full.
+func (r *treeReader) namedGitDirs() (gitDir, common, top string, err error) {
+	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir", "--show-toplevel")
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	lines := strings.Split(out, "\n")
-	if len(lines) != 2 || lines[0] == "" || lines[1] == "" {
-		return "", "", fmt.Errorf("git named no git directory and common directory (%q)", out)
+	if len(lines) != 3 || slices.Contains(lines, "") {
+		return "", "", "", fmt.Errorf("git named no git directory, common directory and working tree (%q)", out)
 	}
-	return r.abs(lines[0]), r.abs(lines[1]), nil
+	return r.abs(lines[0]), r.abs(lines[1]), r.abs(lines[2]), nil
 }
 
 // abs is p in full, a relative p taken from the repository.

@@ -1375,3 +1375,53 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 		})
 	}
 }
+
+// TestALaterReadingSizesWhatGitReadsBeforeAskingGitWhereItsDirectoriesAre: a later
+// reading sizes what git reads whole in the directories the first reading
+// placed before it asks git where its directories are, since that question
+// reads the configuration whole too; and it asks for the working tree with
+// them, so a core.worktree pointed at another tree is refused before git
+// status walks it.
+func TestALaterReadingSizesWhatGitReadsBeforeAskingGitWhereItsDirectoriesAre(t *testing.T) {
+	t.Run("a configuration grown past the bound is refused before git runs", func(t *testing.T) {
+		r := newWrittenRun(t, "")
+		pin := &gitPin{}
+		if _, err := readTreePinned(r.repo, "", pin); err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(r.repo, ".git", "config")
+		f, err := os.OpenFile(p, os.O_RDWR|os.O_APPEND, 0o644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A comment git reads to its end: the zeros after it are not a line
+		// git refuses at.
+		if _, err := f.WriteString("#"); err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
+			t.Fatal(err)
+		}
+		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
+		if err == nil || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), ".git/config") {
+			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/config", err)
+		}
+	})
+
+	t.Run("a working tree moved by core.worktree is refused before status", func(t *testing.T) {
+		r := newWrittenRun(t, "")
+		pin := &gitPin{}
+		if _, err := readTreePinned(r.repo, "", pin); err != nil {
+			t.Fatal(err)
+		}
+		other, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.git.Git("config", "core.worktree", other)
+		_, err = readTreePinned(r.repo, "", pin)
+		if err == nil || !strings.Contains(err.Error(), "working tree") || !strings.Contains(err.Error(), other) {
+			t.Fatalf("err = %v, want the reading refused, naming the working tree git now names", err)
+		}
+	})
+}
