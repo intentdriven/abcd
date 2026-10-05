@@ -23,7 +23,7 @@ verbs bind when itd-2609091014076309 ships), its create-then-prove call to
 `fsutil.EnsureRealDir` and `EnsureRealDirAll`, and its list-and-reclaim
 obligation are not in question here.
 
-[itd-2610030720038073](../../intents/planned/itd-2610030720038073-abcd-keeps-its-home-folder-out-of-desktop-search-by-default.md)
+[itd-2610030720038073](../../intents/shipped/itd-2610030720038073-abcd-keeps-its-home-folder-out-of-desktop-search-by-default.md)
 renames that home. On 2026-10-02 eight lane worktrees opened in the store set
 off a desktop indexing burst (load 110 to 148 with no test running, the
 indexer's processes named in the run log), and the product thinker ruled on

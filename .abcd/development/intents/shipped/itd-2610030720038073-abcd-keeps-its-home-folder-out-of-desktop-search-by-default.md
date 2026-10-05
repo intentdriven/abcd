@@ -111,7 +111,9 @@ The four questions filed with the draft are answered: the method and the whole h
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-d5bf5bbbdcef -->
+Fidelity review OWED (receipt rcp-d5bf5bbbdcef).
+<!-- abcd-review-end receipt=rcp-d5bf5bbbdcef -->
 
 ## Grounds
 
