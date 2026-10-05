@@ -802,23 +802,30 @@ func statusLineNotes(notes []string) []string {
 // previous command, which is abcd's status verb. Recording it forks the
 // machine, so the wiring refuses in any spelling: nothing written on either
 // side, and a note naming the command and the fix.
+//
+// Each spelling also runs an abcd that fails the trust checks, so under
+// config-change approval install repairs it instead (never recording it);
+// the record-time guard is what stands when that repair is declined.
 func TestStatusLineRefusesToRecordItselfAsPrevious(t *testing.T) {
 	for _, cmd := range []string{
 		"abcd statusline",
 		"~/.local/bin/abcd statusline",
 		`\"abcd\" statusline | head -c 200`,
 		"'~/.local/bin/abcd' statusline",
+		"/src/abcd/bin/abcd-darwin-arm64 statusline",
 	} {
 		t.Run(cmd, func(t *testing.T) {
 			home, _ := setupHermetic(t)
-			settings := harnessFixture(t, harnessSettingsWith(`{"type": "command", "command": "`+cmd+`"}`))
 			repo := installedRepo(t)
+			settings := harnessFixture(t, harnessSettingsWith(`{"type": "command", "command": "`+cmd+`"}`))
 			det, _ := Detect(repo)
 			if !hasGap(det.Gaps, StatusLineOfferGapID) {
 				t.Fatalf("precondition: a hand-wired spelling is foreign to detection and is offered; gaps=%v", statusLineGaps(det.Gaps))
 			}
 			before, _ := os.ReadFile(settings)
-			res, err := Install(repo, InstallOptions{}, offerPrompter(true, nil))
+			p := offerPrompter(true, nil)
+			p.confirm = func(q string) bool { return q != "Apply "+string(ConfigChange)+" changes?" }
+			res, err := Install(repo, InstallOptions{}, p)
 			if err != nil {
 				t.Fatal(err)
 			}

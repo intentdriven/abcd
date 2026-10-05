@@ -3447,9 +3447,15 @@ user's own line is untouched everywhere abcd does not manage. With none
 recorded it prints nothing and exits 0.
 
 The checkout is resolved from the payload's `cwd` (falling back to the
-working directory). Empty stdin is an empty payload. Nothing here prompts,
-reads a terminal, or touches the network. With --json the row is emitted as
-its ordered elements, each with a key, a rendered and a plain form.
+working directory). Empty stdin is an empty payload. It writes nothing, and
+nothing here prompts, reads a terminal, or touches the network.
+
+It is time-bounded, because the harness waits on it at every refresh: abcd's
+own work stops at 500ms and the recorded status command at 5s.
+At either bound it prints what it has (a row without the element that did
+not answer, the command's output so far, or nothing), says why on stderr and
+exits 0. With --json the row is emitted as its ordered elements, each with a
+key, a rendered and a plain form.
 
 ### `abcd update`
 
