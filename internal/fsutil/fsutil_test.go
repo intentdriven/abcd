@@ -448,3 +448,43 @@ func TestOpenRegularRefusesWhatIsNotARegularFile(t *testing.T) {
 		t.Fatal("OpenRegular blocked on a FIFO")
 	}
 }
+
+// TestCallersOrRootsAloneAdmitsRootWhereCallersAloneRefuses: the directory
+// form of the judgement admits a root-owned path CallersAlone refuses, and
+// refuses a group or other write bit and a third account exactly as it does.
+func TestCallersOrRootsAloneAdmitsRootWhereCallersAloneRefuses(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	owner := uint32(0)
+	restore := SwapOwnerUIDForTest(func(string) (uint32, error) { return owner, nil })
+	t.Cleanup(restore)
+	stat := func() os.FileInfo {
+		fi, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fi
+	}
+	if err := CallersOrRootsAlone(dir, stat()); err != nil {
+		t.Errorf("a root-owned 0755 directory: %v, want nil", err)
+	}
+	if err := CallersAlone(dir, stat()); !errors.Is(err, ErrDeclarationForeignOwner) {
+		t.Errorf("CallersAlone on a root-owned path: %v, want ErrDeclarationForeignOwner", err)
+	}
+	owner = uint32(os.Getuid()) + 1
+	if err := CallersOrRootsAlone(dir, stat()); !errors.Is(err, ErrDeclarationForeignOwner) {
+		t.Errorf("a directory a third account owns: %v, want ErrDeclarationForeignOwner", err)
+	}
+	owner = 0
+	for _, mode := range []os.FileMode{0o775, 0o757} {
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := CallersOrRootsAlone(dir, stat()); !errors.Is(err, ErrDeclarationWritable) {
+			t.Errorf("a root-owned %04o directory: %v, want ErrDeclarationWritable", uint32(mode), err)
+		}
+	}
+	_ = os.Chmod(dir, 0o755)
+}

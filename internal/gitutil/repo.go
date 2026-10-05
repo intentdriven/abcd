@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -23,7 +25,32 @@ import (
 // that honours external-diff/textconv/pager config must not be added to the
 // probe without further hardening.
 func isolatedGit(root string, args ...string) *exec.Cmd {
-	full := append([]string{
+	cmd := exec.Command("git", isolatedArgs(root, args)...)
+	cmd.Env = gitEnv()
+	return cmd
+}
+
+// contextWaitDelay is how long a context-bound git's Wait waits, once the
+// context has ended and git was killed, for its output pipes to close — so a
+// process git started that kept a pipe open cannot hold the caller past its
+// deadline.
+const contextWaitDelay = 50 * time.Millisecond
+
+// isolatedGitContext is isolatedGit bound to ctx: when ctx ends, git is KILLED,
+// not abandoned. An abandoned git outlives its caller, and a caller on a
+// deadline that runs often — the status verb, on every refresh — would leave
+// one behind each time for as long as git hangs.
+func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
+	cmd.Env = gitEnv()
+	cmd.WaitDelay = contextWaitDelay
+	return cmd
+}
+
+// isolatedArgs is the isolated command line: the config knobs that can run
+// code forced off, verbatim paths, then -C root and the caller's arguments.
+func isolatedArgs(root string, args []string) []string {
+	return append([]string{
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "core.fsmonitor=false",
 		// Emit paths verbatim (UTF-8), not the default C-quoted, double-quoted
@@ -33,9 +60,6 @@ func isolatedGit(root string, args ...string) *exec.Cmd {
 		"-c", "core.quotePath=false",
 		"-C", root,
 	}, args...)
-	cmd := exec.Command("git", full...)
-	cmd.Env = gitEnv()
-	return cmd
 }
 
 // gitEnv builds the child environment for an isolated git command: the parent
@@ -229,15 +253,27 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 // buffered whole: a hostile repository must not be able to make an identity
 // probe allocate.
 func RootCommit(root string) string {
-	out, err := RunLimited(root, 4096, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
+	sha, _ := RootCommitContext(context.Background(), root)
+	return sha
+}
+
+// RootCommitContext is RootCommit bound to ctx: the same answer, total in the
+// same way, except that a context that ends before git answers is returned as
+// its own error (wrapped) with git killed — so a caller on a deadline can tell
+// "this repository has no root commit" from "git did not answer in time".
+func RootCommitContext(ctx context.Context, root string) (string, error) {
+	out, err := RunLimitedContext(ctx, root, 4096, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return "", ctxErr
+	}
 	if err != nil {
-		return ""
+		return "", nil
 	}
 	fields := strings.Fields(out)
 	if len(fields) == 0 {
-		return ""
+		return "", nil
 	}
-	return fields[0]
+	return fields[0], nil
 }
 
 // fullSHARe is a full object name: forty hex digits under SHA-1, sixty-four
@@ -422,6 +458,25 @@ func RunLimited(root string, maxBytes int, args ...string) (string, error) {
 	return out, err
 }
 
+// RunLimitedContext is RunLimited bound to ctx: when ctx ends before git
+// answers, git is killed (isolatedGitContext) and the error wraps ctx's own,
+// so errors.Is(err, context.DeadlineExceeded) tells a caller that git did not
+// answer in time rather than that it said no. It is the one primitive every
+// deadline-bound git question goes through.
+func RunLimitedContext(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	out, _, err := runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(out), " \t\r\n"), nil
+}
+
 // RunCapped is RunLimited for callers whose answer is only correct if it is
 // COMPLETE. It returns an error rather than a truncated string when git's output
 // exceeds maxBytes.
@@ -463,7 +518,11 @@ func runBounded(root string, maxBytes int, args ...string) (string, bool, error)
 // run git with stdout and stderr bounded, return stdout verbatim, and report
 // whether it was cut short.
 func runBoundedBytes(root string, maxBytes int, args ...string) ([]byte, bool, error) {
-	cmd := isolatedGit(root, args...)
+	return runBoundedCmd(isolatedGit(root, args...), maxBytes)
+}
+
+// runBoundedCmd runs an isolated git command with stdout and stderr bounded.
+func runBoundedCmd(cmd *exec.Cmd, maxBytes int) ([]byte, bool, error) {
 	w := &capWriter{remaining: maxBytes}
 	e := &capWriter{remaining: 4096}
 	cmd.Stdout = w
@@ -491,7 +550,20 @@ var ErrToplevelShape = errors.New("git's toplevel answer is not one absolute pat
 // tell "no repository" from "a repository git will not answer for" follows up
 // with RepoShapedRoot.
 func Toplevel(dir string) (string, error) {
-	top, err := Run(dir, "rev-parse", "--show-toplevel")
+	return ToplevelContext(context.Background(), dir)
+}
+
+// toplevelCap bounds the toplevel answer. One path is a few hundred bytes at
+// most; an answer that overflows the cap cannot be one path, and the shape
+// check refuses whatever is left of it.
+const toplevelCap = 64 << 10
+
+// ToplevelContext is Toplevel bound to ctx, for a caller on a deadline (the
+// status verb): the same question and the same shape check, with git killed
+// when ctx ends and the context's own error returned (RunLimitedContext), so
+// the caller can tell a slow git from "not a repository".
+func ToplevelContext(ctx context.Context, dir string) (string, error) {
+	top, err := RunLimitedContext(ctx, dir, toplevelCap, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}

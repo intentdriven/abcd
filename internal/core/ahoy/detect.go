@@ -99,6 +99,11 @@ func Detect(cwd string) (DetectionResult, error) {
 	// (iss-2609120447487070).
 	gaps := []Gap{}
 	gaps = append(gaps, detectPluginRoot(pluginOK)...)
+	// abcd commands in the harness's user settings that the ruling does not
+	// admit (iss-2610050556323779): a machine-scope fact, reported from any
+	// folder because a stray there runs in every session, and report-only —
+	// abcd never edits that file to remove one.
+	gaps = append(gaps, detectHarnessStrays(harness, pluginRoot, pluginOK)...)
 	if kind != UnmanagedFolder {
 		gaps = append(gaps, detectDependencies(abs)...)
 		gaps = append(gaps, detectSkeleton(abs)...)

@@ -36,6 +36,7 @@ const (
 	writeConventionsBlockRemoved writeKind = "conventions-block-removed"
 	writeCommandEntry            writeKind = "command-entry"
 	writeStatusLine              writeKind = "status-line"
+	writeStatusLineBackup        writeKind = "status-line-backup"
 	writeRouting                 writeKind = "routing"
 	writeDrainRule               writeKind = "drain-rule"
 	writeToolFileRetired         writeKind = "conventions-file-retired"
@@ -51,7 +52,7 @@ var allWriteKinds = []writeKind{
 	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
-	writeStatusLine, writeRouting, writeDrainRule,
+	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
 
 // writeKindHelp is the plain-language explanation of each kind of write.
@@ -140,6 +141,11 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Set up abcd's status line in your AI assistant.",
 		Why:    "In abcd repositories the line shows whether abcd is active and whose answer the work is waiting on.",
 		Action: "Nothing. Switch parts of it off in " + abcdhome.Display("statusline.json") + ", or remove it with abcd ahoy uninstall.",
+	},
+	writeStatusLineBackup: {
+		What:   "Kept a copy of your AI assistant's settings file, as it was, before abcd changed its status line.",
+		Why:    "If the assistant's settings look wrong afterwards, the copy is the file exactly as it stood.",
+		Action: "Nothing. To undo the change by hand, copy the file listed back over the settings file.",
 	},
 	writeRouting: {
 		What:   "Saved which size of AI model each of abcd's review steps asks for.",

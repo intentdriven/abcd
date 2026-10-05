@@ -66,7 +66,7 @@ func TestSetupConfirmQuestionNamesEveryApproval(t *testing.T) {
 		{"Apply oracle-routing changes?", "approve.oracle-routing", "Apply oracle-routing changes?", false},
 		{machineRoutingQuestion(), OracleRoutingMachineGapID, oracleRoutingMachineQuestionTail, true},
 		{repoRoutingQuestion(), OracleRoutingRepoGapID, oracleRoutingRepoQuestionTail, true},
-		{statusLineOfferQuestion, StatusLineOfferGapID, "Install abcd's status line?", true},
+		{statusLineOfferQuestion(harnessSettings{path: "/h/.claude/settings.json"}, "/h/.local/bin/abcd"), StatusLineOfferGapID, "Install abcd's status line?", true},
 		{drainRuleQuestion(), DrainRuleOfferGapID, drainRuleQuestionTail, true},
 		{"Re-founded from abc1234? Link lineage?", "history.lineage", "Re-founded from abc1234? Link lineage?", false},
 		{"Commit to this repository as Jan B. Doe, from the pin? (sets user.name and user.email in this repository's .git/config only)",

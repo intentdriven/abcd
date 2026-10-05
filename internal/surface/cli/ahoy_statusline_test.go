@@ -102,9 +102,10 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 		t.Errorf("element prompt missing from the transcript:\n%s", errOut)
 	}
 
-	// Uninstall hands the previous command back and says so.
+	// Uninstall hands the previous command back and says so, naming the copy
+	// of the file it kept first.
 	text := runCLI(t, "ahoy", "uninstall")
-	if !strings.Contains(string(text), "  status line: restored the previous status command\n") {
+	if !strings.Contains(string(text), "  status line: restored the previous status command; the file as it was is kept at ~/.abcd.noindex/backups/settings.json.") {
 		t.Errorf("uninstall render lacks the status-line line:\n%s", text)
 	}
 	raw, _ = os.ReadFile(settings)
@@ -142,5 +143,32 @@ func TestAhoyInstallSanitizesRefusalNotes(t *testing.T) {
 	}
 	if strings.Contains(s, "\x1b") {
 		t.Errorf("the install render printed a note with a raw terminal escape:\n%q", s)
+	}
+}
+
+// TestAhoyBareNamesAbcdEntriesInTheHarnessSettings: the board names each
+// report-only finding about the harness's user settings — the file, the event,
+// the command and the remedy — rather than folding it into the gap count, and
+// masks a terminal escape the person's own file carries.
+func TestAhoyBareNamesAbcdEntriesInTheHarnessSettings(t *testing.T) {
+	hermeticRepo(t)
+	harnessSettingsFixture(t, `{
+  "hooks": {"SubagentStop": [{"hooks": [{"type": "command", "command": "/opt/old/abcd-darwin-arm64 hook subagent-stop \u001b[31m"}]}]},
+  "statusLine": {"type": "command", "command": "abcd statusline"}
+}`)
+	out := string(runCLI(t, "ahoy"))
+	for _, want := range []string{
+		"  harness:     ",
+		"runs `/opt/old/abcd-darwin-arm64 hook subagent-stop",
+		"remove this entry from ",
+		"for its status line",
+		"re-run `abcd ahoy install` to repoint the status line",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("bare render lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("bare render printed a raw terminal escape:\n%q", out)
 	}
 }

@@ -2277,3 +2277,13 @@ Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "we sho
 | a lab in the real project rather than a snapshot | defect in the discipline | existing iss-2610040758486433 |
 
 Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "We only need an intent or something" (one defensible routing). Routing not put to a separate question; graded as unconfirmed.
+
+## 2026-10-05: abcd owns the handover-note reminder (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd's plugin reminds a session to refresh `.abcd/.work.local/NEXT.md` only when that session changed the tree, against a baseline taken at session start | capability | intent itd-2610050548126044 (draft) |
+| a stop is never blocked for changes another session left behind | acceptance criterion, not a trust rule | the same intent |
+| the stop hook's place among abcd's hooks | plumbing | the brief's hook list, when the intent is planned |
+
+Verdict: FILE-AS-IS. The product thinker chose "abcd owns it" over fixing or removing the personal hook in the harness's user folder, and confirmed the routing ("agreed"). The personal hook is removed once the intent ships; the same day the product thinker ruled that nothing in that folder calls abcd except the consented status line.

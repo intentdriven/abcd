@@ -32,34 +32,35 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// statusLineOfferQuestion is the reason and the question, in one paragraph:
-// core never prints, so the explanation ac-8 requires travels as the text of
-// the confirm the prompter renders.
-var statusLineOfferQuestion = "In an abcd-managed repository the host's status line becomes abcd's own row, " +
-	"led by a badge saying whether abcd is here and whose answer the loop is waiting on, then the repository, " +
-	"the branch, the model, the context and usage figures, and the record's intent and issue counts; " +
-	"in every other repository the status line you have now runs untouched. " +
-	"You can switch it off or reconfigure it any time in " + statusline.SettingsDisplay + ", " +
-	"`abcd ahoy uninstall` restores the previous command, and declining writes nothing. " +
-	"Install abcd's status line?"
+// entryTrust is the trust check the status-line entry must pass before the
+// harness is pointed at it (statusLineEntryTrust). A variable so a test can
+// drive a refusal without arranging a file another account owns.
+var entryTrust = statusLineEntryTrust
+
+// writeHarnessSettings replaces the harness settings file atomically, keeping
+// its mode. A variable so a test can make the write land something other than
+// what was asked, which is what the read-back after it exists to catch.
+var writeHarnessSettings = fsutil.WriteFileAtomicPreserveMode
 
 // elementPromptPrefix keys the per-element on/off prompts, so a scripted answer
 // stream and the transcript name the element they answer.
 const elementPromptPrefix = "statusline."
 
-// stepStatusLine wires the status line on consent, or repairs a dangling one.
+// stepStatusLine wires the status line on consent, or repairs abcd's own line
+// when it dangles or runs an abcd that fails the trust checks.
 //
 // The offer runs only against an answered prompt: --yes approves the category
 // but never reaches here (autoYes), because the wiring rewrites a harness-wide
-// user setting and takes element choices only a prompt can carry. The dangling
-// repair is ordinary ConfigChange work — required, and honoured under --yes —
-// because a status command naming an abcd that is gone blanks the user's line
-// in every repository.
+// user setting and takes element choices only a prompt can carry. The repair
+// is ordinary ConfigChange work — required, and honoured under --yes — because
+// a status command naming an abcd that is gone blanks the user's line in every
+// repository, and one naming an abcd that fails the trust checks runs a binary
+// nobody vouched for on every refresh of every session.
 //
 // It runs AFTER stepPathEntry, so the entry it points the harness at is the one
 // this run actually left on PATH.
 func (a *applyCtx) stepStatusLine() {
-	if a.approved[ConfigChange] && a.has(statusLineDanglingGapID) {
+	if a.approved[ConfigChange] && (a.has(statusLineDanglingGapID) || a.has(StatusLineUntrustedGapID)) {
 		a.repairStatusLine()
 		return
 	}
@@ -92,13 +93,13 @@ func (a *applyCtx) offerStatusLine() {
 			"Change or remove it by hand and re-run `abcd ahoy install`.")
 		return
 	}
-	entry := a.statusLineEntry()
+	entry, why := a.statusLineEntry()
 	if entry == "" {
-		a.refuse("the status line was not wired: abcd has no PATH entry or plugin binary to point it at; " +
-			"re-run `abcd ahoy install` once the entry is installed.")
+		a.refuse("refused to wire the status line: " + why + "; nothing was written. " +
+			"Put abcd on your PATH with `abcd ahoy install` first, then run it again to wire the status line.")
 		return
 	}
-	if !a.prompter.Confirm(statusLineOfferQuestion) {
+	if !a.prompter.Confirm(statusLineOfferQuestion(hs, entry)) {
 		return // declined: nothing written, nothing recorded
 	}
 	switches := make(map[statusline.ElementKey]bool)
@@ -114,36 +115,18 @@ func (a *applyCtx) offerStatusLine() {
 	a.wireStatusLine(hs, entry, switches, hs.command)
 }
 
-// statusLineEntry is the absolute path the harness command runs: the PATH
-// entry this run wrote or adopted when it is abcd's and present, else the
-// plugin-root binary, else nothing. Never a bare `abcd`: the harness's shell
-// PATH is not the user's.
-func (a *applyCtx) statusLineEntry() string {
-	if a.binTarget != "" {
-		if present, err := fsutil.Exists(a.binTarget); err == nil && present {
-			switch classifyBinTarget(a.binTarget, a.det.pluginRoot) {
-			case binTargetOwnedSymlink, binTargetOwnedCopy, binTargetDevShim:
-				return a.binTarget
-			}
-		}
-	}
-	if a.det.pluginRoot != "" {
-		if p := pluginBinaryPath(a.det.pluginRoot); fileExists(p) {
-			return p
-		}
-	}
-	return ""
-}
-
 // wireStatusLine performs the two writes as one transaction. Both payloads are
-// rendered first; the setting lands, then the harness file; a harness write
-// that fails removes a setting this run created, so no half-state survives.
+// rendered first and a copy of the harness file is kept in abcd's backups
+// folder (no copy, no write); the setting lands, then the harness file, which
+// is read back; a harness write that fails or does not read back as written
+// puts the file back from the copy and removes a setting this run created, so
+// no half-state survives.
 //
 // Two refusals come first. A previous command that reaches abcd's own status
 // verb is never recorded: the status verb runs the previous command outside
 // a managed checkout, so recording itself as previous makes it run itself
 // without end (statusVerbRe). And the harness document is re-read immediately
-// before the writes (freshDocForWrite): the snapshot hs predates the prompts,
+// before the writes (freshForWrite): the snapshot hs predates the prompts,
 // and a write the live harness made meanwhile is merged under, not reverted.
 func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map[statusline.ElementKey]bool, previous string) {
 	if reachesStatusVerb(previous) {
@@ -168,7 +151,7 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("refused to wire the status line: " + errText(err) + "; nothing was written.")
 		return
 	}
-	doc, ok := hs.freshDocForWrite()
+	doc, current, ok := hs.freshForWrite()
 	if !ok {
 		a.refuse("refused to wire the status line: " + displayPath(hs.path) + " changed while the prompts were open and its status line " +
 			"is no longer what was read, so nothing was written; re-run `abcd ahoy install`.")
@@ -178,6 +161,16 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 	if err != nil {
 		a.refuse("refused to wire the status line: " + displayPath(hs.path) + " could not be re-encoded (" + errText(err) + "); nothing was written.")
 		return
+	}
+	// The copy is kept before either file is written: a copy that cannot be
+	// kept refuses the whole wiring, the user-level setting included.
+	backup, pruneNote, err := keepHarnessCopy(hs.path, current)
+	if err != nil {
+		a.refuse("refused to wire the status line: " + err.Error() + ".")
+		return
+	}
+	if pruneNote != "" {
+		a.inform(pruneNote + ".")
 	}
 	// ~/.abcd.noindex is created, judged and opened relative to home's descriptor and
 	// the setting is written (and, on a failed harness write, removed) through
@@ -207,33 +200,41 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 			return
 		}
 	}
-	if err := fsutil.WriteFileAtomicPreserveMode(hs.path, harnessBytes); err != nil {
+	if err := replaceKeptHarnessSettings(hs.path, backup, current, doc, harnessBytes); err != nil {
+		tail := "."
 		if created && settingDir != nil {
 			_ = settingDir.Remove(settingLeaf)
+			tail = "; " + statusline.SettingsDisplay + " was not left behind."
 		}
-		a.refuse("could not write " + displayPath(hs.path) + " (" + errText(err) + "); the status line was not wired and " +
-			statusline.SettingsDisplay + " was not left behind.")
+		a.refuse("refused to wire the status line: " + err.Error() + tail)
 		return
 	}
+	a.note(writeStatusLineBackup, backup)
 	if settingBytes != nil {
 		a.note(writeStatusLine, settingPath)
 	}
 	a.note(writeStatusLine, hs.path)
 }
 
-// repairStatusLine closes the dangling gap: the harness's command names an abcd
-// that is gone, so it is repointed at the entry this run left, or — when abcd
-// has none to offer — handed back to the previous command the setting recorded,
+// repairStatusLine closes the dangling and untrusted gaps: abcd's own status
+// command names an abcd that is gone, or one that fails the trust checks
+// (untrustedStatusLine), so it is repointed at the recorded, trusted PATH
+// entry (statusLineEntry; never the plugin's own binary), or — when abcd has
+// none to offer — handed back to the previous command the setting recorded,
 // or removed outright when nothing was recorded (a blank line is what the
 // dangling command already produces, and a missing key at least lets the
-// harness render its own default).
+// harness render its own default rather than run a binary nobody vouched
+// for). The command it replaces is never recorded as the previous one: it is
+// abcd's own line, and a stale build recorded there would run again on every
+// refresh outside a managed checkout. Like the wiring, it keeps a copy of the
+// file first and reads the file back after (replaceHarnessSettings).
 func (a *applyCtx) repairStatusLine() {
 	hs := readHarnessSettings()
-	if hs.state != statusLineDangling {
+	if hs.state != statusLineDangling && !untrustedStatusLine(hs) {
 		return // the state moved since detection; there is nothing to repair
 	}
 	var line map[string]any
-	if entry := a.statusLineEntry(); entry != "" {
+	if entry, _ := a.statusLineEntry(); entry != "" {
 		line = harnessLineWith(hs.line, statusCommandFor(entry))
 	} else {
 		previous, err := recordedPreviousCommand()
@@ -245,7 +246,7 @@ func (a *applyCtx) repairStatusLine() {
 			line = harnessLineWith(hs.line, previous)
 		}
 	}
-	doc, ok := hs.freshDocForWrite()
+	doc, current, ok := hs.freshForWrite()
 	if !ok {
 		a.refuse("refused to repair the status line: " + displayPath(hs.path) + " changed under the repair and its status line " +
 			"is no longer what was read, so it was left as it is; re-run `abcd ahoy install`.")
@@ -256,10 +257,15 @@ func (a *applyCtx) repairStatusLine() {
 		a.refuse("refused to repair the status line: " + displayPath(hs.path) + " could not be re-encoded (" + errText(err) + ").")
 		return
 	}
-	if err := fsutil.WriteFileAtomicPreserveMode(hs.path, data); err != nil {
-		a.refuse("could not write " + displayPath(hs.path) + " (" + errText(err) + "); the dangling status line was left as it is.")
+	backup, pruneNote, err := replaceHarnessSettings(hs.path, current, doc, data)
+	if pruneNote != "" {
+		a.inform(pruneNote + ".")
+	}
+	if err != nil {
+		a.refuse("refused to repair the status line: " + err.Error() + ".")
 		return
 	}
+	a.note(writeStatusLineBackup, backup)
 	a.note(writeStatusLine, hs.path)
 }
 
@@ -269,6 +275,8 @@ func (a *applyCtx) repairStatusLine() {
 // nothing to restore, and a setting that cannot be read leaves the harness
 // untouched — the previous command is the one thing this restore must not
 // guess. The user-level setting itself stays: it is the user's configuration.
+// The restore keeps a copy of the file first, reads it back after, and names
+// the copy on the receipt (replaceHarnessSettings).
 func uninstallStatusLine() StatusLineReceipt {
 	hs := readHarnessSettings()
 	switch hs.state {
@@ -289,7 +297,7 @@ func uninstallStatusLine() StatusLineReceipt {
 	if previous != "" {
 		line = harnessLineWith(hs.line, previous)
 	}
-	doc, ok := hs.freshDocForWrite()
+	doc, current, ok := hs.freshForWrite()
 	if !ok {
 		return StatusLineReceipt{Note: displayPath(hs.path) + " changed under the restore and its status line is no longer what was read; " +
 			"left untouched — re-run `abcd ahoy uninstall`"}
@@ -298,13 +306,18 @@ func uninstallStatusLine() StatusLineReceipt {
 	if err != nil {
 		return StatusLineReceipt{Note: displayPath(hs.path) + " could not be re-encoded (" + errText(err) + "); left untouched"}
 	}
-	if err := fsutil.WriteFileAtomicPreserveMode(hs.path, data); err != nil {
-		return StatusLineReceipt{Note: "restore failed: " + errText(err)}
+	backup, pruneNote, err := replaceHarnessSettings(hs.path, current, doc, data)
+	if err != nil {
+		return StatusLineReceipt{Note: "restore failed: " + err.Error()}
+	}
+	kept := "; the file as it was is kept at " + displayPath(backup)
+	if pruneNote != "" {
+		kept += "; " + pruneNote
 	}
 	if previous == "" {
-		return StatusLineReceipt{Restored: true, Note: "removed abcd's status line; none was configured before it"}
+		return StatusLineReceipt{Restored: true, Note: "removed abcd's status line; none was configured before it" + kept}
 	}
-	return StatusLineReceipt{Restored: true, Note: "restored the previous status command"}
+	return StatusLineReceipt{Restored: true, Note: "restored the previous status command" + kept}
 }
 
 // ---------------------------------------------------------------------------

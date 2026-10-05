@@ -101,7 +101,7 @@ var setupConfirmIDs = []struct {
 	{"adopt", func(s string) bool { return s == "Adopt this unmanaged repo into abcd?" }},
 	{OracleRoutingMachineGapID, func(s string) bool { return s == machineRoutingQuestion() }},
 	{OracleRoutingRepoGapID, func(s string) bool { return s == repoRoutingQuestion() }},
-	{StatusLineOfferGapID, func(s string) bool { return s == statusLineOfferQuestion }},
+	{StatusLineOfferGapID, isStatusLineOfferQuestion},
 	{DrainRuleOfferGapID, func(s string) bool { return s == drainRuleQuestion() }},
 	{"history.lineage", func(s string) bool {
 		return strings.HasPrefix(s, "Re-founded from ") && strings.HasSuffix(s, "? Link lineage?")

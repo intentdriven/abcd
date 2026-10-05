@@ -25,6 +25,16 @@ The following are non-negotiable invariants — any architectural choice that vi
    checksum-verified artifact. No version-discovery request exists anywhere
    in abcd ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
    Tier-1 paths are enforceable in the zero-network test harness.
+   Inbound, abcd listens on a network only through the dashboard, only while
+   someone has started it on purpose, and only for the people let in: it
+   listens on this computer's own Tailscale addresses alone, never every
+   address, never through Serve or Funnel, and lets a connection in only when
+   Tailscale's own lookup of its address names a person's device, never from a
+   header ([adr-2610032150581128](../../decisions/adrs/2610032150581128-abcd-is-reachable-on-a-network-only-through-the-dashboard.md),
+   which refines adr-38 without superseding it). One package alone opens a
+   listener, held by `TestOnlyTheDashboardOpensAListener`
+   (`internal/surface/dashboard`); a later listener is admitted only by
+   amending that record in the open.
 
 8. **Acceptance discipline applies uniformly** — every intent's press release is followed by a `## Acceptance Criteria` block in Given-When-Then format (per itd-1). Every brief phase has an `## Acceptance` block in the same format. The format is uniform across the boundary; the *home* differs to match the nature of the work. See [`01-product/03-mental-model.md`](../01-product/03-mental-model.md).
 

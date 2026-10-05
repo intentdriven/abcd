@@ -211,6 +211,15 @@ var sentences = map[string]string{
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
 		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 
+	"abcd dashboard": "Report whether the dashboard runs, where, and the devices that opened it: " +
+		"Writes nothing; refuses any argument.",
+	"abcd dashboard start": "Start the dashboard on this computer's own Tailscale addresses: " +
+		"Writes its run file under " + abcdhome.Display() + "/; refuses when Tailscale is not running.",
+	"abcd dashboard status": "Report whether the dashboard runs, where, and the devices that opened it: " +
+		"Writes nothing; refuses any argument.",
+	"abcd dashboard stop": "Stop the dashboard after checking its process is the one start launched: " +
+		"Writes the run file's removal; refuses when another start or stop holds the lock.",
+
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
 	"abcd inbox promote": "File one report as a capture in abcd's own ledger: " +

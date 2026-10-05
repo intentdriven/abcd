@@ -244,8 +244,40 @@ issue counts; in every other repository the status command you had before runs
 untouched, because abcd records it and hands the payload straight through.
 Declining writes nothing. `--yes` never takes this choice for you. Switch the
 line off, or change which elements show, at any time in
-`~/.abcd.noindex/statusline.json`; `abcd ahoy uninstall` restores the previous
-command.
+`~/.abcd.noindex/statusline.json`.
+
+The status line is the one thing abcd changes in the harness's user settings,
+and it changes one entry there, `statusLine`, only after you say yes:
+
+- **You see the change first.** The question shows that entry as it is now and
+  as it will be.
+- **A copy is kept.** Before the file changes, abcd copies it into
+  `~/.abcd.noindex/backups/`, which keeps the newest 10. Without a copy, nothing
+  is written.
+- **The write is checked.** abcd reads the file back, and puts the copy back if
+  it does not say what was written.
+- **Only a trusted abcd is wired.** The line runs the abcd your install
+  recorded on your `PATH`, and only when that binary (or the file it links to)
+  is yours and writable by nobody else, every folder it sits in is writable by
+  nobody but its owner and owned by you or by root, and none of it is inside
+  the project. A folder your group can write, such as a shared
+  `/usr/local/bin`, is refused; the install step puts abcd in `~/.local/bin`,
+  which passes. It never runs the plugin's own copy, which the next plugin
+  update deletes.
+
+The status line writes nothing itself, and it is time-bounded: abcd's own work
+stops at half a second and your previous status command at five seconds, so a
+slow disk or a hung command never freezes the line.
+
+`abcd ahoy` reports any hook in those settings that runs abcd, and a status line
+that runs an abcd failing those checks; each session start prints one line
+naming such an entry. abcd's hooks live in its plugin, so remove such a hook
+yourself: abcd never edits the file to take one out. The same install step
+repairs abcd's own status line when it points at an abcd that is gone or
+untrusted.
+
+Run `abcd ahoy uninstall` before you remove abcd. It puts back the status
+command you had before, keeping a copy of the file first.
 
 ## Where your session transcripts are kept
 

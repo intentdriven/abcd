@@ -115,6 +115,7 @@ var helpPlacements = map[string]helpPlacement{
 	// The agents-and-hosts block.
 	"banlist":             {group: groupAgents, page: "commands/banlist.md"},
 	"changelog":           {group: groupAgents, page: "commands/launch.md"},
+	"dashboard":           {group: groupAgents, page: "commands/dashboard.md"},
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
 	"guard hook":          {page: "commands/guard.md"},
