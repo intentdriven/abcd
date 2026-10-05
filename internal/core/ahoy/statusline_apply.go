@@ -164,10 +164,13 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 	}
 	// The copy is kept before either file is written: a copy that cannot be
 	// kept refuses the whole wiring, the user-level setting included.
-	backup, err := keepHarnessCopy(hs.path, current)
+	backup, pruneNote, err := keepHarnessCopy(hs.path, current)
 	if err != nil {
 		a.refuse("refused to wire the status line: " + err.Error() + ".")
 		return
+	}
+	if pruneNote != "" {
+		a.inform(pruneNote + ".")
 	}
 	// ~/.abcd.noindex is created, judged and opened relative to home's descriptor and
 	// the setting is written (and, on a failed harness write, removed) through
@@ -254,7 +257,10 @@ func (a *applyCtx) repairStatusLine() {
 		a.refuse("refused to repair the status line: " + displayPath(hs.path) + " could not be re-encoded (" + errText(err) + ").")
 		return
 	}
-	backup, err := replaceHarnessSettings(hs.path, current, doc, data)
+	backup, pruneNote, err := replaceHarnessSettings(hs.path, current, doc, data)
+	if pruneNote != "" {
+		a.inform(pruneNote + ".")
+	}
 	if err != nil {
 		a.refuse("refused to repair the status line: " + err.Error() + ".")
 		return
@@ -300,11 +306,14 @@ func uninstallStatusLine() StatusLineReceipt {
 	if err != nil {
 		return StatusLineReceipt{Note: displayPath(hs.path) + " could not be re-encoded (" + errText(err) + "); left untouched"}
 	}
-	backup, err := replaceHarnessSettings(hs.path, current, doc, data)
+	backup, pruneNote, err := replaceHarnessSettings(hs.path, current, doc, data)
 	if err != nil {
 		return StatusLineReceipt{Note: "restore failed: " + err.Error()}
 	}
 	kept := "; the file as it was is kept at " + displayPath(backup)
+	if pruneNote != "" {
+		kept += "; " + pruneNote
+	}
 	if previous == "" {
 		return StatusLineReceipt{Restored: true, Note: "removed abcd's status line; none was configured before it" + kept}
 	}

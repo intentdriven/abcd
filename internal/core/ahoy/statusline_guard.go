@@ -8,7 +8,8 @@ package ahoy
 //   - The consent is given over the change itself: the confirm shows the one
 //     entry's value now and after (statusLineOfferQuestion).
 //   - The file's exact bytes are copied into ~/.abcd.noindex/backups before it
-//     is replaced, and a copy that cannot be kept refuses the write.
+//     is replaced, and a copy that cannot be kept refuses the write. The
+//     folder keeps the newest ten copies.
 //   - The replaced file is read back, and one that does not say what was
 //     written is put back from the copy.
 //   - Only the PATH entry ~/.abcd.noindex/path-entry records is wired, and only
@@ -17,8 +18,11 @@ package ahoy
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"reflect"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -114,21 +118,37 @@ var backupsRel = abcdhome.Rel("backups")
 // backupLeafPrefix names every copy: settings.json.<UTC stamp>.
 const backupLeafPrefix = harnessSettingsFile + "."
 
+// removeBackupCopy removes one pruned copy from the backups folder. A
+// variable so a test can make the removal fail.
+var removeBackupCopy = func(dir *os.Root, leaf string) error { return dir.Remove(leaf) }
+
+// backupKeep is how many copies the backups folder holds: every write into
+// the harness file keeps one, so without a bound the folder grows on every
+// install, repair and uninstall.
+const backupKeep = 10
+
+// backupLeafRe matches a copy's name exactly — settings.json.<UTC stamp>,
+// with the numbered suffix two copies in one second take — and captures the
+// stamp and the number the prune orders by.
+var backupLeafRe = regexp.MustCompile(`^` + regexp.QuoteMeta(backupLeafPrefix) + `(\d{8}T\d{6}Z)(?:-(\d+))?$`)
+
 // backupHarnessSettings keeps raw, the harness file's exact current bytes, in
 // ~/.abcd.noindex/backups/settings.json.<UTC stamp>, private to the account,
 // and returns its path. The folder is created and opened through the
 // home-scope walk the setting write uses, so a symlinked level is refused
 // rather than written through, and nothing is created outside abcd's home.
 // The copy is created exclusively, never over an earlier one: two copies in
-// one second take a numbered suffix.
-func backupHarnessSettings(raw []byte) (string, error) {
+// one second take a numbered suffix. Once it is kept the folder is pruned to
+// the newest backupKeep copies (pruneHarnessBackups); a prune that fails is
+// returned as pruned for the caller to note, and never fails the copy.
+func backupHarnessSettings(raw []byte) (path string, pruned, err error) {
 	home, err := homeScopeErr()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	dir, err := fsutil.EnsureHomeScope(home, backupsRel, abcdhome.DirMode)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer dir.Close()
 	stamp := backupLeafPrefix + time.Now().UTC().Format("20060102T150405Z")
@@ -142,36 +162,106 @@ func backupHarnessSettings(raw []byte) (string, error) {
 			continue
 		}
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		return abcdhome.Path(home, "backups", leaf), nil
+		return abcdhome.Path(home, "backups", leaf), pruneHarnessBackups(dir), nil
 	}
-	return "", errors.New("a hundred copies already carry this second's stamp")
+	return "", nil, errors.New("a hundred copies already carry this second's stamp")
+}
+
+// pruneHarnessBackups removes all but the newest backupKeep copies from dir,
+// the backups folder opened through the home-scope walk, so nothing outside it
+// is reachable. Only a REGULAR file named exactly like a copy (backupLeafRe)
+// counts: a symlink is never followed and never removed, whatever it is named,
+// and anything else in the folder is the person's and is left alone. Copies are
+// ordered by stamp, then by their number, so `-10` is newer than `-2`. Every
+// removal is tried; the error, when there is one, says how many were left.
+func pruneHarnessBackups(dir *os.Root) error {
+	ents, err := fs.ReadDir(dir.FS(), ".")
+	if err != nil {
+		return err
+	}
+	type kept struct {
+		leaf, stamp string
+		n           int
+	}
+	var copies []kept
+	for _, e := range ents {
+		m := backupLeafRe.FindStringSubmatch(e.Name())
+		if m == nil || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := dir.Lstat(e.Name())
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		n := 1
+		if m[2] != "" {
+			if n, err = strconv.Atoi(m[2]); err != nil {
+				continue
+			}
+		}
+		copies = append(copies, kept{leaf: e.Name(), stamp: m[1], n: n})
+	}
+	if len(copies) <= backupKeep {
+		return nil
+	}
+	sort.Slice(copies, func(i, j int) bool {
+		if copies[i].stamp != copies[j].stamp {
+			return copies[i].stamp < copies[j].stamp
+		}
+		return copies[i].n < copies[j].n
+	})
+	var first error
+	left := 0
+	for _, c := range copies[:len(copies)-backupKeep] {
+		if err := removeBackupCopy(dir, c.leaf); err != nil {
+			left++
+			if first == nil {
+				first = err
+			}
+		}
+	}
+	if first != nil {
+		what := " older copies"
+		if left == 1 {
+			what = " older copy"
+		}
+		return &ahoyError{strconv.Itoa(left) + what + " could not be removed (" + errText(first) + ")"}
+	}
+	return nil
 }
 
 // replaceHarnessSettings is the guarded replace every status-line write goes
 // through: keep a copy of current (the file's exact bytes now), then replace
 // the file and read it back (replaceKeptHarnessSettings). It returns the
 // copy's path — "" when none could be kept, and then nothing was written —
-// and an error whose text completes a sentence ("…: <text>") and names the
-// copy wherever one was kept.
-func replaceHarnessSettings(path string, current []byte, before map[string]any, data []byte) (backup string, err error) {
-	backup, err = keepHarnessCopy(path, current)
+// a note when older copies could not be pruned (the write goes ahead), and an
+// error whose text completes a sentence ("…: <text>") and names the copy
+// wherever one was kept.
+func replaceHarnessSettings(path string, current []byte, before map[string]any, data []byte) (backup, note string, err error) {
+	backup, note, err = keepHarnessCopy(path, current)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return backup, replaceKeptHarnessSettings(path, backup, current, before, data)
+	return backup, note, replaceKeptHarnessSettings(path, backup, current, before, data)
 }
 
 // keepHarnessCopy keeps current in abcd's backups folder before path is
-// replaced, and refuses in plain words when it cannot: no copy, no write.
-func keepHarnessCopy(path string, current []byte) (string, error) {
-	backup, err := backupHarnessSettings(current)
+// replaced, and refuses in plain words when it cannot: no copy, no write. A
+// prune that failed after the copy was kept is returned as note, a sentence
+// for the person; it never refuses the write.
+func keepHarnessCopy(path string, current []byte) (backup, note string, err error) {
+	backup, pruned, err := backupHarnessSettings(current)
 	if err != nil {
-		return "", &ahoyError{"a copy of " + displayPath(path) + " could not be kept in " + abcdhome.Display("backups") +
+		return "", "", &ahoyError{"a copy of " + displayPath(path) + " could not be kept in " + abcdhome.Display("backups") +
 			"/ first (" + errText(err) + "), so nothing was written"}
 	}
-	return backup, nil
+	if pruned != nil {
+		note = "abcd keeps the newest " + strconv.Itoa(backupKeep) + " copies of " + displayPath(path) + " in " + abcdhome.Display("backups") +
+			"/, but " + errText(pruned) + "; the new copy was kept and the change went ahead, so remove the oldest by hand"
+	}
+	return backup, note, nil
 }
 
 // replaceKeptHarnessSettings replaces path with data once its copy is kept at
