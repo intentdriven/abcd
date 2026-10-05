@@ -1228,7 +1228,7 @@ func hashedBy(t *testing.T, repo string) int64 {
 func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 	refused := func(t *testing.T, err error, named string) {
 		t.Helper()
-		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), named) {
+		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), named) {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming %s", err, named)
 		}
 	}
@@ -1256,6 +1256,10 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 		{name: "HEAD", grow: func(t *testing.T, r *writtenRun) string {
 			grow(t, filepath.Join(r.repo, ".git", "HEAD"))
 			return ".git/HEAD"
+		}},
+		{name: "info/exclude", grow: func(t *testing.T, r *writtenRun) string {
+			grow(t, filepath.Join(r.repo, ".git", "info", "exclude"))
+			return ".git/info/exclude"
 		}},
 		{name: "a linked worktree's own HEAD", at: func(t *testing.T, r *writtenRun) string {
 			r.git.Commit("base")
@@ -1373,6 +1377,125 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 				t.Fatalf("record %+v", rec)
 			}
 		})
+	}
+}
+
+// TestAFileGrowingAsItIsHashedIsReadNoFurtherThanItsLstat: contentState
+// hashes a file no further than the size its Lstat gave, so a file that
+// grows while it is read is not read past what was counted for it; its size
+// or content differs at the next reading.
+func TestAFileGrowingAsItIsHashedIsReadNoFurtherThanItsLstat(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	p := filepath.Join(dir, "growing")
+	const size = 64 << 20
+	for range 20 {
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Truncate(p, size); err != nil {
+			t.Fatal(err)
+		}
+		grown := make(chan error, 1)
+		go func() {
+			// The file grows while it is read: hashing 64 MiB takes tens of
+			// milliseconds, its Lstat microseconds.
+			time.Sleep(time.Millisecond)
+			grown <- os.Truncate(p, size+1<<20)
+		}()
+		st, n, err := contentState(root, "growing", 1<<40)
+		if gerr := <-grown; gerr != nil {
+			t.Fatal(gerr)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := strings.Fields(st)
+		if len(f) != 3 {
+			t.Fatalf("state %q", st)
+		}
+		counted, err := strconv.ParseInt(f[1], 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != counted {
+			t.Fatalf("hashed %d bytes of a file its Lstat counted at %d", n, counted)
+		}
+	}
+}
+
+// TestAnEntryReachedThroughALinkIsHashedNoFurtherThanItsCharge: an entry
+// read where a link leads is hashed within the size its charge against the
+// followed-link budget counted, not within what is left of the bound on what
+// the reading owns, so one grown since its charge is refused, the link named.
+func TestAnEntryReachedThroughALinkIsHashedNoFurtherThanItsCharge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hook"), []byte(strings.Repeat("h", 100)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	r := &treeReader{repo: dir, realRepo: dir, st: treeState{}}
+	if _, err := r.hash(root, "hook", "hook", linkReach("hooks"), 100); err != nil {
+		t.Fatalf("an entry hashed at the size it was charged is refused: %v", err)
+	}
+	_, err = r.hash(root, "hook", "hook", linkReach("hooks"), 50)
+	if err == nil || !strings.Contains(err.Error(), "the link hooks") || !strings.Contains(err.Error(), "grew") {
+		t.Fatalf("err = %v, want an entry grown past its charge refused, naming the link", err)
+	}
+}
+
+// TestAGrantedFileThatPlacesGitsDirectoryStillStopsTheInterview: a file that
+// places git's own directories, changed, stops the interview even when the
+// interview grants it: git's directories no longer lie where the reading
+// holds the role to them, so no later reading can be trusted.
+func TestAGrantedFileThatPlacesGitsDirectoryStillStopsTheInterview(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	r.w.MayChange = []string{".git/commondir"}
+	stubAlso(t, script, 2, map[string]string{".git/commondir": t.TempDir() + "\n"})
+	res, err := r.w.Run(context.Background())
+	var moved *redirectedError
+	if !errors.As(err, &moved) || !slices.Equal(moved.Paths, []string{".git/commondir"}) {
+		t.Fatalf("err = %v, want the interview stopped on the redirect", err)
+	}
+	if len(r.asked) != 1 || len(r.finished) != 0 {
+		t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the redirect", len(r.asked), len(r.finished))
+	}
+	if !slices.Equal(res.Changed, []string{".git/commondir"}) {
+		t.Fatalf("changed %v", res.Changed)
+	}
+	if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
+		t.Fatalf("record %+v", rec)
+	}
+}
+
+// TestARenamesSourceIsSizedWithTheListedPaths: a rename's source is hashed
+// with it, so it is counted with the paths git lists before any is read, and
+// a listing whose sources take it past the bound is refused before any is
+// hashed.
+func TestARenamesSourceIsSizedWithTheListedPaths(t *testing.T) {
+	keep := maxHashedBytes
+	t.Cleanup(func() { maxHashedBytes = keep })
+	r := newWrittenRun(t, "")
+	body := strings.Repeat("a", 1000)
+	r.git.Write("a.txt", body)
+	r.git.Commit("a")
+	r.git.Git("mv", "a.txt", "b.txt")
+	// a.txt again, untracked: listed on its own and as the rename's source,
+	// so it is hashed twice.
+	r.git.Write("a.txt", body)
+	maxHashedBytes = 2999
+	_, err := readTree(r.repo, "")
+	if err == nil || !strings.Contains(err.Error(), "the paths git lists as differing from HEAD hold") {
+		t.Fatalf("err = %v, want the listing of 3000 bytes refused before any is hashed", err)
 	}
 }
 
