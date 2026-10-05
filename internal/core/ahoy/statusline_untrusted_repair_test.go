@@ -2,6 +2,7 @@ package ahoy
 
 import (
 	"bytes"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func TestInstallRepairsAnUntrustedStatusLine(t *testing.T) {
 		name    string
 		command func(home, pluginRoot string) string
 	}{
-		{"the plugin-root binary", func(_, root string) string { return shSingleQuote(filepath.Join(root, "abcd")) + " statusline" }},
+		{"the plugin-root binary", func(_, root string) string { return shellquote.Single(filepath.Join(root, "abcd")) + " statusline" }},
 		{"a stale local build", func(home, _ string) string {
 			return filepath.Join(home, "ABCDevelopment", "abcd", "bin", "abcd-darwin-arm64") + " statusline"
 		}},
@@ -59,7 +60,7 @@ func TestInstallRepairsAnUntrustedStatusLine(t *testing.T) {
 				t.Fatal(err)
 			}
 			line, ok := statusLineOf(t, settings)
-			if want := shSingleQuote(os.Getenv("ABCD_BIN_TARGET")) + " statusline"; !ok || line["command"] != want {
+			if want := shellquote.Single(os.Getenv("ABCD_BIN_TARGET")) + " statusline"; !ok || line["command"] != want {
 				t.Fatalf("statusLine = %v, want it repointed at %q; notes = %v", line, want, res.Notes)
 			}
 			if line["padding"] != float64(2) {
@@ -91,7 +92,7 @@ func TestInstallRepairsAnUntrustedStatusLine(t *testing.T) {
 func TestUntrustedStatusLineWithNoTrustedEntryRestoresThePrevious(t *testing.T) {
 	home, pluginRoot := setupHermetic(t)
 	settings := homeHarnessSettings(t, `{"statusLine": {"type": "command", "command": "`+
-		shSingleQuote(filepath.Join(pluginRoot, "abcd"))+` statusline"}}`)
+		shellquote.Single(filepath.Join(pluginRoot, "abcd"))+` statusline"}}`)
 	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}

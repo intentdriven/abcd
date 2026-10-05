@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"os"
 	"path/filepath"
 	"sort"
@@ -164,8 +165,8 @@ func TestDetectReportsAnUntrustedStatusLine(t *testing.T) {
 		command func(home, pluginRoot string) string
 		reason  string // "" => no untrusted gap
 	}{
-		{"the recorded install", func(string, string) string { return shSingleQuote(os.Getenv("ABCD_BIN_TARGET")) + " statusline" }, ""},
-		{"the plugin-root binary", func(_, root string) string { return shSingleQuote(filepath.Join(root, "abcd")) + " statusline" }, "does not record it"},
+		{"the recorded install", func(string, string) string { return shellquote.Single(os.Getenv("ABCD_BIN_TARGET")) + " statusline" }, ""},
+		{"the plugin-root binary", func(_, root string) string { return shellquote.Single(filepath.Join(root, "abcd")) + " statusline" }, "does not record it"},
 		{"a stale local build", func(home, _ string) string {
 			return filepath.Join(home, "ABCDevelopment", "abcd", "bin", "abcd-darwin-arm64") + " statusline"
 		}, "does not record it"},
