@@ -250,3 +250,63 @@ func TestAbcdInvocations(t *testing.T) {
 		}
 	}
 }
+
+// TestAbcdInvocationsThroughWrappers: a stray is still a stray behind a
+// leading redirection or a wrapper that takes arguments of its own before the
+// word it runs — timeout's duration, nice's adjustment, caffeinate's and
+// arch's flags, xargs' options, and the scheduling wrappers — while a word
+// that runs no abcd stays a non-match however it is wrapped. A redirection's
+// target is never the command word, even when it is named abcd.
+func TestAbcdInvocationsThroughWrappers(t *testing.T) {
+	const bin = "/x/abcd-darwin-arm64"
+	cases := []struct {
+		cmd  string
+		want string // "" => none
+	}{
+		{"timeout 10 " + bin + " hook subagent-stop", bin},
+		{"timeout -s KILL -k 5 10s abcd hook x", "abcd"},
+		{"timeout --signal=TERM --preserve-status 1m abcd hook x", "abcd"},
+		{"nice -n 10 abcd hook x", "abcd"},
+		{"nice -10 abcd hook x", "abcd"},
+		{"nice abcd hook x", "abcd"},
+		{"caffeinate -i abcd hook x", "abcd"},
+		{"caffeinate -dims -t 60 abcd hook x", "abcd"},
+		{"arch -arm64 abcd hook x", "abcd"},
+		{"arch -arch x86_64 -e FOO=1 abcd hook x", "abcd"},
+		{"xargs abcd", "abcd"},
+		{"find . -print0 | xargs -0 -n 1 -I {} abcd hook {}", "abcd"},
+		{"stdbuf -oL -e 0 abcd hook x", "abcd"},
+		{"ionice -c 3 abcd hook x", "abcd"},
+		{"chrt -f 10 abcd hook x", "abcd"},
+		{"taskset -c 0,1 abcd hook x", "abcd"},
+		{"taskset 0x3 abcd hook x", "abcd"},
+		{"env -i -u HOME FOO=1 abcd hook x", "abcd"},
+		{"2>/dev/null abcd hook x", "abcd"},
+		{"2> /dev/null abcd hook x", "abcd"},
+		{"2>&1 abcd hook x", "abcd"},
+		{"<in >>log abcd hook x", "abcd"},
+		{"< in >> log abcd hook x", "abcd"},
+		{">/dev/null 2>&1 nice -n 5 timeout 30 " + bin + " hook x", bin},
+		{"abcd hook x 2>&1", "abcd"},
+		// Negatives.
+		{"echo abcd", ""},
+		{"cd /src/abcd && make", ""},
+		{"timeout 10 make abcd", ""},
+		{"nice -n 10 echo abcd", ""},
+		{"xargs echo abcd", ""},
+		{"2>/dev/null echo abcd", ""},
+		{">abcd echo hi", ""},
+		{"> abcd echo hi", ""},
+		{"2>&1 echo abcd", ""},
+	}
+	for _, tc := range cases {
+		got := abcdInvocations(tc.cmd)
+		first := ""
+		if len(got) > 0 {
+			first = got[0]
+		}
+		if first != tc.want {
+			t.Errorf("abcdInvocations(%q) = %q, want first %q", tc.cmd, got, tc.want)
+		}
+	}
+}

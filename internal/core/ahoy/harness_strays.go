@@ -23,6 +23,7 @@ package ahoy
 import (
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -256,9 +257,13 @@ func hookCommands(v any) []string {
 // WORD whose file name is an abcd binary's (launch.IsBinaryName, the one
 // spelling of a build's name). It is a recogniser, not a shell: it
 // splits on the shell's command separators and on quotes, skips leading
-// assignments and the prefix words that run the next word (exec, env, sudo,
-// then, …), and judges the first word left — so `cd /src/abcd && make` runs no
-// abcd while `bash -c 'abcd hook x'` and `"$CLAUDE_PLUGIN_ROOT/abcd" hook` do.
+// assignments, redirections with their targets (`2>/dev/null`, `2>&1`), the
+// keywords that precede a command (then, do, !, …) and the wrappers that run a
+// later word of their own arguments, with the options and operands they take
+// (exec, env, sudo, timeout 10, nice -n 5, caffeinate -i, arch -arm64, xargs,
+// …), and judges the first word left — so `cd /src/abcd && make` runs no abcd
+// while `bash -c 'abcd hook x'`, `timeout 10 abcd hook x` and
+// `"$CLAUDE_PLUGIN_ROOT/abcd" hook` do.
 // A quoted path is judged whole, so a directory with a space in it survives.
 //
 // It leans towards yes inside a quoted string (`notify "abcd done"` reads as a
@@ -307,6 +312,10 @@ func shellSegments(cmd string) []shellSegment {
 		case r == '\'' || r == '"':
 			flush(false)
 			quote = r
+		case (r == '&' || r == '|') && strings.HasSuffix(cur.String(), ">"),
+			r == '&' && strings.HasSuffix(cur.String(), "<"):
+			// `2>&1`, `<&3` and `>|file` are redirections, not separators.
+			cur.WriteRune(r)
 		case strings.ContainsRune(";&|()`\n", r):
 			flush(false)
 		default:
@@ -319,18 +328,87 @@ func shellSegments(cmd string) []shellSegment {
 
 // prefixWords run the word after them, so the command word is past them.
 var prefixWords = map[string]bool{
-	"exec": true, "env": true, "command": true, "builtin": true, "nohup": true, "time": true,
-	"sudo": true, "then": true, "do": true, "else": true, "elif": true, "if": true,
+	"then": true, "do": true, "else": true, "elif": true, "if": true,
 	"while": true, "until": true, "!": true, "{": true,
+}
+
+// wrapper is a command that runs a later word of its own arguments: it takes
+// options (every word starting with "-", env's lone "-" included, until "--"
+// or the first that does not), each of argOpts consuming the word after it as its value, and then
+// skips positionals more words (timeout's duration, chrt's priority,
+// taskset's mask) before the word it runs. An option written with its value
+// attached (`-n10`, `--signal=KILL`, `-oL`) is one word and needs no entry.
+type wrapper struct {
+	argOpts     []string
+	positionals int
+}
+
+// wrappers are the commands a harness entry commonly runs another command
+// through. Their option tables cover the forms that take a separate value;
+// an option missing here is skipped as a flag, which at worst judges its value
+// as the command word and misses a stray, never invents one.
+var wrappers = map[string]wrapper{
+	"exec":       {argOpts: []string{"-a"}},
+	"env":        {argOpts: []string{"-u", "-C", "-P", "-S", "--unset", "--chdir", "--split-string"}},
+	"command":    {},
+	"builtin":    {},
+	"nohup":      {},
+	"time":       {argOpts: []string{"-f", "-o", "--format", "--output"}},
+	"sudo":       {argOpts: []string{"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T", "--user", "--group", "--chdir", "--host", "--prompt", "--role", "--type", "--other-user", "--command-timeout"}},
+	"timeout":    {argOpts: []string{"-s", "-k", "--signal", "--kill-after"}, positionals: 1},
+	"nice":       {argOpts: []string{"-n", "--adjustment"}},
+	"caffeinate": {argOpts: []string{"-t", "-w"}},
+	"arch":       {argOpts: []string{"-arch", "-e", "-d"}},
+	"xargs":      {argOpts: []string{"-a", "-d", "-E", "-I", "-J", "-L", "-n", "-P", "-R", "-S", "-s", "--arg-file", "--delimiter", "--max-args", "--max-procs", "--max-chars", "--process-slot-var"}},
+	"stdbuf":     {argOpts: []string{"-i", "-o", "-e", "--input", "--output", "--error"}},
+	"ionice":     {argOpts: []string{"-c", "-n", "--class", "--classdata"}},
+	"chrt":       {argOpts: []string{"-T", "-P", "-D", "--sched-runtime", "--sched-period", "--sched-deadline"}, positionals: 1},
+	"taskset":    {positionals: 1},
+}
+
+// skip returns how many of args, the words after the wrapper's name, belong
+// to the wrapper rather than to the command it runs.
+func (w wrapper) skip(args []string) int {
+	n := 0
+	for n < len(args) && strings.HasPrefix(args[n], "-") {
+		opt := args[n]
+		n++
+		if opt == "--" {
+			break
+		}
+		if slices.Contains(w.argOpts, opt) && n < len(args) {
+			n++
+		}
+	}
+	return min(n+w.positionals, len(args))
 }
 
 var assignmentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
-// commandWord is the first word of seg that is neither an assignment nor a
-// prefix word, or "".
+// redirectionRe matches a word that starts with a redirection: an optional
+// descriptor number, the operator, and the target when it is written attached
+// (`2>/dev/null`, `2>&1`, `>>log`, `<in`). An empty target means the next
+// word is the target (`2> /dev/null`).
+var redirectionRe = regexp.MustCompile(`^[0-9]*(<<<|<<-|<<|<>|<&|>>|>&|>\||<|>)(.*)$`)
+
+// commandWord is the first word of seg that is none of an assignment, a
+// redirection (with its target), a prefix word, or a wrapper with the
+// arguments it takes for itself, or "".
 func commandWord(seg string) string {
-	for _, w := range strings.Fields(seg) {
+	words := strings.Fields(seg)
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		if m := redirectionRe.FindStringSubmatch(w); m != nil {
+			if m[2] == "" {
+				i++
+			}
+			continue
+		}
 		if assignmentRe.MatchString(w) || prefixWords[w] {
+			continue
+		}
+		if wr, ok := wrappers[w]; ok {
+			i += wr.skip(words[i+1:])
 			continue
 		}
 		return w
