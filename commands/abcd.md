@@ -45,7 +45,11 @@ The row itself is produced by `abcd statusline`, the verb the harness runs on
 every status refresh with its JSON payload on stdin. In a managed repository it
 prints abcd's row; anywhere else it runs the status command that was recorded
 at install time and passes its output through unchanged, so the user's own line
-is untouched. `/abcd:ahoy install` offers and wires it; nothing here invokes it.
+is untouched. It writes nothing, and it is time-bounded: abcd's own work stops
+at 500ms and the recorded command at 5s, and at either bound it prints what it
+has and exits 0. `/abcd:ahoy install` offers and wires it, after a yes and only
+to the trusted PATH install abcd recorded, never to the plugin's own copy;
+nothing here invokes it.
 
 When reports from managed repositories wait in the user account's inbox, the
 board carries an `inbox` object (`reports`, `senders`), rendered as an `inbox:`
