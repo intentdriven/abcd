@@ -204,15 +204,15 @@ func TestLabelPaintsOnlyAtTrueColor(t *testing.T) {
 		v     View
 		state statusline.State
 	}{{Product, statusline.StateProductThinker}, {Facilitator, statusline.StateFacilitator}} {
-		if got, want := Render(in, Frame{View: tc.v, Width: 80, Rung: TrueColor})[0], statusline.PaintRole(tc.state, Label(tc.v)); got != want {
+		if got, want := Render(in, Frame{View: tc.v, Width: 80, Rung: TrueColor})[0], statusline.PaintRole(tc.state, label(tc.v)); got != want {
 			t.Errorf("view %d at TrueColor: label %q, want the role pair %q", tc.v, got, want)
 		}
 		for _, r := range []Rung{Ansi256, Ansi16, Mono} {
-			if got := Render(in, Frame{View: tc.v, Width: 80, Rung: r})[0]; got != Label(tc.v) {
+			if got := Render(in, Frame{View: tc.v, Width: 80, Rung: r})[0]; got != label(tc.v) {
 				t.Errorf("view %d at rung %d: label %q, want its words unpainted", tc.v, r, got)
 			}
 		}
-		if got := Render(in, Frame{View: tc.v, Form: Markdown, Rung: TrueColor})[0]; got != Label(tc.v) {
+		if got := Render(in, Frame{View: tc.v, Form: Markdown, Rung: TrueColor})[0]; got != label(tc.v) {
 			t.Errorf("view %d in markdown: label %q, want its words unpainted", tc.v, got)
 		}
 	}

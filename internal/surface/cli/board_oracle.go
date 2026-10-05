@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -40,27 +41,28 @@ func boardOracle(cwd string, stderr io.Writer) []oracle.BoardRow {
 	return rows
 }
 
-// renderBoardOracle writes the oracle heading and one line per agent: every
-// layer holding a row as layer=tier, highest precedence first, the one that
-// applies marked with *.
-func renderBoardOracle(w io.Writer, rows []oracle.BoardRow) {
+// oracleRow is the oracle row of the facilitator's view: the heading and one
+// line per agent, every layer holding a row as layer=tier, highest precedence
+// first, the one that applies marked with *. Nil when nothing is accepted.
+func oracleRow(rows []oracle.BoardRow) *board.Row {
 	if len(rows) == 0 {
-		return
+		return nil
 	}
-	fmt.Fprintf(w, "  oracle:     routing table accepted; * marks the row that applies (flag > repo > machine > bundled)\n")
+	r := &board.Row{Label: "oracle", Text: "routing table accepted; * marks the row that applies (flag > repo > machine > bundled)"}
 	width := 0
-	for _, r := range rows {
-		width = max(width, len(r.Agent))
+	for _, row := range rows {
+		width = max(width, len(row.Agent))
 	}
-	for _, r := range rows {
-		cells := make([]string, 0, len(r.Layers))
-		for _, lr := range r.Layers {
+	for _, row := range rows {
+		cells := make([]string, 0, len(row.Layers))
+		for _, lr := range row.Layers {
 			cell := lr.Layer + "=" + string(lr.Tier)
-			if lr.Layer == r.Winner {
+			if lr.Layer == row.Winner {
 				cell += "*"
 			}
 			cells = append(cells, cell)
 		}
-		fmt.Fprintf(w, "    %-*s  %s\n", width, r.Agent, termsafe.Sanitize(strings.Join(cells, " ")))
+		r.Items = append(r.Items, fmt.Sprintf("%-*s  %s", width, row.Agent, termsafe.Sanitize(strings.Join(cells, " "))))
 	}
+	return r
 }

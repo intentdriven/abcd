@@ -67,12 +67,12 @@ func TestBoardWrapsEveryRowAtTheWindowWidth(t *testing.T) {
 	widthBoard(t)
 	for _, cols := range []int{80, 60} {
 		setBoardWidth(t, cols)
-		text := string(runCLI(t))
+		text := string(runCLI(t, "--view", "facilitator"))
 		for _, l := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
 			if n := textwidth.Columns(l); n > cols {
 				t.Errorf("at %d columns a line takes %d:\n%q\nin\n%s", cols, n, l, text)
 			}
-			if l != "" && !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "abcd — ") {
+			if l != "" && !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "abcd — ") && l != "view for the facilitator" {
 				t.Errorf("at %d columns a line starts at column 0:\n%q\nin\n%s", cols, l, text)
 			}
 		}
@@ -81,8 +81,9 @@ func TestBoardWrapsEveryRowAtTheWindowWidth(t *testing.T) {
 		}
 		for _, want := range []string{
 			"  git repo:   yes\n  record:     yes\n",
-			"      itd-2609010000000001  A board row whose title runs well past the eighty\n" +
-				"          columns a narrow window offers, so it has to wrap  [next up]\n",
+			"      itd-2609010000000001  spc-2609010000000011  A board row whose title runs\n" +
+				"          well past the eighty columns a narrow window offers, so it has to wrap\n" +
+				"          [next up]\n",
 			"    receipts: 1 release receipt — the release it gated is 0 commits behind main;\n" +
 				"        a receipt is not re-run, and --json lists each\n",
 		} {
@@ -91,7 +92,7 @@ func TestBoardWrapsEveryRowAtTheWindowWidth(t *testing.T) {
 			}
 		}
 		for _, raw := range []string{"true", "false", "["} {
-			for _, l := range strings.Split(text, "\n")[1:4] {
+			for _, l := range strings.Split(text, "\n")[2:5] {
 				if strings.Contains(l, raw) {
 					t.Errorf("the first rows print a Go value (%q):\n%s", raw, text)
 				}
@@ -114,7 +115,7 @@ func TestPipedBoardWrapsAt80WithNoEscape(t *testing.T) {
 	if got := boardWidth(w); got != 80 {
 		t.Errorf("a pipe reads %d columns, want 80", got)
 	}
-	text := string(runCLI(t))
+	text := string(runCLI(t, "--view", "facilitator"))
 	if strings.ContainsRune(text, '\x1b') {
 		t.Errorf("the piped board carries an escape byte:\n%q", text)
 	}

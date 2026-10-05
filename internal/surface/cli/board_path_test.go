@@ -23,8 +23,9 @@ func boardCheckout(t *testing.T, home, dir string) {
 // form's first line names and the JSON form's dir, with the whole text output.
 func boardDir(t *testing.T) (textDir, jsonDir, text string) {
 	t.Helper()
-	text = string(runCLI(t))
-	first, _, _ := strings.Cut(text, "\n")
+	text = string(runCLI(t, "--view", "facilitator"))
+	_, rest, _ := strings.Cut(text, "\n") // the view's label
+	first, _, _ := strings.Cut(rest, "\n")
 	textDir, ok := strings.CutPrefix(first, "abcd — ")
 	if !ok {
 		t.Fatalf("the board's first line is not `abcd — <dir>`:\n%s", text)
@@ -107,7 +108,7 @@ func TestBoardPeersNoticeNamesACheckoutOutsideHomeByItsDirectoryName(t *testing.
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	_, stderr, err := runCLISplit(t)
+	_, stderr, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatalf("the board failed: %v\n%s", err, stderr)
 	}

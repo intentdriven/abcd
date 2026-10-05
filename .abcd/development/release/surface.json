@@ -14,6 +14,13 @@
           "hidden": false
         },
         {
+          "name": "format",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "json",
           "shorthand": "",
           "type": "bool",
@@ -31,6 +38,13 @@
           "name": "version",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "view",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }

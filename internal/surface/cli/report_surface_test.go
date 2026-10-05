@@ -266,7 +266,7 @@ func TestSessionStartGreetsWithTheInboxCount(t *testing.T) {
 	}
 
 	t.Chdir(repo)
-	board := string(runCLI(t))
+	board := string(runCLI(t, "--view", "facilitator"))
 	if !strings.Contains(board, "inbox:      3 report(s) from 2 managed repositories") {
 		t.Errorf("board = %q", board)
 	}

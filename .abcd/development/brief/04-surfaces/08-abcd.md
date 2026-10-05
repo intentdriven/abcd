@@ -35,9 +35,29 @@ form is a positional on the root, not a sub-verb.
 
 Two read-only forms, and no third.
 
-**Bare `abcd`** renders a four-field snapshot of the current directory: the
-directory itself, whether it is a git repo, whether an abcd record is present,
-and which of the `.abcd/` work tiers exist. The directory is named home-relative
+**Bare `abcd`** draws the status board in one of two views
+(spc-2610031844142274), each opening on a line that names whose view it is.
+The view for the product thinker, the default whatever role the stored status
+names, is a few plain lines: what is being built (one `building:` line per
+intent in a lane), the next three things to build (the `next_up` intent first,
+then Next in pick order), and how many more are ready or parked, each state a
+word and a symbol (`●`, `○`, `•`, or `*`, `o`, `-` without a UTF-8 locale),
+each title fitted to one line of the window up to 100 columns, with no record
+id, lane, target or command in it. `--view facilitator` draws the full board
+described below, each Now and Next row with its spec id and a lane in flight
+marked so. `--format markdown` draws either view as a list a host session pastes
+unchanged, every line the label, a blank or a list item, so a title cannot open
+or close a fence; `--json` beside `--format` is refused, exit 2, and so is either
+flag beside a record id. On a Terminal the view label is painted in the role's
+badge colours at true colour only, `building` and `next` repeat their word in
+green and cyan, and `NO_COLOR` or `--no-color` paints nothing; in a pipe the
+board is drawn without colour at 80 columns. One core renderer,
+`internal/core/board`, draws both views in both forms; `--json` carries every
+field whichever view it names, with `view` naming it.
+
+The full board, the facilitator's view, is a snapshot of the current
+directory: the directory itself, whether it is a git repo, whether an abcd
+record is present, and which of the `.abcd/` work tiers exist. The directory is named home-relative
 (`~/…`), or by its directory name outside HOME, in the text form's first line
 and in the JSON form's `dir` alike, never by an absolute path
 (iss-2609281613094952): the board is the output most often pasted, and no
@@ -368,9 +388,11 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 | Flag | Type |
 |---|---|
 | `--agent` | bool |
+| `--format` | string |
 | `--json` | bool |
 | `--no-color` | bool |
 | `--version` | bool |
+| `--view` | string |
 
 ### `abcd mode`
 

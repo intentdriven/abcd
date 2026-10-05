@@ -87,8 +87,8 @@ type Input struct {
 // window, up to 100 columns (open question 4).
 const productMeasure = 100
 
-// Label is the first line of a view: whose view it is.
-func Label(v View) string {
+// label is the first line of a view: whose view it is.
+func label(v View) string {
 	if v == Facilitator {
 		return "view for the facilitator"
 	}
@@ -97,14 +97,14 @@ func Label(v View) string {
 
 // Render draws the board in the frame's view and form.
 func Render(in Input, f Frame) []string {
-	label := Label(f.View)
-	head := label
+	name := label(f.View)
+	head := name
 	if f.Form == Text && f.Rung == TrueColor {
 		state := statusline.StateProductThinker
 		if f.View == Facilitator {
 			state = statusline.StateFacilitator
 		}
-		head = statusline.PaintRole(state, label)
+		head = statusline.PaintRole(state, name)
 	}
 	out := []string{head}
 	if f.Form == Markdown {
