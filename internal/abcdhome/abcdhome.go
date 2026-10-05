@@ -47,9 +47,32 @@ const RenameCommand = "mv ~/" + oldName + " ~/" + name
 // RepairCommand reconnects the worktrees the rename moved. git records a
 // worktree's location in absolute form, so after the rename every worktree in
 // the store is listed by its repository as prunable until `git worktree
-// repair` runs in it (iss-2610040147016103); the stop prints this loop for the
-// person to run after the rename, and abcd writes nothing outside its home.
-const RepairCommand = `for w in ~/` + name + `/worktrees/*/*; do git -C "$w" worktree repair; done`
+// repair` runs in it (iss-2610040147016103); the stop prints this command for
+// the person to run after the rename, and abcd writes nothing outside its home.
+//
+// It finds each worktree by its .git file at any depth (iss-2610050728100598):
+// a worktree sits at worktrees/<root-sha>/<name>, one named after a slashed
+// branch a level or more deeper, and one left from before the root-sha key
+// directly under worktrees/. -prune stops the walk at each worktree it finds,
+// so the walk never enters a worktree's files and never runs git on a nested
+// repository inside one. It is one find with no shell variable and no quote,
+// so it runs as printed from sh, bash and zsh, and a path holding a space
+// reaches git as one argument. The "repair: gitdir incorrect" line git prints
+// for each worktree is the link it fixed, and the stop lines say so.
+const RepairCommand = `find ~/` + name + `/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;`
+
+// repairFixedNote is what the stop lines add after RepairCommand: git words
+// each link it fixes as "repair: gitdir incorrect", which reads like a failure.
+const repairFixedNote = " (each `repair: gitdir incorrect` line it prints is a link it fixed)"
+
+// WorktreeRepairCommand is the repair for the one worktree at rel, a slash
+// path relative to the person's home directory, in the form a person pastes:
+// the tilde outside the quotes, so the shell expands it, and the rest
+// single-quoted, so a space or a quote in a worktree's name reaches git as one
+// argument. abcd ahoy names it for a worktree the rename left unlinked.
+func WorktreeRepairCommand(rel string) string {
+	return "git -C ~/'" + strings.ReplaceAll(rel, "'", `'\''`) + "' worktree repair"
+}
 
 // The two stop lines and their status-line short forms, written once here
 // (spc-2610031309233367, "The stop", amended by its open question 6). The
@@ -58,10 +81,10 @@ const RepairCommand = `for w in ~/` + name + `/worktrees/*/*; do git -C "$w" wor
 const (
 	oldStandsLine = "abcd's folder is now ~/" + name + ", a name the Mac's search indexer passes over, and ~/" + oldName +
 		" still stands, so abcd has written nothing. Rename it with `" + RenameCommand +
-		"`, reconnect the working copies kept there with `" + RepairCommand + "`, then run abcd again."
+		"`, reconnect the working copies kept there with `" + RepairCommand + "`" + repairFixedNote + ", then run abcd again."
 	bothStandLine = "Both ~/" + oldName + " and ~/" + name + " exist, so abcd has written nothing and moves neither." +
 		" Keep the one you want, named ~/" + name + ", and take the other out of your home folder, reconnect the" +
-		" working copies kept there with `" + RepairCommand + "`, then run abcd again."
+		" working copies kept there with `" + RepairCommand + "`" + repairFixedNote + ", then run abcd again."
 	oldStandsShort = "abcd stopped: rename ~/" + oldName + " to ~/" + name
 	bothStandShort = "abcd stopped: both ~/" + oldName + " and ~/" + name + " exist"
 )

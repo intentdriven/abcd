@@ -111,22 +111,25 @@ func TestHomeStopCheck(t *testing.T) {
 // (the spec's text, as amended by open question 6): the old folder's line names
 // the folder, the new one and the one rename command; the both line names both
 // folders and never the rename, which would move the old folder INTO the new
-// one; and each prints the repair loop that reconnects the worktrees the
-// rename moved (iss-2610040147016103).
+// one; and each prints the repair that reconnects the worktrees the rename
+// moved (iss-2610040147016103), found by their .git file at any depth
+// (iss-2610050728100598), with the note that its "repair: gitdir incorrect"
+// lines are links it fixed, not failures.
 func TestStopLinesNameTheRenameAndTheRepair(t *testing.T) {
 	if RenameCommand != "mv ~/.abcd ~/.abcd.noindex" {
 		t.Errorf("RenameCommand = %q", RenameCommand)
 	}
-	if RepairCommand != `for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done` {
+	if RepairCommand != `find ~/.abcd.noindex/worktrees -type d -exec test -f {}/.git \; -prune -exec git -C {} worktree repair \;` {
 		t.Errorf("RepairCommand = %q", RepairCommand)
 	}
+	const fixedNote = "each `repair: gitdir incorrect` line it prints is a link it fixed"
 	for _, c := range []struct {
 		line   string
 		want   []string
 		refuse []string
 	}{
-		{oldStandsLine, []string{"~/.abcd.noindex", "~/.abcd still stands", "`" + RenameCommand + "`", "`" + RepairCommand + "`", "has written nothing"}, nil},
-		{bothStandLine, []string{"Both ~/.abcd and ~/.abcd.noindex exist", "`" + RepairCommand + "`", "has written nothing"}, []string{RenameCommand}},
+		{oldStandsLine, []string{"~/.abcd.noindex", "~/.abcd still stands", "`" + RenameCommand + "`", "`" + RepairCommand + "`", fixedNote, "has written nothing"}, nil},
+		{bothStandLine, []string{"Both ~/.abcd and ~/.abcd.noindex exist", "`" + RepairCommand + "`", fixedNote, "has written nothing"}, []string{RenameCommand}},
 	} {
 		for _, w := range c.want {
 			if !strings.Contains(c.line, w) {
