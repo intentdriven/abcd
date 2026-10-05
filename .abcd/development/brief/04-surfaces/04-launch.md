@@ -481,7 +481,7 @@ any intent falls back to conventional-commit derivation.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are nine, and an operator sees them as
+would be wrong. There are ten, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -489,6 +489,7 @@ would be wrong. There are nine, and an operator sees them as
 | `no-release-tag` | there is no immutable base to measure the cut from |
 | `release-in-flight` | the newest changelog heading is ahead of the newest tag, so a release sits between its merge and its tag |
 | `unlabelled-record` | a record the cut adds carries no valid impact |
+| `uncommitted-records` | a record file in a terminal folder (`intents/shipped/`, `issues/resolved/`) differs from HEAD, where the cut reads it, so a spec close or resolve left uncommitted would be missing from the cut; every path is named, and no override waives it |
 | `stale-intent` | an intent in `planned/` has a spec that has closed |
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
