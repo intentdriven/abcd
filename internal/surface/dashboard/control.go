@@ -56,6 +56,19 @@ func setKillGroupForTest(f func(pid int) error) (restore func()) {
 	return func() { killGroup = old }
 }
 
+// beforeConfigWrite runs once the server has started, just before start
+// hands it its configuration. Only a test replaces it, to order the server's
+// closing of its configuration pipe before the write.
+var beforeConfigWrite = func() {}
+
+// setBeforeConfigWriteForTest replaces beforeConfigWrite and returns the
+// restore.
+func setBeforeConfigWriteForTest(f func()) (restore func()) {
+	old := beforeConfigWrite
+	beforeConfigWrite = f
+	return func() { beforeConfigWrite = old }
+}
+
 // exitGrace is how long start waits for a server that said it is exiting
 // to exit, before it kills its group.
 const exitGrace = 2 * time.Second
@@ -63,17 +76,6 @@ const exitGrace = 2 * time.Second
 // errServerExited is readReady's answer when the readiness pipe closes with
 // nothing on it: the server exited before it was listening.
 var errServerExited = errors.New("the dashboard server exited before it was listening")
-
-// serverRefusal is the server's own refusal, reported over the readiness
-// pipe before it exits. It is a Refusal to the front door.
-type serverRefusal struct{ Refusal }
-
-func (r *serverRefusal) Unwrap() error { return &r.Refusal }
-
-func isServerRefusal(err error) bool {
-	var r *serverRefusal
-	return errors.As(err, &r)
-}
 
 // errProcessGone is readProcess's answer for a pid with no live process.
 var errProcessGone = errors.New("no such process")
@@ -271,58 +273,80 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 		cfgW.Close()
 		return StartResult{}, fmt.Errorf("starting the dashboard server: %w", err)
 	}
-	// Reap the server if it exits while this process still runs; once start
-	// returns and exits, the server belongs to the system.
-	exited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(exited) }()
-	// fail stops the server and returns err. A server that has exited is
-	// never signalled: Wait has reaped it, and its process group's number
-	// may already name another program's processes. One that said it is
-	// exiting (its readiness pipe closed, or it refused) is given exitGrace
-	// to do so before its group is killed.
-	fail := func(err error) (StartResult, error) {
-		select {
-		case <-exited:
-			return StartResult{}, err
-		default:
+	// Nothing waits for the server while start runs but reaped, so until
+	// reaped reports it gone the server is unreaped: its process id, which
+	// names its process group, cannot pass to another program, and killing
+	// that group reaches only the server's own processes. A reaped server is
+	// never signalled.
+	pid := cmd.Process.Pid
+	gone := false
+	reaped := func(block bool) bool {
+		if gone {
+			return true
 		}
-		if errors.Is(err, errServerExited) || isServerRefusal(err) {
-			grace := time.NewTimer(exitGrace)
-			defer grace.Stop()
-			select {
-			case <-exited:
-				return StartResult{}, err
-			case <-grace.C:
+		opt := syscall.WNOHANG
+		if block {
+			opt = 0
+		}
+		for {
+			var ws syscall.WaitStatus
+			wpid, err := syscall.Wait4(pid, &ws, opt, nil)
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+			if wpid == 0 && err == nil {
+				return false
+			}
+			// Reaped now, or not this process's child to wait for (which,
+			// with nothing else waiting, means it is gone): either way, never
+			// signal it.
+			gone = true
+			_ = cmd.Process.Release()
+			return true
+		}
+	}
+	// fail stops the server and returns err. One that is exiting (its
+	// configuration pipe or readiness pipe closed, or it refused) is given
+	// exitGrace to do so before its group is killed.
+	fail := func(err error, exiting bool) (StartResult, error) {
+		if exiting {
+			deadline := time.Now().Add(exitGrace)
+			for !reaped(false) && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
-		_ = killGroup(cmd.Process.Pid)
-		<-exited
+		if !reaped(false) {
+			_ = killGroup(pid)
+			reaped(true)
+		}
 		return StartResult{}, err
 	}
 
 	data, _ := json.Marshal(cfg)
+	beforeConfigWrite()
 	_, werr := cfgW.Write(append(data, '\n'))
 	cfgW.Close()
 	if werr != nil {
-		return fail(fmt.Errorf("handing the dashboard server its configuration: %w", werr))
+		// The server closed its end without reading it: it is exiting.
+		return fail(fmt.Errorf("handing the dashboard server its configuration: %w", werr), true)
 	}
 	msg, err := readReady(readyR)
 	if err != nil {
-		return fail(err)
+		return fail(err, errors.Is(err, errServerExited))
 	}
 	if !msg.OK {
-		return fail(&serverRefusal{Refusal{msg: "the dashboard server refused to start: " + msg.Error}})
+		// The server's own refusal, reported before it exits.
+		return fail(&Refusal{msg: "the dashboard server refused to start: " + msg.Error}, true)
 	}
 	port := msg.Port
 	for _, a := range addrs {
 		if err := fetchSelf(ctx, name, a, port, selfCheck); err != nil {
-			return fail(fmt.Errorf("the dashboard started, but %s could not be reached from this computer (%v), so it is stopped; check that nothing on this computer blocks the port", netip.AddrPortFrom(a, uint16(port)), err))
+			return fail(fmt.Errorf("the dashboard started, but %s could not be reached from this computer (%v), so it is stopped; check that nothing on this computer blocks the port", netip.AddrPortFrom(a, uint16(port)), err), false)
 		}
 	}
-	pid := cmd.Process.Pid
 	proc, err := readProcess(pid)
 	if err != nil {
-		return fail(fmt.Errorf("reading the dashboard server's process: %w", err))
+		return fail(fmt.Errorf("reading the dashboard server's process: %w", err), false)
 	}
 	run := RunFile{PID: pid, Process: proc, Name: name, Port: port, Since: time.Now().UTC().Truncate(time.Second)}
 	for _, a := range addrs {
@@ -330,8 +354,11 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 	}
 	data, _ = json.MarshalIndent(run, "", "  ")
 	if err := fsutil.WriteFileAtomicInRoot(dir, runFile, append(data, '\n'), abcdhome.FileMode); err != nil {
-		return fail(fmt.Errorf("recording the run in %s: %w", abcdhome.Display(stateDir, runFile), err))
+		return fail(fmt.Errorf("recording the run in %s: %w", abcdhome.Display(stateDir, runFile), err), false)
 	}
+	// Reap the server if it exits while this process still runs; once start
+	// returns and exits, the server belongs to the system.
+	go func() { _ = cmd.Wait() }()
 	res := StartResult{URL: run.URL(), Name: name, Port: port, Addrs: run.Addrs, PID: pid}
 	res.Line = StartLine(res)
 	return res, nil

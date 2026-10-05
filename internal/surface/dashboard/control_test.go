@@ -248,6 +248,48 @@ func TestStartNeverSignalsAServerThatAlreadyExited(t *testing.T) {
 	}
 }
 
+// TestStartGivesAServerThatClosedItsConfigurationTimeToExit holds start to
+// the grace it gives a server on its way out when the way out shows as the
+// configuration write failing: a server that closed its configuration pipe
+// (or exited) before start wrote to it is exiting, not stuck, so start waits
+// exitGrace for it rather than killing its group at once, and a server that
+// then exits is never signalled. On Linux a server that exits at once makes
+// the write fail this way; here the server closes the pipe and lingers, so
+// the order is fixed rather than raced.
+func TestStartGivesAServerThatClosedItsConfigurationTimeToExit(t *testing.T) {
+	var killed []int
+	restore := setKillGroupForTest(func(pid int) error {
+		killed = append(killed, pid)
+		return syscall.Kill(-pid, syscall.SIGKILL)
+	})
+	defer restore()
+	mark := filepath.Join(t.TempDir(), "config-closed")
+	restoreWrite := setBeforeConfigWriteForTest(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			if _, err := os.Stat(mark); err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Error("the server never closed its configuration pipe")
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	})
+	defer restoreWrite()
+	f := newFakeTailscale(t)
+	opts := startOpts(t, f, t.TempDir())
+	opts.Launch = Launcher{Path: "/bin/sh", Args: []string{"-c", `exec 4<&-; : > "$1"; sleep 0.5`, "sh", mark}}
+	_, err := Start(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), "handing the dashboard server its configuration") {
+		t.Fatalf("Start = %v, want the failed configuration write", err)
+	}
+	if len(killed) != 0 {
+		t.Errorf("start killed process group %v of a server that was exiting within %s", killed, exitGrace)
+	}
+}
+
 // TestServerInheritsOnlyWhatItNeeds holds the long-lived, network-facing
 // server to the environment it needs (the path and home its Tailscale
 // lookups run with, and start's marker): a token or credential in the
