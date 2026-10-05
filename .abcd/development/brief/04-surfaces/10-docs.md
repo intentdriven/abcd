@@ -119,14 +119,14 @@ only routes and takes neither. That is what makes the refresh fetch exactly the
 set the gate demands receipts for.
 
 **The lint's release-gate mode promotes an overdue citation from a warning to a
-blocker, and arming it from a release is a design target.** The flag, not the
+blocker, and the release workflow arms it.** The flag, not the
 committed config, is the trust root: a repo must not be able to defang its own
 release by editing `.abcd/docs-lint.json`, and an ordinary commit is never
-blocked by the calendar. Nothing in the release machinery passes it. The release
-workflow's docs-currency step, CI's, and the `docs-lint` make target each run
+blocked by the calendar. One step of the release machinery passes it. The release
+workflow's docs-currency step runs the lint in its release-gate mode; CI's step and the `docs-lint` make target each run
 the lint in its plain mode, the scaffolded release template names the verb nowhere,
 and `launch` computes its own citation preflight rather than shelling out. The
-promotion is reachable only by a human typing the flag.
+promotion is reached by the release workflow's verify job and by a human typing the flag; no committed config can arm it.
 
 ## What it checks
 

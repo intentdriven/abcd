@@ -161,3 +161,24 @@ func TestAnElapsedWindowPausesTheRunAtTheSurface(t *testing.T) {
 		t.Fatalf("text: exit %d\n%s", code, errOut)
 	}
 }
+
+// TestBuildHelpSaysTheCeilingBinds pins `abcd build --help` to what the
+// scheduler does since ruling DR6: the sub-agent ceiling binds through
+// `abcd implement step`, which hands out work only while a slot is free
+// (internal/core/implement/loop/schedule.go). The help once said the build
+// did not count lanes against it, which a release gate found false.
+func TestBuildHelpSaysTheCeilingBinds(t *testing.T) {
+	root := NewRootCommand()
+	build, _, err := root.Find([]string{"build"})
+	if err != nil || build.Name() != "build" {
+		t.Fatalf("build is not reachable from the command tree: %v", err)
+	}
+	help := flattenSpace(build.Long)
+	want := "The window, the pause and the ceiling bind through `abcd implement step`, which hands out work only while a slot under the ceiling is free."
+	if !strings.Contains(help, want) {
+		t.Errorf("build --help does not say the ceiling binds: missing %q", want)
+	}
+	if strings.Contains(help, "does not count lanes against it") {
+		t.Errorf("build --help still says the ceiling is not counted against")
+	}
+}

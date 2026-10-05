@@ -80,8 +80,7 @@ every reader of an ADR id admits both vintages: dispatch on `adr-45` and on a
 stamped id both resolve, and the record gates pass over freshly minted stamped
 skeletons. What they do not share is one derivation. `recordid.CanonADRID` (for
 a cited id) and `recordid.ADRFileID` (for a filename) are the canonical pair,
-and only the citation resolver, the `abcd <record-id>` dispatch and `decide`
-itself call them. Three readers carry their own: the `record_schema` gate and
+and the citation resolver, the `abcd <record-id>` dispatch, `decide` itself and the `adr_id_unique` gate call them, as do the record resolver (`internal/core/record`), the intent start-check and reclassify readers, the drain rule and the implement loop's brief. Three readers still carry their own: the `record_schema` gate and
 the context-citation-currency gate share a locally defined handle regex and
 ADR-filename regex inside `internal/core/lint` (taking `recordid.FilenameNumRe`
 for itd, spc and iss but not for adr); the site's decisions index derives

@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2610030720038073](../../intents/planned/itd-2610030720038073-abcd-keeps-its-home-folder-out-of-desktop-search-by-default.md)
+[itd-2610030720038073](../../intents/shipped/itd-2610030720038073-abcd-keeps-its-home-folder-out-of-desktop-search-by-default.md)
 (abcd's own folder gives the desktop search indexer no work to do) under the
 rule its decision record states,
 [adr-2610030720195401](../../decisions/adrs/2610030720195401-abcd-keeps-its-own-folders-out-of-desktop-indexing-only-by.md):
@@ -86,7 +86,7 @@ In:
 - The store records this intent refines:
   [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
   and its open spec
-  [spc-2609301811532881](spc-2609301811532881-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
+  [spc-2609301811532881](../open/spc-2609301811532881-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)
   spell the store's path; the spelling follows the superseding record, and
   nothing else in them changes.
 - The D6 receipt, a dated research note.

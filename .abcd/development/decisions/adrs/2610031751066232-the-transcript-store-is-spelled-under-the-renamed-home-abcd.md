@@ -26,7 +26,7 @@ earlier location under `~/.abcd/history/<root-sha>/`. Brief invariant 15
 (`internal/core/history/store_boundary_test.go`) holds every other package to
 it.
 
-[itd-2610030720038073](../../intents/planned/itd-2610030720038073-abcd-keeps-its-home-folder-out-of-desktop-search-by-default.md)
+[itd-2610030720038073](../../intents/shipped/itd-2610030720038073-abcd-keeps-its-home-folder-out-of-desktop-search-by-default.md)
 renames the home those spellings sit in. The product thinker ruled on
 2026-10-03 that the whole home is renamed `~/.abcd` to `~/.abcd.noindex`, a
 name the macOS indexer passes over when it scans (the intent's decisions 1

@@ -266,7 +266,7 @@ eyebrow, tagline and pitch, and the headline and lede that carry the page stay.
 The renderer carries what the record actually writes: ATX and setext headings,
 paragraphs, CommonMark emphasis and code spans, links, images, fenced code, pipe
 tables, thematic breaks, nested lists, and blockquotes with structure inside them.
-Anything else is a build error naming file and line. Passing an unknown construct
+Anything else is a build error naming file and line, except an HTML comment, which is dropped as every reader drops it, and a link reference definition, which is consumed to resolve the links that name it. Passing an unknown construct
 through unrendered publishes raw markdown to readers; dropping it publishes a hole.
 A build that stops and says which line is the only outcome anybody can act on.
 
