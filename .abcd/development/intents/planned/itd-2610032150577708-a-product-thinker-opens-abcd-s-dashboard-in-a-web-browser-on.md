@@ -91,7 +91,10 @@ _Technical checks, accepted as one list on 2026-10-04 (facilitator's hat):_
 
 ## Open Questions
 
-_Answered at the interview of 2026-10-04 (decisions 4 to 18); none remain open for the product thinker. For the spec (facilitator): how the dashboard serves the record site's pages without the minutes-long site build (the record review's finding 4), and how earmarked items reach the facilitator's session (the session-start seam the rules loader uses)._
+_Answered at the interview of 2026-10-04 (decisions 4 to 18). Two remain open for the product thinker, below; until they are answered, the dashboard refuses both, the facilitator's safe default (`.abcd/work/DECISIONS.md`, 2026-10-05). For the spec (facilitator): how the dashboard serves the record site's pages without the minutes-long site build (the record review's finding 4), and how earmarked items reach the facilitator's session (the session-start seam the rules loader uses)._
+
+- **Open: may a device someone else shared into your Tailscale network open the dashboard?** Another person can share one of their own devices into your Tailscale network. It then shows up among your devices, but it belongs to them, not to you. "Anyone on your Tailscale" (decision 4) did not say whether that includes such a device. Until you answer, it is refused: it gets no answer at all, as if the dashboard were not there. Letting it in would show your project to the person who shared it.
+- **Open: may the dashboard be opened through another of your devices that passes it on?** Another of your own devices can pass the dashboard on, using Tailscale's Serve (to people on your Tailscale network) or Funnel (to anyone on the internet). The dashboard then sees only your own device asking, not who is really behind it. Until you answer, such a passed-on request is refused and nothing is shown, when it carries the marks a passing-on device adds, which Tailscale's Serve and Funnel always add for a web page. One kind cannot be caught: a device that passes on the raw connection without reading it adds no mark and looks exactly like that device opening the dashboard itself, so it is let in like that device.
 
 ## Audit Notes
 

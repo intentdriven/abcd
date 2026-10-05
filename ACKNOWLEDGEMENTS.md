@@ -312,6 +312,17 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   unworkable", so the answer is an execution-layer control that revokes the
   capability, not a list of the programs that hold it.
   <https://manpages.ubuntu.com/manpages/noble/en/man5/sudoers.5.html>
+- **Tailscale (Tailscale Inc.)** — the private network the dashboard is
+  reached through (itd-2610032150577708): it listens on the computer's own
+  Tailscale addresses and asks Tailscale's own `whois` lookup who each
+  connecting device is, through the `tailscale` command as an adapter
+  (`internal/adapter/tailscale`), never bundled and never configured by abcd.
+  <https://tailscale.com>
+- **Go's cross-origin protection (`net/http.CrossOriginProtection`, The Go
+  Authors, BSD-3-Clause)** — the header-based request-forgery check the
+  dashboard's writes pass through: over plain HTTP it judges a request's
+  Origin against its Host, with no token to keep.
+  <https://pkg.go.dev/net/http#CrossOriginProtection>
 - **TruffleHog (Truffle Security)** — the optional deeper secret scanner the
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.
