@@ -29,7 +29,7 @@ The one write is guarded:
 - It happens only after an explicit yes to an offer that shows the entry's value now and after, and `--yes` never gives that yes.
 - A copy of the file goes into `~/.abcd.noindex/backups/` first, which keeps the newest ten; no copy, no write.
 - The file is replaced atomically with every other key untouched, read back, and put back from the copy when it does not say what was written.
-- Only the PATH install `~/.abcd.noindex/path-entry` records is wired, and only when it passes the trust checks the plugin's hook shims apply (owned by the caller, writable by nobody else, outside the working tree), never the plugin's versioned copy.
+- Only the PATH install `~/.abcd.noindex/path-entry` records is wired, and only when it passes the trust checks: the binary, a link's target when the entry is a link, is owned by the caller and writable by nobody else; every directory it is reached through, the link's and the target's, is writable by neither its group nor every account and is owned by the caller or root; and none of them is inside the working tree. That is the plugin's hook shims' bar with the directory held to the binary's standard, where the shims test only the every-account write bit. Never the plugin's versioned copy.
 - A command that reaches abcd's own status verb, under any build name, is never recorded as the previous one.
 - `abcd statusline` writes nothing and is time-bounded (500ms for abcd's own work, 5s for the previous command), held by tests.
 - `abcd ahoy uninstall` restores the previous command, and the install guide says to run it before removing abcd.

@@ -113,8 +113,7 @@ func TestStatusLineEntryTrust(t *testing.T) {
 			return bin
 		}, "writable by your group"},
 		{"a binary another account owns", func(t *testing.T, bin string) string {
-			restore := fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })
-			t.Cleanup(restore)
+			ownPathAs(t, bin, uint32(os.Getuid())+1)
 			return bin
 		}, "not owned by you"},
 		{"a binary inside the working tree", func(t *testing.T, _ string) string {
@@ -174,6 +173,30 @@ func TestStatusLineEntryTrust(t *testing.T) {
 			t.Chdir(repo)
 			return bin
 		}, "inside the working tree"},
+		// A directory is held to the binary's own standard: writable by its
+		// owner alone. A group-writable /usr/local/bin (root:admin 0775) lets
+		// every admin replace what the line runs.
+		{"a group-writable directory", func(t *testing.T, bin string) string {
+			if err := os.Chmod(filepath.Dir(bin), 0o775); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(filepath.Dir(bin), 0o755) })
+			return bin
+		}, "writable by its group"},
+		{"a link into a group-writable directory", func(t *testing.T, bin string) string {
+			shared := t.TempDir()
+			if err := os.Chmod(shared, 0o775); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(shared, binName)
+			writeTrustBinary(t, target)
+			relink(t, target, bin)
+			return bin
+		}, "writable by its group"},
+		{"a directory another account owns", func(t *testing.T, bin string) string {
+			ownPathAs(t, filepath.Dir(bin), uint32(os.Getuid())+1)
+			return bin
+		}, "owned by another account"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,6 +211,78 @@ func TestStatusLineEntryTrust(t *testing.T) {
 			}
 			if home := os.Getenv("HOME"); strings.Contains(reason, home) {
 				t.Errorf("reason carries the home path: %q", reason)
+			}
+		})
+	}
+}
+
+// ownPathAs makes the owner lookup report uid for p alone, so a test can stand
+// a file or directory in for one root or another account owns; every other
+// path keeps its real owner.
+func ownPathAs(t *testing.T, p string, uid uint32) {
+	t.Helper()
+	want := resolvePath(p)
+	restore := fsutil.SwapOwnerUIDForTest(func(q string) (uint32, error) {
+		if resolvePath(q) == want {
+			return uid, nil
+		}
+		return fsutil.OwnerUID(q)
+	})
+	t.Cleanup(restore)
+}
+
+// TestStatusLineEntryTrustDirectoryStandard: every directory the entry is
+// reached through is held to the binary's standard — no group or other write
+// bit — and may be owned by the caller or by root, so ~/.local/bin (yours,
+// 0755) and a system directory (root, 0755) are admitted while a
+// group-writable /usr/local/bin (root:admin 0775) is not. Each directory
+// refusal names the remedy.
+func TestStatusLineEntryTrustDirectoryStandard(t *testing.T) {
+	t.Run("a 0755 directory you own is admitted", func(t *testing.T) {
+		bin := trustFixture(t)
+		if err := os.Chmod(filepath.Dir(bin), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if ok, reason := statusLineEntryTrust(bin); !ok {
+			t.Errorf("a 0755 directory was refused: %s", reason)
+		}
+	})
+	t.Run("a 0755 directory root owns is admitted", func(t *testing.T) {
+		bin := trustFixture(t)
+		if err := os.Chmod(filepath.Dir(bin), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		ownPathAs(t, filepath.Dir(bin), 0)
+		if ok, reason := statusLineEntryTrust(bin); !ok {
+			t.Errorf("a root-owned 0755 directory was refused: %s", reason)
+		}
+	})
+	for _, tc := range []struct {
+		name string
+		mode os.FileMode
+		uid  func() uint32
+	}{
+		{"a 0775 directory root owns", 0o775, func() uint32 { return 0 }},
+		{"a 0775 directory you own", 0o775, func() uint32 { return uint32(os.Getuid()) }},
+		{"a 0777 directory", 0o777, func() uint32 { return uint32(os.Getuid()) }},
+		{"a 0755 directory another account owns", 0o755, func() uint32 { return uint32(os.Getuid()) + 1 }},
+	} {
+		t.Run(tc.name+" is refused with the remedy", func(t *testing.T) {
+			bin := trustFixture(t)
+			dir := filepath.Dir(bin)
+			if err := os.Chmod(dir, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+			ownPathAs(t, dir, tc.uid())
+			ok, reason := statusLineEntryTrust(bin)
+			if ok {
+				t.Fatalf("statusLineEntryTrust passed a %04o directory owned by uid %d", uint32(tc.mode), tc.uid())
+			}
+			for _, want := range []string{"its directory", "~/.local/bin", "`abcd ahoy install`"} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("reason = %q, want it to name %q", reason, want)
+				}
 			}
 		})
 	}

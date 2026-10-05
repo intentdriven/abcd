@@ -254,9 +254,13 @@ and it changes one entry there, `statusLine`, only after you say yes:
 - **The write is checked.** abcd reads the file back, and puts the copy back if
   it does not say what was written.
 - **Only a trusted abcd is wired.** The line runs the abcd your install
-  recorded on your `PATH`, and only when that binary is yours, writable by
-  nobody else, and outside the project. It never runs the plugin's own copy,
-  which the next plugin update deletes.
+  recorded on your `PATH`, and only when that binary (or the file it links to)
+  is yours and writable by nobody else, every folder it sits in is writable by
+  nobody but its owner and owned by you or by root, and none of it is inside
+  the project. A folder your group can write, such as a shared
+  `/usr/local/bin`, is refused; the install step puts abcd in `~/.local/bin`,
+  which passes. It never runs the plugin's own copy, which the next plugin
+  update deletes.
 
 The status line writes nothing itself, and it is time-bounded: abcd's own work
 stops at half a second and your previous status command at five seconds, so a

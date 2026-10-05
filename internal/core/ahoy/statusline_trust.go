@@ -6,8 +6,10 @@ package ahoy
 // every session, so the binary it names is held to the bar the plugin's hook
 // shims hold a PATH abcd to before they run one (hooks/hooks.json, the
 // PreToolUse command): owned by the caller and writable by nobody else, in a
-// directory nobody else can write, outside the working tree a project controls,
-// and recorded in ~/.abcd.noindex/path-entry by the documented install. One
+// directory writable by nobody else (group included, which goes past the shim's
+// other-write test) and owned by the caller or root, outside the working tree
+// a project controls, and recorded in ~/.abcd.noindex/path-entry by the
+// documented install. One
 // check is added that a hook never needs: a binary inside the plugin cache's
 // VERSIONED directory (<harness-home>/plugins/cache/<marketplace>/abcd/
 // <version>/abcd) is refused, because the next plugin update deletes that
@@ -81,8 +83,8 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 		if insideWorkingTree(dir) {
 			return false, "it lives inside the working tree, so the project could replace it"
 		}
-		if dfi, err := os.Stat(dir); err != nil || dfi.Mode().Perm()&0o002 != 0 {
-			return false, "its directory is world-writable"
+		if reason := statusLineDirRefusal(dir); reason != "" {
+			return false, reason
 		}
 	}
 	if fi.Mode().Perm()&0o002 != 0 {
@@ -108,6 +110,31 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 	}
 	return true, ""
 }
+
+// statusLineDirRefusal judges one directory the entry is reached through by the
+// standard the binary itself meets — no group or other write bit — owned by
+// the caller or by root (fsutil.CallersOrRootsAlone), and returns why it fails,
+// remedy included, or "".
+func statusLineDirRefusal(dir string) string {
+	dfi, err := os.Stat(dir)
+	if err != nil {
+		return "its directory could not be examined (" + errText(err) + ")" + dirRemedy
+	}
+	switch err := fsutil.CallersOrRootsAlone(dir, dfi); {
+	case err == nil:
+		return ""
+	case !errors.Is(err, fsutil.ErrDeclarationWritable):
+		return "its directory is owned by another account, so that account could replace the binary" + dirRemedy
+	case dfi.Mode().Perm()&0o002 != 0:
+		return "its directory is world-writable, so any account could replace the binary" + dirRemedy
+	default:
+		return "its directory is writable by its group, so another account could replace the binary" + dirRemedy
+	}
+}
+
+// dirRemedy ends every directory refusal: the documented install puts abcd in
+// a directory that passes.
+const dirRemedy = "; install abcd to ~/.local/bin with `abcd ahoy install`, or, if the directory is yours, `chmod go-w` it"
 
 // versionedCacheReason is the refusal for a binary the next plugin update
 // deletes.

@@ -359,8 +359,11 @@ changes, a copy of it goes into `~/.abcd.noindex/backups/`, which keeps the
 newest 10; no copy, no write. After the change the file is read back, and one
 that does not say what was written is put back from the copy. `<entry>` is the
 PATH install `~/.abcd.noindex/path-entry` records, and only when it passes the
-trust checks the plugin's hooks apply (owned by the user, writable by nobody
-else, outside the working tree); it is never the plugin's own copy, whose
+trust checks: the binary, a link's target when the entry is a link, is owned
+by the user and writable by nobody else, every directory it is reached through
+is writable by neither its group nor every account and is owned by the user or
+root, and none of them is inside the working tree; it is never the plugin's
+own copy, whose
 versioned folder a plugin update deletes. A current command that already runs
 abcd's status verb is never recorded as the previous one.
 

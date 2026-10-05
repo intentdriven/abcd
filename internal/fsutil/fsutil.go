@@ -303,13 +303,29 @@ func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, erro
 // that must judge a link as itself Lstat's and refuses it before calling, as
 // ReadDeclaration does.
 func CallersAlone(path string, fi os.FileInfo) error {
+	return heldBy(path, fi, false)
+}
+
+// CallersOrRootsAlone is CallersAlone for a directory a trusted file is reached
+// through, which root may own as well as the caller: nil when fi carries no
+// group or other write bit AND path is owned by this session's uid or by root.
+// Root can replace anything anywhere, so refusing a root-owned 0755 system
+// directory would protect nothing, while a group-writable one (a root:admin
+// 0775 /usr/local/bin) lets every member of that group choose its contents.
+// The errors are CallersAlone's.
+func CallersOrRootsAlone(path string, fi os.FileInfo) error {
+	return heldBy(path, fi, true)
+}
+
+func heldBy(path string, fi os.FileInfo, rootToo bool) error {
 	if WritableByOthers(fi) {
 		return ErrDeclarationWritable
 	}
 	// An unreadable owner is refused too: "I could not learn who owns this" and
 	// "I own this" are different answers, and a fail-closed gate must not spell
 	// them the same way.
-	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
+	owner, err := ownerUID(path)
+	if err != nil || (owner != uint32(os.Getuid()) && (!rootToo || owner != 0)) {
 		return ErrDeclarationForeignOwner
 	}
 	return nil
