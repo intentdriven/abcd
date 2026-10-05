@@ -747,6 +747,66 @@ You will need to start a new shell for this setup to take effect.
       --no-descriptions   disable completion descriptions
 ```
 
+### `abcd dashboard`
+
+Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.
+
+**Usage:** `abcd dashboard`
+
+Start, stop and report the product thinker's dashboard: one server on this
+computer, listening only on this computer's own Tailscale addresses, over plain
+HTTP with no certificate, never through Serve or Funnel. Every connection is let
+in only when Tailscale's own lookup of its address names a device of a person,
+never from a header; any device on the Tailscale network that is not a tagged
+machine can open it.
+
+Bare `abcd dashboard` is `abcd dashboard status`. The server runs until `abcd
+dashboard stop`, and never starts by itself. Its run file and the devices that
+opened it live in `~/.abcd.noindex/dashboard/`.
+
+Exit 2 on a refusal, with nothing started or stopped.
+
+#### `abcd dashboard start`
+
+Start the dashboard on this computer's own Tailscale addresses: Writes its run file under ~/.abcd.noindex/; refuses when Tailscale is not running.
+
+**Usage:** `abcd dashboard start [flags]`
+
+Start the dashboard on this computer's own Tailscale addresses and print one
+line saying where to open it and who can. It refuses outside a checkout abcd
+manages, when a dashboard already runs on this computer, when Tailscale is not
+running, and when the port is one Tailscale's own Serve or Funnel configuration
+uses. It returns once a fetch of its own address through Tailscale answers; if
+that fetch fails, the server is stopped and the failure named.
+
+**Flags:**
+
+```
+      --port int   the port to listen on, on each of this computer's Tailscale addresses (default 8080)
+```
+
+#### `abcd dashboard status`
+
+Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.
+
+**Usage:** `abcd dashboard status`
+
+Report whether the dashboard runs, where, since when, and the devices that
+opened it in this run, each by its Tailscale device name and person. Writes
+nothing.
+
+#### `abcd dashboard stop`
+
+Stop the dashboard after checking its process is the one start launched: Writes the run file's removal; refuses when another start or stop holds the lock.
+
+**Usage:** `abcd dashboard stop`
+
+Stop the dashboard this computer runs. It signals only the process start
+launched, checked by its process id, start time and executable just before the
+signal, waits until its addresses answer nothing, and removes the run file. A
+run file naming a process that is gone or is another program is removed with
+nothing signalled. It never stops anything by name.
+
 ### `abcd decide`
 
 Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.

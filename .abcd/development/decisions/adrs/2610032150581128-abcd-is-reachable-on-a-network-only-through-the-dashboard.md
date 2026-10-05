@@ -1,7 +1,7 @@
 ---
 id: adr-2610032150581128
 slug: abcd-is-reachable-on-a-network-only-through-the-dashboard
-status: proposed
+status: accepted
 date: 2026-10-03
 supersedes: null
 superseded_by: null
@@ -19,6 +19,8 @@ The product thinker asked on 2026-10-03 for a web dashboard of an abcd-managed p
 ## Decision
 
 Proposed by the facilitator; the details are put to the product thinker at the dashboard's planning interview, informed by the state-of-the-art pass:
+
+Accepted on 2026-10-05, in the change that lands the first step of spc-2610040741034208 (itd-2610032150577708 decision 22: a rule is in force when the code that enforces it lands), with brief invariant 7's inbound clause. The interview of 2026-10-04 below settles what this Decision left open, as amended by decisions 21 and 23.
 
 Two people are named apart, as the role model does: the person who starts the dashboard at the computer (often the technical facilitator) and the people they let in (the product thinker on a phone, an iPad or another computer).
 

@@ -516,8 +516,13 @@ another package is given.
   record page's body for a fixture, in `internal/core/site`),
   `TestRecordsAreLookedUpByIDOnly` (traversal and encoded paths are 404 and
   open no file), `TestSecurityHeadersOnEveryResponse`.
-- **Nothing is changed over plain HTTP.** `TestPlainHTTPIsNeverAnswered`,
-  `TestWritesNeedTailnetIdentity`, `TestWritesNeedCrossOriginProtection`.
+- **Nothing is changed over plain HTTP.** Under D1a the dashboard serves
+  plain HTTP, so the requirement reads: nothing is changed except by a
+  connection the gate let in, through cross-origin protection.
+  `TestWritesNeedTailnetIdentity` (step 1: no write route exists, and a write
+  from a connection the lookup did not name gets no byte),
+  `TestWritesNeedCrossOriginProtection` (step 4). `TestPlainHTTPIsNeverAnswered`
+  was written for the TLS listener and is retired with D4.
 - **On the local network: foreground, idle stop, Wi-Fi warning; running
   unattended only behind Serve.** The home-network draft. Under D1 nothing
   is published through Serve or Funnel at all; `start` refuses a port a
@@ -574,7 +579,7 @@ rather than adding to them.
 ## Footprint
 
 - packages: internal/surface/dashboard, internal/core/dashboard, internal/adapter/tailscale, internal/core/site, internal/surface/cli, commands/dashboard.md, docs/how-to, docs/reference, .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/glossary, .abcd/development/decisions/adrs
-- tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestPlainHTTPIsNeverAnswered, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, TestSummaryShowsWaitingNowNextInPlainWords, TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped, TestBriefChapterPageHeading, TestBriefCitationCounts, TestNoteReattaches, TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime, TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the surface parity test; dated receipts in the local tier; docs-lint and record-lint clean
+- tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, TestSummaryShowsWaitingNowNextInPlainWords, TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped, TestBriefChapterPageHeading, TestBriefCitationCounts, TestNoteReattaches, TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime, TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the surface parity test; dated receipts in the local tier; docs-lint and record-lint clean
 
 ## Steps
 
@@ -584,7 +589,7 @@ rather than adding to them.
    - security review: required before landing (listener, identity, process control)
    - record: adr-2610032150581128 moved to accepted with its interview paragraph amended to D1, and invariant 7 given its inbound clause, in the same change
    - packages: internal/surface/dashboard, internal/adapter/tailscale, internal/surface/cli, commands/dashboard.md, docs/reference, .abcd/development/decisions/adrs, .abcd/development/brief/02-constraints
-   - tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestPlainHTTPIsNeverAnswered, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, each against a fake `tailscale` on PATH and watched fail first; the surface parity test with the new page; the command reference regenerated
+   - tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestWritesNeedTailnetIdentity, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, each against a fake `tailscale` on PATH and watched fail first; the surface parity test with the new page; the command reference regenerated
 2. The summary and item pages, from one snapshot through the site's renderer
    - criteria: P1, P3, T3's shared snapshot and capped live updates, T4
    - security review: required before landing (routing, rendering of record text, live-update streams)

@@ -937,6 +937,45 @@
       "flags": []
     },
     {
+      "path": "abcd dashboard",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.",
+      "flags": []
+    },
+    {
+      "path": "abcd dashboard serve",
+      "hidden": true,
+      "flags": []
+    },
+    {
+      "path": "abcd dashboard start",
+      "hidden": false,
+      "sentence": "Start the dashboard on this computer's own Tailscale addresses: Writes its run file under ~/.abcd.noindex/; refuses when Tailscale is not running.",
+      "flags": [
+        {
+          "name": "port",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd dashboard status",
+      "hidden": false,
+      "sentence": "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.",
+      "flags": []
+    },
+    {
+      "path": "abcd dashboard stop",
+      "hidden": false,
+      "sentence": "Stop the dashboard after checking its process is the one start launched: Writes the run file's removal; refuses when another start or stop holds the lock.",
+      "flags": []
+    },
+    {
       "path": "abcd decide",
       "hidden": false,
       "group": "records",

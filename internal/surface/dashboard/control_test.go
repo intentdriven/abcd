@@ -1,0 +1,419 @@
+package dashboard
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/adapter/tailscale"
+)
+
+// childEnv marks a run of this test binary that must act as the dashboard
+// server start launches, with loopback standing in for the tailnet.
+const childEnv = "ABCD_DASHBOARD_TEST_CHILD"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(childEnv) == "1" && len(os.Args) == 3 && os.Args[1] == "dashboard" && os.Args[2] == "serve" {
+		setTailnetForTest(loopbackPrefixes)
+		if err := Serve(context.Background()); err != nil {
+			fmt.Fprintln(os.Stderr, "abcd dashboard serve:", err)
+			os.Exit(2)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// fakeTailscale is a `tailscale` command answering from files beside it, and
+// logging every call: status.json, whois-<address>.json, serve.json.
+type fakeTailscale struct {
+	dir  string
+	path string
+}
+
+const fakeScript = `#!/bin/sh
+d=$(dirname "$0")
+printf '%s\n' "$*" >> "$d/calls.log"
+case "$1" in
+status) cat "$d/status.json" ;;
+whois)
+  f="$d/whois-$3.json"
+  if [ -f "$f" ]; then cat "$f"; else echo "no match for IP:port" >&2; exit 1; fi ;;
+serve)
+  if [ -f "$d/serve.json" ]; then cat "$d/serve.json"; else echo '{}'; fi ;;
+*) echo "the fake refuses: $*" >&2; exit 2 ;;
+esac
+`
+
+func newFakeTailscale(t *testing.T) *fakeTailscale {
+	t.Helper()
+	dir := t.TempDir()
+	f := &fakeTailscale{dir: dir, path: filepath.Join(dir, "tailscale")}
+	f.write(t, "tailscale", fakeScript)
+	if err := os.Chmod(f.path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "status.json", `{"Version":"1.102.4","BackendState":"Running","Self":{"DNSName":"`+testName+`.","TailscaleIPs":["127.0.0.1"]}}`)
+	f.write(t, "whois-127.0.0.1.json", `{"Node":{"StableID":"nThis","ComputedName":"dash"},"UserProfile":{"LoginName":"pt@example.com","DisplayName":"Product Thinker"}}`)
+	return f
+}
+
+func (f *fakeTailscale) write(t *testing.T, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.dir, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f *fakeTailscale) calls(t *testing.T) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(f.dir, "calls.log"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return strings.Fields(strings.ReplaceAll(string(data), " ", "_"))
+}
+
+// startOpts is a start against the fake, launching this test binary as the
+// server, with loopback standing in for the tailnet in this process too.
+func startOpts(t *testing.T, f *fakeTailscale, home string) StartOptions {
+	t.Helper()
+	restore := setTailnetForTest(loopbackPrefixes)
+	t.Cleanup(restore)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return StartOptions{
+		Home:      home,
+		Root:      t.TempDir(),
+		Port:      0,
+		Tailscale: tailscale.New(f.path),
+		Launch:    Launcher{Path: exe, Args: []string{"dashboard", "serve"}, Env: []string{childEnv + "=1"}},
+	}
+}
+
+// startForTest starts a dashboard and stops it when the test ends.
+func startForTest(t *testing.T, opts StartOptions) StartResult {
+	t.Helper()
+	res, err := Start(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() {
+		if run, ok, _ := readRun(opts.Home); ok {
+			if alive, _ := sameProcess(run); alive {
+				_ = syscall.Kill(run.PID, syscall.SIGKILL)
+			}
+		}
+	})
+	return res
+}
+
+func answers(addr string) bool {
+	c, err := net.DialTimeout("tcp", addr, time.Second)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
+}
+
+func TestStartLineNamesAddressAndWhoCan(t *testing.T) {
+	f := newFakeTailscale(t)
+	home := t.TempDir()
+	res := startForTest(t, startOpts(t, f, home))
+	if len(res.Addrs) != 1 || !strings.HasPrefix(res.Addrs[0], "127.0.0.1:") {
+		t.Fatalf("addresses = %v, want the one tailnet address", res.Addrs)
+	}
+	for _, want := range []string{
+		"http://" + testName + ":" + fmt.Sprint(res.Port),
+		"on a device on your Tailscale network",
+		"anyone on that network can open it",
+		res.Addrs[0],
+		"`abcd dashboard stop` stops it",
+	} {
+		if !strings.Contains(res.Line, want) {
+			t.Errorf("the start line does not say %q:\n%s", want, res.Line)
+		}
+	}
+	if strings.Contains(res.Line, "\n") {
+		t.Errorf("the start line is more than one line:\n%s", res.Line)
+	}
+	if !answers(res.Addrs[0]) {
+		t.Errorf("nothing answers at %s after start", res.Addrs[0])
+	}
+	for _, c := range f.calls(t) {
+		if strings.HasPrefix(c, "cert") || strings.HasPrefix(c, "serve_") && c != "serve_status_--json" || strings.HasPrefix(c, "funnel") || strings.HasPrefix(c, "up") || strings.HasPrefix(c, "set") {
+			t.Errorf("start ran `tailscale %s`, which changes Tailscale or asks for a certificate", strings.ReplaceAll(c, "_", " "))
+		}
+	}
+	// One dashboard per computer (D5).
+	if _, err := Start(context.Background(), startOpts(t, f, home)); !isRefusal(err) || !strings.Contains(err.Error(), "already runs") {
+		t.Errorf("a second start = %v, want the already-running refusal", err)
+	}
+}
+
+func isRefusal(err error) bool {
+	var r *Refusal
+	return errors.As(err, &r)
+}
+
+func TestStartChecksItCanReachItself(t *testing.T) {
+	f := newFakeTailscale(t)
+	// The lookup does not know this computer's address, so the gate refuses
+	// the self-fetch exactly as it would a stranger's.
+	if err := os.Remove(filepath.Join(f.dir, "whois-127.0.0.1.json")); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	_, err := Start(context.Background(), startOpts(t, f, home))
+	if err == nil || !strings.Contains(err.Error(), "could not be reached from this computer") {
+		t.Fatalf("Start = %v, want the could-not-reach failure", err)
+	}
+	if _, ok, _ := readRun(home); ok {
+		t.Error("a start that could not reach itself left a run file")
+	}
+	calls := strings.Join(f.calls(t), " ")
+	if !strings.Contains(calls, "whois") {
+		t.Errorf("the self-fetch never reached the gate's lookup: %s", calls)
+	}
+}
+
+func TestStartRefusesAServedPort(t *testing.T) {
+	f := newFakeTailscale(t)
+	f.write(t, "serve.json", `{"TCP":{"8080":{"HTTP":true}},"AllowFunnel":{"`+testName+`:8443":true}}`)
+	home := t.TempDir()
+	for _, port := range []int{8080, 8443} {
+		opts := startOpts(t, f, home)
+		opts.Port = port
+		opts.Launch = Launcher{Path: filepath.Join(t.TempDir(), "never-run")}
+		_, err := Start(context.Background(), opts)
+		if !isRefusal(err) || !strings.Contains(err.Error(), fmt.Sprintf("port %d", port)) {
+			t.Errorf("port %d: Start = %v, want the served-port refusal naming it", port, err)
+		}
+	}
+	if _, ok, _ := readRun(home); ok {
+		t.Error("a refused start left a run file")
+	}
+}
+
+func TestStartRefusesWhenTailscaleIsNotRunning(t *testing.T) {
+	f := newFakeTailscale(t)
+	f.write(t, "status.json", `{"Version":"1.102.4","BackendState":"Stopped"}`)
+	opts := startOpts(t, f, t.TempDir())
+	opts.Launch = Launcher{Path: filepath.Join(t.TempDir(), "never-run")}
+	if _, err := Start(context.Background(), opts); !isRefusal(err) || !strings.Contains(err.Error(), "not running") {
+		t.Errorf("Start = %v, want the not-running refusal", err)
+	}
+}
+
+func TestStopLeavesNothingListening(t *testing.T) {
+	f := newFakeTailscale(t)
+	home := t.TempDir()
+	res := startForTest(t, startOpts(t, f, home))
+	if !answers(res.Addrs[0]) {
+		t.Fatalf("nothing answers at %s before stop", res.Addrs[0])
+	}
+	got, err := Stop(home)
+	if err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if !got.Stopped || got.Stale {
+		t.Errorf("Stop = %+v, want stopped", got)
+	}
+	if answers(res.Addrs[0]) {
+		t.Errorf("%s still answers after stop", res.Addrs[0])
+	}
+	if _, ok, _ := readRun(home); ok {
+		t.Error("stop left the run file")
+	}
+	st, err := ReadStatus(home)
+	if err != nil || st.Running {
+		t.Errorf("status after stop = %+v, %v; want not running", st, err)
+	}
+	// A second stop finds nothing to stop and says so.
+	if got, err := Stop(home); err != nil || got.Stopped || got.Stale {
+		t.Errorf("a second stop = %+v, %v; want nothing done", got, err)
+	}
+}
+
+func TestStopChecksTheProcessBeforeSignalling(t *testing.T) {
+	home := t.TempDir()
+	// A live process that is not the server: the run file names its pid, but
+	// with another start time, as after a pid is reused.
+	other := exec.Command("sleep", "30")
+	if err := other.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = other.Process.Kill(); _, _ = other.Process.Wait() }()
+	if err := RecordRunForTest(home, other.Process.Pid, testName, 8080, []string{"127.0.0.1:8080"}); err != nil {
+		t.Fatal(err)
+	}
+	path := abcdhome.Path(home, stateDir, runFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var run RunFile
+	if err := json.Unmarshal(data, &run); err != nil {
+		t.Fatal(err)
+	}
+	run.Process.Start = "a start time that is not this process's"
+	data, _ = json.Marshal(run)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Stop(home)
+	if err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if !got.Stale || got.Stopped {
+		t.Errorf("Stop = %+v, want the stale run file reported and nothing stopped", got)
+	}
+	if err := other.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("stop signalled a process that was not the server: %v", err)
+	}
+	if _, ok, _ := readRun(home); ok {
+		t.Error("a stale run file was kept")
+	}
+
+	// The same for an executable that differs.
+	if err := RecordRunForTest(home, other.Process.Pid, testName, 8080, []string{"127.0.0.1:8080"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(path)
+	_ = json.Unmarshal(data, &run)
+	run.Process.Exe = "/not/the/server"
+	data, _ = json.Marshal(run)
+	_ = os.WriteFile(path, data, 0o600)
+	if got, err := Stop(home); err != nil || !got.Stale {
+		t.Errorf("Stop with another executable = %+v, %v; want stale", got, err)
+	}
+	if err := other.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("stop signalled a process running another executable: %v", err)
+	}
+}
+
+func TestOnlyStartStartsTheServer(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "dashboard", "serve")
+	cmd.Env = append(os.Environ(), childEnv+"=1")
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("serve without start's pipes = %v, want it to refuse and exit", err)
+	}
+	if !strings.Contains(string(out), "started only by `abcd dashboard start`") {
+		t.Errorf("the refusal does not say only start starts it:\n%s", out)
+	}
+	// Called in this process, whose descriptors 3 and 4 are not start's
+	// pipes, it refuses the same way and touches neither.
+	if err := Serve(context.Background()); !errors.Is(err, error(errNotFromStart)) {
+		t.Errorf("Serve in-process = %v, want the refusal", err)
+	}
+}
+
+// TestNothingInstallsALoginItem holds "never starts by itself": no code in
+// the dashboard or its front door names a login item, a launch agent, a
+// service unit or a scheduled job.
+func TestNothingInstallsALoginItem(t *testing.T) {
+	root := repoRoot(t)
+	needles := []string{"LaunchAgents", "LaunchDaemons", "launchctl", "systemctl", "systemd", "crontab", "SMAppService", "LoginItems"}
+	for _, dir := range []string{"internal/surface/dashboard", "internal/adapter/tailscale"} {
+		entries, err := os.ReadDir(filepath.Join(root, dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+				continue
+			}
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, filepath.Join(root, dir, e.Name()), nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ast.Inspect(f, func(n ast.Node) bool {
+				if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					for _, needle := range needles {
+						if strings.Contains(lit.Value, needle) {
+							t.Errorf("%s/%s:%d names %q: the dashboard never starts by itself", dir, e.Name(), fset.Position(lit.Pos()).Line, needle)
+						}
+					}
+				}
+				return true
+			})
+		}
+	}
+}
+
+func TestStatusReportsTheRunAndItsDevices(t *testing.T) {
+	f := newFakeTailscale(t)
+	home := t.TempDir()
+	res := startForTest(t, startOpts(t, f, home))
+	st, err := ReadStatus(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Running || st.URL != res.URL || st.Since == nil || len(st.Devices) != 0 {
+		t.Errorf("status = %+v; want running at %s with no device yet (the self-check is not a device)", st, res.URL)
+	}
+	// A page opened from this computer records it as a device.
+	c, err := net.Dial("tcp", res.Addrs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", testName)
+	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+	buf := make([]byte, 4096)
+	for {
+		if _, err := c.Read(buf); err != nil {
+			break
+		}
+	}
+	c.Close()
+	st, err = ReadStatus(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Devices) != 1 || st.Devices[0].Login != "pt@example.com" || st.Devices[0].Device != "dash" {
+		t.Errorf("devices = %+v, want the one device that opened the page", st.Devices)
+	}
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("no go.mod above the test")
+		}
+		dir = parent
+	}
+}

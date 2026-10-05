@@ -380,6 +380,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
+	root.AddCommand(newDashboardCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
