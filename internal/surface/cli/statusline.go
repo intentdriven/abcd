@@ -120,9 +120,15 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 			"user's own line is untouched everywhere abcd does not manage. With none\n" +
 			"recorded it prints nothing and exits 0.\n\n" +
 			"The checkout is resolved from the payload's `cwd` (falling back to the\n" +
-			"working directory). Empty stdin is an empty payload. Nothing here prompts,\n" +
-			"reads a terminal, or touches the network. With --json the row is emitted as\n" +
-			"its ordered elements, each with a key, a rendered and a plain form.",
+			"working directory). Empty stdin is an empty payload. It writes nothing, and\n" +
+			"nothing here prompts, reads a terminal, or touches the network.\n\n" +
+			"It is time-bounded, because the harness waits on it at every refresh: abcd's\n" +
+			"own work stops at " + statuslineBudget.String() + " and the recorded status command at " +
+			previousCommandBudget.String() + ".\n" +
+			"At either bound it prints what it has (a row without the element that did\n" +
+			"not answer, the command's output so far, or nothing), says why on stderr and\n" +
+			"exits 0. With --json the row is emitted as its ordered elements, each with a\n" +
+			"key, a rendered and a plain form.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			stderr := cmd.ErrOrStderr()

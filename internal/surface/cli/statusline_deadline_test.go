@@ -264,3 +264,16 @@ exec "$REAL_GIT" "$@"`)
 		t.Errorf("the root-commit git (pid %d) outlived the verb", pid)
 	}
 }
+
+// TestStatuslineHelpStatesItWritesNothingAndIsBounded: the verb's help says
+// the two things a person deciding whether to wire it needs — it writes
+// nothing, and it is time-bounded — with the bounds the code enforces.
+func TestStatuslineHelpStatesItWritesNothingAndIsBounded(t *testing.T) {
+	var asJSON bool
+	long := newStatuslineCommand(&asJSON).Long
+	for _, want := range []string{"writes nothing", statuslineBudget.String(), previousCommandBudget.String()} {
+		if !strings.Contains(long, want) {
+			t.Errorf("the statusline help does not say %q:\n%s", want, long)
+		}
+	}
+}
