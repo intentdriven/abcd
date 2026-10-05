@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -261,10 +262,12 @@ func abcdStatusEntry(cmd string) (string, bool) {
 }
 
 // statusVerbRe matches a command that reaches abcd's own status verb in any
-// spelling: the binary name, an optional closing quote, whitespace, then the
-// verb at a word boundary — anywhere in the string, so `abcd statusline`,
-// `~/.local/bin/abcd statusline`, `'/opt/abcd' statusline` and `"abcd"
-// statusline | head` all match. abcdStatusEntry recognises only the shape
+// spelling: a build's binary name (launch.BinaryNamePattern — the bare `abcd`
+// or an `abcd-<goos>-<arch>` build), an optional closing quote, whitespace,
+// then the verb at a word boundary — anywhere in the string, so `abcd
+// statusline`, `~/.local/bin/abcd statusline`, `'/opt/abcd' statusline`,
+// `"abcd" statusline | head` and a stale `…/bin/abcd-darwin-arm64 statusline`
+// all match. abcdStatusEntry recognises only the shape
 // the wiring writes (an absolute path, leaf abcd, optionally single-quoted);
 // every other spelling is FOREIGN to detection and would be offered, and on
 // consent recorded as the previous command — which the status verb runs
@@ -275,7 +278,7 @@ func abcdStatusEntry(cmd string) (string, bool) {
 // some other abcd's statusline is refused too. A false refusal costs the user
 // one manual edit of the harness setting; a false acceptance forks the
 // machine (871 nested processes in four seconds, measured 2026-09-15).
-var statusVerbRe = regexp.MustCompile(regexp.QuoteMeta(binName) + `['"]?\s+` + regexp.QuoteMeta(statusVerb) + `\b`)
+var statusVerbRe = regexp.MustCompile(launch.BinaryNamePattern + `['"]?\s+` + regexp.QuoteMeta(statusVerb) + `\b`)
 
 // reachesStatusVerb reports whether cmd, run by the harness's shell, could
 // reach abcd's own status verb — see statusVerbRe for what that means and why

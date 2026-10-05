@@ -33,5 +33,5 @@ func HarnessNotice() string {
 		keys[i] = f.key
 	}
 	return "abcd: " + fs[0].settings + " has " + strconv.Itoa(len(fs)) + " abcd entries that need attention (" + strings.Join(keys, ", ") +
-		"); run `abcd ahoy` to see each and its remedy — abcd never edits that file for you."
+		"); run `abcd ahoy` to see each and its remedy — abcd changes nothing there but its own status line, and only through `abcd ahoy install`."
 }

@@ -46,19 +46,21 @@ var writeHarnessSettings = fsutil.WriteFileAtomicPreserveMode
 // stream and the transcript name the element they answer.
 const elementPromptPrefix = "statusline."
 
-// stepStatusLine wires the status line on consent, or repairs a dangling one.
+// stepStatusLine wires the status line on consent, or repairs abcd's own line
+// when it dangles or runs an abcd that fails the trust checks.
 //
 // The offer runs only against an answered prompt: --yes approves the category
 // but never reaches here (autoYes), because the wiring rewrites a harness-wide
-// user setting and takes element choices only a prompt can carry. The dangling
-// repair is ordinary ConfigChange work — required, and honoured under --yes —
-// because a status command naming an abcd that is gone blanks the user's line
-// in every repository.
+// user setting and takes element choices only a prompt can carry. The repair
+// is ordinary ConfigChange work — required, and honoured under --yes — because
+// a status command naming an abcd that is gone blanks the user's line in every
+// repository, and one naming an abcd that fails the trust checks runs a binary
+// nobody vouched for on every refresh of every session.
 //
 // It runs AFTER stepPathEntry, so the entry it points the harness at is the one
 // this run actually left on PATH.
 func (a *applyCtx) stepStatusLine() {
-	if a.approved[ConfigChange] && a.has(statusLineDanglingGapID) {
+	if a.approved[ConfigChange] && (a.has(statusLineDanglingGapID) || a.has(StatusLineUntrustedGapID)) {
 		a.repairStatusLine()
 		return
 	}
@@ -211,17 +213,21 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 	a.note(writeStatusLine, hs.path)
 }
 
-// repairStatusLine closes the dangling gap: the harness's command names an abcd
-// that is gone, so it is repointed at the recorded, trusted PATH entry
-// (statusLineEntry; never the plugin's own binary), or — when abcd has none to
-// offer — handed back to the previous command the setting recorded,
+// repairStatusLine closes the dangling and untrusted gaps: abcd's own status
+// command names an abcd that is gone, or one that fails the trust checks
+// (untrustedStatusLine), so it is repointed at the recorded, trusted PATH
+// entry (statusLineEntry; never the plugin's own binary), or — when abcd has
+// none to offer — handed back to the previous command the setting recorded,
 // or removed outright when nothing was recorded (a blank line is what the
 // dangling command already produces, and a missing key at least lets the
-// harness render its own default). Like the wiring, it keeps a copy of the
+// harness render its own default rather than run a binary nobody vouched
+// for). The command it replaces is never recorded as the previous one: it is
+// abcd's own line, and a stale build recorded there would run again on every
+// refresh outside a managed checkout. Like the wiring, it keeps a copy of the
 // file first and reads the file back after (replaceHarnessSettings).
 func (a *applyCtx) repairStatusLine() {
 	hs := readHarnessSettings()
-	if hs.state != statusLineDangling {
+	if hs.state != statusLineDangling && !untrustedStatusLine(hs) {
 		return // the state moved since detection; there is nothing to repair
 	}
 	var line map[string]any

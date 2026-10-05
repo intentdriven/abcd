@@ -84,7 +84,7 @@ func TestCommittedPayloadNamesNoBinaryDirectory(t *testing.T) {
 		if rel == "" {
 			continue
 		}
-		if isPlatformBinaryName(path.Base(rel)) {
+		if IsBinaryName(path.Base(rel)) {
 			t.Errorf("%s is committed and carries a built binary's name, so it would fail every ship", rel)
 		}
 	}

@@ -9,10 +9,15 @@ package ahoy
 // recreated ~/.abcd in every session is the case that made the rule — and a
 // status line is a stray when the binary it runs fails statusLineEntryTrust.
 //
-// Everything here REPORTS. abcd never edits the person's harness settings to
-// remove a stray: the findings become gaps that are Required (so the board and
-// `ahoy doctor` name them) and never Resolvable (so no apply step arms), and a
-// one-line session-start notice. The file is read through readHarnessSettings,
+// Everything here REPORTS, save one repair. abcd never edits the person's
+// harness settings to remove a stray hook: those findings become gaps that are
+// Required (so the board and `ahoy doctor` name them) and never Resolvable (so
+// no apply step arms), and a one-line session-start notice. The one repair is
+// the status line abcd itself owns: when it runs an abcd that fails the trust
+// checks, install repoints it under config-change approval exactly as it
+// repairs a dangling one (repairStatusLine), with a copy kept first and the
+// file read back after. A status line that runs some abcd for another purpose
+// is the person's own command and is only reported. The file is read through readHarnessSettings,
 // the one parser of it, and the plugin's own events through readHookEvents.
 
 import (
@@ -23,6 +28,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -60,6 +66,10 @@ type harnessFinding struct {
 	command  string // the offending command, shortened
 	reason   string // why a status line's binary is refused
 	remedy   string // what the person does, in plain words
+	// repairable says that install repairs the finding under config-change
+	// approval: a dangling line, or an untrusted one that is abcd's own status
+	// line (untrustedStatusLine). Everything else is report-only.
+	repairable bool
 }
 
 // harnessFindings scans one read of the harness settings. pluginEvents is the
@@ -111,21 +121,52 @@ func harnessFindings(hs harnessSettings, pluginEvents map[string]bool) []harness
 			out = append(out, harnessFinding{
 				kind: findingStatusLineDangling, id: statusLineDanglingGapID, settings: settings,
 				key: harnessStatusKey, command: shownCommand(hs.command),
-				remedy: "re-run `abcd ahoy install` to repoint the status line, or `abcd ahoy uninstall` to restore the previous one",
+				remedy:     "re-run `abcd ahoy install` to repoint the status line, or `abcd ahoy uninstall` to restore the previous one",
+				repairable: true,
 			})
 		default:
 			if bin := statusLineBinary(hs); bin != "" {
 				if ok, reason := statusLineEntryTrust(expandHome(bin)); !ok {
-					out = append(out, harnessFinding{
+					f := harnessFinding{
 						kind: findingStatusLineUntrusted, id: StatusLineUntrustedGapID, settings: settings,
 						key: harnessStatusKey, command: shownCommand(hs.command), reason: reason,
-						remedy: "re-run `abcd ahoy install` to repoint the status line at the abcd the install recorded",
-					})
+						remedy: "edit the statusLine in " + settings + " so it no longer runs that binary; " +
+							"abcd repairs only a status line that runs its own status verb",
+					}
+					if isAbcdStatusLine(hs) {
+						f.remedy = "re-run `abcd ahoy install` to repoint the status line at the abcd the install recorded"
+						f.repairable = true
+					}
+					out = append(out, f)
 				}
 			}
 		}
 	}
 	return out
+}
+
+// isAbcdStatusLine reports whether the status line is abcd's own: the shape
+// the wiring writes, or any command that reaches abcd's status verb (a
+// hand-wired `abcd statusline`, a stale `…/abcd-darwin-arm64 statusline`).
+// Only such a line is abcd's to repair.
+func isAbcdStatusLine(hs harnessSettings) bool {
+	return hs.entry != "" || reachesStatusVerb(hs.command)
+}
+
+// untrustedStatusLine reports whether hs holds abcd's own status line running
+// a binary that fails the trust checks — the state install repairs under the
+// statusline.untrusted gap. The repair asks it of a fresh read, never of
+// detection's.
+func untrustedStatusLine(hs harnessSettings) bool {
+	if hs.lineType != "command" || !hs.hasCommand || hs.state == statusLineDangling || !isAbcdStatusLine(hs) {
+		return false
+	}
+	bin := statusLineBinary(hs)
+	if bin == "" {
+		return false
+	}
+	ok, _ := statusLineEntryTrust(expandHome(bin))
+	return !ok
 }
 
 // statusLineBinary is the abcd binary the status line runs: the entry when the
@@ -157,13 +198,17 @@ func detectHarnessStrays(hs harnessSettings, pluginRoot string, pluginOK bool) [
 				Required: true, Resolvable: false,
 			})
 		case findingStatusLineUntrusted:
+			hint := f.remedy + "; abcd never edits that file outside that consented step."
+			if !f.repairable {
+				hint = f.remedy + ", so abcd never edits it for you."
+			}
 			gaps = append(gaps, Gap{
 				ID: f.id, Category: ConfigChange, Scope: "machine",
 				Title: "status line runs an abcd that fails the trust checks",
 				Detail: f.settings + " runs `" + f.command + "` for its status line, and abcd will not vouch for that binary: " + f.reason +
 					". The status line runs on every refresh in every session.",
-				FixHint:  f.remedy + "; abcd never edits that file outside that consented step.",
-				Required: true, Resolvable: false,
+				FixHint:  hint,
+				Required: true, Resolvable: f.repairable,
 			})
 		}
 	}
@@ -207,14 +252,9 @@ func hookCommands(v any) []string {
 	return out
 }
 
-// abcdBinaryNameRe matches the file name of an abcd binary: the bare `abcd`
-// a plugin root and `go build ./cmd/abcd` produce, and the `abcd-<goos>-<arch>`
-// names `make build` and the release publish (launch's platformBinaryRe draws
-// the same line for the bundle).
-var abcdBinaryNameRe = regexp.MustCompile(`^abcd(-[a-z0-9]+-[a-z0-9]+)?(\.exe)?$`)
-
 // abcdInvocations returns the abcd binaries cmd runs, as written: every COMMAND
-// WORD whose file name is an abcd binary's. It is a recogniser, not a shell: it
+// WORD whose file name is an abcd binary's (launch.IsBinaryName, the one
+// spelling of a build's name). It is a recogniser, not a shell: it
 // splits on the shell's command separators and on quotes, skips leading
 // assignments and the prefix words that run the next word (exec, env, sudo,
 // then, …), and judges the first word left — so `cd /src/abcd && make` runs no
@@ -227,11 +267,11 @@ var abcdBinaryNameRe = regexp.MustCompile(`^abcd(-[a-z0-9]+-[a-z0-9]+)?(\.exe)?$
 func abcdInvocations(cmd string) []string {
 	var out []string
 	for _, seg := range shellSegments(cmd) {
-		if seg.quoted && strings.Contains(seg.text, "/") && abcdBinaryNameRe.MatchString(filepath.Base(strings.TrimSpace(seg.text))) {
+		if seg.quoted && strings.Contains(seg.text, "/") && launch.IsBinaryName(filepath.Base(strings.TrimSpace(seg.text))) {
 			out = append(out, strings.TrimSpace(seg.text))
 			continue
 		}
-		if w := commandWord(seg.text); w != "" && abcdBinaryNameRe.MatchString(filepath.Base(w)) {
+		if w := commandWord(seg.text); w != "" && launch.IsBinaryName(filepath.Base(w)) {
 			out = append(out, w)
 		}
 	}

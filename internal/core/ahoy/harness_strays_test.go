@@ -152,10 +152,12 @@ func TestDetectReportsTwoAbcdHooksOnOneEventApart(t *testing.T) {
 	}
 }
 
-// TestDetectReportsAnUntrustedStatusLine is the status-line half: a line that
-// runs an abcd failing statusLineEntryTrust is reported with the reason and the
-// remedy, report-only; the recorded install raises nothing, and a dangling line
-// keeps its own repair gap rather than gaining a second one.
+// TestDetectReportsAnUntrustedStatusLine is the status-line half: abcd's own
+// status line running an abcd that fails statusLineEntryTrust is reported with
+// the reason and the remedy, and is a required repair install makes under
+// config-change approval (TestInstallRepairsAnUntrustedStatusLine); the
+// recorded install raises nothing, and a dangling line keeps its own repair gap
+// rather than gaining a second one.
 func TestDetectReportsAnUntrustedStatusLine(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -198,8 +200,8 @@ func TestDetectReportsAnUntrustedStatusLine(t *testing.T) {
 				t.Fatalf("no %s gap; gaps = %v", StatusLineUntrustedGapID, gapIDs(det.Gaps))
 			}
 			g := *found
-			if !g.Required || g.Resolvable || g.Category != ConfigChange || g.Scope != "machine" {
-				t.Errorf("not a report-only machine gap: %+v", g)
+			if !g.Required || !g.Resolvable || g.Category != ConfigChange || g.Scope != "machine" {
+				t.Errorf("not a required, resolvable machine gap: %+v", g)
 			}
 			if !strings.Contains(g.Detail, tc.reason) || !strings.Contains(g.Detail, "~/.claude/settings.json") {
 				t.Errorf("detail does not name the file and the reason %q: %q", tc.reason, g.Detail)
