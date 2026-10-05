@@ -16,6 +16,19 @@ some carry a **Breaking** heading.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-05
+
+These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release.
+
+### Fixed
+
+- **`launch ship` refuses an uncommitted record move.** The release derivation, not only the ingest, now refuses (`uncommitted-records`, exit 1) a working tree whose terminal record folders differ from HEAD, naming every path, instead of returning a plausible cut that silently leaves out a record whose close is not yet committed; `abcd changelog` carries the same refusal. (iss-2610050259118177)
+- **`abcd ahoy` names an abcd hook wired outside the plugin.** It reports every hook in the harness's user settings that runs abcd, and an abcd status line whose binary fails the trust checks, naming the file, the entry and the remedy, and session start names such an entry in one line, so a stale build that keeps recreating the old `~/.abcd` home is found rather than hunted down by hand; abcd never edits that file to remove a hook. (iss-2610050556323779)
+- **The printed rename repair reaches every worktree.** The repair line abcd prints and documents is now one `find` that runs `git worktree repair` at each worktree's `.git` file at any depth, so a worktree named with a slash (such as `docs/<name>`) is relinked instead of left pointing at the old home; it says a `repair: gitdir incorrect` line is a link fixed, and `abcd ahoy` reports each store worktree still unlinked as `store.worktree_unlinked` with that worktree's own repair line. (iss-2610050728100598)
+- **`dashboard start` never signals a server that has already exited.** A server that exits at once gets the exit grace instead of being treated as stuck when its configuration write fails, and start reaps the server itself, so it never kills a process group whose number may by then belong to another program. (iss-2610050859363813)
+- **The status line is the one entry abcd writes in the harness's user settings, and only on a yes.** `abcd ahoy install` shows that entry's before and after and writes it only after an explicit yes, keeps a copy (the newest 10), reads the file back and restores it on a mismatch, wires only the recorded trusted PATH install and never records abcd's own verb as the previous command; the status verb writes nothing and is time-bounded, and uninstall restores the previous status line. (iss-2610050556383525)
+- **An AI-written interview role can no longer stall the change guard with a huge tree outside the checkout.** What one reading reads outside what it owns, the targets of the links it follows and a hooks directory `core.hooksPath` names outside the tree alike, is held to 1,024 entries and 64 MiB in all, and a reading past it is refused promptly, naming the link or the configured `core.hooksPath` value, where the guard used to hash for minutes before failing closed. (iss-2610040847166532, iss-2610050315146044)
+
 ## [0.13.0] - 2026-10-05
 
 These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release.
