@@ -24,6 +24,12 @@ const (
 	configFD = 4
 )
 
+// serveMarkerEnv is set by start in the server's environment. It is no
+// secret and grants nothing: it only keeps a serve that start did not launch
+// from looking at descriptors 3 and 4 at all, which in any other process may
+// be the runtime's own.
+const serveMarkerEnv = "ABCD_DASHBOARD_SERVE"
+
 // configWait bounds the server's wait for its configuration.
 const configWait = 5 * time.Second
 
@@ -41,12 +47,12 @@ func isPipe(fd int) bool {
 }
 
 // Serve is the hidden `dashboard serve`: the server process start launches.
-// It refuses unless both of start's pipes are open (so nothing but start
-// starts the server, P8), reads its configuration from one, listens on the
+// It refuses unless start's marker is in its environment and both of start's
+// pipes are open (so nothing but start starts the server, P8), reads its configuration from one, listens on the
 // tailnet addresses it names and nothing else, reports on the other that it
 // is listening, and serves until SIGTERM or SIGINT.
 func Serve(ctx context.Context) error {
-	if !isPipe(readyFD) || !isPipe(configFD) {
+	if os.Getenv(serveMarkerEnv) != "1" || !isPipe(readyFD) || !isPipe(configFD) {
 		return errNotFromStart
 	}
 	ready := os.NewFile(readyFD, "ready")

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -110,6 +111,20 @@ func exchange(t *testing.T, addr, request string) []byte {
 	return got
 }
 
+// closedAtOnce dials addr and reports whether the server closed the
+// connection within a second, having sent nothing.
+func closedAtOnce(t *testing.T, addr string) bool {
+	t.Helper()
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	_ = c.SetReadDeadline(time.Now().Add(time.Second))
+	n, err := c.Read(make([]byte, 1))
+	return n == 0 && (errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET))
+}
+
 func get(path, host string, extra ...string) string {
 	return "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\n" + strings.Join(extra, "") + "Connection: close\r\n\r\n"
 }
@@ -185,6 +200,16 @@ func TestConnectionWithoutIdentityGetsNoBytes(t *testing.T) {
 		}
 		if n := ts.spy.n.Load(); n != 0 {
 			t.Errorf("%d requests reached the handler from a refused connection", n)
+		}
+	})
+	t.Run("lookup fails with an answer", func(t *testing.T) {
+		// A lookup's error refuses even when it also returned names.
+		l := &lookupSpy{answer: func(netip.Addr) (tailscale.Identity, error) {
+			return person, errors.New("whois exited 1")
+		}}
+		ts := startTestServer(t, l.lookup, loopbackPrefixes)
+		if got := exchange(t, ts.addr, get("/", testName)); len(got) != 0 {
+			t.Errorf("a connection whose lookup erred got %d bytes: %q", len(got), got)
 		}
 	})
 	t.Run("peer off the tailnet", func(t *testing.T) {
@@ -322,8 +347,10 @@ func TestServerLimits(t *testing.T) {
 		if got := ts.gl.open(); got != maxOpenConns {
 			t.Fatalf("%d connections hold slots, want %d", got, maxOpenConns)
 		}
-		if got := exchange(t, ts.addr, get("/", testName)); len(got) != 0 {
-			t.Errorf("a connection past the cap got %d bytes", len(got))
+		// Past the cap the connection is closed at once, not left waiting on
+		// a lookup: the read ends in EOF well before its deadline.
+		if !closedAtOnce(t, ts.addr) {
+			t.Error("a connection past the cap was not closed at once with nothing sent")
 		}
 		if a := asked.Load(); a > int64(maxConcurrentLookups) {
 			t.Errorf("%d lookups ran at once, want at most %d", a, maxConcurrentLookups)

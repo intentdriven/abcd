@@ -226,7 +226,7 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 		return StartResult{}, err
 	}
 	cmd := exec.Command(opts.Launch.Path, opts.Launch.Args...)
-	cmd.Env = append(os.Environ(), opts.Launch.Env...)
+	cmd.Env = append(append(os.Environ(), opts.Launch.Env...), serveMarkerEnv+"=1")
 	cmd.Dir = opts.Root
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, devnull, devnull
 	cmd.ExtraFiles = []*os.File{readyW, cfgR} // fd 3 and fd 4

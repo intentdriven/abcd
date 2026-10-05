@@ -313,18 +313,46 @@ func TestOnlyStartStartsTheServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Without start's marker, and with the marker but without start's pipes,
+	// the server refuses and exits.
+	for _, env := range [][]string{{childEnv + "=1"}, {childEnv + "=1", serveMarkerEnv + "=1"}} {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		cmd := exec.CommandContext(ctx, exe, "dashboard", "serve")
+		cmd.Env = append(os.Environ(), env...)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) {
+			t.Fatalf("serve with %v and no pipes = %v, want it to refuse and exit", env, err)
+		}
+		if !strings.Contains(string(out), "started only by `abcd dashboard start`") {
+			t.Errorf("with %v the refusal does not say only start starts it:\n%s", env, out)
+		}
+	}
+	// Pipes at 3 and 4 without start's marker are not start's either: the
+	// server refuses without reading them.
+	r1, w1, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, w2, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "dashboard", "serve")
 	cmd.Env = append(os.Environ(), childEnv+"=1")
+	cmd.ExtraFiles = []*os.File{w1, r2}
 	out, err := cmd.CombinedOutput()
-	var ee *exec.ExitError
-	if !errors.As(err, &ee) {
-		t.Fatalf("serve without start's pipes = %v, want it to refuse and exit", err)
-	}
+	w1.Close()
+	r2.Close()
+	r1.Close()
+	w2.Close()
 	if !strings.Contains(string(out), "started only by `abcd dashboard start`") {
-		t.Errorf("the refusal does not say only start starts it:\n%s", out)
+		t.Errorf("pipes without start's marker = %v:\n%s; want the refusal", err, out)
 	}
+
 	// Called in this process, whose descriptors 3 and 4 are not start's
 	// pipes, it refuses the same way and touches neither.
 	if err := Serve(context.Background()); !errors.Is(err, error(errNotFromStart)) {
