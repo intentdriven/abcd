@@ -1,4 +1,4 @@
-package gitutil
+package gitutil_test
 
 import (
 	"context"
@@ -11,6 +11,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // hangingGit puts a `git` first on PATH that records its pid in the returned
@@ -40,7 +43,7 @@ func TestRootCommitContextKillsGitAtTheDeadline(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	sha, err := RootCommitContext(ctx, t.TempDir())
+	sha, err := gitutil.RootCommitContext(ctx, t.TempDir())
 	took := time.Since(start)
 	if sha != "" || !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("RootCommitContext = %q, %v; want \"\" and context.DeadlineExceeded", sha, err)
@@ -77,19 +80,19 @@ func TestRootCommitContextAnswersAsRootCommitDoes(t *testing.T) {
 		{"-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "one"},
 	} {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = gitEnv()
+		cmd.Env = gittest.Env(t)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Skipf("git %v unavailable: %v (%s)", args, err, out)
 		}
 	}
-	want := RootCommit(repo)
-	if !IsFullSHA(want) {
+	want := gitutil.RootCommit(repo)
+	if !gitutil.IsFullSHA(want) {
 		t.Fatalf("fixture: RootCommit = %q", want)
 	}
-	if got, err := RootCommitContext(context.Background(), repo); got != want || err != nil {
+	if got, err := gitutil.RootCommitContext(context.Background(), repo); got != want || err != nil {
 		t.Errorf("RootCommitContext = %q, %v; want %q", got, err, want)
 	}
-	if got, err := RootCommitContext(context.Background(), t.TempDir()); got != "" || err != nil {
+	if got, err := gitutil.RootCommitContext(context.Background(), t.TempDir()); got != "" || err != nil {
 		t.Errorf("outside a repository: %q, %v; want \"\", nil", got, err)
 	}
 }
