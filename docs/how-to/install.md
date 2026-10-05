@@ -265,7 +265,7 @@ slow disk or a hung command never freezes the line.
 `abcd ahoy` reports any hook in those settings that runs abcd, and a status line
 that runs an abcd failing those checks; each session start prints one line
 naming such an entry. abcd's hooks live in its plugin, so remove such a hook
-yourself: abcd never edits the file to take one out. `abcd ahoy install`
+yourself: abcd never edits the file to take one out. The same install step
 repairs abcd's own status line when it points at an abcd that is gone or
 untrusted.
 
