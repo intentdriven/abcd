@@ -102,9 +102,10 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 		t.Errorf("element prompt missing from the transcript:\n%s", errOut)
 	}
 
-	// Uninstall hands the previous command back and says so.
+	// Uninstall hands the previous command back and says so, naming the copy
+	// of the file it kept first.
 	text := runCLI(t, "ahoy", "uninstall")
-	if !strings.Contains(string(text), "  status line: restored the previous status command\n") {
+	if !strings.Contains(string(text), "  status line: restored the previous status command; the file as it was is kept at ~/.abcd.noindex/backups/settings.json.") {
 		t.Errorf("uninstall render lacks the status-line line:\n%s", text)
 	}
 	raw, _ = os.ReadFile(settings)
