@@ -495,7 +495,8 @@ func pointerState(p string) string {
 func (r *treeReader) sizeListed(root *os.Root, entries []gitutil.StatusEntry) error {
 	var total, largest int64
 	var largestPath string
-	count := func(rel string) error {
+	var largestTracked bool
+	count := func(rel string, tracked bool) error {
 		if r.skipped(rel) || exempt(rel) {
 			return nil
 		}
@@ -511,7 +512,7 @@ func (r *treeReader) sizeListed(root *os.Root, entries []gitutil.StatusEntry) er
 		}
 		total += fi.Size()
 		if fi.Size() > largest {
-			largest, largestPath = fi.Size(), rel
+			largest, largestPath, largestTracked = fi.Size(), rel, tracked
 		}
 		return nil
 	}
@@ -519,19 +520,25 @@ func (r *treeReader) sizeListed(root *os.Root, entries []gitutil.StatusEntry) er
 		if strings.HasSuffix(e.Path, "/") || e.XY == "!!" {
 			continue
 		}
-		if err := count(e.Path); err != nil {
+		if err := count(e.Path, e.XY != "??"); err != nil {
 			return err
 		}
+		// A rename's or copy's source is a path git tracks.
 		if e.Orig != "" {
-			if err := count(e.Orig); err != nil {
+			if err := count(e.Orig, true); err != nil {
 				return err
 			}
 		}
 	}
 	if total > maxHashedBytes {
+		// .gitignore applies only to a path git does not track.
+		fix := "remove it, or add it to .gitignore if git need not track it (an ignored path is read by its size and modification time, never its content)"
+		if largestTracked {
+			fix = "git tracks it, so .gitignore does not apply to it: restore it to what HEAD holds (git restore), unstage it, or commit it"
+		}
 		return fmt.Errorf("the paths git lists as differing from HEAD hold %d MiB, past the %d MiB one reading hashes of the tree and git's own directory, so none is read; "+
-			"the largest is %s (%d MiB): remove it, or add it to .gitignore if git need not track it (an ignored path is read by its size and modification time, never its content), and run the interview again",
-			total>>20, maxHashedBytes>>20, largestPath, largest>>20)
+			"the largest is %s (%d MiB): %s, and run the interview again",
+			total>>20, maxHashedBytes>>20, largestPath, largest>>20, fix)
 	}
 	return nil
 }

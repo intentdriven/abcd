@@ -1425,3 +1425,39 @@ func TestALaterReadingSizesWhatGitReadsBeforeAskingGitWhereItsDirectoriesAre(t *
 		}
 	})
 }
+
+// TestATrackedPathPastTheBoundIsNotToldToBeIgnored: the refusal of a
+// listing past the byte bound advises .gitignore only for an untracked
+// largest path; .gitignore does not apply to a path git tracks, so a tracked
+// one is told to be restored or committed.
+func TestATrackedPathPastTheBoundIsNotToldToBeIgnored(t *testing.T) {
+	keep := maxHashedBytes
+	t.Cleanup(func() { maxHashedBytes = keep })
+	maxHashedBytes = 1000
+	for _, c := range []struct {
+		name, largest string
+		tracked       bool
+	}{
+		{name: "a tracked file modified", largest: "tracked.txt", tracked: true},
+		{name: "an untracked file", largest: "untracked.txt"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newWrittenRun(t, "")
+			if c.tracked {
+				r.git.Write(c.largest, "small\n")
+				r.git.Commit("tracked")
+			}
+			r.git.Write(c.largest, strings.Repeat("t", 1001))
+			_, err := readTree(r.repo, "")
+			if err == nil || !strings.Contains(err.Error(), "the largest is "+c.largest) {
+				t.Fatalf("err = %v, want the listing refused naming %s", err, c.largest)
+			}
+			if got := strings.Contains(err.Error(), "add it to .gitignore"); got == c.tracked {
+				t.Fatalf("advises adding it to .gitignore: %v, for a path tracked: %v: %v", got, c.tracked, err)
+			}
+			if c.tracked && !strings.Contains(err.Error(), "git restore") {
+				t.Fatalf("err = %v, want a tracked path told to be restored", err)
+			}
+		})
+	}
+}
