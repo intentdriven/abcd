@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // readyIntent is a planned intent the readiness gate reports READY: criteria,
@@ -635,5 +637,95 @@ func TestTheHeadIsListedOnceUnderNow(t *testing.T) {
 	}
 	if len(b.Next) == 0 {
 		t.Errorf("Next is empty; the fixture holds READY intents besides the head")
+	}
+}
+
+// TestPlannedRowsCarryTheirSpec is the data half of A5 (spc-2610031844142274):
+// every planned row carries the spec the readiness gate judged, the lane row,
+// the head, a Next row and a refused Later row alike; a planned intent that
+// names no spec, and a draft, carry none.
+func TestPlannedRowsCarryTheirSpec(t *testing.T) {
+	root := store(t)
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lanes: []Lane{{Run: "run-1", Lane: "lane-1", Stage: "implement"}}}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, list := range [][]Row{b.Now, b.Next, b.Later} {
+		for _, r := range list {
+			got[r.ID] = r.SpecID
+		}
+	}
+	for id, want := range map[string]string{
+		"itd-2609010000000001": "spc-2609010000000011", // Now, in a lane
+		"itd-7":                "spc-17",               // Now, the head
+		"itd-5":                "spc-15",               // Next
+		"itd-8":                "",                     // Later, names no spec
+		"itd-3":                "",                     // a draft
+	} {
+		if got[id] != want {
+			t.Errorf("%s carries spec %q, want %q", id, got[id], want)
+		}
+	}
+}
+
+// gitStore makes the store at root a repository holding one commit and the
+// branch name given, so a lane's branch can resolve.
+func gitStore(t *testing.T, root, branch string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-q", "--initial-branch=main"},
+		{"-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "c0"},
+		{"branch", branch},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = gittest.Env(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// TestInFlightNeedsAnOpenSpecAndABranch is A5's in-flight marker: a lane is in
+// flight when its branch exists and its intent's spec is open; a lane at its
+// worktree stage before its branch is cut, a lane whose recorded branch does
+// not resolve, and a lane whose spec is closed are not.
+func TestInFlightNeedsAnOpenSpecAndABranch(t *testing.T) {
+	const branch = "build/run-1-lane-1"
+	for _, tc := range []struct {
+		name   string
+		lane   Lane
+		closed bool
+		want   bool
+	}{
+		{"its branch exists and its spec is open", Lane{Run: "run-1", Lane: "lane-1", Stage: "implement", Branch: branch}, false, true},
+		{"at its worktree stage, before its branch", Lane{Run: "run-1", Lane: "lane-1", Stage: "worktree"}, false, false},
+		{"its recorded branch does not resolve", Lane{Run: "run-1", Lane: "lane-1", Stage: "implement", Branch: "build/run-1-lane-9"}, false, false},
+		{"its spec is closed", Lane{Run: "run-1", Lane: "lane-1", Stage: "implement", Branch: branch}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := store(t)
+			gitStore(t, root, branch)
+			if tc.closed {
+				open := filepath.Join(root, ".abcd/development/specs/open/spc-2609010000000011-late.md")
+				closed := filepath.Join(root, ".abcd/development/specs/closed/spc-2609010000000011-late.md")
+				if err := os.MkdirAll(filepath.Dir(closed), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(open, closed); err != nil {
+					t.Fatal(err)
+				}
+			}
+			b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lanes: []Lane{tc.lane}}), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(b.Now) == 0 || b.Now[0].Lane == nil {
+				t.Fatalf("Now = %+v, want the lane row first", b.Now)
+			}
+			if got := b.Now[0].Lane.InFlight; got != tc.want {
+				t.Errorf("in flight = %v, want %v (lane %+v)", got, tc.want, *b.Now[0].Lane)
+			}
+		})
 	}
 }

@@ -81,11 +81,14 @@ a `status:` heading with the three counts, one line per intent under `Now:` and
 `Next:`, and a closing `Later: N intents` line that gives Later as a count
 alone: its rows are in the JSON and on the site's Status page. Now is every
 intent a build run has in a lane (each row's `lane` names the run, the lane,
-its next stage and the role it waits on), then the intent marked `next_up`; Next
+its next stage and the role it waits on, its `branch` once cut, and
+`in_flight` while that branch exists and the spec is open), then the intent
+marked `next_up`; Next
 is every other planned intent the readiness gate reports READY, since the
 `next_up` intent is listed under Now alone; Later is every
 planned intent the gate refuses, its `failing_checks` named, then the drafts.
-A planned intent that names the release it must land by carries it as
+A planned intent with a spec carries it as `spec_id` on its row. A planned
+intent that names the release it must land by carries it as
 `target_release` on its row, in any list, and its text line shows `target
 <value>` in the brackets. An intent in a lane is listed under Now only, never also under Next or Later.
 Next and the `next_up` intent are read
