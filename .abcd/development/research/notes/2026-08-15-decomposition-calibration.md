@@ -2286,4 +2286,4 @@ Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "We onl
 | a stop is never blocked for changes another session left behind | acceptance criterion, not a trust rule | the same intent |
 | the stop hook's place among abcd's hooks | plumbing | the brief's hook list, when the intent is planned |
 
-Verdict: FILE-AS-IS. The product thinker chose "abcd owns it" over fixing or removing the personal hook in the harness's user folder, and confirmed the routing ("agreed"). The personal hook is removed once the intent ships; the same day the product thinker ruled that nothing in that folder calls abcd except the consented status line (iss-2610050556383525).
+Verdict: FILE-AS-IS. The product thinker chose "abcd owns it" over fixing or removing the personal hook in the harness's user folder, and confirmed the routing ("agreed"). The personal hook is removed once the intent ships; the same day the product thinker ruled that nothing in that folder calls abcd except the consented status line.
