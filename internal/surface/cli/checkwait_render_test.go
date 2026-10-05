@@ -22,8 +22,8 @@ func TestALaneWaitingForItsFullCheckIsShownWithItsSinceTime(t *testing.T) {
 	if !strings.Contains(b.String(), "waiting for its full check (since 07:18): run the repository's preflight") {
 		t.Fatalf("implement status names the wait and its since time:\n%s", b.String())
 	}
-	row := statusblock.Row{Lane: &statusblock.Lane{Run: "run-1", Lane: "lane-2", Stage: "land", Waiting: "waiting for its full check (since 07:18)"}}
-	if got := statusRowPlace(row); got != "lane-2: land, waiting for its full check (since 07:18) (run-1)" {
-		t.Fatalf("the Now row: %q", got)
+	row := statusblock.Row{ID: "itd-1", Title: "T", Lane: &statusblock.Lane{Run: "run-1", Lane: "lane-2", Stage: "land", Waiting: "waiting for its full check (since 07:18)"}}
+	if got := facilitatorBlock(&statusblock.Block{Now: []statusblock.Row{row}}); !strings.Contains(got, "[lane-2: land, waiting for its full check (since 07:18) (run-1)]") {
+		t.Fatalf("the Now row:\n%s", got)
 	}
 }

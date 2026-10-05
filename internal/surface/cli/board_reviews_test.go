@@ -46,7 +46,7 @@ func TestBoardListsEachReviewWithItsAgeStalestFirst(t *testing.T) {
 	r.Write(".abcd/work/reviews/"+head+"/docs-currency-reviewer.json", "{}")
 	t.Chdir(r.Root())
 
-	stdout, stderr, err := runCLISplit(t)
+	stdout, stderr, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatalf("board: %v\n%s", err, stderr)
 	}
@@ -110,7 +110,7 @@ func TestBoardOmitsReviewsWithNoReviewFolders(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Commit("c0")
 	t.Chdir(r.Root())
-	stdout, _, err := runCLISplit(t)
+	stdout, _, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestBoardFoldsReleaseReceiptsIntoOneTruthfulLine(t *testing.T) {
 	r.Write(".abcd/work/reviews/2026-09-01-spc-7-plan/00-summary.md", "---\nreview_of_commit: "+head+"\n---\n# S\n")
 	t.Chdir(r.Root())
 
-	stdout, stderr, err := runCLISplit(t)
+	stdout, stderr, err := runCLISplit(t, "--view", "facilitator")
 	if err != nil {
 		t.Fatalf("board: %v\n%s", err, stderr)
 	}

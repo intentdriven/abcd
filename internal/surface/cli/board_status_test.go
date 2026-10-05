@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 )
@@ -76,10 +76,10 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 	statusRecord(t, root)
 	writeRunState(t, root, "itd-7")
 
-	text := string(runCLI(t))
+	text := string(runCLI(t, "--view", "facilitator"))
 	for _, want := range []string{
 		"  status:     Now 2 · Next 0 · Later 2",
-		"    Now:\n      itd-7  The unlinked one  [lane-1: implement (run-2609290000000001)]\n      itd-2609010000000001  The ready one  [next up]\n",
+		"    Now:\n      itd-7  The unlinked one  [lane-1: implement (run-2609290000000001)]\n      itd-2609010000000001  spc-2609010000000011  The ready one  [next up]\n",
 		"    Next:\n      (none)\n    Later: 2 intents\n",
 	} {
 		if !strings.Contains(text, want) {
@@ -159,13 +159,13 @@ func TestBoardWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 	root := managedCheckout(t)
 	statusRecord(t, root)
 	writeRunState(t, root, "itd-7")
-	with := string(runCLI(t))
+	with := string(runCLI(t, "--view", "facilitator"))
 	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(loop.RunRelDir))); err != nil {
 		t.Fatal(err)
 	}
-	without := string(runCLI(t))
+	without := string(runCLI(t, "--view", "facilitator"))
 
-	if !strings.Contains(without, "    Now:\n      itd-2609010000000001  The ready one  [next up]\n    Next:") {
+	if !strings.Contains(without, "    Now:\n      itd-2609010000000001  spc-2609010000000011  The ready one  [next up]\n    Next:") {
 		t.Errorf("without a state file Now is not the head alone:\n%s", without)
 	}
 	// Every line but the lane row and the Now and Later counts is unchanged.
@@ -190,7 +190,7 @@ func TestBoardOmitsTheStatusBlockWhereUnmanaged(t *testing.T) {
 	gitInitAt(t, repo)
 	statusRecord(t, repo)
 	t.Chdir(repo)
-	if text := string(runCLI(t)); strings.Contains(text, "status:") {
+	if text := string(runCLI(t, "--view", "facilitator")); strings.Contains(text, "status:") {
 		t.Errorf("an unmanaged checkout rendered the block:\n%s", text)
 	}
 	var got map[string]json.RawMessage
@@ -214,9 +214,7 @@ func TestBoardRendersLaterAsACount(t *testing.T) {
 		{[]statusblock.Row{{ID: "itd-9", Title: "An idea", Bucket: "drafts"}}, "    Later: 1 intent\n"},
 		{[]statusblock.Row{{ID: "itd-8", Title: "Refused", Bucket: "planned", Failing: []string{"spec_link"}}, {ID: "itd-9", Title: "An idea", Bucket: "drafts"}}, "    Later: 2 intents\n"},
 	} {
-		var buf bytes.Buffer
-		renderBoardStatus(&buf, &statusblock.Block{Now: []statusblock.Row{}, Next: []statusblock.Row{}, Later: tc.later})
-		got := buf.String()
+		got := facilitatorBlock(&statusblock.Block{Now: []statusblock.Row{}, Next: []statusblock.Row{}, Later: tc.later})
 		if !strings.HasSuffix(got, tc.want) {
 			t.Errorf("%d Later rows render\n%s\nwant it to end on\n%s", len(tc.later), got, tc.want)
 		}
@@ -234,8 +232,7 @@ func TestBoardRendersLaterAsACount(t *testing.T) {
 // Later is a count on the text board (ruling BV1), so a Later row's target is
 // in --json and on the site's Status page.
 func TestBoardRowShowsItsTarget(t *testing.T) {
-	var buf bytes.Buffer
-	renderBoardStatus(&buf, &statusblock.Block{
+	got := facilitatorBlock(&statusblock.Block{
 		Now: []statusblock.Row{
 			{ID: "itd-7", Title: "In a lane", Bucket: "planned", Target: "v0.11.0",
 				Lane: &statusblock.Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}},
@@ -247,7 +244,6 @@ func TestBoardRowShowsItsTarget(t *testing.T) {
 		},
 		Later: []statusblock.Row{},
 	})
-	got := buf.String()
 	for _, want := range []string{
 		"      itd-7  In a lane  [lane-1: implement (run-1); target v0.11.0]\n",
 		"      itd-5  The head  [next up; target next]\n",
@@ -258,4 +254,10 @@ func TestBoardRowShowsItsTarget(t *testing.T) {
 			t.Errorf("the board must carry %q:\n%s", want, got)
 		}
 	}
+}
+
+// facilitatorBlock draws a status block in the facilitator's text view, wide
+// enough that no row wraps, as the bare board draws it.
+func facilitatorBlock(b *statusblock.Block) string {
+	return strings.Join(board.Render(board.Input{Status: b}, board.Frame{View: board.Facilitator, Width: 1000}), "\n") + "\n"
 }

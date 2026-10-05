@@ -15,6 +15,11 @@ Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" --json
 ```
 
+The JSON carries every field whichever view it names (`view`): in a Terminal,
+bare `abcd` opens on the view for the product thinker, a few plain lines, and
+the rows this page names below are the view for the facilitator
+(`abcd --view facilitator`), the full board.
+
 Then summarise the JSON for the user: the directory (`dir`, named
 home-relative as `~/…`, or by its directory name outside HOME, never by an
 absolute path), whether it is a git repo, whether the abcd development record is

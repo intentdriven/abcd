@@ -10,7 +10,8 @@ package interview
 // script, a map of path to content, makes the turn write those files too: a
 // path under "turns/" lands in the turn's own directory, any other in the
 // directory the runner was started in, and turnDirToken in a file's content
-// is replaced by the turn's directory. A turn-<n>.sleep in the script makes
+// is replaced by the turn's directory. A content starting with linkToken
+// makes the path a link to the rest of it. A turn-<n>.sleep in the script makes
 // the turn mark turn-<n>.started beside the script and sleep, so a test can
 // stop it mid-run.
 
@@ -31,6 +32,10 @@ const stubScriptEnv = "ABCD_INTERVIEW_STUB_SCRIPT"
 // turnDirToken in a turn-<n>.also.json file's content is replaced by the
 // turn's own directory, in full, when the turn writes it.
 const turnDirToken = "{{turn}}"
+
+// linkToken leading a turn-<n>.also.json file's content makes the turn plant
+// a link to the rest of the content at that path instead of writing a file.
+const linkToken = "{{link}}"
 
 func TestMain(m *testing.M) {
 	if dir := os.Getenv(stubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
@@ -77,6 +82,13 @@ func stubRunner(dir string) int {
 				return 3
 			}
 			body = strings.ReplaceAll(body, turnDirToken, filepath.Dir(receipt))
+			if to, ok := strings.CutPrefix(body, linkToken); ok {
+				if err := os.Symlink(to, target); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 3
+				}
+				continue
+			}
 			if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 3
