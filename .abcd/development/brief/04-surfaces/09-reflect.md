@@ -113,7 +113,12 @@ the root, which execute nothing, every other `.claude/` path watched) before
 and after each dispatch, and any path that changes during a dispatch stops the
 interview, whatever changed it (abcd cannot tell the role's writes from another
 program's, so two interviews run in one checkout stop each other), exit 1,
-naming each and keeping the answers given.
+naming each and keeping the answers given. What the links one reading follows
+lead to, a hooks directory `core.hooksPath` names outside the tree, and each
+worktree's push receipts are read within 1,024 entries and 64 MiB in all (1,024
+entries for each worktree's push receipts), and a reading past that stops the
+interview, exit 1, naming the link, the `core.hooksPath` value or the receipts
+directory.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.
