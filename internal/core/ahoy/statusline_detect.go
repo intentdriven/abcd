@@ -29,6 +29,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 const (
@@ -286,7 +287,7 @@ func reachesStatusVerb(cmd string) bool { return statusVerbRe.MatchString(cmd) }
 // through entry. Single-quoted always, so a path carrying a space or a quote
 // survives the harness's shell.
 func statusCommandFor(entry string) string {
-	return shSingleQuote(entry) + " " + statusVerb
+	return shellquote.Single(entry) + " " + statusVerb
 }
 
 // userStatusLineSettingPath is ~/.abcd.noindex/statusline.json, or "" when no home

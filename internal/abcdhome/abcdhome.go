@@ -13,10 +13,11 @@
 // `.abcd/` beside its sources, is a different folder that keeps the old name;
 // it is not spelled here and nothing here reaches it.
 //
-// The package is a leaf that imports only the standard library, so
-// internal/core, internal/surface and cmd can all import it without an edge
-// back. It changes only abcd's own folder: the computer's search settings are
-// never named in code (adr-2610030720195401), which
+// The package is a leaf that imports only the standard library and
+// internal/shellquote, itself a standard-library leaf, so internal/core,
+// internal/surface and cmd can all import it without an edge back. It
+// changes only abcd's own folder: the computer's search settings are never
+// named in code (adr-2610030720195401), which
 // TestNoCodeNamesTheSearchSettings holds.
 package abcdhome
 
@@ -24,6 +25,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // name is the home folder abcd keeps under the person's home directory. The
@@ -73,7 +76,7 @@ const repairFixedNote = " (each `repair: gitdir incorrect` line it prints is a l
 // single-quoted, so a space or a quote in a worktree's name reaches git as one
 // argument. abcd ahoy names it for a worktree the rename left unlinked.
 func WorktreeRepairCommand(rel string) string {
-	return "git -C ~/'" + strings.ReplaceAll(rel, "'", `'\''`) + "' worktree repair"
+	return "git -C ~/" + shellquote.Single(rel) + " worktree repair"
 }
 
 // The two stop lines and their status-line short forms, written once here

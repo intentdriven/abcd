@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // PromoteRequest is the input to Promote: graduate an issue into an intent.
@@ -419,7 +420,11 @@ func orphanDraftError(stampErr error, recordID, itdID, intentPath string, g *gro
 	}
 	cmd := "abcd capture promote " + recordID + " --intent " + itdID
 	if g != nil {
-		cmd += " --grounds " + shellQuoted(g.String())
+		// Single quotes, so the remedy runs as printed: inside double quotes an
+		// interactive bash or zsh still expands `!word` history, which the writer
+		// of the grounds cannot escape, and inside single quotes a shell
+		// interprets nothing, so the grounds arrive as one literal argument.
+		cmd += " --grounds " + shellquote.Single(g.String())
 	}
 	return fmt.Errorf("%w — the minted draft %s (%s) is orphaned; complete the link with %s",
 		stampErr, itdID, intentPath, codeSpan(cmd))
@@ -452,26 +457,6 @@ func codeSpan(s string) string {
 // mint and the ledger-locked stamp — the window a concurrent promotion of the
 // same issue lands in. A test-only seam (nil in production) for iss-258.
 var beforePromoteStampHook func()
-
-// shellQuoted wraps s in SINGLE quotes for the shell a remedy is pasted into,
-// spelling an embedded quote the only way single quoting can: close, escaped
-// quote, reopen, which is the four bytes
-//
-//	'\''
-//
-// It exists so the orphan remedy runs as printed: a repair command a person has
-// to re-quote by hand is a remedy that fails on its own text. (The spelling sits
-// in a code block because gofmt rewrites a doubled apostrophe in doc-comment
-// prose to a typographic quote.)
-//
-// Single, not double: inside double quotes a POSIX shell still interprets four
-// characters, which can be escaped one by one — but an INTERACTIVE bash or zsh
-// also expands `!word` history there, and that one cannot be escaped by the
-// writer of the string. Inside single quotes a shell interprets nothing at all,
-// so the grounds arrive as one literal argument whatever they carry.
-func shellQuoted(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
 
 // issueTitleLine derives the minted draft's title — the issue's one-line
 // summary — from the first non-blank body line, whitespace-collapsed. A
