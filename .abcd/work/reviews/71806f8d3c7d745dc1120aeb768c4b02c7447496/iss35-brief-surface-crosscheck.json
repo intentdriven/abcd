@@ -1,0 +1,230 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "71806f8d3c7d745dc1120aeb768c4b02c7447496"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-10-05T11:46:47Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5",
+  "tier": "shallow",
+  "manifestHash": "sha256:9a4adc23ff790eeaf43438e0a36fba9cdc60d2fd1c2c3c2193d2b55e81566733",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:1344f64cd3bb6652a7d5b113ecfd44afbd2365eccd6e2864024c64fcb1e2708e",
+    "briefVersion": "0.13.1"
+  },
+  "categories": {
+    "criterion-violation": 1,
+    "false-claim": 17,
+    "fictional-layout": 1,
+    "stale-count": 6
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:74 (CLI verb tree): claim: Five verbs have a Go verb and no command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. / reality: The binary also registers `statusline` (listed under `abcd --help --agent`, with its help naming commands/ahoy.md), and there is no commands/statusline.md. So six verbs have no page, seven counting the framework's `help`. 01-product/04-scope.md:19 and 04-surfaces/README.md:238 already list `statusline` among the operator-internal verbs.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-002",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:75 (CLI verb tree): claim: Three command pages carry no Go verb of their own name: the host-delegated three (consult, ingest, prepare-this-repo). / reality: commands/version.md has no Go verb of its own name either: `abcd version` exits 2 with 'unknown command \"version\"', and the help says it is a root flag, not a verb (04-surfaces/README.md:149 says so too). That makes at least four pages, not three.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-003",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:100 (CLI verb tree): claim: Several parents print usage with no state, two verbs refuse instead of rendering / reality: At least three top-level verbs refuse when run bare: `abcd launch` (exit 1, pass --dry-run), `abcd decide` (exit 2, title required) and `abcd build` (exit 2, accepts 1 arg). Bare `abcd source` (exit 3 with no corpus) and bare `abcd report` (exit 2 off a terminal) also refuse. 04-surfaces/README.md § Bare invocation lists these.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-004",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:54 (CLI verb tree): claim: Every surface either has a maritime row or is in the exemption list, 'so an exemption is a decision rather than an omission'. The list reads: banlist, changelog, consult, decide, docs, guard, history, ideate, identity, ingest, lint, memory, prepare-this-repo, reading, rules, site, spec, update, version. / reality: These registered top-level verbs have neither a naming row nor an exemption anywhere in 04-naming.md: build, dashboard, drain, implement, inbox, lab, mode, peers, report, scribe, source, statusline, hook, completion. Each has zero matches in the file.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-005",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:14 (CLI verb tree): claim: /abcd:ahoy: the bare form and the read-only sub-verbs report; `install`, `uninstall` and `remote apply` are the write paths. / reality: Two more ahoy sub-verbs write, by the binary's own help sentences. `abcd ahoy connect`: 'Writes ~/.abcd.noindex/ and the key's home'. `abcd ahoy credential`: 'Writes the chosen home only with --home'.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-006",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/04-scope.md:17 (CLI verb tree): claim: `/abcd:reflect` — release retrospective, a design target (itd-24, planned) / reality: reflect ships: the binary registers `reflect`, `reflect interview` and `reflect write`, commands/reflect.md exists, and the surfaces index row 9 says shipped. The intent sits at .abcd/development/intents/shipped/itd-24-reflect-command.md, not in planned/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-007",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/04-scope.md:7 (CLI verb tree): claim: The generated CLI reference lists every command and sub-verb the binary registers / reality: docs/reference/cli/commands.md leaves out 8 registered paths: `hook` and its five entrypoints (prompt-router, prompt-router-reset, session-end, session-start, subagent-stop), `dashboard serve` and `launch smoke-pages`. The generator skips hidden commands on purpose (internal/surface/cli/reference.go:64).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-008",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/02-context.md:5 (CLI verb tree): claim: the generated CLI reference lists every command and sub-verb the binary registers / reality: Same gap as 04-scope.md:7. The reference has no section for the hidden `hook` subtree (6 paths), `dashboard serve` or `launch smoke-pages`.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-009",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:236 (CLI verb tree): claim: the generated CLI reference omits both router entrypoints by design / reality: The reference leaves out the whole hidden `hook` subtree: all five entrypoints (session-end, session-start and subagent-stop as well as the two router ones) and the `hook` parent. It also leaves out the hidden `dashboard serve` and `launch smoke-pages`. Saying only the two router entrypoints are omitted implies the rest are in the reference, and they are not.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-010",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/04-universal-patterns.md:86 (CLI verb tree): claim: `lint` and its targets, `capture`, `intent`, `guard`, `--version`, `changelog`, `rules`, `spec`, `identity` and `banlist` are read-only renders / reality: Several of these verbs write, by their own help sentences. `capture`: 'Writes one record under open/'. `intent`: 'Writes the draft into drafts/'. `spec close` moves spec and intent files. `identity init`: 'Writes the block and the pointer'. `banlist add`/`remove`/`migrate` write the layer stores.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-011",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/20-banlist.md:12 (CLI verb tree): claim: Bare invocation and listing are strictly read-only; adding and removing are the write paths / reality: `abcd banlist migrate` is a third write path: 'Key a legacy private store in place ... Writes the private store'.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-012",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:301-302 (plugin command surface): claim: The host-delegated commands back onto no verb of their own, so `consult.md` and `ingest.md` invoke the binary nowhere at all and carry the workflow itself. / reality: Both pages tell the host to run the binary. commands/consult.md:14 runs `\"${CLAUDE_PLUGIN_ROOT}/abcd\" source --json` as its first step, and :54, :84 and :87 run `abcd source ledger`, `source sync-banlist` and `source cite-check`. commands/ingest.md:14 runs `abcd source --json`, :67 runs `abcd source add`, :101 runs `abcd source sync-banlist`, and :44-45 run `abcd mode`. The brief's own 13-consult.md:17-19 and 14-ingest.md:15-17 say every write goes through the `abcd source` verbs.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-013",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:77 (plugin command surface): claim: Of the three host-delegated pages, two (consult and ingest) call no part of the binary at all; only /abcd:prepare-this-repo runs binary verbs. / reality: commands/consult.md and commands/ingest.md both call the binary's `source` verb family (source --json, source ledger, source add, source sync-banlist, source cite-check), and ingest.md also calls `abcd mode`. All three host-delegated pages run binary verbs inside a workflow the host drives.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-014",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:74-75 (plugin command surface): claim: Five verbs have a Go verb and no command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. / reality: The binary also registers `statusline`, which has no commands/statusline.md. `abcd --help --agent` lists it as 'statusline ... (read commands/ahoy.md)', and `abcd statusline --help` answers. The surfaces index's operator-internal table (04-surfaces/README.md:238) lists it, so the verbs with no page number six, not five.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-015",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:75-76 (plugin command surface): claim: Three command pages carry no Go verb of their own name: the host-delegated three (consult, ingest, prepare-this-repo). Both exceptions in the page-to-verb mapping are said to be enumerated here. / reality: commands/version.md also has no Go verb of its name. `abcd version` exits 'unknown command \"version\"' with the hint '`version` is a root flag, not a verb: run `abcd --version`', and the page runs `abcd --version --json`. That makes four pages with no same-name verb, and the enumeration omits version.md even though 04-surfaces/README.md:149-150 says version is the root's flag, not a verb.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-016",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:50 (plugin agent surface): claim: agents/ also holds two plain docs, its README and its changelog; because the manifest declares no agents key the loader registers both as harness agents, and iss-110 tracks the mis-registration / reality: agents/ holds only the 17 prompt files and their per-agent fixtures/ directories; README.md and CHANGELOG.md live at .abcd/development/agents/, and iss-110 is in .abcd/work/issues/resolved/ (the move to .abcd/development/agents/ is its resolution, guarded by TestPluginAgentSurfaceRegistersOnlyAgents)",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-017",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:1036 (plugin agent surface): claim: plugin tree: agents/<name>.md host-delegated agent prompts, plus per-agent fixtures/, README.md and CHANGELOG.md / reality: no README.md or CHANGELOG.md exists under agents/; both are at .abcd/development/agents/ (internal/core/lint/agentcontract.go defaultAgentChangelog = .abcd/development/agents/CHANGELOG.md)",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-018",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/README.md:7 (plugin agent surface): claim: 01-agents.md covers 'The fifteen shipped agent prompts' / reality: agents/ ships seventeen prompt files (and 01-agents.md:16 itself says seventeen)",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-019",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:73 (plugin agent surface): claim: every shipped agent's fixtures/ directory holds exactly one file, the injection canary / reality: agents/intent-auditor/fixtures/ holds injection-canary.json and injection-canary-consistency.json; agents/release-changelog-composer/fixtures/ holds injection-canary.json, injection-canary-press-release.json and no-forecast.json",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-020",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:236 (hook entrypoints): claim: The `hook` verb row says \"the generated CLI reference omits both router entrypoints by design\", which implies the reference leaves out only `prompt-router` and `prompt-router-reset` and still documents the other three (`session-end`, `subagent-stop`, `session-start`). / reality: docs/reference/cli/commands.md:11 says \"operator-internal hook entrypoints are omitted\", and the reference names none of the five `abcd hook` sub-commands. .abcd/development/release/README.md:18 agrees that the whole operator-internal `hook` subtree never appears on the documentation page. All five are left out, not just the two routers.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-021",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:19 (skills surface): claim: \"The release payload declares all four kinds\" (commands, skills, agents, hooks). / reality: .abcd/config/launch-payload.json includes .claude-plugin, commands, agents, hooks, scripts, docs, README.md, LICENSE, .gitignore and no skills directory. Only the installability convention register (internal/core/launch/installsurface.go conventionRules) names all four kinds. The same chapter contradicts line 19 at lines 113-115 (\"the include list still names commands, agents and hooks and no skills directory\").",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-022",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/core/oracle.md:42 (skills surface): claim: Usage example: \"The impl-review skill hands the diff to the host-delegated oracle and reads back its verdict.\" It describes an abcd skill named impl-review as a working mechanism. / reality: abcd ships zero skills. skills/ is absent from the tree, and no impl-review skill, command or agent exists under commands/ or agents/. The brief itself says so (04-surfaces/README.md \"## No skills\"; 05-internals/08-skills.md:8).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-023",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/core/transport.md:40 (skills surface): claim: Usage example: \"The impl-review skill hands the scoped diff to the oracle through the host's subagent dispatch.\" It describes a nonexistent abcd skill as the transport's consumer. / reality: No impl-review skill exists. skills/ is absent and abcd ships zero skills, and neither commands/ nor agents/ has an impl-review surface.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-024",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/README.md:287 (skills surface): claim: \"The `/abcd:intent grill` sub-verb's glossary capture pattern draws from the `grill-with-docs` skill\". It names the grill (the once-proposed /abcd:grill skill) as an existing sub-verb, with no staged or design-target marker. / reality: `abcd intent --help` lists audit, condition, consistency, hold, interview, link, plan, prepass, ready, reclassify, target and unhold, and no grill. 04-surfaces/README.md:343-346 and 06-delivery/02-verification-matrix.md:78 both say no grill sub-verb ships.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-025",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:3 (also :310, :439) (skills surface): claim: The grill's backing intent itd-27 (\"grill-skill-and-glossary\", the record behind the once-proposed /abcd:grill skill, whose design target 04-surfaces/README.md:343 and 05-internals/README.md:14 describe) \"sit[s] in intents/planned/\". / reality: itd-27 is at .abcd/development/intents/superseded/itd-27-grill-skill-and-glossary.md with superseded_by: itd-94. itd-94 is shipped and is about the planned-before-implement gate, not grill. The grill/interviewing-skill successor is the out-of-scope draft itd-2609292108373494. No record under intents/planned/ backs the grill design target.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches (every registered command path, command page, agent, hook event and the empty skills set were confirmed against the built binary). Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    }
+  ],
+  "_reviewProvenance": "Shallow tier for a patch release (impact fix): Direction B only, the manifest's five surface checkers (CLI verb tree, plugin command surface, plugin agent surface, hook entrypoints, skills surface), each an Opus 5.5 agent given the manifest's pinned context and Direction B template filled for its surface, run by hand through the host's agent tool (the workflow script's documented results-by-hand path, merged here by hand) over an exact export of content commit 71806f8d3c7d745dc1120aeb768c4b02c7447496 with the binary built from it. 25 discrepancies, all in brief prose; each deferred to iss-2609091956001547."
+}
