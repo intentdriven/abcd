@@ -13,6 +13,7 @@ package dashboard
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -125,6 +126,7 @@ type cacheEntry struct {
 type gate struct {
 	lookup   Lookup
 	prefixes []netip.Prefix
+	self     *selfCheck
 	sem      chan struct{}
 	now      func() time.Time
 
@@ -132,10 +134,11 @@ type gate struct {
 	cache map[netip.Addr]cacheEntry
 }
 
-func newGate(l Lookup, prefixes []netip.Prefix) *gate {
+func newGate(l Lookup, prefixes []netip.Prefix, self *selfCheck) *gate {
 	return &gate{
 		lookup:   l,
 		prefixes: prefixes,
+		self:     self,
 		sem:      make(chan struct{}, maxConcurrentLookups),
 		now:      time.Now,
 		cache:    map[netip.Addr]cacheEntry{},
@@ -143,7 +146,8 @@ func newGate(l Lookup, prefixes []netip.Prefix) *gate {
 }
 
 // admit judges the peer at remote. It never reads from or writes to the
-// connection.
+// connection. A peer at one of the listening addresses is this computer
+// itself, refused once its self-check has answered (selfCheck).
 func (g *gate) admit(ctx context.Context, remote net.Addr) (tailscale.Identity, bool) {
 	tcp, ok := remote.(*net.TCPAddr)
 	if !ok {
@@ -152,6 +156,11 @@ func (g *gate) admit(ctx context.Context, remote net.Addr) (tailscale.Identity, 
 	ap := tcp.AddrPort()
 	a := ap.Addr().Unmap()
 	if !inTailnet(a, g.prefixes) {
+		return tailscale.Identity{}, false
+	}
+	// This computer itself, once its self-check has answered: refused before
+	// any lookup, whoever on it is connecting.
+	if self, waiting := g.self.state(a); self && !waiting {
 		return tailscale.Identity{}, false
 	}
 	if id, ok, hit := g.cached(a); hit {
@@ -201,11 +210,67 @@ func (g *gate) store(a netip.Addr, id tailscale.Identity, ok bool) {
 	g.cache[a] = cacheEntry{id: id, ok: ok, expires: now.Add(lookupCacheTTL)}
 }
 
-// identConn is a connection the gate let in, carrying who it is. Closing it
-// gives its slot back.
+// selfCheck is the one-time value start fetches each listening address
+// with, and which of those addresses have yet to answer it. A connection
+// whose peer is a listening address comes from this computer itself: from
+// start's own fetch, from another account on this computer, or from a
+// Tailscale Serve or Funnel configured after start to proxy to the
+// dashboard. Such a connection is let in only until that address's
+// self-check has answered, and only to make it; once it has, the gate refuses
+// it before any lookup (D7: no build serves an unidentified connection,
+// another account on the same computer included).
+type selfCheck struct {
+	value []byte
+
+	mu      sync.Mutex
+	waiting map[netip.Addr]bool
+}
+
+// newSelfCheck is the self-check for value on the listening addresses.
+func newSelfCheck(value []byte, listening []netip.Addr) *selfCheck {
+	s := &selfCheck{value: value, waiting: map[netip.Addr]bool{}}
+	for _, a := range listening {
+		s.waiting[a.Unmap()] = true
+	}
+	return s
+}
+
+// state reports whether a is a listening address, and if so whether its
+// self-check is still to come.
+func (s *selfCheck) state(a netip.Addr) (self, waiting bool) {
+	if s == nil {
+		return false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	waiting, self = s.waiting[a.Unmap()]
+	return self, waiting
+}
+
+// answer reports whether got is the one-time value and a's self-check is
+// still to come, and if so marks it answered: the value is good once for
+// each listening address, and never from any other.
+func (s *selfCheck) answer(a netip.Addr, got []byte) bool {
+	if s == nil || len(s.value) == 0 {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a = a.Unmap()
+	if !s.waiting[a] || subtle.ConstantTimeCompare(got, s.value) != 1 {
+		return false
+	}
+	s.waiting[a] = false
+	return true
+}
+
+// identConn is a connection the gate let in, carrying who it is and whether
+// it comes from this computer itself. Closing it gives its slot back.
 type identConn struct {
 	net.Conn
 	id      tailscale.Identity
+	peer    netip.Addr
+	self    bool
 	release func()
 	once    sync.Once
 }
@@ -302,7 +367,12 @@ func (gl *gatedListener) judge(c net.Conn) {
 		gl.releaseSlot()
 		return
 	}
-	ic := &identConn{Conn: c, id: id, release: gl.releaseSlot}
+	peer := netip.Addr{}
+	if tcp, ok := c.RemoteAddr().(*net.TCPAddr); ok {
+		peer = tcp.AddrPort().Addr().Unmap()
+	}
+	self, _ := gl.gate.self.state(peer)
+	ic := &identConn{Conn: c, id: id, peer: peer, self: self, release: gl.releaseSlot}
 	select {
 	case gl.conns <- ic:
 	case <-gl.done:
@@ -334,15 +404,30 @@ func (gl *gatedListener) Close() error {
 func (gl *gatedListener) Addr() net.Addr { return gl.raws[0].Addr() }
 
 // identityKey is the context key of the identity the gate attached to a
-// request's connection.
-type identityKey struct{}
+// request's connection; selfPeerKey, of the listening address a connection
+// from this computer itself comes from.
+type (
+	identityKey struct{}
+	selfPeerKey struct{}
+)
 
-// connContext attaches the gate's identity to every request on a connection.
+// connContext attaches the gate's identity to every request on a connection,
+// and the peer address when the connection comes from this computer itself.
 func connContext(ctx context.Context, c net.Conn) context.Context {
 	if ic, ok := c.(*identConn); ok {
-		return context.WithValue(ctx, identityKey{}, ic.id)
+		ctx = context.WithValue(ctx, identityKey{}, ic.id)
+		if ic.self {
+			ctx = context.WithValue(ctx, selfPeerKey{}, ic.peer)
+		}
 	}
 	return ctx
+}
+
+// selfPeerFrom reads the listening address a request from this computer
+// itself comes from, if it is one.
+func selfPeerFrom(ctx context.Context) (netip.Addr, bool) {
+	a, ok := ctx.Value(selfPeerKey{}).(netip.Addr)
+	return a, ok
 }
 
 // identityFrom reads the identity connContext attached, if any.

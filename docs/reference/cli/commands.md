@@ -757,8 +757,9 @@ Start, stop and report the product thinker's dashboard: one server on this
 computer, listening only on this computer's own Tailscale addresses, over plain
 HTTP with no certificate, never through Serve or Funnel. Every connection is let
 in only when Tailscale's own lookup of its address names a device of a person,
-never from a header; any device on the Tailscale network that is not a tagged
-machine can open it.
+never from a header; any device on the Tailscale network can open it but a
+tagged machine and this computer itself, which start checks once and then
+refuses, so the dashboard is opened from another device.
 
 Bare `abcd dashboard` is `abcd dashboard status`. The server runs until `abcd
 dashboard stop`, and never starts by itself. Its run file and the devices that

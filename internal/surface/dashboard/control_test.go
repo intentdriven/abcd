@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -498,26 +499,37 @@ func TestStatusReportsTheRunAndItsDevices(t *testing.T) {
 	if !st.Running || st.URL != res.URL || st.Since == nil || len(st.Devices) != 0 {
 		t.Errorf("status = %+v; want running at %s with no device yet (the self-check is not a device)", st, res.URL)
 	}
-	// A page opened from this computer records it as a device.
+	// This computer is refused once start's self-check has answered: a page
+	// asked for from it gets nothing, and it is not listed as a device.
 	c, err := net.Dial("tcp", res.Addrs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", testName)
 	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
-	buf := make([]byte, 4096)
-	for {
-		if _, err := c.Read(buf); err != nil {
-			break
-		}
-	}
+	got, _ := io.ReadAll(c)
 	c.Close()
+	if len(got) != 0 {
+		t.Errorf("a page asked for from this computer after start got %d bytes: %q", len(got), got)
+	}
 	st, err = ReadStatus(home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Devices) != 1 || st.Devices[0].Login != "pt@example.com" || st.Devices[0].Device != "dash" {
-		t.Errorf("devices = %+v, want the one device that opened the page", st.Devices)
+	if len(st.Devices) != 0 {
+		t.Errorf("devices = %+v, want none: this computer is not a device that opened it", st.Devices)
+	}
+	// A device the server records opening a page is listed. Connections
+	// from another device cannot be made from this one, so the server's
+	// recorder stands in; TestTailscaleHeadersAreIgnored holds that a page
+	// opened records the lookup's device.
+	newSeenRecorder(home).record(tailscale.Identity{Node: "nPhone", Device: "phone", Login: "pt@example.com", Person: "Product Thinker"})
+	st, err = ReadStatus(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Devices) != 1 || st.Devices[0].Login != "pt@example.com" || st.Devices[0].Device != "phone" {
+		t.Errorf("devices = %+v, want the one device that opened a page", st.Devices)
 	}
 }
 

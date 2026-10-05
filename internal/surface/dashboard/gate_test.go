@@ -75,7 +75,18 @@ func (s *seenSpy) record(id tailscale.Identity) {
 	s.ids = append(s.ids, id)
 }
 
+// startTestServer is a gated dashboard on 127.0.0.1 whose connections from
+// 127.0.0.1 stand in for another device on the tailnet: none of its
+// listening addresses is this computer's.
 func startTestServer(t *testing.T, l Lookup, prefixes []netip.Prefix) *testServer {
+	t.Helper()
+	return startTestServerAs(t, l, prefixes, false)
+}
+
+// startTestServerAs is startTestServer, with 127.0.0.1 standing in for this
+// computer's own listening address when self is set: its connections then
+// come from this computer itself, as start's self-fetch does.
+func startTestServerAs(t *testing.T, l Lookup, prefixes []netip.Prefix, self bool) *testServer {
 	t.Helper()
 	raw, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -83,9 +94,14 @@ func startTestServer(t *testing.T, l Lookup, prefixes []netip.Prefix) *testServe
 	}
 	port := raw.Addr().(*net.TCPAddr).Port
 	ts := &testServer{addr: raw.Addr().String(), spy: &handlerSpy{}, seen: &seenSpy{}, nonce: []byte("0123456789abcdef0123456789abcdef")}
-	g := newGate(l, prefixes)
+	var listening []netip.Addr
+	if self {
+		listening = []netip.Addr{netip.MustParseAddr("127.0.0.1")}
+	}
+	sc := newSelfCheck(ts.nonce, listening)
+	g := newGate(l, prefixes, sc)
 	ts.gl = newGatedListener([]net.Listener{raw}, g)
-	h := newHandler(handlerConfig{name: testName, port: port, selfCheck: ts.nonce, seen: ts.seen.record, onRequest: func() { ts.spy.n.Add(1) }})
+	h := newHandler(handlerConfig{name: testName, port: port, self: sc, seen: ts.seen.record, onRequest: func() { ts.spy.n.Add(1) }})
 	ts.srv = newHTTPServer(h)
 	go func() { _ = ts.srv.Serve(ts.gl) }()
 	t.Cleanup(func() {
@@ -449,19 +465,75 @@ func TestWritesNeedTailnetIdentity(t *testing.T) {
 }
 
 func TestSelfCheckAnswersOnlyTheOneTimeValue(t *testing.T) {
-	ts := startTestServer(t, passing().lookup, loopbackPrefixes)
-	if resp := parse(t, exchange(t, ts.addr, get("/self-check", testName))); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("a self-check without the value answered %d, want 404", resp.StatusCode)
+	selfCheck := func(value string) string {
+		return get("/self-check", testName, selfCheckHeader+": "+value+"\r\n")
 	}
-	if resp := parse(t, exchange(t, ts.addr, get("/self-check", testName, selfCheckHeader+": wrong\r\n"))); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("a self-check with a wrong value answered %d, want 404", resp.StatusCode)
+	t.Run("from this computer", func(t *testing.T) {
+		ts := startTestServerAs(t, passing().lookup, loopbackPrefixes, true)
+		for _, req := range []string{get("/self-check", testName), selfCheck("wrong")} {
+			if resp := parse(t, exchange(t, ts.addr, req)); resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%q answered %d, want 404", req, resp.StatusCode)
+			}
+		}
+		if resp := parse(t, exchange(t, ts.addr, selfCheck(string(ts.nonce)))); resp.StatusCode != http.StatusNoContent {
+			t.Errorf("a self-check with the value answered %d, want 204", resp.StatusCode)
+		}
+		ts.seen.mu.Lock()
+		defer ts.seen.mu.Unlock()
+		if len(ts.seen.ids) != 0 {
+			t.Errorf("the self-check recorded a device as having opened the dashboard: %+v", ts.seen.ids)
+		}
+	})
+	t.Run("from another device", func(t *testing.T) {
+		// The value is this computer's alone: from any other device it
+		// answers nothing more than a wrong one does.
+		ts := startTestServer(t, passing().lookup, loopbackPrefixes)
+		if resp := parse(t, exchange(t, ts.addr, selfCheck(string(ts.nonce)))); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("a self-check with the value from another device answered %d, want 404", resp.StatusCode)
+		}
+	})
+}
+
+// TestThisComputerIsRefusedOnceTheSelfCheckAnswered holds D7 on this
+// computer: a connection from one of the dashboard's own listening addresses
+// is another account on this computer, or a Tailscale Serve or Funnel
+// configured after start to proxy to it, as much as it is start's own fetch.
+// Until the self-check answers it may make the self-check and nothing else;
+// once it has answered, it gets no byte at all, and is not even looked up.
+func TestThisComputerIsRefusedOnceTheSelfCheckAnswered(t *testing.T) {
+	l := passing()
+	ts := startTestServerAs(t, l.lookup, loopbackPrefixes, true)
+	selfCheck := get("/self-check", testName, selfCheckHeader+": "+string(ts.nonce)+"\r\n")
+
+	if got := exchange(t, ts.addr, get("/", testName)); len(got) != 0 {
+		t.Errorf("before the self-check, a page asked for from this computer got %d bytes: %q", len(got), got)
 	}
-	if resp := parse(t, exchange(t, ts.addr, get("/self-check", testName, selfCheckHeader+": "+string(ts.nonce)+"\r\n"))); resp.StatusCode != http.StatusNoContent {
-		t.Errorf("a self-check with the value answered %d, want 204", resp.StatusCode)
+	if resp := parse(t, exchange(t, ts.addr, selfCheck)); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("the self-check answered %d, want 204", resp.StatusCode)
+	}
+	// Forget the cached lookup, so a refusal that came after a lookup would
+	// show as one.
+	ts.gl.gate.mu.Lock()
+	ts.gl.gate.cache = map[netip.Addr]cacheEntry{}
+	ts.gl.gate.mu.Unlock()
+	asked := l.calls.Load()
+	for _, req := range []string{get("/", testName), selfCheck} {
+		if got := exchange(t, ts.addr, req); len(got) != 0 {
+			t.Errorf("after the self-check, %q from this computer got %d bytes: %q", strings.SplitN(req, "\r\n", 2)[0], len(got), got)
+		}
+	}
+	if !closedAtOnce(t, ts.addr) {
+		t.Error("after the self-check, a connection from this computer was not closed at once")
+	}
+	if n := l.calls.Load(); n != asked {
+		t.Errorf("after the self-check, this computer was looked up %d more times; it is refused before any lookup", n-asked)
+	}
+	if n := ts.spy.n.Load(); n != 1 {
+		t.Errorf("%d requests from this computer reached the routes, want the self-check's one", n)
 	}
 	ts.seen.mu.Lock()
 	defer ts.seen.mu.Unlock()
 	if len(ts.seen.ids) != 0 {
-		t.Errorf("the self-check recorded a device as having opened the dashboard: %+v", ts.seen.ids)
+		t.Errorf("this computer was recorded as a device: %+v", ts.seen.ids)
 	}
 }

@@ -83,9 +83,10 @@ func Serve(ctx context.Context) error {
 		return err
 	}
 	port := raws[0].Addr().(*net.TCPAddr).Port
-	gl := newGatedListener(raws, newGate(tailscale.New(cfg.Tailscale).WhoIs, tailnetPrefixes))
+	self := newSelfCheck([]byte(cfg.SelfCheck), addrs)
+	gl := newGatedListener(raws, newGate(tailscale.New(cfg.Tailscale).WhoIs, tailnetPrefixes, self))
 	seen := newSeenRecorder(cfg.Home)
-	srv := newHTTPServer(newHandler(handlerConfig{name: cfg.Name, port: port, selfCheck: []byte(cfg.SelfCheck), seen: seen.record}))
+	srv := newHTTPServer(newHandler(handlerConfig{name: cfg.Name, port: port, self: self, seen: seen.record}))
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

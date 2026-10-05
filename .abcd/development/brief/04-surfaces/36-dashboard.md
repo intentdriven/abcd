@@ -51,7 +51,13 @@ it names an untagged device of a person: a tag names a machine, not a person.
 Any untagged device on the person's Tailscale network is let in, whoever's it
 is, which is the cost decision 4 accepted. A lookup that fails, a tagged
 device, and a connection past the cap are closed having been sent nothing, so a
-device off the network gets no answer at all. No request header ever decides
+device off the network gets no answer at all. A connection from one of the
+dashboard's own addresses is this computer itself: it may make start's
+one-time check of its own address and nothing else, and once that check has
+answered it is closed before any lookup. So neither another account on this
+computer nor a Tailscale Serve or Funnel set up later to forward to the
+dashboard gets an answer, and the dashboard is opened from another device. No
+request header ever decides
 who is connecting: a forged identity header with a failing lookup is refused,
 and with a passing one the page names the lookup's person, not the header's.
 Lookups are cached for each address for thirty seconds and at most four run at
@@ -86,8 +92,9 @@ one-time value over a pipe rather than its command line, passes it nothing of
 its own environment but the path and the home folder, so no token in the
 Terminal lives on in a process that faces the network, and waits for it to
 report that it is listening. It then fetches its own address through
-Tailscale, so the gate judges this computer as it judges any device, and only
-when that answers does it print one line: where to open it, that anyone on the
+Tailscale with the one-time value, which the server answers once for each
+address and to this computer alone, so the gate judges this computer as it
+judges any device, and only when that answers does it print one line: where to open it, that anyone on the
 Tailscale network can, and every address it listens on. A failed fetch stops
 the server and names the address that could not be reached. The default port is
 8080.

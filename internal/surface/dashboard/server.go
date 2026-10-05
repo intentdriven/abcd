@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"crypto/subtle"
 	"html/template"
 	"io"
 	"log"
@@ -41,7 +40,8 @@ var securityHeaderValues = [][2]string{
 
 // selfCheckHeader carries the one-time value `start` fetches its own address
 // with. It proves only that the answer came from the server this run started;
-// it identifies no one and lets no one in (the gate did that already).
+// it identifies no one and lets no one in (the gate did that already). It is
+// answered once for each listening address, and only to this computer itself.
 const selfCheckHeader = "Abcd-Dashboard-Self-Check"
 
 // handlerConfig is what the handler needs to know.
@@ -50,8 +50,8 @@ type handlerConfig struct {
 	name string
 	// port is the port the dashboard listens on.
 	port int
-	// selfCheck is this run's one-time value.
-	selfCheck []byte
+	// self is this run's self-check.
+	self *selfCheck
 	// seen records a device that opened a page.
 	seen func(tailscale.Identity)
 	// onRequest, when set, is called for every request that reaches the
@@ -62,12 +62,14 @@ type handlerConfig struct {
 // newHandler is the request path, outermost first: the security headers on
 // every response; the host check, answering 421 before anything else runs;
 // the identity the gate attached, without which the connection is dropped;
-// the body cap; Go's cross-origin protection, which over plain HTTP judges a
-// write by its Origin against its Host (D1a); and the fixed route table.
+// this computer's own connections held to the self-check; the body cap; Go's
+// cross-origin protection, which over plain HTTP judges a write by its Origin
+// against its Host (D1a); and the fixed route table.
 func newHandler(cfg handlerConfig) http.Handler {
 	var h http.Handler = routes(cfg)
 	h = http.NewCrossOriginProtection().Handler(h)
 	h = limitBody(h)
+	h = selfCheckOnly(h)
 	h = requireIdentity(h)
 	h = hostCheck(cfg.name, cfg.port, h)
 	return securityHeaders(h)
@@ -131,6 +133,19 @@ func requireIdentity(next http.Handler) http.Handler {
 	})
 }
 
+// selfCheckOnly drops, sending nothing, every request from this computer
+// itself but a read of the self-check: before the self-check has answered,
+// that connection may be start's own fetch, and it is let make that fetch
+// and nothing else (D7).
+func selfCheckOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, self := selfPeerFrom(r.Context()); self && (r.Method != http.MethodGet || r.URL.Path != "/self-check") {
+			panic(http.ErrAbortHandler)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func limitBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Body != nil {
@@ -161,8 +176,10 @@ func routes(cfg handlerConfig) http.Handler {
 			}
 			servePage(w, id)
 		case "/self-check":
-			got := []byte(r.Header.Get(selfCheckHeader))
-			if len(cfg.selfCheck) == 0 || subtle.ConstantTimeCompare(got, cfg.selfCheck) != 1 {
+			// Answered once for each listening address, and only to this
+			// computer itself: from anywhere else the value is no answer.
+			peer, self := selfPeerFrom(r.Context())
+			if !self || !cfg.self.answer(peer, []byte(r.Header.Get(selfCheckHeader))) {
 				http.NotFound(w, r)
 				return
 			}

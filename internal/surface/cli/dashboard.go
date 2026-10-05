@@ -33,8 +33,9 @@ func newDashboardCommand(asJSON *bool) *cobra.Command {
 			"computer, listening only on this computer's own Tailscale addresses, over plain\n" +
 			"HTTP with no certificate, never through Serve or Funnel. Every connection is let\n" +
 			"in only when Tailscale's own lookup of its address names a device of a person,\n" +
-			"never from a header; any device on the Tailscale network that is not a tagged\n" +
-			"machine can open it.\n\n" +
+			"never from a header; any device on the Tailscale network can open it but a\n" +
+			"tagged machine and this computer itself, which start checks once and then\n" +
+			"refuses, so the dashboard is opened from another device.\n\n" +
 			"Bare `abcd dashboard` is `abcd dashboard status`. The server runs until `abcd\n" +
 			"dashboard stop`, and never starts by itself. Its run file and the devices that\n" +
 			"opened it live in `" + abcdhome.Display("dashboard/") + "`.\n\n" +

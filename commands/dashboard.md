@@ -14,6 +14,9 @@ and never through Tailscale Serve or Funnel. Each connection is let in only
 when Tailscale's own lookup of the connecting address names a person's device;
 a tagged machine, an address off the Tailscale network, and a connection the
 lookup cannot name get no answer at all. No header decides who is connecting.
+This computer itself gets no answer either once start has checked its own
+address, whichever account on it connects, so the dashboard is opened from
+another device.
 
 In this version the dashboard serves one page naming the person it let in, and
 nothing of the project yet.
