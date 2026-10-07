@@ -419,7 +419,8 @@ func TestPreflightJudgesTheLayoutSignalAtThePin(t *testing.T) {
 	}
 	snap := filepath.Join(dir, "snapshot")
 	gitIn(t, snap, "rm", "-r", "-q", "cmd")
-	gitIn(t, snap, "commit", "-q", "-m", "drop the entry point")
+	gitIn(t, snap, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
+		"-c", "commit.gpgsign=false", "commit", "-q", "-m", "drop the entry point")
 	write(t, filepath.Join(dir, "bin", "abcd"), "work binary v2")
 	res, err := Preflight(r.Root(), m.ID)
 	if !errors.Is(err, ErrHalted) || failedIDs(res) != "binary.pinned" {
