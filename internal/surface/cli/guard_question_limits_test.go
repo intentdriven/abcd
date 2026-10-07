@@ -167,8 +167,8 @@ func rulesNamed(parts []namedPart) []string {
 }
 
 // TestRoutingQuestionOf20261003IsRefused is criterion A1: the routing question
-// of 2026-10-03, rebuilt as a fixture, is refused with exit 2 and exactly the
-// parts its findings list names, with the mode at product-thinker.
+// of 2026-10-03, rebuilt as a fixture, is refused with the host's deny and
+// exactly the parts its findings list names, with the mode at product-thinker.
 func TestRoutingQuestionOf20261003IsRefused(t *testing.T) {
 	input, err := os.ReadFile(filepath.Join("testdata", "questions", "routing-2026-10-03.json"))
 	if err != nil {
@@ -189,15 +189,10 @@ func TestRoutingQuestionOf20261003IsRefused(t *testing.T) {
 	setMode(t, root, mode.ProductThinker)
 
 	stdout, stderr, code := runGuard(askToolPayload(t, root, json.RawMessage(input)), "guard", "hook")
-	if code != 2 {
-		t.Fatalf("the routing question must be refused with exit 2; got %d (stderr %q)", code, stderr)
-	}
-	if stdout != "" {
-		t.Errorf("the refusal belongs on stderr alone, and the input is never rewritten; stdout = %q", stdout)
-	}
-	head, got, _ := refusal(t, stderr)
+	reason := mustDeny(t, stdout, stderr, code)
+	head, got, _ := refusal(t, reason)
 	if !slices.Equal(got, want.Findings) {
-		t.Errorf("the refusal named\n%v\nwant exactly\n%v\nstderr:\n%s", got, want.Findings, stderr)
+		t.Errorf("the refusal named\n%v\nwant exactly\n%v\nreason:\n%s", got, want.Findings, reason)
 	}
 	if n := strconv.Itoa(len(want.Findings) + want.More); !strings.Contains(head, ": "+n+" part(s)") {
 		t.Errorf("the head line must count %s part(s), the named and the %d more:\n%s", n, want.More, head)
@@ -236,7 +231,7 @@ func TestWellBuiltQuestionIsAdmitted(t *testing.T) {
 }
 
 // TestRecommendedStarredOrLongHeaderIsRefused is criterion A3 at the hook:
-// each case is refused with exit 2 and a line naming the rule, the value and
+// each case is refused with the host's deny and a line naming the rule, the value and
 // the limit. A header outside the chip grammar makes the question abcd's only
 // through a mode naming somebody, so the mode here names the product thinker.
 func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
@@ -254,10 +249,8 @@ func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 			q := wellBuilt()
 			tc.edit(&q)
 			stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
-			if code != 2 || stdout != "" {
-				t.Fatalf("want exit 2 and an empty stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
-			}
-			_, parts, lines := refusal(t, stderr)
+			reason := mustDeny(t, stdout, stderr, code)
+			_, parts, lines := refusal(t, reason)
 			hit := false
 			for i, p := range parts {
 				if p.Rule == tc.rule && strings.Contains(lines[i], strconv.Quote(tc.value)) && strings.Contains(lines[i], tc.limit) {
@@ -265,7 +258,7 @@ func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 				}
 			}
 			if !hit {
-				t.Errorf("no line names the rule %q, the value %q and the limit %q:\n%s", tc.rule, tc.value, tc.limit, stderr)
+				t.Errorf("no line names the rule %q, the value %q and the limit %q:\n%s", tc.rule, tc.value, tc.limit, reason)
 			}
 		})
 	}
@@ -296,26 +289,22 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 
 			root := managedCheckout(t)
 			setMode(t, root, mode.ProductThinker)
-			_, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
-			if code != 2 {
-				t.Fatalf("product thinker: want exit 2; got %d (stderr %q)", code, stderr)
-			}
-			if _, parts, _ := refusal(t, stderr); !slices.Equal(rulesNamed(parts), []string{"register"}) {
-				t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), stderr)
+			stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
+			reason := mustDeny(t, stdout, stderr, code)
+			if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
+				t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 			}
 
 			setMode(t, root, mode.Facilitator)
-			if _, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook"); code != 0 || stderr != "" {
-				t.Errorf("facilitator: the mechanism and the ids are theirs; code=%d stderr=%q", code, stderr)
+			if stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
+				t.Errorf("facilitator: the mechanism and the ids are theirs; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 			}
 
 			repo := unmanagedRepo(t)
-			_, stderr, code = runGuard(askPayload(t, repo, q), "guard", "hook")
-			if code != 2 {
-				t.Fatalf("no mode store, Product chip: want exit 2; got %d (stderr %q)", code, stderr)
-			}
-			if _, parts, _ := refusal(t, stderr); !slices.Equal(rulesNamed(parts), []string{"register"}) {
-				t.Errorf("no mode store, Product chip: want one register finding; got %v:\n%s", rulesNamed(parts), stderr)
+			stdout, stderr, code = runGuard(askPayload(t, repo, q), "guard", "hook")
+			reason = mustDeny(t, stdout, stderr, code)
+			if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
+				t.Errorf("no mode store, Product chip: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 			}
 		})
 	}
@@ -329,19 +318,17 @@ func TestRecommendedOrStarredOptionIsRefused(t *testing.T) {
 	setMode(t, root, mode.Facilitator)
 	q := wellBuilt()
 	q.Options[1].Label = "Number only *"
-	_, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
-	if code != 2 {
-		t.Fatalf("want exit 2; got %d (stderr %q)", code, stderr)
-	}
-	_, parts, lines := refusal(t, stderr)
+	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	_, parts, lines := refusal(t, reason)
 	if len(parts) != 1 || parts[0].Rule != "never-recommended" || parts[0].Part != "option 2 label" {
-		t.Fatalf("want one never-recommended finding on option 2's label; got %v:\n%s", parts, stderr)
+		t.Fatalf("want one never-recommended finding on option 2's label; got %v:\n%s", parts, reason)
 	}
 	if !strings.Contains(lines[0], strconv.Quote("Number only *")) {
-		t.Errorf("the refusal does not name the label:\n%s", stderr)
+		t.Errorf("the refusal does not name the label:\n%s", reason)
 	}
 	if !strings.Contains(lines[0], question.RecommendedRemedy) {
-		t.Errorf("the remedy must name the host's instruction and abcd's rule reversing it:\n%s", stderr)
+		t.Errorf("the remedy must name the host's instruction and abcd's rule reversing it:\n%s", reason)
 	}
 }
 
@@ -379,27 +366,23 @@ func TestAbcdChipWhileManagedIsRefused(t *testing.T) {
 	q := wellBuilt()
 	q.Header = "Product Q1"
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
-	if code != 2 || stdout != "" {
-		t.Fatalf("an abcd chip while managed must exit 2; code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-	if strings.TrimRight(stderr, "\n") != questionRefusal {
-		t.Errorf("want the existing one-line refusal alone; stderr = %q", stderr)
+	reason := mustDeny(t, stdout, stderr, code)
+	if reason != questionRefusal {
+		t.Errorf("want the existing one-line refusal alone; reason = %q", reason)
 	}
 	if markedOpen(t, root) {
 		t.Error("a refused question was marked open")
 	}
 
 	q.Options[0].Label = "Keep it (Recommended)"
-	_, stderr, code = runGuard(askPayload(t, root, q), "guard", "hook")
-	if code != 2 {
-		t.Fatalf("want exit 2; got %d (stderr %q)", code, stderr)
+	stdout, stderr, code = runGuard(askPayload(t, root, q), "guard", "hook")
+	reason = mustDeny(t, stdout, stderr, code)
+	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
+		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), reason)
 	}
-	if _, parts, _ := refusal(t, stderr); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
-		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), stderr)
-	}
-	all := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+	all := strings.Split(strings.TrimRight(reason, "\n"), "\n")
 	if all[len(all)-1] != questionRefusal {
-		t.Errorf("the mode's refusal must close the lines; stderr:\n%s", stderr)
+		t.Errorf("the mode's refusal must close the lines; reason:\n%s", reason)
 	}
 }
 
@@ -439,17 +422,15 @@ func TestQuestionRefusalEchoesSanitisedValues(t *testing.T) {
 	q := wellBuilt()
 	q.Options[1].Description = "One. \x1b[2JTwo\u202e. Three."
 	q.Options[0].Label = "Keep\x07 it \u200b(Recommended)\x1b]8;;http://example.com\x07"
-	_, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
-	if code != 2 {
-		t.Fatalf("want exit 2; got %d (stderr %q)", code, stderr)
-	}
-	for _, r := range stderr {
+	stdout, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	for _, r := range reason {
 		if (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u202e' || r == '\u200b' {
-			t.Fatalf("the refusal echoes an unsafe rune %U:\n%q", r, stderr)
+			t.Fatalf("the refusal echoes an unsafe rune %U:\n%q", r, reason)
 		}
 	}
-	if _, parts, _ := refusal(t, stderr); !slices.Equal(rulesNamed(parts), []string{"meaning-sentences", "never-recommended"}) {
-		t.Fatalf("want the description and the label each named; got %v:\n%s", rulesNamed(parts), stderr)
+	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"meaning-sentences", "never-recommended"}) {
+		t.Fatalf("want the description and the label each named; got %v:\n%s", rulesNamed(parts), reason)
 	}
 }
 
@@ -460,13 +441,11 @@ func TestLongChipHeaderIsRefusedWithoutAMode(t *testing.T) {
 	repo := unmanagedRepo(t)
 	q := wellBuilt()
 	q.Header = "Product Q12/40"
-	_, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
-	if code != 2 {
-		t.Fatalf("want exit 2; got %d (stderr %q)", code, stderr)
-	}
-	_, parts, lines := refusal(t, stderr)
+	stdout, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	_, parts, lines := refusal(t, reason)
 	if !slices.Equal(rulesNamed(parts), []string{"header"}) || !strings.Contains(lines[0], "12 columns") {
-		t.Errorf("want one header finding naming the 12-column limit; got %v:\n%s", rulesNamed(parts), stderr)
+		t.Errorf("want one header finding naming the 12-column limit; got %v:\n%s", rulesNamed(parts), reason)
 	}
 }
 
@@ -497,16 +476,14 @@ func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
 				t.Fatalf("the payload is %d bytes, over the hook's cap", len(payload))
 			}
 			stdout, stderr, code := runGuard(payload, "guard", "hook")
-			if code != 2 || stdout != "" {
-				t.Fatalf("want exit 2 and no stdout; code=%d stdout=%d bytes", code, len(stdout))
-			}
-			if len(stderr) > 4096 {
-				t.Fatalf("the refusal is %d bytes; it must stay under 4 KiB:\n%.600s", len(stderr), stderr)
+			reason := mustDeny(t, stdout, stderr, code)
+			if len(reason) > 4096 {
+				t.Fatalf("the refusal is %d bytes; it must stay under 4 KiB:\n%.600s", len(reason), reason)
 			}
 			// refusal checks the head line's count against the parts named
 			// and the closing line's count of the rest.
-			if _, parts, _ := refusal(t, stderr); len(parts) > maxRefusalParts {
-				t.Errorf("the refusal names %d parts, over the %d it may name:\n%s", len(parts), maxRefusalParts, stderr)
+			if _, parts, _ := refusal(t, reason); len(parts) > maxRefusalParts {
+				t.Errorf("the refusal names %d parts, over the %d it may name:\n%s", len(parts), maxRefusalParts, reason)
 			}
 		})
 	}
@@ -523,20 +500,18 @@ func TestModeMadeQuestionAbcdsSaysSo(t *testing.T) {
 	for st, who := range map[mode.State]string{mode.ProductThinker: "the product thinker", mode.Facilitator: "the technical facilitator"} {
 		root := managedCheckout(t)
 		setMode(t, root, st)
-		_, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
-		if code != 2 {
-			t.Fatalf("%s: want exit 2; got %d (stderr %q)", st, code, stderr)
-		}
+		stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+		reason := mustDeny(t, stdout, stderr, code)
 		want := "treated as abcd's because the mode names " + who + "; another tool's question asked now is held to abcd's rules"
-		if !strings.Contains(stderr, want) {
-			t.Errorf("%s: the refusal must say why the question is abcd's (%q):\n%s", st, want, stderr)
+		if !strings.Contains(reason, want) {
+			t.Errorf("%s: the refusal must say why the question is abcd's (%q):\n%s", st, want, reason)
 		}
-		refusal(t, stderr)
+		refusal(t, reason)
 
 		q := wellBuilt()
 		q.Options[0].Label = "Keep it (Recommended)"
-		if _, stderr, _ := runGuard(askPayload(t, root, q), "guard", "hook"); strings.Contains(stderr, "treated as abcd's") {
-			t.Errorf("%s: a question carrying abcd's chip is abcd's on the chip, not the mode:\n%s", st, stderr)
+		if stdout, _, _ := runGuard(askPayload(t, root, q), "guard", "hook"); strings.Contains(stdout, "treated as abcd's") {
+			t.Errorf("%s: a question carrying abcd's chip is abcd's on the chip, not the mode:\n%s", st, stdout)
 		}
 	}
 }

@@ -48,16 +48,24 @@ Three verdicts, and they are the same decision reported two ways:
 |---|---|---|
 | `allow` | exit 0 | exit 0, silent |
 | `warn` | exit 0, warning rendered | exit 1, warning on stderr |
-| `block` | exit 1, why + successor rendered | exit 2, the host's blocking status, why + successor as the message |
+| `block` | exit 1, why + successor rendered | exit 0, the host's deny on stdout, why + successor as its reason |
 
 A block names the entry, says in plain language what the command destroys, and
 gives the safe command to run instead. That successor is what makes the guard
 worth having rather than merely obstructive.
 
-The exit codes are the contract, and the asymmetry in them is deliberate. On the
-hook, only exit 2 stops anything; a warn exits 1 because a pre-tool-use hook that
-exits 0 has its stderr discarded, so a warn returning 0 would run as if allowed
-with nobody told (iss-231). A guard that cannot answer at all — a registry with
+The exit codes and the hook's stdout are the contract, and the asymmetry in them
+is deliberate. On the hook, only the host's deny stops anything: exit 0 and one
+JSON object on stdout, `hookSpecificOutput` carrying `hookEventName`
+`PreToolUse`, `permissionDecision` `deny` and a `permissionDecisionReason` that
+holds the block's text, each line through `termsafe.Sanitize`. The host shows the
+reason to the person on one error line, without the hook's command echoed before
+it, and hands it to the agent. Because the host discards stderr on exit 0, a line
+the hook wrote before it blocked (the notice that the repo's guard file did not
+load, a refused repository root) leads the reason rather than vanishing. A warn
+exits 1 because a pre-tool-use hook that exits 0 has its stderr discarded, so a
+warn returning 0 would run as if allowed with nobody told (iss-231). An allow
+prints nothing on stdout, where the host reads a decision. A guard that cannot answer at all — a registry with
 nothing left to check against, a registry switched off — exits 1 on the hook and
 lets the command run, and exits 2 on the check so that a script never reads
 silence as clearance. A command line the guard cannot split is the exception on
@@ -124,7 +132,7 @@ is read from the command tree and passed in. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview
 shows (the layout intent's decision 20). Every finding refuses at once with
-the blocking status: one head line, "Blocked by the abcd guard (question tool):
+the host's deny, whose reason is one head line, "Blocked by the abcd guard (question tool):
 N part(s) of this question break abcd's asking rules; fix each and ask again.",
 then one line per finding naming the tab, the part, the value, the limit and
 the remedy, each line through `termsafe.Sanitize`. The refusal's size follows
@@ -145,7 +153,7 @@ cannot be read fails open naming no tool. Neither echoes the decoder's text,
 which can name a Go type.
 
 In a repository abcd manages, abcd's question asked while `abcd mode` reads
-managed is also refused with the blocking status. Alone, the refusal is one
+managed is also refused with the host's deny. Alone, the refusal is one
 line naming the two settings, `abcd mode product-thinker` and `abcd mode
 facilitator`, so the agent says whom it is asking before it asks and the
 status-line badge shows it; beside field findings, that line follows them. Once
@@ -264,7 +272,7 @@ repository it runs in as well as the session's, and the stricter verdict wins,
 so a workdir can add a hazard and never remove one. A workdir is never read as
 a `cd`: a probe of the one host with the field found that a missing workdir
 fails the call and runs nothing, so no failed-cd hazard exists. A malformed
-workdir is refused with the blocking status.
+workdir is refused with the host's deny.
 
 The rule that keeps this sound is stated beside the code
 (`internal/core/guard/workdir.go`): a host that falls back to the session

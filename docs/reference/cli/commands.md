@@ -1299,15 +1299,20 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard with the host's blocking status.
+Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.
 
 **Usage:** `abcd guard hook`
 
 Reads a host pre-tool-use hook payload on stdin and evaluates its shell
-command against the hazard registry. A blocker exits with the host's
-blocking status and puts the safe successor and the plain-language why on
-stderr, which is the channel the host replays to the agent. A warn and an
-allow both let the command run.
+command against the hazard registry. A blocker is refused with the host's
+deny: exit 0 and one JSON object on stdout, hookSpecificOutput carrying
+permissionDecision "deny" and a permissionDecisionReason that holds the
+safe successor and the plain-language why. The host shows that reason to
+the person and hands it to the agent. A line the hook wrote before the
+block, such as a notice that the repo's guard file did not load, leads
+the reason, because the host discards stderr on exit 0. A warn exits 1
+with its message on stderr, and an allow exits 0 printing nothing; both
+let the command run.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a
 tool call that is not a shell command, a registry that will not load —
@@ -1338,16 +1343,17 @@ remove one. The workdir is never read as a cd: the one host that has the
 field fails the call when the directory is missing, so no failed-cd hazard
 exists. A workdir that is not a string, or holds a NUL byte, a control
 character or invalid UTF-8, or is over 4096 bytes, is refused with the
-blocking status and the reason.
+host's deny and the reason.
 
 On the host's question tool the hook checks abcd's own questions instead of
 consulting the registry. A question is abcd's when a header is in abcd's chip
 grammar (such as Product Q2) or when `abcd mode` names somebody; any other
 question is another tool's and runs unchecked. abcd's question is held to
 the asking rules' field limits wherever the hook runs, and one that breaks
-them is refused with the blocking status: a head line counting the parts,
-then one line per part naming the tab, the part, the value, the limit and
-the remedy. The hook never rewrites a question. In a checkout abcd manages,
+them is refused with the host's deny, whose reason is a head line counting
+the parts, then one line per part naming the tab, the part, the value, the
+limit and the remedy. The hook never rewrites a question. In a checkout
+abcd manages,
 abcd's question asked while `abcd mode` reads managed is also refused,
 naming `abcd mode product-thinker` and `abcd mode facilitator`; once the
 mode names somebody the question runs and is marked open in the local tier,

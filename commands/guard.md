@@ -67,8 +67,12 @@ differently.
 Reads a host pre-tool-use hook payload on stdin and applies the check's
 decision before a shell command executes, adding the registry of a per-call
 working directory's repository when the host names one (below). It is invoked by the plugin's hook manifest,
-not by hand; a blocker returns the host's blocking status with the successor and
-the why as the message, and a warn or an allow lets the command run.
+not by hand; a blocker returns the host's deny, exit 0 and one JSON object on
+stdout whose reason carries the successor and the why, and a warn or an allow
+lets the command run. The host shows that reason to you on one error line and
+hands it to the agent. A notice the hook printed before it blocked, such as a
+repository guard file that did not load, leads the reason, because the host
+discards the hook's stderr when it exits 0.
 
 On the host's question tool the hook checks abcd's own questions instead of
 consulting the registry. A question is abcd's when a header is in abcd's chip
@@ -84,8 +88,8 @@ the number of questions and options, each label's words and each meaning's
 sentences, the decide-later option, no bold and no recommended mark, the `Now:`
 and `Change later:` lines, the thing quoted before the question, the rows it
 takes, and no side preview (the host hides every option's description while a
-preview shows, so the meaning goes in the description). A question that breaks any of them is refused with the blocking
-status, in one head line, "Blocked by the abcd guard (question tool): N part(s)
+preview shows, so the meaning goes in the description). A question that breaks any of them is refused with the host's
+deny, whose reason is one head line, "Blocked by the abcd guard (question tool): N part(s)
 of this question break abcd's asking rules; fix each and ask again.", then one
 line per part naming the tab, the part, the value, the limit and the remedy, so
 one retry fixes them all. At most ten parts are named, and a closing line counts
@@ -135,7 +139,7 @@ command is checked against that repository's registry as well as the session's,
 and the stricter verdict wins. So a workdir can add a hazard and can never take
 one away. A workdir is not a `cd`: the one host that has the field fails the
 call when the directory is missing, so no failed-cd hazard exists. A workdir that
-no directory could be named by is refused with the blocking status and the
+no directory could be named by is refused with the host's deny and the
 reason: a value that is not a string, holds a NUL byte, a control character or
 invalid UTF-8, or is over 4096 bytes.
 

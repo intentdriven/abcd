@@ -56,8 +56,8 @@ const questionRefusal = "Blocked by the abcd guard (question tool): the mode rea
 
 // questionGate is the guard hook's answer for a question-tool call
 // (itd-2609212130146198; spc-2610030944505997, "The question check in the
-// guard hook"). It never rewrites the question: it admits it or refuses it,
-// and nothing goes to stdout, where the host would read a replacement input.
+// guard hook"). It never rewrites the question: it admits it or refuses it
+// with the host's deny, and it never puts a replacement input on stdout.
 //
 // The order is the spec's. First the questions are decoded; a field the check
 // cannot read is not a decision, so the question runs on the loud, non-blocking
@@ -118,20 +118,19 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 			modeRefuses = true
 		}
 	}
-	if len(findings) > 0 {
-		why := ""
-		if !chip {
-			why = modeMadeAbcds(st)
+	if len(findings) > 0 || modeRefuses {
+		var reason strings.Builder
+		if len(findings) > 0 {
+			why := ""
+			if !chip {
+				why = modeMadeAbcds(st)
+			}
+			writeLimitsRefusal(&reason, findings, why)
 		}
-		writeLimitsRefusal(stderr, findings, why)
 		if modeRefuses {
-			fmt.Fprintln(stderr, questionRefusal)
+			fmt.Fprintln(&reason, questionRefusal)
 		}
-		return &exitError{Code: 2}
-	}
-	if modeRefuses {
-		fmt.Fprintln(stderr, questionRefusal)
-		return &exitError{Code: 2}
+		return denyCall(reason.String())
 	}
 	if badge {
 		if err := mode.MarkQuestionOpen(root, st); err != nil {
@@ -240,7 +239,7 @@ func modeMadeAbcds(st mode.State) string {
 		"; another tool's question asked now is held to abcd's rules."
 }
 
-// writeLimitsRefusal writes the refusal the host replays to the agent: one
+// writeLimitsRefusal writes the refusal the host's deny carries: one
 // head line counting every part, then, when why is set, the one line saying
 // why a question without abcd's chip is abcd's, then one line per finding naming the tab, the
 // part, the value, the limit and the remedy, at most maxRefusalParts of them,

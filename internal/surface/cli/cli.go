@@ -91,9 +91,10 @@ func helpRunE(cmd *cobra.Command, _ []string) error { return cmd.Help() }
 // host reads 2 as "block this action". Cobra's usage error exits 2, which is
 // right in a terminal and wrong here — it makes abcd answer a question it did not
 // evaluate. `guard hook`'s contract (spc-16, itd-103 AC 1) is fail-open-loud:
-// exit 2 means "the guard decided to block", and every path that is NOT a
-// decision exits 1 so the command still runs and the warning is still seen. An
-// unknown sub-verb is not a decision.
+// only the guard's own decision blocks (the host's deny, exit 0 with the
+// decision on stdout), and every path that is NOT a decision exits 1 so the
+// command still runs and the warning is still seen. An unknown sub-verb is not
+// a decision.
 //
 // This is reachable because the manifest and the binary can skew — hooks/hooks.json
 // ships with the plugin git clone while hooks/bootstrap.sh fetches the binary from

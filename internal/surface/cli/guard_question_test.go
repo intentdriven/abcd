@@ -27,28 +27,23 @@ func questionMarker(root string) string {
 
 // TestGuardRefusesAQuestionWhileManaged is criterion 2: with the mode reading
 // managed, a question to the human through the host's question tool is refused
-// with the host's blocking status, and the refusal names the two settings and
-// the verb that sets them. Nothing is marked open.
+// with the host's deny, and the refusal names the two settings and the verb
+// that sets them. Nothing is marked open.
 func TestGuardRefusesAQuestionWhileManaged(t *testing.T) {
 	root := managedCheckout(t)
 	stdout, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
 
-	if code != 2 {
-		t.Fatalf("a question while managed must exit 2; got %d (stderr %q)", code, stderr)
-	}
-	if stdout != "" {
-		t.Errorf("the refusal belongs on stderr alone; stdout = %q", stdout)
-	}
+	reason := mustDeny(t, stdout, stderr, code)
 	for _, want := range []string{
 		"abcd mode product-thinker", "abcd mode facilitator",
 		"the product thinker", "the technical facilitator",
 	} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("the refusal must name %q; stderr = %q", want, stderr)
+		if !strings.Contains(reason, want) {
+			t.Errorf("the refusal must name %q; reason = %q", want, reason)
 		}
 	}
-	if strings.Count(strings.TrimRight(stderr, "\n"), "\n") != 0 {
-		t.Errorf("the refusal is one line; stderr = %q", stderr)
+	if strings.Contains(reason, "\n") {
+		t.Errorf("the refusal is one line; reason = %q", reason)
 	}
 	if _, err := os.Lstat(questionMarker(root)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a refused question was marked open: %v", err)

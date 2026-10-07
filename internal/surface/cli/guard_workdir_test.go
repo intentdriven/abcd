@@ -64,19 +64,15 @@ func TestGuardHookResolvesTheCommandAgainstTheWorkdir(t *testing.T) {
 	dir := workdirSession(t)
 
 	t.Run("hazard in the workdir's own registry blocks", func(t *testing.T) {
-		_, stderr, code := runGuard(preToolUseIn(t, "make release", dir, "hot"), "guard", "hook")
-		if code != 2 {
-			t.Fatalf("`make release` run in hot/ must block on hot/'s registry: want exit 2, got %d (stderr %q)", code, stderr)
-		}
-		if !strings.Contains(stderr, "make-release") || !strings.Contains(stderr, "make release-dry-run") {
-			t.Errorf("the refusal must name the workdir registry's entry and its successor; stderr = %q", stderr)
+		stdout, stderr, code := runGuard(preToolUseIn(t, "make release", dir, "hot"), "guard", "hook")
+		reason := mustDeny(t, stdout, stderr, code)
+		if !strings.Contains(reason, "make-release") || !strings.Contains(reason, "make release-dry-run") {
+			t.Errorf("the refusal must name the workdir registry's entry and its successor; reason = %q", reason)
 		}
 	})
 	t.Run("an absolute workdir resolves to the same registry", func(t *testing.T) {
-		_, stderr, code := runGuard(preToolUseIn(t, "make release", dir, filepath.Join(dir, "hot")), "guard", "hook")
-		if code != 2 {
-			t.Errorf("an absolute workdir naming hot/ must block the same way: got %d (stderr %q)", code, stderr)
-		}
+		stdout, stderr, code := runGuard(preToolUseIn(t, "make release", dir, filepath.Join(dir, "hot")), "guard", "hook")
+		mustDeny(t, stdout, stderr, code)
 	})
 	t.Run("the same command in a workdir with no such entry is allowed", func(t *testing.T) {
 		stdout, stderr, code := runGuard(preToolUseIn(t, "make release", dir, "cold"), "guard", "hook")
@@ -87,15 +83,15 @@ func TestGuardHookResolvesTheCommandAgainstTheWorkdir(t *testing.T) {
 	t.Run("the same relative workdir from a session where it names nothing is allowed", func(t *testing.T) {
 		// hot/ exists only under dir; from its sibling cold/ the value "hot"
 		// names a directory that does not exist, and the host fails the call.
-		_, stderr, code := runGuard(preToolUseIn(t, "make release", filepath.Join(dir, "cold"), "hot"), "guard", "hook")
-		if code != 0 {
-			t.Errorf("a workdir naming no directory runs nothing on the probed host: want exit 0, got %d (stderr %q)", code, stderr)
+		stdout, stderr, code := runGuard(preToolUseIn(t, "make release", filepath.Join(dir, "cold"), "hot"), "guard", "hook")
+		if code != 0 || stdout != "" {
+			t.Errorf("a workdir naming no directory runs nothing on the probed host: want a silent exit 0, got %d (stdout %q stderr %q)", code, stdout, stderr)
 		}
 	})
 	t.Run("without a workdir the session registry alone decides", func(t *testing.T) {
-		_, stderr, code := runGuard(preToolUse(t, "Bash", "make release", dir), "guard", "hook")
-		if code != 0 {
-			t.Errorf("the session registry does not name `make release`: want exit 0, got %d (stderr %q)", code, stderr)
+		stdout, stderr, code := runGuard(preToolUse(t, "Bash", "make release", dir), "guard", "hook")
+		if code != 0 || stdout != "" {
+			t.Errorf("the session registry does not name `make release`: want a silent exit 0, got %d (stdout %q stderr %q)", code, stdout, stderr)
 		}
 	})
 }
@@ -121,9 +117,9 @@ func TestGuardHookWorkdirRegistryCannotDisarmTheSession(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(off, "guard.json"), []byte(cfg), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, stderr, code := runGuard(preToolUseIn(t, "git push --force origin main", dir, "off"), "guard", "hook")
-			if code != 2 || !strings.Contains(stderr, "git-push-force") {
-				t.Errorf("the session's bundled blocker must still block in a workdir whose registry says otherwise: exit %d, stderr %q", code, stderr)
+			stdout, stderr, code := runGuard(preToolUseIn(t, "git push --force origin main", dir, "off"), "guard", "hook")
+			if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "git-push-force") {
+				t.Errorf("the session's bundled blocker must still block in a workdir whose registry says otherwise: reason %q", reason)
 			}
 		})
 	}
@@ -144,29 +140,29 @@ func TestGuardHookMissingWorkdirIsNotAFailedCd(t *testing.T) {
 	}
 	for _, wd := range []string{"missing", "afile", "cold"} {
 		t.Run("rm -rf ./build in workdir "+wd, func(t *testing.T) {
-			_, stderr, code := runGuard(preToolUseIn(t, "rm -rf ./build", dir, wd), "guard", "hook")
-			if code != 0 {
-				t.Errorf("a host workdir is not a shell cd: want exit 0, got %d (stderr %q)", code, stderr)
+			stdout, stderr, code := runGuard(preToolUseIn(t, "rm -rf ./build", dir, wd), "guard", "hook")
+			if code != 0 || stdout != "" {
+				t.Errorf("a host workdir is not a shell cd: want a silent exit 0, got %d (stdout %q stderr %q)", code, stdout, stderr)
 			}
 		})
 		t.Run("rm -rf * in workdir "+wd, func(t *testing.T) {
-			_, stderr, code := runGuard(preToolUseIn(t, "rm -rf *", dir, wd), "guard", "hook")
-			if code == 2 || strings.Contains(stderr, "rm-rf-after-cd-chain") {
-				t.Errorf("a host workdir is not a shell cd: want no cd-chain block, got exit %d (stderr %q)", code, stderr)
+			stdout, stderr, code := runGuard(preToolUseIn(t, "rm -rf *", dir, wd), "guard", "hook")
+			if code == 2 || isDeny(stdout) || strings.Contains(stderr, "rm-rf-after-cd-chain") {
+				t.Errorf("a host workdir is not a shell cd: want no cd-chain block, got exit %d (stdout %q stderr %q)", code, stdout, stderr)
 			}
 		})
 	}
 	t.Run("a cd chain in the command still blocks inside a workdir", func(t *testing.T) {
-		_, stderr, code := runGuard(preToolUseIn(t, "cd scratch && rm -rf *", dir, "cold"), "guard", "hook")
-		if code != 2 || !strings.Contains(stderr, "rm-rf-after-cd-chain") {
-			t.Errorf("the command's own cd chain must still block: exit %d, stderr %q", code, stderr)
+		stdout, stderr, code := runGuard(preToolUseIn(t, "cd scratch && rm -rf *", dir, "cold"), "guard", "hook")
+		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "rm-rf-after-cd-chain") {
+			t.Errorf("the command's own cd chain must still block: reason %q", reason)
 		}
 	})
 }
 
 // TestGuardHookRefusesAMalformedWorkdir is the refusal half (guards prove
 // themselves): the workdir is written by the model, so a value that names no
-// directory the host could run in is refused with the host's blocking status and
+// directory the host could run in is refused with the host's deny and
 // the reason, never resolved into a guess and never allowed to drop the whole
 // payload into the fail-open path. Before the field was read, any workdir was
 // ignored and the command was checked as if it ran in the session directory; the
@@ -190,20 +186,15 @@ func TestGuardHookRefusesAMalformedWorkdir(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := workdirSession(t)
 			stdout, stderr, code := runGuard(preToolUseIn(t, "ls", dir, tc.workdir), "guard", "hook")
-			if code != 2 {
-				t.Fatalf("a malformed workdir must be refused with the blocking status 2; got %d (stderr %q)", code, stderr)
+			reason := mustDeny(t, stdout, stderr, code)
+			if !strings.Contains(reason, "workdir") || !strings.Contains(reason, tc.want) {
+				t.Errorf("the refusal must name the field and what was wrong with it (%q); reason = %q", tc.want, reason)
 			}
-			if !strings.Contains(stderr, "workdir") || !strings.Contains(stderr, tc.want) {
-				t.Errorf("the refusal must name the field and what was wrong with it (%q); stderr = %q", tc.want, stderr)
+			if strings.Contains(reason, "UNGUARDED") {
+				t.Errorf("a refusal is a decision, not a fail-open; reason = %q", reason)
 			}
-			if strings.Contains(stderr, "UNGUARDED") {
-				t.Errorf("a refusal is a decision, not a fail-open; stderr = %q", stderr)
-			}
-			if strings.ContainsAny(stderr, "\x00\x1b") {
-				t.Errorf("the refusal must not echo raw control bytes to the host; stderr = %q", stderr)
-			}
-			if stdout != "" {
-				t.Errorf("the hook writes nothing to stdout; got %q", stdout)
+			if strings.ContainsAny(reason, "\x00\x1b") || strings.ContainsAny(stdout, "\x00\x1b") {
+				t.Errorf("the refusal must not echo raw control bytes to the host; stdout = %q", stdout)
 			}
 		})
 	}
