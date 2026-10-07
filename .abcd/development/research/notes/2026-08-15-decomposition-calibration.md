@@ -2287,3 +2287,48 @@ Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "We onl
 | the stop hook's place among abcd's hooks | plumbing | the brief's hook list, when the intent is planned |
 
 Verdict: FILE-AS-IS. The product thinker chose "abcd owns it" over fixing or removing the personal hook in the harness's user folder, and confirmed the routing ("agreed"). The personal hook is removed once the intent ships; the same day the product thinker ruled that nothing in that folder calls abcd except the consented status line.
+
+## 2026-10-05: an abcdesign.app page for editing a public project's brief (product thinker, routing confirmed in part)
+
+| part | type | home |
+|---|---|---|
+| anyone opens a public project's brief, edits it on their own device and submits it as a proposal | capability | intent itd-2610052000411162 (draft) |
+| several people edit one brief together, add notes and export the combined work | capability | intent itd-2610052000424067 (draft), builds on the first |
+| what a submission may do in someone else's project (a proposal only, never a direct write) | trust rule | open question on itd-2610052000411162; a decision record and brief invariant at planning |
+| the state-of-the-art pass on shared, offline editing | research | open question on both; a dated research note before planning |
+
+Verdict: SPLIT. The product thinker chose two intents over one ("Two intents"), a new site abcdesign.app over abcd's own site, and filing now with the research owed before planning ("File now, research later"). The trust-rule and research rows were not put to a separate question; graded as unconfirmed.
+
+## 2026-10-07: abcd works natively on Windows (product thinker, routing confirmed in part)
+
+| part | type | home |
+|---|---|---|
+| the binary builds and runs on Windows (today `internal/fsutil`, `internal/term` and `internal/term/ptytest` do not compile for `GOOS=windows`), and the release matrix carries it | capability | intent itd-2610070544145422 (draft) |
+| the plugin's hooks run on Windows: `hooks/hooks.json` and `hooks/bootstrap.sh` are POSIX shell, and the no-binary cold start needs a PowerShell twin | capability | the same intent; the cold-start shim is existing iss-378, refined by it |
+| a Windows CI runner proves both | plumbing | the intent's spec, at planning |
+| the README and install guide's "Windows runs the Linux route inside WSL" | documented stance, flagged as a possible reversal for the product thinker to confirm | the same intent |
+
+Verdict: FILE-AS-IS. The product thinker chose one goal over two (tool first, plugin after) and kept the facilitator-drafted press release. The split into one record was confirmed; the iss-378 link and the WSL reversal flag were not put to a question, so those rows are graded as unconfirmed. itd-108's draft names "Windows support, which remains its own future intent"; this is that intent.
+
+## 2026-10-07: a word in a new idea marks it to revisit (product thinker, routing decided by the facilitator)
+
+| part | type | home |
+|---|---|---|
+| a product thinker marks an idea at filing with one word, optionally | capability | intent itd-2610070549060530 (draft) |
+| the board lists marked ideas first, as ones to revisit | capability | the same intent; it builds on the product thinker's board, itd-2610031214560142 |
+| whether the mark also raises an idea in the build pick | open question, flagged as a possible change to itd-2609211116005482's record-facts-only scoring | the same intent's Open Questions |
+
+Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "Clear?" (one defensible routing: marking and showing are one user moment). Routing not put to a separate question; graded as unconfirmed.
+
+## 2026-10-07: the brief and the intents together on the dashboard (product thinker, routing confirmed in part)
+
+| part | type | home |
+|---|---|---|
+| review and prioritise intents on the dashboard | capability | intent itd-2610070550516046 (draft) |
+| a picture relating brief sections to intents and their state | capability | the same intent; draws the mapping of itd-2610040817105016 |
+| "the product thinker owns two things: the brief and the intents" | standing stance | the glossary entry `core/product-thinker`, not yet changed; held as an open question on the intent |
+| the product thinker's order deciding what is built next | possible reversal of itd-2609211116005482's record-facts-only pick, flagged for the product thinker | the same intent's Open Questions |
+
+Verdict: FILE-AS-IS. The facilitator proposed one goal or two (review/prioritise, and the picture); the product thinker chose one. The links and the stance's routing were not put to a question, so those rows are graded as unconfirmed.
+
+Follow-up the same day on the revisit mark (itd-2610070549060530): the product thinker answered its six open questions, and ruled that the mark also raises an idea in the build pick, so the row flagged as a possible change to itd-2609211116005482 is now confirmed as an intended change, to be specified at planning.

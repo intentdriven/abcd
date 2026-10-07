@@ -135,6 +135,11 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610040817105016` — Every brief section shows what realises it, and a brief change names what it touches (draft; refines itd-61; revisited after the downstream lab)
 - `itd-2610040822131032` — A lab runs end to end from a question the product thinker asks (draft; builds on itd-2609212137128014; shaped after the downstream brief lab)
 - `itd-2610050548126044` — abcd reminds a session to refresh its handover note only when that session changed the tree (draft; takes over a personal stop hook)
+- `itd-2610052000411162` — Anyone opens, edits on their own device and submits a public project's brief on abcdesign.app (draft; builds on itd-2610040754453237)
+- `itd-2610052000424067` — A group works on one public brief together, adds notes and exports the combined work (draft; builds on itd-2610052000411162)
+- `itd-2610070544145422` — Someone on Windows installs abcd and it just works, the tool in PowerShell and the plugin in Claude Code, with no WSL (draft)
+- `itd-2610070549060530` — A word in a new idea marks it to revisit, and the board puts it first (draft)
+- `itd-2610070550516046` — On the dashboard, a product thinker sees the brief and their ideas together, and puts the ideas in order (draft)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

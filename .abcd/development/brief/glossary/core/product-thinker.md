@@ -22,6 +22,10 @@ are theirs. They answer on a surface of their own, so a stop that waits on them 
 `abcd mode product-thinker` parks the loop on them, and the status line reads `waiting on the
 product thinker` until they answer.
 
+The product thinker owns two things in the record: the brief, which says what the product
+is, and the intents, which say what is to be built and in what order. Specs and the issue
+ledger are the technical facilitator's to work against those two.
+
 The role does not change with who runs the machinery. itd-97 (a draft) holds that the
 facilitator is a mode, not a person — a project runs duo, with a human technical facilitator,
 or solo, with abcd doing the facilitator's work — and in both the product thinker's decision
