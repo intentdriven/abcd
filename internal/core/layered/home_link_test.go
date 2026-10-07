@@ -27,7 +27,7 @@ func TestMachineLayerBehindASymlinkedAbcdHomeIsRefused(t *testing.T) {
 	}
 	f.write(filepath.Join(dotfiles, filepath.FromSlash(Config.MachineRel)), `{"pace":{"work_minutes":5}}`)
 	_, err := Load(Config, f.roots)
-	if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+	if err == nil || !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 		t.Fatalf("err = %v, want a refusal naming the symlinked ~/.abcd.noindex", err)
 	}
 }

@@ -73,10 +73,10 @@ func TestPrecedenceFlagRepoMachineBundled(t *testing.T) {
 		wantOriginContains string
 	}{
 		{"nothing configured: bundled", "", "", nil, 120, Bundled, "bundled"},
-		{"machine only", "", `{"pace":{"work_minutes":90}}`, nil, 90, Machine, "~/.abcd.noindex/config.json"},
+		{"machine only", "", `{"pace":{"work_minutes":90}}`, nil, 90, Machine, abcdhome.Display("config.json")},
 		{"repo over machine", `{"pace":{"work_minutes":60}}`, `{"pace":{"work_minutes":90}}`, nil, 60, Repo, ".abcd/config.json"},
 		{"flag over repo and machine", `{"pace":{"work_minutes":60}}`, `{"pace":{"work_minutes":90}}`, 30, 30, Flag, "--pace"},
-		{"repo file without the key falls to machine", `{"docs":{"target":"agents_md"}}`, `{"pace":{"work_minutes":90}}`, nil, 90, Machine, "~/.abcd.noindex/config.json"},
+		{"repo file without the key falls to machine", `{"docs":{"target":"agents_md"}}`, `{"pace":{"work_minutes":90}}`, nil, 90, Machine, abcdhome.Display("config.json")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,7 +116,7 @@ func TestMalformedFileRefusesNeverDefaults(t *testing.T) {
 		machine          bool
 	}{
 		{"repo invalid json", `{"pace": {`, ".abcd/config.json", false},
-		{"machine invalid json", `{"pace": `, "~/.abcd.noindex/config.json", true},
+		{"machine invalid json", `{"pace": `, abcdhome.Display("config.json"), true},
 		{"top level not an object", `[1,2]`, "not a JSON object", false},
 		{"duplicate key", `{"pace":{"work_minutes":1,"work_minutes":500}}`, "more than once", false},
 		{"duplicate top-level key", `{"pace":{},"pace":{"work_minutes":1}}`, "more than once", true},
@@ -199,7 +199,7 @@ func TestGuardedReads(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := Load(Config, f.roots)
-		if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/config.json") {
+		if err == nil || !strings.Contains(err.Error(), abcdhome.Display("config.json")) {
 			t.Fatalf("err = %v, want a refusal naming the machine file", err)
 		}
 	})

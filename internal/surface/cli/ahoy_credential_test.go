@@ -104,7 +104,7 @@ func TestAhoyCredentialVerifiesThenStores(t *testing.T) {
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("--json: %v\n%s", err, out)
 	}
-	if res.Name != "openrouter" || res.Home != "abcd" || !res.Verified || len(res.Wrote) != 1 || res.Wrote[0] != "~/.abcd.noindex/credentials.json" {
+	if res.Name != "openrouter" || res.Home != "abcd" || !res.Verified || len(res.Wrote) != 1 || res.Wrote[0] != abcdhome.Display("credentials.json") {
 		t.Fatalf("result = %+v", res)
 	}
 	board, err := runCLIErr(t, "ahoy", "--providers")
@@ -197,7 +197,7 @@ func TestARepositoryRouteToAKeyedProviderIsSkippedWithAWarning(t *testing.T) {
 	if n := strings.Count(warn, "holds a key"); n != 1 {
 		t.Fatalf("stderr carries %d keyed-route warning(s), want one:\n%s", n, warn)
 	}
-	for _, want := range []string{"oracle.roles.scribe", "openrouter/typesafe/jev-1.13", "skipped", "~/.abcd.noindex/config.json"} {
+	for _, want := range []string{"oracle.roles.scribe", "openrouter/typesafe/jev-1.13", "skipped", abcdhome.Display("config.json")} {
 		if !strings.Contains(warn, want) {
 			t.Errorf("the warning does not name %q:\n%s", want, warn)
 		}

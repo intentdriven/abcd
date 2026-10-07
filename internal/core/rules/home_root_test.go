@@ -185,7 +185,7 @@ var homeSpellings = []struct {
 // would stop at the home, and without one the toplevel IS the home.
 func TestResolveRootNeverAdoptsTheHomeAtAnySpelling(t *testing.T) {
 	for _, planted := range []bool{true, false} {
-		site := "the walk passes over ~/.abcd"
+		site := "the walk passes over a .abcd at the home"
 		if !planted {
 			site = "a toplevel that is the home takes the non-repo route"
 		}

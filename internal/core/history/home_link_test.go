@@ -28,7 +28,7 @@ func TestLocalTranscriptRootsBehindASymlinkedAbcdHomePullNothingIn(t *testing.T)
 	if ok {
 		t.Fatal("a local-transcript-roots declaration behind a symlinked ~/.abcd.noindex pulled the checkout in")
 	}
-	if !strings.Contains(note, LocalRootsDisplay) || !strings.Contains(note, "~/.abcd.noindex is a symlink") {
+	if !strings.Contains(note, LocalRootsDisplay) || !strings.Contains(note, abcdhome.Display()+" is a symlink") {
 		t.Errorf("the ignored declaration must say it was refused for the link: %q", note)
 	}
 

@@ -106,7 +106,7 @@ func TestTheRepositoryPaceWinsOverTheMachines(t *testing.T) {
 	if st.Pace.WorkMinutes.Origin != ".abcd/config.json" {
 		t.Fatalf("the origin names the repository's file: %+v", st.Pace)
 	}
-	if note := paceRecord(t, st); !strings.Contains(note, "100/200") || !strings.Contains(note, ".abcd/config.json") || strings.Contains(note, "~/.abcd.noindex") {
+	if note := paceRecord(t, st); !strings.Contains(note, "100/200") || !strings.Contains(note, ".abcd/config.json") || strings.Contains(note, abcdhome.Display()) {
 		t.Fatalf("the record names the repository's file and not the machine's: %q", note)
 	}
 
@@ -120,10 +120,10 @@ func TestTheRepositoryPaceWinsOverTheMachines(t *testing.T) {
 	}
 	st, _ = ReadState(repo.Root(), res.RunID)
 	if st.Pace.WorkMinutes.Layer != "repo" || st.Pace.PauseMinutes.Layer != "machine" || st.Pace.PauseMinutes.Value != 120 ||
-		st.Pace.SubAgents.Origin != "~/.abcd.noindex/config.json" {
+		st.Pace.SubAgents.Origin != abcdhome.Display("config.json") {
 		t.Fatalf("each key resolves through its own layers: %+v", st.Pace)
 	}
-	if note := paceRecord(t, st); !strings.Contains(note, ".abcd/config.json") || !strings.Contains(note, "~/.abcd.noindex/config.json") {
+	if note := paceRecord(t, st); !strings.Contains(note, ".abcd/config.json") || !strings.Contains(note, abcdhome.Display("config.json")) {
 		t.Fatalf("the record names both layers that applied: %q", note)
 	}
 }

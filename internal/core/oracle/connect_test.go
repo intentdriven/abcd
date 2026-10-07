@@ -55,7 +55,7 @@ func TestConnectVerifiesThenWritesTheBlockAndTheKey(t *testing.T) {
 	if res.Verified != want || res.KeyName != "openrouter" || res.KeyHome != KeyHomeABCD {
 		t.Fatalf("result = %+v", res)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{credential.StorePath, "~/.abcd.noindex/config.json"}) {
+	if !reflect.DeepEqual(res.Wrote, []string{credential.StorePath, abcdhome.Display("config.json")}) {
 		t.Fatalf("wrote = %v", res.Wrote)
 	}
 	for _, name := range []string{"config.json", credential.StoreFileName} {
@@ -141,7 +141,7 @@ func TestConnectKeepsAKeyInTheExternalHome(t *testing.T) {
 	if res.KeyHome != KeyHomeExternal || res.KeyName != "openrouter" || res.Verified.Credential != "openrouter" {
 		t.Fatalf("result = %+v", res)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{credential.IndexPath, "~/.abcd.noindex/config.json"}) {
+	if !reflect.DeepEqual(res.Wrote, []string{credential.IndexPath, abcdhome.Display("config.json")}) {
 		t.Fatalf("wrote = %v", res.Wrote)
 	}
 	if _, err := os.Lstat(machineFile(f, credential.StoreFileName)); !errors.Is(err, os.ErrNotExist) {
@@ -242,7 +242,7 @@ func TestConnectHoldsTheSetupToTheMachinesDenylist(t *testing.T) {
 		req := connectReq(f, p.base())
 		req.Models = models
 		_, err := Connect(context.Background(), req)
-		if err == nil || !strings.Contains(err.Error(), "(anthropic/*, from ~/.abcd.noindex/config.json)") {
+		if err == nil || !strings.Contains(err.Error(), "(anthropic/*, from "+abcdhome.Display("config.json")+")") {
 			t.Fatalf("%s: err = %v, want the machine's entry named", name, err)
 		}
 		if name == "listed model denied" && p.calls.Load() != 0 {
@@ -303,7 +303,7 @@ func TestConnectToALocalServerNeedsNoKey(t *testing.T) {
 	if a := p.auth.Load(); a != "" {
 		t.Fatalf("Authorization = %v", a)
 	}
-	if !reflect.DeepEqual(res.Wrote, []string{"~/.abcd.noindex/config.json"}) || res.KeyName != "" {
+	if !reflect.DeepEqual(res.Wrote, []string{abcdhome.Display("config.json")}) || res.KeyName != "" {
 		t.Fatalf("result = %+v", res)
 	}
 	if got, _ := f.loadAPI().Provider("desk"); got.Key != "" {
@@ -437,7 +437,7 @@ func TestConnectNamesAnUnsafeConfigLockRatherThanContention(t *testing.T) {
 	if strings.Contains(msg, "retry") || strings.Contains(msg, "another abcd") {
 		t.Fatalf("err = %v, want the unsafe lock named, not contention", err)
 	}
-	if !strings.Contains(msg, "~/.abcd.noindex/"+configLockFileName) || !strings.Contains(msg, "not a regular file") {
+	if !strings.Contains(msg, abcdhome.Display(configLockFileName)) || !strings.Contains(msg, "not a regular file") {
 		t.Fatalf("err = %v, want it to name the lock and that it is not a regular file", err)
 	}
 	if strings.Contains(msg, f.roots.Home) {

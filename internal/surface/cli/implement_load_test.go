@@ -240,7 +240,7 @@ func TestImplementLoadMalformedLimitsIsLoud(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, _ := implementCLI(t, "implement", "load", "--site", "preflight")
-	want := `LOAD CHECK SETTINGS UNUSABLE: ~/.abcd.noindex/load-limits line 3: unknown key "stray-mins" (known: stray-minutes, extreme-load); using the defaults for both limits: 30 min, load 64 (4 x 16 online cores)`
+	want := `LOAD CHECK SETTINGS UNUSABLE: ` + abcdhome.Display("load-limits") + ` line 3: unknown key "stray-mins" (known: stray-minutes, extreme-load); using the defaults for both limits: 30 min, load 64 (4 x 16 online cores)`
 	if code != 0 || !strings.Contains(out, want) || !strings.Contains(out, "nothing to warn about") {
 		t.Fatalf("exit %d, output:\n%s", code, out)
 	}

@@ -68,7 +68,7 @@ func TestLoadIgnoresASettingInAnAbcdHomeEveryAccountCanWrite(t *testing.T) {
 	if got.Disabled {
 		t.Fatal("a setting in a ~/.abcd.noindex every account can write was honoured")
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "~/.abcd.noindex can be written by every account") || !strings.Contains(notes[0], "chmod o-w ~/.abcd.noindex") {
+	if len(notes) != 1 || !strings.Contains(notes[0], abcdhome.Display()+" can be written by every account") || !strings.Contains(notes[0], "chmod o-w "+abcdhome.Display()) {
 		t.Fatalf("notes = %v, want one note naming the directory and the repair", notes)
 	}
 }

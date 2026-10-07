@@ -34,7 +34,7 @@ func TestConnectRefusesASymlinkedAbcdHome(t *testing.T) {
 				req.Key = ""
 			}
 			_, err := Connect(context.Background(), req)
-			if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+			if err == nil || !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 				t.Fatalf("err = %v, want a refusal naming the symlinked ~/.abcd.noindex", err)
 			}
 			if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {
@@ -76,7 +76,7 @@ func TestProviderBlockIsNotWrittenThroughAnAbcdHomeSwappedForALink(t *testing.T)
 	if !swapped {
 		t.Fatal("the writer never judged ~/.abcd.noindex, so the race was not staged")
 	}
-	if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+	if err == nil || !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 		t.Errorf("err = %v, want a refusal naming the symlinked ~/.abcd.noindex", err)
 	}
 	if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {

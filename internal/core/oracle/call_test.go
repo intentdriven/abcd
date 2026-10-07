@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 )
@@ -192,7 +193,7 @@ func TestCallRefusesADeniedReportedModel(t *testing.T) {
 	if err == nil || payload != nil {
 		t.Fatalf("Call = %q, %v; want a refusal", payload, err)
 	}
-	if !strings.Contains(err.Error(), "anthropic/claude-opus-4") || !strings.Contains(err.Error(), "(anthropic/*, from ~/.abcd.noindex/config.json)") {
+	if !strings.Contains(err.Error(), "anthropic/claude-opus-4") || !strings.Contains(err.Error(), "(anthropic/*, from "+abcdhome.Display("config.json")+")") {
 		t.Fatalf("err = %v", err)
 	}
 }

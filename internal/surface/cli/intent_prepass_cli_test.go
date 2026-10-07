@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/intent"
 )
 
@@ -21,14 +22,14 @@ import (
 // page's planning interview opens from the verb (criterion 4). The judgement
 // itself is the host's; these tests stand in for it with a findings file.
 
-const cliPrepassInvariants = `# Invariants
+var cliPrepassInvariants = `# Invariants
 
 ## Properties the system must preserve regardless of how it's built
 
 1. **Transparent prompts** — every prompt shows current state and how to change it later.
 
 2. **Config stays home** — configuration is never written outside the
-   machine-scoped home under ~/.abcd.noindex/, whatever the caller asks.
+   machine-scoped home under ` + abcdhome.Display() + `/, whatever the caller asks.
 `
 
 const cliPrepassDraft = `---

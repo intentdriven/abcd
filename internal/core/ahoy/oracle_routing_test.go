@@ -64,7 +64,7 @@ func TestOracleRoutingConsentWritesTheProposal(t *testing.T) {
 			for _, agent := range roster {
 				perTier[proposal[agent].Tier]++
 			}
-			want := []string{fmt.Sprintf("%d agents: ", len(roster)), "~/.abcd.noindex/oracle-routing.json"}
+			want := []string{fmt.Sprintf("%d agents: ", len(roster)), abcdhome.Display("oracle-routing.json")}
 			for tier, n := range perTier {
 				want = append(want, fmt.Sprintf("%d %s", n, tier))
 			}

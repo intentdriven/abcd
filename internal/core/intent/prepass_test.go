@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // prepass_test.go — the core of `abcd intent prepass` (itd-42,
@@ -17,14 +19,14 @@ import (
 // Given/When/Then criteria; the front door (the CLI verb and the plugin page's
 // interview) is phase 2 and is exercised there.
 
-const prepassInvariants = `# Invariants
+var prepassInvariants = `# Invariants
 
 ## Properties the system must preserve regardless of how it's built
 
 1. **Transparent prompts** — every prompt shows current state and how to change it later.
 
 2. **Config stays home** — configuration is never written outside the
-   machine-scoped home under ~/.abcd.noindex/, whatever the caller asks.
+   machine-scoped home under ` + abcdhome.Display() + `/, whatever the caller asks.
 
 3. **Remotes are read freely** — a remote is written only on explicit request.
 `

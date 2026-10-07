@@ -27,7 +27,7 @@ func TestReceiptPathRendersEachRootIdentityFree(t *testing.T) {
 	}{
 		{"a repo write is repo-relative", filepath.Join(repo, ".abcd", "config.json"), ".abcd/config.json"},
 		{"a marker is repo-relative", filepath.Join(repo, "CLAUDE.md"), "CLAUDE.md"},
-		{"the user-scope store is home-relative", abcdhome.Path(home, "history", "index.json"), "~/.abcd.noindex/history/index.json"},
+		{"the user-scope store is home-relative", abcdhome.Path(home, "history", "index.json"), abcdhome.Display("history/index.json")},
 		{"a home-rooted PATH entry is home-relative", filepath.Join(home, ".local", "bin", "abcd"), "~/.local/bin/abcd"},
 		{"a system location names no developer", "/usr/local/bin/abcd", "/usr/local/bin/abcd"},
 		{"an already-relative note is untouched", ".abcd/config/identity.json", ".abcd/config/identity.json"},
@@ -121,7 +121,7 @@ func TestInstallReceiptCarriesNoDeveloperIdentity(t *testing.T) {
 	// The scrub must not cost the receipt its meaning: it still names what was
 	// written, in repo-relative and home-relative form.
 	joined := strings.Join(res.Writes, "\n")
-	for _, want := range []string{".abcd/config.json", "~/.abcd.noindex/history/index.json"} {
+	for _, want := range []string{".abcd/config.json", abcdhome.Display("history/index.json")} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("receipt does not name %q:\n%s", want, joined)
 		}

@@ -65,7 +65,7 @@ func TestRulesVerbLabelsTheUserLayer(t *testing.T) {
 func TestRulesVerbNamesTheUserKillSwitch(t *testing.T) {
 	userScope(t, `{"schema_version":1,"disabled":true}`)
 	out := string(runCLI(t, "rules"))
-	if !strings.Contains(out, "disabled") || !strings.Contains(out, "~/.abcd.noindex/rules.json") {
+	if !strings.Contains(out, "disabled") || !strings.Contains(out, abcdhome.Display("rules.json")) {
 		t.Fatalf("a user-scope kill switch must be reported against ~/.abcd.noindex/rules.json:\n%s", out)
 	}
 }
@@ -77,7 +77,7 @@ func TestRulesVerbRefusesABrokenUserLayer(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a malformed ~/.abcd.noindex/rules.json must fail the verb, got:\n%s", out)
 	}
-	if !strings.Contains(err.Error(), "~/.abcd.noindex/rules.json") {
+	if !strings.Contains(err.Error(), abcdhome.Display("rules.json")) {
 		t.Fatalf("the refusal must name the user file: %v", err)
 	}
 }
@@ -105,7 +105,7 @@ func TestHookPromptRouterRefusesABrokenUserLayer(t *testing.T) {
 	if out != "" {
 		t.Fatalf("a broken user layer must inject nothing, got:\n%s", out)
 	}
-	if !strings.Contains(errlog, "~/.abcd.noindex/rules.json") || !strings.Contains(errlog, "injecting nothing") {
+	if !strings.Contains(errlog, abcdhome.Display("rules.json")) || !strings.Contains(errlog, "injecting nothing") {
 		t.Fatalf("the refusal must be loud and name the user file:\n%s", errlog)
 	}
 }

@@ -590,12 +590,12 @@ var pathRefusalReasons = []string{
 // It is separate from pathRefusalUnowned because the two say different things to
 // an operator: "you never recorded this binary" versus "you recorded it, but the
 // file saying so is one another local uid can rewrite" (iss-2609091927085132).
-const pathRefusalUnownedRecord = "its ~/.abcd.noindex/path-entry record is not owned by you or is writable by others"
+var pathRefusalUnownedRecord = "its " + abcdhome.Display("path-entry") + " record is not owned by you or is writable by others"
 
 // pathRefusalUnowned is the ownership refusal — the rung's last gate and the
 // one GHSA-gx3m-3224-qqcv turns on. It is spelled once here and asserted
 // against the shipped manifest's own wording.
-const pathRefusalUnowned = "~/.abcd.noindex/path-entry does not record it as the abcd installed here"
+var pathRefusalUnowned = abcdhome.Display("path-entry") + " does not record it as the abcd installed here"
 
 // assertPathBinaryRefused: the stub never ran, the shim still failed loudly with
 // its own remedy line, and one line names the ignored PATH binary AND the reason
@@ -899,7 +899,7 @@ func TestSubagentStopNeverBootstraps(t *testing.T) {
 // pathRefusalSymlinkedHome is the refusal when the record sits behind a
 // symlinked ~/.abcd.noindex: the file itself may be well-formed and owned, but the
 // directory holding it is a link the rules loader refuses too.
-const pathRefusalSymlinkedHome = "~/.abcd.noindex is a symlink, so its path-entry record is not read"
+var pathRefusalSymlinkedHome = abcdhome.Display() + " is a symlink, so its path-entry record is not read"
 
 // TestBinaryHooksRefuseAPathBinaryVouchedForBehindASymlinkedAbcdHome is
 // iss-2609281017573862 at the shim. `[ -f "$e" ]` and the `find` guard judge

@@ -325,7 +325,7 @@ func TestStatusLineConsentWiresBothFiles(t *testing.T) {
 		}
 	}
 	wrote := strings.Join(res.Writes, "\n")
-	if !strings.Contains(wrote, "~/.abcd.noindex/statusline.json") {
+	if !strings.Contains(wrote, abcdhome.Display("statusline.json")) {
 		t.Errorf("writes do not name the user-level setting in tilde form: %v", res.Writes)
 	}
 	if !strings.Contains(wrote, "settings.json") || strings.Contains(wrote, home) {

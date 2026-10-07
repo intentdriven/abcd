@@ -672,7 +672,7 @@ func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
 		if err := os.Symlink(dotfiles, abcdhome.Path(home)); err != nil {
 			t.Fatal(err)
 		}
-		readers(t, "~/.abcd.noindex")
+		readers(t, abcdhome.Display())
 	})
 	t.Run("symlinked promoted folder", func(t *testing.T) {
 		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
@@ -684,7 +684,7 @@ func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
 		if err := os.Symlink(t.TempDir(), promoted); err != nil {
 			t.Fatal(err)
 		}
-		readers(t, "~/.abcd.noindex/inbox/promoted")
+		readers(t, abcdhome.Display("inbox/promoted"))
 	})
 	t.Run("symlinked ~/.abcd.noindex with no inbox behind it", func(t *testing.T) {
 		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))

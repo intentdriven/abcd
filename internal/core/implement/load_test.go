@@ -312,7 +312,7 @@ func TestMalformedLimitsFileFallsBackWhole(t *testing.T) {
 				_ = os.Remove(dir)
 				_ = os.Rename(moved, dir)
 			})
-		}, "~/.abcd.noindex is a symlink"},
+		}, abcdhome.Display() + " is a symlink"},
 		"another owner": {func(t *testing.T) {
 			writeLimits(t, "stray-minutes 5\n", 0o600)
 			restore := fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })

@@ -110,8 +110,8 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	if calls.Load() != 1 || auth.Load() != "Bearer "+connectKey {
 		t.Fatalf("verification: %d call(s), auth %v", calls.Load(), auth.Load())
 	}
-	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd.noindex/credentials.json", "~/.abcd.noindex/config.json", "DR5",
-		`= "openrouter/typesafe/jev-1.13" in ~/.abcd.noindex/config.json`} {
+	for _, want := range []string{"typesafe/jev-1.13-20260915", abcdhome.Display("credentials.json"), abcdhome.Display("config.json"), "DR5",
+		`= "openrouter/typesafe/jev-1.13" in ` + abcdhome.Display("config.json")} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("ahoy connect does not say %q:\n%s", want, out)
 		}
@@ -152,7 +152,7 @@ func TestAhoyConnectKeylessOffersBothFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ahoy connect: %v\n%s", err, out)
 	}
-	if calls.Load() != 1 || !strings.Contains(string(out), `= "local/qwen/qwen3-8b" in .abcd/config.json or ~/.abcd.noindex/config.json`) {
+	if calls.Load() != 1 || !strings.Contains(string(out), `= "local/qwen/qwen3-8b" in .abcd/config.json or `+abcdhome.Display("config.json")) {
 		t.Fatalf("ahoy connect (%d call(s)):\n%s", calls.Load(), out)
 	}
 }

@@ -180,10 +180,10 @@ func TestHomeScopedRecordsRefuseASymlinkedAbcdHome(t *testing.T) {
 	home, _ := setupHermetic(t)
 	target := symlinkAbcdHome(t, home)
 	t.Chdir(adoptableRepo(t))
-	assertHomeScopeRefused(t, "reaches its records through a symlinked ~/.abcd.noindex")
+	assertHomeScopeRefused(t, "reaches its records through a symlinked "+abcdhome.Display())
 
 	_, problem := cacheBindingProblem("/harness/data")
-	if !strings.Contains(problem, "~/.abcd.noindex is a symlink") {
+	if !strings.Contains(problem, abcdhome.Display()+" is a symlink") {
 		t.Errorf("the binding refusal must name the symlinked ~/.abcd.noindex, got %q", problem)
 	}
 
@@ -219,7 +219,7 @@ func TestInstallSendsASymlinkedAbcdHomeToTheRightRemedy(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := notesJoined(res.Notes)
-	if !strings.Contains(joined, "~/.abcd.noindex is a symlink") {
+	if !strings.Contains(joined, abcdhome.Display()+" is a symlink") {
 		t.Errorf("the refusal must name the symlinked ~/.abcd.noindex; notes = %v", res.Notes)
 	}
 	if strings.Contains(joined, "Start a session with network access") {

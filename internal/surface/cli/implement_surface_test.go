@@ -89,7 +89,7 @@ func TestImplementBareRendersAndCreatesNothing(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &st); err != nil {
 		t.Fatalf("bare --json: %v\n%s", err, out)
 	}
-	if !strings.HasPrefix(st.Dir, "~/.abcd.noindex/runs/") || st.Sessions == nil || st.Claims == nil || st.Window != nil {
+	if !strings.HasPrefix(st.Dir, abcdhome.Display("runs/")) || st.Sessions == nil || st.Claims == nil || st.Window != nil {
 		t.Fatalf("bare render = %+v", st)
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {

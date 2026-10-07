@@ -36,7 +36,7 @@ func TestMachineWritesRefuseASymlinkedAbcdHome(t *testing.T) {
 			a := &applyCtx{}
 			write(a)
 			joined := strings.Join(a.notes, "\n")
-			if !strings.Contains(joined, "~/.abcd.noindex is a symlink") {
+			if !strings.Contains(joined, abcdhome.Display()+" is a symlink") {
 				t.Errorf("the %s write must refuse naming the symlinked ~/.abcd.noindex; notes = %q", name, a.notes)
 			}
 			if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {

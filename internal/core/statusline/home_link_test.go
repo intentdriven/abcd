@@ -29,7 +29,7 @@ func TestASettingBehindASymlinkedAbcdHomeIsIgnored(t *testing.T) {
 	if got.PreviousCommand != "" || got.Installed {
 		t.Fatalf("a setting behind a symlinked ~/.abcd.noindex was taken: %+v", got)
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "~/.abcd.noindex is a symlink") {
+	if len(notes) != 1 || !strings.Contains(notes[0], abcdhome.Display()+" is a symlink") {
 		t.Fatalf("notes = %q, want one naming the symlinked ~/.abcd.noindex", notes)
 	}
 
