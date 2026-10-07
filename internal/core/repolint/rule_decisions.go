@@ -3,6 +3,7 @@ package repolint
 import (
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -25,7 +26,7 @@ func (decisionDurability) Meta() RuleMeta {
 func (decisionDurability) Where(Context) bool { return true }
 
 func (decisionDurability) Eval(ctx Context) ([]Finding, error) {
-	committedRel := ".abcd/work/DECISIONS.md"
+	committedRel := lint.DecisionsLedger
 	committed, err := durablyPresent(ctx.RepoRoot, committedRel)
 	if err != nil {
 		return nil, err

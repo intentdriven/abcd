@@ -199,6 +199,9 @@ func (a *applyCtx) recordAttributionOptIn() {
 		return
 	}
 	if wrote {
-		a.note(writeSettings, configPath(a.cwd))
+		// Recorded as part of the prompt it opts into: the --attribution flag
+		// is its own approval, and is not a settings change the person could
+		// have declined.
+		a.note(writeAttributionHook, configPath(a.cwd))
 	}
 }

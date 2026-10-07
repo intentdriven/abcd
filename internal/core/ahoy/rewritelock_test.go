@@ -120,7 +120,7 @@ func TestConfigRewritesKeepAConcurrentWritersChange(t *testing.T) {
 			rival: func(dir string) {
 				(&applyCtx{
 					cwd:        dir,
-					approved:   map[GapCategory]bool{},
+					approved:   map[GapCategory]bool{ConfigChange: true}, // the flag's settings approval
 					gapPresent: map[string]bool{},
 					overrides:  map[string]string{"visibility": "public"},
 					prompter:   RefusingPrompter{},

@@ -63,7 +63,7 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 	}
 	for i := 0; i < 64; i++ {
 		p := &recordingPrompter{confirm: true, terminal: true}
-		resolveApproval(allCategoryGaps(), InstallOptions{}, p)
+		resolveApproval(allCategoryGaps(), InstallOptions{}, false, p)
 		if strings.Join(p.asked, "|") != strings.Join(want, "|") {
 			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, p.asked, want)
 		}
@@ -79,7 +79,7 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 		}
 	}
 	p := &recordingPrompter{confirm: false}
-	_, declined := resolveApproval(allCategoryGaps(), InstallOptions{}, p)
+	_, declined := resolveApproval(allCategoryGaps(), InstallOptions{}, false, p)
 	if strings.Join(p.asked, "|") != strings.Join(offTerminal, "|") {
 		t.Fatalf("off a terminal:\n got %v\nwant %v", p.asked, offTerminal)
 	}
@@ -122,7 +122,7 @@ func TestResolveApprovalAsksUnknownCategoriesLast(t *testing.T) {
 	)
 	for i := 0; i < 32; i++ {
 		p := &recordingPrompter{confirm: true, terminal: true}
-		resolveApproval(gaps, InstallOptions{}, p)
+		resolveApproval(gaps, InstallOptions{}, false, p)
 		if len(p.asked) != 11 {
 			t.Fatalf("asked %d questions, want 11: %v", len(p.asked), p.asked)
 		}

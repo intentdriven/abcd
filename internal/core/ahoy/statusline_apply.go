@@ -475,16 +475,7 @@ func (a *applyCtx) stepLocalTier() {
 	}
 	root := fsutil.RealExistingPath(a.cwd)
 	if err := fsutil.EnsureRealDirAll(root, localTierRelPath, 0o755); err != nil {
-		reason := errText(err)
-		var pe *os.PathError
-		if errors.Is(err, fsutil.ErrNotRealDir) && errors.As(err, &pe) {
-			level := "the checkout root"
-			if rel, relErr := filepath.Rel(root, pe.Path); relErr == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-				level = filepath.ToSlash(rel)
-			}
-			reason = level + " is not a real directory (a symlink, or a file, stands there)"
-		}
-		a.refuse("refused to create " + localTierRelPath + "/: " + reason +
+		a.refuse("refused to create " + localTierRelPath + "/: " + tierRefusalReason(root, err) +
 			". abcd never reaches the local tier through a symlink; remove what is there and re-run `abcd ahoy install`.")
 		return
 	}

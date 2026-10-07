@@ -175,7 +175,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		}, nil
 	}
 
-	approved, declined := resolveApproval(det.Gaps, opts, p)
+	// A value flag that would change a saved setting is held to the settings
+	// approval like any other settings change, so it puts the config-change
+	// question even where no config-change gap would (iss-2610071538032843).
+	approved, declined := resolveApproval(det.Gaps, opts, overridesWouldChange(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
 		cwd:         abs,
@@ -201,6 +204,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// inside it are only written once the .gitignore fence that keeps them
 	// untracked is on disk.
 	ac.stepLocalTier()
+	// The committed tiers the repository lint requires, with the shared tier's
+	// decision log (iss-2610071538028804).
+	ac.stepCommittedTiers()
 	ac.stepBanlist()
 	// Beside the guard hooks, and after them: both land in the same committed hooks
 	// directory, and the EOL pin stepBanlist appends covers `.githooks/*`.
@@ -559,7 +565,7 @@ func (a *applyCtx) stepSkeleton() {
 		return
 	}
 	if wrote {
-		a.note(writeSettings, configPath(a.cwd))
+		a.note(writeSetupRecord, configPath(a.cwd))
 	}
 }
 
@@ -619,10 +625,12 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		landed = true
 		return ic // all values already valid and no override forced a change
 	}
-	if hasConfigGap && !a.approved[ConfigChange] {
-		// Category declined; a required value is missing. Nothing is saved, so
-		// every value flag the person typed is dropped, and each is named
-		// rather than left silent (iss-2610032027321900).
+	if !a.approved[ConfigChange] {
+		// Category declined, or not approved: a required value is missing, or a
+		// flag would change a saved one. A value flag is held to the settings
+		// approval like any other settings change (iss-2610071538032843), so
+		// nothing is saved, every value flag the person typed is dropped, and
+		// each is named rather than left silent (iss-2610032027321900).
 		for _, n := range declinedOverrideNotes(saved, a.overrides) {
 			a.refuse(n)
 		}
@@ -803,26 +811,24 @@ func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id 
 	if err != nil {
 		return nil // a config that cannot be parsed is refused, never asked into
 	}
-	// stepConfigValues' own conditions: a value is missing and the settings
-	// change is approved, or a flag changes a value already saved (which can
-	// make the deep-scan question askable without a gap).
+	// stepConfigValues' own conditions: a value is missing, or a flag changes a
+	// value already saved (which can make the deep-scan question askable
+	// without a gap), and in either case the settings change is approved.
 	present := gapIDSet(det.Gaps)
 	hasConfigGap := present["config.visibility_missing"] || present["config.docs_target_missing"] ||
 		present["config.oracle_backend_missing"] || present["config.scan_deep_missing"]
 	if !hasConfigGap && !overridesWouldChange(abs, opts.ValueOverrides) {
 		return nil
 	}
-	if hasConfigGap {
-		switch {
-		case opts.ApprovedCategories != nil:
-			if !opts.ApprovedCategories[ConfigChange] {
-				return nil
-			}
-		case opts.Yes:
-		default:
-			if !approves(approvePrefix + string(ConfigChange)) {
-				return nil
-			}
+	switch {
+	case opts.ApprovedCategories != nil:
+		if !opts.ApprovedCategories[ConfigChange] {
+			return nil
+		}
+	case opts.Yes:
+	default:
+		if !approves(approvePrefix + string(ConfigChange)) {
+			return nil
 		}
 	}
 	// A flag overrides a value already saved, as applyOverride does.
@@ -873,7 +879,7 @@ func declinedOverrideNotes(saved InstallConfig, overrides map[string]string) []s
 			continue
 		}
 		notes = append(notes, f.flag+" "+v+" was not applied: the settings change (config-change) was declined, "+
-			"so .abcd/config.json was not written; run abcd ahoy install again with the flag and answer y to the config-change question.")
+			"so the setting was not saved; run abcd ahoy install again with the flag and answer y to the config-change question.")
 	}
 	return notes
 }
@@ -1831,7 +1837,7 @@ func (a *applyCtx) stepVersionStamp() {
 		a.refuse("could not record the setup version in .abcd/config.json: " + errText(err))
 		return
 	}
-	a.note(writeSettings, configPath(a.cwd))
+	a.note(writeSetupRecord, configPath(a.cwd))
 }
 
 // Uninstall removes the marker block and the owned PATH entry (the spc-35 owned
@@ -2154,13 +2160,17 @@ func presentInPromptOrder(present map[GapCategory]bool) []GapCategory {
 }
 
 // resolveApproval computes the approved category set once and the declined list.
-func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCategory]bool, []string) {
+func resolveApproval(gaps []Gap, opts InstallOptions, flagsChange bool, p Prompter) (map[GapCategory]bool, []string) {
 	// Categories that have at least one resolvable gap can be approved.
 	present := map[GapCategory]bool{}
 	for _, g := range gaps {
 		if g.Resolvable {
 			present[g.Category] = true
 		}
+	}
+	if flagsChange {
+		// A value flag changing a saved setting is a settings change of its own.
+		present[ConfigChange] = true
 	}
 	approved := map[GapCategory]bool{}
 	switch {

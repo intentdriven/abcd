@@ -25,8 +25,12 @@ type writeKind string
 
 const (
 	writeSettings                writeKind = "settings"
+	writeSetupRecord             writeKind = "setup-record"
 	writeGitignore               writeKind = "gitignore"
 	writeLocalTier               writeKind = "local-tier"
+	writeRecordTiers             writeKind = "record-tiers"
+	writeDecisionsLedger         writeKind = "decisions-ledger"
+	writeDevelopmentReadme       writeKind = "development-readme"
 	writeNameGuard               writeKind = "name-guard"
 	writePrivateNames            writeKind = "private-names"
 	writeDocsCheck               writeKind = "docs-check"
@@ -49,7 +53,7 @@ const (
 // allWriteKinds is every kind, in the order the summary lists them: the
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
-	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
+	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
@@ -60,7 +64,12 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeSettings: {
 		What:   "Saved this repository's abcd settings in .abcd/config.json.",
 		Why:    "Later runs read your answers from there instead of asking again.",
-		Action: "Nothing. To change a setting, run abcd ahoy install with its option, for example --visibility public.",
+		Action: "Nothing. To change a setting, run abcd ahoy install with its option, for example --visibility public, and answer y to the config-change question.",
+	},
+	writeSetupRecord: {
+		What:   "Recorded abcd's own set-up details in .abcd/config.json: the file itself, and which version of abcd set this repository up.",
+		Why:    "Later runs read them to tell what is already done here; none of your settings is among them.",
+		Action: "Nothing. Commit the file with the rest.",
 	},
 	writeGitignore: {
 		What:   "Told git which abcd files stay on this machine, in a fenced block in .gitignore.",
@@ -71,6 +80,21 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Created .abcd/.work.local/, a private working folder for this machine only.",
 		Why:    "abcd keeps handover notes, logs and scratch work there, and git ignores it.",
 		Action: "Nothing to do.",
+	},
+	writeRecordTiers: {
+		What:   "Created abcd's shared record folders: .abcd/development/ for the lasting record and .abcd/work/ for working notes the team shares.",
+		Why:    "They are committed with the repository, so everyone working on it finds the same record, and abcd lint checks that both are there.",
+		Action: "Commit them, with the starter file abcd put in each.",
+	},
+	writeDevelopmentReadme: {
+		What:   "Started .abcd/development/README.md, a short note saying what the lasting-record folder is for.",
+		Why:    "git keeps a folder only once a file is in it, so the folder now reaches every clone of the repository.",
+		Action: "Commit it. Rewrite it for this repository whenever you like.",
+	},
+	writeDecisionsLedger: {
+		What:   "Started .abcd/work/DECISIONS.md, an empty log for the decisions made in this repository.",
+		Why:    "A decision written there is committed, so it survives a fresh clone and the next session can find it.",
+		Action: "Commit it. Add one dated line per decision, newest last, and never edit an old line.",
 	},
 	writeNameGuard: {
 		What:   "Added a check that runs before every commit and merge and stops one that contains a name you have banned.",
@@ -178,9 +202,9 @@ var declinedCategoryHelp = map[GapCategory]SummaryItem{
 		Action: "Run abcd ahoy install again and answer y to create them.",
 	},
 	ConfigChange: {
-		What:   "You declined saving this repository's abcd settings.",
-		Why:    "abcd asks the same questions again on every run until they are saved.",
-		Action: "Run abcd ahoy install again and answer y, or pass the settings as options.",
+		What:   "You declined the settings changes abcd asked about (config-change), so none of them was made.",
+		Why:    "abcd asks again on every run until they are made; a setting you passed as an option, such as --docs-target, is saved only with that yes.",
+		Action: "Run abcd ahoy install again, with the options you want, and answer y to the config-change question.",
 	},
 	PluginOwned: {
 		What:   "You declined writing abcd's description block into your conventions file.",

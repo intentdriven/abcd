@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -41,10 +42,11 @@ func (threeTierLayout) Where(Context) bool { return true }
 func (threeTierLayout) Eval(ctx Context) ([]Finding, error) {
 	var out []Finding
 
-	for _, tier := range []struct{ rel, label string }{
-		{".abcd/development", "durable-record tier .abcd/development/"},
-		{".abcd/work", "shared-working tier .abcd/work/"},
-	} {
+	// The committed tiers are read from the one list `abcd ahoy install`
+	// creates them from, so an install that reports the repository set up
+	// leaves nothing here to find (iss-2610071538028804).
+	for _, t := range lint.CommittedTiers() {
+		tier := struct{ rel, label string }{t.Rel, t.Label}
 		// A tier is a directory: a regular file at the tier path does not satisfy
 		// the convention, so check the type, not mere presence. (IsDir follows a
 		// symlink, so a symlink-to-directory does satisfy it — acceptable for a

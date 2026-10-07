@@ -108,6 +108,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectDependencies(abs)...)
 		gaps = append(gaps, detectSkeleton(abs)...)
 		gaps = append(gaps, detectLocalTier(abs)...)
+		gaps = append(gaps, detectCommittedTiers(abs)...)
 		gaps = append(gaps, detectIdentity(identity, idx)...)
 		gaps = append(gaps, detectGitIdentity(abs)...)
 		gaps = append(gaps, detectHistoryStore(identity.RootSHA)...)

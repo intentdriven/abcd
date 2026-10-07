@@ -718,7 +718,13 @@ oracle backend, the deep-scan toggle and the repo visibility, select track-lates
 dogfood mode, proceed despite a stale running binary (the default refuses before
 the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
-and opt the repo into the attribution prompt hook.
+and opt the repo into the attribution prompt hook. A value flag (marker
+target, oracle backend, deep-scan toggle, visibility) is held to the
+`config-change` approval like any other settings change: one that would change
+a saved setting puts that approval even with no `config-change` gap, and a
+decline drops it, saves nothing and names it (the product thinker's ruling on
+iss-2610071538032843, "do what the user tells you in their response, no
+surprises").
 
 **The house-style question.** When the install seeds the docs-lint config, it
 asks one more question: whether the em-dash-in-list-item rule, abcd's own house
