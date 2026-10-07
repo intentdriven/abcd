@@ -16,6 +16,17 @@ some carry a **Breaking** heading.
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-10-07
+
+These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release.
+
+### Fixed
+
+- **A guard refusal reads as one short line.** Each hook's shell now lives in its own script under `hooks/`, and `hooks.json` runs it with a one-line command under fifty characters. When a hook refuses a call, the host's hook-error line now shows a short path followed by the hook's own message. Before this, it showed several thousand characters of inline shell, wrapped and cut at the terminal width, with the guard's message buried at the end. (iss-2610041345196368)
+- **The interview's change guard can no longer be pointed at another git directory.** In a plain-Terminal interview, the guard's first reading of a run pins git's own directory and common directory, along with the two files that place them: a linked worktree's `.git` file and the git directory's `commondir`. If the interview's role rewrites either file during a turn, the guard names it as that turn's change and does not follow it. A reading in which git names directories other than the pinned ones is refused. (iss-2610050348402910)
+- **A large file written into the working tree no longer holds an interview turn while it is hashed.** One reading of the change guard now hashes at most 2 GiB of what it owns. The paths git lists are sized before any of them is hashed, and a listing over the bound is refused with its largest path named. Git's own directory is counted as it is reached, and no file is hashed past its recorded size. (iss-2610050348533437)
+- **Files git reads whole are now sized before git runs.** Before each reading, the change guard checks `HEAD`, `commondir`, `config.worktree`, `config`, `packed-refs` and `info/exclude` in the pinned directories against the same 2 GiB bound, and refuses past it with the largest named. An interview role that grows one of these files no longer holds the turn while git reads it. (iss-2610050429322910)
+
 ## [0.13.1] - 2026-10-05
 
 These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release.
