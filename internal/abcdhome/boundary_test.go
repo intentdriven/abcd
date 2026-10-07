@@ -205,10 +205,15 @@ func isHomeValue(e ast.Expr, locals map[string]bool) bool {
 // homeLocals returns the identifiers decl assigns from a home value, through
 // := and = assignments and var declarations, followed until nothing new is
 // learned so a copy of a home local is one too. A single call assigned to
-// several names (h, err := os.UserHomeDir()) makes only the first a home, and
-// none when another of the names is a home by its own name
-// (repoRoot, home := sandbox()): the call's home is the one so named.
-func homeLocals(decl ast.Node) map[string]bool {
+// several names makes one of them a home: the one in the place of the result
+// the callee declares with a home name, when results names the callee and one
+// of its results is so named (repoRoot, _ := virginHome(t) against
+// virginHome's (repoRoot, home string)); otherwise the first
+// (h, err := os.UserHomeDir()), and none when another of the names is a home
+// by its own name (repoRoot, home := virginHome()), the call's home being the
+// one so named. An error named for the home (h, homeErr := ...) names no
+// home.
+func homeLocals(decl ast.Node, results map[string][]string) map[string]bool {
 	type pair struct {
 		lhs []ast.Expr
 		rhs []ast.Expr
@@ -236,7 +241,9 @@ func homeLocals(decl ast.Node) map[string]bool {
 				switch {
 				case len(p.rhs) == len(p.lhs):
 					r = p.rhs[i]
-				case len(p.rhs) == 1 && i == 0 && !homeNamedAmong(p.lhs[1:]):
+				case len(p.rhs) == 1 && i == declaredHome(p.rhs[0], results, len(p.lhs)):
+					r = p.rhs[0]
+				case len(p.rhs) == 1 && i == 0 && declaredHome(p.rhs[0], results, len(p.lhs)) < 0 && !homeNamedAmong(p.lhs[1:]):
 					r = p.rhs[0]
 				default:
 					continue
@@ -257,11 +264,64 @@ func homeLocals(decl ast.Node) map[string]bool {
 // says home.
 func homeNamedAmong(names []ast.Expr) bool {
 	for _, n := range names {
-		if id, ok := n.(*ast.Ident); ok && strings.Contains(strings.ToLower(id.Name), "home") {
+		if id, ok := n.(*ast.Ident); ok && namesHome(id.Name) {
 			return true
 		}
 	}
 	return false
+}
+
+// namesHome reports whether an identifier's own name says it holds a home: it
+// says home and is not an error (homeErr, errHome).
+func namesHome(name string) bool {
+	l := strings.ToLower(name)
+	return strings.Contains(l, "home") && !strings.Contains(l, "err")
+}
+
+// declaredHome returns the place of the home-named result among the n that
+// the function call e calls declares in results, or -1 when e calls no
+// function results names with n results, one of them home-named.
+func declaredHome(e ast.Expr, results map[string][]string, n int) int {
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return -1
+	}
+	fn, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return -1
+	}
+	names := results[fn.Name]
+	if len(names) != n {
+		return -1
+	}
+	for i, name := range names {
+		if namesHome(name) {
+			return i
+		}
+	}
+	return -1
+}
+
+// resultNames returns, for each function f declares (methods aside) with
+// named results, the names of its results in order.
+func resultNames(f *ast.File) map[string][]string {
+	out := map[string][]string{}
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Recv != nil || fd.Type.Results == nil {
+			continue
+		}
+		var names []string
+		for _, field := range fd.Type.Results.List {
+			for _, id := range field.Names {
+				names = append(names, id.Name)
+			}
+		}
+		if len(names) > 0 {
+			out[fd.Name.Name] = names
+		}
+	}
+	return out
 }
 
 // besideHome returns the ".abcd"-led elements of elems when one of elems is a
@@ -309,13 +369,16 @@ var messageMethods = map[string]bool{
 }
 
 // messageLiterals returns the string literals in f that are a message
-// argument of a messageMethods call (t.Errorf("..."), b.Fatal("a" + "b"),
-// t.Run("name", ...)),
-// directly or through parentheses and concatenation. A literal inside a call
-// nested in the arguments (t.Errorf("%s", filepath.Join(home, ".abcd"))) is
-// not a message and stays judged, and so does fmt.Errorf's: an error value a
-// test builds can be a fixture.
+// argument of a messageMethods call on a testing receiver (t.Errorf("..."),
+// b.Fatal("a" + "b"), t.Run("name", ...)), directly or through parentheses
+// and concatenation. The receiver must be a name f declares as a
+// testing parameter (testingParams): a production method of the same name
+// (gitutil.Run, a run's Log) is handed its arguments as values, and
+// fmt.Errorf's builds an error value that can be a fixture. A literal inside
+// a call nested in the arguments (t.Errorf("%s", filepath.Join(home,
+// ".abcd"))) is not a message and stays judged.
 func messageLiterals(f *ast.File) map[*ast.BasicLit]bool {
+	testers := testingParams(f)
 	out := map[*ast.BasicLit]bool{}
 	var mark func(e ast.Expr)
 	mark = func(e ast.Expr) {
@@ -338,7 +401,7 @@ func messageLiterals(f *ast.File) map[*ast.BasicLit]bool {
 		if !ok || !messageMethods[sel.Sel.Name] {
 			return true
 		}
-		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "fmt" {
+		if recv, ok := sel.X.(*ast.Ident); !ok || !testers[recv.Name] {
 			return true
 		}
 		for _, a := range call.Args {
@@ -349,12 +412,55 @@ func messageLiterals(f *ast.File) map[*ast.BasicLit]bool {
 	return out
 }
 
+// testingTypes are the parameter types whose methods messageMethods names.
+var testingTypes = map[string]bool{"*testing.T": true, "*testing.B": true, "*testing.F": true, "testing.TB": true}
+
+// testingParams returns the names f declares as a parameter of a testingTypes
+// type, in any function or function literal. Names are tracked as the
+// scanner tracks home locals, by name rather than scope.
+func testingParams(f *ast.File) map[string]bool {
+	out := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		ft, ok := n.(*ast.FuncType)
+		if !ok || ft.Params == nil {
+			return true
+		}
+		for _, field := range ft.Params.List {
+			if !testingTypes[typeString(field.Type)] {
+				continue
+			}
+			for _, id := range field.Names {
+				out[id.Name] = true
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// typeString spells a parameter type of the shapes testingTypes holds
+// (pkg.Name, *pkg.Name), and "" for any other.
+func typeString(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.StarExpr:
+		if s := typeString(x.X); s != "" {
+			return "*" + s
+		}
+	case *ast.SelectorExpr:
+		if pkg, ok := x.X.(*ast.Ident); ok {
+			return pkg.Name + "." + x.Sel.Name
+		}
+	}
+	return ""
+}
+
 // spellingsSkipping is homeSpellings judging every string literal but those
 // in skip.
 func spellingsSkipping(fset *token.FileSet, f *ast.File, known map[string]string, skip map[*ast.BasicLit]bool) []homeSpelling {
 	var out []homeSpelling
+	results := resultNames(f)
 	for _, decl := range f.Decls {
-		locals := homeLocals(decl)
+		locals := homeLocals(decl, results)
 		ast.Inspect(decl, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.BasicLit:
@@ -625,6 +731,7 @@ func TestHomeNameScannerIsArmed(t *testing.T) {
 		"a format verb, the name last":   `func f(home string) string { return fmt.Sprintf("%v/` + ".abcd" + `", home) }`,
 		"a slice beside a home":          `func f(home string) string { return filepath.Join([]string{home, ".abcd", "lab"}...) }`,
 		"a slice beside a HOME local":    `func f() []string { h, _ := os.UserHomeDir(); return []string{h, ".abcd/lab"} }`,
+		"a local beside a home error":    `func f() string { h, homeErr := os.UserHomeDir(); _ = homeErr; return filepath.Join(h, ".abcd", "lab") }`,
 	}
 	for label, body := range hostile {
 		src := "package p\n\n" + body + "\n"
@@ -642,7 +749,7 @@ func TestHomeNameScannerIsArmed(t *testing.T) {
 		"a HOME local elsewhere":     "func g() { h, _ := os.UserHomeDir(); _ = h }\nfunc f(h string) string { return filepath.Join(h, \".abcd\") }",
 		"a repository-tier slice":    `func f(repoRoot string) []string { return []string{repoRoot, ".abcd", "config.json"} }`,
 		"a format with another dot":  `func f(home string) string { return fmt.Sprintf("%s/.abcdef", home) }`,
-		"a root beside a named home": `func f() string { repoRoot, home := sandbox(); _ = home; return filepath.Join(repoRoot, ".abcd") }`,
+		"a root beside a named home": `func f() string { repoRoot, home := virginHome(); _ = home; return filepath.Join(repoRoot, ".abcd") }`,
 	}
 	for label, body := range benign {
 		src := "package p\n\n" + body + "\n"
@@ -667,15 +774,19 @@ func TestTestHomeScannerIsArmed(t *testing.T) {
 		return testHomeSpellings(fset, f, packageStrings([]*ast.File{f}))
 	}
 	hostile := map[string]string{
-		"a fixture joined by hand":       `func TestX(t *testing.T) { home := t.TempDir(); _ = os.MkdirAll(filepath.Join(home, ".abcd", "lab"), 0o700) }`,
-		"a fixture under HOME":           `func TestX(t *testing.T) { _ = os.WriteFile(filepath.Join(os.Getenv("HOME"), ".abcd/rules.json"), nil, 0o600) }`,
-		"an expected output":             `func TestX(t *testing.T) { if !strings.Contains(out, "~/` + ".abcd" + `.noindex is a symlink") { t.Fatal("no") } }`,
-		"an expected output in a table":  `var cases = []struct{ want string }{{"~/` + ".abcd" + `/rules.json"}}`,
-		"a join inside a message":        `func TestX(t *testing.T, home string) { t.Errorf("%s", filepath.Join(home, ".abcd")) }`,
-		"an error value a test builds":   `func f() error { return fmt.Errorf("~/` + ".abcd" + `.noindex is a symlink") }`,
-		"a message helper's want":        `func TestX(t *testing.T) { wantAll(t, err, "~/` + ".abcd" + `.noindex/config.json") }`,
-		"a fixture beside a named home":  `func TestX(t *testing.T) { root, home := sandbox(t); _ = root; _ = os.MkdirAll(filepath.Join(home, ".abcd"), 0o700) }`,
-		"a fixture from a test constant": "const rel = \".abcd/trusted-roots\"\nfunc TestX(t *testing.T) { home := t.TempDir(); _ = os.WriteFile(filepath.Join(home, rel), nil, 0o600) }",
+		"a fixture joined by hand":        `func TestX(t *testing.T) { home := t.TempDir(); _ = os.MkdirAll(filepath.Join(home, ".abcd", "lab"), 0o700) }`,
+		"a fixture under HOME":            `func TestX(t *testing.T) { _ = os.WriteFile(filepath.Join(os.Getenv("HOME"), ".abcd/rules.json"), nil, 0o600) }`,
+		"an expected output":              `func TestX(t *testing.T) { if !strings.Contains(out, "~/` + ".abcd" + `.noindex is a symlink") { t.Fatal("no") } }`,
+		"an expected output in a table":   `var cases = []struct{ want string }{{"~/` + ".abcd" + `/rules.json"}}`,
+		"a join inside a message":         `func TestX(t *testing.T, home string) { t.Errorf("%s", filepath.Join(home, ".abcd")) }`,
+		"an error value a test builds":    `func f() error { return fmt.Errorf("~/` + ".abcd" + `.noindex is a symlink") }`,
+		"a message helper's want":         `func TestX(t *testing.T) { wantAll(t, err, "~/` + ".abcd" + `.noindex/config.json") }`,
+		"a fixture beside a named home":   `func TestX(t *testing.T) { root, home := virginHome(t); _ = root; _ = os.MkdirAll(filepath.Join(home, ".abcd"), 0o700) }`,
+		"a result declared as the home":   "func virginHome(t *testing.T) (repoRoot, home string) { return \"\", \"\" }\nfunc TestX(t *testing.T) { repo, h := virginHome(t); _ = repo; _ = os.MkdirAll(filepath.Join(h, \".abcd\"), 0o700) }",
+		"a fixture handed to gitutil.Run": `func TestX(t *testing.T) { gitutil.Run(".", "add", "~/` + ".abcd" + `.noindex/worktrees/x") }`,
+		"a fixture handed to a run's Log": `func TestX(t *testing.T) { r := newRun(); r.Log("~/` + ".abcd" + `.noindex/runs/s1", 1) }`,
+		"a message on an untyped t":       `func check(t *fakeT) { t.Fatalf("~/` + ".abcd" + `.noindex/x") }`,
+		"a fixture from a test constant":  "const rel = \".abcd/trusted-roots\"\nfunc TestX(t *testing.T) { home := t.TempDir(); _ = os.WriteFile(filepath.Join(home, rel), nil, 0o600) }",
 	}
 	for label, body := range hostile {
 		src := "package p\n\n" + body + "\n"
@@ -689,6 +800,11 @@ func TestTestHomeScannerIsArmed(t *testing.T) {
 		"a log line":            `func TestX(t *testing.T) { t.Logf("~/` + ".abcd" + `.noindex holds %d", 1) }`,
 		"a skip":                `func BenchmarkX(b *testing.B) { b.Skip("no ~/` + ".abcd" + `.noindex here") }`,
 		"a subtest's name":      `func TestX(t *testing.T) { t.Run("symlinked ~/` + ".abcd" + `.noindex", func(t *testing.T) {}) }`,
+		"a helper's TB message": `func check(tb testing.TB) { tb.Fatalf("no ~/` + ".abcd" + `.noindex here") }`,
+		"a fuzz skip":           `func FuzzX(f *testing.F) { f.Skip("no ~/` + ".abcd" + `.noindex here") }`,
+		"a closure's message":   `var check = func(t *testing.T) { t.Error("~/` + ".abcd" + `.noindex") }`,
+		"a root beside a home":  `func TestX(t *testing.T) { root, home := virginHome(t); _ = home; _ = os.MkdirAll(filepath.Join(root, ".abcd", "work"), 0o700) }`,
+		"a root by its result":  "func virginHome(t *testing.T) (repoRoot, home string) { return \"\", \"\" }\nfunc TestX(t *testing.T) { repoRoot, _ := virginHome(t); _ = os.MkdirAll(filepath.Join(repoRoot, \".abcd\", \"work\"), 0o700) }",
 		"the repository tier":   `func TestX(t *testing.T) { repo := t.TempDir(); _ = os.MkdirAll(filepath.Join(repo, ".abcd", "work"), 0o700) }`,
 		"a fixture by resolver": `func TestX(t *testing.T) { home := t.TempDir(); _ = os.MkdirAll(abcdhome.Path(home, "lab"), 0o700) }`,
 	}
