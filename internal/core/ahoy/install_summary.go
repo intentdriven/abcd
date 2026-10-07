@@ -25,6 +25,7 @@ type writeKind string
 
 const (
 	writeSettings                writeKind = "settings"
+	writeSetupRecord             writeKind = "setup-record"
 	writeGitignore               writeKind = "gitignore"
 	writeLocalTier               writeKind = "local-tier"
 	writeRecordTiers             writeKind = "record-tiers"
@@ -52,7 +53,7 @@ const (
 // allWriteKinds is every kind, in the order the summary lists them: the
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
-	writeSettings, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
+	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
@@ -63,7 +64,12 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeSettings: {
 		What:   "Saved this repository's abcd settings in .abcd/config.json.",
 		Why:    "Later runs read your answers from there instead of asking again.",
-		Action: "Nothing. To change a setting, run abcd ahoy install with its option, for example --visibility public.",
+		Action: "Nothing. To change a setting, run abcd ahoy install with its option, for example --visibility public, and answer y to the config-change question.",
+	},
+	writeSetupRecord: {
+		What:   "Recorded abcd's own set-up details in .abcd/config.json: the file itself, and which version of abcd set this repository up.",
+		Why:    "Later runs read them to tell what is already done here; none of your settings is among them.",
+		Action: "Nothing. Commit the file with the rest.",
 	},
 	writeGitignore: {
 		What:   "Told git which abcd files stay on this machine, in a fenced block in .gitignore.",
@@ -196,9 +202,9 @@ var declinedCategoryHelp = map[GapCategory]SummaryItem{
 		Action: "Run abcd ahoy install again and answer y to create them.",
 	},
 	ConfigChange: {
-		What:   "You declined saving this repository's abcd settings.",
-		Why:    "abcd asks the same questions again on every run until they are saved.",
-		Action: "Run abcd ahoy install again and answer y, or pass the settings as options.",
+		What:   "You declined the settings changes abcd asked about (config-change), so none of them was made.",
+		Why:    "abcd asks again on every run until they are made; a setting you passed as an option, such as --docs-target, is saved only with that yes.",
+		Action: "Run abcd ahoy install again, with the options you want, and answer y to the config-change question.",
 	},
 	PluginOwned: {
 		What:   "You declined writing abcd's description block into your conventions file.",

@@ -261,6 +261,14 @@ the next run asks only what is still open. The git identity, the
 drain rule and installing a tool are never answered from a file. `--answers`
 replaces the piped answer stream for that run.
 
+**A value flag needs the settings approval.** `--visibility`, `--docs-target`,
+`--oracle-backend` and `--scan-deep` are held to the config-change approval
+like any other settings change: a flag that would change a saved setting puts
+the config-change question even when nothing else would, and only a yes, given
+at the prompt, as `approve.config-change` in the answers file, or by `--yes`,
+saves it. `later`, a no or end of input drops the flag: nothing it would change
+is saved or moved, and the run names each dropped flag in a note.
+
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
 question declines, so a run that was told nothing writes nothing — but a stdin
 that is held open and silent (a pipe from a still-running command) makes the
