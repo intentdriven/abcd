@@ -474,8 +474,9 @@ func TestTheDispositionsStillClearAStandingFinding(t *testing.T) {
 
 // The uncommitted direction, for the reason TestGuardFindingsReadsTheCommitNotThe
 // WorkingTree pins on the other half: a release is cut from a commit, so a
-// working-tree deletion is not yet a deletion the gate judges — and a working-tree
-// deletion that is never committed must not refuse a clean cut.
+// working-tree deletion is not yet a deletion the deletion check judges. The
+// tree is still not clean, and the gate says so through its uncommitted half
+// (iss-2610050927169919) rather than reporting a deletion the cut does not make.
 func TestTheDeletionCheckReadsTheCommitNotTheWorkingTree(t *testing.T) {
 	r := findingsRepo(t)
 	r.remove(openDir + "iss-1-standing.md")
@@ -484,8 +485,13 @@ func TestTheDeletionCheckReadsTheCommitNotTheWorkingTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GuardFindings: %v", err)
 	}
-	if g.Status != FindingGuardPassed {
-		t.Fatalf("status = %q, want passed — an uncommitted deletion is not in the cut (%s)",
-			g.Status, g.Reason)
+	if len(g.Deleted) != 0 {
+		t.Fatalf("Deleted = %v, want none — an uncommitted deletion is not in the cut", findingIDs(g.Deleted))
+	}
+	if g.DeletedReason() != "" {
+		t.Errorf("DeletedReason = %q, want empty", g.DeletedReason())
+	}
+	if !slices.Equal(g.Uncommitted, []string{openDir + "iss-1-standing.md"}) {
+		t.Errorf("Uncommitted = %v, want the working-tree deletion named", g.Uncommitted)
 	}
 }

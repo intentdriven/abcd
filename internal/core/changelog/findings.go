@@ -8,6 +8,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -101,6 +102,13 @@ type FindingGuard struct {
 	// instead of answering. Its Path and Severity are read at the ANCHOR, the
 	// last ref that still holds the file.
 	Deleted []Finding `json:"deleted,omitempty"`
+	// Uncommitted is every record file under open/ whose working-tree state
+	// differs from HEAD — added, modified, deleted, staged or untracked —
+	// repo-relative and sorted. Both halves above read the ledger at HEAD, so a
+	// finding captured or regraded and not yet committed is invisible to them;
+	// the gate refuses rather than judge a ledger the cut does not carve from
+	// (iss-2610050927169919).
+	Uncommitted []string `json:"uncommitted,omitempty"`
 	// Reason names what to fix; empty on a clean pass.
 	Reason string `json:"reason,omitempty"`
 }
@@ -169,6 +177,13 @@ type FindingGuard struct {
 // find. The sibling gate covers part of that window and not all of it: RS001
 // refuses a delete that a commit CLAIMS is a resolution, and a delete claiming
 // nothing is outside its question too.
+//
+// Both halves read the ledger at HEAD, so the third half refuses a working tree
+// whose open/ records differ from it (iss-2610050927169919): a finding captured
+// or regraded and left uncommitted would otherwise be invisible to the gate, and
+// --allow-dirty past the ingest's dirty-tree gate would let the cut step over
+// it. It reads the tree through launch.DirtyTreeFiles, as the derivation's
+// uncommitted-records refusal does for the terminal folders.
 func GuardFindings(root string, baseTag string) (FindingGuard, error) {
 	g := FindingGuard{BaseTag: baseTag, Status: FindingGuardPassed}
 
@@ -185,6 +200,11 @@ func GuardFindings(root string, baseTag string) (FindingGuard, error) {
 		return FindingGuard{}, err
 	}
 	g.Deleted = deleted
+	uncommitted, err := uncommittedOpenRecords(root)
+	if err != nil {
+		return FindingGuard{}, err
+	}
+	g.Uncommitted = uncommitted
 
 	paths := make([]string, 0, len(stillOpen))
 	for p := range stillOpen {
@@ -220,6 +240,9 @@ func GuardFindings(root string, baseTag string) (FindingGuard, error) {
 	if s := g.DeletedReason(); s != "" {
 		reasons = append(reasons, s)
 	}
+	if s := g.UncommittedReason(); s != "" {
+		reasons = append(reasons, s)
+	}
 	if len(reasons) > 0 {
 		g.Status = FindingGuardFailed
 		// Both failures in one report, each stating its own remedy. A cut that
@@ -242,12 +265,59 @@ func (g FindingGuard) UnfixedReason() string {
 	return unfixedReason(g.BaseTag, g.Unfixed)
 }
 
+// UncommittedReason is the third half: the open records the working tree holds
+// differently from HEAD.
+func (g FindingGuard) UncommittedReason() string {
+	if len(g.Uncommitted) == 0 {
+		return ""
+	}
+	return uncommittedOpenReason(g.Uncommitted)
+}
+
 // DeletedReason is UnfixedReason's twin for the removed records.
 func (g FindingGuard) DeletedReason() string {
 	if len(g.Deleted) == 0 {
 		return ""
 	}
 	return deletedReason(g.BaseTag, g.Deleted)
+}
+
+// uncommittedOpenRecords lists the record files under open/ whose working-tree
+// state differs from HEAD, repo-relative and sorted.
+//
+// It is uncommittedRecords' twin on the open side, and reads the tree through
+// the same reader, launch.DirtyTreeFiles, so the findings gate, the derivation
+// and the ship's dirty-tree pre-flight can never disagree about what is
+// uncommitted. Every grade is refused, not only the blocking ones, and so is a
+// working-tree deletion: the gate cannot judge a grade it has not read from the
+// cut's commit, and judging the working tree's copy instead would let an
+// uncommitted edit — a waiver added, a grade lowered — decide a verdict the
+// release itself does not carry.
+func uncommittedOpenRecords(root string) ([]string, error) {
+	dirty, err := launch.DirtyTreeFiles(root)
+	if err != nil {
+		return nil, err
+	}
+	openPrefix := path.Join(issuesLedgerDir, "open") + "/"
+	var records []string
+	for _, p := range dirty {
+		// A prefix, not a parent: ls-tree -r counts a record at any depth.
+		if strings.HasPrefix(p, openPrefix) && recordFileRe.MatchString(path.Base(p)) {
+			records = append(records, p)
+		}
+	}
+	return records, nil
+}
+
+// uncommittedOpenReason names every uncommitted open record and the way out. As
+// with the derivation's uncommittedReason there is no --allow-dirty escape: the
+// gate reads the ledger at HEAD whoever allows the dirt, so a waived refusal
+// would leave the change out of its verdict exactly as silently as before.
+func uncommittedOpenReason(paths []string) string {
+	return fmt.Sprintf("%d issue record(s) in open/ differ from HEAD (%s) — the findings gate reads the ledger "+
+		"at HEAD, so it cannot judge a finding captured, regraded or removed in the working tree; commit them "+
+		"(or discard them) and run again (--allow-dirty does not waive this: the gate would still read HEAD)",
+		len(paths), strings.Join(paths, ", "))
 }
 
 // deletedRecords returns every blocking record that was in open/ at the anchor

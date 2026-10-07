@@ -601,3 +601,39 @@ func mustJSON(t *testing.T, v any) string {
 	}
 	return string(raw)
 }
+
+// A finding captured in the working tree and not committed holds the cut
+// (iss-2610050927169919). The findings gate reads the ledger at HEAD, so before
+// the fix a critical record left uncommitted was invisible to it, and with
+// --allow-dirty past the ingest's dirty-tree gate the cut stood ready over it.
+// The composition half: the guard's uncommitted half reaches the cut as a
+// refusal through the guard's own verdict, naming the path.
+func TestEmitRefusesACutOverAnUncommittedFinding(t *testing.T) {
+	r := releasedRepo(t)
+	r.Write(shippedDir+"itd-73-derived-versioning.md",
+		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\nderived.\n")
+	r.Commit("ship an intent")
+	r.Write(openIssuesDir+"iss-92-captured-not-committed.md",
+		"---\nid: \"iss-92\"\nseverity: \"critical\"\n---\n\ncaptured, never committed.\n")
+
+	cut := emit(t, r)
+
+	if cut.Ready {
+		t.Fatalf("the cut is ready over an uncommitted critical finding: %+v", cut.Findings)
+	}
+	if cut.Findings.Status != changelog.FindingGuardFailed {
+		t.Errorf("Findings.Status = %q, want failed", cut.Findings.Status)
+	}
+	named := false
+	for _, ref := range cut.Refusals {
+		if strings.Contains(ref.Reason, openIssuesDir+"iss-92-captured-not-committed.md") {
+			named = true
+		}
+	}
+	if !named {
+		t.Errorf("no refusal names the uncommitted record: %+v", cut.Refusals)
+	}
+	if cut.NextTag != "" || cut.Bumped {
+		t.Errorf("NextTag = %q bumped=%v on a refused cut", cut.NextTag, cut.Bumped)
+	}
+}
