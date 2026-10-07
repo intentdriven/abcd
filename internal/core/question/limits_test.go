@@ -1,6 +1,7 @@
 package question
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -152,7 +153,7 @@ func TestEveryRuleRefusesOnItsOwn(t *testing.T) {
 		}, "question text"},
 		{"too tall", RuleRows, facilitator(), func(f *Fields) {
 			f.Tabs[0].Text = strings.Repeat("A paragraph of material that runs on and on.\n\n", 9) + f.Tabs[0].Text
-		}, "question text"},
+		}, "whole tab"},
 		{"a side preview", RuleNoPreview, facilitator(), func(f *Fields) {
 			f.Tabs[0].Options[1].Preview = "The label is shorter."
 		}, "option 2 preview"},
@@ -608,6 +609,34 @@ func TestCheckReadsOnlyTheTabsAndOptionsItCounts(t *testing.T) {
 	tab.Options = slices.Repeat(tab.Options[:2], 15000)
 	tab.Options = append(tab.Options, later)
 	onlyRule(t, CheckLimits(one(tab), Default, unnamed()), RuleOptions)
+}
+
+// TestTheRowsRefusalNamesTheWholeTabAndItsSplit: the row estimate counts the
+// host's frame with the header, the question text, and every option's label
+// and description, so the refusal names the whole tab, never the question text
+// alone, and says how its rows split, so the asker knows which part to cut
+// (iss-2610071538055431).
+func TestTheRowsRefusalNamesTheWholeTabAndItsSplit(t *testing.T) {
+	tab := wellBuiltTab()
+	tab.Text = strings.Repeat("A paragraph of material that runs on and on.\n\n", 9) + tab.Text
+	fs := CheckLimits(one(tab), Default, facilitator())
+	onlyRule(t, fs, RuleRows)
+	f := fs[0]
+	if f.Part != "whole tab" {
+		t.Errorf("part = %q, want %q", f.Part, "whole tab")
+	}
+	frame := Default.HostChromeRows
+	text := blockRows(tab.Text, Default.HostTextColumns)
+	options := estimateRows(tab, Default) - frame - text
+	want := fmt.Sprintf("%d rows: header and frame %d, question text %d, options %d", frame+text+options, frame, text, options)
+	if f.Value != want {
+		t.Errorf("value = %q, want %q", f.Value, want)
+	}
+	for _, phrase := range []string{"24 rows at 80 columns", "header", "question text", "every option's label and description"} {
+		if !strings.Contains(f.Limit, phrase) {
+			t.Errorf("limit %q does not say %q", f.Limit, phrase)
+		}
+	}
 }
 
 // TestAWordWiderThanTheMeasureCountsItsRows: the host hard-wraps a word wider

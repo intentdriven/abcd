@@ -73,6 +73,18 @@ func TestAskingRulesWriteNumbersAsWords(t *testing.T) {
 	}
 }
 
+// TestAskingRulesSayTheRowsIncludeTheOptions: the rows a question fits are
+// the whole tab's, its options and their descriptions included, and the rule
+// says so, or the asker budgets them for the question text alone
+// (iss-2610071538055431).
+func TestAskingRulesSayTheRowsIncludeTheOptions(t *testing.T) {
+	text := joined(AskingRules(Default))
+	const want = "fits twenty-four rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description"
+	if !strings.Contains(text, want) {
+		t.Errorf("the rule text does not say %q:\n%s", want, text)
+	}
+}
+
 // TestAskingRecallIsTheGrillOverridesTerms: the recall terms are the ones the
 // repository override carried before the domain was generated (itd-201
 // decision 9 accepts their cost), and a caller cannot change them for the next.

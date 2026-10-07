@@ -328,10 +328,14 @@ func (c checker) tab(n int, t Tab) []Finding {
 		}
 	}
 
-	// 13. Rows.
-	if rows := estimateRows(t, l); rows > l.Rows {
-		add("question text", RuleRows, fmt.Sprintf("%d rows", rows),
-			fmt.Sprintf("%d rows at %d columns", l.Rows, l.Columns), splitRemedy)
+	// 13. Rows. The estimate is the whole tab's, the frame and every option
+	// included, so the finding names the whole tab and says how its rows
+	// split, never the question text alone (iss-2610071538055431).
+	if s := splitRows(t, l); s.total() > l.Rows {
+		add("whole tab", RuleRows,
+			fmt.Sprintf("%d rows: header and frame %d, question text %d, options %d", s.total(), s.frame, s.text, s.options),
+			fmt.Sprintf("%d rows at %d columns for the whole tab: the header and the host's frame, the question text, and every option's label and description", l.Rows, l.Columns),
+			splitRemedy)
 	}
 
 	// 14. No side preview (the layout intent's decision 20): with a preview

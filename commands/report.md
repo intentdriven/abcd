@@ -36,7 +36,8 @@ remedy a drain acts on without a person naming it.
 Write the account in the prose, and keep every block value on one line.
 Evidence pointers are record ids, commit SHAs and URLs; **never put a path on
 this machine anywhere in the report**. A field naming an absolute,
-home-relative, `$HOME` or `..` path is refused; that check reads the fields
+home-relative, `$HOME` or `..` path is refused (a plugin command written as
+`/abcd:report` is not a path and passes); that check reads the fields
 only and is best effort, so keep paths out of the prose too. Invisible or
 direction-changing characters (zero-width spaces, bidi controls) are refused
 wherever they appear. Keep it short (under 32 KiB): a run's
