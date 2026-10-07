@@ -2487,7 +2487,7 @@ installation) whose embedded vintage — read without running it — is the
 pin, unmodified; it is the same binary the first passing preflight pinned,
 since the work binary is never rebuilt; and bin/abcd-test, when present, is a
 separate file. The group holds a lab of abcd's own repository: its root
-commit is abcd's, or its snapshot carries cmd/abcd/main.go. For any other
+commit is abcd's, or the pin carries cmd/abcd/main.go. For any other
 repository no bin/abcd can be built from the snapshot, so each binary check
 passes marked not applicable (n/a, and not_applicable in --json), saying why.
 

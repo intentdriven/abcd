@@ -116,7 +116,7 @@ func layDown(s store, sr *os.Root, dir, repoRoot string, e Entry) (Minted, error
 			return Minted{}, fmt.Errorf("cannot scaffold %s: %v", d, redact(err, s.home))
 		}
 	}
-	abcd := studiesAbcd(s.rootSHA, snap)
+	abcd := studiesAbcd(s.rootSHA, snap, e.Pin)
 	docs := []struct{ rel, body string }{
 		{intentionName, intentionDoc(e, abcd)},
 		{findingsName, findingsDoc(e)},

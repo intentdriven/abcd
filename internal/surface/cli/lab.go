@@ -108,7 +108,7 @@ func newLabPreflightCommand(asJSON *bool) *cobra.Command {
 			"pin, unmodified; it is the same binary the first passing preflight pinned,\n" +
 			"since the work binary is never rebuilt; and bin/abcd-test, when present, is a\n" +
 			"separate file. The group holds a lab of abcd's own repository: its root\n" +
-			"commit is abcd's, or its snapshot carries cmd/abcd/main.go. For any other\n" +
+			"commit is abcd's, or the pin carries cmd/abcd/main.go. For any other\n" +
 			"repository no bin/abcd can be built from the snapshot, so each binary check\n" +
 			"passes marked not applicable (n/a, and not_applicable in --json), saying why.\n\n" +
 			"A failed check halts the lab naming it: exit 1, the refusal recorded as a\n" +

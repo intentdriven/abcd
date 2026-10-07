@@ -45,8 +45,8 @@ build the work binary once from the pristine snapshot into `bin/abcd`.
 `isolation.snapshot`, `isolation.remotes`, `isolation.hooks`) and the dual-binary
 group (`binary.work`, `binary.pinned`, `binary.test`), each with `ok` and
 `detail`; the artefact is `state/preflight.md`. The dual-binary group holds a
-lab of abcd's own repository only — its root commit is abcd's, or its snapshot
-carries `cmd/abcd/main.go`: in any other repository no `bin/abcd` can be built
+lab of abcd's own repository only — its root commit is abcd's, or the pin
+commit carries `cmd/abcd/main.go`: in any other repository no `bin/abcd` can be built
 from the snapshot, so each binary check passes with `not_applicable` true and a
 `detail` saying why — tell the user it was judged not applicable,
 never that it passed on its merits. On any failure `passed` is false,

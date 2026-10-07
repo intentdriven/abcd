@@ -319,7 +319,7 @@ func (l *lab) checkHooks(realDir string) Check {
 
 // notAbcdWhy is why the work binary does not apply to a lab, as the preflight
 // and a probe record both say it.
-const notAbcdWhy = "this repository is not abcd's own (its root commit is not abcd's, and the snapshot carries no cmd/abcd/main.go), so no bin/abcd can be built from the snapshot"
+const notAbcdWhy = "this repository is not abcd's own (its root commit is not abcd's, and its pin carries no cmd/abcd/main.go), so no bin/abcd can be built from the snapshot"
 
 // dualBinaryNotApplicable is the dual-binary group for a lab of a repository
 // that is not abcd's own, whose snapshot no bin/abcd can be built from: each

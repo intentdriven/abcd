@@ -401,6 +401,47 @@ func TestPreflightHoldsTheGateForASnapshotCarryingCmdAbcd(t *testing.T) {
 	}
 }
 
+// The layout signal is judged at the pin, never the live tree: a snapshot that
+// carried cmd/abcd/main.go at the pin and removes it in a later commit (which
+// the snapshot check admits, its HEAD descending from the pin) is still held to
+// the gate, so a rebuilt work binary is still caught.
+func TestPreflightJudgesTheLayoutSignalAtThePin(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	r.Write("cmd/abcd/main.go", "package main\n")
+	r.Commit("entry point")
+	m := mint(t, r)
+	dir := labDir(home, m)
+	stubVintage(t, m.Pin, true)
+	write(t, filepath.Join(dir, "bin", "abcd"), "work binary v1")
+	if res, err := Preflight(r.Root(), m.ID); err != nil || !res.Passed {
+		t.Fatalf("Preflight = %+v, %v; want a pass that pins the work binary", res, err)
+	}
+	snap := filepath.Join(dir, "snapshot")
+	gitIn(t, snap, "rm", "-r", "-q", "cmd")
+	gitIn(t, snap, "commit", "-q", "-m", "drop the entry point")
+	write(t, filepath.Join(dir, "bin", "abcd"), "work binary v2")
+	res, err := Preflight(r.Root(), m.ID)
+	if !errors.Is(err, ErrHalted) || failedIDs(res) != "binary.pinned" {
+		t.Errorf("Preflight after removing cmd/ and rebuilding = %v, failed %q; want binary.pinned", err, failedIDs(res))
+	}
+	for _, c := range res.Checks {
+		if c.NotApplicable {
+			t.Errorf("%s went not applicable once the live tree dropped cmd/abcd/main.go", c.ID)
+		}
+	}
+}
+
+// A layout question git cannot answer holds the gate: fail closed.
+func TestEntryPointAtPinFailsClosed(t *testing.T) {
+	if !entryPointAtPin(t.TempDir(), strings.Repeat("b", 40)) {
+		t.Error("a tree git cannot read reads as carrying no entry point; want the gate held")
+	}
+	if !entryPointAtPin(t.TempDir(), "not-a-sha") {
+		t.Error("a pin that is not a full sha reads as carrying no entry point; want the gate held")
+	}
+}
+
 // A probe in a lab the dual-binary group does not apply to says so, rather than
 // reporting a missing bin/abcd.
 func TestRecordNamesTheWorkBinaryNotApplicableOutsideAbcd(t *testing.T) {
