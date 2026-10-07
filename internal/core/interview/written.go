@@ -277,7 +277,10 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	if err != nil {
 		return WrittenResult{}, err
 	}
-	pre, err := readTree(w.Repo, dirRel)
+	// The first reading places git's own directories for the run, before
+	// any role could write where they lead; every later reading reads those.
+	pin := &gitPin{}
+	pre, err := readTreePinned(w.Repo, dirRel, pin)
 	if err != nil {
 		return WrittenResult{}, err
 	}
@@ -312,7 +315,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	again := ""
 	for turn := 1; turn <= max; turn++ {
 		if turn > 1 {
-			if pre, err = readTree(w.Repo, dirRel); err != nil {
+			if pre, err = readTreePinned(w.Repo, dirRel, pin); err != nil {
 				return end(err)
 			}
 		}
@@ -367,7 +370,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		})
 		stopped := interrupted()
 		stop()
-		if cerr := w.heldToContract(pre, dirRel, &res); cerr != nil {
+		if cerr := w.heldToContract(pre, dirRel, pin, &res); cerr != nil {
 			return end(errors.Join(cerr, err))
 		}
 		if stopped {
@@ -412,16 +415,26 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	return end(fmt.Errorf("interview: the %s interview reached its bound of %d turns without an outcome", w.Name, max))
 }
 
-// heldToContract reads the tree after a dispatch and adds what the role
-// changed since pre to res.Changed, returning an *UnexpectedChangesError when
-// any of it is a path the interview does not let the role change.
-func (w *Written) heldToContract(pre treeState, turnDir string, res *WrittenResult) error {
-	post, err := readTree(w.Repo, turnDir)
-	if err != nil {
+// heldToContract reads the tree after a dispatch, git's own directories
+// where pin placed them, and adds what the role changed since pre to
+// res.Changed, returning an *UnexpectedChangesError when any of it is a path
+// the interview does not let the role change. A file that places git's own
+// directories, changed, is such a path: the reading stops there, unread
+// beyond it.
+func (w *Written) heldToContract(pre treeState, turnDir string, pin *gitPin, res *WrittenResult) error {
+	var changed []string
+	post, err := readTreePinned(w.Repo, turnDir, pin)
+	var moved *redirectedError
+	switch {
+	case errors.As(err, &moved):
+		changed = moved.Paths
+	case err != nil:
 		return err
+	default:
+		changed = changedSince(pre, post)
 	}
 	var unexpected []string
-	for _, p := range changedSince(pre, post) {
+	for _, p := range changed {
 		if !slices.Contains(res.Changed, p) {
 			res.Changed = append(res.Changed, p)
 		}
@@ -432,6 +445,11 @@ func (w *Written) heldToContract(pre treeState, turnDir string, res *WrittenResu
 	slices.Sort(res.Changed)
 	if len(unexpected) > 0 {
 		return &UnexpectedChangesError{Role: w.Role, Paths: unexpected}
+	}
+	if moved != nil {
+		// Granted or not, git's own directories no longer lie where the
+		// reading holds the role to them.
+		return moved
 	}
 	return nil
 }

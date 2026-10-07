@@ -101,7 +101,7 @@ and changes no file of the repository: abcd reads the working tree's state
 (git's listing of what differs from HEAD, each path's content hashed; every path
 git ignores, the local tier among them, by its mode, size and modification
 time; git's own hooks, info files, configuration, HEAD and refs, and each
-submodule's hooks and configuration, and every worktree's entry under
+submodule's, and every worktree's entry under
 `worktrees/` (its `HEAD`, `commondir`, `gitdir`, `config.worktree` and
 `locked`, an entry made or removed noticed), read in the repository's common
 git directory and where a link there leads, any hooks directory
@@ -118,7 +118,20 @@ lead to, a hooks directory `core.hooksPath` names outside the tree, and each
 worktree's push receipts are read within 1,024 entries and 64 MiB in all (1,024
 entries for each worktree's push receipts), and a reading past that stops the
 interview, exit 1, naming the link, the `core.hooksPath` value or the receipts
-directory.
+directory. git's own directory and common directory are the ones the
+interview's first reading found: a linked worktree's `.git` file or a
+`commondir` file changed during a turn stops the interview, naming the file,
+and neither git nor abcd reads where it leads; a working tree git names other
+than the first reading's (a `core.worktree` set since) stops the interview
+before git reads it. What one reading hashes (the
+paths git lists, git's own directory) is held to 2 GiB, and the files git
+reads whole on every command (`HEAD`, the configuration, the packed refs,
+`info/exclude`, in git's own directory and in each submodule's) are sized
+against the same 2 GiB before git runs; a reading
+past it stops the interview, exit 1, naming the file (the largest, when the
+paths git lists hold more), and a large untracked file of the person's own
+belongs in `.gitignore`, where only its size and modification time are read,
+while a large tracked one is restored or committed.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.
