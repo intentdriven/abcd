@@ -3,6 +3,7 @@ package rules
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -88,6 +89,41 @@ func TestDefaultsParseAndValidate(t *testing.T) {
 		if _, ok := rs.Domains[want]; !ok {
 			t.Errorf("default domain %q missing", want)
 		}
+	}
+}
+
+// TestNoBundledRuleTeachesPhasesOrMilestonesAsCurrent pins iss-2610030807157970:
+// adr-2609212115255771 (carried forward by adr-2609292012006845) retired the
+// phase, the milestone and the word roadmap, and its decision 8 replaced the
+// ROADMAP domain with the decision's statement. A bundled default rule ships to
+// every managed repository, so one that names a phase or a milestone may only
+// do so to say it is retired; and a prompt about phases must still recall the
+// domain that says so.
+func TestNoBundledRuleTeachesPhasesOrMilestonesAsCurrent(t *testing.T) {
+	retiredTerm := regexp.MustCompile(`(?i)\b(phases?|milestones?)\b`)
+	rs := Defaults()
+	for name, d := range rs.Domains {
+		for _, r := range d.Rules {
+			if retiredTerm.MatchString(r) && !strings.Contains(strings.ToLower(r), "retired") {
+				t.Errorf("bundled %s rule teaches a retired unit as current: %q", name, r)
+			}
+		}
+	}
+	for _, prompt := range []string{"plan the next phase", "what is the next milestone", "update the roadmap"} {
+		got := rs.Match(prompt)
+		if !has(got, "ROADMAP") {
+			t.Errorf("%q no longer recalls ROADMAP, so it never meets the retirement: %v", prompt, names(got))
+		}
+	}
+	retirement := false
+	for _, r := range rs.Domains["ROADMAP"].Rules {
+		lr := strings.ToLower(r)
+		if strings.Contains(lr, "phases and milestones are retired") {
+			retirement = true
+		}
+	}
+	if !retirement {
+		t.Errorf("bundled ROADMAP rules do not state the retirement: %q", rs.Domains["ROADMAP"].Rules)
 	}
 }
 
