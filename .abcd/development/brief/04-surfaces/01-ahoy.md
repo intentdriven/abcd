@@ -521,7 +521,18 @@ start carries no `PATH` rung at all and fails closed.
 
 Each detected discrepancy becomes a **gap** with a stable id, a category, a
 scope, a title, detail and a fix hint. The category is what the apply pass asks
-about, one question per category present, never one per item.
+about, one question per category present, never one per item. The question
+shows what approving it would do (iss-2610071528375981): one line per change,
+the gap's title, which names the file or the setting, with a value flag that
+would change a saved setting listed under the settings approval; then the
+question in plain words ("Create the files and folders listed above?", "Change
+the settings listed above?"), never the category's internal name. Yes says how
+many listed changes it writes, or, for a category whose changes are each asked
+again (a tool, an offer, a conventions file), which questions it goes on to. A
+list taller than one question fits at 80 columns ends on a line counting the
+rest, which `abcd ahoy` lists in full. The question check refuses an answer
+whose meaning points at text above a question that has none, the shape the
+approvals had before they listed anything.
 
 | `category` | Examples | Apply behaviour |
 |---|---|---|

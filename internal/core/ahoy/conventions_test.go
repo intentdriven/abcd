@@ -214,7 +214,7 @@ func stateOf(t *testing.T, p string) fileState {
 // declines every other confirm, and answers each retirement question as told.
 func conventionsPrompter(answer string) terminalScripted {
 	sp := &scriptedPrompter{
-		confirm: func(q string) bool { return strings.HasPrefix(q, "Apply ") },
+		confirm: func(q string) bool { return askedCategory(q) != "" },
 		answers: map[string]string{},
 	}
 	for _, f := range toolConventionsFiles {

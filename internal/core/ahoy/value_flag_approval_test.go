@@ -37,7 +37,7 @@ type confirmRecorder struct {
 func (c confirmRecorder) Confirm(q string) bool {
 	*c.asked = append(*c.asked, q)
 	for _, cat := range c.yes {
-		if q == "Apply "+string(cat)+" changes?" {
+		if askedCategory(q) == cat {
 			return true
 		}
 	}
@@ -45,6 +45,11 @@ func (c confirmRecorder) Confirm(q string) bool {
 }
 
 func (c confirmRecorder) Prompt(_ string, _ []string, def string) string { return def }
+
+// asksCategory reports whether asked holds the approval of the kind of change c.
+func asksCategory(asked []string, c GapCategory) bool {
+	return slices.ContainsFunc(asked, func(q string) bool { return askedCategory(q) == c })
+}
 
 func savedDocsTarget(t *testing.T, repo string) string {
 	t.Helper()
@@ -63,16 +68,16 @@ func savedDocsTarget(t *testing.T, repo string) string {
 func TestAValueFlagAloneAsksTheSettingsApproval(t *testing.T) {
 	gaps := []Gap{{ID: "rules.missing", Category: SafeAutocreate, Required: true, Resolvable: true}}
 	var asked []string
-	approved, declined := resolveApproval(gaps, InstallOptions{}, true, confirmRecorder{asked: &asked})
-	if !slices.Contains(asked, "Apply config-change changes?") {
+	approved, declined := resolveApproval(gaps, InstallOptions{}, []string{"docs.target changes"}, confirmRecorder{asked: &asked})
+	if !asksCategory(asked, ConfigChange) {
 		t.Fatalf("the settings approval was not asked for a value flag: %v", asked)
 	}
 	if approved[ConfigChange] || !slices.Contains(declined, string(ConfigChange)) {
 		t.Errorf("a declined settings approval is not declined: approved=%v declined=%v", approved, declined)
 	}
 	asked = nil
-	resolveApproval(gaps, InstallOptions{}, false, confirmRecorder{asked: &asked})
-	if slices.Contains(asked, "Apply config-change changes?") {
+	resolveApproval(gaps, InstallOptions{}, nil, confirmRecorder{asked: &asked})
+	if asksCategory(asked, ConfigChange) {
 		t.Errorf("the settings approval was asked with no flag and no gap: %v", asked)
 	}
 }
@@ -91,7 +96,7 @@ func TestADeclinedApprovalDropsTheValueFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(asked, "Apply config-change changes?") {
+	if !asksCategory(asked, ConfigChange) {
 		t.Fatalf("the settings approval was not asked: %v", asked)
 	}
 	if v := savedDocsTarget(t, repo); v != "both" {

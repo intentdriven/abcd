@@ -62,8 +62,8 @@ func TestSetupConfirmQuestionNamesEveryApproval(t *testing.T) {
 		material      bool
 	}{
 		{"Adopt this unmanaged repo into abcd?", "adopt", "Adopt this unmanaged repo into abcd?", false},
-		{"Apply config-change changes?", "approve.config-change", "Apply config-change changes?", false},
-		{"Apply oracle-routing changes?", "approve.oracle-routing", "Apply oracle-routing changes?", false},
+		{categoryApprovalText(ConfigChange, []string{"repo.visibility not set"}), "approve.config-change", categoryWords(ConfigChange).ask, true},
+		{categoryApprovalText(OracleRouting, []string{"no model-tier routing committed"}), "approve.oracle-routing", categoryWords(OracleRouting).ask, true},
 		{machineRoutingQuestion(), OracleRoutingMachineGapID, oracleRoutingMachineQuestionTail, true},
 		{repoRoutingQuestion(), OracleRoutingRepoGapID, oracleRoutingRepoQuestionTail, true},
 		{statusLineOfferQuestion(harnessSettings{path: "/h/.claude/settings.json"}, "/h/.local/bin/abcd"), StatusLineOfferGapID, "Install abcd's status line?", true},

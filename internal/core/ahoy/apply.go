@@ -178,7 +178,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// A value flag that would change a saved setting is held to the settings
 	// approval like any other settings change, so it puts the config-change
 	// question even where no config-change gap would (iss-2610071538032843).
-	approved, declined := resolveApproval(det.Gaps, opts, overridesWouldChange(abs, opts.ValueOverrides), p)
+	approved, declined := resolveApproval(det.Gaps, opts, overrideChanges(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
 		cwd:         abs,
@@ -990,28 +990,41 @@ func (a *applyCtx) echoChange(key, from, to string) {
 // (iss-107). A malformed config is treated as "no change": stepConfigValues
 // refuses to touch it.
 func overridesWouldChange(cwd string, overrides map[string]string) bool {
+	return len(overrideChanges(cwd, overrides)) > 0
+}
+
+// overrideChanges is one line per saved setting a value flag would change,
+// naming the setting, its saved value, the flag's value and the flag, in the
+// order the settings are asked; none when no flag changes a saved setting.
+// The settings approval lists them, so a person approving a flag's change
+// reads what it changes (iss-2610071528375981).
+func overrideChanges(cwd string, overrides map[string]string) []string {
 	if len(overrides) == 0 {
-		return false
+		return nil
 	}
 	ic, err := loadPersistedInstallConfig(cwd)
 	if err != nil {
-		return false
+		return nil
 	}
-	differs := func(key string, choices []string, cur string) bool {
+	var out []string
+	change := func(setting, flag, cur, v string) {
+		out = append(out, setting+" changes from "+cur+" to "+v+", as "+flag+" asks")
+	}
+	differs := func(key, setting, flag string, choices []string, cur string) {
 		v, ok := overrides[key]
-		return ok && v != "" && cur != "" && inSet(v, choices) && cur != v
-	}
-	if differs("visibility", visibilityChoices, ic.Visibility) ||
-		differs("docs_target", docsTargetWritable, ic.DocsTarget) ||
-		differs("oracle_backend", oracleBackendChoices, ic.OracleBackend) {
-		return true
-	}
-	if v, ok := overrides["scan_deep"]; ok && inSet(v, scanDeepChoices) && ic.ScanDeep != nil {
-		if *ic.ScanDeep != (v == "true") {
-			return true
+		if ok && v != "" && cur != "" && inSet(v, choices) && cur != v {
+			change(setting, flag, cur, v)
 		}
 	}
-	return false
+	differs("visibility", "repo.visibility", "--visibility", visibilityChoices, ic.Visibility)
+	differs("docs_target", "docs.target", "--docs-target", docsTargetWritable, ic.DocsTarget)
+	differs("oracle_backend", "oracle.backend", "--oracle-backend", oracleBackendChoices, ic.OracleBackend)
+	if v, ok := overrides["scan_deep"]; ok && inSet(v, scanDeepChoices) && ic.ScanDeep != nil {
+		if *ic.ScanDeep != (v == "true") {
+			change("scan.deep", "--scan-deep", fmt.Sprint(*ic.ScanDeep), v)
+		}
+	}
+	return out
 }
 
 // stepVisibility rewrites the .gitignore block for the chosen visibility. It
@@ -2160,17 +2173,23 @@ func presentInPromptOrder(present map[GapCategory]bool) []GapCategory {
 }
 
 // resolveApproval computes the approved category set once and the declined list.
-func resolveApproval(gaps []Gap, opts InstallOptions, flagsChange bool, p Prompter) (map[GapCategory]bool, []string) {
-	// Categories that have at least one resolvable gap can be approved.
+//
+// flagChanges is overrideChanges: a value flag changing a saved setting is a
+// settings change of its own, listed in the settings approval.
+func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Prompter) (map[GapCategory]bool, []string) {
+	// Categories that have at least one resolvable gap can be approved, and
+	// each approval lists the changes it would make.
 	present := map[GapCategory]bool{}
+	lines := map[GapCategory][]string{}
 	for _, g := range gaps {
 		if g.Resolvable {
 			present[g.Category] = true
+			lines[g.Category] = append(lines[g.Category], g.Title)
 		}
 	}
-	if flagsChange {
-		// A value flag changing a saved setting is a settings change of its own.
+	if len(flagChanges) > 0 {
 		present[ConfigChange] = true
+		lines[ConfigChange] = append(lines[ConfigChange], flagChanges...)
 	}
 	approved := map[GapCategory]bool{}
 	switch {
@@ -2199,7 +2218,7 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagsChange bool, p Prompt
 			if c == Dependency && opts.ApproveDependency {
 				continue // answered by the named tool; approved below
 			}
-			if p.Confirm("Apply " + string(c) + " changes?") {
+			if p.Confirm(categoryApprovalText(c, lines[c])) {
 				approved[c] = true
 			}
 		}

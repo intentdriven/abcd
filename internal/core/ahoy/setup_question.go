@@ -110,16 +110,15 @@ var setupConfirmIDs = []struct {
 	{"remote.apply", func(s string) bool { return strings.HasPrefix(s, "Change GitHub settings on ") }},
 }
 
-// approvePrefix ids a category approval: "Apply <category> changes?" is
-// approve.<category>.
+// approvePrefix ids a category approval: the approval of the kind of change
+// c (categoryApprovalText) is approve.<c>.
 const approvePrefix = "approve."
 
 // setupConfirmID is the id of the approval whose text is text, or "".
 func setupConfirmID(text string) string {
-	if c, ok := strings.CutPrefix(text, "Apply "); ok {
-		if cat, ok := strings.CutSuffix(c, " changes?"); ok && !strings.ContainsAny(cat, " ?") {
-			return approvePrefix + cat
-		}
+	_, ask := splitConfirm(text)
+	if c, ok := approvalCategory(ask); ok {
+		return approvePrefix + string(c)
 	}
 	for _, c := range setupConfirmIDs {
 		if c.match(text) {
@@ -134,17 +133,28 @@ func setupConfirmID(text string) string {
 // does not own); the text split into the material and the one plain question
 // it ends on (the last line, or else the last sentence of a text that ends in
 // a question, a line indented by two spaces an item of a list); and the
-// answers "Yes, make the change" and "No, leave it", with deciding later
-// declining.
+// answers yes and "No, leave it", with deciding later declining. Yes points
+// at the material only where there is material: the approval of a kind of
+// change says how many listed changes it writes, or which questions it goes
+// on to (approvalYes), and an approval asked whole makes the change its
+// question names (iss-2610071528375981).
 func SetupConfirmQuestion(n int, text string) question.Question {
 	material, ask := splitConfirm(text)
+	id := setupConfirmID(text)
+	yes := question.Option{Value: "yes", Label: "Yes, make the change", Meaning: "Makes the change the question names."}
+	switch c, isCategory := strings.CutPrefix(id, approvePrefix); {
+	case isCategory && len(material) > 0:
+		yes = approvalYes(GapCategory(c), material)
+	case len(material) > 0:
+		yes.Meaning = "Writes what the text above describes."
+	}
 	return question.Question{
-		ID:       setupConfirmID(text),
+		ID:       id,
 		Chip:     setupChip(n),
 		Material: material,
 		Ask:      ask,
 		Options: []question.Option{
-			{Value: "yes", Label: "Yes, make the change", Meaning: "Writes what the text above describes."},
+			yes,
 			{Value: "no", Label: "No, leave it", Meaning: "Writes nothing, so the next install asks again."},
 		},
 		Later: question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -120,7 +121,8 @@ func TestAhoyInstallAcceptsPipedAnswersFromNonTTYStdin(t *testing.T) {
 // literal on purpose: a test that imported the production slice would agree
 // with any order the production code happened to adopt, including a wrong one.
 var categoryPromptOrder = []string{
-	"dependency", "safe-autocreate", "config-change", "user-state", "plugin-owned",
+	"dependency", "safe-autocreate", "config-change", "status-line", "oracle-routing",
+	"drain-rule", "conventions-file", "user-state", "plugin-owned",
 }
 
 // assertCategoryQuestionOrder checks that the category approvals appearing in a
@@ -155,10 +157,12 @@ func assertCategoryQuestionOrder(t *testing.T, transcript string) {
 func categoryQuestionsAsked(transcript string) []string {
 	var seen []string
 	for _, line := range strings.Split(transcript, "\n") {
-		for _, c := range categoryPromptOrder {
-			if strings.Contains(line, "Apply "+c+" changes?") {
-				seen = append(seen, c)
-			}
+		ask, _, found := strings.Cut(line, " [y/N]")
+		if !found {
+			continue
+		}
+		if c, ok := strings.CutPrefix(ahoy.SetupConfirmQuestion(0, ask).ID, "approve."); ok {
+			seen = append(seen, c)
 		}
 	}
 	return seen
@@ -312,7 +316,8 @@ func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
 	}
 	// The pin lives behind the config-change approval, so that question must
 	// have been asked and answered y — not merely "some question was".
-	if !strings.Contains(string(errOut), "Apply config-change changes? [y/N] y") {
+	if !strings.Contains(string(errOut), "  no git identity pin\n") ||
+		!strings.Contains(string(errOut), "Change the settings listed above? [y/N] y") {
 		t.Fatalf("the config-change approval carrying the pin was not answered:\n%s", errOut)
 	}
 	assertCategoryQuestionOrder(t, string(errOut))

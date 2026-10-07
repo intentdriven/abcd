@@ -592,7 +592,7 @@ func TestRefusedAnswersFileRecordsNothing(t *testing.T) {
 	var errOut bytes.Buffer
 	_, err := runSetup(repo, p, &errOut, func() (ahoy.InstallResult, error) {
 		p.Confirm("Adopt this unmanaged repo into abcd?")
-		p.Confirm("Apply config-change changes?")
+		p.Confirm("  no git identity pin\nChange the settings listed above?")
 		p.Prompt("visibility", []string{"private", "public"}, "")
 		return ahoy.InstallResult{Status: "clean"}, nil
 	})
@@ -790,7 +790,7 @@ func TestNewPrompterDrawsOnlyWhenAllThreeAreTerminals(t *testing.T) {
 // before the question stays.
 func TestSetupStopSaysWhatWasWritten(t *testing.T) {
 	p := &answersPrompter{setupQuestions: setupQuestions{cwd: t.TempDir(), w: io.Discard}, stamp: interview.Terminal}
-	before := stopOf(t, func() { p.Confirm("Apply config-change changes?") })
+	before := stopOf(t, func() { p.Confirm("  no git identity pin\nChange the settings listed above?") })
 	if !strings.Contains(before.msg, "nothing was written") {
 		t.Fatalf("a stop at an approval: %q", before.msg)
 	}

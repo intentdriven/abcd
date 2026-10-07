@@ -186,7 +186,12 @@ reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
 safe-autocreate, config-change, status-line, oracle-routing, drain-rule, conventions-file, user-state, plugin-owned), so a
-scripted stream of specific answers lines up with them. The drain-rule and
+scripted stream of specific answers lines up with them. Each approval lists
+what it would change above its question, one line per change naming the file
+or the setting, and asks in plain words ("Change the settings listed above?");
+a list too long for one question ends on a line such as "and 3 more, which
+abcd ahoy lists", and `/abcd:ahoy` lists every one. When you relay an
+approval, quote its list with it, exactly as written. The drain-rule and
 conventions-file questions are asked only at a terminal, so a piped stream
 never meets them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
