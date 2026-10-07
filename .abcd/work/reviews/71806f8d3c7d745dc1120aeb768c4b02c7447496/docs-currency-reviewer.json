@@ -1,0 +1,35 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "71806f8d3c7d745dc1120aeb768c4b02c7447496"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-05T11:46:47Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "shallow",
+  "manifestHash": "sha256:9a4adc23ff790eeaf43438e0a36fba9cdc60d2fd1c2c3c2193d2b55e81566733",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.13.1"
+  },
+  "categories": {
+    "incomplete": 1
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "incomplete",
+      "severity": "minor",
+      "summary": "commands/ahoy.md:53 says the user-settings audit raises \"a `harness.stray_hook.<Event>` gap for each hook there that runs abcd\". internal/core/ahoy/harness_strays.go (harnessFindings, id build at the `HarnessStrayHookGapPrefix + \".\" + idSafe(ev)` line) keys the first abcd hook on an event as `harness.stray_hook.<Event>` and every further hook on the same event as `harness.stray_hook.<Event>.<n>`, so two abcd hooks on one event yield ids the page does not name. The page's instruction to relay each gap's `detail` and `fix_hint` as they stand still works for either shape, so nothing an agent does on this page goes wrong; the id pattern is merely under-described. Smallest fix: append \"(and `.<n>` for a second hook on the same event)\" after `<Event>`. Not a release blocker.",
+      "disposition": "deferred",
+      "note": "Minor wording omission (the gap id can carry a .<n> suffix for a second hook on one event); the page already tells the host to relay detail and fix_hint as they stand, so no action goes wrong. Fixing it would change the content commit and re-run every gate; deferred to a follow-up record captured after the cut."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1, tier shallow for a patch release) over an exact export of content commit 71806f8d3c7d745dc1120aeb768c4b02c7447496 with the binary built from it, every user-facing page the release touches and the 0.13.1 changelog section checked against the code and the binary. Verdict PROMOTE, one minor finding, deferred."
+}

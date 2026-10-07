@@ -50,6 +50,13 @@ Then summarise the JSON for the user:
   because that blanks the status line in every repository), `unreadable`
   (the settings file is not a JSON object), or `no-harness` (no settings file
   was found, so nothing is offered).
+- abcd entries in the harness's user settings: a `harness.stray_hook.<Event>`
+  gap for each hook there that runs abcd, and a `statusline.untrusted` gap when
+  the status line runs an abcd that fails the trust checks. Relay each gap's
+  `detail` and `fix_hint` as they stand. abcd's hooks live in its plugin, so a
+  hook in the user settings runs whatever binary it names, a stale build
+  included, in every session. abcd never edits that file to remove one: the
+  person removes it. Session start prints one line naming such an entry.
 - `vintage` and `staleness` — the running binary's build revision (in a source
   checkout) or pinned version, and whether it is up to date, stale, or of an
   undeterminable vintage relative to the on-disk reference. Report them so a
@@ -79,6 +86,15 @@ Then summarise the JSON for the user:
   and `effects` (what the install does on the machine and over the network,
   Homebrew's own analytics included) rather than a bare command, so the
   person can judge the install.
+- A report-only gap, one with `resolvable` false, is a note abcd only reports:
+  `install` never closes it, and the person has to act. Relay each one's
+  `detail` and `fix_hint` as they stand, rather than folding it into the
+  count. A `store.worktree_unlinked` gap, for one, names a worktree in abcd's
+  store that its repository no longer links back to, with the
+  `git -C … worktree repair` line for that worktree, and a
+  `history.home_symlinked` gap names the history registry abcd leaves alone
+  behind a linked home folder. Never tell the user `/abcd:ahoy install` closes
+  a report-only gap.
 
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply
 them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
@@ -216,7 +232,7 @@ its number, and Ctrl-C ends the run with exit 130, keeping the answers given
 before it. Every answer is recorded, with the question as it was asked and
 where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
 and the answers that change the machine (the status line, the machine's
-routing table) in `~/.abcd/interviews/`; a run that ends aborted or
+routing table) in `~/.abcd.noindex/interviews/`; a run that ends aborted or
 refused changed nothing and records nothing. Through this page, put each
 question to the user with the host's question tool, quoting the question
 exactly as the install writes it, then pass their answers in an answers file
@@ -338,21 +354,47 @@ reports it and never overwrites it.
 whether to install abcd's status line — one paragraph of reason, then one
 question, then one on/off prompt per element after the badge (repository,
 branch, model, context, five-hour and seven-day usage, intent and issue
-counts; default on). Present the reason to the user and relay their answer;
-never answer it for them. Consent writes exactly two files: the user-level
-setting `~/.abcd.noindex/statusline.json` (the bundled defaults with the switches
+counts; default on). The question shows the one change: the file, and the
+`statusLine` entry's value now and after. Present the reason and the change to
+the user and relay their answer; never answer it for them.
+
+`statusLine` is the only entry abcd writes in the harness's user settings, and
+only after a yes. Consent writes exactly two files: the user-level setting
+`~/.abcd.noindex/statusline.json` (the bundled defaults with the switches
 taken, plus `previous_command` recording whatever the harness ran before) and
 the harness's `settings.json`, whose `statusLine` is pointed at
-`'<entry>' statusline` with every other key preserved. In an abcd-managed
-repository the line then becomes abcd's own row, led by a badge saying whether
-abcd is here and whose answer the loop is waiting on; in every other repository
-the previous command runs untouched. Declining writes nothing and records
-nothing, so the next install offers again; `--yes` skips the offer and reports
-it under `optional_skipped`; `yes |` answers it (and keeps every element on). A
-`statusLine` of a type abcd does not understand, or a `settings.json` that
-does not parse, is refused with a note and nothing is written on either side.
-`ahoy uninstall` restores the previous command. The line can be switched off
-or reconfigured at any time in `~/.abcd.noindex/statusline.json`.
+`'<entry>' statusline` with every other key preserved. Before the harness file
+changes, a copy of it goes into `~/.abcd.noindex/backups/`, which keeps the
+newest 10; no copy, no write. After the change the file is read back, and one
+that does not say what was written is put back from the copy. `<entry>` is the
+PATH install `~/.abcd.noindex/path-entry` records, and only when it passes the
+trust checks: the binary, a link's target when the entry is a link, is owned
+by the user and writable by nobody else, every directory it is reached through
+is writable by neither its group nor every account and is owned by the user or
+root, and none of them is inside the working tree; it is never the plugin's
+own copy, whose
+versioned folder a plugin update deletes. A current command that already runs
+abcd's status verb is never recorded as the previous one.
+
+In an abcd-managed repository the line then becomes abcd's own row, led by a
+badge saying whether abcd is here and whose answer the loop is waiting on; in
+every other repository the previous command runs untouched. Declining writes
+nothing and records nothing, so the next install offers again; `--yes` skips
+the offer and reports it under `optional_skipped`; `yes |` answers it (and
+keeps every element on). A `statusLine` of a type abcd does not understand, a
+`settings.json` that does not parse, or a PATH install that fails the trust
+checks is refused with a note, and nothing is written on either side. The line
+can be switched off or reconfigured at any time in
+`~/.abcd.noindex/statusline.json`.
+
+**The status-line repair.** When abcd's own status line runs an abcd that is
+gone (`statusline.dangling`) or one that fails the trust checks
+(`statusline.untrusted`), install repairs it as config-change work, `--yes`
+included: it points the line at the trusted recorded PATH install, or, with
+none, hands it back to the recorded previous command, or removes it when none
+was recorded. The repair keeps a copy and reads the file back like the wiring
+does. A status line that runs abcd for some other purpose is the person's own,
+and is only reported.
 
 **The model-tier routing offer.** abcd ships a proposal for the model tier and
 fan-out bound each of its agents deserves (`frontier` for the verdicts a person
@@ -460,9 +502,12 @@ receipt's `symlink.target` is already rendered in tilde form, so relay it as
 given rather than expanding it. When the harness's `statusLine` is abcd's, it
 is handed back to the command recorded in `~/.abcd.noindex/statusline.json` before
 abcd took the row — or removed, when none was recorded — and the receipt's
-`status_line` says which; a status line that is not abcd's is left alone, and
-`~/.abcd.noindex/statusline.json` itself stays, because it is the user's
-configuration. It never touches `hooks.json`. An entry that was
+`status_line` says which, naming the copy of the file kept in
+`~/.abcd.noindex/backups/` first; a status line that is not abcd's is left
+alone, and `~/.abcd.noindex/statusline.json` itself stays, because it is the
+user's configuration. Run `uninstall` before removing abcd: a status line left
+pointing at a removed abcd is blank in every repository. It never touches
+`hooks.json`. An entry that was
 installed with `--bin-dir` into a directory outside `PATH` cannot be found by a
 `PATH` scan — pass the same `--bin-dir <dir>` to `uninstall` to remove it.
 

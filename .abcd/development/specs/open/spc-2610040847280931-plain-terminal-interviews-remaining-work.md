@@ -36,6 +36,7 @@ This spec carries what [spc-2610030911534855](../closed/spc-2610030911534855-a-p
    - criteria: B6's guard stays prompt: a followed link's target is bounded by a small file and byte budget, refusing with the link named
    - packages: internal/core/interview
    - tests: TestAFollowedLinkIsBounded (a turn-directory receipts link to a large tree refuses quickly, naming the link); resolves iss-2610040847166532
+   - landed: fix/guard-link-bound
 4. One real run with the person, and the close
    - criteria: B5 and B6 on a real runner: one AI-written interview (a short planning interview on a draft intent) on the person's own route with the person; the guard does not stop on what the runner itself writes, or the fix lands in this step
    - tests: the dated receipt `.abcd/.work.local/logs/real-interview-<yyyy-mm-dd>.md`; then a docs-fidelity review recorded for HEAD and `abcd spec close spc-2610040847280931` (the intent declares impact additive) with a `Delivers: itd-2610030810370060` trailer

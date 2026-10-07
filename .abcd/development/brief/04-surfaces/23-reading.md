@@ -291,7 +291,7 @@ rather than citing an id that does not exist. Like every recorded refusal, it
 rolls back what an earlier, interrupted attempt at the same run left in the
 ledger, so a refused run leaves no reading records.
 
-Writes are staged. Nothing durable is written or deleted until the whole payload
+Writes are staged. Except for a refusal's own record and its rollback of the same run, nothing durable is written or deleted until the whole payload
 validates; the reading records land as one batch; and the run metadata is written
 **last**, as the commit marker, so a run without one never happened. An interrupted
 ingest leaves a stage in the local tier. Every later invocation names the orphan,

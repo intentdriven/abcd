@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -258,7 +259,10 @@ func maxImpactOf(records []Record) Impact {
 // Both sides are read out of git, never out of the working tree: a removed
 // record exists only in the anchor's tree, and reading the added side from git
 // too keeps a dirty or half-staged working tree from changing what a release
-// reports. Every returned slice is sorted by path — the set feeds a rendered
+// reports. The other half of that rule is Derive's: a tree whose terminal
+// folders differ from HEAD is refused (uncommittedRecords), because a record
+// move left uncommitted would otherwise be silently missing from the cut.
+// Every returned slice is sorted by path — the set feeds a rendered
 // preview and a changelog bijection, both of which must be reproducible.
 //
 // A baseRef git cannot resolve is an error, never an empty set: reporting
@@ -301,6 +305,37 @@ func ShippedSince(root string, baseRef string) (RecordSet, error) {
 	sortRecords(set.Added)
 	sortRecords(set.Removed)
 	return set, nil
+}
+
+// uncommittedRecords lists the record files in the terminal folders whose
+// working-tree state differs from HEAD — added, modified, deleted, staged or
+// untracked — repo-relative and sorted.
+//
+// ShippedSince reads both sides of the cut out of git, so these are exactly the
+// changes a cut would silently leave out: a spec close or an issue resolve made
+// in the working tree and not yet committed (iss-2610050259118177). The tree is
+// read through launch.DirtyTreeFiles, the dirty-tree gate's own reader, so the
+// derivation and the ship's pre-flight can never disagree about what is
+// uncommitted; this narrows that list to the files ShippedSince counts.
+func uncommittedRecords(root string) ([]string, error) {
+	dirty, err := launch.DirtyTreeFiles(root)
+	if err != nil {
+		return nil, err
+	}
+	var records []string
+	for _, p := range dirty {
+		if !recordFileRe.MatchString(path.Base(p)) {
+			continue
+		}
+		for _, dir := range recordPaths {
+			// A prefix, not a parent: ls-tree -r counts a record at any depth.
+			if strings.HasPrefix(p, dir+"/") {
+				records = append(records, p)
+				break
+			}
+		}
+	}
+	return records, nil
 }
 
 // recordPathsAt lists the record files present in the terminal folders at ref,

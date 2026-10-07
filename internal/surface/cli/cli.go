@@ -401,6 +401,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
+	root.AddCommand(newDashboardCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
@@ -1972,6 +1973,14 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// The skew notice is a plugin-root fact, not a repo one, so it stands
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
+				notices = append(notices, n)
+			}
+			// The harness's user settings (iss-2610050556323779): a hook there
+			// that runs abcd, or an abcd status line that is gone or fails the
+			// trust checks, runs (or blanks) in every session. Named here, read
+			// only — abcd never edits that file — and a machine fact, so it
+			// stands whatever the repo detection above could answer.
+			if n := ahoy.HarnessNotice(); n != "" {
 				notices = append(notices, n)
 			}
 			// itd-111: a dogfood binary behind (or dirty against) its own source
@@ -3671,6 +3680,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// The provider adapter's explanation (itd-2609081951381895
 				// criterion 6): optional, and named so a person meets it here.
 				for _, g := range res.Gaps {
+					// abcd commands in the harness's user settings: report-only,
+					// so the board is the place a person learns of them, and a
+					// count alone would hide which entry and what to do. The
+					// command is the person's own text, so it is sanitised.
+					if strings.HasPrefix(g.ID, ahoy.HarnessStrayHookGapPrefix+".") || g.ID == ahoy.StatusLineUntrustedGapID {
+						fmt.Fprintf(w, "  harness:     %s — %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
+					}
 					switch g.ID {
 					case ahoy.ProviderAdapterGapID:
 						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")
@@ -3680,6 +3696,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						for _, d := range strings.Split(g.Detail, "\n") {
 							fmt.Fprintf(w, "  provider:    route skipped — %s\n", termsafe.Sanitize(d))
 						}
+					case ahoy.StoreWorktreeUnlinkedGapID:
+						// Report-only, so `ahoy install` never closes it and
+						// this line is where a person meets it: the worktree,
+						// home-relative, and the one repair for it
+						// (iss-2610050728100598).
+						fmt.Fprintf(w, "  worktree:    unlinked — %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {

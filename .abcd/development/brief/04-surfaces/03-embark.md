@@ -195,7 +195,7 @@ there is nothing to answer.
   `/abcd:embark`, **then** the dispatcher prints help listing the shipped
   sub-verbs and the global flags, and mutates nothing.
 - **Given** a lifeboat and a conflict-free target, **when** the unpack runs
-  (the target defaulting to the working directory), **then** the four record
+  (the target defaulting to the working directory), **then** the five record
   families land at their canonical locations under the target, the current abcd
   marker block is re-injected into the target `AGENTS.md` (or nowhere, when
   the target's setup chose no conventions file), and everything else in the

@@ -43,6 +43,15 @@ func TestDeriveRefusalKind(t *testing.T) {
 			want: RefusalUnlabelledRecord,
 		},
 		{
+			name: "a record move left uncommitted",
+			build: func(t *testing.T) *fixtureRepo {
+				r := releasedRepo(t)
+				r.record(shippedDir+"itd-2-second.md", "itd-2", "fix")
+				return r
+			},
+			want: RefusalUncommittedRecords,
+		},
+		{
 			name: "a clean cut carries no refusal kind",
 			build: func(t *testing.T) *fixtureRepo {
 				r := releasedRepo(t)

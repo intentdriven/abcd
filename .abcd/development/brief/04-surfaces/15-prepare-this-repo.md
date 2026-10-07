@@ -18,9 +18,9 @@ bare-status render. The workflow runs in the host agent from
 It takes no argument, always operating on the current repository.
 
 Because the binary carries no verb of this name, typing `abcd prepare-this-repo`
-at a shell is an unknown command rather than a route in. Today that refusal also
-blames a stale binary and asks for a rebuild, which is the wrong reading for a
-surface that is host-delegated by design: what the reader needs is the plugin
+at a shell is an unknown command rather than a route in. That refusal
+says the command has no binary verb and runs in the host agent, naming `/abcd:prepare-this-repo`: the right reading for a
+surface that is host-delegated by design, because what the reader needs is the plugin
 command above.
 
 ## Sub-verbs

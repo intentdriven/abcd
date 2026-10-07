@@ -497,12 +497,11 @@ func bootstrapRepoFile(t *testing.T, rel string) string {
 // not show the reader two different shapes of the same command.
 const bootstrapReadmeInstruction = `'<plugin-root>/abcd' ahoy install`
 
-// bootstrapShSingleQuote mirrors internal/core/ahoy's shSingleQuote: the POSIX
+// bootstrapShSingleQuote mirrors internal/shellquote's Single: the POSIX
 // single-quote wrapping that survives every character a path can hold. It is
-// restated here rather than imported (it is unexported, in another package) so
-// this test states the bytes it EXPECTS independently of the code that produces
-// them — a shared helper would agree with the script by construction and prove
-// nothing about it.
+// restated here rather than imported so this test states the bytes it
+// EXPECTS independently of the code that produces them — a shared helper would
+// agree with the script by construction and prove nothing about it.
 func bootstrapShSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
@@ -605,8 +604,8 @@ func TestBootstrapPrintsARunnableInstruction(t *testing.T) {
 	// The printed command is not merely path-qualified, it is QUOTED for a shell,
 	// and the double-quoted form this started as survives a space or an apostrophe
 	// while `$`, a backtick or a `"` inside the path still expand or terminate the
-	// string. The repo already owns the robust form (internal/core/ahoy's
-	// shSingleQuote), so the notice uses it. The proof is not a string comparison:
+	// string. The repo already owns the robust form (shellquote.Single), so the
+	// notice uses it. The proof is not a string comparison:
 	// the printed command is handed to a real `sh`, which either runs the binary
 	// at that path or does not.
 	t.Run("the printed command runs when pasted, whatever the path holds", func(t *testing.T) {

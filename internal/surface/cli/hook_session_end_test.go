@@ -53,8 +53,11 @@ func sessionEndRepo(t *testing.T) (repo, rootSHA string) {
 	// Hermetic store: HOME drives ~/.abcd.noindex/transcripts/, and nothing is created
 	// here. The store bootstraps itself on first use, so this harness is also
 	// the "machine where `abcd ahoy install` never ran" case (iss-95): every
-	// test built on it captures from a home holding nothing at all.
+	// test built on it captures from a home holding nothing at all. The
+	// harness's settings resolve under that home too, never under a
+	// configuration directory the developer's shell names.
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	return repo, rootSHA
 }
 

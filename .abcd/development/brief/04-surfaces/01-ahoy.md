@@ -602,7 +602,7 @@ run names for its file (`Terminal` unless it names another), which the plugin
 page names as `Claude Code` on the host path. The repository's answers go to
 `.abcd/.work.local/interviews/setup-<stamp>.json`, never creating the local
 tier; the machine-wide ones (the status line, the machine's routing table)
-to `~/.abcd/interviews/`, made through the guarded home-scope maker. The stamp
+to `~/.abcd.noindex/interviews/`, made through the guarded home-scope maker. The stamp
 is in the name only, so two runs given the same answers write the same bytes
 and the same configuration, whichever door asked. The line reader writes no
 record, and neither does an install that ends aborted (the adoption declined)

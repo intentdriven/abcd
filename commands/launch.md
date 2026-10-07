@@ -389,6 +389,20 @@ intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
 alone. Read-only preview of the same thing: `abcd changelog --json`.
 
+**The cut is read from HEAD, so an uncommitted record move refuses it.** The
+record set comes out of git at HEAD, never the working tree, so a spec close or
+an issue resolve made and not yet committed would be missing from a cut that
+otherwise looks plausible. The derivation therefore refuses (exit 1) under
+`uncommitted-records` whenever a record file in `intents/shipped/` or
+`issues/resolved/` differs from HEAD — added, moved, edited, deleted or only
+staged — naming every path in the refusal's `reason`. It reads the tree through
+the same reader as the pre-flight's dirty-tree gate, narrowed to those folders:
+dirt anywhere else is not the derivation's concern (the ingest's pre-flight
+judges the whole tree), and `--allow-dirty` does not waive it, because the cut
+would still be read from HEAD. Commit the records (or discard the change) and
+run again. `abcd changelog` carries the same refusal, rendered `REFUSED` with
+the paths; as the preview it still exits 0.
+
 The cut also lists every planned intent that names a release it must land by
 (`targets`, one `targeted:` line each in the render, and `targets_error` when
 the intent store could not be read): targeted and not shipped. The list never
@@ -415,8 +429,9 @@ Exit codes gate the flow:
 - **0** — the cut is ready. Continue to step 2.
 - **1** — the cut **REFUSES**. Render the whole report to the user and **stop**.
   Every refusal names the specific record, version, or surface that blocks it — a
-  release in flight, a merged feature whose intent still sits in `planned/`, a
-  missing surface baseline, a surface break with no `breaking` record, or a
+  release in flight, a record move left uncommitted (`uncommitted-records`), a
+  merged feature whose intent still sits in `planned/`, a missing surface
+  baseline, a surface break with no `breaking` record, or a
   consequential finding this cycle captured and never answered (see *The
   findings gate* below). A refusal is a result to relay, not a crash, and not
   something to work around.
@@ -637,7 +652,8 @@ gate together (exit 2). It writes its pre-flight report whatever the verdict; th
 ship is passed `--allow-dirty`, which carries them into the cut and records the
 override, with every path it carried, in the report (`allowed_dirty` in
 `--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,
-and never the archive pin's refusal of an uncommitted payload file. On a ship
+never the archive pin's refusal of an uncommitted payload file, and never the
+cut's own `uncommitted-records` refusal (step 1). On a ship
 that renders nothing it is an operand error, because there is no gate to
 waive. Relay the refusal and let the user decide; do not add `--allow-dirty` on
 their behalf. The ship's report, its `--json` (`parity`, `deep_smoke`) and its

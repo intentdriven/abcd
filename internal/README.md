@@ -311,12 +311,17 @@ plugin surface, and a future MCP server share one engine.
   to the hooks' shell wrapper, before anything writes. `Rel` gives the slash path the `fsutil` home-scope
   primitives take, so every reader keeps their guards; `Path` joins it under a
   home directory; `Display` gives the `~/`-form a message names it by. A leaf
-  importing only the standard library, outside `core/` because the spellings
+  importing only the standard library and `shellquote/`, outside `core/` because the spellings
   sit in `core/`, `surface/cli` and `cmd/` alike. Its boundary test holds every
   other package to it (a literal naming the home, or a home value joined with a
   `.abcd`-led string), and leaves a repository's own `.abcd/` alone; a second
   test holds that no code names the computer's search settings
   (adr-2610030720195401).
+- **`shellquote/`** — the one POSIX-shell quoting primitive: `Single` is a
+  value as one single-quoted word, an embedded quote closed, escaped and
+  reopened, for every command abcd prints for a person to paste or writes into
+  a script. A standard-library leaf outside `core/` so `abcdhome/` can use it;
+  `TestOnlySingleQuotesForTheShell` refuses a private copy anywhere else.
 - **`textwidth/`** — the one display-width measure, word wrap, fit to width
   and break by width (East Asian wide runes count two), a pure leaf with no
   terminal I/O. It sits outside

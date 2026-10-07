@@ -36,6 +36,9 @@ func gitRepoNoStore(t *testing.T) (string, string) {
 	}
 	home := t.TempDir() // hermetic, empty: no ~/.abcd.noindex
 	t.Setenv("HOME", home)
+	// The harness's settings resolve under that home, never under a
+	// configuration directory the developer's shell names.
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	return repo, home
 }
 
@@ -175,6 +178,7 @@ func TestHookSessionStartSilentAndNonBlocking(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			noAmbientPluginRoot(t)
+			t.Setenv("CLAUDE_CONFIG_DIR", "") // the harness's settings resolve under the test's HOME
 			stdout, stderr, code := runSessionStart(tc.stdin(t), "hook", "session-start")
 			if code != 0 {
 				t.Errorf("must exit 0 (not a store problem), got %d", code)

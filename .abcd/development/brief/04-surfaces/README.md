@@ -48,6 +48,7 @@ are wiring rather than user-facing surface are listed separately under
 | 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
 | 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
+| 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -141,7 +142,7 @@ the command's sentence (the section below).
 | people | checks | `lint` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch`, `reflect` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lab`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
+| agents and hosts | — | `banlist`, `changelog`, `dashboard`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lab`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
@@ -309,7 +310,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `decide`, `disembark`, `docs`, `drain`,
+`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
 `prepare-this-repo`, `reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`,

@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"context"
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -26,18 +27,33 @@ import (
 // the marker is absent AND there is an index to look it up in. Zero network,
 // zero writes.
 func Managed(root string) bool {
+	ok, _ := ManagedContext(context.Background(), root)
+	return ok
+}
+
+// ManagedContext is Managed bound to ctx, for a caller on a deadline (the
+// status verb). The one subprocess it may start — git's root commit, asked
+// only when no marker block answers — runs under ctx and is killed when ctx
+// ends (gitutil.RootCommitContext). A context that ended before git answered
+// is returned as its own error, never as "not managed", so the caller does not
+// mistake a slow git for a checkout abcd does not manage.
+func ManagedContext(ctx context.Context, root string) (bool, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		return false
+		return false, nil
 	}
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
 		if markerFileHasBlock(filepath.Join(abs, name)) {
-			return true
+			return true, nil
 		}
 	}
 	idx, err := loadHistoryIndex()
 	if err != nil || idx == nil {
-		return false
+		return false, nil
 	}
-	return indexHasRoot(idx, gitutil.RootCommit(abs))
+	sha, err := gitutil.RootCommitContext(ctx, abs)
+	if err != nil {
+		return false, err
+	}
+	return indexHasRoot(idx, sha), nil
 }

@@ -1,6 +1,7 @@
 package changelog
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/launch"
@@ -63,6 +64,9 @@ const (
 	RefusalReleaseInFlight RefusalKind = "release-in-flight"
 	// RefusalUnlabelledRecord: a record ADDED by the cut carries no valid impact.
 	RefusalUnlabelledRecord RefusalKind = "unlabelled-record"
+	// RefusalUncommittedRecords: the working tree's terminal record folders
+	// differ from HEAD, which is where the cut reads them.
+	RefusalUncommittedRecords RefusalKind = "uncommitted-records"
 )
 
 // Derive runs the whole deterministic release derivation over the repository at
@@ -70,7 +74,7 @@ const (
 // resolve the anchor tag, refuse a release already in flight, diff the record
 // end-states, then apply the version policy to the strongest impact in the cut.
 //
-// It refuses (rather than deriving a number that would be wrong) in three cases,
+// It refuses (rather than deriving a number that would be wrong) in four cases,
 // each fail-closed:
 //
 //   - No release tag. There is no immutable base; inventing one would report
@@ -86,6 +90,12 @@ const (
 //     record and the file to edit. The removed side cannot refuse — its blob is
 //     read from the anchor tag's immutable tree, so an unlabelled one is
 //     unfixable by definition (see RecordSet.UnlabelledAdded).
+//   - The working tree's terminal record folders differ from HEAD. The cut is
+//     read at HEAD, so a spec close or an issue resolve left uncommitted would
+//     be silently missing from a cut that otherwise looks plausible — the
+//     v0.13.0 near-miss (iss-2610050259118177). Every path is named. Dirt
+//     outside those folders is not the derivation's concern: the ship's
+//     pre-flight dirty-tree gate judges the whole tree before it writes.
 func Derive(root string) (Derivation, error) {
 	var d Derivation
 
@@ -112,6 +122,17 @@ func Derive(root string) (Derivation, error) {
 	}
 	d.Records = records
 
+	// After the records are read, so a refused cut still shows the committed
+	// set the operator is about to change; before the impact check, because an
+	// uncommitted move means that set is not the release's at all.
+	uncommitted, err := uncommittedRecords(root)
+	if err != nil {
+		return Derivation{}, err
+	}
+	if len(uncommitted) > 0 {
+		return refuse(d, RefusalUncommittedRecords, uncommittedReason(uncommitted)), nil
+	}
+
 	if unlabelled := records.UnlabelledAdded(); len(unlabelled) > 0 {
 		names := make([]string, 0, len(unlabelled))
 		for _, rec := range unlabelled {
@@ -126,6 +147,19 @@ func Derive(root string) (Derivation, error) {
 		d.Next, d.NextTag, d.Bumped = next, next.Tag(), true
 	}
 	return d, nil
+}
+
+// uncommittedReason names every uncommitted record path and the way out.
+//
+// There is no --allow-dirty escape, and the reason says so: the cut reads its
+// records at HEAD whoever allows the dirt, so a waived refusal would leave the
+// uncommitted record out of the release exactly as silently as before — the
+// same reasoning that keeps launch.DirtyPayloadFiles outside the flag's reach.
+func uncommittedReason(paths []string) string {
+	return fmt.Sprintf("%d record file(s) in the terminal folders differ from HEAD (%s) — the cut reads its records "+
+		"at HEAD, so it would leave these changes out; commit them (or discard them) and run again "+
+		"(--allow-dirty does not waive this: the cut would still be read from HEAD)",
+		len(paths), strings.Join(paths, ", "))
 }
 
 // refuse stamps a refusal on a partially-filled derivation, clearing anything

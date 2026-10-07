@@ -167,7 +167,7 @@ existing changelog is never opened), and `auto-release.yml` calling the gate
 unless a release workflow of its own is in charge. That workflow is left
 byte-for-byte; the report names it as left alone and prints the job to add to it
 so it calls the gate before its build step, with `publish: false` so the gate
-verifies and tags only. Every scaffolded file is drift-checked the same way. A
+verifies only (it tags too when the caller passes `create_tag: true`). Every scaffolded workflow, runbook and script is drift-checked the same way; the changelog anchor and the re-authoring declaration are seeds, laid when absent and never checked again. A
 managed repository's workflow carries gate plumbing and a **named empty build
 job**: abcd does not guess how a repository builds (iss-2608270559310755), so the
 job holds one step to fill and names `dist/` as its output, and the publish job
@@ -183,7 +183,7 @@ branch and into the release workflow's verify header as its merge gate. The
 reviews-charter check holds dated review directories to their shape and exempts
 the sha-keyed receipt directories, and the scaffolded verify job runs it as a
 deterministic gate, so a release's own receipts never fail the charter. The
-workflows ship from a single embedded template that abcd's own release workflows
+workflows ship from embedded templates, one per file, that abcd's own release workflows
 are regenerated from, proved byte-exact by a test, so a scaffolded repo and this
 one cannot drift. The scaffolded workflow carries a **rehearsal** that arms the
 full gate against a simulated changelog roll and publishes nothing, so a green
@@ -220,7 +220,7 @@ attribution gate is unchanged and judges the result like any other commit.
 
 It is idempotent and fail-safe: a re-run on current machinery is a no-op
 (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless
-the caller confirms, and a structural fault, a missing declaration or an unknown
+the caller confirms, and a structural fault before the writes, a missing declaration or an unknown
 kind exits 2 with nothing written.
 
 **The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
@@ -481,7 +481,7 @@ any intent falls back to conventional-commit derivation.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are nine, and an operator sees them as
+would be wrong. There are ten, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -489,6 +489,7 @@ would be wrong. There are nine, and an operator sees them as
 | `no-release-tag` | there is no immutable base to measure the cut from |
 | `release-in-flight` | the newest changelog heading is ahead of the newest tag, so a release sits between its merge and its tag |
 | `unlabelled-record` | a record the cut adds carries no valid impact |
+| `uncommitted-records` | a record file in a terminal folder (`intents/shipped/`, `issues/resolved/`) differs from HEAD, where the cut reads it, so a spec close or resolve left uncommitted would be missing from the cut; every path is named, and no override waives it |
 | `stale-intent` | an intent in `planned/` has a spec that has closed |
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
@@ -777,7 +778,7 @@ performed by a human and by CI.
   removed, the removal is named in the launch report, and the last release of
   every other line is untouched. **Given** a release newer than the
   just-published version already exists, the retention step refuses to prune
-  anything and records the refusal reason. *(Not built: the shipped cut renders
+  anything and records the refusal reason. *(Not built: only the preview renders
   the retention decision and stops before any removal; removal is itd-70's.)*
 - **Given** a documentation-auditor or hook-compliance warning, **when** the
   preview or the cut runs, **then** the warning is shown and refuses nothing;
