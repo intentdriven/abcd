@@ -44,7 +44,8 @@ var categoryApprovalWords = map[GapCategory]approvalWords{
 	Dependency: {ask: "Offer to install the tools listed above?", yes: nextLabel,
 		next: "Asks before installing each tool listed above, one question per tool."},
 	SafeAutocreate: {ask: "Create the files and folders listed above?", yes: writesLabel, writes: true},
-	ConfigChange:   {ask: "Change the settings listed above?", yes: writesLabel, writes: true},
+	ConfigChange: {ask: "Change the settings listed above?", yes: nextLabel,
+		next: "Asks first for each value not yet chosen; a setting left unanswered is not written."},
 	StatusLine: {ask: "Go on to the status line offer listed above?", yes: nextLabel,
 		next: "Asks next whether to install it and what it shows; nothing is written without a yes there."},
 	OracleRouting: {ask: "Go on to the model routing offers listed above?", yes: nextLabel,
@@ -91,11 +92,13 @@ const moreFormat = "and %d more, which abcd ahoy lists"
 var moreRe = regexp.MustCompile(`^and ([1-9][0-9]*) more, which abcd ahoy lists$`)
 
 // categoryApprovalText is the approval of the kind of change c over its
-// changes, lines: each line an item, then the question. A list taller than a
-// question fits (question.Default's rows at its columns) shows as many lines
-// as fit and ends on a line counting the rest, which abcd ahoy lists in full;
-// yes still counts every change.
-func categoryApprovalText(c GapCategory, lines []string) string {
+// changes, lines: each line an item, then the question. With fit, a list
+// taller than a question fits (question.Default's rows at its columns, the
+// host's frame) shows as many lines as fit and ends on a line counting the
+// rest, which abcd ahoy lists in full; yes still counts every change. Without
+// fit every line is shown: a person at a terminal reads a drawn question that
+// scrolls, or a [y/N] line with no bound.
+func categoryApprovalText(c GapCategory, lines []string, fit bool) string {
 	clean := make([]string, 0, len(lines))
 	for _, ln := range lines {
 		if ln = strings.Join(strings.Fields(ln), " "); ln != "" {
@@ -112,6 +115,9 @@ func categoryApprovalText(c GapCategory, lines []string) string {
 			b.WriteString("  " + fmt.Sprintf(moreFormat, rest) + "\n")
 		}
 		return b.String() + ask
+	}
+	if !fit {
+		return compose(len(clean))
 	}
 	for shown := len(clean); shown > 1; shown-- {
 		text := compose(shown)

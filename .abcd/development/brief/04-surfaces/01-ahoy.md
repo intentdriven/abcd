@@ -528,9 +528,11 @@ would change a saved setting listed under the settings approval; then the
 question in plain words ("Create the files and folders listed above?", "Change
 the settings listed above?"), never the category's internal name. Yes says how
 many listed changes it writes, or, for a category whose changes are each asked
-again (a tool, an offer, a conventions file), which questions it goes on to. A
-list taller than one question fits at 80 columns ends on a line counting the
-rest, which `abcd ahoy` lists in full. The question check refuses an answer
+again (a setting's value, a tool, an offer, a conventions file), which
+questions it goes on to. A person at a terminal is shown every change; off a
+terminal, where the host's frame bounds the question, a list taller than one
+question fits at 80 columns ends on a line counting the rest, which `abcd ahoy`
+lists in full by title. The question check refuses an answer
 whose meaning points at text above a question that has none, the shape the
 approvals had before they listed anything.
 
@@ -846,7 +848,8 @@ and notes the orphaned-predecessor possibility in the summary.
 status, root SHA, install mode where one resolves, vintage and staleness, the
 superseded-root note when the answering binary sits in a plugin root other than
 the one this session resolves, the citation baseline's coverage and age on a
-repo that has armed the citation gate, the gap count, and — on a repo — guard
+repo that has armed the citation gate, the gap count with each gap's title
+beneath it, and — on a repo — guard
 health and the banlist block with its reach, closing on a next-step line for the
 unmanaged kinds. In JSON form the same pass renders the detection envelope plus
 vintage and staleness, and `superseded_root` when the note applies; the plugin

@@ -2218,7 +2218,9 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 			if c == Dependency && opts.ApproveDependency {
 				continue // answered by the named tool; approved below
 			}
-			if p.Confirm(categoryApprovalText(c, lines[c])) {
+			// Only the routes the host's rows bind cut the list: a person at
+			// a terminal is shown every change.
+			if p.Confirm(categoryApprovalText(c, lines[c], !atTerminal(p))) {
 				approved[c] = true
 			}
 		}

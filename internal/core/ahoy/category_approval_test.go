@@ -39,24 +39,24 @@ func listedItems(q question.Question) []string {
 // door receives it, and built as setup builds it.
 func TestACategoryApprovalListsWhatItWrites(t *testing.T) {
 	gaps := []Gap{
-		{ID: "config.visibility_missing", Category: ConfigChange, Title: "repo.visibility not set", Resolvable: true},
-		{ID: "config.docs_target_missing", Category: ConfigChange, Title: "docs.target not set", Resolvable: true},
+		{ID: "skeleton.config_missing", Category: SafeAutocreate, Title: ".abcd/config.json missing", Resolvable: true},
+		{ID: "rules.missing", Category: SafeAutocreate, Title: ".abcd/rules.json missing", Resolvable: true},
 		{ID: "plugin.root_missing", Category: PluginOwned, Title: "abcd's plugin files were not found", Resolvable: false},
 	}
 	p := &recordingPrompter{confirm: true}
 	resolveApproval(gaps, InstallOptions{}, nil, p)
 	if len(p.asked) != 1 {
-		t.Fatalf("asked %d approvals, want the one for the settings: %q", len(p.asked), p.asked)
+		t.Fatalf("asked %d approvals, want the one for the skeleton: %q", len(p.asked), p.asked)
 	}
 	q := SetupConfirmQuestion(3, p.asked[0])
-	if q.ID != approvePrefix+string(ConfigChange) {
-		t.Fatalf("the approval's id is %q, want %s", q.ID, approvePrefix+string(ConfigChange))
+	if q.ID != approvePrefix+string(SafeAutocreate) {
+		t.Fatalf("the approval's id is %q, want %s", q.ID, approvePrefix+string(SafeAutocreate))
 	}
 	items := listedItems(q)
-	if strings.Join(items, "|") != "repo.visibility not set|docs.target not set" {
+	if strings.Join(items, "|") != ".abcd/config.json missing|.abcd/rules.json missing" {
 		t.Fatalf("the approval lists %q, want one line per change", items)
 	}
-	if strings.Contains(q.Ask, string(ConfigChange)) {
+	if strings.Contains(q.Ask, string(SafeAutocreate)) {
 		t.Errorf("the approval asks by the internal name: %q", q.Ask)
 	}
 	if !strings.Contains(q.Options[0].Meaning, "2 changes") {
@@ -77,7 +77,7 @@ func TestEveryCategoryApprovalPassesTheChecks(t *testing.T) {
 			for i := range lines {
 				lines[i] = fmt.Sprintf(".abcd/work/file-%02d.md missing", i+1)
 			}
-			q := SetupConfirmQuestion(1, categoryApprovalText(c, lines))
+			q := SetupConfirmQuestion(1, categoryApprovalText(c, lines, true))
 			if q.ID != approvePrefix+string(c) {
 				t.Errorf("%s over %d: id %q", c, n, q.ID)
 			}
@@ -129,4 +129,50 @@ func TestAnApprovalWithNoMaterialPointsAtNothingAbove(t *testing.T) {
 	if fs := question.Check(question.Ask{Questions: []question.Question{q}}); len(fs) > 0 {
 		t.Fatalf("structural findings: %v", fs)
 	}
+}
+
+// sevenGaps is seven resolvable changes of one kind, more than the host's 24
+// rows hold in one question.
+func sevenGaps() []Gap {
+	var gaps []Gap
+	for i := 1; i <= 7; i++ {
+		gaps = append(gaps, Gap{ID: fmt.Sprintf("skeleton.%d", i), Category: SafeAutocreate,
+			Title: fmt.Sprintf(".abcd/work/file-%d.md missing", i), Resolvable: true})
+	}
+	return gaps
+}
+
+// TestATerminalApprovalListsEveryChange: a person at a terminal is shown the
+// whole list (the drawn question scrolls, the [y/N] line has no bound), so
+// the list is never cut there. Off a terminal, where the host's 24 rows bind
+// the question, it is cut and counts the rest.
+func TestATerminalApprovalListsEveryChange(t *testing.T) {
+	p := &recordingPrompter{terminal: true}
+	resolveApproval(sevenGaps(), InstallOptions{}, nil, p)
+	if len(p.asked) != 1 {
+		t.Fatalf("asked %q", p.asked)
+	}
+	items := listedItems(SetupConfirmQuestion(1, p.asked[0]))
+	if len(items) != 7 || items[6] != ".abcd/work/file-7.md missing" {
+		t.Fatalf("at a terminal the approval lists %q, want all seven", items)
+	}
+	off := &recordingPrompter{}
+	resolveApproval(sevenGaps(), InstallOptions{}, nil, off)
+	items = listedItems(SetupConfirmQuestion(1, off.asked[0]))
+	if len(items) >= 7 || !strings.HasPrefix(items[len(items)-1], "and ") {
+		t.Fatalf("off a terminal the approval lists %q, want it cut to fit and counting the rest", items)
+	}
+}
+
+// TestTheSettingsApprovalSaysValuesAreAskedFirst: approving the settings
+// writes nothing by itself; each value not yet chosen is asked next, and one
+// left unanswered saves none of them (stepConfigValues), so its yes goes on
+// rather than claiming to write.
+func TestTheSettingsApprovalSaysValuesAreAskedFirst(t *testing.T) {
+	q := SetupConfirmQuestion(1, categoryApprovalText(ConfigChange, []string{"repo.visibility not set", "docs.target not set"}, true))
+	yes := q.Options[0]
+	if strings.Contains(yes.Meaning, "Writes") || yes.Label != nextLabel {
+		t.Fatalf("the settings yes is %q: %q; it claims to write what is still to be asked", yes.Label, yes.Meaning)
+	}
+	heldToEveryCheck(t, q)
 }

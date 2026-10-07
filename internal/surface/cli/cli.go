@@ -3678,6 +3678,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  citations:   %s\n", termsafe.Sanitize(citations))
 				}
 				fmt.Fprintf(w, "  gaps:        %d\n", len(res.Gaps))
+				// Each gap by its title, so the install's approvals can point
+				// here for a list they cut to fit (iss-2610071528375981).
+				for _, g := range res.Gaps {
+					fmt.Fprintf(w, "               %s\n", termsafe.Sanitize(g.Title))
+				}
 				// The provider adapter's explanation (itd-2609081951381895
 				// criterion 6): optional, and named so a person meets it here.
 				for _, g := range res.Gaps {

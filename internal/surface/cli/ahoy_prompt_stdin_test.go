@@ -329,3 +329,22 @@ func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
 		t.Fatalf("pin written from the wrong identity:\n%s", body)
 	}
 }
+
+// TestBareAhoyListsEachGapsTitle: the plain board names every gap by its
+// title under the count, so the approval's "and N more, which abcd ahoy
+// lists" line holds (iss-2610071528375981).
+func TestBareAhoyListsEachGapsTitle(t *testing.T) {
+	hermeticRepo(t)
+	var det struct {
+		Gaps []struct{ Title string } `json:"gaps"`
+	}
+	if err := json.Unmarshal(runCLI(t, "ahoy", "--json"), &det); err != nil || len(det.Gaps) == 0 {
+		t.Fatalf("no gaps to list: %v", err)
+	}
+	out := string(runCLI(t, "ahoy"))
+	for _, g := range det.Gaps {
+		if !strings.Contains(out, "\n               "+g.Title+"\n") {
+			t.Errorf("the board does not list the gap %q:\n%s", g.Title, out)
+		}
+	}
+}
