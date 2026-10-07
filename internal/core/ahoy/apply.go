@@ -201,6 +201,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// inside it are only written once the .gitignore fence that keeps them
 	// untracked is on disk.
 	ac.stepLocalTier()
+	// The committed tiers the repository lint requires, with the shared tier's
+	// decision log (iss-2610071538028804).
+	ac.stepCommittedTiers()
 	ac.stepBanlist()
 	// Beside the guard hooks, and after them: both land in the same committed hooks
 	// directory, and the EOL pin stepBanlist appends covers `.githooks/*`.

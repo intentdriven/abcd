@@ -379,7 +379,13 @@ package-manager install takes the manager's own upgrade.
 ## What adopting a repository commits
 
 Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
-it lays down the `.abcd/` layout and the commit gates. By default it writes abcd's name into none of the
+it lays down the `.abcd/` layout and the commit gates. The layout is the three
+tiers `abcd lint` checks for: `.abcd/development/` and `.abcd/work/`, the
+shared tiers, and `.abcd/.work.local/`, which stays on this machine. A missing
+tier is created, and `.abcd/work/` is started with a `DECISIONS.md` that holds
+only a header saying how the log is kept, so the tier survives a clone; a
+`DECISIONS.md` already there is left as it is. By default the install writes
+abcd's name into none of the
 repository's conventions files; the managed block that documents the rule
 loader, and names abcd, goes into `AGENTS.md`, and only into `AGENTS.md`, when
 you ask for it with `--docs-target agents_md`. abcd writes no other
