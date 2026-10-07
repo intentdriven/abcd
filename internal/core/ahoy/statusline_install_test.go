@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/statusline"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // harnessFixture stands up the host harness's user-level configuration
@@ -384,7 +385,7 @@ func TestStatusLineConsentWiresBothFiles(t *testing.T) {
 	if line["type"] != "command" {
 		t.Errorf("statusLine.type = %v", line["type"])
 	}
-	if got, want := line["command"], shSingleQuote(entry)+" statusline"; got != want {
+	if got, want := line["command"], shellquote.Single(entry)+" statusline"; got != want {
 		t.Errorf("statusLine.command = %v, want %v", got, want)
 	}
 	if line["padding"] != float64(0) {
@@ -598,7 +599,7 @@ func TestStatusLineExistingSettingIsLeftAlone(t *testing.T) {
 	if doc["previous_command"] != previousStatusCommand {
 		t.Errorf("previous_command = %v, want it filled from the harness", doc["previous_command"])
 	}
-	if line, _ := statusLineOf(t, settings); line["command"] != shSingleQuote(a.binTarget)+" statusline" {
+	if line, _ := statusLineOf(t, settings); line["command"] != shellquote.Single(a.binTarget)+" statusline" {
 		t.Errorf("harness not pointed at abcd: %v", line)
 	}
 }
@@ -624,7 +625,7 @@ func TestStatusLineDanglingIsRepaired(t *testing.T) {
 			t.Fatalf("status = %q remaining=%v notes=%v", res.Status, res.Remaining, res.Notes)
 		}
 		line, _ := statusLineOf(t, settings)
-		if want := shSingleQuote(os.Getenv("ABCD_BIN_TARGET")) + " statusline"; line["command"] != want {
+		if want := shellquote.Single(os.Getenv("ABCD_BIN_TARGET")) + " statusline"; line["command"] != want {
 			t.Errorf("command = %v, want %v", line["command"], want)
 		}
 		if line["padding"] != float64(2) {
@@ -802,23 +803,30 @@ func statusLineNotes(notes []string) []string {
 // previous command, which is abcd's status verb. Recording it forks the
 // machine, so the wiring refuses in any spelling: nothing written on either
 // side, and a note naming the command and the fix.
+//
+// Each spelling also runs an abcd that fails the trust checks, so under
+// config-change approval install repairs it instead (never recording it);
+// the record-time guard is what stands when that repair is declined.
 func TestStatusLineRefusesToRecordItselfAsPrevious(t *testing.T) {
 	for _, cmd := range []string{
 		"abcd statusline",
 		"~/.local/bin/abcd statusline",
 		`\"abcd\" statusline | head -c 200`,
 		"'~/.local/bin/abcd' statusline",
+		"/src/abcd/bin/abcd-darwin-arm64 statusline",
 	} {
 		t.Run(cmd, func(t *testing.T) {
 			home, _ := setupHermetic(t)
-			settings := harnessFixture(t, harnessSettingsWith(`{"type": "command", "command": "`+cmd+`"}`))
 			repo := installedRepo(t)
+			settings := harnessFixture(t, harnessSettingsWith(`{"type": "command", "command": "`+cmd+`"}`))
 			det, _ := Detect(repo)
 			if !hasGap(det.Gaps, StatusLineOfferGapID) {
 				t.Fatalf("precondition: a hand-wired spelling is foreign to detection and is offered; gaps=%v", statusLineGaps(det.Gaps))
 			}
 			before, _ := os.ReadFile(settings)
-			res, err := Install(repo, InstallOptions{}, offerPrompter(true, nil))
+			p := offerPrompter(true, nil)
+			p.confirm = func(q string) bool { return q != "Apply "+string(ConfigChange)+" changes?" }
+			res, err := Install(repo, InstallOptions{}, p)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1002,7 +1010,7 @@ func TestStatusLineWiringMergesIntoTheLiveHarnessFile(t *testing.T) {
 		t.Errorf("the permissions rule the harness wrote during the prompts was reverted: %v", doc["permissions"])
 	}
 	line, ok := statusLineOf(t, settings)
-	if !ok || line["command"] != shSingleQuote(os.Getenv("ABCD_BIN_TARGET"))+" statusline" {
+	if !ok || line["command"] != shellquote.Single(os.Getenv("ABCD_BIN_TARGET"))+" statusline" {
 		t.Errorf("statusLine = %v, want abcd's wiring", line)
 	}
 }

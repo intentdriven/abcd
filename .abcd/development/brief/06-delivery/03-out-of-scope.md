@@ -134,6 +134,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610040754453237` — The public record site for every abcd-managed project (draft; later, by the product thinker's ruling)
 - `itd-2610040817105016` — Every brief section shows what realises it, and a brief change names what it touches (draft; refines itd-61; revisited after the downstream lab)
 - `itd-2610040822131032` — A lab runs end to end from a question the product thinker asks (draft; builds on itd-2609212137128014; shaped after the downstream brief lab)
+- `itd-2610050548126044` — abcd reminds a session to refresh its handover note only when that session changed the tree (draft; takes over a personal stop hook)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

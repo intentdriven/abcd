@@ -276,7 +276,7 @@ func (r *resolver) classifyRegular(rel, abs string, info os.FileInfo, deref bool
 	// failing on, not a candidate to drop in silence. It sits after the include
 	// match rather than before it so an artefact nobody asked for stays an
 	// ordinary default-deny miss instead of a reported violation.
-	if isPlatformBinaryName(path.Base(rel)) {
+	if IsBinaryName(path.Base(rel)) {
 		r.result.Rejected = append(r.result.Rejected, RejectedFile{LogicalPath: rel, Reason: RejectedPlatformBinary})
 		return
 	}
@@ -918,21 +918,28 @@ func parseCharClass(pattern string, i int) (body string, negated bool, adv int, 
 	return pattern[start:j], negated, j + 1, true
 }
 
-// platformBinaryRe matches the basename of a built abcd binary — the
-// `abcd-<goos>-<goarch>` names the release workflow publishes, plus the `.exe`
-// spelling, AND the bare `abcd` that `go build ./cmd/abcd` produces. The bare
-// name matters most of the three: it is the name the bootstrap's own refusal
-// text tells a user to build, and the name the binary runs under inside the
-// plugin root, so a control that covered only the cross-compiled spellings had
-// its hole at the most likely file. The match is the WHOLE basename: a document
+// BinaryNamePattern is the ONE spelling of a built abcd binary's file name —
+// the `abcd-<goos>-<goarch>` names `make build` and the release workflow
+// publish, plus the `.exe` spelling, AND the bare `abcd` that `go build
+// ./cmd/abcd` produces. It is unanchored so a recogniser can embed it; every
+// reader that asks "is this file an abcd binary?" builds on it (BinaryNameRe
+// here, and ahoy's recognisers of an abcd command in the harness settings), so
+// a new build name is taught in one place.
+//
+// The bare name matters most of the three: it is the name the bootstrap's own
+// refusal text tells a user to build, and the name the binary runs under inside
+// the plugin root, so a control that covered only the cross-compiled spellings
+// had its hole at the most likely file.
+const BinaryNamePattern = `abcd(-[a-z0-9]+-[a-z0-9]+)?(\.exe)?`
+
+// BinaryNameRe matches the WHOLE basename of a built abcd binary: a document
 // about an artefact (`docs/abcd-darwin-arm64.md`) is prose, not a binary, and
 // denying by substring would take it too.
-var platformBinaryRe = regexp.MustCompile(`^abcd(-[a-z0-9]+-[a-z0-9]+)?(\.exe)?$`)
+var BinaryNameRe = regexp.MustCompile(`^` + BinaryNamePattern + `$`)
 
-// isPlatformBinaryName reports whether base is a released platform artefact's
-// file name.
-func isPlatformBinaryName(base string) bool {
-	return platformBinaryRe.MatchString(base)
+// IsBinaryName reports whether base is a built abcd binary's file name.
+func IsBinaryName(base string) bool {
+	return BinaryNameRe.MatchString(base)
 }
 
 // scriptsDenied reports whether a scripts/-tree path matches the closure's own

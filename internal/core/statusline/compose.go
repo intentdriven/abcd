@@ -26,6 +26,7 @@ package statusline
 // per folder, no parse, no subprocess (2026-09-15).
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -38,7 +39,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -63,27 +63,39 @@ const RecordRelDir = ".abcd/development"
 
 // Compose renders the row for an already-resolved checkout root.
 //
-// The caller resolves the root (gitutil.CheckoutRoot) and decides whether the
-// repository is managed before calling; Compose takes the root as given. The
-// state is read from the mode store, and a store that cannot be read — a
-// fourth word, a symlink, a device — is an ERROR rather than a quiet badge,
-// for the reason mode.ReadAt gives: somebody wrote something there, and
-// reporting "nobody is waiting" over it would hide the parked stop the badge
-// exists to show.
+// The caller resolves the root (CheckoutRoot, or gitutil.CheckoutRoot) and
+// decides whether the repository is managed before calling; Compose takes the
+// root as given. The state is read from the mode store, and a store that
+// cannot be read — a fourth word, a symlink, a device — is an ERROR rather
+// than a quiet badge, for the reason mode.ReadAt gives: somebody wrote
+// something there, and reporting "nobody is waiting" over it would hide the
+// parked stop the badge exists to show.
 //
 // The branch comes from git: the symbolic ref's short name, or the short sha
 // on a detached HEAD, or nothing (the element drops) when git will not answer.
 // The counts are the record's folder counts (see the package comment), and are
 // switched off in a repository that has no record. The settings are copied
 // before any switch is thrown, so the caller's own Settings are never mutated.
+//
+// Compose asks git with no deadline of its own; ComposeContext is the same
+// composition with git bounded by ctx, which is what the status verb calls.
 func Compose(root string, p Payload, set Settings) (Result, error) {
+	return ComposeContext(context.Background(), root, p, set)
+}
+
+// ComposeContext is Compose with every git question bounded by ctx. A git that
+// has not answered when ctx ends is killed and its element drops, exactly as
+// it drops when git will not answer at all, so a slow branch costs the row its
+// branch and nothing else: the badge, the repository and the counts still
+// render (iss-2610050556383525).
+func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (Result, error) {
 	state, err := mode.ReadAt(root)
 	if err != nil {
 		return Result{}, err
 	}
 	in := Input{
 		State:   state,
-		Repo:    Repo{Name: filepath.Base(root), Branch: branch(root)},
+		Repo:    Repo{Name: filepath.Base(root), Branch: branch(ctx, root)},
 		Payload: p,
 	}
 
@@ -112,12 +124,13 @@ func Compose(root string, p Payload, set Settings) (Result, error) {
 
 // branch is the checkout's branch name, the short sha when HEAD is detached,
 // or "" when git will not answer — in which case the element drops, the same
-// answer an absent payload field gets.
-func branch(root string) string {
-	if name, err := gitutil.Run(root, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil && name != "" {
+// answer an absent payload field gets. Both questions are bounded by ctx
+// (gitQuery); a git still running when it ends is killed.
+func branch(ctx context.Context, root string) string {
+	if name, err := gitQuery(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil && name != "" {
 		return name
 	}
-	if sha, err := gitutil.Run(root, "rev-parse", "--short", "HEAD"); err == nil {
+	if sha, err := gitQuery(ctx, root, "rev-parse", "--short", "HEAD"); err == nil {
 		return sha
 	}
 	return ""

@@ -145,3 +145,16 @@ func paint(p Pair, text string) string {
 	}
 	return "\x1b[" + fg.sgr(38) + ";" + bg.sgr(48) + "m" + text + reset
 }
+
+// PaintRole paints text in a role's fixed badge pair, padded with one space of
+// fill on each side as the badge pads its word, so another surface that names
+// the role (the status board's view label, spc-2610031844142274) shows the same
+// colours and no second copy of the hexes exists. A state with no fixed pair
+// returns text unpainted. The caller decides whether the terminal can show it.
+func PaintRole(s State, text string) string {
+	pair := fixedPair(s)
+	if pair == (Pair{}) {
+		return text
+	}
+	return paint(pair, " "+text+" ")
+}

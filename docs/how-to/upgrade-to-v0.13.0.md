@@ -33,13 +33,18 @@ Do this once on each machine.
    mv ~/.abcd ~/.abcd.noindex
    ```
 
-3. In the same window, reconnect the worktrees kept in it. git records each
-   worktree's location in full, so until this runs, each repository lists its
-   moved worktrees as prunable, and a prune would delete their links:
+3. In the same window, reconnect the worktrees kept in it, however deep each
+   one sits. git records each worktree's location in full, so until this runs,
+   each repository lists its moved worktrees as prunable, and a prune would
+   delete their links:
 
    ```sh
-   for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done
+   find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;
    ```
+
+   Each `repair: gitdir incorrect` line it prints is a link it fixed, not a
+   failure. `abcd ahoy` names any worktree still unlinked afterwards, with the
+   command that repairs that one.
 
 4. Start the agent session again. A session that worked inside a worktree under
    the old folder opens from that worktree's new path, under
@@ -58,7 +63,7 @@ with the earlier plugin, it creates a new, small `~/.abcd` beside
 3. Run the repair line again:
 
    ```sh
-   for w in ~/.abcd.noindex/worktrees/*/*; do git -C "$w" worktree repair; done
+   find ~/.abcd.noindex/worktrees -type d -exec test -e {}/.git \; -prune -exec test -f {}/.git \; -exec git -C {} worktree repair \;
    ```
 
 ## Refresh each managed project

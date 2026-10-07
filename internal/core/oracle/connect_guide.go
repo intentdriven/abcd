@@ -35,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -894,12 +895,11 @@ func guideCommand(provider, base, model, home, env string, picks bool) (*GuideDo
 var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_./:@+~=,%-]+$`)
 
 // shellQuote is s as one word of a POSIX shell command: as it is when every
-// character is plain, else in single quotes, a quote inside closed, escaped
-// and reopened.
+// character is plain, else single-quoted through shellquote.Single.
 func shellQuote(s string) string {
 	// A word opening with ~ is a home directory to the shell, so it is quoted.
 	if shellSafe.MatchString(s) && !strings.HasPrefix(s, "~") {
 		return s
 	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return shellquote.Single(s)
 }

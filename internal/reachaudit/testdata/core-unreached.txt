@@ -54,7 +54,6 @@ internal/core/lab.ValidID
 internal/core/launch.CheckDeclaredLockstep
 internal/core/launch.CheckLockstep
 internal/core/launch.ComputeRetention
-internal/core/launch.DirtyTreeFiles
 internal/core/launch.IsStrictSemver
 internal/core/launch.LoadGatePolicy
 internal/core/launch.LoadIncludes

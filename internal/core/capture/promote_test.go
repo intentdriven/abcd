@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // promoteFixture captures one issue into a fresh ledger and returns the roots
@@ -721,13 +722,13 @@ func TestShellQuotedIsInert(t *testing.T) {
 		hostileGrounds,
 		"",
 	} {
-		quoted := shellQuoted(s)
+		quoted := shellquote.Single(s)
 		if !strings.HasPrefix(quoted, "'") || !strings.HasSuffix(quoted, "'") {
-			t.Fatalf("shellQuoted(%q) = %s, want a single-quoted argument: inside double quotes an interactive shell still expands !word", s, quoted)
+			t.Fatalf("shellquote.Single(%q) = %s, want a single-quoted argument: inside double quotes an interactive shell still expands !word", s, quoted)
 		}
 		got := shellWords(t, quoted)
 		if len(got) != 1 || got[0] != s {
-			t.Fatalf("shellQuoted(%q) = %s, which a shell splits as %q, want exactly one literal argument", s, quoted, got)
+			t.Fatalf("shellquote.Single(%q) = %s, which a shell splits as %q, want exactly one literal argument", s, quoted, got)
 		}
 	}
 }
@@ -740,7 +741,7 @@ func TestShellQuotedIsInert(t *testing.T) {
 // It runs twice: once over prose, and once over grounds carrying every
 // character a shell interprets. The prose case says nothing about the quoting —
 // it passes against an identity quoter — so the hostile case is the one that
-// holds shellQuoted to delivering the grounds as a single literal argument.
+// holds shellquote.Single to delivering the grounds as a single literal argument.
 func TestPromoteOrphanRemedyRunsAsPrinted(t *testing.T) {
 	for _, tc := range []struct{ name, grounds string }{
 		{"prose grounds", testGrounds},

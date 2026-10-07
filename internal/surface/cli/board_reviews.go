@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/reviews"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -36,7 +37,7 @@ func boardReviews(cwd string, stderr io.Writer) *reviews.Board {
 	return &b
 }
 
-// renderBoardReviews writes the reviews heading, one line per dated review,
+// reviewsRow is the reviews row of the facilitator's view: the heading, one line per dated review,
 // stalest first — the commits since its pin, the pin's short sha, the folder,
 // and a `!` after a row past the threshold — and one line for the release
 // receipts. A receipt gates the release it names and is never re-run, and
@@ -46,9 +47,9 @@ func boardReviews(cwd string, stderr io.Writer) *reviews.Board {
 // says how many there are, how far behind the oldest release it gated is, and
 // how many pins this history no longer holds; --json carries every receipt as
 // a row.
-func renderBoardReviews(w io.Writer, b *reviews.Board) {
+func reviewsRow(b *reviews.Board) *board.Row {
 	if b == nil {
-		return
+		return nil
 	}
 	var dated []reviews.Row
 	receipts, unreachable, oldest := 0, 0, -1
@@ -72,12 +73,12 @@ func renderBoardReviews(w io.Writer, b *reviews.Board) {
 		}
 	}
 	ref := termsafe.Sanitize(b.DefaultRef)
-	heading := fmt.Sprintf("  reviews:    %s, %d past %d commits since the pin on %s",
+	heading := fmt.Sprintf("%s, %d past %d commits since the pin on %s",
 		countOf(len(dated), "review folder"), stale, b.Threshold, ref)
 	if stale > 0 {
 		heading += " — re-run those marked !"
 	}
-	fmt.Fprintln(w, heading)
+	row := &board.Row{Label: "reviews", Text: heading}
 	for _, r := range dated {
 		flag, since, pin := "", "—", "unpinned"
 		if r.Stale {
@@ -96,12 +97,12 @@ func renderBoardReviews(w io.Writer, b *reviews.Board) {
 		// Every row begins at column four, as the receipts line below it
 		// does, and a stale row carries its mark at the end
 		// (iss-2610031207397996).
-		fmt.Fprintf(w, "    %-5s  %-8s  %s%s\n", since, pin, termsafe.Sanitize(what), flag)
+		row.Items = append(row.Items, fmt.Sprintf("%-5s  %-8s  %s%s", since, pin, termsafe.Sanitize(what), flag))
 	}
 	if receipts == 0 {
-		return
+		return row
 	}
-	line := "    receipts: " + countOf(receipts, "release receipt")
+	line := "receipts: " + countOf(receipts, "release receipt")
 	var facts []string
 	if oldest >= 0 {
 		which := "the oldest release gated is"
@@ -116,5 +117,6 @@ func renderBoardReviews(w io.Writer, b *reviews.Board) {
 	if len(facts) > 0 {
 		line += " — " + strings.Join(facts, ", ")
 	}
-	fmt.Fprintln(w, line+"; a receipt is not re-run, and --json lists each")
+	row.Items = append(row.Items, line+"; a receipt is not re-run, and --json lists each")
+	return row
 }

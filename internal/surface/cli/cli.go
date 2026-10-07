@@ -27,6 +27,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/history"
@@ -214,6 +215,7 @@ func failOpenNoArgs(cmd *cobra.Command, args []string) error {
 func NewRootCommand() *cobra.Command {
 	var asJSON bool
 	var noColor bool
+	var viewFlag, formatFlag string
 	var agentHelp bool
 	var showVersion bool
 
@@ -258,7 +260,33 @@ func NewRootCommand() *cobra.Command {
 				if len(args) > 0 {
 					return &exitError{Code: 2, Msg: "--version takes no argument; run `abcd --version`"}
 				}
+				for _, f := range []string{"view", "format"} {
+					if cmd.Flags().Changed(f) {
+						return &exitError{Code: 2, Msg: fmt.Sprintf("--version answers alone; --%s chooses how the board is drawn, so pass one or the other", f)}
+					}
+				}
 				return runVersion(cmd, asJSON, false)
+			}
+			// The board's view and form (spc-2610031844142274): --json beside
+			// --format is two answers to one question, and a record id's answer
+			// has one form, so either flag beside one is refused too.
+			view, err := boardView(viewFlag)
+			if err != nil {
+				return err
+			}
+			form, err := boardForm(formatFlag)
+			if err != nil {
+				return err
+			}
+			if asJSON && cmd.Flags().Changed("format") {
+				return &exitError{Code: 2, Msg: "--json and --format each choose the board's form; pass one of them"}
+			}
+			if len(args) == 1 {
+				for _, f := range []string{"view", "format"} {
+					if cmd.Flags().Changed(f) {
+						return &exitError{Code: 2, Msg: fmt.Sprintf("--%s chooses how the board is drawn; a record id's answer has one form, so pass one or the other", f)}
+					}
+				}
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -319,35 +347,24 @@ func NewRootCommand() *cobra.Command {
 			// plugin page relays it, and a reader that needs the path already
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
-			width := boardWidth(cmd.OutOrStdout())
-			return render(cmd.OutOrStdout(), asJSON, board, func(out io.Writer) {
-				// Every line is laid at the window's width, a long row
-				// continuing on an indented line (iss-2610031207397996).
-				w := &boardWrapper{w: out, width: width}
-				defer w.Flush()
-				// Sanitised like every other board line: the directory name is the
-				// checkout's own, and a name carrying an ESC sequence or a bidi
-				// control must not reach the terminal raw (iss-2609281736483740).
-				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
-				// bidi runes travel raw, as in every board field.
-				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
-				fmt.Fprintf(w, "  git repo:   %s\n", yesNo(st.IsGitRepo))
-				fmt.Fprintf(w, "  record:     %s\n", yesNo(st.HasRecord))
-				fmt.Fprintf(w, "  work tiers: %s\n", termsafe.Sanitize(tierList(st.WorkTiers)))
-				if board.Statusline != nil {
-					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
+			// One renderer draws both views in both forms; the surface reads
+			// the window, the colour rung and the locale and hands them in
+			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
+			// 80 columns (A2). Every line is laid at the window's width
+			// (iss-2610031207397996), and the directory and every title are
+			// masked before they are measured (iss-2609281736483740).
+			frame := board.Frame{
+				View:  view,
+				Form:  form,
+				Width: boardWidth(cmd.OutOrStdout()),
+				Rung:  boardRung(cmd.OutOrStdout(), noColor),
+				ASCII: !term.UTF8Locale(os.Getenv),
+			}
+			return render(cmd.OutOrStdout(), asJSON, bo, func(w io.Writer) {
+				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo)}, frame) {
+					fmt.Fprintln(w, l)
 				}
-				if board.Peers != nil {
-					fmt.Fprintf(w, "  peers:      %s differing here across %s — abcd peers\n",
-						countOf(board.Peers.IDs, "record"), countOf(board.Peers.Live, "live peer"))
-				}
-				if board.Inbox != nil {
-					fmt.Fprintf(w, "  inbox:      %s — `abcd inbox`\n", inboxTallyText(*board.Inbox))
-				}
-				renderBoardOracle(w, board.Oracle)
-				renderBoardReviews(w, board.Reviews)
-				renderBoardStatus(w, board.Status)
 			})
 		},
 	}
@@ -359,7 +376,11 @@ func NewRootCommand() *cobra.Command {
 		`emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero`)
 	// Root-local by design: colour exists only on the bare invocation, so a
 	// persistent flag would be dead surface on every subcommand (itd-112).
-	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner without color")
+	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner and the board without color")
+	// Root-local for the same reason: the board's view and form exist only on
+	// the bare invocation (spc-2610031844142274, open question 1).
+	root.Flags().StringVar(&viewFlag, "view", "", "the board's view: product (the default) or facilitator")
+	root.Flags().StringVar(&formatFlag, "format", "", "the board's form: text (the default) or markdown, a list a host session pastes unchanged")
 	// Root-local for the same reason: only the root's help has blocks (itd-146).
 	root.Flags().BoolVar(&agentHelp, "agent", false,
 		"with --help, list the verbs agents and hosts call as well, each naming the page to read next")
@@ -380,6 +401,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
+	root.AddCommand(newDashboardCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
@@ -1951,6 +1973,14 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// The skew notice is a plugin-root fact, not a repo one, so it stands
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
+				notices = append(notices, n)
+			}
+			// The harness's user settings (iss-2610050556323779): a hook there
+			// that runs abcd, or an abcd status line that is gone or fails the
+			// trust checks, runs (or blanks) in every session. Named here, read
+			// only — abcd never edits that file — and a machine fact, so it
+			// stands whatever the repo detection above could answer.
+			if n := ahoy.HarnessNotice(); n != "" {
 				notices = append(notices, n)
 			}
 			// itd-111: a dogfood binary behind (or dirty against) its own source
@@ -3650,6 +3680,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// The provider adapter's explanation (itd-2609081951381895
 				// criterion 6): optional, and named so a person meets it here.
 				for _, g := range res.Gaps {
+					// abcd commands in the harness's user settings: report-only,
+					// so the board is the place a person learns of them, and a
+					// count alone would hide which entry and what to do. The
+					// command is the person's own text, so it is sanitised.
+					if strings.HasPrefix(g.ID, ahoy.HarnessStrayHookGapPrefix+".") || g.ID == ahoy.StatusLineUntrustedGapID {
+						fmt.Fprintf(w, "  harness:     %s — %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
+					}
 					switch g.ID {
 					case ahoy.ProviderAdapterGapID:
 						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")
@@ -3659,6 +3696,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						for _, d := range strings.Split(g.Detail, "\n") {
 							fmt.Fprintf(w, "  provider:    route skipped — %s\n", termsafe.Sanitize(d))
 						}
+					case ahoy.StoreWorktreeUnlinkedGapID:
+						// Report-only, so `ahoy install` never closes it and
+						// this line is where a person meets it: the worktree,
+						// home-relative, and the one repair for it
+						// (iss-2610050728100598).
+						fmt.Fprintf(w, "  worktree:    unlinked — %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {

@@ -244,6 +244,13 @@ plugin surface, and a future MCP server share one engine.
   front door compensates by making a disabled registry loud rather than silent.
   Fail-open-loud on a broken guard belongs to the hook shim (`hooks/hooks.json`)
   and the `abcd guard hook` adapter, not here.
+- **`core/board/`** — the status board's one renderer (spc-2610031844142274):
+  the product thinker's view and the facilitator's, each as text fitted or
+  wrapped to the window or as a markdown list a host session pastes unchanged.
+  It returns lines and never writes or reads the environment; the front door
+  hands it the width, its own colour rungs and the locale, so it imports no
+  terminal code. The view label is painted through `statusline.PaintRole`,
+  and titles are fitted through `textwidth.Fit`.
 - **`core/question/`** — what a question abcd puts to a person may contain
   (spc-2610030944505997). `Limits` and its one value `Default` are the only
   statement of the field limits in the tree: the question check, the GRILL rule
@@ -304,14 +311,20 @@ plugin surface, and a future MCP server share one engine.
   to the hooks' shell wrapper, before anything writes. `Rel` gives the slash path the `fsutil` home-scope
   primitives take, so every reader keeps their guards; `Path` joins it under a
   home directory; `Display` gives the `~/`-form a message names it by. A leaf
-  importing only the standard library, outside `core/` because the spellings
+  importing only the standard library and `shellquote/`, outside `core/` because the spellings
   sit in `core/`, `surface/cli` and `cmd/` alike. Its boundary test holds every
   other package to it (a literal naming the home, or a home value joined with a
   `.abcd`-led string), and leaves a repository's own `.abcd/` alone; a second
   test holds that no code names the computer's search settings
   (adr-2610030720195401).
-- **`textwidth/`** — the one display-width measure and word wrap (East Asian
-  wide runes count two), a pure leaf with no terminal I/O. It sits outside
+- **`shellquote/`** — the one POSIX-shell quoting primitive: `Single` is a
+  value as one single-quoted word, an embedded quote closed, escaped and
+  reopened, for every command abcd prints for a person to paste or writes into
+  a script. A standard-library leaf outside `core/` so `abcdhome/` can use it;
+  `TestOnlySingleQuotesForTheShell` refuses a private copy anywhere else.
+- **`textwidth/`** — the one display-width measure, word wrap, fit to width
+  and break by width (East Asian wide runes count two), a pure leaf with no
+  terminal I/O. It sits outside
   `core/` and `term/` so the banner and the core's question row estimate measure
   text the same way without the core importing raw-mode terminal code.
 - **`surface/cli/`** — the default front door: a Cobra command tree that calls

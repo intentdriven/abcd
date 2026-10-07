@@ -23,7 +23,7 @@ func TestBoardPresenceLineIsTheRendersPlainForm(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	text := string(runCLI(t))
+	text := string(runCLI(t, "--view", "facilitator"))
 	line := ""
 	for _, l := range strings.Split(text, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(l), "presence:") {
@@ -75,7 +75,7 @@ func TestBoardOmitsPresenceWhereUnmanaged(t *testing.T) {
 	t.Chdir(repo)
 	writeUserSettings(t, `{"schema_version":1,"previous_command":"echo THE-PREVIOUS-COMMAND-RAN"}`)
 
-	text := string(runCLI(t))
+	text := string(runCLI(t, "--view", "facilitator"))
 	if strings.Contains(text, "presence:") {
 		t.Errorf("an unmanaged checkout rendered a presence line:\n%s", text)
 	}
