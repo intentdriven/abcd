@@ -141,15 +141,18 @@ func TestBootstrapUpdateLineIsTheSharedWording(t *testing.T) {
 // once whichever entry performed the swap.
 func TestDiscardedSalvageRunsPassUnseen(t *testing.T) {
 	doc := decodedHooksManifest(t)
+	salvaging := 0
 	for event, entries := range doc.Hooks {
 		for _, entry := range entries {
 			for _, h := range entry.Hooks {
-				if !strings.Contains(h.Command, "hooks/bootstrap.sh") {
+				body := resolveHookCommand(t, h.Command)
+				if !strings.Contains(body, "hooks/bootstrap.sh") {
 					continue
 				}
-				discarded := strings.Contains(h.Command, `/hooks/bootstrap.sh" >/dev/null 2>&1`) ||
-					strings.Contains(h.Command, `/hooks/bootstrap.sh" --unseen >/dev/null 2>&1`)
-				unseen := strings.Contains(h.Command, `bootstrap.sh" --unseen`)
+				salvaging++
+				discarded := strings.Contains(body, `/hooks/bootstrap.sh" >/dev/null 2>&1`) ||
+					strings.Contains(body, `/hooks/bootstrap.sh" --unseen >/dev/null 2>&1`)
+				unseen := strings.Contains(body, `bootstrap.sh" --unseen`)
 				switch {
 				case event == "SessionStart" && unseen:
 					t.Errorf("SessionStart relays the bootstrap's stderr and must not pass --unseen")
@@ -158,5 +161,8 @@ func TestDiscardedSalvageRunsPassUnseen(t *testing.T) {
 				}
 			}
 		}
+	}
+	if salvaging == 0 {
+		t.Fatal("no hook entry runs hooks/bootstrap.sh, so this test checked nothing; read the commands through resolveHookCommand")
 	}
 }

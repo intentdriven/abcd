@@ -72,7 +72,7 @@ func sessionStartCommand(t *testing.T) string {
 	if len(entries[0].Hooks) != 1 {
 		t.Fatalf("the SessionStart entry group must hold exactly one command (siblings race each other), found %d", len(entries[0].Hooks))
 	}
-	return entries[0].Hooks[0].Command
+	return resolveHookCommand(t, entries[0].Hooks[0].Command)
 }
 
 // sessionStartRun executes the shipped SessionStart command under `sh -c` with a

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -1189,7 +1190,9 @@ func writeConfig(cwd string, cfg map[string]any) error {
 
 // requiredHookCommand is the substring each event's command must contain. These
 // are the Go hook subcommands (`abcd hook prompt-router` / `prompt-router-reset`)
-// as wired in hooks/hooks.json — the loader is a Go subcommand, not a script.
+// as wired through hooks/hooks.json — the loader is a Go subcommand, not a
+// script. The manifest's command runs a script under hooks/, which holds the
+// invocation, so the search reads through to that script (hookCommandText).
 var requiredHookCommand = map[string]string{
 	"UserPromptSubmit": "hook prompt-router",
 	"SessionStart":     "hook prompt-router-reset",
@@ -1230,7 +1233,7 @@ func verifyHookManifest(pluginRoot string) string {
 		if !ok || len(entries) == 0 {
 			return "missing or empty `hooks." + event + "` array"
 		}
-		if !eventHasCommand(entries, requiredHookCommand[event]) {
+		if !eventHasCommand(pluginRoot, entries, requiredHookCommand[event]) {
 			return "`hooks." + event + "` does not reference " + requiredHookCommand[event]
 		}
 	}
@@ -1267,8 +1270,10 @@ func readHookEvents(pluginRoot string) (map[string]any, bool) {
 	return hooks, reason == ""
 }
 
-// eventHasCommand reports whether any nested command string contains substring.
-func eventHasCommand(entries []any, substring string) bool {
+// eventHasCommand reports whether any nested command contains substring, read
+// through hookCommandText so a command that runs a script under the plugin's
+// hooks/ directory is judged by what that script runs.
+func eventHasCommand(pluginRoot string, entries []any, substring string) bool {
 	for _, entry := range entries {
 		m, ok := entry.(map[string]any)
 		if !ok {
@@ -1283,10 +1288,34 @@ func eventHasCommand(entries []any, substring string) bool {
 			if !ok {
 				continue
 			}
-			if cmd, ok := hm["command"].(string); ok && strings.Contains(cmd, substring) {
+			if cmd, ok := hm["command"].(string); ok && strings.Contains(hookCommandText(pluginRoot, cmd), substring) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// hookScriptRe matches a reference to a script in the plugin's own hooks/
+// directory, in either `$CLAUDE_PLUGIN_ROOT/…` or `${CLAUDE_PLUGIN_ROOT}/…`
+// form. The manifest keeps each hook's command to one short line that runs such
+// a script, because the host prints the whole command in front of a hook's
+// message whenever the hook blocks or warns (iss-2610041345196368).
+var hookScriptRe = regexp.MustCompile(`\$\{?CLAUDE_PLUGIN_ROOT\}?/hooks/([A-Za-z0-9._-]+\.sh)`)
+
+// hookCommandText returns cmd followed by the text of every hooks/ script it
+// runs, each read through the same guarded read as the manifest, so a check for
+// what a hook invokes reads the script that does the invoking. A script that
+// cannot be read adds nothing: the check then fails on the command alone, which
+// is the honest answer when the wiring cannot be proven.
+func hookCommandText(pluginRoot, cmd string) string {
+	text := cmd
+	for _, m := range hookScriptRe.FindAllStringSubmatch(cmd, -1) {
+		data, err := fsutil.ReadGuarded(filepath.Join(pluginRoot, "hooks", m[1]), 256*1024)
+		if err != nil {
+			continue
+		}
+		text += "\n" + string(data)
+	}
+	return text
 }
