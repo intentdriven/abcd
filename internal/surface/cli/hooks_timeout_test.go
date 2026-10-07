@@ -93,7 +93,7 @@ func TestEverySalvageEntryShowsItsWait(t *testing.T) {
 	for event, entries := range doc.Hooks {
 		for _, entry := range entries {
 			for _, h := range entry.Hooks {
-				if !strings.Contains(h.Command, "hooks/bootstrap.sh") {
+				if !strings.Contains(resolveHookCommand(t, h.Command), "hooks/bootstrap.sh") {
 					continue
 				}
 				provisioning = append(provisioning, event)

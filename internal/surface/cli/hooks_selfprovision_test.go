@@ -72,7 +72,7 @@ func hookCommand(t *testing.T, event string) string {
 	if len(entries) != 1 || len(entries[0].Hooks) != 1 {
 		t.Fatalf("%s must declare exactly one entry group holding one command", event)
 	}
-	return entries[0].Hooks[0].Command
+	return resolveHookCommand(t, entries[0].Hooks[0].Command)
 }
 
 // hookRun executes an event's shipped command under `sh -c` against a plugin

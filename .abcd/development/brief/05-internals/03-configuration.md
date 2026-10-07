@@ -1037,13 +1037,24 @@ abcd/
 │                                       #   README.md and CHANGELOG.md — see 01-agents.md
 └── hooks/                              # host event hooks; every event command runs through a
     ├── bootstrap.sh                    #   resolving shim. bootstrap.sh PROVISIONS the plugin-root
-    └── hooks.json                      #   binary and never builds one
+    ├── <event>.sh                      #   binary and never builds one. Each event's shim is its own
+    └── hooks.json                      #   script; hooks.json runs it in one short `sh` line
 ```
 
 The seams that are planned rather than present are gated rather than trusted: the
 `index_drift` record-lint rule holds every path in the planned-seams region of
 [`internal/README.md`](../../../../internal/README.md) to being absent from the
 tree, so a seam that ships cannot go on being described as planned.
+
+**Each hook's command is one short line.** `hooks.json` gives every event the
+command `sh "${CLAUDE_PLUGIN_ROOT}/hooks/<event>.sh"`, and the shim's logic lives
+in that script. The host prints a hook's whole command in front of its message
+whenever the hook blocks or warns, so a shim written inline, several thousand
+characters of shell, buried every guard refusal under a wall of source
+(iss-2610041345196368). Running the script with `sh` rather than executing it
+keeps the wiring independent of the file's execute bit. The install check
+(`abcd ahoy`) and the release gate read through the command into the script it
+names, so what a hook invokes is still checked where it is spelled.
 
 **The hook wiring, and why it is shaped this way.** `bootstrap.sh` either copies a
 re-verified artefact out of the persistent download cache, or resolves the latest

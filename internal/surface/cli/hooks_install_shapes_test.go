@@ -42,6 +42,7 @@ func installShapePluginRoot(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(root, "hooks", "hooks.json"), manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	copyHookScripts(t, root)
 	stub := "#!/bin/sh\ncat >/dev/null\nprintf '%s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(root, "abcd"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)

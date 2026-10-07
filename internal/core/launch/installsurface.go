@@ -463,7 +463,7 @@ func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName stri
 	var out []SurfaceEntry
 	for _, doc := range docs {
 		for _, command := range collectCommandStrings(doc) {
-			for _, ref := range pluginRootRefs(command) {
+			for _, ref := range hookCommandRefs(tree, command) {
 				entry := SurfaceEntry{
 					Kind: SurfaceHook, Path: ref, Origin: OriginHookCommand,
 					Requirement: RequirePayload, DeclaredAs: command,
@@ -477,6 +477,29 @@ func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName stri
 		}
 	}
 	return out, nil
+}
+
+// hookCommandRefs returns the plugin-root paths a hook command reads: the ones
+// it names, and those named by any script under hooks/ it runs that the payload
+// carries. abcd's manifest keeps each command to one short line that runs such a
+// script, because the host prints the whole command in front of a hook's
+// message (iss-2610041345196368), so what the hook really invokes, the plugin
+// executable included, is spelled in the script. One level is read: a script
+// the script runs is named, not opened.
+func hookCommandRefs(tree PayloadTree, command string) []string {
+	refs := pluginRootRefs(command)
+	out := append([]string(nil), refs...)
+	for _, ref := range refs {
+		if !strings.HasPrefix(ref, "hooks/") || !strings.HasSuffix(ref, ".sh") || !tree.Has(ref) {
+			continue
+		}
+		data, err := tree.Read(ref)
+		if err != nil {
+			continue // the script's own existence entry stands; its contents prove nothing more
+		}
+		out = append(out, pluginRootRefs(string(data))...)
+	}
+	return out
 }
 
 // isHookConfig reports whether an entry is a hooks config file the payload is

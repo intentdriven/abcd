@@ -71,9 +71,10 @@ func shippedHookSets(t *testing.T) hookSets {
 		s.wired = append(s.wired, event)
 		for _, e := range entries {
 			for _, h := range e.Hooks {
-				if strings.Contains(h.Command, "bootstrap.sh") && !slices.Contains(s.salvaging, event) {
+				body := resolveHookCommand(t, h.Command)
+				if strings.Contains(body, "bootstrap.sh") && !slices.Contains(s.salvaging, event) {
 					s.salvaging = append(s.salvaging, event)
-					if strings.Contains(h.Command, "-mmin") {
+					if strings.Contains(body, "-mmin") {
 						s.throttled = append(s.throttled, event)
 					}
 				}

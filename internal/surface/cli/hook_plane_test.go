@@ -227,7 +227,7 @@ func manifestInvocations(t *testing.T) [][]string {
 		for _, entry := range entries {
 			for _, h := range entry.Hooks {
 				events = append(events, event)
-				commands = append(commands, h.Command)
+				commands = append(commands, resolveHookCommand(t, h.Command))
 			}
 		}
 	}

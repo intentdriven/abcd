@@ -217,7 +217,7 @@ func manifestArmsGuard(pluginRoot string) bool {
 	if !ok {
 		return false
 	}
-	return eventHasCommand(entries, guardHookCommand)
+	return eventHasCommand(pluginRoot, entries, guardHookCommand)
 }
 
 // isExecutableFile reports whether path is a regular file with an execute bit —

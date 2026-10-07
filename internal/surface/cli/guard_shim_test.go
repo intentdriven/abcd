@@ -33,8 +33,8 @@ func preToolUseGuardCommand(t *testing.T) (matcher, command string) {
 	}
 	for _, group := range doc.Hooks["PreToolUse"] {
 		for _, h := range group.Hooks {
-			if strings.Contains(h.Command, "guard hook") {
-				return group.Matcher, h.Command
+			if body := resolveHookCommand(t, h.Command); strings.Contains(body, "guard hook") {
+				return group.Matcher, body
 			}
 		}
 	}
