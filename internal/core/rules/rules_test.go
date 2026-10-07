@@ -127,6 +127,24 @@ func TestNoBundledRuleTeachesPhasesOrMilestonesAsCurrent(t *testing.T) {
 	}
 }
 
+// TestNoBundledRuleCitesAbcdInternalRecords pins that a bundled default rule
+// stands on its own in any managed repository. The defaults ship to every
+// repository abcd manages, and none of them holds abcd's own decision record or
+// its roadmap/ phase documents; a managed repository mints adr- ids of the same
+// shape through abcd decide, so a cited abcd ADR reads there as a local record
+// that is missing. A bundled rule therefore states its substance and cites no
+// record id and no abcd-only roadmap/ directory.
+func TestNoBundledRuleCitesAbcdInternalRecords(t *testing.T) {
+	internalRef := regexp.MustCompile(`(?i)\b(adr|itd|iss|spc)-[0-9]+\b|\broadmap/`)
+	for name, d := range Defaults().Domains {
+		for _, r := range d.Rules {
+			if m := internalRef.FindString(r); m != "" {
+				t.Errorf("bundled %s rule cites %q, which exists only in abcd's own repository: %q", name, m, r)
+			}
+		}
+	}
+}
+
 func TestOpinionsDomainPointsAtPrinciplesNotCopies(t *testing.T) {
 	rs := Defaults()
 	// Recall on an opinion/convention/SOTA prompt.

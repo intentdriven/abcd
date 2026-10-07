@@ -31,8 +31,8 @@
       "recall": ["roadmap", "milestone", "phase"],
       "aliases": ["build plan"],
       "rules": [
-        "Phases and milestones are retired (adr-2609212115255771): sequencing is dependencies (blocked_by, builds_on) plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release plus each intent's acceptance criteria; an intent that must land by a cut carries target_release, which the cut reports and moves forward.",
-        "No time estimates and no roadmap document: the press-release intent format carries priority; the word roadmap is retired and the phase documents under roadmap/ are history."
+        "Phases and milestones are retired: sequencing is dependencies (blocked_by, builds_on) plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release plus each intent's acceptance criteria; an intent that must land by a cut carries target_release, which the cut reports and moves forward.",
+        "No time estimates and no roadmap document: the press-release intent format carries priority, and the word roadmap is retired."
       ]
     },
     "ISSUES": {
