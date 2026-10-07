@@ -409,3 +409,4 @@ designed to the marked option, and the reason is given beneath it.
    - packages: commands/abcd.md
    - tests: TestAbcdPageRelaysTheMarkdownForm, watched fail first; A4's receipt taken at the step's branch tip before the pull request; a docs-fidelity review recorded for HEAD, then `abcd spec close spc-2610031844142274` (the intent already declares `impact: additive`) with a `Delivers: itd-2610031214560142` trailer
    - lands after step 4
+   - the page half (commands/abcd.md and TestAbcdPageRelaysTheMarkdownForm) landed in commit 1c1be5e3e on 2026-10-07; A4's receipt, the docs-fidelity review and the close are still owed, so the step is not marked landed
