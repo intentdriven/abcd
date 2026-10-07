@@ -236,10 +236,10 @@ func (convScopeSource) Probe(ctx *SourceContext) Evidence {
 	}
 	if convHasHeadingLike(data, "feature", "usage", "install", "getting started", "what") {
 		return partial(ConfidenceMedium, []string{path + " (features/usage sections)"},
-			"Found README features/usage sections, which say what the project does but not where its scope ends; a written scope statement would ground it.")
+			"Found README features/usage sections, which say what the project does but not where its scope ends; an authored "+nativeSectionBriefFile("product/scope")+" would ground it.")
 	}
 	return partial(ConfidenceLow, []string{path + " (no explicit features section)"},
-		"Found a README with no features or usage section, so scope can only be inferred; a features section or a written scope statement would ground it.")
+		"Found a README with no features or usage section, so scope can only be inferred (a features section would raise the confidence, still partial); an authored "+nativeSectionBriefFile("product/scope")+" would ground it.")
 }
 
 // convPlatformFiles are the build/CI signals that ground "constraints/platform",
@@ -391,10 +391,10 @@ func (convSurfacesSource) Probe(ctx *SourceContext) Evidence {
 	}
 	if convHasHeadingLike(data, "usage", "cli", "command", "api", "getting started") || convHasCodeFence(data) {
 		return partial(ConfidenceMedium, []string{path + " (usage/CLI sections)"},
-			"Found README usage/CLI sections, which show some surfaces but need not list them all; a reference of every command or endpoint would ground it.")
+			"Found README usage/CLI sections, which show some surfaces but need not list them all; an authored "+nativeSectionBriefFile("surfaces")+" would ground it.")
 	}
 	return partial(ConfidenceLow, []string{path + " (no explicit usage section)"},
-		"Found a README with no usage or CLI section, so the surfaces can only be inferred; a usage section or a command/API reference would ground it.")
+		"Found a README with no usage or CLI section, so the surfaces can only be inferred (a usage section would raise the confidence, still partial); an authored "+nativeSectionBriefFile("surfaces")+" would ground it.")
 }
 
 // convOutOfScopeSource partially grounds "delivery/out-of-scope" from a README's
@@ -492,7 +492,7 @@ func (convNamingSource) Probe(ctx *SourceContext) Evidence {
 	}
 	if g := convGlossaryDoc(ctx); g != "" {
 		return partial(ConfidenceLow, []string{g + " (glossary fallback — no dedicated naming document)"},
-			"Found only a glossary, which defines terms rather than ruling on what may be renamed; a dedicated naming document would ground it.")
+			"Found only a glossary, which defines terms rather than ruling on what may be renamed (a naming document would raise the confidence, still partial); an authored glossary under "+nativeGlossaryDir+" would ground it.")
 	}
 	return blank(
 		[]string{
@@ -643,6 +643,9 @@ func (convInternalsSource) probeLimited(ctx *SourceContext, walkLimit int) Evide
 	}
 
 	sources = append(sources, truncatedNotes...)
+	// The reason reports every package the scan counted; only the citations
+	// below are capped.
+	totalPkgs := len(pkgs)
 	if len(pkgs) > 0 {
 		if len(pkgs) > maxLayoutCitations {
 			sources = append(sources, fmt.Sprintf("%d further package(s) counted but not cited (citation cap %d)", len(pkgs)-maxLayoutCitations, maxLayoutCitations))
@@ -651,7 +654,7 @@ func (convInternalsSource) probeLimited(ctx *SourceContext, walkLimit int) Evide
 		sources = append(sources, pkgs...)
 	}
 	return partial(confidence, dedupeSorted(sources),
-		"Found "+convInternalsFound(docPath, docDir, len(pkgs))+", which describes the system's shape rather than its internals; an authored "+nativeSectionBriefFile("internals")+" would ground it.")
+		"Found "+convInternalsFound(docPath, docDir, totalPkgs)+", which describes the system's shape rather than its internals; an authored "+nativeSectionBriefFile("internals")+" would ground it.")
 }
 
 // convInternalsFound names what the internals adapter found, for its partial

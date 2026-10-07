@@ -86,7 +86,7 @@ func (gitGraveyardSource) Probe(ctx *SourceContext) Evidence {
 		return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 	}
 	return partial(ConfidenceMedium, sources,
-		fmt.Sprintf("Found %d deleted file(s) but no revert, and a deletion alone is ordinary work rather than a deliberate abandonment; a reverted commit, or a written record of what was abandoned and why, would ground it.", len(deleted)))
+		fmt.Sprintf("Found %d deleted file(s) but no revert, and a deletion alone is ordinary work rather than a deliberate abandonment; a reverted commit would ground it.", len(deleted)))
 }
 
 // gitSpineSource grounds "rescue/spine" partially: the commit history is a
@@ -185,7 +185,7 @@ func (gitBuildSequenceSource) Probe(ctx *SourceContext) Evidence {
 	}
 	if n := ctx.CommitCount(); n >= 3 {
 		return partial(ConfidenceLow, []string{fmt.Sprintf("commit cadence (%d commits, no tags)", n)},
-			fmt.Sprintf("Found %d commits and no release tag, so only the cadence of work is known; release tags, or an authored %s, would ground it.", n, nativeSectionBriefFile("delivery/build-sequence")))
+			fmt.Sprintf("Found %d commits and no release tag, so only the cadence of work is known (release tags would add when releases happened, still partial); an authored %s would ground it.", n, nativeSectionBriefFile("delivery/build-sequence")))
 	}
 	return blank(
 		[]string{"release tags (git tag)", "commit cadence"},
