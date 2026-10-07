@@ -219,3 +219,31 @@ func writeRunStateOnBranch(t *testing.T, root, intentID, branch string) {
 		t.Fatal(err)
 	}
 }
+
+// TestAbcdPageRelaysTheMarkdownForm is A3's page (spc-2610031844142274): the
+// /abcd page runs the markdown form exactly and tells the agent to paste its
+// output unchanged in one fenced block, adding nothing inside it and retelling
+// none of it outside; the full board is the same with --view facilitator.
+func TestAbcdPageRelaysTheMarkdownForm(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRootFromTest(t), "commands", "abcd.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(raw)
+	for _, want := range []string{
+		"```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" --format markdown\n```",
+		"```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" --view facilitator --format markdown\n```",
+		"unchanged, in one fenced block",
+		"add nothing inside the fence",
+		"retell none of it outside",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the /abcd page lacks %q", want)
+		}
+	}
+	// The bare board is drawn, not summarised from JSON: the first command the
+	// page runs is the markdown form.
+	if i, j := strings.Index(page, "--format markdown"), strings.Index(page, "\" --json"); i < 0 || (j >= 0 && j < i) {
+		t.Errorf("the /abcd page runs --json before the markdown form")
+	}
+}

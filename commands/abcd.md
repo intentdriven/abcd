@@ -6,21 +6,30 @@ argument-hint: "[<record-id>]"
 
 # `/abcd` where-am-i
 
-Run the abcd binary's read-only status board for the current repo and present the
-result. This command performs **zero writes**.
+Run the abcd binary's read-only status board for the current repo and show it to
+the user. This command performs **zero writes**.
 
 Run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" --format markdown
 ```
 
-The JSON carries every field whichever view it names (`view`): in a Terminal,
-bare `abcd` opens on the view for the product thinker, a few plain lines, and
-the rows this page names below are the view for the facilitator
-(`abcd --view facilitator`), the full board.
+Paste its output to the user unchanged, in one fenced block: add nothing inside the fence, and retell none of it outside the fence. The output is the view for the product thinker, a few plain lines: what is being built, the next three things to build, and how many more are ready or parked. It is drawn for a person to read as it stands.
 
-Then summarise the JSON for the user: the directory (`dir`, named
+## The view for the facilitator
+
+When the user asks for the full board, run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" --view facilitator --format markdown
+```
+
+and paste it the same way. For the fields below, when you need to reason over
+them rather than show them, run `"${CLAUDE_PLUGIN_ROOT}/abcd" --json`: it carries
+every field whichever view it names (`view`).
+
+The full board names the directory (`dir`, named
 home-relative as `~/…`, or by its directory name outside HOME, never by an
 absolute path), whether it is a git repo, whether the abcd development record is
 present, and which `.abcd/` work tiers exist.
