@@ -153,6 +153,26 @@ func TestDetectReportsTwoAbcdHooksOnOneEventApart(t *testing.T) {
 	}
 }
 
+// TestAhoyPageNamesBothStrayHookIDShapes: the command page names the id a
+// second abcd hook on one event carries, not only the first one's, so a host
+// reading harness.stray_hook.<Event>.2 finds the shape documented
+// (iss-2610051540383966).
+func TestAhoyPageNamesBothStrayHookIDShapes(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "commands", "ahoy.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(data)
+	for _, want := range []string{
+		"`" + HarnessStrayHookGapPrefix + ".<Event>`",
+		"`" + HarnessStrayHookGapPrefix + ".<Event>.<n>`",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("commands/ahoy.md does not name the stray-hook gap id %s", want)
+		}
+	}
+}
+
 // TestDetectReportsAnUntrustedStatusLine is the status-line half: abcd's own
 // status line running an abcd that fails statusLineEntryTrust is reported with
 // the reason and the remedy, and is a required repair install makes under
