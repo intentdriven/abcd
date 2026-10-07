@@ -51,7 +51,9 @@ Then summarise the JSON for the user:
   (the settings file is not a JSON object), or `no-harness` (no settings file
   was found, so nothing is offered).
 - abcd entries in the harness's user settings: a `harness.stray_hook.<Event>`
-  gap for each hook there that runs abcd, and a `statusline.untrusted` gap when
+  gap for each hook there that runs abcd (a second abcd hook on the same event
+  is reported as `harness.stray_hook.<Event>.<n>`, numbered from 2, so neither
+  hides the other), and a `statusline.untrusted` gap when
   the status line runs an abcd that fails the trust checks. Relay each gap's
   `detail` and `fix_hint` as they stand. abcd's hooks live in its plugin, so a
   hook in the user settings runs whatever binary it names, a stale build
