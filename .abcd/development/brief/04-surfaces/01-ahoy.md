@@ -528,8 +528,10 @@ would change a saved setting listed under the settings approval; then the
 question in plain words ("Create the files and folders listed above?", "Change
 the settings listed above?"), never the category's internal name. Yes says how
 many listed changes it writes, or, for a category whose changes are each asked
-again (a setting's value, a tool, an offer, a conventions file), which
-questions it goes on to. Every change is listed on every route, never cut to
+again (a tool, an offer, a conventions file), which questions it goes on to;
+the settings approval's says it writes the changes that need no answer (the
+identity pin, the `PATH` entry) and asks for each value not yet chosen, saving
+none if one is left unanswered. Every change is listed on every route, never cut to
 fit, so every door records the same question; a list taller than the host's
 rows is shown with the question check's note rather than refused. The question check refuses an answer
 whose meaning points at text above a question that has none, the shape the

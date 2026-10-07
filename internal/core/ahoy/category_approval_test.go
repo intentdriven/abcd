@@ -2,9 +2,11 @@ package ahoy
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/question"
 )
 
@@ -168,14 +170,56 @@ func TestEveryRouteListsEveryChange(t *testing.T) {
 }
 
 // TestTheSettingsApprovalSaysValuesAreAskedFirst: approving the settings
-// writes nothing by itself; each value not yet chosen is asked next, and one
-// left unanswered saves none of them (stepConfigValues), so its yes goes on
-// rather than claiming to write.
+// does not write every listed change by itself; each value not yet chosen is
+// asked next, and one left unanswered saves none of them (stepConfigValues),
+// so its yes says values are asked and claims no count of changes written.
 func TestTheSettingsApprovalSaysValuesAreAskedFirst(t *testing.T) {
 	q := SetupConfirmQuestion(1, categoryApprovalText(ConfigChange, []string{"repo.visibility not set", "docs.target not set"}))
 	yes := q.Options[0]
-	if strings.Contains(yes.Meaning, "Writes") || yes.Label != nextLabel {
+	if strings.Contains(yes.Meaning, "2 changes") || !strings.Contains(yes.Meaning, "asks for each value not yet chosen") {
 		t.Fatalf("the settings yes is %q: %q; it claims to write what is still to be asked", yes.Label, yes.Meaning)
 	}
 	heldToEveryCheck(t, q)
+}
+
+// TestTheSettingsYesSaysItWritesWhatNeedsNoAnswer: the settings approval's
+// yes writes some listed changes with no further question (the identity pin,
+// the PATH entry), so its meaning must say it writes, not that nothing is
+// written without an answer. Driven through an install whose only listed
+// setting is the pin: the pin is written and no question about it follows
+// the approval.
+func TestTheSettingsYesSaysItWritesWhatNeedsNoAnswer(t *testing.T) {
+	setupHermetic(t)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	repo := t.TempDir()
+	idMustGit(t, repo, "init")
+	idMustGit(t, repo, "config", "user.name", "Alex Reppel")
+	idMustGit(t, repo, "config", "user.email", "alex@example.com")
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	p := &recordingPrompter{confirm: true}
+	if _, err := Install(repo, InstallOptions{}, p); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := identity.LoadPin(repo); !ok {
+		t.Fatal("precondition: approving the settings did not write the pin")
+	}
+	var settings string
+	for _, q := range p.asked {
+		switch c := askedCategory(q); {
+		case c == ConfigChange:
+			settings = q
+		case c == "" && setupConfirmID(q) == "git_identity.establish":
+			t.Fatalf("the pin was asked about after the approval: %q", q)
+		}
+	}
+	if settings == "" {
+		t.Fatalf("the settings approval was not asked: %q", p.asked)
+	}
+	yes := SetupConfirmQuestion(1, settings).Options[0].Meaning
+	if !strings.HasPrefix(yes, "Writes") || strings.Contains(yes, "not written") {
+		t.Fatalf("the settings yes means %q, but it wrote the pin with no further question", yes)
+	}
 }
