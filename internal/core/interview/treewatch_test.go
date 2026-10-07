@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1353,6 +1355,7 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 		{name: "a small write to a submodule's packed refs", path: ".git/modules/sub/packed-refs"},
 		{name: "a submodule's HEAD moved", path: ".git/modules/sub/HEAD"},
 		{name: "a new ref in a submodule", path: ".git/modules/sub/refs/heads/planted"},
+		{name: "a submodule's commondir written", path: ".git/modules/sub/commondir"},
 	} {
 		t.Run(c.name+" is named", func(t *testing.T) {
 			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
@@ -1363,6 +1366,7 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 				".git/modules/sub/packed-refs":        head + " refs/heads/packed\n",
 				".git/modules/sub/HEAD":               head + "\n",
 				".git/modules/sub/refs/heads/planted": head + "\n",
+				".git/modules/sub/commondir":          ".\n",
 			}[c.path]
 			stubAlso(t, script, 2, map[string]string{c.path: body})
 			res, err := r.w.Run(context.Background())
@@ -1377,6 +1381,28 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 				t.Fatalf("record %+v", rec)
 			}
 		})
+	}
+}
+
+// TestAPipeWhereGitReadsWholeIsRefusedBeforeGitRuns: a FIFO in place of a
+// file git reads whole on every command would block git's read with no writer;
+// the reading names it and runs no git.
+func TestAPipeWhereGitReadsWholeIsRefusedBeforeGitRuns(t *testing.T) {
+	r := newWrittenRun(t, "")
+	pin := &gitPin{}
+	if _, err := readTreePinned(r.repo, "", pin); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(r.repo, ".git", "packed-refs")
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(p, 0o644); err != nil {
+		t.Skipf("mkfifo: %v", err)
+	}
+	err := readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") || !strings.Contains(err.Error(), ".git/packed-refs") {
+		t.Fatalf("err = %v, want the reading refused before git runs, naming .git/packed-refs", err)
 	}
 }
 

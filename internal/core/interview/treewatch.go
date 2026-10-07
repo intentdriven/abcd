@@ -418,7 +418,10 @@ func (r *treeReader) sizeGitReads() error {
 				return err
 			}
 			if !fi.Mode().IsRegular() {
-				continue
+				// A pipe or a device where git reads a file whole would hold
+				// git's read, and the turn with it, until something writes
+				// to it: refused before git runs, as a file past the bound is.
+				return fmt.Errorf("%s is not a regular file, and git reads it whole on every command, so git is not run; restore it and run the interview again", r.keyOf(at.dir, f))
 			}
 			total += fi.Size()
 			if fi.Size() > largest {
@@ -871,14 +874,20 @@ func (r *treeReader) readReceipts() error {
 // submodule's git directory, read by mode, size and content hash.
 var gitDirEntries = []string{"hooks", "info", "config", "config.worktree", "HEAD", "packed-refs", "refs"}
 
+// moduleEntries are the entries of each submodule's git directory read by
+// mode, size and content hash: the common directory's (gitDirEntries), and
+// its commondir, which places the directory git reads the submodule's
+// configuration, hooks and refs from, so a write there is named.
+var moduleEntries = slices.Concat(gitDirEntries, []string{"commondir"})
+
 // readModules records every submodule's git directory sizeGitReads found
-// under the common directory's modules/ as the common directory is read
-// (gitDirEntries): git status runs status inside a populated submodule, and
-// the submodule's hooks, configuration, HEAD and refs decide what runs there
-// and what its next commit or push carries.
+// under the common directory's modules/ (moduleEntries): git status runs
+// status inside a populated submodule, and the submodule's hooks,
+// configuration, HEAD and refs decide what runs there and what its next
+// commit or push carries.
 func (r *treeReader) readModules() error {
 	for _, m := range r.modules {
-		for _, rel := range gitDirEntries {
+		for _, rel := range moduleEntries {
 			if err := r.hashIn(r.common, path.Join(m, rel)); err != nil {
 				return err
 			}
