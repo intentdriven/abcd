@@ -90,6 +90,9 @@ const (
 // Contract by status:
 //   - grounded / partial: Sources must be non-empty — every claim cites a file
 //     or a git ref. Confidence should be set.
+//   - partial: Reason must be non-empty, naming what was found and what would
+//     ground the section — a partial that does not say why is a shrug, not a
+//     result. Build one with partial(), the only constructor a source uses.
 //   - blank: Searched should say what was looked for and Question should name
 //     the thing a human must answer. A blank is a first-class result.
 type Evidence struct {
@@ -98,11 +101,19 @@ type Evidence struct {
 	Sources    []string // evidence cited (repo-relative paths, git refs)
 	Searched   []string // what was looked for (esp. on a blank)
 	Question   string   // the human question (esp. on a blank)
+	Reason     string   // why a partial is partial: what was found, what would ground it
 }
 
 // blank is the conventional empty result for a Source that found nothing.
 func blank(searched []string, question string) Evidence {
 	return Evidence{Status: StatusBlank, Searched: searched, Question: question}
+}
+
+// partial is the one constructor for a partial result. Its reason names what was
+// found and what would ground the section; it is a parameter, not an optional
+// field, so a partial that does not say why cannot be built.
+func partial(confidence Confidence, sources []string, reason string) Evidence {
+	return Evidence{Status: StatusPartial, Confidence: confidence, Sources: sources, Reason: reason}
 }
 
 // Source is one tiered adapter: it reads a single brief section at a single
@@ -835,6 +846,7 @@ func Probe(repoRoot string, opts ...ProbeOption) (Coverage, error) {
 				Evidence:   dedupeSorted(r.ev.Sources),
 				Searched:   dedupeSorted(r.ev.Searched),
 				Question:   r.ev.Question,
+				Reason:     r.ev.Reason,
 			}
 		} else if r, ok := blankFallback[m.Section]; ok {
 			sc.Searched = dedupeSorted(r.ev.Searched)

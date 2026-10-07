@@ -183,11 +183,8 @@ func (convContextSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if convProseBytes(data) < convGroundedProseBytes {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceLow,
-			Sources:    []string{path + " (near-empty)"},
-		}
+		return partial(ConfidenceLow, []string{path + " (near-empty)"},
+			"Found a README with too little prose to say what the project does; a README that describes it in a paragraph or more would ground it.")
 	}
 	return Evidence{
 		Status:     StatusGrounded,
@@ -218,11 +215,8 @@ func (convPressReleaseSource) Probe(ctx *SourceContext) Evidence {
 			"What is the one-line pitch for this project? The README carries no lede.",
 		)
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: ConfidenceLow,
-		Sources:    []string{fmt.Sprintf("%s lede (%q)", path, title)},
-	}
+	return partial(ConfidenceLow, []string{fmt.Sprintf("%s lede (%q)", path, title)},
+		"Found the README's lede, which reads as a pitch but was not written as one; an authored press release (who it is for, what changes for them) would ground it.")
 }
 
 // convScopeSource partially grounds "product/scope" from a README's features or
@@ -241,17 +235,11 @@ func (convScopeSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if convHasHeadingLike(data, "feature", "usage", "install", "getting started", "what") {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{path + " (features/usage sections)"},
-		}
+		return partial(ConfidenceMedium, []string{path + " (features/usage sections)"},
+			"Found README features/usage sections, which say what the project does but not where its scope ends; a written scope statement would ground it.")
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: ConfidenceLow,
-		Sources:    []string{path + " (no explicit features section)"},
-	}
+	return partial(ConfidenceLow, []string{path + " (no explicit features section)"},
+		"Found a README with no features or usage section, so scope can only be inferred; a features section or a written scope statement would ground it.")
 }
 
 // convPlatformFiles are the build/CI signals that ground "constraints/platform",
@@ -353,11 +341,8 @@ func (convDependenciesSource) Probe(ctx *SourceContext) Evidence {
 				Sources:    []string{ml.manifest},
 			}
 		}
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{ml.manifest + " (no lockfile)"},
-		}
+		return partial(ConfidenceMedium, []string{ml.manifest + " (no lockfile)"},
+			"Found "+ml.manifest+" but no lockfile, so the declared dependencies are known but not the resolved versions; a committed lockfile would ground it.")
 	}
 	return blank(
 		[]string{"dependency manifest + lockfile (go.mod, package.json, Cargo.toml, pyproject.toml, Pipfile, requirements.txt, Gemfile, composer.json)"},
@@ -405,17 +390,11 @@ func (convSurfacesSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if convHasHeadingLike(data, "usage", "cli", "command", "api", "getting started") || convHasCodeFence(data) {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{path + " (usage/CLI sections)"},
-		}
+		return partial(ConfidenceMedium, []string{path + " (usage/CLI sections)"},
+			"Found README usage/CLI sections, which show some surfaces but need not list them all; a reference of every command or endpoint would ground it.")
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: ConfidenceLow,
-		Sources:    []string{path + " (no explicit usage section)"},
-	}
+	return partial(ConfidenceLow, []string{path + " (no explicit usage section)"},
+		"Found a README with no usage or CLI section, so the surfaces can only be inferred; a usage section or a command/API reference would ground it.")
 }
 
 // convOutOfScopeSource partially grounds "delivery/out-of-scope" from a README's
@@ -428,11 +407,8 @@ func (convOutOfScopeSource) Tier() Tier       { return TierConventions }
 func (convOutOfScopeSource) Probe(ctx *SourceContext) Evidence {
 	path, data, ok := convReadme(ctx)
 	if ok && convHasHeadingLike(data, "non-goal", "non goal", "out of scope", "out-of-scope", "not a goal") {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{path + " (non-goals / out-of-scope section)"},
-		}
+		return partial(ConfidenceMedium, []string{path + " (non-goals / out-of-scope section)"},
+			"Found a README non-goals section, which names what was left out but rarely why; an out-of-scope record giving each exclusion its reason would ground it.")
 	}
 	return blank(
 		[]string{"README non-goals / out-of-scope section"},
@@ -476,11 +452,8 @@ func (convGlossarySource) Tier() Tier       { return TierConventions }
 
 func (convGlossarySource) Probe(ctx *SourceContext) Evidence {
 	if p := convGlossaryDoc(ctx); p != "" {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{p},
-		}
+		return partial(ConfidenceMedium, []string{p},
+			"Found a glossary document, which defines terms but is not known to be complete; an authored "+nativeSectionBriefFile("glossary")+" would ground it.")
 	}
 	return blank(
 		[]string{"GLOSSARY.md", "docs/glossary*"},
@@ -514,18 +487,12 @@ func (convNamingSource) Probe(ctx *SourceContext) Evidence {
 		p = convDocsEntryWithPrefix(ctx, "naming")
 	}
 	if p != "" {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{p},
-		}
+		return partial(ConfidenceMedium, []string{p},
+			"Found a naming document, which rules on some names but does not enumerate the full reserved vocabulary; an authored glossary under "+nativeGlossaryDir+" would ground it.")
 	}
 	if g := convGlossaryDoc(ctx); g != "" {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceLow,
-			Sources:    []string{g + " (glossary fallback — no dedicated naming document)"},
-		}
+		return partial(ConfidenceLow, []string{g + " (glossary fallback — no dedicated naming document)"},
+			"Found only a glossary, which defines terms rather than ruling on what may be renamed; a dedicated naming document would ground it.")
 	}
 	return blank(
 		[]string{
@@ -683,11 +650,25 @@ func (convInternalsSource) probeLimited(ctx *SourceContext, walkLimit int) Evide
 		}
 		sources = append(sources, pkgs...)
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: confidence,
-		Sources:    dedupeSorted(sources),
+	return partial(confidence, dedupeSorted(sources),
+		"Found "+convInternalsFound(docPath, docDir, len(pkgs))+", which describes the system's shape rather than its internals; an authored "+nativeSectionBriefFile("internals")+" would ground it.")
+}
+
+// convInternalsFound names what the internals adapter found, for its partial
+// reason: an architecture document, an architecture tree, a package layout, or
+// a document or tree together with the layout.
+func convInternalsFound(docPath, docDir string, pkgs int) string {
+	var found []string
+	switch {
+	case docPath != "":
+		found = append(found, "an architecture document ("+docPath+")")
+	case docDir != "":
+		found = append(found, "an architecture tree ("+docDir+"/)")
 	}
+	if pkgs > 0 {
+		found = append(found, fmt.Sprintf("a package layout (%d package(s))", pkgs))
+	}
+	return strings.Join(found, " and ")
 }
 
 // convMarkerNames are the in-code work markers recognised as open questions,
@@ -893,11 +874,8 @@ func (convOpenQuestionsSource) probeLimited(ctx *SourceContext, budget int) Evid
 	if markers >= convMarkerMediumConfidence {
 		confidence = ConfidenceMedium
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: confidence,
-		Sources:    dedupeSorted(sources),
-	}
+	return partial(confidence, dedupeSorted(sources),
+		fmt.Sprintf("Found %d in-code work marker(s), each saying something is unfinished but not what the question is; open issues in the capture ledger, or an authored %s, would ground it.", markers, nativeSectionBriefFile("evidence/open-questions")))
 }
 
 // convIssuesSource partially grounds "activity/issues" from a checked-in issues
@@ -909,25 +887,16 @@ func (convIssuesSource) Tier() Tier       { return TierConventions }
 
 func (convIssuesSource) Probe(ctx *SourceContext) Evidence {
 	if p := ctx.FindFirst("ISSUES.md", "ISSUES"); p != "" {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{p},
-		}
+		return partial(ConfidenceMedium, []string{p},
+			"Found a checked-in issue list, whose entries carry no recorded state; a capture ledger of issue records by state ("+nativeIssuesDir+") would ground it.")
 	}
 	if ctx.IsDir("issues") {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{"issues/"},
-		}
+		return partial(ConfidenceMedium, []string{"issues/"},
+			"Found an issues/ directory, whose entries carry no recorded state; a capture ledger of issue records by state ("+nativeIssuesDir+") would ground it.")
 	}
 	if ctx.IsDir(".github/ISSUE_TEMPLATE") {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceLow,
-			Sources:    []string{".github/ISSUE_TEMPLATE"},
-		}
+		return partial(ConfidenceLow, []string{".github/ISSUE_TEMPLATE"},
+			"Found only issue templates, which shape how issues are filed but hold none; a checked-in issue ledger ("+nativeIssuesDir+") would ground it.")
 	}
 	return blank(
 		[]string{"ISSUES.md", "issues/", ".github/ISSUE_TEMPLATE"},
@@ -949,11 +918,8 @@ func (convWhatWorkedSource) Tier() Tier       { return TierConventions }
 
 func (convWhatWorkedSource) Probe(ctx *SourceContext) Evidence {
 	if p := ctx.FindFirst(convChangelogNames...); p != "" {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{p},
-		}
+		return partial(ConfidenceMedium, []string{p},
+			"Found a changelog, which says what shipped but not what held up; an authored "+nativeSectionBriefFile("evidence/what-worked")+" would ground it.")
 	}
 	return blank(
 		[]string{"CHANGELOG (" + strings.Join(convChangelogNames, ", ") + ")"},

@@ -85,7 +85,8 @@ func (gitGraveyardSource) Probe(ctx *SourceContext) Evidence {
 	if len(reverts) > 0 {
 		return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 	}
-	return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: sources}
+	return partial(ConfidenceMedium, sources,
+		fmt.Sprintf("Found %d deleted file(s) but no revert, and a deletion alone is ordinary work rather than a deliberate abandonment; a reverted commit, or a written record of what was abandoned and why, would ground it.", len(deleted)))
 }
 
 // gitSpineSource grounds "rescue/spine" partially: the commit history is a
@@ -111,7 +112,8 @@ func (gitSpineSource) Probe(ctx *SourceContext) Evidence {
 	if len(authors) > 0 {
 		sources = append(sources, fmt.Sprintf("%d contributor(s)", len(authors)))
 	}
-	return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: sources}
+	return partial(ConfidenceMedium, sources,
+		fmt.Sprintf("Found %d commit(s) of history, which give the project's sequence but not the intent behind each step; an intent corpus (.abcd/development/intents/) would ground it.", n))
 }
 
 // gitContextSource grounds "product/context" partially: what the project does,
@@ -136,11 +138,8 @@ func (gitContextSource) Probe(ctx *SourceContext) Evidence {
 			"What does this project do? No descriptive commit subjects to infer it from.",
 		)
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: ConfidenceLow,
-		Sources:    []string{fmt.Sprintf("commit subjects (%d non-merge commits)", len(subjects))},
-	}
+	return partial(ConfidenceLow, []string{fmt.Sprintf("commit subjects (%d non-merge commits)", len(subjects))},
+		fmt.Sprintf("Found %d non-merge commit subject(s), from which what the project does can only be inferred; a README that describes it, or an authored %s, would ground it.", len(subjects), nativeSectionBriefFile("product/context")))
 }
 
 // gitDependenciesSource grounds "constraints/dependencies" partially: the
@@ -167,7 +166,8 @@ func (gitDependenciesSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	sort.Strings(churn)
-	return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: churn}
+	return partial(ConfidenceMedium, churn,
+		"Found dependency manifests churning in history, which say dependencies changed but not the current set; the current manifest with its lockfile would ground it.")
 }
 
 // gitBuildSequenceSource grounds "delivery/build-sequence" partially: release
@@ -180,18 +180,12 @@ func (gitBuildSequenceSource) Tier() Tier       { return TierGit }
 func (gitBuildSequenceSource) Probe(ctx *SourceContext) Evidence {
 	tags := dedupeSorted(ctx.GitLines("tag"))
 	if len(tags) > 0 {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceMedium,
-			Sources:    []string{fmt.Sprintf("%d tags (e.g. %s)", len(tags), tags[0])},
-		}
+		return partial(ConfidenceMedium, []string{fmt.Sprintf("%d tags (e.g. %s)", len(tags), tags[0])},
+			fmt.Sprintf("Found %d release tag(s), which mark when releases happened but not what each delivered or why in that order; an authored %s would ground it.", len(tags), nativeSectionBriefFile("delivery/build-sequence")))
 	}
 	if n := ctx.CommitCount(); n >= 3 {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceLow,
-			Sources:    []string{fmt.Sprintf("commit cadence (%d commits, no tags)", n)},
-		}
+		return partial(ConfidenceLow, []string{fmt.Sprintf("commit cadence (%d commits, no tags)", n)},
+			fmt.Sprintf("Found %d commits and no release tag, so only the cadence of work is known; release tags, or an authored %s, would ground it.", n, nativeSectionBriefFile("delivery/build-sequence")))
 	}
 	return blank(
 		[]string{"release tags (git tag)", "commit cadence"},
@@ -214,9 +208,6 @@ func (gitWhatDidntSource) Probe(ctx *SourceContext) Evidence {
 			"What was tried and reversed? No reverts appear in history.",
 		)
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: ConfidenceMedium,
-		Sources:    []string{fmt.Sprintf("%d reverted commits (e.g. %s)", len(reverts), reverts[0])},
-	}
+	return partial(ConfidenceMedium, []string{fmt.Sprintf("%d reverted commits (e.g. %s)", len(reverts), reverts[0])},
+		fmt.Sprintf("Found %d reverted commit(s), which show what was reversed but not why it failed; an authored %s would ground it.", len(reverts), nativeSectionBriefFile("evidence/what-didnt")))
 }

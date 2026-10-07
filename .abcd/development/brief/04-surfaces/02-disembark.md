@@ -254,7 +254,8 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
 - **Given** the user runs the probe, **when** it completes, **then** every
   adapter's probe runs in parallel, the coverage report is rendered to stdout
   with each section marked grounded, partial or blank plus what was searched,
-  nothing is written into the source, and the run takes a small fraction of the
+  each partial carrying the reason it stopped short (what was found and what
+  would ground it), nothing is written into the source, and the run takes a small fraction of the
   time a full pack would.
 - **Given** the probe run across the validation corpus, **when** the reports are
   aggregated, **then** the aggregate reports the section-coverage delta between
