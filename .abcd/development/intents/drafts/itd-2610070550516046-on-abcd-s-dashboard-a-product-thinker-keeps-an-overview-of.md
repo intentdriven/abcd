@@ -48,7 +48,7 @@ Answered by the product thinker on 2026-10-07 ("1. PT order decides, but can be 
 
 ## Open Questions
 
-1. **The picture.** The product thinker asked which picture is meant: the "clear data visualisation to relate brief elements and intents" of their request. Put to them again on 2026-10-07 as a grid, a tree or a map, they answered: "Conduct SOTA and create mockups for each first; incl. a network graph, too." Open until a state-of-the-art pass and a mockup of each of the four forms (grid, tree, map, network graph) are in front of them; whether shipped ideas still show is asked with the mockups.
+1. **The picture.** The product thinker asked which picture is meant: the "clear data visualisation to relate brief elements and intents" of their request. Put to them again on 2026-10-07 as a grid, a tree or a map, they answered: "Conduct SOTA and create mockups for each first; incl. a network graph, too." Open until a state-of-the-art pass and a mockup of each of the four forms (grid, tree, map, network graph) are in front of them; whether shipped ideas still show is asked with the mockups. Both were prepared by the facilitator on 2026-10-07 in the local tier (`scratch/reports/sota-brief-intent-visualisation-2026-10-07.md`, `scratch/mockups/brief-ideas-views.html`, built from the record with each chapter linked to the ideas that cite it): the research recommends a hybrid, a coverage strip of one tile per section above the section list, with the ordered list beside it, and rules out a treemap or sunburst sized by count and a force-directed network of everything. The pick is the product thinker's.
 
 ## Audit Notes
 
