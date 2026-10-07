@@ -32,8 +32,8 @@ It creates the lab home and its registry line, clones a standalone snapshot
 detached at the pin (no hook fires, its remote is cut) and scaffolds
 `INTENTION.md`, `findings.md`, `corrections.md` and `amendments.md`. Show the
 user the `id`, the `home` and the `next` steps: write the hypothesis and STOP
-conditions before anything mutates, and build the work binary once from the
-pristine snapshot into `bin/abcd`.
+conditions before anything mutates, and, in a lab of abcd's own repository,
+build the work binary once from the pristine snapshot into `bin/abcd`.
 
 **Preflight** the lab before any mutation:
 
@@ -44,7 +44,11 @@ pristine snapshot into `bin/abcd`.
 `checks` holds the harness-isolation group (`isolation.home`,
 `isolation.snapshot`, `isolation.remotes`, `isolation.hooks`) and the dual-binary
 group (`binary.work`, `binary.pinned`, `binary.test`), each with `ok` and
-`detail`; the artefact is `state/preflight.md`. On any failure `passed` is false,
+`detail`; the artefact is `state/preflight.md`. The dual-binary group holds a
+lab of abcd's own repository only: in any other repository no `bin/abcd` can be
+built from the snapshot, so each binary check passes with `not_applicable`
+true and a `detail` saying why — tell the user it was judged not applicable,
+never that it passed on its merits. On any failure `passed` is false,
 the exit is 1, and `finding` names the gate finding the halt recorded. Tell the
 user which checks failed and why. **Do not adapt around a failed check** — no
 retry under another shape, no weakened setting: the lab is halted until the

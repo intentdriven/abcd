@@ -116,6 +116,15 @@ type Entry struct {
 	Question string `json:"question"`
 }
 
+// studiesAbcd reports whether the repository keyed on rootSHA is abcd's own.
+// The dual-binary gate ties a lab's claims to an abcd binary built once from the
+// pristine snapshot, and only a snapshot of abcd can build one, so the gate
+// holds a lab of abcd and is not applicable to any other. It reads the root
+// commit the store is keyed on, abcd's identity (abcdrepo.RootCommit); a
+// shallow or rewritten copy of abcd has another root and reads as another
+// repository.
+func studiesAbcd(rootSHA string) bool { return rootSHA == abcdRootCommit }
+
 // store is one repository's lane of the lab store.
 type store struct {
 	home    string // the caller's home

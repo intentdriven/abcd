@@ -13,17 +13,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// Check is one preflight check's verdict.
+// Check is one preflight check's verdict. A check that does not apply to this
+// lab passes (OK) and says so: NotApplicable is set, and Detail says why.
 type Check struct {
-	ID     string `json:"id"`
-	Group  string `json:"group"`
-	OK     bool   `json:"ok"`
-	Detail string `json:"detail"`
+	ID            string `json:"id"`
+	Group         string `json:"group"`
+	OK            bool   `json:"ok"`
+	NotApplicable bool   `json:"not_applicable,omitempty"`
+	Detail        string `json:"detail"`
 }
 
 // The two check groups the preflight runs.
@@ -41,6 +44,19 @@ type Preflighted struct {
 	Artefact string  `json:"artefact"`
 	Finding  string  `json:"finding,omitempty"`
 	Lifted   string  `json:"lifted,omitempty"`
+}
+
+// abcdRootCommit is the root commit of the repository whose labs the
+// dual-binary gate holds; tests repoint it.
+var abcdRootCommit = abcdrepo.RootCommit
+
+// SetAbcdRootCommitForTest repoints the root commit the dual-binary gate
+// applies to, so a test can treat a throwaway repository as abcd's own, and
+// returns the restore.
+func SetAbcdRootCommitForTest(sha string) (restore func()) {
+	prev := abcdRootCommit
+	abcdRootCommit = sha
+	return func() { abcdRootCommit = prev }
 }
 
 // vintageOf reads a binary's build vintage without running it. Tests replace it:
@@ -82,8 +98,12 @@ func Preflight(repoRoot, id string) (Preflighted, error) {
 		l.checkRemotes(),
 		l.checkHooks(realDir),
 	}
-	work, workHash := l.checkWorkBinary()
-	checks = append(checks, work, l.checkPinned(work.OK, workHash), l.checkTestBinary())
+	if studiesAbcd(l.store.rootSHA) {
+		work, workHash := l.checkWorkBinary()
+		checks = append(checks, work, l.checkPinned(work.OK, workHash), l.checkTestBinary())
+	} else {
+		checks = append(checks, dualBinaryNotApplicable()...)
+	}
 
 	res := Preflighted{ID: id, Passed: true, Checks: checks, Artefact: l.display(preflightMD)}
 	var failed []string
@@ -297,6 +317,22 @@ func (l *lab) checkHooks(realDir string) Check {
 	return c
 }
 
+// dualBinaryNotApplicable is the dual-binary group for a lab of a repository
+// that is not abcd's own, whose snapshot no bin/abcd can be built from: each
+// check passes marked not applicable and says why, so the artefact shows the
+// group was judged rather than dropped.
+func dualBinaryNotApplicable() []Check {
+	const why = "not applicable: this repository is not abcd's own (its root commit is not abcd's), so no bin/abcd can be built from the snapshot"
+	na := func(id, rest string) Check {
+		return Check{ID: id, Group: GroupDualBinary, OK: true, NotApplicable: true, Detail: why + rest}
+	}
+	return []Check{
+		na("binary.work", "; build and pin any binary the lab drives by hand, as itd-2609251624540864 sets out"),
+		na("binary.pinned", ", and there is no work binary to pin"),
+		na("binary.test", ", and no test binary to keep apart from it"),
+	}
+}
+
 // checkWorkBinary proves bin/abcd is a regular file (never a link to an
 // operator-level installation) built from the pristine snapshot: its embedded
 // vintage is known, unmodified, and equals the pin. It returns the binary's
@@ -430,8 +466,11 @@ func preflightDoc(e Entry, res Preflighted) string {
 	b.WriteString("| Check | Group | Result | Detail |\n| --- | --- | --- | --- |\n")
 	for _, c := range res.Checks {
 		r := "pass"
-		if !c.OK {
+		switch {
+		case !c.OK:
 			r = "FAIL"
+		case c.NotApplicable:
+			r = "n/a"
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", c.ID, c.Group, r, strings.ReplaceAll(c.Detail, "|", "\\|"))
 	}

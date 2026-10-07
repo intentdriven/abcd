@@ -66,6 +66,11 @@ never a link to an operator-level installation; its embedded vintage, read from
 its build metadata without running it, is the pin and unmodified; it is the
 binary the first passing preflight pinned by its sha256, since the work binary
 is never rebuilt; and a test binary, when there is one, is a separate file.
+The dual-binary group holds a lab of abcd's own repository, the one whose root
+commit is abcd's: only that snapshot can build an abcd work binary. In a lab of
+any other repository each binary check passes marked not applicable, saying
+why, in the artefact and the JSON alike, and the mint's next steps and the
+INTENTION's lifecycle map name no `bin/abcd`.
 
 **Recording** a probe scaffolds its record — the input, the command line, the
 exit status and the two output streams, empty, and a note naming the artefact

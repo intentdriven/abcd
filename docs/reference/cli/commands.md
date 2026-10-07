@@ -2486,7 +2486,10 @@ Dual binary: bin/abcd is a regular file (never a link to an operator-level
 installation) whose embedded vintage — read without running it — is the
 pin, unmodified; it is the same binary the first passing preflight pinned,
 since the work binary is never rebuilt; and bin/abcd-test, when present, is a
-separate file.
+separate file. The group holds a lab of abcd's own repository (its root
+commit is abcd's); for any other repository no bin/abcd can be built from
+the snapshot, so each binary check passes marked not applicable (n/a, and
+not_applicable in --json), saying why.
 
 A failed check halts the lab naming it: exit 1, the refusal recorded as a
 gate finding. A preflight that passes lifts that halt.

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
@@ -50,21 +51,14 @@ const idFamily = "rpt"
 const GenericSender = "a managed repository"
 
 // AbcdRootCommit is abcd's own identity as git records it: the root commit of
-// its repository. Every report is about abcd, so a report is promoted only in a
-// checkout whose root commit is this one; anywhere else the capture would plant
-// an abcd defect in an unrelated repository's ledger.
-//
-// It is a pinned constant rather than something derived at run time. A root
-// commit cannot change without rewriting every commit after it, so the value is
-// as fixed as the module path, and a constant fails closed: a shallow clone, a
-// rewritten history or an archive copy is refused rather than guessed at. The
-// derivations on offer are weaker. The binary's embedded build revision is
-// absent from a dirty or checkout-less build, and proves only that the checkout
-// holds that one commit; the module path is text any repository can declare.
+// its repository (abcdrepo.RootCommit, where the reasons it is a pinned
+// constant are kept). Every report is about abcd, so a report is promoted only
+// in a checkout whose root commit is this one; anywhere else the capture would
+// plant an abcd defect in an unrelated repository's ledger.
 // TestAbcdRootCommitIsThisCheckouts holds the constant to the checkout the tests
 // run in, so it cannot drift silently. A fork shares abcd's root commit and is
 // abcd's code, so it promotes.
-const AbcdRootCommit = "488a0aa96ac5de805348635b27036addf15cddc2"
+const AbcdRootCommit = abcdrepo.RootCommit
 
 // abcdRootCommit is the root commit Promote requires; tests repoint it.
 var abcdRootCommit = AbcdRootCommit

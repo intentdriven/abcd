@@ -317,6 +317,11 @@ plugin surface, and a future MCP server share one engine.
   `.abcd`-led string), and leaves a repository's own `.abcd/` alone; a second
   test holds that no code names the computer's search settings
   (adr-2610030720195401).
+- **`abcdrepo/`** — abcd's own repository's identity, its root commit, read by
+  every verb that behaves differently in abcd's own checkout or a copy of it
+  (the report inbox's promotion, a lab's dual-binary gate). A
+  standard-library leaf, so a light package reads it without importing the
+  package that holds the rule it serves.
 - **`shellquote/`** — the one POSIX-shell quoting primitive: `Single` is a
   value as one single-quoted word, an embedded quote closed, escaped and
   reopened, for every command abcd prints for a person to paste or writes into
