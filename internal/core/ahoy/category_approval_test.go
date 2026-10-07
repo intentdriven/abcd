@@ -66,9 +66,10 @@ func TestACategoryApprovalListsWhatItWrites(t *testing.T) {
 }
 
 // TestEveryCategoryApprovalPassesTheChecks builds the approval of each kind
-// of change over one change and over more changes than fit, and holds each
-// to the structural check and the limits. Past what fits, the list ends on a
-// line counting the rest and the yes still counts every change.
+// of change over one change and over more changes than one question's rows
+// hold, and holds each to the structural check and the limits. Every change
+// is listed and the yes counts them; the longer list breaks the rows limit
+// alone, which the guard shows with a note rather than refusing.
 func TestEveryCategoryApprovalPassesTheChecks(t *testing.T) {
 	cats := append(append([]GapCategory(nil), categoryPromptOrder...), GapCategory("alpha"))
 	for _, c := range cats {
@@ -77,26 +78,30 @@ func TestEveryCategoryApprovalPassesTheChecks(t *testing.T) {
 			for i := range lines {
 				lines[i] = fmt.Sprintf(".abcd/work/file-%02d.md missing", i+1)
 			}
-			q := SetupConfirmQuestion(1, categoryApprovalText(c, lines, true))
+			q := SetupConfirmQuestion(1, categoryApprovalText(c, lines))
 			if q.ID != approvePrefix+string(c) {
 				t.Errorf("%s over %d: id %q", c, n, q.ID)
 			}
-			items := listedItems(q)
-			if len(items) == 0 || items[0] != lines[0] {
+			if items := listedItems(q); strings.Join(items, "|") != strings.Join(lines, "|") {
 				t.Errorf("%s over %d: lists %q", c, n, items)
-				continue
-			}
-			if n > len(items) {
-				last := items[len(items)-1]
-				if want := fmt.Sprintf("and %d more", n-len(items)+1); !strings.HasPrefix(last, want) {
-					t.Errorf("%s over %d: the list ends %q, want %q", c, n, last, want)
-				}
 			}
 			if writes := categoryApprovalWords[c].writes; (writes || c == "alpha") && n > 1 &&
 				!strings.Contains(q.Options[0].Meaning, fmt.Sprintf("%d changes", n)) {
 				t.Errorf("%s over %d: yes means %q", c, n, q.Options[0].Meaning)
 			}
-			heldToEveryCheck(t, q)
+			if n == 1 {
+				heldToEveryCheck(t, q)
+				continue
+			}
+			a := question.Ask{Questions: []question.Question{q}}
+			for _, f := range question.Check(a) {
+				t.Errorf("%s over %d: structural: %s", c, n, f)
+			}
+			for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
+				if f.Rule != question.RuleRows {
+					t.Errorf("%s over %d: %s", c, n, f)
+				}
+			}
 		}
 	}
 }
@@ -142,25 +147,23 @@ func sevenGaps() []Gap {
 	return gaps
 }
 
-// TestATerminalApprovalListsEveryChange: a person at a terminal is shown the
-// whole list (the drawn question scrolls, the [y/N] line has no bound), so
-// the list is never cut there. Off a terminal, where the host's 24 rows bind
-// the question, it is cut and counts the rest.
-func TestATerminalApprovalListsEveryChange(t *testing.T) {
-	p := &recordingPrompter{terminal: true}
-	resolveApproval(sevenGaps(), InstallOptions{}, nil, p)
-	if len(p.asked) != 1 {
-		t.Fatalf("asked %q", p.asked)
-	}
-	items := listedItems(SetupConfirmQuestion(1, p.asked[0]))
-	if len(items) != 7 || items[6] != ".abcd/work/file-7.md missing" {
-		t.Fatalf("at a terminal the approval lists %q, want all seven", items)
-	}
-	off := &recordingPrompter{}
-	resolveApproval(sevenGaps(), InstallOptions{}, nil, off)
-	items = listedItems(SetupConfirmQuestion(1, off.asked[0]))
-	if len(items) >= 7 || !strings.HasPrefix(items[len(items)-1], "and ") {
-		t.Fatalf("off a terminal the approval lists %q, want it cut to fit and counting the rest", items)
+// TestEveryRouteListsEveryChange: the approval lists every change it would
+// make on every route, at a terminal (the drawn question, the [y/N] line) and
+// off one (the answers file the host relays, the piped stream), never cut to
+// fit: the person sees every file and setting before approving, and every
+// door records the same question (spc-2610030911534855 B3, B5). A question
+// taller than the host's rows is shown with the guard's note, not refused.
+func TestEveryRouteListsEveryChange(t *testing.T) {
+	for _, terminal := range []bool{true, false} {
+		p := &recordingPrompter{terminal: terminal}
+		resolveApproval(sevenGaps(), InstallOptions{}, nil, p)
+		if len(p.asked) != 1 {
+			t.Fatalf("terminal=%v: asked %q", terminal, p.asked)
+		}
+		items := listedItems(SetupConfirmQuestion(1, p.asked[0]))
+		if len(items) != 7 || items[6] != ".abcd/work/file-7.md missing" {
+			t.Fatalf("terminal=%v: the approval lists %q, want all seven", terminal, items)
+		}
 	}
 }
 
@@ -169,7 +172,7 @@ func TestATerminalApprovalListsEveryChange(t *testing.T) {
 // left unanswered saves none of them (stepConfigValues), so its yes goes on
 // rather than claiming to write.
 func TestTheSettingsApprovalSaysValuesAreAskedFirst(t *testing.T) {
-	q := SetupConfirmQuestion(1, categoryApprovalText(ConfigChange, []string{"repo.visibility not set", "docs.target not set"}, true))
+	q := SetupConfirmQuestion(1, categoryApprovalText(ConfigChange, []string{"repo.visibility not set", "docs.target not set"}))
 	yes := q.Options[0]
 	if strings.Contains(yes.Meaning, "Writes") || yes.Label != nextLabel {
 		t.Fatalf("the settings yes is %q: %q; it claims to write what is still to be asked", yes.Label, yes.Meaning)

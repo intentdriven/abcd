@@ -189,9 +189,7 @@ safe-autocreate, config-change, status-line, oracle-routing, drain-rule, convent
 scripted stream of specific answers lines up with them. Each approval lists
 what it would change above its question, one line per change naming the file
 or the setting, and asks in plain words ("Change the settings listed above?").
-At a terminal every change is listed; in an answers-file or piped run a list
-too long for one question ends on a line such as "and 3 more, which abcd ahoy
-lists", and `/abcd:ahoy` lists every gap by its title. When you relay an
+Every change is listed, on every route, however long the list. When you relay an
 approval, quote its list with it, exactly as written. The drain-rule and
 conventions-file questions are asked only at a terminal, so a piped stream
 never meets them. Each answer is echoed back, so the

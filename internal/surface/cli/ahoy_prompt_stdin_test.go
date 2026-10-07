@@ -331,8 +331,8 @@ func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
 }
 
 // TestBareAhoyListsEachGapsTitle: the plain board names every gap by its
-// title under the count, so the approval's "and N more, which abcd ahoy
-// lists" line holds (iss-2610071528375981).
+// title under the count, the same words the install's approvals list
+// (iss-2610071528375981).
 func TestBareAhoyListsEachGapsTitle(t *testing.T) {
 	hermeticRepo(t)
 	var det struct {

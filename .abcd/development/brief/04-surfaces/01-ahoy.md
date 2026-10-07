@@ -529,10 +529,9 @@ question in plain words ("Create the files and folders listed above?", "Change
 the settings listed above?"), never the category's internal name. Yes says how
 many listed changes it writes, or, for a category whose changes are each asked
 again (a setting's value, a tool, an offer, a conventions file), which
-questions it goes on to. A person at a terminal is shown every change; off a
-terminal, where the host's frame bounds the question, a list taller than one
-question fits at 80 columns ends on a line counting the rest, which `abcd ahoy`
-lists in full by title. The question check refuses an answer
+questions it goes on to. Every change is listed on every route, never cut to
+fit, so every door records the same question; a list taller than the host's
+rows is shown with the question check's note rather than refused. The question check refuses an answer
 whose meaning points at text above a question that has none, the shape the
 approvals had before they listed anything.
 

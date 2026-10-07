@@ -3,7 +3,6 @@ package ahoy
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/question"
@@ -85,74 +84,28 @@ func approvalCategory(ask string) (GapCategory, bool) {
 	return "", false
 }
 
-// moreFormat is the last line of a list cut to fit: how many changes are not
-// shown, and where every one is listed.
-const moreFormat = "and %d more, which abcd ahoy lists"
-
-var moreRe = regexp.MustCompile(`^and ([1-9][0-9]*) more, which abcd ahoy lists$`)
-
 // categoryApprovalText is the approval of the kind of change c over its
-// changes, lines: each line an item, then the question. With fit, a list
-// taller than a question fits (question.Default's rows at its columns, the
-// host's frame) shows as many lines as fit and ends on a line counting the
-// rest, which abcd ahoy lists in full; yes still counts every change. Without
-// fit every line is shown: a person at a terminal reads a drawn question that
-// scrolls, or a [y/N] line with no bound.
-func categoryApprovalText(c GapCategory, lines []string, fit bool) string {
-	clean := make([]string, 0, len(lines))
+// changes, lines: each line an item, then the question. Every change is
+// listed, on every route, never cut to fit: the person sees every file and
+// setting before approving, and every door records the same question
+// (spc-2610030911534855 B3, B5). A list taller than the host's rows is shown
+// with the guard's note rather than refused.
+func categoryApprovalText(c GapCategory, lines []string) string {
+	var b strings.Builder
 	for _, ln := range lines {
 		if ln = strings.Join(strings.Fields(ln), " "); ln != "" {
-			clean = append(clean, ln)
-		}
-	}
-	ask := categoryWords(c).ask
-	compose := func(shown int) string {
-		var b strings.Builder
-		for _, ln := range clean[:shown] {
 			b.WriteString("  " + ln + "\n")
 		}
-		if rest := len(clean) - shown; rest > 0 {
-			b.WriteString("  " + fmt.Sprintf(moreFormat, rest) + "\n")
-		}
-		return b.String() + ask
 	}
-	if !fit {
-		return compose(len(clean))
-	}
-	for shown := len(clean); shown > 1; shown-- {
-		text := compose(shown)
-		if fitsRows(SetupConfirmQuestion(1, text)) {
-			return text
-		}
-	}
-	return compose(min(1, len(clean)))
+	return b.String() + categoryWords(c).ask
 }
 
-// fitsRows reports whether q fits the rows a question has.
-func fitsRows(q question.Question) bool {
-	for _, f := range question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{}) {
-		if f.Rule == question.RuleRows {
-			return false
-		}
-	}
-	return true
-}
-
-// approvalCount is how many changes the material of an approval lists: its
-// items, the counting line read as the changes it stands for.
+// approvalCount is how many changes the material of an approval lists.
 func approvalCount(material []question.Block) int {
 	n := 0
 	for _, b := range material {
-		if b.Kind != question.KindList {
-			continue
-		}
-		for _, it := range b.Items {
-			if m := moreRe.FindStringSubmatch(it); m != nil {
-				k, _ := strconv.Atoi(m[1])
-				n += k
-				continue
-			}
-			n++
+		if b.Kind == question.KindList {
+			n += len(b.Items)
 		}
 	}
 	return n
