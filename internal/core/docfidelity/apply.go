@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -171,4 +172,78 @@ func NewRequest(commit string, in Inputs) Request {
 	sort.Strings(chapters)
 	return Request{Commit: commit, Population: append([]string{}, in.Population...), Chapters: chapters,
 		RecordWith: "abcd docs fidelity record --verdict-json <file|->", Shape: VerdictShape}
+}
+
+// replacementKeyRe finds each flag's "replacement" key in the flags file. A
+// quote inside a JSON string is escaped, so the pattern matches keys only, in
+// the order the flags decode in.
+var replacementKeyRe = regexp.MustCompile(`"replacement"\s*:`)
+
+// UnlandedFlags reports each review flag whose replacement no line of its
+// chapter contains (iss-2610050259233425): Apply flags the drafted
+// replacement, and a sentence tidied by hand before the commit leaves the flag
+// naming text the brief does not carry, so the record of what the product
+// thinker must read is wrong. A flag records the sentence as committed; one
+// that does not is returned, on its replacement's line in the flags file, for
+// record-lint's brief_flag_landed rule (registered through
+// lint.SetBriefFlagCheck). No flags file is no flag; a flags file that cannot
+// be read is an error, never an empty report.
+func UnlandedFlags(root string) ([]lint.BriefFlagMiss, error) {
+	flags, err := readFlags(root)
+	if err != nil || len(flags) == 0 {
+		return nil, err
+	}
+	data, err := fsutil.ReadGuarded(filepath.Join(root, FlagsPath), maxPayloadBytes)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", FlagsPath, err)
+	}
+	keys := replacementKeyRe.FindAllIndex(data, -1)
+	chapters := map[string][]string{}
+	var misses []lint.BriefFlagMiss
+	for i, fl := range flags {
+		line := 1
+		if len(keys) == len(flags) {
+			line += strings.Count(string(data[:keys[i][0]]), "\n")
+		}
+		why := ""
+		name, err := chapterFile(fl.Chapter)
+		switch {
+		case fl.Replacement == "":
+			why = "is empty, so it names no sentence of the brief"
+		case err != nil:
+			why = "sits in no chapter: " + err.Error()
+		default:
+			lines, ok := chapters[name]
+			if !ok {
+				text, err := fsutil.ReadGuarded(filepath.Join(root, ChaptersDir, name), maxChapterBytes)
+				if err != nil && !errors.Is(err, os.ErrNotExist) {
+					return nil, fmt.Errorf("reading %s/%s: %w", ChaptersDir, name, err)
+				}
+				lines = strings.Split(strings.ReplaceAll(string(text), "\r\n", "\n"), "\n")
+				if err != nil {
+					lines = nil
+				}
+				chapters[name] = lines
+			}
+			if lines == nil {
+				why = "sits in no chapter: " + ChaptersDir + "/" + name + " does not exist"
+				break
+			}
+			landed := false
+			for _, l := range lines {
+				if strings.Contains(l, fl.Replacement) {
+					landed = true
+					break
+				}
+			}
+			if !landed {
+				why = "no line of " + ChaptersDir + "/" + name + " contains"
+			}
+		}
+		if why != "" {
+			misses = append(misses, lint.BriefFlagMiss{File: FlagsPath, Line: line, Chapter: fl.Chapter,
+				Replacement: fl.Replacement, Why: why})
+		}
+	}
+	return misses, nil
 }

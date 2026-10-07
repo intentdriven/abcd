@@ -459,6 +459,10 @@
       "enabled": true,
       "severity": "blocker"
     },
+    "brief_flag_landed": {
+      "enabled": true,
+      "severity": "blocker"
+    },
     "gate_lockstep": {
       "enabled": true,
       "severity": "blocker",

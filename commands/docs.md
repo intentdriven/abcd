@@ -118,7 +118,11 @@ HOLD carries drafted replacements, `docs fidelity --apply` writes them into the
 brief and flags each in `.abcd/work/brief-review-flags.json`: tell the user
 which sentences changed, because the brief now carries sentences they did not
 write until they read them. `--autonomous` does the same in an unattended run
-and adds the reviewer's `request` to the JSON.
+and adds the reviewer's `request` to the JSON. If an applied sentence is then
+tidied by hand before the commit, bring its flag's `replacement` to the wording
+committed (the part on one line, where it wraps): the flag records what the user
+must read, and record-lint refuses a flag whose replacement no line of its
+chapter contains.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/docfidelity"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/site"
@@ -11,7 +12,8 @@ import (
 // with the lint for every lint the CLI runs (`abcd lint docs`, `abcd lint`), so a config arming record_schema over an
 // issue store gets the reader-parity and body legs the record-lint gate runs,
 // and a config arming stale_edge follows supersession chains through the intent
-// package's one chain reader.
+// package's one chain reader, and a config arming brief_flag_landed reads the
+// review flags through the doc-fidelity package that writes them.
 // It registers record-lint's prose-citation gate the same way, once, for every
 // ingest that copies host prose into a record: the intent audit's verdict
 // ingest, and the consistency and reading ingests in the ledger, which ask it
@@ -21,6 +23,7 @@ func init() {
 	lint.SetIssueReader(capture.ReadRefusal)
 	lint.SetRecordBodyCheck(site.CheckRecordBody)
 	lint.SetSupersessionChain(intent.SupersessionChainOf)
+	lint.SetBriefFlagCheck(docfidelity.UnlandedFlags)
 	intent.SetProseCitationGate(proseCitationGate)
 }
 
