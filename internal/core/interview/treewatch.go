@@ -445,17 +445,32 @@ func (r *treeReader) pointerPath(key string) string {
 }
 
 // namedGitDirs is git's own directory, its common directory and the working
-// tree, as git names them, in full.
+// tree, as git names them, in full. The working tree is asked through
+// gitutil.Toplevel, the one place that holds git's toplevel answer to its
+// shape, so a core.worktree pointed outside the repository is refused there.
 func (r *treeReader) namedGitDirs() (gitDir, common, top string, err error) {
-	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir", "--show-toplevel")
+	out, err := gitutil.Run(r.repo, "rev-parse", "--git-dir", "--git-common-dir")
 	if err != nil {
 		return "", "", "", err
 	}
 	lines := strings.Split(out, "\n")
-	if len(lines) != 3 || slices.Contains(lines, "") {
-		return "", "", "", fmt.Errorf("git named no git directory, common directory and working tree (%q)", out)
+	if len(lines) != 2 || slices.Contains(lines, "") {
+		return "", "", "", fmt.Errorf("git named no git directory and common directory (%q)", out)
 	}
-	return r.abs(lines[0]), r.abs(lines[1]), r.abs(lines[2]), nil
+	top, err = gitutil.Toplevel(r.repo)
+	if errors.Is(err, gitutil.ErrToplevelShape) {
+		// Name what moved the working tree, so the person can see it: git's
+		// core.worktree is the setting that places it elsewhere.
+		named := "a working tree that does not contain " + r.repo
+		if wt, cerr := gitutil.Run(r.repo, "config", "--get", "core.worktree"); cerr == nil && wt != "" && !strings.ContainsAny(wt, "\r\n") {
+			named = "the working tree " + wt + " (core.worktree)"
+		}
+		return "", "", "", fmt.Errorf("git names %s, not the working tree of %s; the reading does not follow it: restore where git reads its working tree (core.worktree) and run the interview again", named, r.repo)
+	}
+	if err != nil {
+		return "", "", "", err
+	}
+	return r.abs(lines[0]), r.abs(lines[1]), r.abs(top), nil
 }
 
 // abs is p in full, a relative p taken from the repository.
