@@ -99,3 +99,41 @@ func TestAskingRecallIsTheGrillOverridesTerms(t *testing.T) {
 		t.Fatal("a caller's edit to the returned terms reached the next caller")
 	}
 }
+
+// TestAskingRulesStateTheRowsExceptionAndTheDrafter: the layout rule says
+// what the check does with a question over the rows limit — it is shown, and
+// the agent is told afterwards — rather than claiming the check refuses it,
+// and one rule sends every abcd question through the drafter agent, which
+// counts rows as the check does. Neither names a record or a source-tree
+// command (itd-201 decision 8).
+func TestAskingRulesStateTheRowsExceptionAndTheDrafter(t *testing.T) {
+	text := joined(AskingRules(Default))
+	for _, want := range []string{
+		"The rows limit is the one the check does not refuse on",
+		"a question over it is shown, and the agent is told afterwards to keep the next question within it",
+		"abcd:question-drafter",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the asking rules do not state %q:\n%s", want, text)
+		}
+	}
+	drafter := ""
+	for _, r := range AskingRules(Default) {
+		if strings.Contains(r, "abcd:question-drafter") {
+			if drafter != "" {
+				t.Errorf("more than one rule names the drafter:\n%s\n%s", drafter, r)
+			}
+			drafter = r
+		}
+	}
+	for _, want := range []string{"the material", "whom the question is for", "answers"} {
+		if !strings.Contains(drafter, want) {
+			t.Errorf("the drafter rule must say what to hand it (%q): %s", want, drafter)
+		}
+	}
+	for _, banned := range []string{"iss-", "itd-", "spc-", "adr-", "go run", "make "} {
+		if strings.Contains(text, banned) {
+			t.Errorf("the asking rules name %q; they reach repositories that have no record and no source tree", banned)
+		}
+	}
+}
