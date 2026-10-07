@@ -52,7 +52,7 @@ func AskingRules(l Limits) []string {
 			"The header is a chip of at most %s columns naming whom the question is for and which it is: %s, the role one of %s, with a total after the slash only when the interview's length is known. "+
 			"The question text gives the material first, then a line starting %q and a line starting %q (each saying %q where it does not apply), and ends with the question on its own line. "+
 			"It offers %s to %s options, the last %s; each label is at most %s words, and each description at most %s sentences. "+
-			"There is no bold (no ** or __) and no side preview, and one question, or one tab, fits %s rows at %s columns.",
+			"There is no bold (no ** or __) and no side preview, and one question, or one tab, fits %s rows at %s columns, counting the header, the host's frame, the question text, and every option's label and description.",
 			numberWord(l.HeaderColumns), chipExamples(l.ChipRoles), joinOr(l.ChipRoles, false),
 			l.NowPrefix, l.ChangeLaterPrefix, l.NotApplicable,
 			numberWord(l.OptionsPerQ[0]), numberWord(l.OptionsPerQ[1]), joinOr(l.LaterLabels, true),
