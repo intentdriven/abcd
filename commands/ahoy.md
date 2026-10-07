@@ -112,7 +112,10 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 marker block (into `AGENTS.md` only, and only where `--docs-target agents_md`
 names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
 `PATH` entry. A saved `claude_md` or `both` is refused before any write, with
-the one setting to change in the notes; relay that note as it stands. Before
+the one setting to change in the notes; relay that note as it stands. A
+`refused` install (that setting, a `.abcd` that is not a real directory, or a
+stale binary) writes nothing and exits 2 after rendering its result, so the
+notes still say why. Before
 anything else, relay each line of the returned `warnings` as it stands: each
 names an agent tool's own conventions file holding the user's words, which that
 tool reads in place of `AGENTS.md` and abcd never edits or removes, or what
@@ -572,9 +575,10 @@ and changes nothing, so set `abcd mode facilitator` and present the question
 and the repository it names to the technical facilitator before answering it.
 `--yes` says yes in advance, and it is the technical facilitator's word to give —
 never pass it on their behalf. A run that changed nothing exits NON-ZERO
-(`refused` or `aborted`), so a failed invocation is never mistaken for a write
-that landed; `opted_out` is the one non-change that exits clean, because leaving
-the repo alone is what the repo asked for.
+(`refused` exits 2, as a refused install does; `aborted` exits 1), so a failed
+invocation is never mistaken for a write that landed; `opted_out` is the one
+non-change that exits clean, because leaving the repo alone is what the repo
+asked for.
 
 The API host is pinned to github.com on every request. `gh` would otherwise take
 it from `GH_HOST` or from whichever host the caller is authenticated to, which

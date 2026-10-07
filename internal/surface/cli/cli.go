@@ -3812,7 +3812,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				// The warnings come first, before the headline: each names a
 				// thing that keeps abcd's rules from an agent tool here, which
 				// only the person can end (itd-2610030814013772).
@@ -3879,7 +3879,19 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
 				}
-			})
+			}); rerr != nil {
+				return rerr
+			}
+			// A refused install wrote nothing, so it exits 2, the code every
+			// other verb gives a refusal and the one `ahoy remote apply` gives
+			// its own: exiting 0 let a script read an install that wrote nothing
+			// as one that landed (iss-2610031915386832). The reason is on stdout
+			// above. An aborted install (the adoption declined) is the run the
+			// caller asked for and keeps exit 0.
+			if res.Status == "refused" {
+				return &exitError{Code: 2, Msg: "abcd ahoy install: refused — nothing was changed (the reason is in the result's notes above)"}
+			}
+			return nil
 		},
 	}
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
@@ -4080,9 +4092,16 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// and would otherwise print "aborted" and exit 0 — which to a script is
 			// indistinguishable from a write that landed. `opted_out` is the one
 			// non-change that exits clean, because leaving the repo alone IS what the
-			// repo asked for. The reason is on stdout above either way.
+			// repo asked for. The reason is on stdout above either way. A refusal
+			// exits 2, the code every other verb and `ahoy install` give one; an
+			// abort keeps exit 1, where scripts already read it
+			// (iss-2610031915386832).
 			if res.Status == "refused" || res.Status == "aborted" {
-				return &exitError{Code: 1, Msg: "abcd ahoy remote apply: " + res.Status +
+				code := 1
+				if res.Status == "refused" {
+					code = 2
+				}
+				return &exitError{Code: code, Msg: "abcd ahoy remote apply: " + res.Status +
 					" — nothing was changed (the reason is in the result's notes above)"}
 			}
 			return nil
