@@ -22,7 +22,8 @@ import (
 var hookScriptRef = regexp.MustCompile(`^sh "\$\{CLAUDE_PLUGIN_ROOT\}/hooks/([a-z-]+\.sh)"$`)
 
 // maxHookCommand is the longest manifest command the host may print in front of
-// a hook's message. The wrapper is under fifty characters.
+// a hook's message. Each wrapper is about fifty characters (the longest,
+// user-prompt-submit's, is 54).
 const maxHookCommand = 64
 
 // repoHooksDir is the committed hooks/ directory, located from this file.
