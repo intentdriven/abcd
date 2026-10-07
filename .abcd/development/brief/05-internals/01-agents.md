@@ -13,7 +13,7 @@ assembles the input, states the output contract, and checks what comes back.
 
 ## What ships
 
-Seventeen agent prompts ship in `agents/` today, in four groups:
+Eighteen agent prompts ship in `agents/` today, in five groups:
 
 - **Lifeboat and release synthesis**, each feeding one verb that validates its
   output under a cite-or-be-dropped rule: `principle-distiller`
@@ -37,6 +37,10 @@ Seventeen agent prompts ship in `agents/` today, in four groups:
   and `sota-researcher`.
 - **The cold-reading instrument**: the four position definitions and the ledger
   `scribe` (below).
+- **The question drafter**, `question-drafter`, which the agent running one of
+  abcd's interviews dispatches to draft each question to the asking rules and
+  the rows limit; no verb dispatches it
+  ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-no-verb-dispatches)).
 
 Each declares its inputs and outputs as JSON, and the schemas are the core's
 rather than the prompt's. The record families — the issue schema, admissions and

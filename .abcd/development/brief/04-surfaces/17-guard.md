@@ -145,7 +145,8 @@ whose only findings are tabs over the rows limit is admitted as any admitted
 question is, marked open where the badge shows, and the hook prints one object
 on stdout whose `additionalContext` tells the agent, after the question
 returns, which tabs ran over, their rows and the limit, that the question was
-shown, and to draft the next one through the `abcd:question-drafter` agent. It
+shown, and to draft the next one through the `abcd:question-drafter` agent
+(`question-drafter`, `agents/question-drafter.md`). It
 sets no `permissionDecision`, which would bypass the host's own permission
 flow, and never tells the agent to ask again, because the person may already
 have answered. A refusal for that question was a redraft of a question the

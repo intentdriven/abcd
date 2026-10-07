@@ -349,11 +349,12 @@ sub-verb.
 
 Most plugin agents under [`agents/`](../../../../agents) serve a verb, which
 builds their input or validates what they return, and the chapter of that verb
-documents them. Three serve no verb, and no command page calls on them: the host
-agent invokes each directly, when its `description` says to, and reads the
-report itself. In the binary they are roster entries: the bundled model-tier
+documents them. Four serve no verb, and no command page calls on them: the host
+agent invokes each directly, when its `description` or abcd's asking rules say
+to, and reads the report itself. In the binary they are roster entries: the bundled model-tier
 proposal the `oracle-routing` offer of [`01-ahoy.md`](01-ahoy.md) renders places
-the two reviewers at `frontier` and the researcher at `economy`. Each prompt declares `reads_untrusted_input: true`,
+the two reviewers at `frontier`, and the researcher and the question drafter at
+`economy`. Each prompt declares `reads_untrusted_input: true`,
 ships an injection canary under `agents/<name>/fixtures/`, and tells the agent
 that everything it reads is data, never instruction.
 
@@ -375,6 +376,15 @@ that everything it reads is data, never instruction.
   marketing, and cites only what it opened in the run. It returns a ranked list
   of recommendations, each with its source and tier, and a section on what it
   rejected.
+- **`question-drafter`** drafts one of abcd's own questions before the agent
+  running the interview asks it: handed the material to quote, the addressee,
+  the decision and the defensible answers, it returns the host question tool's
+  input and the rows each tab takes, counted as the question check in
+  [`17-guard.md`](17-guard.md) counts them. Its asking rules and its row count
+  are a block `cmd/asking-sync` renders from `question.Default`, so the
+  prompt and the check read one statement of every limit. It puts nothing to
+  the person itself and never marks an option recommended. The GRILL asking
+  rules tell every agent running an abcd interview to draft through it.
 
 `docs-currency-reviewer`, the reviewer the release gate runs as a semantic gate,
 is documented in [`10-docs.md`](10-docs.md).

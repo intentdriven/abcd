@@ -12,6 +12,19 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-07 (iss-2610070637562567 — abcd's questions are drafted to fit)
+
+### question-drafter 0.1.0
+
+NEW: drafts one of abcd's own questions before the agent running the
+interview asks it. Handed the material to quote, the addressee, the decision
+and the defensible answers, it returns the host question tool's input and the
+rows each tab takes, counted as the question check counts them. Its asking
+rules and its row count are a generated block `make asking-sync` renders from
+`question.Default`. It puts nothing to the person and never marks an option
+recommended. It reads the material as untrusted data (injection canary under
+its fixtures). Unmeasured, in the `0.x` band.
+
 ## 2026-10-04 (spc-2610030911534855 — the interviews run in a plain Terminal)
 
 ### planning-interviewer 0.1.0

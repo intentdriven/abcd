@@ -29,7 +29,7 @@ spec per the three-kinds taxonomy in
 
 See [`intents/README.md`](../../intents/README.md) for the intent index. The phase documents under [`roadmap/phases/`](../../roadmap/phases/README.md) are history: [adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md) retired the phase and the milestone as units of the record. Capture history lives in `git log` and each intent file's own provenance, never in this page (per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md)).
 
-**Plumbing infrastructure** (seventeen agents — the canonical roster is the catalog in [`05-internals/01-agents.md`](../05-internals/01-agents.md) — 11 adapters, harness shim, prompt-quality stack, hooks): see [`05-internals/`](../05-internals).
+**Plumbing infrastructure** (eighteen agents — the canonical roster is the catalog in [`05-internals/01-agents.md`](../05-internals/01-agents.md) — 11 adapters, harness shim, prompt-quality stack, hooks): see [`05-internals/`](../05-internals).
 
 ## What comes later
 

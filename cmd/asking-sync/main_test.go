@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -235,6 +236,7 @@ func TestCheckWritesNothingAndSyncWrites(t *testing.T) {
 	if err := os.WriteFile(p, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeCurrentDrafter(t, root)
 	if err := run(root, true); !errors.Is(err, errOutOfDate) {
 		t.Fatalf("-check over a stale block returned %v, want errOutOfDate", err)
 	}
@@ -246,6 +248,124 @@ func TestCheckWritesNothingAndSyncWrites(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(p); !strings.Contains(string(got), render(question.Default)) {
 		t.Fatal("the sync did not write the rendered block")
+	}
+	if err := run(root, true); err != nil {
+		t.Fatalf("-check after the sync returned %v", err)
+	}
+}
+
+// writeCurrentDrafter lays the drafter agent's page under root with its block
+// already rendered, so a test about the intent page is not tripped by the
+// other target.
+func writeCurrentDrafter(t *testing.T, root string) {
+	t.Helper()
+	d := filepath.Join(root, filepath.FromSlash(drafterPath))
+	if err := os.MkdirAll(filepath.Dir(d), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	page := "# Drafter\n\n" + drafterBeginMarker + renderDrafter(question.Default) + endMarker + "\n"
+	if err := os.WriteFile(d, []byte(page), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// drafterBlock is the text between the drafter page's markers.
+func drafterBlock(t *testing.T, page string) string {
+	t.Helper()
+	start := strings.Index(page, drafterBeginMarker)
+	if start < 0 {
+		t.Fatalf("the drafter page carries no %s marker", drafterBeginMarker)
+	}
+	rest := page[start+len(drafterBeginMarker):]
+	end := strings.Index(rest, endMarker)
+	if end < 0 {
+		t.Fatalf("the drafter page opens %s and never closes it with %s", drafterBeginMarker, endMarker)
+	}
+	return rest[:end]
+}
+
+// TestDrafterBlockIsGenerated holds the question-drafter agent's generated
+// block to the rendering from question.Default, as the intent page's block
+// is held: the agent drafts to the rules and the row count the check
+// enforces, read from the one value, never from a copy in the page.
+func TestDrafterBlockIsGenerated(t *testing.T) {
+	page := readPage(t, drafterPath)
+	if got, want := drafterBlock(t, page), renderDrafter(question.Default); got != want {
+		t.Fatalf("%s's generated block differs from the rendering from question.Default; run `make asking-sync`.\n--- committed\n%s\n--- rendered\n%s", drafterPath, got, want)
+	}
+}
+
+// TestDrafterBlockStatesTheRulesAndTheRowCount: the drafter's block carries
+// every asking rule as its own list item and the row count the check makes,
+// each figure filled from the Limits it is handed, so an edit to a limit moves
+// the agent's arithmetic with the check's.
+func TestDrafterBlockStatesTheRulesAndTheRowCount(t *testing.T) {
+	block := renderDrafter(question.Default)
+	for _, r := range question.AskingRules(question.Default) {
+		if !strings.Contains(block, "\n- "+r+"\n") {
+			t.Errorf("the drafter block does not carry the rule as its own list item: %s", r)
+		}
+	}
+	l := question.Default
+	for _, want := range []string{
+		fmt.Sprintf("%d rows", l.HostChromeRows),
+		fmt.Sprintf("wrapped at %d columns", l.HostTextColumns),
+		fmt.Sprintf("wrapped at %d columns", l.HostOptionColumns),
+		fmt.Sprintf("over %d rows", l.Rows),
+		fmt.Sprintf("%d columns wide", l.Columns),
+		"a blank line is one row",
+		"hard-wraps",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the drafter block does not state %q:\n%s", want, block)
+		}
+	}
+	edited := question.Default
+	edited.HostChromeRows, edited.HostTextColumns, edited.HostOptionColumns, edited.Rows = 9, 70, 68, 30
+	moved := renderDrafter(edited)
+	for _, want := range []string{"9 rows", "wrapped at 70 columns", "wrapped at 68 columns", "over 30 rows"} {
+		if !strings.Contains(moved, want) {
+			t.Errorf("the drafter block does not move to %q with the limits", want)
+		}
+	}
+}
+
+// TestCheckCoversTheDrafterBlock: -check reports a stale drafter block and
+// writes nothing; the sync then writes it, and the intent page beside it is
+// kept as it was.
+func TestCheckCoversTheDrafterBlock(t *testing.T) {
+	root := t.TempDir()
+	intent := filepath.Join(root, filepath.FromSlash(pagePath))
+	if err := os.MkdirAll(filepath.Dir(intent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	current := "# Page\n\n" + beginMarker + render(question.Default) + endMarker + "\n"
+	if err := os.WriteFile(intent, []byte(current), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := filepath.Join(root, filepath.FromSlash(drafterPath))
+	if err := os.MkdirAll(filepath.Dir(d), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := "# Drafter\n\n" + drafterBeginMarker + "\nstale\n" + endMarker + "\n"
+	if err := os.WriteFile(d, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := run(root, true)
+	if !errors.Is(err, errOutOfDate) || !strings.Contains(err.Error(), drafterPath) {
+		t.Fatalf("-check over a stale drafter block returned %v, want errOutOfDate naming %s", err, drafterPath)
+	}
+	if got, _ := os.ReadFile(d); string(got) != stale {
+		t.Fatal("-check wrote the drafter page")
+	}
+	if err := run(root, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(d); !strings.Contains(string(got), renderDrafter(question.Default)) {
+		t.Fatal("the sync did not write the drafter block")
+	}
+	if got, _ := os.ReadFile(intent); string(got) != current {
+		t.Fatal("the sync changed an intent page that was already current")
 	}
 	if err := run(root, true); err != nil {
 		t.Fatalf("-check after the sync returned %v", err)
