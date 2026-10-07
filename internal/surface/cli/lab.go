@@ -107,7 +107,10 @@ func newLabPreflightCommand(asJSON *bool) *cobra.Command {
 			"installation) whose embedded vintage — read without running it — is the\n" +
 			"pin, unmodified; it is the same binary the first passing preflight pinned,\n" +
 			"since the work binary is never rebuilt; and bin/abcd-test, when present, is a\n" +
-			"separate file.\n\n" +
+			"separate file. The group holds a lab of abcd's own repository: its root\n" +
+			"commit is abcd's, or the pin carries cmd/abcd/main.go. For any other\n" +
+			"repository no bin/abcd can be built from the snapshot, so each binary check\n" +
+			"passes marked not applicable (n/a, and not_applicable in --json), saying why.\n\n" +
 			"A failed check halts the lab naming it: exit 1, the refusal recorded as a\n" +
 			"gate finding. A preflight that passes lifts that halt.",
 		Args: cobra.ExactArgs(1),
@@ -286,10 +289,13 @@ func renderPreflight(w io.Writer, res lab.Preflighted) {
 	fmt.Fprintf(w, "preflight %s: %s\n", res.ID, verdict(res.Passed))
 	for _, c := range res.Checks {
 		mark := "pass"
-		if !c.OK {
+		switch {
+		case !c.OK:
 			mark = "FAIL"
+		case c.NotApplicable:
+			mark = "n/a"
 		}
-		fmt.Fprintf(w, "  %s  %-18s %s\n", mark, c.ID, termsafe.Sanitize(c.Detail))
+		fmt.Fprintf(w, "  %-4s  %-18s %s\n", mark, c.ID, termsafe.Sanitize(c.Detail))
 	}
 	fmt.Fprintf(w, "artefact: %s\n", res.Artefact)
 	if res.Finding != "" {

@@ -66,6 +66,16 @@ never a link to an operator-level installation; its embedded vintage, read from
 its build metadata without running it, is the pin and unmodified; it is the
 binary the first passing preflight pinned by its sha256, since the work binary
 is never rebuilt; and a test binary, when there is one, is a separate file.
+The dual-binary group holds a lab of abcd's own repository: only that snapshot
+can build an abcd work binary. It fails closed, holding the lab when either
+signal says abcd — the root commit is abcd's, or the pin commit carries
+`cmd/abcd/main.go`, read at the pin so a later commit that removes it cannot
+lift the gate; a pin git cannot read holds it — so a shallow or rewritten copy
+of abcd never skips it. In a
+lab of any other repository each binary check passes marked not applicable,
+saying why, in the artefact and the JSON alike; the mint's next steps and the
+INTENTION's lifecycle map name no `bin/abcd`, and a probe record names the work
+binary not applicable rather than absent.
 
 **Recording** a probe scaffolds its record — the input, the command line, the
 exit status and the two output streams, empty, and a note naming the artefact

@@ -31,7 +31,8 @@ func TestMain(m *testing.M) {
 }
 
 // fixture is a two-commit repository under a fresh test HOME, with the clock
-// pinned so lab ids are predictable.
+// pinned so lab ids are predictable. It stands in for abcd's own repository, so
+// its labs are held to the dual-binary gate; notAbcd makes it another one.
 func fixture(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
 	home := t.TempDir()
@@ -41,10 +42,18 @@ func fixture(t *testing.T) (*gittest.Repo, string) {
 	r.Commit("root")
 	r.Write("a.txt", "a\n")
 	r.Commit("second")
+	t.Cleanup(SetAbcdRootCommitForTest(r.Git("rev-list", "--max-parents=0", "HEAD")))
 	prev := now
 	now = func() time.Time { return time.Date(2026, 9, 25, 10, 11, 12, 0, time.UTC) }
 	t.Cleanup(func() { now = prev })
 	return r, home
+}
+
+// notAbcd makes the fixture a repository that is not abcd's own: a managed
+// repository whose snapshot no bin/abcd can be built from.
+func notAbcd(t *testing.T) {
+	t.Helper()
+	t.Cleanup(SetAbcdRootCommitForTest(strings.Repeat("a", 40)))
 }
 
 // stubVintage makes every lab binary read as built at rev.
@@ -154,6 +163,40 @@ func TestMintLaysDownALabAndWritesNothingInTheRepo(t *testing.T) {
 	}
 }
 
+// A lab of abcd's own repository is told to build bin/abcd; a lab of any other
+// repository is not, because no bin/abcd can be built from its snapshot.
+func TestMintNamesBinAbcdOnlyForAbcdsOwnRepository(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		abcd bool
+	}{{"abcd", true}, {"another repository", false}} {
+		t.Run(c.name, func(t *testing.T) {
+			r, home := fixture(t)
+			if !c.abcd {
+				notAbcd(t)
+			}
+			m := mint(t, r)
+			next := strings.Join(m.Next, "\n")
+			intention := read(t, filepath.Join(labDir(home, m), "INTENTION.md"))
+			row := ""
+			for _, line := range strings.Split(intention, "\n") {
+				if strings.HasPrefix(line, "| SNAPSHOT |") {
+					row = line
+				}
+			}
+			if row == "" || !strings.Contains(next, "abcd lab preflight "+m.ID) {
+				t.Fatalf("next = %q, SNAPSHOT row = %q; want both", next, row)
+			}
+			if got := strings.Contains(next, "bin/abcd"); got != c.abcd {
+				t.Errorf("next steps name bin/abcd = %v, want %v:\n%s", got, c.abcd, next)
+			}
+			if got := strings.Contains(row, "bin/abcd"); got != c.abcd {
+				t.Errorf("SNAPSHOT row names bin/abcd = %v, want %v: %s", got, c.abcd, row)
+			}
+		})
+	}
+}
+
 func TestMintPinsAnEarlierCommit(t *testing.T) {
 	r, home := fixture(t)
 	first := r.Git("rev-parse", "HEAD~1")
@@ -250,6 +293,11 @@ func TestPreflightHaltsNamingTheFailedCheckAndRecordsIt(t *testing.T) {
 			failed[c.ID] = true
 		}
 	}
+	for _, c := range res.Checks {
+		if c.NotApplicable {
+			t.Errorf("%s is marked not applicable in a lab of abcd's own repository", c.ID)
+		}
+	}
 	if !failed["binary.work"] || failed["isolation.home"] || failed["isolation.snapshot"] || failed["isolation.remotes"] || failed["isolation.hooks"] {
 		t.Errorf("failed checks = %v, want binary.work and no isolation failure on a fresh mint", failed)
 	}
@@ -277,6 +325,138 @@ func TestPreflightHaltsNamingTheFailedCheckAndRecordsIt(t *testing.T) {
 	ls, err := List(r.Root())
 	if err != nil || len(ls.Labs) != 1 || strings.Join(ls.Labs[0].Halted, ",") != "preflight" {
 		t.Errorf("List = %+v (%v), want the lab shown halted by its preflight", ls, err)
+	}
+}
+
+// A lab of a repository that is not abcd's own passes the dual-binary group as
+// not applicable, loudly: each check says so and why, in the result, the JSON
+// artefact and the Markdown one, and nothing halts.
+func TestPreflightPassesTheDualBinaryGroupAsNotApplicableOutsideAbcd(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	m := mint(t, r)
+	dir := labDir(home, m)
+
+	res, err := Preflight(r.Root(), m.ID)
+	if err != nil || !res.Passed || res.Finding != "" {
+		t.Fatalf("Preflight = %+v, %v; want a pass with no finding", res, err)
+	}
+	n := 0
+	for _, c := range res.Checks {
+		switch c.Group {
+		case GroupDualBinary:
+			n++
+			if !c.OK || !c.NotApplicable || !strings.Contains(c.Detail, "not applicable") || !strings.Contains(c.Detail, "not abcd's own") {
+				t.Errorf("%s = %+v, want a pass marked not applicable saying why", c.ID, c)
+			}
+		default:
+			if c.NotApplicable {
+				t.Errorf("%s is marked not applicable: the isolation checks apply to every lab", c.ID)
+			}
+		}
+	}
+	if n != 3 {
+		t.Errorf("the dual-binary group carries %d checks, want work, pinned and test", n)
+	}
+	if art := read(t, filepath.Join(dir, "state", "preflight.md")); !strings.Contains(art, "| binary.work | dual-binary | n/a | not applicable") {
+		t.Errorf("preflight.md does not show binary.work as not applicable:\n%s", art)
+	}
+	var js Preflighted
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(dir, "state", "preflight.json"))), &js); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range js.Checks {
+		if c.Group == GroupDualBinary && !c.NotApplicable {
+			t.Errorf("preflight.json loses %s's not-applicable state: %+v", c.ID, c)
+		}
+	}
+	if fs := parseFindings(read(t, filepath.Join(dir, "findings.md"))); len(fs) != 0 {
+		t.Errorf("findings = %+v, want none", fs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state", "work-binary.json")); !os.IsNotExist(err) {
+		t.Errorf("a work binary was pinned where none applies: %v", err)
+	}
+}
+
+// Fail closed: a snapshot carrying abcd's entry point is held to the
+// dual-binary gate even when its root commit is not abcd's (a shallow or
+// rewritten copy of abcd), and mint asks it for bin/abcd.
+func TestPreflightHoldsTheGateForASnapshotCarryingCmdAbcd(t *testing.T) {
+	r, _ := fixture(t)
+	notAbcd(t)
+	r.Write("cmd/abcd/main.go", "package main\n")
+	r.Commit("entry point")
+	m := mint(t, r)
+	if !strings.Contains(strings.Join(m.Next, "\n"), "bin/abcd") {
+		t.Errorf("next = %q, want the work binary step for an abcd source tree", m.Next)
+	}
+	res, err := Preflight(r.Root(), m.ID)
+	if !errors.Is(err, ErrHalted) || !strings.Contains(failedIDs(res), "binary.work") {
+		t.Fatalf("Preflight = %v, failed %q; want a halt on binary.work", err, failedIDs(res))
+	}
+	for _, c := range res.Checks {
+		if c.NotApplicable {
+			t.Errorf("%s is marked not applicable in a snapshot carrying cmd/abcd/main.go", c.ID)
+		}
+	}
+}
+
+// The layout signal is judged at the pin, never the live tree: a snapshot that
+// carried cmd/abcd/main.go at the pin and removes it in a later commit (which
+// the snapshot check admits, its HEAD descending from the pin) is still held to
+// the gate, so a rebuilt work binary is still caught.
+func TestPreflightJudgesTheLayoutSignalAtThePin(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	r.Write("cmd/abcd/main.go", "package main\n")
+	r.Commit("entry point")
+	m := mint(t, r)
+	dir := labDir(home, m)
+	stubVintage(t, m.Pin, true)
+	write(t, filepath.Join(dir, "bin", "abcd"), "work binary v1")
+	if res, err := Preflight(r.Root(), m.ID); err != nil || !res.Passed {
+		t.Fatalf("Preflight = %+v, %v; want a pass that pins the work binary", res, err)
+	}
+	snap := filepath.Join(dir, "snapshot")
+	gitIn(t, snap, "rm", "-r", "-q", "cmd")
+	gitIn(t, snap, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
+		"-c", "commit.gpgsign=false", "commit", "-q", "-m", "drop the entry point")
+	write(t, filepath.Join(dir, "bin", "abcd"), "work binary v2")
+	res, err := Preflight(r.Root(), m.ID)
+	if !errors.Is(err, ErrHalted) || failedIDs(res) != "binary.pinned" {
+		t.Errorf("Preflight after removing cmd/ and rebuilding = %v, failed %q; want binary.pinned", err, failedIDs(res))
+	}
+	for _, c := range res.Checks {
+		if c.NotApplicable {
+			t.Errorf("%s went not applicable once the live tree dropped cmd/abcd/main.go", c.ID)
+		}
+	}
+}
+
+// A layout question git cannot answer holds the gate: fail closed.
+func TestEntryPointAtPinFailsClosed(t *testing.T) {
+	if !entryPointAtPin(t.TempDir(), strings.Repeat("b", 40)) {
+		t.Error("a tree git cannot read reads as carrying no entry point; want the gate held")
+	}
+	if !entryPointAtPin(t.TempDir(), "not-a-sha") {
+		t.Error("a pin that is not a full sha reads as carrying no entry point; want the gate held")
+	}
+}
+
+// A probe in a lab the dual-binary group does not apply to says so, rather than
+// reporting a missing bin/abcd.
+func TestRecordNamesTheWorkBinaryNotApplicableOutsideAbcd(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	m := mint(t, r)
+	p, err := Record(r.Root(), m.ID, "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := read(t, filepath.Join(labDir(home, m), "state", "probes", "p1", "record.md"))
+	if strings.Contains(rec, "bin/abcd is absent") || !strings.Contains(rec, "artefact: none: the work binary is not applicable") ||
+		!strings.Contains(p.Artefact, "not applicable") {
+		t.Errorf("probe artefact = %q, record:\n%s\nwant the work binary named not applicable", p.Artefact, rec)
 	}
 }
 

@@ -57,7 +57,9 @@ func Record(repoRoot, id, name string) (Probe, error) {
 		return Probe{}, fmt.Errorf("cannot scaffold the probe: %v", redact(err, l.store.home))
 	}
 	artefact := "none: bin/abcd is absent"
-	if fi, err := l.root.Lstat(workBinary); err == nil && fi.Mode().IsRegular() {
+	if !l.studiesAbcd() {
+		artefact = "none: the work binary is not applicable: " + notAbcdWhy
+	} else if fi, err := l.root.Lstat(workBinary); err == nil && fi.Mode().IsRegular() {
 		if cur, hash, err := l.binaryIdentity(workBinary); err == nil {
 			rev := cur.Revision
 			if rev == "" {

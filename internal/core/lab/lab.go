@@ -116,6 +116,42 @@ type Entry struct {
 	Question string `json:"question"`
 }
 
+// studiesAbcd reports whether a lab studies abcd's own repository: the one
+// keyed on rootSHA, whose snapshot is snap, pinned at pin. The dual-binary gate
+// ties a lab's claims to an abcd binary built once from the pristine snapshot,
+// so it holds a lab of abcd and is not applicable to any other. It fails
+// closed: either signal holds the gate — the root commit the store is keyed on
+// being abcd's (abcdrepo.RootCommit), or the pin carrying abcd's entry point —
+// so a shallow or rewritten copy of abcd, whose root is another, never skips
+// it. A repository that is not abcd but ships cmd/abcd/main.go is held to the
+// gate too, which halts its lab loudly.
+func studiesAbcd(rootSHA, snap, pin string) bool {
+	return rootSHA == abcdRootCommit || entryPointAtPin(snap, pin)
+}
+
+// entryPointPath is abcd's entry point, the layout abcdrepo.LooksLikeSourceTree
+// reads in a working tree.
+const entryPointPath = "cmd/abcd/main.go"
+
+// entryPointAtPin reports whether the snapshot's pin commit carries abcd's
+// entry point. It reads the pin, never the live tree: a lab may commit past the
+// pin, and a later commit that removes cmd/ must not take the lab out of the
+// gate it was held to. ls-tree answers absence with empty output and exit 0, so
+// every failure — a pin that is not a full sha, a tree git cannot read — is
+// told apart from absence and holds the gate.
+func entryPointAtPin(snap, pin string) bool {
+	if !gitutil.IsFullSHA(pin) {
+		return true
+	}
+	out, err := gitutil.Run(snap, "ls-tree", "--end-of-options", pin, "--", entryPointPath)
+	return err != nil || out != ""
+}
+
+// studiesAbcd is the package function for this lab.
+func (l *lab) studiesAbcd() bool {
+	return studiesAbcd(l.store.rootSHA, filepath.Join(l.dir, snapshotDir), l.entry.Pin)
+}
+
 // store is one repository's lane of the lab store.
 type store struct {
 	home    string // the caller's home
