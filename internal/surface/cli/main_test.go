@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
@@ -52,13 +53,33 @@ func TestMain(m *testing.M) {
 	// version; the one test of that warning swaps in a stub reading.
 	ahoy.NoHostVersionForTest()
 	real := os.Getenv("HOME")
-	rules.SwapUserHomeForTest(func() (string, error) {
+	// The machine's own home is out of reach of every test that did not set
+	// HOME itself: its rules.json (the rules loader) and its layered files,
+	// an accepted oracle-routing.json among them, which would otherwise add a
+	// routing line to a delegated verb's output on one machine and not another.
+	testHome := func() (string, error) {
 		if home := os.Getenv("HOME"); home != real {
 			return home, nil
 		}
 		return "", nil
+	}
+	rules.SwapUserHomeForTest(testHome)
+	// The layered loader needs a home to resolve the machine layer against,
+	// and refuses loudly without one, so a test that set no HOME gets an empty
+	// home of the suite's own.
+	emptyHome, err := os.MkdirTemp("", "abcd-cli-test-home-")
+	if err != nil {
+		panic(err)
+	}
+	layered.SwapUserHomeForTest(func() (string, error) {
+		if home := os.Getenv("HOME"); home != real {
+			return home, nil
+		}
+		return emptyHome, nil
 	})
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(emptyHome)
+	os.Exit(code)
 }
 
 // actAsBinary reports whether this test binary was started as the deep tier's

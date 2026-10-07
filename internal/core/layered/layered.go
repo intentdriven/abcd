@@ -155,11 +155,28 @@ type Roots struct {
 // resolved, which Load refuses loudly.
 func RootsFor(cwd string) (Roots, []string) {
 	res := rules.Resolve(cwd)
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		home = ""
 	}
 	return Roots{Repo: res.Root, Home: home}, res.Notes
+}
+
+// userHomeDir is the package's view of os.UserHomeDir, held as a var for the
+// reason rules keeps its own: a test suite must keep the machine's own
+// ~/.abcd.noindex layer files (the accepted oracle-routing.json among them) out
+// of every test that did not lay one out, and only a substitution can do that
+// for tests that never set HOME.
+var userHomeDir = os.UserHomeDir
+
+// SwapUserHomeForTest substitutes the home lookup RootsFor reads the machine
+// layer through and returns the restore. It is exported because the front-door
+// tests that load layered files live in another package. Tests only; never
+// called in production code, and never safe to call from a parallel test.
+func SwapUserHomeForTest(fn func() (string, error)) (restore func()) {
+	prev := userHomeDir
+	userHomeDir = fn
+	return func() { userHomeDir = prev }
 }
 
 // MaxFileBytes caps every layer's read. A configuration file is a few hundred
