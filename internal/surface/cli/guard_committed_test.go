@@ -49,15 +49,16 @@ func TestGuardHookAndCheckAgreeOnAnUncommittedKillSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
-	if code != 2 || !strings.Contains(stderr, "rm-rf-after-cd-chain") {
-		t.Errorf("an uncommitted kill switch disarmed the hook: exit %d, stderr %q", code, stderr)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.Contains(reason, "rm-rf-after-cd-chain") {
+		t.Errorf("an uncommitted kill switch disarmed the hook: reason %q", reason)
 	}
-	if !strings.Contains(stderr, "REFUSED") || !strings.Contains(stderr, guard.RepoRelPath) {
-		t.Errorf("the hook must say the uncommitted edit was refused; stderr %q", stderr)
+	if !strings.Contains(reason, "REFUSED") || !strings.Contains(reason, guard.RepoRelPath) {
+		t.Errorf("the hook must say the uncommitted edit was refused; reason %q", reason)
 	}
 
-	stdout, stderr, code := runGuard("", "guard", "check", "--command", "cd scratch && rm -rf *")
+	stdout, stderr, code = runGuard("", "guard", "check", "--command", "cd scratch && rm -rf *")
 	if code != 2 {
 		t.Errorf("the check must refuse to answer from a registry that is not the one in force: exit %d, stdout %q", code, stdout)
 	}

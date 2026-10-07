@@ -202,11 +202,12 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 // newGuardHookCommand builds `guard hook`: the adapter between a host's
 // pre-tool-use hook payload and the core decision.
 //
-// The mapping is the host's own convention for a pre-execution hook: exit 2 is
-// the blocking status and the hook's stderr is what the host replays to the
-// agent, so the refusal — successor and why — goes to stderr and nowhere else. An
-// allow exits 0 and is silent; a warn exits 1 (loud, non-blocking) so its message
-// is not discarded — neither exit status blocks, so the command still runs.
+// The mapping is the host's own convention for a pre-execution hook. A block is
+// the host's deny: exit 0 and one JSON object on stdout whose reason — successor
+// and why — the host shows the person on one error line and hands the agent
+// (answerGuardHook). An allow exits 0 and is silent on both streams; a warn
+// exits 1 (loud, non-blocking) so its message on stderr is not discarded —
+// neither blocks, so the command still runs.
 //
 // Every path that is NOT a decision — an unreadable payload, a tool that is not
 // the shell, a command the tokenizer cannot split, a registry that will not
@@ -217,10 +218,15 @@ func newGuardHookCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "hook",
 		Long: "Reads a host pre-tool-use hook payload on stdin and evaluates its shell\n" +
-			"command against the hazard registry. A blocker exits with the host's\n" +
-			"blocking status and puts the safe successor and the plain-language why on\n" +
-			"stderr, which is the channel the host replays to the agent. A warn and an\n" +
-			"allow both let the command run.\n\n" +
+			"command against the hazard registry. A blocker is refused with the host's\n" +
+			"deny: exit 0 and one JSON object on stdout, hookSpecificOutput carrying\n" +
+			"permissionDecision \"deny\" and a permissionDecisionReason that holds the\n" +
+			"safe successor and the plain-language why. The host shows that reason to\n" +
+			"the person and hands it to the agent. A line the hook wrote before the\n" +
+			"block, such as a notice that the repo's guard file did not load, leads\n" +
+			"the reason, because the host discards stderr on exit 0. A warn exits 1\n" +
+			"with its message on stderr, and an allow exits 0 printing nothing; both\n" +
+			"let the command run.\n\n" +
 			"Anything the adapter cannot turn into a decision — an unreadable payload, a\n" +
 			"tool call that is not a shell command, a registry that will not load —\n" +
 			"allows the command and warns loudly on stderr. A guard that cannot answer\n" +
@@ -248,15 +254,19 @@ func newGuardHookCommand() *cobra.Command {
 			"field fails the call when the directory is missing, so no failed-cd hazard\n" +
 			"exists. A workdir that is not a string, or holds a NUL byte, a control\n" +
 			"character or invalid UTF-8, or is over 4096 bytes, is refused with the\n" +
-			"blocking status and the reason.\n\n" +
+			"host's deny and the reason.\n\n" +
 			"On the host's question tool the hook checks abcd's own questions instead of\n" +
 			"consulting the registry. A question is abcd's when a header is in abcd's chip\n" +
 			"grammar (such as Product Q2) or when `abcd mode` names somebody; any other\n" +
 			"question is another tool's and runs unchecked. abcd's question is held to\n" +
 			"the asking rules' field limits wherever the hook runs, and one that breaks\n" +
-			"them is refused with the blocking status: a head line counting the parts,\n" +
-			"then one line per part naming the tab, the part, the value, the limit and\n" +
-			"the remedy. The hook never rewrites a question. In a checkout abcd manages,\n" +
+			"them is refused with the host's deny, whose reason is a head line counting\n" +
+			"the parts, then one line per part naming the tab, the part, the value, the\n" +
+			"limit and the remedy. The rows limit is the exception: a question whose\n" +
+			"only finding is its height is shown, and the hook's stdout carries a note\n" +
+			"for the agent (additionalContext, no permission decision) naming each tab\n" +
+			"over the limit and the agent that drafts a question to fit. The hook never\n" +
+			"rewrites a question. In a checkout abcd manages,\n" +
 			"abcd's question asked while `abcd mode` reads managed is also refused,\n" +
 			"naming `abcd mode product-thinker` and `abcd mode facilitator`; once the\n" +
 			"mode names somebody the question runs and is marked open in the local tier,\n" +
@@ -264,172 +274,209 @@ func newGuardHookCommand() *cobra.Command {
 			"the hook cannot read lets the question run and warns loudly.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// failOpen is the single exit for every non-decision path, so the
-			// contract cannot be violated by forgetting one of them.
-			// Exit 1, not 0, is what makes this LOUD. A pre-tool-use hook that
-			// exits 0 has its stderr discarded, so the warning would exist and
-			// nobody would ever see it; a non-zero, non-blocking status both lets
-			// the command run and puts the warning in front of a human. Only the
-			// blocking status (2) stops anything.
-			failOpen := func(format string, a ...any) error {
-				diagnosticLine(cmd.ErrOrStderr(),
-					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
-				return &exitError{Code: 1}
-			}
-
-			// One byte past the cap, so an over-cap payload names the cap
-			// instead of being truncated and misreported as unreadable JSON
-			// (iss-201; guardCandidate is the same probe on the check verb).
-			raw, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), maxHookStdinBytes+1))
-			if err != nil {
-				return failOpen("the hook payload could not be read (%v)", err)
-			}
-			if len(raw) > maxHookStdinBytes {
-				return failOpen("the hook payload is over the %d-byte cap; it was discarded unparsed", maxHookStdinBytes)
-			}
-			var in guardHookInput
-			if err := json.Unmarshal(raw, &in); err != nil {
-				// The wording follows the tool the payload names, read on its
-				// own, and echoes no decoder text, which can carry a Go type
-				// (review-askGuard-security finding 5).
-				switch tool, known := hookToolName(raw); {
-				case known && isQuestionTool(tool):
-					return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
-				case !known:
-					diagnosticLine(cmd.ErrOrStderr(),
-						"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
-					return &exitError{Code: 1}
-				default:
-					return failOpen("the hook payload is not readable JSON (%v)", err)
-				}
-			}
-			// A question to the human is checked against abcd's asking rules
-			// and gated on the mode, not the registry (itd-2609212130146198,
-			// spc-2610030944505997); guard_question.go holds the whole of it.
-			if isQuestionTool(in.ToolName) {
-				return questionGate(cmd, in.Cwd, in.ToolInput.Questions)
-			}
-			// The manifest scopes this hook to the shell tool and the question
-			// tools, so a different tool name means the wiring is wrong — worth
-			// saying rather than ignoring.
-			if !strings.EqualFold(in.ToolName, "Bash") {
-				return failOpen("the payload is a %q tool call, not a shell command", termsafe.Sanitize(in.ToolName))
-			}
-			candidate := in.ToolInput.Command
-			if strings.TrimSpace(candidate) == "" {
-				return failOpen("the payload carries no command to check")
-			}
-
-			// The payload names the session's working directory; fall back to the
-			// process cwd only when it does not, exactly as the other hooks do.
-			cwd := in.Cwd
-			if cwd == "" {
-				if wd, err := os.Getwd(); err == nil {
-					cwd = wd
-				}
-			}
-			sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
-			// The fail-safe posture is decided in core (guard.LoadRepo,
-			// iss-2608291814576261); the hook only formats it. A dropped repo layer
-			// is fail-SAFE, not fail-open: the registry still holds the bundled
-			// hazards (and the committed repo layer, when only an uncommitted edit
-			// was refused), so the session keeps checking against it and the drop
-			// is announced loudly (iss-2608261551087492). Only an unavailable
-			// registry — unreachable with the embedded defaults — fails open.
-			ld := guard.LoadRepo(sessionRoot)
-			reg := ld.Registry
-			repoDropped := false
-			switch ld.Posture {
-			case guard.LoadUnavailable:
-				if ld.Err != nil {
-					return failOpen("the hazard registry did not load (%s)", scrubPaths(ld.Err))
-				}
-				return failOpen("no hazard registry is loaded")
-			case guard.LoadRepoDropped:
-				repoDropped = true
-				diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the repo", ld.Err))
-			}
-			// A disabled registry allows everything, which makes it an unguarded
-			// session — and it is the CHEAPEST one to reach: the other unguarded
-			// states need a broken install, this one needs a single file write.
-			// It is not a fault (someone chose it, and the choice sits in a file a
-			// reviewer can read), but it must never pass for protection.
-			if reg.Disabled {
-				return failOpen("the hazard registry is switched off in %s", guard.RepoRelPath)
-			}
-			// The host's per-call working directory, when it sent one. A value no
-			// directory could be named by is REFUSED, not failed open: the
-			// registry is armed and the command is readable, so the guard can
-			// answer — what it cannot tell is where the command would run, and
-			// the model that wrote the value can resend it plain.
-			wd, err := hookWorkdir(in.ToolInput.Workdir, cwd)
-			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"Blocked by the abcd guard (tool_input.workdir): the working directory this call names is refused — %s. The guard cannot tell where the command would run. Run instead: the same command with workdir omitted, or set to a plain directory path.\n",
-					termsafe.Sanitize(scrubPaths(err)))
-				return &exitError{Code: 2}
-			}
-			dec, err := reg.Check(candidate)
-			switch {
-			case errors.Is(err, guard.ErrUnparsableCommand):
-				// A line the tokenizer cannot split is BLOCKED, never run
-				// unchecked: where the tokenizer is right no shell runs it
-				// either, and where it is wrong a pass is a bypass of every
-				// blocker (review4-guard finding 2). The decision is core's.
-				dec = guard.UnparsableDecision(err)
-			case err != nil:
-				return failOpen("the command line could not be checked (%s)", scrubPaths(err))
-			}
-			// The command runs in the workdir, so the registry of the repository
-			// it runs in names its hazards too. Only an existing directory has
-			// one: the probed host fails a call whose workdir it cannot enter.
-			// The session's decision is the floor (guard.Strictest), so a
-			// registry the model chose by choosing the workdir can add a hazard
-			// and never subtract one.
-			if wd.Exists {
-				if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
-					wld := guard.LoadRepo(root)
-					wreg := wld.Registry
-					if wld.Posture == guard.LoadRepoDropped {
-						repoDropped = true
-						diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the working directory's", wld.Err))
-					}
-					if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
-						if wdec, cerr := wreg.Check(candidate); cerr == nil {
-							dec = guard.Strictest(dec, wdec)
-						}
-					}
-				}
-			}
-
-			switch dec.Verdict {
-			case guard.VerdictBlock:
-				// Exit 2 is the host's blocking status; stderr is the message it
-				// replays to the agent, so the refusal itself is the lesson.
-				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(dec.Message))
-				return &exitError{Code: 2}
-			case guard.VerdictWarn:
-				// Exit 1, not 0, is what makes a warn LOUD on a pre-tool-use hook.
-				// Exit 0 has the hook's stderr DISCARDED — the same reason failOpen
-				// uses exit 1 — so a warn that returned nil would write a message
-				// nobody ever sees and run as if allowed (iss-231). A non-zero,
-				// non-blocking status both lets the command run and surfaces the
-				// warning. Only the blocking status (2) stops anything.
-				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(dec.Message))
-				return &exitError{Code: 1}
-			default:
-				// Allow. Normally silent and cheap — but when the repo layer was
-				// dropped, exit 0 would DISCARD the stderr drop notice above, so a
-				// human would never learn their guard config is broken. Exit 1
-				// (loud, non-blocking) is the one channel that lets the command run
-				// while keeping the notice in front of a human, exactly as a warn
-				// does.
-				if repoDropped {
-					return &exitError{Code: 1}
-				}
-				return nil // allow: silent, and cheap
-			}
+			return answerGuardHook(cmd, guardHookDecide)
 		},
+	}
+}
+
+// answerGuardHook runs one hook decision and gives the host its answer. A
+// block (a *hookDeny) becomes the host's deny on stdout with exit 0. With exit
+// 0 the host discards stderr, so every line the invocation wrote there before
+// the block — a dropped repo layer, a refused repository root — is buffered
+// and folded into the deny's reason ahead of the block, where the person and
+// the agent both read it. Every other answer flushes those lines to stderr
+// unchanged and keeps its own status: a warn or a fail-open exits 1, an allow
+// exits 0 with nothing on stdout.
+//
+// A deny that cannot be written to stdout still blocks: the reason goes to
+// stderr with the host's older blocking status, exit 2, rather than letting
+// the call run because the answer could not be delivered.
+func answerGuardHook(cmd *cobra.Command, decide func(*cobra.Command) error) error {
+	stderr := cmd.ErrOrStderr()
+	var diag bytes.Buffer
+	cmd.SetErr(&diag)
+	err := decide(cmd)
+	cmd.SetErr(stderr)
+
+	var deny *hookDeny
+	if errors.As(err, &deny) {
+		reason := diag.String() + deny.reason
+		if werr := writeHookDeny(cmd.OutOrStdout(), reason); werr != nil {
+			fmt.Fprintln(stderr, hookText(reason))
+			return &exitError{Code: 2}
+		}
+		return nil
+	}
+	_, _ = diag.WriteTo(stderr)
+	return err
+}
+
+// guardHookDecide is the hook's decision for the payload on stdin: nil to
+// allow, a *hookDeny to block, an *exitError to warn or fail open. Anything it
+// writes to stderr is held by answerGuardHook until the decision is known.
+func guardHookDecide(cmd *cobra.Command) error {
+	// failOpen is the single exit for every non-decision path, so the
+	// contract cannot be violated by forgetting one of them.
+	// Exit 1, not 0, is what makes this LOUD. A pre-tool-use hook that
+	// exits 0 has its stderr discarded, so the warning would exist and
+	// nobody would ever see it; a non-zero, non-blocking status both lets
+	// the command run and puts the warning in front of a human. Only a
+	// deny stops anything.
+	failOpen := func(format string, a ...any) error {
+		diagnosticLine(cmd.ErrOrStderr(),
+			"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
+		return &exitError{Code: 1}
+	}
+
+	// One byte past the cap, so an over-cap payload names the cap
+	// instead of being truncated and misreported as unreadable JSON
+	// (iss-201; guardCandidate is the same probe on the check verb).
+	raw, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), maxHookStdinBytes+1))
+	if err != nil {
+		return failOpen("the hook payload could not be read (%v)", err)
+	}
+	if len(raw) > maxHookStdinBytes {
+		return failOpen("the hook payload is over the %d-byte cap; it was discarded unparsed", maxHookStdinBytes)
+	}
+	var in guardHookInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		// The wording follows the tool the payload names, read on its
+		// own, and echoes no decoder text, which can carry a Go type
+		// (review-askGuard-security finding 5).
+		switch tool, known := hookToolName(raw); {
+		case known && isQuestionTool(tool):
+			return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
+		case !known:
+			diagnosticLine(cmd.ErrOrStderr(),
+				"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
+			return &exitError{Code: 1}
+		default:
+			return failOpen("the hook payload is not readable JSON (%v)", err)
+		}
+	}
+	// A question to the human is checked against abcd's asking rules
+	// and gated on the mode, not the registry (itd-2609212130146198,
+	// spc-2610030944505997); guard_question.go holds the whole of it.
+	if isQuestionTool(in.ToolName) {
+		return questionGate(cmd, in.Cwd, in.ToolInput.Questions)
+	}
+	// The manifest scopes this hook to the shell tool and the question
+	// tools, so a different tool name means the wiring is wrong — worth
+	// saying rather than ignoring.
+	if !strings.EqualFold(in.ToolName, "Bash") {
+		return failOpen("the payload is a %q tool call, not a shell command", termsafe.Sanitize(in.ToolName))
+	}
+	candidate := in.ToolInput.Command
+	if strings.TrimSpace(candidate) == "" {
+		return failOpen("the payload carries no command to check")
+	}
+
+	// The payload names the session's working directory; fall back to the
+	// process cwd only when it does not, exactly as the other hooks do.
+	cwd := in.Cwd
+	if cwd == "" {
+		if wd, err := os.Getwd(); err == nil {
+			cwd = wd
+		}
+	}
+	sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
+	// The fail-safe posture is decided in core (guard.LoadRepo,
+	// iss-2608291814576261); the hook only formats it. A dropped repo layer
+	// is fail-SAFE, not fail-open: the registry still holds the bundled
+	// hazards (and the committed repo layer, when only an uncommitted edit
+	// was refused), so the session keeps checking against it and the drop
+	// is announced loudly (iss-2608261551087492). Only an unavailable
+	// registry — unreachable with the embedded defaults — fails open.
+	ld := guard.LoadRepo(sessionRoot)
+	reg := ld.Registry
+	repoDropped := false
+	switch ld.Posture {
+	case guard.LoadUnavailable:
+		if ld.Err != nil {
+			return failOpen("the hazard registry did not load (%s)", scrubPaths(ld.Err))
+		}
+		return failOpen("no hazard registry is loaded")
+	case guard.LoadRepoDropped:
+		repoDropped = true
+		diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the repo", ld.Err))
+	}
+	// A disabled registry allows everything, which makes it an unguarded
+	// session — and it is the CHEAPEST one to reach: the other unguarded
+	// states need a broken install, this one needs a single file write.
+	// It is not a fault (someone chose it, and the choice sits in a file a
+	// reviewer can read), but it must never pass for protection.
+	if reg.Disabled {
+		return failOpen("the hazard registry is switched off in %s", guard.RepoRelPath)
+	}
+	// The host's per-call working directory, when it sent one. A value no
+	// directory could be named by is REFUSED, not failed open: the
+	// registry is armed and the command is readable, so the guard can
+	// answer — what it cannot tell is where the command would run, and
+	// the model that wrote the value can resend it plain.
+	wd, err := hookWorkdir(in.ToolInput.Workdir, cwd)
+	if err != nil {
+		return denyCall(fmt.Sprintf(
+			"Blocked by the abcd guard (tool_input.workdir): the working directory this call names is refused — %s. The guard cannot tell where the command would run. Run instead: the same command with workdir omitted, or set to a plain directory path.",
+			termsafe.Sanitize(scrubPaths(err))))
+	}
+	dec, err := reg.Check(candidate)
+	switch {
+	case errors.Is(err, guard.ErrUnparsableCommand):
+		// A line the tokenizer cannot split is BLOCKED, never run
+		// unchecked: where the tokenizer is right no shell runs it
+		// either, and where it is wrong a pass is a bypass of every
+		// blocker (review4-guard finding 2). The decision is core's.
+		dec = guard.UnparsableDecision(err)
+	case err != nil:
+		return failOpen("the command line could not be checked (%s)", scrubPaths(err))
+	}
+	// The command runs in the workdir, so the registry of the repository
+	// it runs in names its hazards too. Only an existing directory has
+	// one: the probed host fails a call whose workdir it cannot enter.
+	// The session's decision is the floor (guard.Strictest), so a
+	// registry the model chose by choosing the workdir can add a hazard
+	// and never subtract one.
+	if wd.Exists {
+		if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
+			wld := guard.LoadRepo(root)
+			wreg := wld.Registry
+			if wld.Posture == guard.LoadRepoDropped {
+				repoDropped = true
+				diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the working directory's", wld.Err))
+			}
+			if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
+				if wdec, cerr := wreg.Check(candidate); cerr == nil {
+					dec = guard.Strictest(dec, wdec)
+				}
+			}
+		}
+	}
+
+	switch dec.Verdict {
+	case guard.VerdictBlock:
+		// The host's deny: its reason is what the person sees and the
+		// agent is handed, so the refusal itself is the lesson.
+		return denyCall(termsafe.Sanitize(dec.Message))
+	case guard.VerdictWarn:
+		// Exit 1, not 0, is what makes a warn LOUD on a pre-tool-use hook.
+		// Exit 0 has the hook's stderr DISCARDED — the same reason failOpen
+		// uses exit 1 — so a warn that returned nil would write a message
+		// nobody ever sees and run as if allowed (iss-231). A non-zero,
+		// non-blocking status both lets the command run and surfaces the
+		// warning. Only a deny stops anything.
+		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(dec.Message))
+		return &exitError{Code: 1}
+	default:
+		// Allow. Normally silent and cheap — but when the repo layer was
+		// dropped, exit 0 would DISCARD the stderr drop notice above, so a
+		// human would never learn their guard config is broken. Exit 1
+		// (loud, non-blocking) is the one channel that lets the command run
+		// while keeping the notice in front of a human, exactly as a warn
+		// does.
+		if repoDropped {
+			return &exitError{Code: 1}
+		}
+		return nil // allow: silent, and cheap
 	}
 }
 

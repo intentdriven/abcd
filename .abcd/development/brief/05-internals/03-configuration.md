@@ -1019,7 +1019,7 @@ abcd/
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
 │   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
-│   ├── asking-sync/                    #   writes the asking rules into commands/intent.md's generated block
+│   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   └── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │                                       #   The six are developer tooling, not user surface: they run

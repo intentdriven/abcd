@@ -123,10 +123,10 @@ reads as non-blocking: the command you asked for still runs, unguarded, with
 that line in front of you. Exit 1 is the one status that both lets the command
 through and puts the warning where a human sees it, because a `PreToolUse` hook
 that exits 0 has its stderr discarded. What the degraded path never returns is
-that exit 0, the status the harness reads as the guard's own approval — a
-binary abcd cannot vouch for is never given the guard's verdict to answer with.
-Blocking is exit 2, and only a real `block` verdict from a resolved binary
-reaches it. A repository you have merely cloned does not get to supply the shell
+that exit 0 with nothing on stdout, which the harness reads as the guard's own
+approval — a binary abcd cannot vouch for is never given the guard's verdict to
+answer with. Blocking is the harness's deny, a JSON decision on stdout, and only
+a real `block` verdict from a resolved binary reaches it. A repository you have merely cloned does not get to supply the shell
 guard or the rules loader for the session that is reading it.
 
 The same principle bounds where those two read their configuration. The rules

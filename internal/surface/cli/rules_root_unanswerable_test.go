@@ -66,12 +66,9 @@ func TestGuardHookHonoursTheRepoRegistryWhenGitRefuses(t *testing.T) {
 
 	gitRefusesOwnership(t, sub)
 
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "dropdb production", sub), "guard", "hook")
-	if code != 2 {
-		t.Errorf("the repo's own blocker did not fire from a subdirectory git would not answer for: exit %d, stderr %q", code, stderr)
-	}
-	if !strings.Contains(stderr, "deletes the whole database") {
-		t.Errorf("the block message must come from the repo registry; stderr = %q", stderr)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "dropdb production", sub), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "deletes the whole database") {
+		t.Errorf("the block message must come from the repo registry; reason = %q", reason)
 	}
 }
 
@@ -90,12 +87,10 @@ func TestGuardHookHonoursTheRepoKillSwitchWhenGitRefuses(t *testing.T) {
 
 	gitRefusesOwnership(t, sub)
 
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", sub), "guard", "hook")
-	if !strings.Contains(stderr, "REFUSED") || !strings.Contains(stderr, ".abcd/guard.json") {
-		t.Errorf("the repo's kill switch was not read from a subdirectory git would not answer for; stderr = %q", stderr)
-	}
-	if code != 2 {
-		t.Errorf("a kill switch whose commit git cannot confirm must not disarm the guard: exit %d, stderr %q", code, stderr)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", sub), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.Contains(reason, "REFUSED") || !strings.Contains(reason, ".abcd/guard.json") {
+		t.Errorf("the repo's kill switch was not read from a subdirectory git would not answer for; reason = %q", reason)
 	}
 }
 
@@ -250,14 +245,12 @@ func TestGuardHookIgnoresAPlantedGitMarkerKillSwitch(t *testing.T) {
 	plantGitMarker(t, outer, "dir")
 	plain := mustMkdirAll(t, filepath.Join(outer, "work"))
 
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", plain), "guard", "hook")
-	if code != 2 {
-		t.Errorf("a guard.json beside a planted .git marker disarmed the guard: exit %d, stderr %q", code, stderr)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", plain), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.Contains(reason, "rm-rf-after-cd-chain") {
+		t.Errorf("the bundled blocker must still fire; reason = %q", reason)
 	}
-	if !strings.Contains(stderr, "rm-rf-after-cd-chain") {
-		t.Errorf("the bundled blocker must still fire; stderr = %q", stderr)
-	}
-	if strings.Contains(stderr, "UNGUARDED") {
-		t.Errorf("the planted kill switch was honoured; stderr = %q", stderr)
+	if strings.Contains(reason, "UNGUARDED") {
+		t.Errorf("the planted kill switch was honoured; reason = %q", reason)
 	}
 }

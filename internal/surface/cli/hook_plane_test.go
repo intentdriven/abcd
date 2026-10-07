@@ -19,9 +19,9 @@ var hookPlaneParents = []string{"guard", "hook"}
 // TestHookPlaneParentsFailOpenOnUnknownSubverb is iss-267. iss-266 made every
 // parent refuse an unknown sub-verb at cobra's usage status, exit 2 — correct for
 // a terminal, wrong here. `guard hook`'s contract (spc-16, itd-103 AC 1) is
-// fail-open-loud: exit 2 is reserved for "the guard decided to block", and every
-// path that is NOT a decision exits 1 so the command still runs and the warning
-// is still seen. An unknown sub-verb is not a decision, so refusing it at 2 makes
+// fail-open-loud: only the guard's own decision blocks, and every path that is
+// NOT a decision exits 1 so the command still runs and the warning is still
+// seen. An unknown sub-verb is not a decision, so refusing it at 2 makes
 // abcd claim a hazard verdict it never reached, and blocks every shell command in
 // the session. The PreToolUse wrapper cannot catch this: it treats 2 as a
 // recognised code, so its "FAILED TO RUN … UNGUARDED" net never fires.

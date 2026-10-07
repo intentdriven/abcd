@@ -56,8 +56,10 @@ const questionRefusal = "Blocked by the abcd guard (question tool): the mode rea
 
 // questionGate is the guard hook's answer for a question-tool call
 // (itd-2609212130146198; spc-2610030944505997, "The question check in the
-// guard hook"). It never rewrites the question: it admits it or refuses it,
-// and nothing goes to stdout, where the host would read a replacement input.
+// guard hook"). It never rewrites the question: it admits it or refuses it
+// with the host's deny, and it never puts a replacement input on stdout. A
+// question whose only finding is the rows limit is admitted with a note for
+// the agent (rowsNote).
 //
 // The order is the spec's. First the questions are decoded; a field the check
 // cannot read is not a decision, so the question runs on the loud, non-blocking
@@ -105,40 +107,80 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 		Person: addresseeOf(st),
 		Verbs:  verbsOf(cmd.Root()),
 	})
+	// The rows limit alone does not refuse (iss-2610070637562567): a question
+	// too tall for the narrow window is shown, and the agent is told
+	// afterwards. Refusing it made the agent redraft a question the person
+	// was ready to answer.
+	refuses := len(findings) > 0 && !rowsOnly(findings)
 	modeRefuses := false
 	if badge && st == mode.Managed {
 		// A refusal whose remedy cannot run would refuse this question
 		// forever (iss-2609260100382261), so the gate refuses on the mode
 		// only where the verb it names could set the state.
 		if err := mode.CanSet(root); err != nil {
-			if len(findings) == 0 {
+			if !refuses {
 				return questionFailOpen(stderr, "the mode reads managed but cannot be set here, so `abcd mode` could not answer a refusal (%s)", err)
 			}
 		} else {
 			modeRefuses = true
 		}
 	}
-	if len(findings) > 0 {
-		why := ""
-		if !chip {
-			why = modeMadeAbcds(st)
+	if refuses || modeRefuses {
+		var reason strings.Builder
+		if len(findings) > 0 {
+			why := ""
+			if !chip {
+				why = modeMadeAbcds(st)
+			}
+			writeLimitsRefusal(&reason, findings, why)
 		}
-		writeLimitsRefusal(stderr, findings, why)
 		if modeRefuses {
-			fmt.Fprintln(stderr, questionRefusal)
+			fmt.Fprintln(&reason, questionRefusal)
 		}
-		return &exitError{Code: 2}
-	}
-	if modeRefuses {
-		fmt.Fprintln(stderr, questionRefusal)
-		return &exitError{Code: 2}
+		return denyCall(reason.String())
 	}
 	if badge {
 		if err := mode.MarkQuestionOpen(root, st); err != nil {
 			return questionFailOpen(stderr, "the question could not be marked open, so the mode will not reset on the answer (%s)", err)
 		}
 	}
+	if len(findings) > 0 {
+		// Only rows findings are left: the question runs, and the agent
+		// reads the note after it returns. No permission decision is set,
+		// so the host's own permission flow still applies.
+		if err := writeHookNote(cmd.OutOrStdout(), rowsNote(findings)); err != nil {
+			return questionFailOpen(stderr, "the note on the question's height could not be written (%s)", err)
+		}
+	}
 	return nil
+}
+
+// rowsOnly reports whether every finding is the rows limit's.
+func rowsOnly(findings []question.Finding) bool {
+	for _, f := range findings {
+		if f.Rule != question.RuleRows {
+			return false
+		}
+	}
+	return true
+}
+
+// rowsNote is what the agent is told when a question ran over the rows limit
+// and was shown anyway: each tab over it, its rows and the limit, at most
+// maxRefusalParts of them, and how to keep the next question within it. It
+// never tells the agent to ask again, because the person may already have
+// answered the question it was shown.
+func rowsNote(findings []question.Finding) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "abcd guard (question tool): this question was shown, but %d tab(s) run past abcd's rows limit, so the host may cut them in a narrow window.\n", len(findings))
+	for _, f := range findings[:min(len(findings), maxRefusalParts)] {
+		fmt.Fprintf(&b, "tab %d is %s; limit: %s.\n", f.Tab, f.Value, f.Limit)
+	}
+	if more := len(findings) - maxRefusalParts; more > 0 {
+		fmt.Fprintf(&b, "... and %d more tab(s).\n", more)
+	}
+	b.WriteString("The question was shown this time; keep the next question within the limit by drafting it through the abcd:question-drafter agent, which counts rows as this check does.")
+	return b.String()
 }
 
 // hostQuestionInput is the host's question-tool input as the check reads it:
@@ -240,7 +282,7 @@ func modeMadeAbcds(st mode.State) string {
 		"; another tool's question asked now is held to abcd's rules."
 }
 
-// writeLimitsRefusal writes the refusal the host replays to the agent: one
+// writeLimitsRefusal writes the refusal the host's deny carries: one
 // head line counting every part, then, when why is set, the one line saying
 // why a question without abcd's chip is abcd's, then one line per finding naming the tab, the
 // part, the value, the limit and the remedy, at most maxRefusalParts of them,

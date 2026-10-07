@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 )
 
 // oracleBoardCheckout lays an unmanaged checkout and a fresh home, and
@@ -66,8 +67,8 @@ func TestBoardOracleLinesShowEveryLayerWithTheWinnerMarked(t *testing.T) {
 		t.Fatalf("board: %v\n%s", err, stderr)
 	}
 	lines := oracleLines(stdout)
-	if len(lines) != 18 {
-		t.Fatalf("want the oracle heading and one line per agent (17), got %d:\n%s", len(lines), stdout)
+	if want := 1 + len(oracle.Roster()); len(lines) != want {
+		t.Fatalf("want the oracle heading and one line per agent (%d), got %d:\n%s", want-1, len(lines), stdout)
 	}
 	var scribe string
 	for _, l := range lines {
@@ -138,7 +139,7 @@ func TestBoardReportsAnOrphanRowAndAMalformedTableOnStderr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr, `"ghost-agent"`) || len(oracleLines(stdout)) != 18 {
+	if !strings.Contains(stderr, `"ghost-agent"`) || len(oracleLines(stdout)) != 1+len(oracle.Roster()) {
 		t.Fatalf("stderr %q / stdout:\n%s", stderr, stdout)
 	}
 
