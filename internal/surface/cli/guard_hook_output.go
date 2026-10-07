@@ -16,9 +16,8 @@ import (
 // hook's command, and hands it to the agent. A note is the same object
 // carrying additionalContext alone: the call runs with no error line, and the
 // agent reads the note after the tool returns. A note never sets a permission
-// decision, which would bypass the host's own permission flow. Everything else
-// the hook says goes to stderr with a non-zero status, and an allow prints
-// nothing at all.
+// decision, which would bypass the host's own permission flow. A warn or a
+// fail-open goes to stderr with exit 1, and an allow prints nothing on stdout.
 
 // preToolUseOutput is the host's hook output object. Each field is omitted
 // when empty, so a deny and a note each carry their own members alone.
