@@ -25,3 +25,7 @@ Deferred past v0.11.1: The product thinker's ruling M19 of 2026-09-23: planned n
 - Each direction is stated so the interview can pick one without further research; the measure is the record's own (two full cycles per pull request).
 - SOTA check: GitHub's merge-queue documentation (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue, read 2026-09-29) gives the minimum group size and its wait time for lengthy CI, and says the queue provides the benefits of the up-to-date requirement without the author updating the branch, which bears on direction 5 once the duplicate-id argument is answered; actions/setup-go (https://github.com/actions/setup-go, read 2026-09-29) enables caching by default, so direction 3 is largely in place.
 - Rejected: dropping the strict policy now, which the record defers to the duplicate-id argument.
+
+## Evidence 2026-10-07
+
+The macOS leg hit its 45-minute job cap in the merge queue again. On #839's merge-group run (37590582904), `check (macos-latest)` ran 07:57:44 to 08:43:14 and was cancelled in `Test (race, internal)`, which had started at 08:14:47. The ubuntu leg was green. The queue dropped the pull request and it had to be re-queued by hand, adding a full cycle. This is the second time in two release cycles (the v0.13.1 release PR, 2026-10-05, was cancelled the same way). The queue retries nothing on a runner timeout, so an unattended run has to watch for it.

@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "hooks/hooks.json"
 remedy: "Move each hook's shell into one script file in the plugin payload (hooks/<event>.sh, sharing the binary-resolution rung) so hooks.json carries a short command such as \"$CLAUDE_PLUGIN_ROOT/hooks/pretooluse.sh\"; the host's error line then shows a short path followed by the guard's message. Keep the owned-only PATH rung and the bootstrap behaviour byte-for-byte, with a test that the scripts and the old inline commands agree."
-resolution: "Each hook's shell moved verbatim into hooks/<event>.sh, run from hooks.json by a one-line sh command under fifty characters, so the host's hook-error line shows a short path and then the hook's own message. The install check and the release gate read through the command into the script."
+resolution: "Each hook's shell moved verbatim into hooks/<event>.sh, run from hooks.json by a one-line sh command of about fifty characters (47 to 54), so the host's hook-error line shows a short path and then the hook's own message. The install check and the release gate read through the command into the script."
 impact: fix
 resolved_by:
   commit: "dcc682538"

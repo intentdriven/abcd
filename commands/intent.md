@@ -536,8 +536,9 @@ and neither git nor abcd reads where it leads; a working tree git names other
 than the first reading's (a `core.worktree` set since) stops the interview
 before git reads it. What one reading hashes (the
 paths git lists, git's own directory) is held to 2 GiB, and the files git
-reads whole on every command (`HEAD`, the configuration, the packed refs,
-`info/exclude`, in git's own directory and in each submodule's) are sized
+reads whole on every command (`HEAD`, `commondir`, the configuration in
+`config` and `config.worktree`, the packed refs, `info/exclude`, in git's own
+directory and in each submodule's) are sized
 against the same 2 GiB before git runs; a reading
 past it stops the interview, exit 1, naming the file (the largest, when the
 paths git lists hold more). A large untracked file of the person's own belongs
