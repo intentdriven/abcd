@@ -116,8 +116,9 @@ func layDown(s store, sr *os.Root, dir, repoRoot string, e Entry) (Minted, error
 			return Minted{}, fmt.Errorf("cannot scaffold %s: %v", d, redact(err, s.home))
 		}
 	}
+	abcd := studiesAbcd(s.rootSHA, snap)
 	docs := []struct{ rel, body string }{
-		{intentionName, intentionDoc(e, studiesAbcd(s.rootSHA))},
+		{intentionName, intentionDoc(e, abcd)},
 		{findingsName, findingsDoc(e)},
 		{correctionsName, correctionsDoc(e)},
 		{amendmentsName, amendmentsDoc(e)},
@@ -138,7 +139,7 @@ func layDown(s store, sr *os.Root, dir, repoRoot string, e Entry) (Minted, error
 		return Minted{}, fmt.Errorf("cannot register the lab: %v", redact(err, s.home))
 	}
 	next := []string{"write the hypothesis, measures and STOP conditions into INTENTION.md before anything mutates"}
-	if studiesAbcd(s.rootSHA) {
+	if abcd {
 		next = append(next, "build the work binary once from the pristine snapshot into bin/abcd, and never rebuild it")
 	}
 	return Minted{

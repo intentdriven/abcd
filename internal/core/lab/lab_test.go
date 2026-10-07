@@ -378,6 +378,46 @@ func TestPreflightPassesTheDualBinaryGroupAsNotApplicableOutsideAbcd(t *testing.
 	}
 }
 
+// Fail closed: a snapshot carrying abcd's entry point is held to the
+// dual-binary gate even when its root commit is not abcd's (a shallow or
+// rewritten copy of abcd), and mint asks it for bin/abcd.
+func TestPreflightHoldsTheGateForASnapshotCarryingCmdAbcd(t *testing.T) {
+	r, _ := fixture(t)
+	notAbcd(t)
+	r.Write("cmd/abcd/main.go", "package main\n")
+	r.Commit("entry point")
+	m := mint(t, r)
+	if !strings.Contains(strings.Join(m.Next, "\n"), "bin/abcd") {
+		t.Errorf("next = %q, want the work binary step for an abcd source tree", m.Next)
+	}
+	res, err := Preflight(r.Root(), m.ID)
+	if !errors.Is(err, ErrHalted) || !strings.Contains(failedIDs(res), "binary.work") {
+		t.Fatalf("Preflight = %v, failed %q; want a halt on binary.work", err, failedIDs(res))
+	}
+	for _, c := range res.Checks {
+		if c.NotApplicable {
+			t.Errorf("%s is marked not applicable in a snapshot carrying cmd/abcd/main.go", c.ID)
+		}
+	}
+}
+
+// A probe in a lab the dual-binary group does not apply to says so, rather than
+// reporting a missing bin/abcd.
+func TestRecordNamesTheWorkBinaryNotApplicableOutsideAbcd(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	m := mint(t, r)
+	p, err := Record(r.Root(), m.ID, "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := read(t, filepath.Join(labDir(home, m), "state", "probes", "p1", "record.md"))
+	if strings.Contains(rec, "bin/abcd is absent") || !strings.Contains(rec, "artefact: none: the work binary is not applicable") ||
+		!strings.Contains(p.Artefact, "not applicable") {
+		t.Errorf("probe artefact = %q, record:\n%s\nwant the work binary named not applicable", p.Artefact, rec)
+	}
+}
+
 func TestPreflightPassesLiftsTheHaltAndPinsTheWorkBinary(t *testing.T) {
 	r, home := fixture(t)
 	m := mint(t, r)

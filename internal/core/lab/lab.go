@@ -42,6 +42,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -116,14 +117,23 @@ type Entry struct {
 	Question string `json:"question"`
 }
 
-// studiesAbcd reports whether the repository keyed on rootSHA is abcd's own.
-// The dual-binary gate ties a lab's claims to an abcd binary built once from the
-// pristine snapshot, and only a snapshot of abcd can build one, so the gate
-// holds a lab of abcd and is not applicable to any other. It reads the root
-// commit the store is keyed on, abcd's identity (abcdrepo.RootCommit); a
-// shallow or rewritten copy of abcd has another root and reads as another
-// repository.
-func studiesAbcd(rootSHA string) bool { return rootSHA == abcdRootCommit }
+// studiesAbcd reports whether a lab studies abcd's own repository: the one
+// keyed on rootSHA, whose snapshot tree is snap. The dual-binary gate ties a
+// lab's claims to an abcd binary built once from the pristine snapshot, so it
+// holds a lab of abcd and is not applicable to any other. It fails closed:
+// either signal holds the gate — the root commit the store is keyed on being
+// abcd's (abcdrepo.RootCommit), or the snapshot carrying abcd's entry point
+// (abcdrepo.LooksLikeSourceTree) — so a shallow or rewritten copy of abcd,
+// whose root is another, never skips it. A repository that is not abcd but
+// ships cmd/abcd/main.go is held to the gate too, which halts its lab loudly.
+func studiesAbcd(rootSHA, snap string) bool {
+	return rootSHA == abcdRootCommit || abcdrepo.LooksLikeSourceTree(snap)
+}
+
+// studiesAbcd is the package function for this lab.
+func (l *lab) studiesAbcd() bool {
+	return studiesAbcd(l.store.rootSHA, filepath.Join(l.dir, snapshotDir))
+}
 
 // store is one repository's lane of the lab store.
 type store struct {

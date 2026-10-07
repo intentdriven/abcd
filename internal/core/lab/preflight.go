@@ -47,7 +47,7 @@ type Preflighted struct {
 }
 
 // abcdRootCommit is the root commit of the repository whose labs the
-// dual-binary gate holds; tests repoint it.
+// dual-binary gate holds (studiesAbcd); tests repoint it.
 var abcdRootCommit = abcdrepo.RootCommit
 
 // SetAbcdRootCommitForTest repoints the root commit the dual-binary gate
@@ -98,7 +98,7 @@ func Preflight(repoRoot, id string) (Preflighted, error) {
 		l.checkRemotes(),
 		l.checkHooks(realDir),
 	}
-	if studiesAbcd(l.store.rootSHA) {
+	if l.studiesAbcd() {
 		work, workHash := l.checkWorkBinary()
 		checks = append(checks, work, l.checkPinned(work.OK, workHash), l.checkTestBinary())
 	} else {
@@ -317,12 +317,16 @@ func (l *lab) checkHooks(realDir string) Check {
 	return c
 }
 
+// notAbcdWhy is why the work binary does not apply to a lab, as the preflight
+// and a probe record both say it.
+const notAbcdWhy = "this repository is not abcd's own (its root commit is not abcd's, and the snapshot carries no cmd/abcd/main.go), so no bin/abcd can be built from the snapshot"
+
 // dualBinaryNotApplicable is the dual-binary group for a lab of a repository
 // that is not abcd's own, whose snapshot no bin/abcd can be built from: each
 // check passes marked not applicable and says why, so the artefact shows the
 // group was judged rather than dropped.
 func dualBinaryNotApplicable() []Check {
-	const why = "not applicable: this repository is not abcd's own (its root commit is not abcd's), so no bin/abcd can be built from the snapshot"
+	const why = "not applicable: " + notAbcdWhy
 	na := func(id, rest string) Check {
 		return Check{ID: id, Group: GroupDualBinary, OK: true, NotApplicable: true, Detail: why + rest}
 	}
