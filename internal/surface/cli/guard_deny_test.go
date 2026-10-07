@@ -42,13 +42,25 @@ func hookOutputKeys(t *testing.T, stdout string) map[string]string {
 }
 
 // encodeHookOutput is the byte-exact form a hook output object takes: one
-// line, HTML characters unescaped, a closing newline.
+// line, the event name first, HTML characters unescaped, a closing newline.
 func encodeHookOutput(t *testing.T, inner map[string]string) string {
 	t.Helper()
+	type decision struct {
+		HookEventName            string `json:"hookEventName"`
+		PermissionDecision       string `json:"permissionDecision,omitempty"`
+		PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
+		AdditionalContext        string `json:"additionalContext,omitempty"`
+	}
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(map[string]any{"hookSpecificOutput": inner}); err != nil {
+	err := enc.Encode(map[string]decision{"hookSpecificOutput": {
+		HookEventName:            inner["hookEventName"],
+		PermissionDecision:       inner["permissionDecision"],
+		PermissionDecisionReason: inner["permissionDecisionReason"],
+		AdditionalContext:        inner["additionalContext"],
+	}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	return b.String()

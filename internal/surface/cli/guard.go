@@ -262,8 +262,11 @@ func newGuardHookCommand() *cobra.Command {
 			"the asking rules' field limits wherever the hook runs, and one that breaks\n" +
 			"them is refused with the host's deny, whose reason is a head line counting\n" +
 			"the parts, then one line per part naming the tab, the part, the value, the\n" +
-			"limit and the remedy. The hook never rewrites a question. In a checkout\n" +
-			"abcd manages,\n" +
+			"limit and the remedy. The rows limit is the exception: a question whose\n" +
+			"only finding is its height is shown, and the hook's stdout carries a note\n" +
+			"for the agent (additionalContext, no permission decision) naming each tab\n" +
+			"over the limit and the agent that drafts a question to fit. The hook never\n" +
+			"rewrites a question. In a checkout abcd manages,\n" +
 			"abcd's question asked while `abcd mode` reads managed is also refused,\n" +
 			"naming `abcd mode product-thinker` and `abcd mode facilitator`; once the\n" +
 			"mode names somebody the question runs and is marked open in the local tier,\n" +

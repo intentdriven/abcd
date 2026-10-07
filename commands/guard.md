@@ -94,7 +94,11 @@ of this question break abcd's asking rules; fix each and ask again.", then one
 line per part naming the tab, the part, the value, the limit and the remedy, so
 one retry fixes them all. At most ten parts are named, and a closing line counts
 the rest, so a refusal stays a few lines however large the question; the head
-line keeps the full count. A question with no abcd chip, held to the limits
+line keeps the full count. The rows limit is the exception: a question whose
+only finding is that a tab runs past the rows limit is shown, and the hook tells
+the agent afterwards which tab ran over, by how much, and to draft the next
+question through the `abcd:question-drafter` agent, which counts rows the way
+the check does. A question with no abcd chip, held to the limits
 because `/abcd:mode` names somebody, carries one more line under the head line
 saying so: another tool's question asked while the mode names somebody is held
 to abcd's rules. The hook refuses and never rewrites the question.

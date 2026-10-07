@@ -139,7 +139,19 @@ the remedy, each line through `termsafe.Sanitize`. The refusal's size follows
 the limits, not the payload: past the count findings, `CheckLimits` checks only
 the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]` options of
 each, and the hook names at most ten findings and closes with one line counting
-the rest, the head line keeping the full count. A question with no abcd chip,
+the rest, the head line keeping the full count. The rows limit is the one
+finding that does not refuse on its own (iss-2610070637562567): a question
+whose only findings are tabs over the rows limit is admitted as any admitted
+question is, marked open where the badge shows, and the hook prints one object
+on stdout whose `additionalContext` tells the agent, after the question
+returns, which tabs ran over, their rows and the limit, that the question was
+shown, and to draft the next one through the `abcd:question-drafter` agent. It
+sets no `permissionDecision`, which would bypass the host's own permission
+flow, and never tells the agent to ask again, because the person may already
+have answered. A refusal for that question was a redraft of a question the
+person was ready to answer, and a tab cut at the foot of a short window costs
+less. Beside any other finding, or while the mode gate refuses, the rows
+finding is named in the deny with the rest. A question with no abcd chip,
 abcd's only because the mode names somebody, carries one line under the head
 line saying so, naming the mode's person, so an agent whose question another
 tool wrote does not loop on it. The hook refuses and never
