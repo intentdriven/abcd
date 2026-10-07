@@ -152,6 +152,25 @@ func TestPathRefusalLeavesOrdinaryWordsAlone(t *testing.T) {
 	}
 }
 
+// TestPathRefusalLetsASlashCommandThrough: a plugin command named in its
+// slash form, /name:verb with both parts lowercase letters, digits and
+// hyphens, standing as a whole token, is the natural way to name a route in a
+// report and is not a location (iss-2610071538064699). A slash command with a
+// path after it, a real path with a colon further on, and every other
+// location still refuse.
+func TestPathRefusalLetsASlashCommandThrough(t *testing.T) {
+	for _, v := range []string{"/abcd:report", "use /abcd:inbox to read", "(/abcd:capture)", "/abcd:report, then /abcd:inbox", "route via /my-plugin2:do-it.", `"/abcd:report"`} {
+		if err := refusePath("title", v); err != nil {
+			t.Errorf("refusePath(%q) = %v, want it accepted", v, err)
+		}
+	}
+	for _, v := range []string{"/etc/passwd", "/abcd:report/x", "/tmp", "/Users/a:b", "/users/a:b", "/abcd:report.d/x", "/abcd:report /etc/passwd", "/abcd:report and ~/notes", "/abcd:", "/:report", "/Abcd:Report"} {
+		if err := refusePath("title", v); err == nil {
+			t.Errorf("refusePath(%q) accepted a location", v)
+		}
+	}
+}
+
 // TestHiddenRunesAreRefusedNamingTheField: a bidi override or a zero-width rune
 // makes a value display differently from its bytes, so a report carrying one in
 // any field is refused, naming that field. The runes are written numerically so
