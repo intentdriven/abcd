@@ -1,0 +1,44 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "e0ce03ae7fb7b777b1bd7d64fcbea07624737336"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-07T10:44:05Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "shallow",
+  "manifestHash": "sha256:9a4adc23ff790eeaf43438e0a36fba9cdc60d2fd1c2c3c2193d2b55e81566733",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.13.2"
+  },
+  "categories": {
+    "incomplete": 1,
+    "stale": 1
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "stale",
+      "severity": "minor",
+      "summary": "CHANGELOG.md:25 (from iss-2610041345196368's resolution) says the hook command is \"a one-line command under fifty characters\"; hooks/hooks.json's UserPromptSubmit command, sh \"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.sh\", is 54 characters (the others 47 to 49), and the test that pins it (hook_scripts_test.go maxHookCommand) allows 64 while its comment says fifty. The user-facing effect, one short path before the hook's message, is true.",
+      "disposition": "deferred",
+      "note": "A number in a release note that changes nothing a user does; correcting it would change the content commit and re-run all six reviews. The record's wording, the test comment and the claim are corrected in the follow-up change after the cut."
+    },
+    {
+      "id": "dc-2",
+      "category": "incomplete",
+      "severity": "minor",
+      "summary": "commands/intent.md:539-541 lists the files the change guard sizes before git runs as HEAD, the configuration, the packed refs and info/exclude; internal/core/interview/treewatch.go (gitDirReadsWhole, commonReadsWhole) also sizes commondir and config.worktree.",
+      "disposition": "deferred",
+      "note": "An omission that misleads no action on the page; added to the page in the follow-up change after the cut."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1, tier shallow for a patch release) over an exact export of content commit e0ce03ae7fb7b777b1bd7d64fcbea07624737336 with the binary built from it: commands/abcd.md, commands/intent.md, hooks/hooks.json and the six hooks/*.sh scripts, the 0.13.2 CHANGELOG section, and the install guide's statements on hook wiring, each checked against the code and the binary. Verdict PROMOTE, two minor findings, deferred."
+}
