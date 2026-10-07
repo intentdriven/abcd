@@ -70,7 +70,23 @@ func TestInstallCreatesTheCommittedTiers(t *testing.T) {
 		t.Errorf("the seeded decision log carries an entry:\n%s", ledger)
 	}
 
+	readme, err := os.ReadFile(filepath.Join(repo, ".abcd", "development", "README.md"))
+	if err != nil {
+		t.Fatalf("the durable-record tier was not seeded with its README: %v", err)
+	}
+	if !strings.Contains(writes, ".abcd/development/README.md") {
+		t.Errorf("the README is not on the receipt: %v", res.Writes)
+	}
+	if regexp.MustCompile(`(?m)^\s*[-*] `).Match(readme) {
+		t.Errorf("the seeded README carries a list:\n%s", readme)
+	}
+
 	after, _ := Detect(repo)
+	for _, s := range tierSeeds() {
+		if hasGap(after.Gaps, s.gapID) {
+			t.Errorf("the %s gap persists after install", s.gapID)
+		}
+	}
 	for _, tier := range lint.CommittedTiers() {
 		if hasGap(after.Gaps, committedTierGapID(tier)) {
 			t.Errorf("the %s gap persists after install", tier.Rel)
@@ -170,5 +186,73 @@ func TestInstallRefusesATierThatIsAFile(t *testing.T) {
 	}
 	if got, err := os.ReadFile(stand); err != nil || string(got) != "not a tier\n" {
 		t.Errorf("the file at the tier's path was changed: %q (err=%v)", got, err)
+	}
+}
+
+// TestEveryCommittedTierHasASeed: git keeps no empty folder, so a tier install
+// creates without a file in it is gone from the next clone. Every tier on the
+// lint's list therefore carries a seed file, and a tier added to the list
+// without one fails here.
+func TestEveryCommittedTierHasASeed(t *testing.T) {
+	seeded := map[string]bool{}
+	for _, s := range tierSeeds() {
+		seeded[s.tier] = true
+	}
+	for _, tier := range lint.CommittedTiers() {
+		if !seeded[tier.Rel] {
+			t.Errorf("%s has no seed file, so a clone of a fresh install loses it", tier.Rel)
+		}
+	}
+}
+
+// TestInstallKeepsAnExistingDevelopmentReadme: a README the durable-record
+// tier already holds is never overwritten, and is not reported missing.
+func TestInstallKeepsAnExistingDevelopmentReadme(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const own = "# Our record\n"
+	p := filepath.Join(repo, ".abcd", "development", "README.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(own), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	det, _ := Detect(repo)
+	if hasGap(det.Gaps, developmentReadmeGapID) {
+		t.Error("a README that exists is reported missing")
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(p); err != nil || string(got) != own {
+		t.Errorf("the existing README was changed: %q (err=%v)", got, err)
+	}
+}
+
+// TestDevelopmentReadmeGapInAnExistingTier: a durable-record tier with no
+// README is a gap, and install seeds the README beside what the tier holds.
+func TestDevelopmentReadmeGapInAnExistingTier(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	repo := t.TempDir()
+	for _, d := range []string{".git", ".abcd/development", ".abcd/work"} {
+		if err := os.MkdirAll(filepath.Join(repo, filepath.FromSlash(d)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	det, _ := Detect(repo)
+	if !hasGap(det.Gaps, developmentReadmeGapID) {
+		t.Fatalf("no %s gap for a durable-record tier without a README: %v", developmentReadmeGapID, gapIDs(det.Gaps))
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(filepath.Join(repo, ".abcd", "development", "README.md")) {
+		t.Fatal("the README was not seeded into the existing durable-record tier")
 	}
 }

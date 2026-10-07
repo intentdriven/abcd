@@ -29,6 +29,7 @@ const (
 	writeLocalTier               writeKind = "local-tier"
 	writeRecordTiers             writeKind = "record-tiers"
 	writeDecisionsLedger         writeKind = "decisions-ledger"
+	writeDevelopmentReadme       writeKind = "development-readme"
 	writeNameGuard               writeKind = "name-guard"
 	writePrivateNames            writeKind = "private-names"
 	writeDocsCheck               writeKind = "docs-check"
@@ -51,7 +52,7 @@ const (
 // allWriteKinds is every kind, in the order the summary lists them: the
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
-	writeSettings, writeGitignore, writeLocalTier, writeRecordTiers, writeDecisionsLedger, writeNameGuard, writePrivateNames,
+	writeSettings, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
@@ -77,7 +78,12 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeRecordTiers: {
 		What:   "Created abcd's shared record folders: .abcd/development/ for the lasting record and .abcd/work/ for working notes the team shares.",
 		Why:    "They are committed with the repository, so everyone working on it finds the same record, and abcd lint checks that both are there.",
-		Action: "Commit them with the files they hold; git keeps a folder only once a file is in it.",
+		Action: "Commit them, with the starter file abcd put in each.",
+	},
+	writeDevelopmentReadme: {
+		What:   "Started .abcd/development/README.md, a short note saying what the lasting-record folder is for.",
+		Why:    "git keeps a folder only once a file is in it, so the folder now reaches every clone of the repository.",
+		Action: "Commit it. Rewrite it for this repository whenever you like.",
 	},
 	writeDecisionsLedger: {
 		What:   "Started .abcd/work/DECISIONS.md, an empty log for the decisions made in this repository.",

@@ -49,3 +49,42 @@ func TestAhoyInstallLeavesTheLayoutLintClean(t *testing.T) {
 		}
 	}
 }
+
+// TestAhoyInstalledRepoClonesLintClean: git keeps no empty folder, so each
+// committed tier install creates must hold a file, or a fresh clone of the
+// installed repository loses the tier and fails three-tier-layout
+// (iss-2610071538028804).
+func TestAhoyInstalledRepoClonesLintClean(t *testing.T) {
+	repo := hermeticRepo(t)
+	if err := os.RemoveAll(filepath.Join(repo, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	env := gittest.Env(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(env, "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, b)
+		}
+	}
+	run("init", "-q", repo)
+	runCLI(t, "ahoy", "install", "--yes", "--adopt",
+		"--visibility", "private", "--docs-target", "agents_md",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
+	run("-C", repo, "add", "-A")
+	run("-C", repo, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "install")
+	clone := filepath.Join(t.TempDir(), "clone")
+	run("clone", "-q", repo, clone)
+
+	result, err := repolint.Evaluate(repolint.DefaultRules(), repolint.Context{RepoRoot: clone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range result.Findings {
+		if f.RuleID == "three-tier-layout" || f.RuleID == "decision-durability" {
+			t.Errorf("%s in a fresh clone of an installed repo: %s (%s)", f.RuleID, f.Message, f.File)
+		}
+	}
+}
