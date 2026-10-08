@@ -194,38 +194,15 @@ func names(text string, s Surface) bool {
 // both layers run whatever layer 1 found, every finding is stated, and nothing
 // refuses.
 func judge(in Inputs, r Reviewer, report bool) Verdict {
-	v := Verdict{Report: report, Population: append([]string(nil), in.Population...),
-		Uncovered: []Surface{}, False: []Sentence{}, Public: []Sentence{},
-		Proposed: []Edit{}, Applied: []Sentence{}, Reasons: []string{}}
+	v := coverage(in, report)
+	if v.Refuse {
+		// An undocumented surface needs no reviewer to be judged, and paying
+		// for one would make the cheap half hostage to the expensive half.
+		return v
+	}
 	who := ""
 	if len(in.Population) > 0 {
 		who = strings.Join(in.Population, ", ") + ": "
-	}
-	chapters := make([]string, 0, len(in.Chapters))
-	for name := range in.Chapters {
-		chapters = append(chapters, name)
-	}
-	sort.Strings(chapters)
-	for _, s := range shipped(in.Commands, in.Agents) {
-		row := Row{Surface: s}
-		for _, name := range chapters {
-			if names(in.Chapters[name], s) {
-				row.Chapter = name
-				break
-			}
-		}
-		v.Coverage = append(v.Coverage, row)
-		if row.Chapter == "" {
-			v.Uncovered = append(v.Uncovered, s)
-			v.Reasons = append(v.Reasons, who+"no brief chapter under 04-surfaces/ names the "+string(s.Kind)+" `"+s.Name+"`")
-		}
-	}
-	layerOne := len(v.Reasons) > 0
-	if layerOne && !report {
-		// An undocumented surface needs no reviewer to be judged, and paying
-		// for one would make the cheap half hostage to the expensive half.
-		v.Refuse = true
-		return v
 	}
 	rev := r.Review()
 	v.Review = &rev
@@ -280,6 +257,40 @@ func judge(in Inputs, r Reviewer, report bool) Verdict {
 			msg = "status " + string(rev.Status)
 		}
 		v.Reasons = append(v.Reasons, who+"the doc-fidelity review for "+at+" is refused ("+msg+"): "+RunReviewFirst)
+	}
+	v.Refuse = !report && len(v.Reasons) > 0
+	return v
+}
+
+// coverage is layer 1 alone: every shipped surface against the chapters, with
+// a reason for each one no chapter names. It reads no review, so outside report
+// mode it refuses on an uncovered surface and on nothing else.
+func coverage(in Inputs, report bool) Verdict {
+	v := Verdict{Report: report, Population: append([]string(nil), in.Population...),
+		Uncovered: []Surface{}, False: []Sentence{}, Public: []Sentence{},
+		Proposed: []Edit{}, Applied: []Sentence{}, Reasons: []string{}}
+	who := ""
+	if len(in.Population) > 0 {
+		who = strings.Join(in.Population, ", ") + ": "
+	}
+	chapters := make([]string, 0, len(in.Chapters))
+	for name := range in.Chapters {
+		chapters = append(chapters, name)
+	}
+	sort.Strings(chapters)
+	for _, s := range shipped(in.Commands, in.Agents) {
+		row := Row{Surface: s}
+		for _, name := range chapters {
+			if names(in.Chapters[name], s) {
+				row.Chapter = name
+				break
+			}
+		}
+		v.Coverage = append(v.Coverage, row)
+		if row.Chapter == "" {
+			v.Uncovered = append(v.Uncovered, s)
+			v.Reasons = append(v.Reasons, who+"no brief chapter under 04-surfaces/ names the "+string(s.Kind)+" `"+s.Name+"`")
+		}
 	}
 	v.Refuse = !report && len(v.Reasons) > 0
 	return v

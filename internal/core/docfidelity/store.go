@@ -191,9 +191,9 @@ func newestOtherReview(root, head string) string {
 	return best
 }
 
-// Gate is the one entry point both enforcement points and the per-task report
-// call, with their own population: one intent for `spec close`, every intent
-// shipped since the last tag for `launch ship`. armed is false, with a zero
+// Gate is both layers: what the per-task report calls, and what Enforce runs
+// for a population of one intent at `spec close` or every intent shipped since
+// the last tag at `launch ship`. armed is false, with a zero
 // verdict, where the repository does not ship the binary the gate judges.
 func Gate(root string, commands []surface.Command, population []string, report bool) (v Verdict, armed bool, err error) {
 	if !Armed(root) {
@@ -208,6 +208,27 @@ func Gate(root string, commands []surface.Command, population []string, report b
 		return Verdict{}, true, fmt.Errorf("resolving the commit under review: %w", err)
 	}
 	return judge(in, SavedReview{Root: root, Commit: head}, report), true, nil
+}
+
+// Enforce is what both enforcement points run, `spec close` and `launch ship`,
+// with their population. Layer 1 runs whatever the population: a close or a
+// cut that ships no intent can still carry a surface an issue fix added, and
+// the coverage floor is cheap enough to run at every enforcement point
+// (spc-2609020903498198). Layer 2's saved review is required only where an
+// intent ships (iss-2610020728118137), so with no population this is layer 1
+// alone and no review is read.
+func Enforce(root string, commands []surface.Command, population []string) (v Verdict, armed bool, err error) {
+	if len(population) > 0 {
+		return Gate(root, commands, population, false)
+	}
+	if !Armed(root) {
+		return Verdict{}, false, nil
+	}
+	in, err := ReadInputs(root, commands, nil)
+	if err != nil {
+		return Verdict{}, true, err
+	}
+	return coverage(in, false), true, nil
 }
 
 // payload is what the delegated reviewer hands back. It carries no subject,
