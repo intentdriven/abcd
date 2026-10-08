@@ -39,3 +39,34 @@ func TestCLIRegistersTheLedgerReader(t *testing.T) {
 	}
 	t.Fatalf("the reader-parity leg did not run in the CLI: %+v", fs)
 }
+
+// The CLI registers the doc-fidelity flags reader, so a config arming
+// brief_flag_landed under `abcd lint` reports a review flag whose replacement
+// its chapter does not carry, as record-lint does (iss-2610050259233425).
+func TestCLIRegistersTheBriefFlagReader(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".abcd/development/brief/04-surfaces/10-docs.md", "the wording as committed\n")
+	write(".abcd/work/brief-review-flags.json", `{"schema_version": 1, "flags": [{"chapter": "10-docs.md", `+
+		`"sentence": "s", "replacement": "the drafted wording", "commit": "c", "applied": "t"}]}`+"\n")
+	cfg := lint.Config{Rules: map[string]lint.RuleConfig{
+		"brief_flag_landed": {Enabled: true, Severity: "blocker"},
+	}}
+	fs, err := lint.Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fs {
+		if f.RuleID == "brief_flag_landed" && strings.Contains(f.Message, "the drafted wording") {
+			return
+		}
+	}
+	t.Fatalf("the brief flag reader did not run in the CLI: %+v", fs)
+}

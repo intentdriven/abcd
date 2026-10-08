@@ -68,3 +68,35 @@ func TestRecordLintRegistersTheSiteBodyCheck(t *testing.T) {
 	}
 	t.Fatalf("the site body check did not run in record-lint: %+v", fs)
 }
+
+// record-lint registers the doc-fidelity flags reader, so brief_flag_landed
+// runs in the gate: a review flag whose replacement its chapter does not carry
+// is a finding here (iss-2610050259233425). Without the registration the rule
+// reports only that no reader is registered, and this fails.
+func TestRecordLintRegistersTheBriefFlagReader(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".abcd/development/brief/04-surfaces/10-docs.md", "the wording as committed\n")
+	write(".abcd/work/brief-review-flags.json", `{"schema_version": 1, "flags": [{"chapter": "10-docs.md", `+
+		`"sentence": "s", "replacement": "the drafted wording", "commit": "c", "applied": "t"}]}`+"\n")
+	cfg := lint.Config{Rules: map[string]lint.RuleConfig{
+		"brief_flag_landed": {Enabled: true, Severity: "blocker"},
+	}}
+	fs, err := lint.Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fs {
+		if f.RuleID == "brief_flag_landed" && strings.Contains(f.Message, "the drafted wording") {
+			return
+		}
+	}
+	t.Fatalf("the brief flag reader did not run in record-lint: %+v", fs)
+}

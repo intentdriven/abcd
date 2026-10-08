@@ -102,7 +102,10 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   false sentence (`replacement`). The gate proposes that edit and still refuses.
   The gate's apply form replaces the sentence in its chapter (it must occur
   exactly once, or nothing is written) and records a flag in
-  `.abcd/work/brief-review-flags.json` for the product thinker to read. The gate
+  `.abcd/work/brief-review-flags.json` for the product thinker to read. The flag
+  records the sentence as committed: one tidied by hand after the apply takes
+  its flag's replacement with it, and record-lint's `brief_flag_landed` rule
+  refuses a flag whose replacement no line of its chapter contains. The gate
   then lets the change proceed and lists the edit as awaiting review. It does so
   only while the chapter no longer carries the sentence, does carry the draft,
   and a flag names the edit. The autonomous form applies the drafts for an

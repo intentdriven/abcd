@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/docfidelity"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/site"
@@ -23,11 +24,13 @@ import (
 // with the lint, so record_schema refuses exactly the issue records capture
 // refuses and skips, and the bodies the site render refuses; and the intent
 // package's supersession chain reader, so stale_edge follows a chain the way
-// the build's blocked check does.
+// the build's blocked check does; and the doc-fidelity flags reader, so
+// brief_flag_landed reads the review flags through the package that writes them.
 func init() {
 	lint.SetIssueReader(capture.ReadRefusal)
 	lint.SetRecordBodyCheck(site.CheckRecordBody)
 	lint.SetSupersessionChain(intent.SupersessionChainOf)
+	lint.SetBriefFlagCheck(docfidelity.UnlandedFlags)
 }
 
 func main() {
