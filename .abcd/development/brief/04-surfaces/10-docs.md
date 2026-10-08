@@ -172,7 +172,9 @@ promotion is reached by the release workflow's verify job and by a human typing 
   who decides how. The `roles/retired-role-word` banned token refuses the one
   word that blurred them, as a blocker, and it reaches past the documentation:
   its `extra_roots` add the plugin command pages, this repository's rules
-  overrides and the bundled rules source (itd-2609212137129937). An entry's
+  overrides, the bundled rules source (itd-2609212137129937), and this brief,
+  the principles and the personas registry (iss-2610020731591808); the intents
+  stay out, since a record's historical text keeps its words. An entry's
   `extra_roots` widen that entry alone, reading every text file there and not
   only markdown (a rules file is JSON), with `exempt_paths`, the escape and the
   fence default applying as they do under `roots`; the rest of the family is
