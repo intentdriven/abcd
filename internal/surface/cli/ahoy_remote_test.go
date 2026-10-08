@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +78,12 @@ func TestAhoyRemoteApplyExitsNonZeroWhenItChangesNothing(t *testing.T) {
 	out, err := runCLIErr(t, "ahoy", "remote", "apply")
 	if err == nil {
 		t.Fatalf("an unconfirmed apply exited zero; a change that did not happen must not look like one that did:\n%s", out)
+	}
+	// An abort keeps exit 1, where scripts already read it; a refusal is exit 2
+	// (TestAhoyRemoteApplyExitCodes, iss-2610031915386832).
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 1 {
+		t.Errorf("an unconfirmed apply: %v, want exit 1", err)
 	}
 	if !strings.Contains(string(out), "aborted") {
 		t.Errorf("the abort is not rendered:\n%s", out)
