@@ -4,6 +4,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -225,9 +226,12 @@ func TestConnectPicksAtARealTerminal(t *testing.T) {
 		if !ws.Exited() || ws.ExitStatus() != 0 {
 			t.Fatalf("wait status %v\n%q", ws, c.pty.Output())
 		}
+		// Two listings: the picker's, and the one the verification call
+		// reads before it is sent, to judge the request's size.
 		listAuth, _, chatModel := svc.seen()
-		if len(listAuth) != 1 || listAuth[0] != "Bearer "+connectKey || len(chatModel) != 1 || chatModel[0] != "vendor/coder-small" {
-			t.Fatalf("listed with %d request(s), completion asked for %q; want one keyed listing and the model picked", len(listAuth), chatModel)
+		keyed := []string{"Bearer " + connectKey, "Bearer " + connectKey}
+		if !reflect.DeepEqual(listAuth, keyed) || len(chatModel) != 1 || chatModel[0] != "vendor/coder-small" {
+			t.Fatalf("listed with %d request(s), completion asked for %q; want two keyed listings (the picker's and the size check's) and the model picked", len(listAuth), chatModel)
 		}
 		raw, err := os.ReadFile(abcdhome.Path(c.home, "config.json"))
 		if err != nil || !strings.Contains(string(raw), `"vendor/coder-small"`) || strings.Contains(string(raw), "coder-large") {

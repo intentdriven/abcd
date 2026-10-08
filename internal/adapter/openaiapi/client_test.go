@@ -80,6 +80,20 @@ func status(code int, body string) func(http.ResponseWriter, *http.Request, map[
 	}
 }
 
+// chatOnly answers the model listing Complete reads before sending
+// (size.go) with not found and hands every other request to h, so a test of
+// how the chat call stalls is not first held up by the listing stalling the
+// same way.
+func chatOnly(h func(http.ResponseWriter, *http.Request, map[string]json.RawMessage)) func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) {
+	return func(w http.ResponseWriter, r *http.Request, body map[string]json.RawMessage) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models") {
+			http.NotFound(w, r)
+			return
+		}
+		h(w, r, body)
+	}
+}
+
 // jsonObject is an output contract that admits one JSON object with a
 // "verdict" string, the shape a host sub-agent's payload has.
 func jsonObject(b []byte) error {
@@ -243,12 +257,12 @@ func TestEveryFailureIsRefusedWithoutTheKey(t *testing.T) {
 // client's bound, not waited on.
 func TestATimeoutIsRefused(t *testing.T) {
 	release := make(chan struct{})
-	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+	f := newFake(t, chatOnly(func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
 		select {
 		case <-release:
 		case <-r.Context().Done():
 		}
-	})
+	}))
 	defer close(release)
 	c := mustClient(t, f.base(), testKey, WithTimeout(200*time.Millisecond))
 	start := time.Now()

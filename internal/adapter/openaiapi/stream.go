@@ -46,6 +46,10 @@ type limits struct {
 	timer  *time.Timer
 	idle   time.Duration
 	begun  atomic.Bool
+	// reached records that a check made before the call (size.go) connected
+	// to the provider, so the key, and the brief a count carries, may have
+	// left this machine: the call is then never reported unreachable.
+	reached bool
 	// quiet bounds the time between two events of a stream, and progress
 	// records that one arrived. Both are nil and false outside a stream.
 	quiet    *time.Timer
@@ -53,19 +57,27 @@ type limits struct {
 	progress atomic.Bool
 }
 
+// limit starts the call's total cap. The first-byte limit starts when the
+// brief is sent (send), so the checks made before it (size.go) are spent
+// inside the total cap and never added to it.
 func (c *Client) limit(parent context.Context) *limits {
 	l := &limits{parent: parent, idle: c.idle}
 	ctx, cancel := context.WithCancelCause(parent)
 	l.ctx, l.total = context.WithTimeoutCause(ctx, c.timeout, errTotal)
 	l.cancel = cancel
-	l.timer = time.AfterFunc(c.firstByte, func() {
+	return l
+}
+
+// send starts the first-byte limit: the brief is about to be sent, and the
+// answer's first byte is waited for no longer than firstByte.
+func (l *limits) send(firstByte time.Duration) {
+	l.timer = time.AfterFunc(firstByte, func() {
 		if l.begun.Load() {
-			cancel(errIdle)
+			l.cancel(errIdle)
 			return
 		}
-		cancel(errFirstByte)
+		l.cancel(errFirstByte)
 	})
-	return l
 }
 
 // alive records that the server sent something, and re-arms the idle limit.
@@ -99,7 +111,9 @@ func ours(cause error) bool {
 
 // stop releases the call's limits, cancelling its request if it is still open.
 func (l *limits) stop() {
-	l.timer.Stop()
+	if l.timer != nil {
+		l.timer.Stop()
+	}
 	if l.quiet != nil {
 		l.quiet.Stop()
 	}

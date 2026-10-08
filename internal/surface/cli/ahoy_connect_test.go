@@ -25,11 +25,17 @@ import (
 const connectKey = "sk-or-v1-00112233445566778899-not-a-real-key"
 
 // fakeProvider answers every chat completion with reply at code, counting
-// calls and remembering the Authorization header.
+// calls and remembering the Authorization header. It lists no models: the
+// listing a call reads before it is sent (to judge the request's size) is
+// answered not found and is not counted, so calls counts what was sent.
 func fakeProvider(t *testing.T, code int, reply string) (base string, calls *atomic.Int32, auth *atomic.Value) {
 	t.Helper()
 	calls, auth = &atomic.Int32{}, &atomic.Value{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models") {
+			http.NotFound(w, r)
+			return
+		}
 		calls.Add(1)
 		auth.Store(r.Header.Get("Authorization"))
 		_, _ = io.Copy(io.Discard, r.Body)

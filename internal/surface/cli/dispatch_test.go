@@ -29,7 +29,9 @@ import (
 var cliDispatchKey = "dk-" + strings.Repeat("5e", 16) + "-not-a-real-key"
 
 // chatFake is an OpenAI-compatible chat endpoint answering content as
-// model reported, recording what it was sent.
+// model reported, recording what it was sent. It lists no models: the listing
+// a call reads before it is sent (to judge the request's size) is answered
+// not found and is neither counted nor recorded.
 type chatFake struct {
 	srv   *httptest.Server
 	calls atomic.Int32
@@ -43,6 +45,10 @@ func newChatFake(t *testing.T, model string, content func(body string) string) *
 	p.auth.Store("")
 	p.body.Store("")
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models") {
+			http.NotFound(w, r)
+			return
+		}
 		p.calls.Add(1)
 		p.auth.Store(r.Header.Get("Authorization"))
 		raw, _ := io.ReadAll(r.Body)

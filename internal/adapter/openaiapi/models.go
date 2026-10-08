@@ -77,11 +77,21 @@ func (e *ListError) Error() string { return e.msg }
 // *ListError, its reason in plain words, and no part of the service's body is
 // quoted in it.
 func (c *Client) Models(ctx context.Context, keep func(id string) bool) (Listing, error) {
+	raw, err := c.fetchList(ctx)
+	if err != nil {
+		return Listing{}, err
+	}
+	return c.decodeListing(raw, keep)
+}
+
+// fetchList is the one GET of {base}/models under Models' rules, returning
+// the answer's body unread, or a *ListError.
+func (c *Client) fetchList(ctx context.Context) ([]byte, error) {
 	lctx, cancel := context.WithTimeoutCause(ctx, c.listWait, errListTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(lctx, http.MethodGet, c.models, nil)
 	if err != nil {
-		return Listing{}, c.listFail(false, "could not be asked: the request could not be built")
+		return nil, c.listFail(false, "could not be asked: the request could not be built")
 	}
 	req.Header.Set("Accept", "application/json")
 	if c.key != "" {
@@ -89,28 +99,28 @@ func (c *Client) Models(ctx context.Context, keep func(id string) bool) (Listing
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return Listing{}, c.listCallError(ctx, lctx, err)
+		return nil, c.listCallError(ctx, lctx, err)
 	}
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return Listing{}, c.listFail(true, fmt.Sprintf("answered HTTP %d: it lists its models only for a key", resp.StatusCode))
+		return nil, c.listFail(true, fmt.Sprintf("answered HTTP %d: it lists its models only for a key", resp.StatusCode))
 	case http.StatusNotFound:
-		return Listing{}, c.listFail(false, "answered not found")
+		return nil, c.listFail(false, "answered not found")
 	default:
-		return Listing{}, c.listFail(false, fmt.Sprintf("answered HTTP %d", resp.StatusCode))
+		return nil, c.listFail(false, fmt.Sprintf("answered HTTP %d", resp.StatusCode))
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
 	if err != nil {
-		return Listing{}, c.listCallError(ctx, lctx, err)
+		return nil, c.listCallError(ctx, lctx, err)
 	}
 	if len(raw) > MaxResponseBytes {
-		return Listing{}, c.listFail(false, fmt.Sprintf("answered with a list larger than %d bytes, so it is refused unread", MaxResponseBytes))
+		return nil, c.listFail(false, fmt.Sprintf("answered with a list larger than %d bytes, so it is refused unread", MaxResponseBytes))
 	}
-	return c.decodeListing(raw, keep)
+	return raw, nil
 }
 
 // decodeListing reads data[].id from a list answer, keeping the usable ids
