@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/credential"
 )
 
@@ -86,7 +87,7 @@ func TestAFileReadingAgentIsRefusedOnAKeyedProvider(t *testing.T) {
 			if err == nil {
 				t.Fatal("Dispatch admitted a file-reading agent on a keyed provider")
 			}
-			for _, want := range []string{agent, "DR5", "self-contained", "oracle.bundled_context_providers", "~/.abcd.noindex/config.json"} {
+			for _, want := range []string{agent, "DR5", "self-contained", "oracle.bundled_context_providers", abcdhome.Display("config.json")} {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("refusal %q does not name %q", err, want)
 				}
@@ -141,7 +142,7 @@ func TestTheOverrideIsReadFromTheMachineAlone(t *testing.T) {
 	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}}}`)
 	f.repoConfig(`{"oracle":{"bundled_context_providers":["openrouter"]}}`)
 	err := f.loadAPIErr()
-	for _, want := range []string{"oracle.bundled_context_providers", "repo layer", "~/.abcd.noindex/config.json"} {
+	for _, want := range []string{"oracle.bundled_context_providers", "repo layer", abcdhome.Display("config.json")} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("refusal %q does not name %q", err, want)
 		}

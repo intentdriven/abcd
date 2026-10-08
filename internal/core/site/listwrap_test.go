@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // listTitleSelector is the selector the stylesheet must carry, and the
@@ -31,7 +33,7 @@ var listTitleDecls = map[string]string{"overflow-wrap": "anywhere", "min-width":
 // latest decisions with a title that is one 157-character token and holds that
 // it lands where the stylesheet's wrapping rule reaches it.
 func TestAListTitleWithAnUnbreakableTokenIsAWrappingSpan(t *testing.T) {
-	token := "~/.abcd.noindex/transcripts/" + strings.Repeat("0123456789abcdef", 8) + "/"
+	token := abcdhome.Display("transcripts/") + strings.Repeat("0123456789abcdef", 8) + "/"
 	e := &explorer{c: &composer{}, export: RecordExport{Nodes: []ExportNode{
 		{ID: "adr-7", Type: "adr", Date: "2026-10-03", Title: token},
 	}}}

@@ -236,8 +236,8 @@ func TestPutReadsTheListSetting(t *testing.T) {
 		{"a repository's misspelt key keeps the machine's arrows", "", `{"interview": {"lst": "numbered"}}`, "interview.lst", true},
 		{"a repository's malformed file keeps the machine's arrows", "", `{"interview": `, ".abcd/config.json", true},
 		{"a repository's arrows keeps the machine's numbered", numberedSetting, `{"interview": {"list": "arrows"}}`, "interview.list", false},
-		{"a malformed machine file gives numbered", `{"interview": `, "", "~/.abcd.noindex/config.json", false},
-		{"a machine value outside the two gives numbered", `{"interview": {"list": "tabs"}}`, "", "~/.abcd.noindex/config.json", false},
+		{"a malformed machine file gives numbered", `{"interview": `, "", abcdhome.Display("config.json"), false},
+		{"a machine value outside the two gives numbered", `{"interview": {"list": "tabs"}}`, "", abcdhome.Display("config.json"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer

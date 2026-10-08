@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The install command exists in four committed forms: the universal one-liner in
@@ -566,14 +568,14 @@ func keysOf(m map[string]bool) []string {
 
 // symlinkedHomeGuard is the test every install form that records the owned
 // PATH copy in ~/.abcd.noindex/path-entry runs before it fetches anything.
-const symlinkedHomeGuard = `[ ! -L "$HOME/.abcd.noindex" ]`
+var symlinkedHomeGuard = `[ ! -L "$HOME/` + abcdhome.Rel() + `" ]`
 
 // pathEntryRecord is the file a form writes to record the owned PATH copy, and
 // oldHome the folder abcd's home was called before the rename. A form that
 // created the old folder would leave every later abcd command stopped
 // (spc-2610031309233367, "The stop").
-const (
-	pathEntryRecord = `"$HOME/.abcd.noindex/path-entry"`
+var (
+	pathEntryRecord = `"$HOME/` + abcdhome.Rel("path-entry") + `"`
 	oldHome         = `"$HOME/.abcd"`
 )
 

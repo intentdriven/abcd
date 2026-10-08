@@ -1400,7 +1400,7 @@ func TestBootstrapRefusesASymlinkedAbcdHome(t *testing.T) {
 	if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {
 		t.Fatalf("the bootstrap wrote %d file(s) behind the symlinked ~/.abcd.noindex, first %q", len(entries), entries[0].Name())
 	}
-	if !strings.Contains(out, "~/.abcd.noindex is a symlink") || !strings.Contains(out, "cache attestation") {
+	if !strings.Contains(out, abcdhome.Display()+" is a symlink") || !strings.Contains(out, "cache attestation") {
 		t.Errorf("the notice must say the cache attestation was not written because ~/.abcd.noindex is a symlink; output %q", out)
 	}
 }

@@ -205,8 +205,15 @@ func isHomeValue(e ast.Expr, locals map[string]bool) bool {
 // homeLocals returns the identifiers decl assigns from a home value, through
 // := and = assignments and var declarations, followed until nothing new is
 // learned so a copy of a home local is one too. A single call assigned to
-// several names (h, err := os.UserHomeDir()) makes only the first a home.
-func homeLocals(decl ast.Node) map[string]bool {
+// several names makes one of them a home: the one in the place of the result
+// the callee declares with a home name, when results names the callee and one
+// of its results is so named (repoRoot, _ := virginHome(t) against
+// virginHome's (repoRoot, home string)); otherwise the first
+// (h, err := os.UserHomeDir()), and none when another of the names is a home
+// by its own name (repoRoot, home := virginHome()), the call's home being the
+// one so named. An error named for the home (h, homeErr := ...) names no
+// home.
+func homeLocals(decl ast.Node, results map[string][]string) map[string]bool {
 	type pair struct {
 		lhs []ast.Expr
 		rhs []ast.Expr
@@ -234,7 +241,9 @@ func homeLocals(decl ast.Node) map[string]bool {
 				switch {
 				case len(p.rhs) == len(p.lhs):
 					r = p.rhs[i]
-				case len(p.rhs) == 1 && i == 0:
+				case len(p.rhs) == 1 && i == declaredHome(p.rhs[0], results, len(p.lhs)):
+					r = p.rhs[0]
+				case len(p.rhs) == 1 && i == 0 && declaredHome(p.rhs[0], results, len(p.lhs)) < 0 && !homeNamedAmong(p.lhs[1:]):
 					r = p.rhs[0]
 				default:
 					continue
@@ -249,6 +258,70 @@ func homeLocals(decl ast.Node) map[string]bool {
 		}
 	}
 	return locals
+}
+
+// homeNamedAmong reports whether one of names is an identifier whose own name
+// says home.
+func homeNamedAmong(names []ast.Expr) bool {
+	for _, n := range names {
+		if id, ok := n.(*ast.Ident); ok && namesHome(id.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// namesHome reports whether an identifier's own name says it holds a home: it
+// says home and is not an error (homeErr, errHome).
+func namesHome(name string) bool {
+	l := strings.ToLower(name)
+	return strings.Contains(l, "home") && !strings.Contains(l, "err")
+}
+
+// declaredHome returns the place of the home-named result among the n that
+// the function call e calls declares in results, or -1 when e calls no
+// function results names with n results, one of them home-named.
+func declaredHome(e ast.Expr, results map[string][]string, n int) int {
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return -1
+	}
+	fn, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return -1
+	}
+	names := results[fn.Name]
+	if len(names) != n {
+		return -1
+	}
+	for i, name := range names {
+		if namesHome(name) {
+			return i
+		}
+	}
+	return -1
+}
+
+// resultNames returns, for each function f declares (methods aside) with
+// named results, the names of its results in order.
+func resultNames(f *ast.File) map[string][]string {
+	out := map[string][]string{}
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Recv != nil || fd.Type.Results == nil {
+			continue
+		}
+		var names []string
+		for _, field := range fd.Type.Results.List {
+			for _, id := range field.Names {
+				names = append(names, id.Name)
+			}
+		}
+		if len(names) > 0 {
+			out[fd.Name.Name] = names
+		}
+	}
+	return out
 }
 
 // besideHome returns the ".abcd"-led elements of elems when one of elems is a
@@ -277,13 +350,121 @@ func besideHome(fset *token.FileSet, elems []ast.Expr, known map[string]string, 
 // package's folded strings in known. Each top-level declaration is judged
 // with the home locals it assigns.
 func homeSpellings(fset *token.FileSet, f *ast.File, known map[string]string) []homeSpelling {
+	return spellingsSkipping(fset, f, known, nil)
+}
+
+// testHomeSpellings is homeSpellings for a test file: the same five shapes,
+// save a literal that is a test's failure or log message (messageLiterals),
+// which is prose about the test the way a comment is prose about the code.
+func testHomeSpellings(fset *token.FileSet, f *ast.File, known map[string]string) []homeSpelling {
+	return spellingsSkipping(fset, f, known, messageLiterals(f))
+}
+
+// messageMethods are the testing methods whose string arguments are a message
+// a person reads when the test fails or logs, or the name a subtest is listed
+// by, never a value the code under test is handed or judged against.
+var messageMethods = map[string]bool{
+	"Error": true, "Errorf": true, "Fatal": true, "Fatalf": true,
+	"Log": true, "Logf": true, "Skip": true, "Skipf": true, "Run": true,
+}
+
+// messageLiterals returns the string literals in f that are a message
+// argument of a messageMethods call on a testing receiver (t.Errorf("..."),
+// b.Fatal("a" + "b"), t.Run("name", ...)), directly or through parentheses
+// and concatenation. The receiver must be a name f declares as a
+// testing parameter (testingParams): a production method of the same name
+// (gitutil.Run, a run's Log) is handed its arguments as values, and
+// fmt.Errorf's builds an error value that can be a fixture. A literal inside
+// a call nested in the arguments (t.Errorf("%s", filepath.Join(home,
+// ".abcd"))) is not a message and stays judged.
+func messageLiterals(f *ast.File) map[*ast.BasicLit]bool {
+	testers := testingParams(f)
+	out := map[*ast.BasicLit]bool{}
+	var mark func(e ast.Expr)
+	mark = func(e ast.Expr) {
+		switch x := e.(type) {
+		case *ast.BasicLit:
+			out[x] = true
+		case *ast.ParenExpr:
+			mark(x.X)
+		case *ast.BinaryExpr:
+			mark(x.X)
+			mark(x.Y)
+		}
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || !messageMethods[sel.Sel.Name] {
+			return true
+		}
+		if recv, ok := sel.X.(*ast.Ident); !ok || !testers[recv.Name] {
+			return true
+		}
+		for _, a := range call.Args {
+			mark(a)
+		}
+		return true
+	})
+	return out
+}
+
+// testingTypes are the parameter types whose methods messageMethods names.
+var testingTypes = map[string]bool{"*testing.T": true, "*testing.B": true, "*testing.F": true, "testing.TB": true}
+
+// testingParams returns the names f declares as a parameter of a testingTypes
+// type, in any function or function literal. Names are tracked as the
+// scanner tracks home locals, by name rather than scope.
+func testingParams(f *ast.File) map[string]bool {
+	out := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		ft, ok := n.(*ast.FuncType)
+		if !ok || ft.Params == nil {
+			return true
+		}
+		for _, field := range ft.Params.List {
+			if !testingTypes[typeString(field.Type)] {
+				continue
+			}
+			for _, id := range field.Names {
+				out[id.Name] = true
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// typeString spells a parameter type of the shapes testingTypes holds
+// (pkg.Name, *pkg.Name), and "" for any other.
+func typeString(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.StarExpr:
+		if s := typeString(x.X); s != "" {
+			return "*" + s
+		}
+	case *ast.SelectorExpr:
+		if pkg, ok := x.X.(*ast.Ident); ok {
+			return pkg.Name + "." + x.Sel.Name
+		}
+	}
+	return ""
+}
+
+// spellingsSkipping is homeSpellings judging every string literal but those
+// in skip.
+func spellingsSkipping(fset *token.FileSet, f *ast.File, known map[string]string, skip map[*ast.BasicLit]bool) []homeSpelling {
 	var out []homeSpelling
+	results := resultNames(f)
 	for _, decl := range f.Decls {
-		locals := homeLocals(decl)
+		locals := homeLocals(decl, results)
 		ast.Inspect(decl, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.BasicLit:
-				if x.Kind != token.STRING {
+				if x.Kind != token.STRING || skip[x] {
 					return true
 				}
 				v, err := strconv.Unquote(x.Value)
@@ -315,7 +496,7 @@ func homeSpellings(fset *token.FileSet, f *ast.File, known map[string]string) []
 	return out
 }
 
-// parsedPackage is one directory's non-test Go files, parsed.
+// parsedPackage is one directory's Go files, parsed.
 type parsedPackage struct {
 	fset  *token.FileSet
 	files map[string]*ast.File // repo-relative path -> file
@@ -325,6 +506,25 @@ type parsedPackage struct {
 // skipped), grouped by directory, and returns the number of files read.
 func sourceTree(t *testing.T) (map[string]*parsedPackage, int) {
 	t.Helper()
+	return goTree(t, false)
+}
+
+// testTree parses every Go file under internal/ and cmd/ (testdata skipped),
+// test files and the shipped code beside them, grouped by directory, so a
+// test's constants fold with its package's; the count is of test files.
+func testTree(t *testing.T) (map[string]*parsedPackage, int) {
+	t.Helper()
+	return goTree(t, true)
+}
+
+// goTree walks internal/ and cmd/ for non-test Go files, and for test files
+// too when tests is set, counting the files of the kind asked for.
+func goTree(t *testing.T, tests bool) (map[string]*parsedPackage, int) {
+	t.Helper()
+	kind := "non-test"
+	if tests {
+		kind = "test"
+	}
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatalf("resolve repo root: %v", err)
@@ -343,7 +543,8 @@ func sourceTree(t *testing.T) (map[string]*parsedPackage, int) {
 				}
 				return nil
 			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+			isTest := strings.HasSuffix(d.Name(), "_test.go")
+			if !strings.HasSuffix(d.Name(), ".go") || (isTest && !tests) {
 				return nil
 			}
 			rel, err := filepath.Rel(root, p)
@@ -365,7 +566,9 @@ func sourceTree(t *testing.T) (map[string]*parsedPackage, int) {
 				return fmt.Errorf("parse %s: %w", rel, err)
 			}
 			pp.files[rel] = f
-			walked++
+			if isTest == tests {
+				walked++
+			}
 			return nil
 		})
 		if err != nil {
@@ -375,8 +578,8 @@ func sourceTree(t *testing.T) (map[string]*parsedPackage, int) {
 	// A walk that found nothing would pass while holding nothing, which is how a
 	// boundary test rots: a renamed tree, a changed root.
 	if walked < 100 {
-		t.Fatalf("the walk read only %d non-test Go files under internal/ and cmd/; "+
-			"it is not looking at the repository it is meant to hold", walked)
+		t.Fatalf("the walk read only %d %s Go files under internal/ and cmd/; "+
+			"it is not looking at the repository it is meant to hold", walked, kind)
 	}
 	return pkgs, walked
 }
@@ -406,6 +609,88 @@ func TestOnlyTheHomeResolverNamesTheHome(t *testing.T) {
 	for _, l := range lines {
 		t.Errorf("%s spells the abcd home folder's name; reach it through abcdhome.Rel, "+
 			"abcdhome.Path or abcdhome.Display, the one place the name is written", l)
+	}
+}
+
+// testHomeSpellers are the test files that plant or name the home's old or new
+// folder on purpose, each with the reason it must spell the name rather than
+// reach it through abcdhome.Path or abcdhome.Display. Every other test file
+// is held to the boundary above, so a fixture follows the name when it
+// changes instead of seeding a folder the code no longer reads
+// (iss-2610042333573913). This package's own tests are exempt as its code is.
+var testHomeSpellers = map[string]string{
+	"internal/surface/cli/homestop_test.go": "the stop test: it plants the old folder beside and " +
+		"instead of the new one and expects the stop to name both",
+	"internal/surface/cli/hooks_homestop_test.go": "the hooks' stop test: it plants the old folder " +
+		"and expects every hook to stop on it",
+	"internal/surface/cli/firstrun_home_test.go": "it expects a first run to create the new folder " +
+		"and never the old one, each by its name",
+	"internal/core/history/store_boundary_test.go": "invariant 15's boundary test: its needles and " +
+		"hostile sources spell the transcript store's path under both names",
+	"internal/core/lint/scribecontract_test.go": "it arms the scribe's transcript-store check with " +
+		"every vintage of the store's path, the old folder's included",
+	"internal/core/ahoy/noindex_block_test.go": "it expects the managed block to name the new folder " +
+		"and no spelling of the old one left",
+	"internal/core/ahoy/store_worktrees_test.go": "it plants worktrees under the old folder and " +
+		"moves them, as the rename does",
+	"internal/fsutil/home_test.go": "the home-scope primitives' own tests: fsutil takes any rel " +
+		"below the home and they pass their own",
+	"internal/fsutil/home_race_test.go":       "the home-scope primitives' race tests, on their own rels",
+	"internal/fsutil/home_scope_mode_test.go": "the home-scope primitives' mode tests, on their own rels",
+	"internal/fsutil/home_declared_test.go":   "the home-declaration primitive's tests, on their own rels",
+	"internal/fsutil/replaced_test.go":        "the replaced-file primitive's tests, on their own rels",
+}
+
+// TestNoTestBuildsTheHomeByHand is the boundary above held over test files:
+// outside this package and testHomeSpellers, no test spells the home folder's
+// name, in a fixture it builds or an output it expects. A failure or log
+// message is prose and is not judged (testHomeSpellings).
+func TestNoTestBuildsTheHomeByHand(t *testing.T) {
+	pkgs, _ := testTree(t)
+	thisPkg := filepath.Join("internal", "abcdhome")
+	var lines []string
+	spelled := map[string]bool{}
+	for dir, pp := range pkgs {
+		if dir == thisPkg {
+			continue
+		}
+		var files []*ast.File
+		for _, f := range pp.files {
+			files = append(files, f)
+		}
+		known := packageStrings(files)
+		for rel, f := range pp.files {
+			if !strings.HasSuffix(rel, "_test.go") {
+				continue
+			}
+			slashed := filepath.ToSlash(rel)
+			for _, h := range testHomeSpellings(pp.fset, f, known) {
+				spelled[slashed] = true
+				if _, ok := testHomeSpellers[slashed]; ok {
+					continue
+				}
+				lines = append(lines, fmt.Sprintf("%s:%d: %q", rel, h.line, h.text))
+			}
+		}
+	}
+	sort.Strings(lines)
+	for _, l := range lines {
+		t.Errorf("%s spells the abcd home folder's name in a test; build the fixture with "+
+			"abcdhome.Path and expect the output through abcdhome.Display, so the test follows "+
+			"the name when it changes, or declare the file in testHomeSpellers with the reason "+
+			"it names the folder on purpose", l)
+	}
+	// An entry that no longer spells the home exempts nothing and would exempt
+	// the next fixture written there unseen.
+	var stale []string
+	for rel := range testHomeSpellers {
+		if !spelled[rel] {
+			stale = append(stale, rel)
+		}
+	}
+	sort.Strings(stale)
+	for _, rel := range stale {
+		t.Errorf("testHomeSpellers declares %s, which no longer spells the home; remove the entry", rel)
 	}
 }
 
@@ -446,6 +731,7 @@ func TestHomeNameScannerIsArmed(t *testing.T) {
 		"a format verb, the name last":   `func f(home string) string { return fmt.Sprintf("%v/` + ".abcd" + `", home) }`,
 		"a slice beside a home":          `func f(home string) string { return filepath.Join([]string{home, ".abcd", "lab"}...) }`,
 		"a slice beside a HOME local":    `func f() []string { h, _ := os.UserHomeDir(); return []string{h, ".abcd/lab"} }`,
+		"a local beside a home error":    `func f() string { h, homeErr := os.UserHomeDir(); _ = homeErr; return filepath.Join(h, ".abcd", "lab") }`,
 	}
 	for label, body := range hostile {
 		src := "package p\n\n" + body + "\n"
@@ -454,20 +740,78 @@ func TestHomeNameScannerIsArmed(t *testing.T) {
 		}
 	}
 	benign := map[string]string{
-		"a comment naming the home": "// the home is ~/" + ".abcd" + "/trusted-roots, read by rules.\nvar x = \"unrelated\"",
-		"the repository tier":       `func f(repoRoot string) string { return filepath.Join(repoRoot, ".abcd", "config.json") }`,
-		"a repo-tier constant":      "const rel = \".abcd/rules.json\"\nfunc f(root string) string { return filepath.Join(root, rel) }",
-		"a home with another leaf":  `func f(home string) string { return filepath.Join(home, ".config") }`,
-		"a local from the cwd":      `func f() string { d, _ := os.Getwd(); return filepath.Join(d, ".abcd") }`,
-		"another variable read":     `func f() string { return filepath.Join(os.Getenv("PWD"), ".abcd") }`,
-		"a HOME local elsewhere":    "func g() { h, _ := os.UserHomeDir(); _ = h }\nfunc f(h string) string { return filepath.Join(h, \".abcd\") }",
-		"a repository-tier slice":   `func f(repoRoot string) []string { return []string{repoRoot, ".abcd", "config.json"} }`,
-		"a format with another dot": `func f(home string) string { return fmt.Sprintf("%s/.abcdef", home) }`,
+		"a comment naming the home":  "// the home is ~/" + ".abcd" + "/trusted-roots, read by rules.\nvar x = \"unrelated\"",
+		"the repository tier":        `func f(repoRoot string) string { return filepath.Join(repoRoot, ".abcd", "config.json") }`,
+		"a repo-tier constant":       "const rel = \".abcd/rules.json\"\nfunc f(root string) string { return filepath.Join(root, rel) }",
+		"a home with another leaf":   `func f(home string) string { return filepath.Join(home, ".config") }`,
+		"a local from the cwd":       `func f() string { d, _ := os.Getwd(); return filepath.Join(d, ".abcd") }`,
+		"another variable read":      `func f() string { return filepath.Join(os.Getenv("PWD"), ".abcd") }`,
+		"a HOME local elsewhere":     "func g() { h, _ := os.UserHomeDir(); _ = h }\nfunc f(h string) string { return filepath.Join(h, \".abcd\") }",
+		"a repository-tier slice":    `func f(repoRoot string) []string { return []string{repoRoot, ".abcd", "config.json"} }`,
+		"a format with another dot":  `func f(home string) string { return fmt.Sprintf("%s/.abcdef", home) }`,
+		"a root beside a named home": `func f() string { repoRoot, home := virginHome(); _ = home; return filepath.Join(repoRoot, ".abcd") }`,
 	}
 	for label, body := range benign {
 		src := "package p\n\n" + body + "\n"
 		if got := parseHostile(t, src); len(got) != 0 {
 			t.Errorf("%s: the scanner reports %v from a source that does not spell the home\n%s", label, got, src)
+		}
+	}
+}
+
+// TestTestHomeScannerIsArmed proves the test-file scanner reports a fixture
+// or an expected output that spells the home, and leaves a failure or log
+// message and a subtest's name alone, so a pass of
+// TestNoTestBuildsTheHomeByHand is the property holding rather than the
+// message exemption swallowing a fixture.
+func TestTestHomeScannerIsArmed(t *testing.T) {
+	scan := func(src string) []homeSpelling {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "hostile_test.go", src, 0)
+		if err != nil {
+			t.Fatalf("parse: %v\n%s", err, src)
+		}
+		return testHomeSpellings(fset, f, packageStrings([]*ast.File{f}))
+	}
+	hostile := map[string]string{
+		"a fixture joined by hand":        `func TestX(t *testing.T) { home := t.TempDir(); _ = os.MkdirAll(filepath.Join(home, ".abcd", "lab"), 0o700) }`,
+		"a fixture under HOME":            `func TestX(t *testing.T) { _ = os.WriteFile(filepath.Join(os.Getenv("HOME"), ".abcd/rules.json"), nil, 0o600) }`,
+		"an expected output":              `func TestX(t *testing.T) { if !strings.Contains(out, "~/` + ".abcd" + `.noindex is a symlink") { t.Fatal("no") } }`,
+		"an expected output in a table":   `var cases = []struct{ want string }{{"~/` + ".abcd" + `/rules.json"}}`,
+		"a join inside a message":         `func TestX(t *testing.T, home string) { t.Errorf("%s", filepath.Join(home, ".abcd")) }`,
+		"an error value a test builds":    `func f() error { return fmt.Errorf("~/` + ".abcd" + `.noindex is a symlink") }`,
+		"a message helper's want":         `func TestX(t *testing.T) { wantAll(t, err, "~/` + ".abcd" + `.noindex/config.json") }`,
+		"a fixture beside a named home":   `func TestX(t *testing.T) { root, home := virginHome(t); _ = root; _ = os.MkdirAll(filepath.Join(home, ".abcd"), 0o700) }`,
+		"a result declared as the home":   "func virginHome(t *testing.T) (repoRoot, home string) { return \"\", \"\" }\nfunc TestX(t *testing.T) { repo, h := virginHome(t); _ = repo; _ = os.MkdirAll(filepath.Join(h, \".abcd\"), 0o700) }",
+		"a fixture handed to gitutil.Run": `func TestX(t *testing.T) { gitutil.Run(".", "add", "~/` + ".abcd" + `.noindex/worktrees/x") }`,
+		"a fixture handed to a run's Log": `func TestX(t *testing.T) { r := newRun(); r.Log("~/` + ".abcd" + `.noindex/runs/s1", 1) }`,
+		"a message on an untyped t":       `func check(t *fakeT) { t.Fatalf("~/` + ".abcd" + `.noindex/x") }`,
+		"a fixture from a test constant":  "const rel = \".abcd/trusted-roots\"\nfunc TestX(t *testing.T) { home := t.TempDir(); _ = os.WriteFile(filepath.Join(home, rel), nil, 0o600) }",
+	}
+	for label, body := range hostile {
+		src := "package p\n\n" + body + "\n"
+		if got := scan(src); len(got) != 1 {
+			t.Errorf("%s: the test scanner reports %v, want exactly one spelling; it is not armed for that shape\n%s", label, got, src)
+		}
+	}
+	benign := map[string]string{
+		"a failure message":     `func TestX(t *testing.T) { t.Errorf("wrote under ~/` + ".abcd" + `.noindex: %v", 1) }`,
+		"a concatenated fatal":  `func TestX(t *testing.T) { t.Fatal("the stop names ~/` + ".abcd" + `" + " and the new folder") }`,
+		"a log line":            `func TestX(t *testing.T) { t.Logf("~/` + ".abcd" + `.noindex holds %d", 1) }`,
+		"a skip":                `func BenchmarkX(b *testing.B) { b.Skip("no ~/` + ".abcd" + `.noindex here") }`,
+		"a subtest's name":      `func TestX(t *testing.T) { t.Run("symlinked ~/` + ".abcd" + `.noindex", func(t *testing.T) {}) }`,
+		"a helper's TB message": `func check(tb testing.TB) { tb.Fatalf("no ~/` + ".abcd" + `.noindex here") }`,
+		"a fuzz skip":           `func FuzzX(f *testing.F) { f.Skip("no ~/` + ".abcd" + `.noindex here") }`,
+		"a closure's message":   `var check = func(t *testing.T) { t.Error("~/` + ".abcd" + `.noindex") }`,
+		"a root beside a home":  `func TestX(t *testing.T) { root, home := virginHome(t); _ = home; _ = os.MkdirAll(filepath.Join(root, ".abcd", "work"), 0o700) }`,
+		"a root by its result":  "func virginHome(t *testing.T) (repoRoot, home string) { return \"\", \"\" }\nfunc TestX(t *testing.T) { repoRoot, _ := virginHome(t); _ = os.MkdirAll(filepath.Join(repoRoot, \".abcd\", \"work\"), 0o700) }",
+		"the repository tier":   `func TestX(t *testing.T) { repo := t.TempDir(); _ = os.MkdirAll(filepath.Join(repo, ".abcd", "work"), 0o700) }`,
+		"a fixture by resolver": `func TestX(t *testing.T) { home := t.TempDir(); _ = os.MkdirAll(abcdhome.Path(home, "lab"), 0o700) }`,
+	}
+	for label, body := range benign {
+		src := "package p\n\n" + body + "\n"
+		if got := scan(src); len(got) != 0 {
+			t.Errorf("%s: the test scanner reports %v from a source that builds no home by hand\n%s", label, got, src)
 		}
 	}
 }

@@ -101,8 +101,9 @@ func pathLocals(decl ast.Node) map[string]bool {
 func homeModeCalls(fset *token.FileSet, f *ast.File, allowed map[string]bool) ([]homeSpelling, int) {
 	var out []homeSpelling
 	judged := 0
+	results := resultNames(f)
 	for _, d := range f.Decls {
-		locals := homeLocals(d)
+		locals := homeLocals(d, results)
 		paths := pathLocals(d)
 		ast.Inspect(d, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)

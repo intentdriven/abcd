@@ -29,7 +29,7 @@ func TestTrustedRootsBehindASymlinkedAbcdHomeReAdmitNothing(t *testing.T) {
 	if ok {
 		t.Fatal("a trusted-roots declaration behind a symlinked ~/.abcd.noindex re-admitted a root")
 	}
-	if !strings.Contains(note, TrustedRootsDisplay) || !strings.Contains(note, "~/.abcd.noindex is a symlink") {
+	if !strings.Contains(note, TrustedRootsDisplay) || !strings.Contains(note, abcdhome.Display()+" is a symlink") {
 		t.Errorf("the ignored declaration must say it was refused for the link: %q", note)
 	}
 

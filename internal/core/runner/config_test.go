@@ -61,7 +61,7 @@ func TestRoleRoutedByMachineToItsRunner(t *testing.T) {
 		`{`+localProvider+`,"roles":{"ruthless-reviewer":{"runner":"opencode"}},`+
 			`"runner":{"fallback_host":"claude","claude":{},"opencode":{"model":"local/qwen3-coder"}}}`, "")
 	r := c.RouteFor("ruthless-reviewer")
-	if r.Runner != OpenCode || r.Layer != layered.Machine || r.Origin != "~/.abcd.noindex/config.json" {
+	if r.Runner != OpenCode || r.Layer != layered.Machine || r.Origin != abcdhome.Display("config.json") {
 		t.Fatalf("route = %+v", r)
 	}
 	if len(c.Diagnostics) != 0 {
@@ -92,7 +92,7 @@ func TestRepoRouteToARunnerIsSkipped(t *testing.T) {
 			t.Fatalf("%s: diagnostics = %q, want one", name, c.Diagnostics)
 		}
 		for _, want := range []string{".abcd/config.json (repo layer)", "roles.ruthless-reviewer.runner",
-			"~/.abcd.noindex/config.json", "skipped", name} {
+			abcdhome.Display("config.json"), "skipped", name} {
 			if !strings.Contains(c.Diagnostics[0], want) {
 				t.Errorf("%s: diagnostic %q lacks %q", name, c.Diagnostics[0], want)
 			}
@@ -129,7 +129,7 @@ func TestRepoRouteToHostStands(t *testing.T) {
 		t.Fatalf("diagnostics = %q, want one naming the displaced machine route", c.Diagnostics)
 	}
 	for _, want := range []string{".abcd/config.json (repo layer)", "roles.scribe.runner", `"host"`,
-		"~/.abcd.noindex/config.json (machine layer)", `"claude"`} {
+		abcdhome.Display("config.json") + " (machine layer)", `"claude"`} {
 		if !strings.Contains(c.Diagnostics[0], want) {
 			t.Errorf("diagnostic %q lacks %q", c.Diagnostics[0], want)
 		}
@@ -217,7 +217,7 @@ func TestAllowlistAloneDecides(t *testing.T) {
 // person's own machine's to say.
 func TestRunnerBlocksAreTheMachines(t *testing.T) {
 	_, err := Load(roots(t, "", `{"runner":{"claude":{}}}`))
-	if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/config.json") {
+	if err == nil || !strings.Contains(err.Error(), abcdhome.Display("config.json")) {
 		t.Fatalf("err = %v, want a refusal naming the machine's file", err)
 	}
 }

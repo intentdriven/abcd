@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestCaptureFoundAtMustResolveInTheTree is the guard for iss-2609120511058115:
@@ -70,7 +72,7 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 		{"conceptual single word", "conventions"},
 		{"path with a parenthetical", "internal/core/lint (the <!-- marker scan)"},
 		{"list of paths", "internal/a.go, internal/b.go"},
-		{"home-relative location", "~/.abcd.noindex/history"},
+		{"home-relative location", abcdhome.Display("history")},
 		{"url", "https://example.com/some/page"},
 		{"version string", "v0.9.0"},
 	}

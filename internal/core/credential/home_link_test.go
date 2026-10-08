@@ -34,7 +34,7 @@ func TestSetMachineRefusesASymlinkedAbcdHome(t *testing.T) {
 	if err == nil || changed {
 		t.Fatalf("SetMachine wrote through a symlinked ~/.abcd.noindex: changed %v, err %v", changed, err)
 	}
-	for _, want := range []string{"~/.abcd.noindex is a symlink", "real directory"} {
+	for _, want := range []string{abcdhome.Display() + " is a symlink", "real directory"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal must say %q: %v", want, err)
 		}
@@ -65,7 +65,7 @@ func TestResolveRefusesAStoreBehindASymlinkedAbcdHome(t *testing.T) {
 	if err == nil || err == ErrNotSet || v != "" {
 		t.Fatalf("a store behind a symlinked ~/.abcd.noindex must be refused loudly: value %q, err %v", v, err)
 	}
-	if !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+	if !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 		t.Errorf("the refusal must name the link: %v", err)
 	}
 }
@@ -133,7 +133,7 @@ func TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 	if !swapped {
 		t.Fatal("the vetting hook never ran, so the race was not staged")
 	}
-	if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+	if err == nil || changed || !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 		t.Errorf("SetMachine must refuse a ~/.abcd.noindex swapped for a link, naming it: changed %v, err %v", changed, err)
 	}
 	entries, rerr := os.ReadDir(dotfiles)

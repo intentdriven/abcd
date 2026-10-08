@@ -123,7 +123,7 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 		a.stepHistory()
 		// The registry is created one real directory at a time
 		// (fsutil.EnsureRealDirAll), so the reason is the level it refused.
-		if !notesCarryAll(a.notes, "session store", "~/.abcd.noindex", "not a real directory") {
+		if !notesCarryAll(a.notes, "session store", abcdhome.Display(), "not a real directory") {
 			t.Errorf("no note says the session store was not created, and why; notes: %v", a.notes)
 		}
 	})

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // filled returns the issued template with its blanks filled, the way a
@@ -66,7 +68,7 @@ func TestMalformedBlocksAreRefusedNamingTheField(t *testing.T) {
 		{"duplicate key", "\nkind: defect\n", "\nkind: defect\nkind: enhancement\n", "kind"},
 		{"envelope key from the reporter", "\nkind: defect\n", "\nkind: defect\nsender_name: x\n", "sender_name"},
 		{"absolute path in evidence", "  - iss-2609221656361680", "  - /etc/passwd", "evidence"},
-		{"home path in surface", `surface: "abcd capture"`, `surface: "~/.abcd.noindex/inbox"`, "surface"},
+		{"home path in surface", `surface: "abcd capture"`, `surface: "` + abcdhome.Display("inbox") + `"`, "surface"},
 		{"traversal in evidence", "  - iss-2609221656361680", "  - ../../secret", "evidence"},
 		{"windows path in remedy", `remedy: "accept a leading digit"`, `remedy: "edit C:\\x"`, "remedy"},
 		{"empty prose", "Running capture with a slug of 9lives was refused.", "", "prose"},

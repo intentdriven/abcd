@@ -58,7 +58,7 @@ func TestInstallRegistersNothingThroughASymlinkedAbcdHome(t *testing.T) {
 	}
 	var registry string
 	for _, n := range res.Notes {
-		if strings.Contains(n, "registration") && strings.Contains(n, "~/.abcd.noindex is a symlink") {
+		if strings.Contains(n, "registration") && strings.Contains(n, abcdhome.Display()+" is a symlink") {
 			registry = n
 		}
 	}
@@ -101,7 +101,7 @@ func TestDetectReportsASymlinkedHistoryStoreAsADiagnostic(t *testing.T) {
 	if diag.Required || diag.Resolvable {
 		t.Errorf("the diagnostic must be neither required nor resolvable: %+v", *diag)
 	}
-	if !strings.Contains(diag.Detail, "~/.abcd.noindex is a symlink") {
+	if !strings.Contains(diag.Detail, abcdhome.Display()+" is a symlink") {
 		t.Errorf("the diagnostic must name the symlinked ~/.abcd.noindex; got %q", diag.Detail)
 	}
 }

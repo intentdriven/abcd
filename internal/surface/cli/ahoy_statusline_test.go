@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // harnessSettingsFixture points CLAUDE_CONFIG_DIR at a temp directory holding
@@ -90,7 +92,7 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
 	}
-	if !contains(res.Writes, "~/.abcd.noindex/statusline.json") {
+	if !contains(res.Writes, abcdhome.Display("statusline.json")) {
 		t.Errorf("writes = %v, want the user-level setting", res.Writes)
 	}
 	raw, _ := os.ReadFile(settings)
@@ -105,7 +107,7 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 	// Uninstall hands the previous command back and says so, naming the copy
 	// of the file it kept first.
 	text := runCLI(t, "ahoy", "uninstall")
-	if !strings.Contains(string(text), "  status line: restored the previous status command; the file as it was is kept at ~/.abcd.noindex/backups/settings.json.") {
+	if !strings.Contains(string(text), "  status line: restored the previous status command; the file as it was is kept at "+abcdhome.Display("backups/settings.json")+".") {
 		t.Errorf("uninstall render lacks the status-line line:\n%s", text)
 	}
 	raw, _ = os.ReadFile(settings)

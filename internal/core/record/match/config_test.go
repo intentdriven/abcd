@@ -64,7 +64,7 @@ func TestConfigReadsThroughTheLayers(t *testing.T) {
 	if c.Threshold != 0.75 || c.ThresholdOrigin != ".abcd/config.json" {
 		t.Fatalf("threshold %v from %q, want 0.75 from the repo file", c.Threshold, c.ThresholdOrigin)
 	}
-	if !reflect.DeepEqual(c.Fields, []string{"issue.body"}) || c.FieldsOrigin != "~/.abcd.noindex/config.json" {
+	if !reflect.DeepEqual(c.Fields, []string{"issue.body"}) || c.FieldsOrigin != abcdhome.Display("config.json") {
 		t.Fatalf("fields %v from %q, want [issue.body] from the machine file", c.Fields, c.FieldsOrigin)
 	}
 	if !c.Compares(FieldIssueBody) || c.Compares(FieldIntentTitle) {

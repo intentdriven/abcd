@@ -82,7 +82,7 @@ func TestAProviderBlockAndItsRoutesLoad(t *testing.T) {
 	c := f.loadAPI()
 	p, ok := c.Provider("openrouter")
 	if !ok || p.BaseURL != "https://openrouter.ai/api/v1" || p.Key != "openrouter" ||
-		!reflect.DeepEqual(p.Models, []string{"typesafe/jev-1.13", "typesafe/jev-latest"}) || p.Origin != "~/.abcd.noindex/config.json" {
+		!reflect.DeepEqual(p.Models, []string{"typesafe/jev-1.13", "typesafe/jev-latest"}) || p.Origin != abcdhome.Display("config.json") {
 		t.Fatalf("provider = %+v, %v", p, ok)
 	}
 	tgt, ok := c.Role("scribe")
@@ -119,7 +119,7 @@ func TestAnUnlistedModelIsRefusedWhenTheConfigurationIsRead(t *testing.T) {
 		f := newFx(t)
 		f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `},` + route + `}}`)
 		err := f.loadAPIErr()
-		for _, want := range []string{"not on openrouter's list", "typesafe/jev-1.13, typesafe/jev-latest", "~/.abcd.noindex/config.json"} {
+		for _, want := range []string{"not on openrouter's list", "typesafe/jev-1.13, typesafe/jev-latest", abcdhome.Display("config.json")} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("%s: refusal %q does not name %q", route, err, want)
 			}
@@ -131,7 +131,7 @@ func TestAnUnlistedModelIsRefusedWhenTheConfigurationIsRead(t *testing.T) {
 	// (TestARepositoryRouteToAnUnlistedModelIsSkipped).
 	f := newFx(t)
 	f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scribe":"local/openai/gpt-5"}}}`)
-	if err := f.loadAPIErr(); !strings.Contains(err.Error(), "~/.abcd.noindex/config.json (machine layer)") || !strings.Contains(err.Error(), "qwen/qwen3-8b") {
+	if err := f.loadAPIErr(); !strings.Contains(err.Error(), abcdhome.Display("config.json")+" (machine layer)") || !strings.Contains(err.Error(), "qwen/qwen3-8b") {
 		t.Fatalf("machine route refusal = %v", err)
 	}
 }
@@ -195,7 +195,7 @@ func TestARepositoryRouteToAnUnlistedModelIsSkipped(t *testing.T) {
 			}
 			switch {
 			case tc.machineModel != "":
-				if !ok || got.Model != tc.machineModel || got.Origin != "~/.abcd.noindex/config.json" {
+				if !ok || got.Model != tc.machineModel || got.Origin != abcdhome.Display("config.json") {
 					t.Errorf("%s = %+v, %v; want the machine's own route", tc.route, got, ok)
 				}
 			case ok:
@@ -214,7 +214,7 @@ func TestASkippedUnlistedRepositoryRouteLeavesTheMachineRouteJudged(t *testing.T
 	f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scribe":"local/mistral/small"}}}`)
 	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/openai/gpt-5"}}}`)
 	err := f.loadAPIErr()
-	for _, want := range []string{"~/.abcd.noindex/config.json (machine layer)", "oracle.roles.scribe", "local/mistral/small", "not on local's list"} {
+	for _, want := range []string{abcdhome.Display("config.json") + " (machine layer)", "oracle.roles.scribe", "local/mistral/small", "not on local's list"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}
@@ -297,7 +297,7 @@ func TestARepositoryRouteToAKeyedProviderIsSkipped(t *testing.T) {
 				t.Fatalf("diagnostics %q, want exactly one naming the skipped keyed route", c.Diagnostics)
 			}
 			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, "openrouter", "holds a key", "skipped",
-				"set " + tc.setting + " in ~/.abcd.noindex/config.json and remove it from .abcd/config.json,"} {
+				"set " + tc.setting + " in " + abcdhome.Display("config.json") + " and remove it from .abcd/config.json,"} {
 				if !strings.Contains(hits[0], want) {
 					t.Errorf("diagnostic %q does not name %q", hits[0], want)
 				}
@@ -317,7 +317,7 @@ func TestARepositoryRouteToAKeyedProviderIsSkipped(t *testing.T) {
 			}
 			switch {
 			case tc.machineModel != "":
-				if !ok || got.Model != tc.machineModel || got.Origin != "~/.abcd.noindex/config.json" {
+				if !ok || got.Model != tc.machineModel || got.Origin != abcdhome.Display("config.json") {
 					t.Errorf("%s = %+v, %v; want the machine's own route", tc.route, got, ok)
 				}
 			case ok:
@@ -431,7 +431,7 @@ func TestARepositoryRouteWithAMalformedValueIsSkipped(t *testing.T) {
 					t.Errorf("diagnostic %q carries the rune %U; a repository value reaches the terminal sanitised", d, r)
 				}
 			}
-			if tgt, ok := c.Role("scribe"); !ok || tgt.Origin != "~/.abcd.noindex/config.json" {
+			if tgt, ok := c.Role("scribe"); !ok || tgt.Origin != abcdhome.Display("config.json") {
 				t.Errorf("scribe = %+v, %v; want the machine's own route in its place", tgt, ok)
 			}
 		})
@@ -452,7 +452,7 @@ func TestAMachineRouteWithAMalformedNameIsRefused(t *testing.T) {
 			f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scr\u0456be":"local/qwen/qwen3-8b"}}}`)
 			f.repoConfig(repo)
 			err := f.loadAPIErr()
-			for _, want := range []string{"~/.abcd.noindex/config.json (machine layer)", "oracle.roles", "not a plain lower-case name"} {
+			for _, want := range []string{abcdhome.Display("config.json") + " (machine layer)", "oracle.roles", "not a plain lower-case name"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("refusal %q does not name %q", err, want)
 				}
@@ -469,10 +469,10 @@ func TestAMachineRouteToAKeyedProviderIsAdmitted(t *testing.T) {
 		"judgements":{"duplicate-match":"openrouter/typesafe/jev-latest"}}}`)
 	f.repoConfig(`{"oracle":{"denylist":["openai/*"]}}`)
 	c := f.loadAPI()
-	if tgt, ok := c.Role("scribe"); !ok || tgt.Provider != "openrouter" || tgt.Origin != "~/.abcd.noindex/config.json" {
+	if tgt, ok := c.Role("scribe"); !ok || tgt.Provider != "openrouter" || tgt.Origin != abcdhome.Display("config.json") {
 		t.Fatalf("role = %+v, %v", tgt, ok)
 	}
-	if tgt, ok := c.Judgement("duplicate-match"); !ok || tgt.Origin != "~/.abcd.noindex/config.json" {
+	if tgt, ok := c.Judgement("duplicate-match"); !ok || tgt.Origin != abcdhome.Display("config.json") {
 		t.Fatalf("judgement = %+v, %v", tgt, ok)
 	}
 }
@@ -571,7 +571,7 @@ func TestADenylistTheConfigurationWritesStillRefuses(t *testing.T) {
 	f.machineConfig(`{"oracle":{"denylist":["google/gemini-3-pro"],"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","models":["typesafe/jev-1.13"]}}}}`)
 	c := f.loadAPI()
 	got := c.Denylist()
-	if len(got) != 1 || got[0].Pattern != "google/gemini-3-pro" || got[0].Origin != "~/.abcd.noindex/config.json" {
+	if len(got) != 1 || got[0].Pattern != "google/gemini-3-pro" || got[0].Origin != abcdhome.Display("config.json") {
 		t.Fatalf("denylist = %+v", got)
 	}
 	if err := c.Admit("openrouter", "google/gemini-3-pro:free"); err == nil {
@@ -592,7 +592,7 @@ func TestAProviderBlockInTheRepositoryIsRefused(t *testing.T) {
 	f := newFx(t)
 	f.repoConfig(`{"oracle":{"api":{"openrouter":{"base_url":"https://attacker.example/v1","key":"openrouter","models":["typesafe/jev-1.13"]}}}}`)
 	err := f.loadAPIErr()
-	for _, want := range []string{".abcd/config.json (repo layer)", "oracle.api", "~/.abcd.noindex/config.json"} {
+	for _, want := range []string{".abcd/config.json (repo layer)", "oracle.api", abcdhome.Display("config.json")} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}
@@ -642,14 +642,14 @@ func TestARepositoryRouteToAnUnconfiguredProviderYieldsToTheMachineRoute(t *test
 			} else {
 				got, ok = c.Judgement(tc.route)
 			}
-			if !ok || got.Provider != "openrouter" || got.Origin != "~/.abcd.noindex/config.json" {
+			if !ok || got.Provider != "openrouter" || got.Origin != abcdhome.Display("config.json") {
 				t.Fatalf("%s = %+v, %v; want the machine's own route", tc.route, got, ok)
 			}
 			if len(c.Diagnostics) != 1 {
 				t.Fatalf("diagnostics %q, want exactly one naming the skipped route", c.Diagnostics)
 			}
 			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, `"elsewhere"`,
-				"not configured on this machine", "skipped", "~/.abcd.noindex/config.json"} {
+				"not configured on this machine", "skipped", abcdhome.Display("config.json")} {
 				if !strings.Contains(c.Diagnostics[0], want) {
 					t.Errorf("diagnostic %q does not name %q", c.Diagnostics[0], want)
 				}
@@ -692,7 +692,7 @@ func TestAMalformedProviderBlockIsRefused(t *testing.T) {
 		f := newFx(t)
 		f.machineConfig(`{"oracle":{"api":{` + block + `}}}`)
 		err := f.loadAPIErr()
-		if !strings.Contains(err.Error(), "~/.abcd.noindex/config.json") {
+		if !strings.Contains(err.Error(), abcdhome.Display("config.json")) {
 			t.Errorf("%s: refusal %q does not name the file", name, err)
 		}
 		if strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "sk-live") {

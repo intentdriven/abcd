@@ -56,7 +56,7 @@ func TestSetRefusesEveryHomeThroughAnAbcdHomeLinkedIntoARepository(t *testing.T)
 			if err == nil || changed {
 				t.Fatalf("Set wrote through a ~/.abcd.noindex linked into a repository: changed %v, err %v", changed, err)
 			}
-			if !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+			if !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 				t.Errorf("the refusal must name the link: %v", err)
 			}
 			if strings.Contains(err.Error(), secretValue) {
@@ -172,7 +172,7 @@ func TestSetWritesNoIndexThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 			if !swapped {
 				t.Fatalf("Set never reached ~/.abcd.noindex through the walk that judges it (%d vetting(s) seen), so the race could not be staged: changed %v, err %v", seen, changed, err)
 			}
-			if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd.noindex is a symlink") {
+			if err == nil || changed || !strings.Contains(err.Error(), abcdhome.Display()+" is a symlink") {
 				t.Errorf("Set must refuse a ~/.abcd.noindex swapped for a link, naming it: changed %v, err %v", changed, err)
 			}
 			entries, rerr := os.ReadDir(dotfiles)

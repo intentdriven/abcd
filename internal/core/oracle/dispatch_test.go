@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 )
@@ -173,7 +174,7 @@ func TestDispatchRefusesBeforeAnyCall(t *testing.T) {
 		// point cold-reading-detection at, so no model can be taken from it.
 		r := Route{Agent: "cold-reading-detection", Row: Row{Tier: Economy, FanOut: 1}, ConnectionTried: "elsewhere", ConnectionUsed: "elsewhere"}
 		_, _, err := c.Dispatch(ctx, creds, r, dispatchBrief, verdictContract)
-		wantAll(t, err, "cold-reading-detection", "elsewhere", "oracle.roles.cold-reading-detection", "~/.abcd.noindex/config.json")
+		wantAll(t, err, "cold-reading-detection", "elsewhere", "oracle.roles.cold-reading-detection", abcdhome.Display("config.json"))
 	})
 
 	t.Run("a keyed provider's route from anywhere but the machine", func(t *testing.T) {
@@ -187,9 +188,9 @@ func TestDispatchRefusesBeforeAnyCall(t *testing.T) {
 		tgt := c.roles["cold-reading-detection"]
 		tgt.Origin = ".abcd/config.json"
 		c.roles["cold-reading-detection"] = tgt
-		defer func() { tgt.Origin = "~/.abcd.noindex/config.json"; c.roles["cold-reading-detection"] = tgt }()
+		defer func() { tgt.Origin = abcdhome.Display("config.json"); c.roles["cold-reading-detection"] = tgt }()
 		_, _, err = c.Dispatch(ctx, creds, r, dispatchBrief, verdictContract)
-		wantAll(t, err, "oracle.roles.cold-reading-detection", "~/.abcd.noindex/config.json", "openrouter")
+		wantAll(t, err, "oracle.roles.cold-reading-detection", abcdhome.Display("config.json"), "openrouter")
 	})
 
 	t.Run("a key that is not set", func(t *testing.T) {
@@ -298,7 +299,7 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 		f.repo(`{"cold-reading-detection":{"tier":"economy","settings":{"max_tokens":7,"temperature":1.9}}}`)
 		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 		wantAll(t, err, "cold-reading-detection", "openrouter", "max_tokens", "temperature", ".abcd/config/oracle-routing.json",
-			"~/.abcd.noindex/oracle-routing.json", "agents.cold-reading-detection.settings")
+			abcdhome.Display("oracle-routing.json"), "agents.cold-reading-detection.settings")
 		if r.OnProvider() || r.SettingsSent != nil {
 			t.Fatalf("a refused route = %+v; want none", r)
 		}
@@ -325,7 +326,7 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 		f, c := pointed(t, p.base())
 		f.repo(`{"cold-reading-detection":{"tier":"economy","settings":{"max_tokens":7}}}`)
 		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
-		wantAll(t, err, "max_tokens", ".abcd/config/oracle-routing.json", "~/.abcd.noindex/oracle-routing.json")
+		wantAll(t, err, "max_tokens", ".abcd/config/oracle-routing.json", abcdhome.Display("oracle-routing.json"))
 		if r.OnProvider() || r.SettingsSent != nil {
 			t.Fatalf("a refused route = %+v; want none", r)
 		}

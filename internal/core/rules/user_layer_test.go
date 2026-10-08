@@ -138,12 +138,12 @@ func TestUserLayerUntraversableScopeIsAbsent(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root reads through a mode-000 directory")
 	}
-	for _, name := range []string{"HOME", "~/.abcd.noindex"} {
+	for _, name := range []string{"HOME", abcdhome.Display()} {
 		t.Run(name, func(t *testing.T) {
 			home := userHome(t)
 			writeUserRules(t, home, `{"schema_version":1,"domains":{"PII":{"rules":["unreachable pii"]}}}`)
 			dir := home
-			if name == "~/.abcd.noindex" {
+			if name == abcdhome.Display() {
 				dir = abcdhome.Path(home)
 			}
 			if err := os.Chmod(dir, 0); err != nil {
@@ -300,7 +300,7 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 			if err := os.Symlink(real, abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
-		}, "~/.abcd.noindex is a symlink"},
+		}, abcdhome.Display() + " is a symlink"},
 		{"writable by others", func(t *testing.T, home string) {
 			p := writeUserRules(t, home, `{"schema_version":1,"domains":{}}`)
 			if err := os.Chmod(p, 0o666); err != nil {
@@ -332,7 +332,7 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 				t.Fatalf("a %s user file must be refused, not skipped; loaded %d domains", tc.name, len(rs.Domains))
 			}
 			msg := err.Error()
-			if !strings.Contains(msg, "~/.abcd.noindex") {
+			if !strings.Contains(msg, abcdhome.Display()) {
 				t.Errorf("the refusal must name the user file in tilde form: %s", msg)
 			}
 			if !strings.Contains(msg, tc.want) {
