@@ -12,6 +12,10 @@ found_at: ".abcd/development/intents"
 deferred_after: "v0.11.1"
 deferral_reason: "no ruling owed; carried past v0.11.1 by lane drainDrift3 (run A 2026-09-29) on its size: the 192 sites each need a reading against the live spec their id collides with, which the lane's time box did not hold after qualifying the six intents iss-2609261536147903 named."
 remedy: "Read each remaining site against the live spec its id collides with and qualify the predecessor-store ones '(predecessor store)' per the specs charter's Two spc-N Namespaces rule, after the branches carrying itd-82 and itd-130 land (the five sites named in the progress section below); grounds: the charter is the rule, and the census below (ordinal ids at or below spc-70, not the intent's own spec, no qualifier on the line) reproduces the set."
+resolution: "The five deferred sites (itd-82's spc-24, itd-130's four spc-35) were read at the merged tip and cite live specs, so no qualifier is owed. A tip census of 102 sites across 36 intents, each read against its colliding live spec, finds no unqualified predecessor-store reference. The census script is now in the record."
+impact: internal
+resolved_by:
+  commit: "814dedc6d72a531933d5a3a6a91db0e3cc5eecd0"
 ---
 
 The predecessor-store qualifier sweep reaches past the six intents iss-2609261536147903 named: outside drafts/ and those six, 192 citation sites across about forty intents name a spc-N at or below spc-70 that is not the citing intent's own spec, with no '(predecessor store)' on the line. Some are live cross-references (the cold-reading family's intents cite each other's live specs), and some are the predecessor store's (itd-4, itd-6, itd-29, itd-47 and itd-49 describe pre-rebuild work in its terms), so each site needs the same reading against the live spec it collides with; the specs charter's Two spc-N Namespaces section is the rule. Found while sweeping the pattern of iss-2609261536147903 in lane drainDrift3; a census script over intents/{planned,shipped,disciplines} reproduces the count.
@@ -56,3 +60,7 @@ for d in ("planned", "shipped", "disciplines", "superseded"):
                     sites.append((iid, n, m.group(0)))
 print(len(sites), len({s[0] for s in sites}))
 ```
+
+## Grounds
+
+- pursued: every ordinal spc-N at or below spc-70 in intents/{planned,shipped,disciplines,superseded} that is not the citing intent's own spec and lacks the qualifier is a live cross-reference, data, an illustration, or already qualified in words; a census site that names a predecessor-store record without '(predecessor store)' would show it wrong
