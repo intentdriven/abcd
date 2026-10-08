@@ -431,9 +431,9 @@ Exit codes gate the flow:
   Every refusal names the specific record, version, or surface that blocks it — a
   release in flight, a record move left uncommitted (`uncommitted-records`), a
   merged feature whose intent still sits in `planned/`, a missing surface
-  baseline, a surface break with no `breaking` record, or a
-  consequential finding this cycle captured and never answered (see *The
-  findings gate* below). A refusal is a result to relay, not a crash, and not
+  baseline, a surface break with no `breaking` record, a
+  consequential finding this cycle captured and never answered, or an open
+  issue record left uncommitted (see *The findings gate* below). A refusal is a result to relay, not a crash, and not
   something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
 
@@ -478,6 +478,14 @@ status signal *is* folder membership, so a record in no folder has no status lef
 to read. Every other route leaves a trace the next reader can follow; this one
 leaves nothing to audit, which is why it is named separately: the record has to
 come back before it can be resolved, wontfixed or deferred.
+
+**An uncommitted open record refuses too**, under `unfixed-finding`. The gate
+reads the ledger at HEAD, so it cannot judge a finding captured, regraded,
+deferred or removed in the working tree: whenever any issue record under
+`.abcd/work/issues/open/` differs from HEAD — added, edited, deleted or only
+staged, at any severity — the cut refuses and the `reason` names every path.
+`--allow-dirty` never waives it, because the gate would still read HEAD. Commit
+the records (or discard the change) and run again.
 
 The anchor is what bounds it. Records that already existed at the last tag are
 the standing backlog and are never this cut's to answer; only what this cycle
@@ -655,7 +663,9 @@ ship is passed `--allow-dirty`, which carries them into the cut and records the
 override, with every path it carried, in the report (`allowed_dirty` in
 `--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,
 never the archive pin's refusal of an uncommitted payload file, and never the
-cut's own `uncommitted-records` refusal (step 1). On a ship
+cut's own `uncommitted-records` refusal (step 1), and never the findings
+gate's refusal of an uncommitted record under `.abcd/work/issues/open/`
+(`unfixed-finding`; see *The findings gate*). On a ship
 that renders nothing it is an operand error, because there is no gate to
 waive. Relay the refusal and let the user decide; do not add `--allow-dirty` on
 their behalf. The ship's report, its `--json` (`parity`, `deep_smoke`) and its

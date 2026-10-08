@@ -2083,7 +2083,7 @@ refusal, exit 3 on a pause or a locked run state.
 **Flags:**
 
 ```
-      --discard string   discard a held lane (lane-<n>): close its pull request, remove its worktree and branch
+      --discard string   discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
       --release string   land a held lane as it is (lane-<n>), once no lane has work left
       --run string       the run to step (run-<16 digits>); the one run in progress when omitted
 ```
@@ -2672,7 +2672,7 @@ Cut a release, deriving its version and records from what shipped: Writes the CH
 **Flags:**
 
 ```
-      --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)
+      --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, the archive pin's clean-payload refusal, the cut's uncommitted-records refusal, or the findings gate's refusal of an uncommitted open/ issue record)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
       --fetch-baseline          read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)

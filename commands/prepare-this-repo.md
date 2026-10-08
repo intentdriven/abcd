@@ -55,7 +55,7 @@ Read from `$ABCD`, delegating heavy reading to subagents where available:
   `planned/` → `shipped/` → `superseded/`).
 - `docs/README.md` — strict Diátaxis, four directories, present tense only,
   user-facing only.
-- `.abcd/docs-lint.json` and `record-lint.json` — study as patterns
+- `.abcd/docs-lint.json` and `.abcd/record-lint.json` — study as patterns
   (banned-token rules with severity, fix message, `allow_context` escapes).
 - `.abcd/.work.local/private-names.txt` — **if present**: the banlist for the
   Phase 2 privacy audit. Its contents are read-only context; never reproduce
@@ -191,15 +191,30 @@ target's `.abcd/.work.local/scratch/` (create the directory via
 
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install
-   git config core.hooksPath .githooks
    ```
 
    That writes the committed private name guard (`.githooks/pre-commit` and its
    `pre-merge-commit` half), the gitignored local banlist stub, and the
-   `.gitattributes` line pinning the hooks to LF. The second command is once per
-   clone: a committed hook is not a running hook until git is pointed at it.
-   Report the hooks as scaffolded but unarmed if the user declines that config
-   change — never silently.
+   `.gitattributes` line pinning the hooks to LF. A committed hook is not a
+   running hook until git is pointed at it, so read which hooks directory git
+   runs in this clone from the detection pass
+   (`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --json`, `banlist.hooks_path`) and act
+   on it:
+
+   - `unarmed` — point git at the committed hooks, once per clone:
+
+     ```bash
+     git config core.hooksPath .githooks
+     ```
+
+     Report the hooks as scaffolded but unarmed if the user declines that
+     config change — never silently.
+   - `foreign` — a hooks path set outside the clone (a global or system hooks
+     dispatcher) is in force. Leave it alone: never set a local
+     `core.hooksPath` over it, which would shadow the dispatcher in this clone.
+     Tell the user the dispatcher has to call the hook in `.githooks/` for the
+     guard to run, as `/abcd:ahoy` says.
+   - `armed` — nothing to do.
 6. **Attribution (opt-in only).** If the user says this repo requires
    AI disclosure, scaffold the prompt hook from the binary and add the
    attribution section to `AGENTS.md`:
