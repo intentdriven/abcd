@@ -181,6 +181,9 @@ type Client struct {
 	// (models.go), ListTimeout whatever the call limits above are.
 	models   string
 	listWait time.Duration
+	// tokenize is the exact count's address (size.go), empty when the base
+	// URL gives none.
+	tokenize string
 	hc       *http.Client
 }
 
@@ -256,6 +259,7 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 	c := &Client{
 		endpoint:  base + "/chat/completions",
 		models:    base + "/models",
+		tokenize:  tokenizeURL(base),
 		listWait:  ListTimeout,
 		key:       key,
 		forms:     keyForms(key),
@@ -329,8 +333,10 @@ func loopback(host string) bool {
 // verification call, which judges only that the provider answered).
 //
 // Before sending, the request is judged against the model's served size
-// where the service's model list publishes one (size.go): a request estimated
-// over it is refused there, and without such a figure it is sent as before.
+// where the service's model list publishes one and the service counts the
+// request exactly (size.go): a request counted over it is refused there, and
+// without both it is sent as before. The checks are spent inside the call's
+// total cap.
 //
 // The call asks for a stream and assembles its events into the answer
 // (stream.go); a server that answers with one chat-completion body instead is
@@ -342,11 +348,19 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 	if err != nil {
 		return Result{}, err
 	}
-	if err := c.checkSize(ctx, req); err != nil {
-		return Result{}, err
-	}
 	l := c.limit(ctx)
 	defer l.stop()
+	reached, err := c.checkSize(l.ctx, req)
+	if err != nil {
+		return Result{}, err
+	}
+	if l.ctx.Err() != nil {
+		// The checks outlasted the call's total cap, or the caller's
+		// context ended while they ran: nothing more is sent.
+		return Result{}, c.callError(l, context.Cause(l.ctx))
+	}
+	l.reached = reached
+	l.send(c.firstByte)
 	httpReq, err := http.NewRequestWithContext(l.ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return Result{}, c.fail("the request could not be built")
@@ -409,12 +423,9 @@ func (c *Client) render(req Request) ([]byte, error) {
 		return nil, errors.New("openaiapi: the request names no model; the adapter asks for the model it is given, and it was given none")
 	}
 	fields := map[string]any{
-		"model": req.Model,
-		"messages": []map[string]string{
-			{"role": "system", "content": req.Brief.Instructions},
-			{"role": "user", "content": req.Brief.Input},
-		},
-		"stream": true,
+		"model":    req.Model,
+		"messages": messages(req.Brief),
+		"stream":   true,
 	}
 	keys := make([]string, 0, len(req.Settings))
 	for k := range req.Settings {
@@ -433,6 +444,15 @@ func (c *Client) render(req Request) ([]byte, error) {
 		fields[k] = json.RawMessage(v)
 	}
 	return json.Marshal(fields)
+}
+
+// messages is the brief in the protocol's two roles, as the chat call sends
+// it and as the size check has it counted.
+func messages(b Brief) []map[string]string {
+	return []map[string]string{
+		{"role": "system", "content": b.Instructions},
+		{"role": "user", "content": b.Input},
+	}
 }
 
 func accepted(k string) bool {
@@ -783,6 +803,10 @@ func (c *Client) callError(l *limits, err error) error {
 	case errors.Is(l.parent.Err(), context.DeadlineExceeded) && !ours(context.Cause(l.ctx)):
 		// The caller's own deadline, not one of the call's limits.
 		return c.fail("the caller's deadline for the call to " + c.host + " passed, so the call is abandoned")
+	case neverConnected(err) && l.reached:
+		// A check before the call connected, so the key, and the brief a
+		// count carries, may have left this machine: not unreachable.
+		return c.reachFailure(err)
 	case neverConnected(err):
 		return &unreachableError{msg: c.reachFailure(err).Error()}
 	}
