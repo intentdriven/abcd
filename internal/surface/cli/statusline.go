@@ -64,14 +64,17 @@ const statuslineFallbackEnv = "ABCD_STATUSLINE_FALLBACK"
 // it gets its own and far more generous bound: five seconds lets a slow but
 // working command (a package runner's first start) keep its line, and still
 // ends a hang. At it the command's whole process group is killed, the output
-// it already printed stands, and the verb exits 0. It is a variable only so
-// a test can shorten it.
-const (
-	statuslineBudget    = 500 * time.Millisecond
-	statuslineGitBudget = 300 * time.Millisecond
+// it already printed stands, and the verb exits 0.
+//
+// The three are variables only so a test can resize them: a test that proves
+// a bound STOPS slow work widens them past what a loaded machine's real git
+// can outrun. TestStatuslineBudgetIsUnderASecond pins the values below, so a
+// changed production value fails a test.
+var (
+	statuslineBudget      = 500 * time.Millisecond
+	statuslineGitBudget   = 300 * time.Millisecond
+	previousCommandBudget = 5 * time.Second
 )
-
-var previousCommandBudget = 5 * time.Second
 
 // previousCommandWaitDelay is how long the verb waits, after killing the
 // previous command's group, for the pipes it shared to close.
@@ -136,9 +139,12 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(stderr, "abcd statusline: "+format+"\n", a...)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), statuslineBudget)
+			// The budgets are read once, here: a decision abandoned at the
+			// ceiling runs on, and it must not read them again later.
+			budget, gitBudget := statuslineBudget, statuslineGitBudget
+			ctx, cancel := context.WithTimeout(context.Background(), budget)
 			defer cancel()
-			gitCtx, cancelGit := context.WithTimeout(ctx, statuslineGitBudget)
+			gitCtx, cancelGit := context.WithTimeout(ctx, gitBudget)
 			defer cancelGit()
 
 			// The watchdog. The decision is made in a goroutine that returns a
@@ -148,12 +154,12 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 			// nobody is waiting for.
 			done := make(chan statusDecision, 1)
 			stdin := cmd.InOrStdin()
-			go func() { done <- decideStatus(gitCtx, stdin) }()
+			go func() { done <- decideStatus(gitCtx, gitBudget, stdin) }()
 			var d statusDecision
 			select {
 			case d = <-done:
 			case <-ctx.Done():
-				note("abcd's own work did not finish within %s, so the status line is empty for this refresh", statuslineBudget)
+				note("abcd's own work did not finish within %s, so the status line is empty for this refresh", budget)
 				return nil
 			}
 
@@ -199,8 +205,8 @@ type statusDecision struct {
 // payload, load the setting, resolve the checkout, decide whether it is
 // managed, and compose the row. It runs under the watchdog, so it writes no
 // stream; everything it would say is returned as notes. Git is bounded by
-// gitCtx.
-func decideStatus(gitCtx context.Context, stdin io.Reader) statusDecision {
+// gitCtx, which ends at gitBudget.
+func decideStatus(gitCtx context.Context, gitBudget time.Duration, stdin io.Reader) statusDecision {
 	var d statusDecision
 	raw, payload, notes := readStatusPayload(stdin)
 	d.raw = raw
@@ -228,7 +234,7 @@ func decideStatus(gitCtx context.Context, stdin io.Reader) statusDecision {
 
 	root, rootErr := statusline.CheckoutRoot(gitCtx, cwd)
 	if rootErr != nil && !errors.Is(rootErr, statusline.ErrNoCheckout) {
-		d.notes = append(d.notes, fmt.Sprintf("git did not name the checkout within %s, so the status line is empty for this refresh", statuslineGitBudget))
+		d.notes = append(d.notes, fmt.Sprintf("git did not name the checkout within %s, so the status line is empty for this refresh", gitBudget))
 		d.blank = true
 		return d
 	}
@@ -236,7 +242,7 @@ func decideStatus(gitCtx context.Context, stdin io.Reader) statusDecision {
 	if rootErr == nil {
 		var mErr error
 		if managed, mErr = ahoy.ManagedContext(gitCtx, root); mErr != nil {
-			d.notes = append(d.notes, fmt.Sprintf("git did not say within %s whether abcd manages this checkout, so the status line is empty for this refresh", statuslineGitBudget))
+			d.notes = append(d.notes, fmt.Sprintf("git did not say within %s whether abcd manages this checkout, so the status line is empty for this refresh", gitBudget))
 			d.blank = true
 			return d
 		}
