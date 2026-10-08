@@ -405,9 +405,15 @@ type BanlistHealth struct {
 	// the commit that merges someone else's branch.
 	Hook      HookState `json:"hook"`
 	MergeHook HookState `json:"merge_hook"`
-	// HooksPathArmed reports whether THIS clone's local git config points at the
-	// committed hooks directory. False is not a fault — the hooks path can be armed
-	// by a user-level dispatcher this deliberately does not claim to see — so the
+	// HooksPath is which hooks directory git runs in this clone, judged against the
+	// committed one: armed, unarmed, or foreign — a hooks path set outside the
+	// clone's local config (a global or system dispatcher) that abcd cannot see
+	// into. Foreign is neither verdict, and no surface may advise a local override
+	// for it: a local core.hooksPath shadows the dispatcher in this clone and drops
+	// whatever else it chains.
+	HooksPath HooksPathState `json:"hooks_path"`
+	// HooksPathArmed is HooksPath == armed, kept for readers of the boolean. False
+	// is not a fault — see HooksPath for whether it is unarmed or unknown — so the
 	// surfaces phrase it as an instruction, never as an accusation.
 	HooksPathArmed bool `json:"hooks_path_armed"`
 	// PublicFamily is the committed layer's state, including the case where it is
@@ -479,7 +485,8 @@ func detectBanlistHealth(cwd string) BanlistHealth {
 	defer root.Close()
 	h.Hook = classifyGuardHook(root, GuardHookRelPath)
 	h.MergeHook = classifyGuardHook(root, GuardMergeHookRelPath)
-	h.HooksPathArmed = hooksPathArmed(cwd)
+	h.HooksPath = hooksPathState(cwd)
+	h.HooksPathArmed = h.HooksPath == HooksPathStateArmed
 	h.PublicFamily = classifyPublicFamily(cwd, root, ign.public)
 	h.HookEOLPinned = gitattributesPinsHookEOL(cwd, root)
 	sum, serr := banlist.SummarisePrivate(cwd)
@@ -524,32 +531,76 @@ func gitattributesPinsHookEOL(cwd string, root *os.Root) bool {
 	return guardEOLAttributeRe.Match(data)
 }
 
-// hooksPathArmed reports whether this clone's LOCAL git config points core.hooksPath
-// at the committed hooks directory. `--local` reads only .git/config, so the probe's
-// own `-c core.hooksPath=…` isolation cannot answer for it. `--type=path` makes git
-// expand `~/`, `~user/` and `%(prefix)/` as it does when it runs a hook, so the
-// value judged is the directory git would use, never its spelling.
+// HooksPathState is which hooks directory git runs in a clone, judged against the
+// committed one.
+type HooksPathState string
+
+const (
+	// HooksPathStateArmed: the effective core.hooksPath resolves to the committed
+	// hooks directory, so git runs the guard.
+	HooksPathStateArmed HooksPathState = "armed"
+	// HooksPathStateUnarmed: the clone's own config sets no hooks path or points it
+	// elsewhere, and nothing outside the clone sets one. Arming it locally is the
+	// clone's own business.
+	HooksPathStateUnarmed HooksPathState = "unarmed"
+	// HooksPathStateForeign: no local hooks path, and one set outside the clone's
+	// local config (global, system) names some other directory — a dispatcher, as
+	// often as not, that may chain to the committed hooks. Whether it does is
+	// unknown, and a local override would shadow it.
+	HooksPathStateForeign HooksPathState = "foreign"
+)
+
+// hooksPathState judges the hooks path by what git will run, not by the local key
+// alone.
 //
-// A false answer is deliberately weak evidence: the hooks path can also be armed by
-// a user-level dispatcher this never sees, so no surface may turn it into "the guard
-// is not running" — only into "arm it like this".
-func hooksPathArmed(cwd string) bool {
-	out, err := gitutil.Run(cwd, "config", "--local", "--type=path", "--get", "core.hooksPath")
-	if err != nil {
-		return false
-	}
-	set := strings.TrimSpace(out)
-	if set == "" {
-		return false
-	}
+// The LOCAL value is read first, through the isolated git: `--local` reads only
+// .git/config, so the probe's own `-c core.hooksPath=…` isolation cannot answer for
+// it, and when it is set it wins over every scope below it, as it does for git.
+// `--type=path` makes git expand `~/`, `~user/` and `%(prefix)/` as it does when it
+// runs a hook, so the value judged is the directory git would use, never its
+// spelling.
+//
+// With no local value, the person's own configuration is read as their git reads
+// it (gitutil.HooksPaths, global and system config in force), and the last value
+// is the one git runs. That costs one more git process, paid only in a clone with
+// no local value.
+func hooksPathState(cwd string) HooksPathState {
+	committed := filepath.Clean(filepath.Join(cwd, filepath.FromSlash(guardHooksDirRelPath)))
 	// Both sides resolved before comparing: git accepts an ABSOLUTE core.hooksPath,
 	// and a literal comparison against ".githooks" reads a perfectly armed clone as
 	// unarmed — at which point the surface tells the user to replace a working
 	// absolute path with a relative one, which is advice to downgrade their config.
-	if !filepath.IsAbs(set) {
-		set = filepath.Join(cwd, set)
+	// A relative value, from any scope, is relative to the working tree's root.
+	resolves := func(v string) bool {
+		if !filepath.IsAbs(v) {
+			v = filepath.Join(cwd, v)
+		}
+		return filepath.Clean(v) == committed
 	}
-	return filepath.Clean(set) == filepath.Clean(filepath.Join(cwd, filepath.FromSlash(guardHooksDirRelPath)))
+	out, err := gitutil.Run(cwd, "config", "--local", "--type=path", "--get", "core.hooksPath")
+	if set := strings.TrimSpace(out); err == nil && set != "" {
+		if resolves(set) {
+			return HooksPathStateArmed
+		}
+		return HooksPathStateUnarmed
+	}
+	paths, err := gitutil.HooksPaths(cwd)
+	if err != nil || len(paths) == 0 {
+		// A git that cannot answer keeps the answer the local read gave: unarmed.
+		return HooksPathStateUnarmed
+	}
+	if resolves(paths[len(paths)-1]) {
+		return HooksPathStateArmed
+	}
+	return HooksPathStateForeign
+}
+
+// hooksPathArmed reports whether git runs the committed hooks directory in this
+// clone. A false answer is deliberately weak evidence — hooksPathState says whether
+// it is unarmed or unknown — so no surface may turn it into "the guard is not
+// running".
+func hooksPathArmed(cwd string) bool {
+	return hooksPathState(cwd) == HooksPathStateArmed
 }
 
 // ---------------------------------------------------------------------------

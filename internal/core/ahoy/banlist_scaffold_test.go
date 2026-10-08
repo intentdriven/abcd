@@ -650,6 +650,58 @@ func TestHooksPathArmedResolvesBothSides(t *testing.T) {
 	}
 }
 
+// TestHooksPathJudgesWhatGitWillRun is iss-2610020704152920. The probe read only
+// the clone's LOCAL core.hooksPath, so a clone whose hooks git runs through a
+// global dispatcher — one that chains to the committed .githooks/pre-commit — read
+// as unarmed, and the status told the person to set a local core.hooksPath that
+// would override their dispatcher in this clone and drop whatever else it chains.
+// A hooks path set outside the clone's own config is a third state: abcd cannot see
+// whether it reaches the guard, so it is neither armed nor unarmed.
+func TestHooksPathJudgesWhatGitWillRun(t *testing.T) {
+	setupHermetic(t)
+	repo := gittest.NewRepo(t)
+	root := repo.Root()
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	setGlobal := func(v string) {
+		if err := os.WriteFile(global, []byte("[core]\n\thooksPath = \""+v+"\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setLocal := func(v string) {
+		cmd := exec.Command("git", "-C", root, "config", "--local", "core.hooksPath", v)
+		cmd.Env = repo.Env()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git config: %v\n%s", err, out)
+		}
+	}
+	if got := hooksPathState(root); got != HooksPathStateUnarmed {
+		t.Errorf("no hooks path anywhere = %q; want %q", got, HooksPathStateUnarmed)
+	}
+	// The reported shape: a global dispatcher outside the clone.
+	setGlobal(filepath.Join(t.TempDir(), "dispatcher"))
+	if got := hooksPathState(root); got != HooksPathStateForeign {
+		t.Errorf("a global dispatcher = %q; want %q, never unarmed", got, HooksPathStateForeign)
+	}
+	// A global relative value is resolved in each clone, so `.githooks` set globally
+	// arms this one exactly as a local value would.
+	setGlobal(".githooks")
+	if got := hooksPathState(root); got != HooksPathStateArmed {
+		t.Errorf("a global .githooks = %q; want %q", got, HooksPathStateArmed)
+	}
+	// The clone's own config wins over the global one, as it does for git.
+	setGlobal(filepath.Join(t.TempDir(), "dispatcher"))
+	setLocal(".githooks")
+	if got := hooksPathState(root); got != HooksPathStateArmed {
+		t.Errorf("a local .githooks over a global dispatcher = %q; want %q", got, HooksPathStateArmed)
+	}
+	setLocal("other-hooks")
+	if got := hooksPathState(root); got != HooksPathStateUnarmed {
+		t.Errorf("a local value elsewhere = %q; want %q", got, HooksPathStateUnarmed)
+	}
+}
+
 // TestMarkerIsRecognisedOnlyAsAWholeLine is security MAJ-1. The marker was matched
 // as a substring anywhere in the blob, so a foreign hook that merely MENTIONS it —
 // a comment, a grep for it, a copied fragment — classified as abcd's own. The board
