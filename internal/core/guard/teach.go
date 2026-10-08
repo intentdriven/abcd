@@ -108,7 +108,11 @@ func (r Registry) RecallTerms() []string {
 // it is written on a command line — every alternative of a flag group, every
 // flag a flag-value constraint names, every operand prefix and operand word,
 // and for an args_from source both readings the matcher makes, the command
-// substitution (`kill $(pgrep`) and the xargs pipeline (`xargs kill`).
+// substitution (`kill $(pgrep`) and the xargs pipeline (`xargs kill`), plus
+// the source's own head bare (`pgrep`, `pidof`). The source is the search the
+// hazard turns on, not the everyday verb, so it recalls wherever a signal flag
+// or a wrapping shell stands between the verb and it (`kill -9 $(pgrep make)`,
+// `kill $(sh -c 'pgrep make')`).
 //
 // The rules loader matches a term with its punctuation collapsed to spaces, so
 // a shape carrying no letter or digit (`+`, `/`) would match as the bare head;
@@ -144,7 +148,7 @@ func (p Pattern) recallShapes() []string {
 	}
 	for _, src := range p.ArgsFrom {
 		if h := src.head(); h != "" {
-			out = append(out, head+" $("+h)
+			out = append(out, head+" $("+h, h)
 		}
 	}
 	if len(p.ArgsFrom) > 0 {

@@ -130,6 +130,7 @@ func TestRecallTermsCarryAnEverydayVerbOnlyWithAShape(t *testing.T) {
 	want := []string{
 		"drop table",
 		"kill $(pgrep", "kill $(pidof",
+		"pgrep", "pidof",
 		"rm",
 		"stop --now", "stop -9", "stop -s",
 		"xargs kill",
@@ -149,7 +150,7 @@ func TestRecallTermsCarryAnEverydayVerbOnlyWithAShape(t *testing.T) {
 	if slices.Contains(terms, "kill") {
 		t.Errorf("the bundled registry offers the bare everyday verb `kill` as a recall term: %q", terms)
 	}
-	for _, want := range []string{"kill $(pgrep", "kill $(pidof", "xargs kill", "killall", "pkill", "rm"} {
+	for _, want := range []string{"kill $(pgrep", "kill $(pidof", "pgrep", "pidof", "xargs kill", "killall", "pkill", "rm"} {
 		if !slices.Contains(terms, want) {
 			t.Errorf("the bundled recall terms lack %q: %q", want, terms)
 		}

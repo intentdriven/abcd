@@ -705,8 +705,9 @@ order. The recall keywords are the command heads the registry matches (`rm`,
 the bare words "push" or "reset" never recall the domain. A head that is an
 everyday English verb is marked so in the registry itself (`everyday_verb` on
 the entry, as `kill-by-search` carries it) and recalls only joined to a shape
-its pattern declares (`kill $(pgrep`, `xargs kill`), so "kill the feature
-flag" does not recall the domain (iss-2609300123431381). The keywords end with
+its pattern declares (`kill $(pgrep`, `xargs kill`, and the search it reads
+its pids from, `pgrep` or `pidof`, bare), so "kill the feature flag" does not
+recall the domain while `kill -9 $(pgrep make)` does (iss-2609300123431381). The keywords end with
 a short fixed list for shell work in general (`shell`, `bash`, `zsh`,
 `command line`, `force push`). An entry added to or removed from the registry changes the
 domain with no second edit, and a test fails the build if the domain and the
