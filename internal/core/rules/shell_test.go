@@ -129,7 +129,8 @@ func TestShellDomainRecallsShellHeavyPrompts(t *testing.T) {
 		"cd into build and rm the old output",
 		"git push the branch when the tests pass",
 		"git reset the worktree to origin",
-		"kill the stale server process",
+		"stop it with kill $(pgrep -f make) for now",
+		"pgrep -f node | xargs kill",
 		"pkill the dev server",
 		"write a bash script that loops over the fixtures",
 		"run it in the shell",
@@ -146,6 +147,10 @@ func TestShellDomainRecallsShellHeavyPrompts(t *testing.T) {
 		"push the release notes to the site",
 		"resolve the issue with a note",
 		"the reset button on the form",
+		// kill is an everyday verb: the registry marks it so, and the bare
+		// word no longer recalls the domain (iss-2609300123431381).
+		"kill the feature flag, we are not shipping it",
+		"kill the stale server process",
 	} {
 		if has(rs.Match(prompt), ShellDomain) {
 			t.Errorf("ordinary prompt %q recalled %s", prompt, ShellDomain)

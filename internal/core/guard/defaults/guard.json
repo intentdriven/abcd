@@ -408,6 +408,7 @@
     },
     "kill-by-search": {
       "tier": "blocker",
+      "everyday_verb": true,
       "pattern": {
         "command": "kill",
         "args_from": [

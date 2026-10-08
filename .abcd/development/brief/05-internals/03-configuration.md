@@ -702,9 +702,13 @@ entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
 order. The recall keywords are the command heads the registry matches (`rm`,
 `git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
-the bare words "push" or "reset" never recall the domain, plus a short fixed
-list for shell work in general (`shell`, `bash`, `zsh`, `command line`,
-`force push`). An entry added to or removed from the registry changes the
+the bare words "push" or "reset" never recall the domain. A head that is an
+everyday English verb is marked so in the registry itself (`everyday_verb` on
+the entry, as `kill-by-search` carries it) and recalls only joined to a shape
+its pattern declares (`kill $(pgrep`, `xargs kill`), so "kill the feature
+flag" does not recall the domain (iss-2609300123431381). The keywords end with
+a short fixed list for shell work in general (`shell`, `bash`, `zsh`,
+`command line`, `force push`). An entry added to or removed from the registry changes the
 domain with no second edit, and a test fails the build if the domain and the
 registry ever part. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`

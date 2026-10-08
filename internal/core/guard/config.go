@@ -237,6 +237,10 @@ func mergeEntry(base, over Entry) Entry {
 	if over.Fixtures.KnownGood != nil {
 		r.Fixtures.KnownGood = append([]string(nil), over.Fixtures.KnownGood...)
 	}
+	if over.EverydayVerb != nil {
+		v := *over.EverydayVerb
+		r.EverydayVerb = &v
+	}
 	r.Pattern = mergePattern(r.Pattern, over.Pattern)
 	return r
 }
