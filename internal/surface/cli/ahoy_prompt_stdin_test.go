@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -120,7 +121,8 @@ func TestAhoyInstallAcceptsPipedAnswersFromNonTTYStdin(t *testing.T) {
 // literal on purpose: a test that imported the production slice would agree
 // with any order the production code happened to adopt, including a wrong one.
 var categoryPromptOrder = []string{
-	"dependency", "safe-autocreate", "config-change", "user-state", "plugin-owned",
+	"dependency", "safe-autocreate", "config-change", "status-line", "oracle-routing",
+	"drain-rule", "conventions-file", "user-state", "plugin-owned",
 }
 
 // assertCategoryQuestionOrder checks that the category approvals appearing in a
@@ -155,10 +157,12 @@ func assertCategoryQuestionOrder(t *testing.T, transcript string) {
 func categoryQuestionsAsked(transcript string) []string {
 	var seen []string
 	for _, line := range strings.Split(transcript, "\n") {
-		for _, c := range categoryPromptOrder {
-			if strings.Contains(line, "Apply "+c+" changes?") {
-				seen = append(seen, c)
-			}
+		ask, _, found := strings.Cut(line, " [y/N]")
+		if !found {
+			continue
+		}
+		if c, ok := strings.CutPrefix(ahoy.SetupConfirmQuestion(0, ask).ID, "approve."); ok {
+			seen = append(seen, c)
 		}
 	}
 	return seen
@@ -312,7 +316,8 @@ func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
 	}
 	// The pin lives behind the config-change approval, so that question must
 	// have been asked and answered y — not merely "some question was".
-	if !strings.Contains(string(errOut), "Apply config-change changes? [y/N] y") {
+	if !strings.Contains(string(errOut), "  no git identity pin\n") ||
+		!strings.Contains(string(errOut), "Change the settings listed above? [y/N] y") {
 		t.Fatalf("the config-change approval carrying the pin was not answered:\n%s", errOut)
 	}
 	assertCategoryQuestionOrder(t, string(errOut))
@@ -322,5 +327,24 @@ func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "alex@example.com") {
 		t.Fatalf("pin written from the wrong identity:\n%s", body)
+	}
+}
+
+// TestBareAhoyListsEachGapsTitle: the plain board names every gap by its
+// title under the count, the same words the install's approvals list
+// (iss-2610071528375981).
+func TestBareAhoyListsEachGapsTitle(t *testing.T) {
+	hermeticRepo(t)
+	var det struct {
+		Gaps []struct{ Title string } `json:"gaps"`
+	}
+	if err := json.Unmarshal(runCLI(t, "ahoy", "--json"), &det); err != nil || len(det.Gaps) == 0 {
+		t.Fatalf("no gaps to list: %v", err)
+	}
+	out := string(runCLI(t, "ahoy"))
+	for _, g := range det.Gaps {
+		if !strings.Contains(out, "\n               "+g.Title+"\n") {
+			t.Errorf("the board does not list the gap %q:\n%s", g.Title, out)
+		}
 	}
 }

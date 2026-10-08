@@ -2,6 +2,7 @@ package question
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -81,8 +82,9 @@ const RuleStructure Rule = "structure"
 // Check is the structural check: every question has an id (unique within the
 // Ask), a chip, an ask, a Later option with a value, and options, a list, or a
 // typed part; every option and list choice has a value and a label; values are
-// unique within a question, Later's included; an Ask holds as many questions
-// as Default.QuestionsPerCall admits. It returns every finding at once, each
+// unique within a question, Later's included; no answer's meaning points at
+// text above a question that carries no material (pointsAbove); an Ask holds
+// as many questions as Default.QuestionsPerCall admits. It returns every finding at once, each
 // naming the question (its tab, counted from one; zero is the Ask as a whole)
 // and the part, and holds no limit of its own: how much each part may hold is
 // CheckLimits's, run on the field view (Fields).
@@ -151,6 +153,19 @@ func Check(a Ask) []Finding {
 			value(part, o)
 			labelled(part, o)
 		}
+		if len(q.Material) == 0 {
+			for j, o := range append(append([]Option(nil), q.Options...), q.Later) {
+				if !pointsAbove(o.Meaning) {
+					continue
+				}
+				part := fmt.Sprintf("option %d meaning", j+1)
+				if j == len(q.Options) {
+					part = "later meaning"
+				}
+				add(part, o.Meaning, "material above the question for the meaning to point at",
+					"Quote what the answer acts on in the material, or say what it does without pointing above.")
+			}
+		}
 		if q.List != nil {
 			for j, o := range q.List.Choices {
 				part := fmt.Sprintf("list choice %d", j+1)
@@ -169,6 +184,13 @@ func Check(a Ask) []Finding {
 	}
 	return out
 }
+
+// aboveRe finds a meaning pointing at text above its question: "the text
+// above", "listed above", "described above" (iss-2610071528375981).
+var aboveRe = regexp.MustCompile(`(?i)\b(?:text|list|listed|described|shown|named|set out)\s+above\b`)
+
+// pointsAbove reports whether meaning points at text above its question.
+func pointsAbove(meaning string) bool { return aboveRe.MatchString(meaning) }
 
 // Fields maps the Ask onto the field view the limits are checked on
 // (spc-2610030944505997, "The field view"): the chip to the header; the

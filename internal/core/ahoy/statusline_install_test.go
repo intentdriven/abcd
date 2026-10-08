@@ -84,7 +84,7 @@ func (p *scriptedPrompter) Prompt(key string, _ []string, def string) string {
 func offerPrompter(consent bool, answers map[string]string) *scriptedPrompter {
 	return &scriptedPrompter{
 		confirm: func(q string) bool {
-			if strings.HasPrefix(q, "Apply ") {
+			if askedCategory(q) != "" {
 				return true
 			}
 			return consent
@@ -283,7 +283,7 @@ func TestStatusLineOfferDeclinedWritesNothing(t *testing.T) {
 	// The reason was given before the answer was taken, in one question.
 	var offered bool
 	for _, q := range p.asked {
-		if !strings.HasPrefix(q, "Apply ") && strings.Contains(q, "badge") {
+		if askedCategory(q) == "" && strings.Contains(q, "badge") {
 			offered = true
 			if strings.Contains(q, "\n\n") {
 				t.Errorf("the reason spans more than one paragraph:\n%s", q)
@@ -825,7 +825,7 @@ func TestStatusLineRefusesToRecordItselfAsPrevious(t *testing.T) {
 			}
 			before, _ := os.ReadFile(settings)
 			p := offerPrompter(true, nil)
-			p.confirm = func(q string) bool { return q != "Apply "+string(ConfigChange)+" changes?" }
+			p.confirm = func(q string) bool { return askedCategory(q) != ConfigChange }
 			res, err := Install(repo, InstallOptions{}, p)
 			if err != nil {
 				t.Fatal(err)

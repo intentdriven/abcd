@@ -232,3 +232,35 @@ func hasRule(fs []question.Finding, r question.Rule) bool {
 	}
 	return false
 }
+
+// TestStructuralCheckRefusesAMeaningPointingAtMissingMaterial is
+// iss-2610071528375981's last clause: an answer whose meaning points at text
+// above ("Writes what the text above describes.") is refused when the
+// question carries no material, since there is nothing above it to read. The
+// same meaning over material is admitted.
+func TestStructuralCheckRefusesAMeaningPointingAtMissingMaterial(t *testing.T) {
+	confirm := question.Question{
+		ID:   "approve.config-change",
+		Chip: "Setup Q3",
+		Ask:  "Apply config-change changes?",
+		Options: []question.Option{
+			{Value: "yes", Label: "Yes, make the change", Meaning: "Writes what the text above describes."},
+			{Value: "no", Label: "No, leave it", Meaning: "Writes nothing, so the next install asks again."},
+		},
+		Later: question.Option{Value: "later", Label: "Decide later", Meaning: "Declines for now and writes nothing."},
+	}
+	fs := question.Check(one(confirm))
+	if !findingAt(fs, 1, "option 1 meaning") {
+		t.Fatalf("a meaning pointing at text above, over no material, is admitted:\n%s", listFindings(fs))
+	}
+	listed := confirm
+	listed.Options = append([]question.Option(nil), confirm.Options...)
+	listed.Options[0].Meaning = "Writes the 2 changes listed above."
+	if fs := question.Check(one(listed)); !findingAt(fs, 1, "option 1 meaning") {
+		t.Fatalf("a meaning pointing at a list above, over no material, is admitted:\n%s", listFindings(fs))
+	}
+	listed.Material = []question.Block{{Kind: question.KindList, Items: []string{"repo.visibility not set", "docs.target not set"}}}
+	if fs := question.Check(one(listed)); len(fs) > 0 {
+		t.Fatalf("the same meaning over material is refused:\n%s", listFindings(fs))
+	}
+}
