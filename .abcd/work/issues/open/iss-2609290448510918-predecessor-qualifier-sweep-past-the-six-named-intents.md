@@ -25,3 +25,33 @@ A census at 2b9d52fbb over `intents/planned`, `intents/shipped`, `intents/discip
 - Data, left as written (15 sites): the `routed_from` frontmatter of itd-48, itd-50 and itd-53; itd-27's dated reclassification_history reason; fixture strings quoted as evidence in itd-4, itd-28, itd-186 and itd-2609111003026787; the example resolution note inside itd-4's resolve criterion; and itd-4's audit-note line that already says "of the retired record system".
 
 Skipped, because other branches carry these intents: itd-82 (one site, spc-24) and itd-130 (four sites, spc-35). Read in place, all five cite live specs (itd-119's promote and itd-132's data directory), so none looks owed a qualifier. The other intents named for skipping (itd-111, itd-148, itd-24, itd-103, itd-2609081951381895, itd-2609211116005482, itd-2609212103568351 and itd-2609212103572513) hold no site in the census. The record stays open until those five sites are confirmed at the merged tip.
+
+## Progress 2026-10-08 (lane-1, run-2610080034282884)
+
+Both branches have landed: itd-82 sits in `intents/planned` and itd-130 in `intents/shipped` at 79ac82c17. The same census over the same four folders now counts 102 sites across 36 intents, and every one was read against the live spec its id collides with. None is a predecessor-store reference without its qualifier, so no line changes.
+
+- The five deferred sites are live cross-references, correct as written: itd-82's one spc-24 is itd-119's `capture promote`, and itd-130's four spc-35 are itd-132's download cache and owned PATH copy.
+- New to the census: itd-33 entered `intents/superseded` from `drafts/` on 2026-10-03 (84bfc4bb1), bringing 4 sites. Its spc-33 is the spec a promotion of itd-33 would mint in its own press-release quote, and its spc-7 illustrates a task-granular claim (`spc-7.2`, `spc-7.3`). Both are illustrations, not references to either store's record, so they are left as written like itd-4's example resolution note.
+- Not on the 2026-09-30 lists: itd-132's 11 sites cite live spc-21, itd-105's hook-binary fetch whose verification posture itd-132 keeps; itd-29's 4 are the suffixed legacy-roadmap ids `spc-29-42i` and `spc-9-kbe`, which their lines already name as legacy, matched by the census only on their prefix; itd-36's 2 are the "live spc-38 ... live spc-39" contrast on line 92, which says live in words.
+- The other 76 sites are the live cross-references and data sites the 2026-09-30 lists already classify; read again at the tip, each keeps its classification.
+
+The census, run from the repository root:
+
+```python
+import glob, re
+owner = {}
+for p in glob.glob(".abcd/development/specs/*/spc-*.md"):
+    head = open(p).read()[:400]
+    s, i = re.search(r"^id:\s*\"?(spc-\d+)", head, re.M), re.search(r"^intent:\s*\"?(itd-\d+)", head, re.M)
+    if s: owner[s.group(1)] = i and i.group(1)
+sites = []
+for d in ("planned", "shipped", "disciplines", "superseded"):
+    for p in sorted(glob.glob(f".abcd/development/intents/{d}/itd-*.md")):
+        iid = re.match(r".*/(itd-\d+)", p).group(1)
+        for n, line in enumerate(open(p), 1):
+            if "predecessor store" in line: continue
+            for m in re.finditer(r"(?<![\w-])spc-(\d+)(?!\d)", line):
+                if int(m.group(1)) <= 70 and owner.get(m.group(0)) != iid:
+                    sites.append((iid, n, m.group(0)))
+print(len(sites), len({s[0] for s in sites}))
+```
