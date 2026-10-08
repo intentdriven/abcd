@@ -702,6 +702,104 @@ func TestHooksPathJudgesWhatGitWillRun(t *testing.T) {
 	}
 }
 
+// TestNoGapAdvisesOverridingAGlobalDispatcher is iss-2610020704152920 at the gap
+// list, which the plugin surface relays hint for hint. The board line stopped
+// advising a local core.hooksPath over a global dispatcher, but the hook_missing
+// gaps still ended "point git at it with `git config core.hooksPath .githooks`" —
+// advice that, followed once ahoy install has written the hook the dispatcher
+// already reaches, shadows the dispatcher in this clone and drops whatever else it
+// chains. With the hooks path foreign, no gap's hint may advise the override.
+func TestNoGapAdvisesOverridingAGlobalDispatcher(t *testing.T) {
+	const override = "git config core.hooksPath"
+	for name, fx := range map[string]struct {
+		guard   bool     // commit the guard's pre-commit half first
+		missing []string // the hook_missing gaps the fixture raises
+	}{
+		"nothing committed":    {false, []string{"banlist.hook_missing", "attribution.hook_missing"}},
+		"guard half committed": {true, []string{"banlist.merge_hook_missing"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			setupHermetic(t)
+			repo := gittest.NewRepo(t)
+			root := repo.Root()
+			global := filepath.Join(t.TempDir(), "gitconfig")
+			t.Setenv("GIT_CONFIG_GLOBAL", global)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			// Opted into the attribution prompt, so its hook_missing gap is raised too.
+			if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(configRelPath)), []byte(`{"attribution":{"hook":true}}`+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if fx.guard {
+				if err := os.MkdirAll(filepath.Join(root, guardHooksDirRelPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(GuardHookRelPath)), []byte("#!/bin/sh\n"+guardHookMarker+"\nexit 0\n"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			hints := func() map[string]string {
+				t.Helper()
+				det, err := Detect(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := map[string]string{}
+				for _, g := range det.Gaps {
+					got[g.ID] = g.FixHint
+				}
+				for _, id := range fx.missing {
+					if _, ok := got[id]; !ok {
+						t.Fatalf("the fixture raises no %s gap; gaps: %v", id, got)
+					}
+				}
+				return got
+			}
+			// Control: with no hooks path anywhere the advice IS given, so its absence
+			// below is the dispatcher's doing and not a fixture that never earns it.
+			before := hints()
+			for _, id := range fx.missing {
+				if !strings.Contains(before[id], override) {
+					t.Fatalf("an unarmed clone's %s hint does not say how to arm it: %q", id, before[id])
+				}
+			}
+			if err := os.WriteFile(global, []byte("[core]\n\thooksPath = \""+filepath.Join(t.TempDir(), "dispatcher")+"\"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			after := hints()
+			for id, h := range after {
+				if strings.Contains(h, override) {
+					t.Errorf("%s advises a local core.hooksPath over a global dispatcher: %q", id, h)
+				}
+			}
+			for _, id := range fx.missing {
+				if !strings.Contains(after[id], "outside this clone") {
+					t.Errorf("%s does not name the hooks path set outside this clone: %q", id, after[id])
+				}
+			}
+		})
+	}
+}
+
+// TestHooksPathIsDocumentedWhenTheRootCannotOpen: the health pass returned before
+// judging the hooks path when the containment root would not open, so the envelope
+// carried `"hooks_path": ""`, a value no surface documents. The state is asked of
+// git, not the tree, so it is judged whatever the root does.
+func TestHooksPathIsDocumentedWhenTheRootCannotOpen(t *testing.T) {
+	setupHermetic(t)
+	h := detectBanlistHealth(filepath.Join(t.TempDir(), "gone"))
+	if h.Hook != HookUnreadable {
+		t.Fatalf("the fixture opened a root: hook = %q", h.Hook)
+	}
+	switch h.HooksPath {
+	case HooksPathStateArmed, HooksPathStateUnarmed, HooksPathStateForeign:
+	default:
+		t.Errorf("hooks_path = %q on an unopenable root; want one of the three documented states", h.HooksPath)
+	}
+}
+
 // TestMarkerIsRecognisedOnlyAsAWholeLine is security MAJ-1. The marker was matched
 // as a substring anywhere in the blob, so a foreign hook that merely MENTIONS it —
 // a comment, a grep for it, a copied fragment — classified as abcd's own. The board

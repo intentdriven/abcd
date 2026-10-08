@@ -473,6 +473,11 @@ func detectBanlistHealth(cwd string) BanlistHealth {
 		PrivateStoreIgnored:  storeSafe,
 		Reach:                banlist.PrivateReachNote,
 	}
+	// Judged before the containment root is opened: it asks git, not the tree, so a
+	// root that cannot be opened still reports one of the three documented states
+	// rather than an empty one.
+	h.HooksPath = hooksPathState(cwd)
+	h.HooksPathArmed = h.HooksPath == HooksPathStateArmed
 	// One containment root for every read, opened where the writes are: a report
 	// resolved outside it could describe a file apply can never act on.
 	root, err := os.OpenRoot(cwd)
@@ -485,8 +490,6 @@ func detectBanlistHealth(cwd string) BanlistHealth {
 	defer root.Close()
 	h.Hook = classifyGuardHook(root, GuardHookRelPath)
 	h.MergeHook = classifyGuardHook(root, GuardMergeHookRelPath)
-	h.HooksPath = hooksPathState(cwd)
-	h.HooksPathArmed = h.HooksPath == HooksPathStateArmed
 	h.PublicFamily = classifyPublicFamily(cwd, root, ign.public)
 	h.HookEOLPinned = gitattributesPinsHookEOL(cwd, root)
 	sum, serr := banlist.SummarisePrivate(cwd)
@@ -614,7 +617,7 @@ func hooksPathArmed(cwd string) bool {
 // status line beside it can never disagree.
 func detectBanlistScaffold(h BanlistHealth) []Gap {
 	var gaps []Gap
-	gaps = append(gaps, hookGaps("banlist.hook", GuardHookRelPath, "pre-commit", h.Hook)...)
+	gaps = append(gaps, hookGaps("banlist.hook", GuardHookRelPath, "pre-commit", h.Hook, h.HooksPath)...)
 	gaps = append(gaps, mergeHookGaps(h)...)
 	if h.Hook == HookInstalled && !h.HookEOLPinned {
 		gaps = append(gaps, Gap{
@@ -640,7 +643,7 @@ func mergeHookGaps(h BanlistHealth) []Gap {
 	if h.Hook == HookInstalled {
 		// The ordinary case: the guard is abcd's, so the merge half is abcd's to write
 		// and its own state decides.
-		return hookGaps("banlist.merge_hook", GuardMergeHookRelPath, "pre-merge-commit", h.MergeHook)
+		return hookGaps("banlist.merge_hook", GuardMergeHookRelPath, "pre-merge-commit", h.MergeHook, h.HooksPath)
 	}
 	if h.Hook == HookAbsent && h.MergeHook != HookInstalled {
 		// Nothing to mislead anyone with, and the very next apply writes both halves.
@@ -778,6 +781,24 @@ func privateStoreGaps(h BanlistHealth) []Gap {
 	return gaps
 }
 
+// hooksPathHint ends a hook_missing gap's fix hint by what git runs in this clone.
+// Every surface relays the hint as it stands, so it is where the advice to set a
+// local core.hooksPath is given or withheld: under a hooks path set outside the
+// clone (HooksPathStateForeign) that advice would shadow the dispatcher in this
+// clone and drop whatever else it chains (iss-2610020704152920), so the hint says
+// the committed hook must be called from the dispatcher instead.
+func hooksPathHint(state HooksPathState) string {
+	switch state {
+	case HooksPathStateArmed:
+		return "; git already runs " + guardHooksDirRelPath + " in this clone."
+	case HooksPathStateForeign:
+		return "; a hooks path set outside this clone (a global or system hooks dispatcher) is in force, " +
+			"so have it call the hook in " + guardHooksDirRelPath + " — never override it with a local hooks path, " +
+			"which would shadow it in this clone."
+	}
+	return "; point git at it with `git config core.hooksPath " + guardHooksDirRelPath + "`."
+}
+
 // hookGaps turns one hook's state into gaps. An absent hook is abcd's to write; a
 // foreign one is the maintainer's and is reported, never replaced — mirroring
 // GuardHealth's posture, where wiring abcd does not own is a diagnostic rather than
@@ -787,15 +808,14 @@ func privateStoreGaps(h BanlistHealth) []Gap {
 // here": true for the absent hook, which the next apply writes, and false for a
 // foreign one, which no apply will ever close — a required gap nothing can resolve
 // is a repo permanently reported as incomplete for a state its maintainer chose.
-func hookGaps(idPrefix, rel, name string, state HookState) []Gap {
+func hookGaps(idPrefix, rel, name string, state HookState, hooksPath HooksPathState) []Gap {
 	switch state {
 	case HookAbsent:
 		return []Gap{{
 			ID: idPrefix + "_missing", Category: SafeAutocreate, Scope: "repo",
-			Title:  "private name guard's " + name + " hook not committed",
-			Detail: rel + " is absent, so no " + name + " on any clone is checked against a private banlist.",
-			FixHint: "ahoy install writes the guard hook; point git at it with " +
-				"`git config core.hooksPath " + guardHooksDirRelPath + "`.",
+			Title:    "private name guard's " + name + " hook not committed",
+			Detail:   rel + " is absent, so no " + name + " on any clone is checked against a private banlist.",
+			FixHint:  "ahoy install writes the guard hook" + hooksPathHint(hooksPath),
 			Required: true, Resolvable: true,
 		}}
 	case HookForeign:
