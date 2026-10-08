@@ -1,0 +1,51 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "ecef2bf2a46f5f95fbc55ba88b09eff1907a16c6"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-08T11:00:52Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:a813a6101cd62f2d1f4f2d9347b5e2c1a6823b0ec6d77a9169c1545dc762eabe",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.13.3"
+  },
+  "categories": {
+    "incomplete": 3
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "incomplete",
+      "severity": "minor",
+      "summary": "commands/launch.md:467-469 (also 392-404 and 653-658): The page's findings-gate section says an open major/critical record 'refuses the cut under the refusal kind unfixed-finding', and its uncommitted-records paragraph names only intents/shipped/ and issues/resolved/. Since 0.13.3 the same gate also refuses when any issue record under open/ differs from HEAD (internal/core/changelog/findings.go:296-321, uncommittedOpenRecords/uncommittedOpenReason), surfaced under the unfixed-finding kind (internal/core/release/emit.go:272, 357) with no --allow-dirty waiver. launch.md never describes this refusal, and the --allow-dirty paragraph (656-658) lists what the flag never waives without naming it. The CHANGELOG entry (iss-2610050927169919) describes it; the page a user reads on the refusal does not.",
+      "disposition": "deferred",
+      "note": "Misleads no action (the binary's own refusal text supplies what the page lacks); corrected in the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-2",
+      "category": "incomplete",
+      "severity": "minor",
+      "summary": "commands/prepare-this-repo.md:193-202: Step 5 tells the agent to run `abcd ahoy install` then `git config core.hooksPath .githooks` unconditionally, and says 'a committed hook is not a running hook until git is pointed at it'. Since 0.13.3 banlist health reads the global/system hooks path (CHANGELOG iss-2610020704152920) and reports it as `foreign`; the binary's own fix hint for that state says 'never override it with a local hooks path, which would shadow it in this clone' (internal/core/ahoy/banlist_scaffold.go:794-797), and commands/ahoy.md:79-81 says the same. Following step 5 verbatim in a clone under a global dispatcher shadows that dispatcher for the clone. Judged not to make a user act wrongly in the release-gate sense: it applies only when a global or system core.hooksPath is in force, the `hooks_path: foreign` report from the same install run contradicts it on the spot, and it is reversed with `git config --unset core.hooksPath`. Fix: condition the second command on `hooks_path` reading `unarmed`.",
+      "disposition": "deferred",
+      "note": "Misleads no action (the binary's own refusal text supplies what the page lacks); corrected in the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-3",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "internal/surface/cli/ship.go:459 (rendered at docs/reference/cli/commands.md:2675 and `abcd launch ship --help`): The --allow-dirty flag help says the flag 'waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal'. It omits the two record refusals the flag also never waives: the derivation's uncommitted-records refusal (internal/core/changelog/derive.go:154-161) and, new in 0.13.3, the findings gate's open/ records refusal (findings.go:313-321). Both refusal messages say so themselves, so a user is told at the point of refusal; the flag text is merely an incomplete list.",
+      "disposition": "deferred",
+      "note": "Misleads no action (the binary's own refusal text supplies what the page lacks); corrected in the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1, full tier for an additive release) over an exact export of content commit ecef2bf2a46f5f95fbc55ba88b09eff1907a16c6 with the binary built from it: every line of the 0.13.3 CHANGELOG section; every claim on the user-facing pages changed since v0.13.2 (agents/question-drafter.md, commands/ahoy.md, disembark.md, docs.md, guard.md, intent.md, lab.md, launch.md, prepare-this-repo.md, report.md, docs/how-to/install.md, docs/reference/cli/commands.md); README.md; and a sweep of the remaining commands/ and docs/ pages for claims the release's changes touch, each checked against the code and the binary. Verdict PROMOTE, 3 findings (minor or nitpick, none misleading an action), deferred."
+}
