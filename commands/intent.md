@@ -844,7 +844,9 @@ something the verb decides.
 An intent names the intents it depends on in two lists: `blocked_by` (it
 cannot ship before them) and `builds_on` (it is cheaper or better if they exist
 first). The build's pre-start check refuses an intent whose `blocked_by` names
-one not yet shipped, and record-lint's edge rules read both. `edge` is the verb
+one not yet settled: a blocker is settled when it is shipped or a discipline,
+or when its supersession chain ends at a shipped intent, a discipline or an
+accepted decision. Record-lint's edge rules read both lists. `edge` is the verb
 that writes them, the intent counterpart of `capture link`:
 
 ```bash
