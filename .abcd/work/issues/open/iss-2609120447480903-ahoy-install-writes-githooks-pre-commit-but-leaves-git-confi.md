@@ -30,3 +30,7 @@ iss-2609120511058115._
 
 - The pre-commit framework refuses to install when core.hooksPath is set rather than override a person's hook dispatcher: https://github.com/pre-commit/pre-commit/issues/1198 and https://github.com/pre-commit/pre-commit/issues/1298 (consulted 2026-09-29), the same override the deferral names, so the automatic branch copies that refusal.
 - Rejected: arming unconditionally, which silently disables a person's global hooks in that clone.
+
+## Evidence 2026-10-08 (overnight drain)
+
+Once run-2610080127501542 (iss-2610020704152920) lands, ahoy reports `hooks_path` as `armed`, `unarmed` or `foreign`, and `hooks_path_armed` reads true for a global `.githooks` too. A check for this gap should read `hooks_path == "unarmed"`, not `hooks_path_armed == false`, or it reports a clone under a global hooks dispatcher as a false gap.
