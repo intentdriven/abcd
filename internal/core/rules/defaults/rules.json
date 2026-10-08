@@ -50,7 +50,7 @@
       "aliases": ["press release", "press-release", "acceptance criteria"],
       "rules": [
         "Intents are press-release-first; acceptance criteria are BDD (Given/When/Then).",
-        "Personas are always Alice, Bob, Carol — never other names.",
+        "Personas take their names from an open alphabetical sequence — Alice, Bob, Carol, Dave, and on — that the repository extends when it needs another; where the repository declares a persona roster (the `registry` file its `persona_registry` lint rule names in `.abcd/docs-lint.json`), take each persona's name and role from that roster and pick by role.",
         "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is the product thinker's decision.",
         "The change that lands a planned intent's work closes its spec in the same change (abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
       ]
