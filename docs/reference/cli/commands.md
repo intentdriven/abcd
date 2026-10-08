@@ -2246,6 +2246,27 @@ Ingest consistency findings as a dated review and a capture per finding: Writes 
 abcd intent consistency ingest --findings-json findings.json
 ```
 
+#### `abcd intent edge`
+
+Add or remove an intent's blocked_by and builds_on edges: Writes the two lists in place; refuses an id no intent store holds.
+
+**Usage:** `abcd intent edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] [flags]`
+
+**Flags:**
+
+```
+      --blocked-by string       append: comma-separated itd-N ids this intent cannot ship before; each must exist in the intent store
+      --builds-on string        append: comma-separated itd-N ids this intent builds on; each must exist in the intent store
+      --drop-builds-on string   remove: comma-separated itd-N ids to drop from builds_on; each must currently be in the list
+      --unblock string          remove: comma-separated itd-N ids to drop from blocked_by; each must currently be in the list
+```
+
+**Example:**
+
+```
+abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002
+```
+
 #### `abcd intent hold`
 
 Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.

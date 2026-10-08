@@ -706,6 +706,27 @@ func TestCaptureLinkWiredEndToEnd(t *testing.T) {
 	if help := string(runCLI(t, "capture", "link", "--help")); !strings.Contains(help, "unblock") || !strings.Contains(strings.ToLower(help), "then") {
 		t.Errorf("link help must say both flags are applied unblock-then-block:\n%s", help)
 	}
+
+	// A record's blocked_by items are record bytes, and a planted record can
+	// carry a terminal escape in one. Link keeps the items it does not touch,
+	// so the plain render would echo them: the strict read refuses an item
+	// that is not iss-N before anything renders or is written, and neither
+	// the output nor the refusal hands the control bytes to the terminal.
+	body, _ = os.ReadFile(r2.Path)
+	planted := strings.Replace(string(body), "---\n", "---\nblocked_by: [\"iss-1\x1b]0;PWNED\x07\"]\n", 1)
+	if err := os.WriteFile(r2.Path, []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runCLIErr(t, "capture", "link", r2.ID, "--blocked-by", r1.ID)
+	if err == nil {
+		t.Fatalf("a link on a record carrying a planted blocked_by item must be refused:\n%q", out)
+	}
+	if msg := err.Error() + string(out); strings.ContainsAny(msg, "\x1b\x07") {
+		t.Fatalf("the refusal passed a record's control bytes to the terminal: %q", msg)
+	}
+	if after, _ := os.ReadFile(r2.Path); string(after) != planted {
+		t.Fatalf("a refused link wrote the record:\n%s", after)
+	}
 }
 
 // runCLIErr executes the command tree and returns its stdout/stderr plus the

@@ -72,6 +72,7 @@ var examples = map[string]string{
 	"abcd intent audit ingest":       "abcd intent audit ingest --verdict-json verdict.json",
 	"abcd intent condition":          "abcd intent condition itd-2609010000000001",
 	"abcd intent consistency ingest": "abcd intent consistency ingest --findings-json findings.json",
+	"abcd intent edge":               "abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002",
 	"abcd intent hold":               `abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"`,
 	"abcd intent link":               "abcd intent link itd-2609010000000001 spc-2609010000000002",
 	"abcd intent plan":               "abcd intent plan itd-2609010000000001",

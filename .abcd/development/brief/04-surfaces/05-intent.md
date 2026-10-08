@@ -49,6 +49,7 @@ judgement no verb makes.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `edge` | — | shipped |
 | `hold` | — | shipped |
 | `link` | — | shipped |
 | `plan` | — | shipped |
@@ -327,6 +328,7 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 | Hold (one intent id and a reason) | Holds a draft or planned intent: writes `held: "<reason>"` — the reason is required, single-line and redacted through the store's scanner before the write, and the JSON reports `redacted` like the other write verbs. Planning and closing a spec refuse a held record before anything moves, naming the reason and the unhold that lifts it; `abcd <itd-N>` reports the hold as the next move. Refused on a record already held (naming the standing reason — an updated reason is an unhold then a hold) and on a shipped, superseded or discipline record. The `record_provenance` lint rule reports a `held` value in a shape the verb never writes; a legal hand-typed line is byte-identical to the write and is not reported. | (no move; writes `held`) |
 | Target (one planned intent id and a release) | Names the release a planned intent must land by: writes `target_release: <vX.Y.Z\|next>` (itd-2609212103572513). A second target replaces the first and the result names the one it replaced; the same target again writes nothing and says so. Refused with nothing written: a draft (its target is given as it is planned, by planning it with a target), a shipped, superseded or discipline record, a value that is neither a release tag `vX.Y.Z` nor `next`, and a `target_release` value in a shape no verb writes. Planning a single draft with a target writes it in the planning write; a bundle takes none, and a record already planned is sent to this sub-verb. The launch preview and the cut report the target and never refuse on it. | (no move; writes `target_release`) |
 | Unhold (one intent id) | Lifts a hold: removes the `held:` line the hold wrote and reports the reason that stood. Refused on a record not held, on a terminal record, and on a `held` value in a shape the verb never writes (a hand repair record-lint names). | (no move; removes `held`) |
+| Edge (one intent id and the edges to add or remove) | Adds and removes the record's dependency edges, `blocked_by` (cannot ship before) and `builds_on` (cheaper or better if the other exists first), the intent store's counterpart of the capture ledger's link (iss-2610040758579292): the build's blocked check reads `blocked_by`, and before this no verb wrote it. Removals are applied before additions, so one id on both sides is a net no-op, and an id the list already holds collapses. Every target must be an intent the store holds, in any bucket; refused with nothing written: an id that is not `itd-N`, an id no intent store holds, the record naming itself, and a removal of an edge the list does not hold (naming the current list). The subject may sit in any bucket. An emptied list is written `[]`, and a list spelled as a block sequence stays one. The JSON carries both lists as written. | (no move; writes `blocked_by` and `builds_on`) |
 | Link (one intent id and one spec id) | Manual completion of a half-made link: used if the auto-link missed (rare) or for retroactive linking of pre-existing specs. It writes ONE side, the intent's `spec_id`, and refuses unless the spec already declares this intent, so it completes a link from the spec side rather than forging one. A spec that realises a different intent is a mismatch and fails closed. The intent must be in `planned/` | (no move; writes the intent's `spec_id`) |
 
 **No aggregator verb.** A check subverb that runs the audit, consistency and shape passes together is *not* provided — the three primitives have very different runtime costs (the audit is code+oracle expensive; consistency is corpus-wide expensive; shape is cheap on demand). Bundling them produces a slow verb users avoid. Release-readiness is `/abcd:launch`'s pre-flight job. (Note: a scheduled / pre-commit shape leg is a **deferred follow-up**; the predecessor's spc-29 shape surface is on demand only.)
@@ -705,7 +707,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent hold`, `abcd intent interview`, `abcd intent link`, `abcd intent plan`, `abcd intent prepass`, `abcd intent ready`, `abcd intent reclassify`, `abcd intent target`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent edge`, `abcd intent hold`, `abcd intent interview`, `abcd intent link`, `abcd intent plan`, `abcd intent prepass`, `abcd intent ready`, `abcd intent reclassify`, `abcd intent target`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -761,6 +763,17 @@ Sub-verbs: none.
 |---|---|
 | `--findings-json` | string |
 | `--route` | stringArray |
+
+### `abcd intent edge`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--blocked-by` | string |
+| `--builds-on` | string |
+| `--drop-builds-on` | string |
+| `--unblock` | string |
 
 ### `abcd intent hold`
 

@@ -2119,6 +2119,41 @@
       ]
     },
     {
+      "path": "abcd intent edge",
+      "hidden": false,
+      "sentence": "Add or remove an intent's blocked_by and builds_on edges: Writes the two lists in place; refuses an id no intent store holds.",
+      "flags": [
+        {
+          "name": "blocked-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "builds-on",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "drop-builds-on",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "unblock",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent hold",
       "hidden": false,
       "sentence": "Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.",
