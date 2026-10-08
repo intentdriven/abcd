@@ -75,7 +75,12 @@ Then summarise the JSON for the user:
   root this session does not serve.
 - `banlist` — the two-layer name guard, when the folder is a repo: `hook` and
   `merge_hook` (`installed` / `absent` / `foreign` / `unreadable`), whether this
-  clone is armed (`hooks_path_armed`), `public_family`, and the private layer's
+  clone is armed (`hooks_path`: `armed` / `unarmed` / `foreign`, and the boolean
+  `hooks_path_armed`) — `foreign` is a hooks path set outside the clone's local
+  config, a global or system dispatcher abcd cannot see into, so never advise a
+  local `core.hooksPath` over it; `hooks_path` is always one of the three, even
+  when `hook` reads `unreadable`, and the `*.hook_missing` gaps' `fix_hint`
+  follows it — `public_family`, and the private layer's
   state on this machine (`private_store`, and its shape — `private_keyed`,
   `private_entries`, `private_unparsed`). Never report a `foreign` hook as abcd's
   guard, and never report a committed hook as a running one. Relay `reach`

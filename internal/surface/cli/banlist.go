@@ -404,10 +404,17 @@ func banlistHealthLines(h ahoy.BanlistHealth) []string {
 	// only beside abcd's own guard, so beside a foreign one "install writes it" would
 	// send a reader to run a command that declines.
 	hooks := hookPhrase("pre-commit", h.Hook) + ", " + mergeHookPhrase(h)
-	if (h.Hook == ahoy.HookInstalled || h.MergeHook == ahoy.HookInstalled) && !h.HooksPathArmed {
-		// A committed hook is not a running hook. This clone's LOCAL config does not
-		// point at the hooks directory — which a user-level dispatcher may still do, so
-		// this is an instruction, never a verdict that the guard is off.
+	switch committed := h.Hook == ahoy.HookInstalled || h.MergeHook == ahoy.HookInstalled; {
+	case !committed:
+	case h.HooksPath == ahoy.HooksPathStateForeign:
+		// git runs a hooks path set outside this clone — a global or system
+		// dispatcher abcd cannot see into. Advising a local core.hooksPath here would
+		// shadow that dispatcher in this clone and drop whatever else it chains, so the
+		// line names the state and what to check, never the override.
+		hooks += " (hooks run from a core.hooksPath set outside this clone; abcd cannot see whether it reaches .githooks/pre-commit — a local core.hooksPath would bypass it)"
+	case !h.HooksPathArmed:
+		// A committed hook is not a running hook. Nothing points git at the hooks
+		// directory, so this is an instruction, never a verdict that the guard is off.
 		hooks += " (arm this clone: git config core.hooksPath .githooks)"
 	}
 	return []string{hooks, publicFamilyPhrase(h.PublicFamily) + "; " + privateStorePhrase(h)}

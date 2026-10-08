@@ -80,6 +80,61 @@ func TestAhoyStatusReportsEachScaffoldedArtefact(t *testing.T) {
 	}
 }
 
+// TestAhoyStatusNeverAdvisesOverridingAGlobalDispatcher is iss-2610020704152920 at
+// the surface. A clone whose hooks git runs through a global core.hooksPath
+// dispatcher that chains to the committed guard was told "arm this clone: git config
+// core.hooksPath .githooks" — advice that, followed, overrides the dispatcher in
+// this clone and drops whatever else it chains. The board reports the third state
+// instead, in the text and in the envelope.
+func TestAhoyStatusNeverAdvisesOverridingAGlobalDispatcher(t *testing.T) {
+	hermeticEnv(t)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	repo := gittest.NewRepo(t).Root()
+	if err := os.MkdirAll(filepath.Join(repo, ".githooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".githooks", "pre-commit"), []byte("#!/bin/sh\n# abcd-name-guard: v1\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+
+	// Control: with no hooks path anywhere the advice IS given, so its absence below
+	// is the global dispatcher's doing and not a fixture that never earns it.
+	const advice = "arm this clone"
+	if out := string(runCLI(t, "ahoy")); !strings.Contains(out, advice) {
+		t.Fatalf("an unarmed clone with the guard committed is not told how to arm it:\n%s", out)
+	}
+
+	dispatcher := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dispatcher, "pre-commit"),
+		[]byte("#!/bin/sh\ntop=$(git rev-parse --show-toplevel) || exit 1\n\"$top/.githooks/pre-commit\" \"$@\" || exit $?\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(global, []byte("[core]\n\thooksPath = \""+dispatcher+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := string(runCLI(t, "ahoy"))
+	if strings.Contains(out, advice) {
+		t.Errorf("the board advises a local core.hooksPath over a global dispatcher:\n%s", out)
+	}
+	if !strings.Contains(out, "outside this clone") {
+		t.Errorf("the board does not report the hooks path set outside this clone:\n%s", out)
+	}
+	var env struct {
+		Banlist struct {
+			HooksPath string `json:"hooks_path"`
+		} `json:"banlist"`
+	}
+	if err := json.Unmarshal(runCLI(t, "ahoy", "--dry-run"), &env); err != nil {
+		t.Fatalf("dry-run envelope does not parse: %v", err)
+	}
+	if env.Banlist.HooksPath != "foreign" {
+		t.Errorf("envelope hooks_path = %q; want foreign, never unarmed", env.Banlist.HooksPath)
+	}
+}
+
 // TestAhoyEnvelopeCarriesTheReach: the JSON envelope is a report surface too, and a
 // machine consumer that reads the fields without the caveat would draw exactly the
 // wrong conclusion. The reach travels with the state it qualifies.

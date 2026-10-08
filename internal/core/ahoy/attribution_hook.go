@@ -57,8 +57,10 @@ func attributionOptedIn(cwd string) bool {
 
 // detectAttributionHook reports the attribution hook's state for a repo that opted
 // in, and NOTHING for one that did not — a gap about an opinion a repo never
-// adopted would report every repo as incomplete for a choice it made.
-func detectAttributionHook(cwd string) []Gap {
+// adopted would report every repo as incomplete for a choice it made. hooksPath is
+// the clone's hooks-path state from the banlist health pass, which decides how the
+// missing hook's hint says git reaches it.
+func detectAttributionHook(cwd string, hooksPath HooksPathState) []Gap {
 	if !attributionOptedIn(cwd) {
 		return nil
 	}
@@ -71,10 +73,9 @@ func detectAttributionHook(cwd string) []Gap {
 	case HookAbsent:
 		return []Gap{{
 			ID: "attribution.hook_missing", Category: SafeAutocreate, Scope: "repo",
-			Title:  "attribution prompt hook not committed",
-			Detail: AttributionHookRelPath + " is absent, so nothing asks a committer to declare whether a tool assisted the change — and an absent trailer is indistinguishable from a forgotten one.",
-			FixHint: "ahoy install writes the hook (this repo has recorded the opt-in); point git at it with " +
-				"`git config core.hooksPath " + guardHooksDirRelPath + "`.",
+			Title:    "attribution prompt hook not committed",
+			Detail:   AttributionHookRelPath + " is absent, so nothing asks a committer to declare whether a tool assisted the change — and an absent trailer is indistinguishable from a forgotten one.",
+			FixHint:  "ahoy install writes the hook (this repo has recorded the opt-in)" + hooksPathHint(hooksPath),
 			Required: true, Resolvable: true,
 		}}
 	case HookForeign:
