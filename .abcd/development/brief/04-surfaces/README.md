@@ -278,10 +278,11 @@ tree, and outside a checkout they exit 2 with nothing read and nothing written.
   planned; `--production-mode` stamps that minted remainder and is refused
   (exit 2, nothing written) without `--remainder`. A close the store refuses
   exits 2.
-- **The close that ships an intent is gated first.** Unless `--remainder` is
-  given, the close runs the doc-fidelity gate ([`10-docs.md`](10-docs.md)) over
-  every intent it would ship, before anything moves, and a refusal exits 1 and
-  names each reason. It then makes the intent's fidelity review owed: it mints
+- **The close is gated first.** The close runs the doc-fidelity gate
+  ([`10-docs.md`](10-docs.md)) over every intent it would ship, before anything
+  moves, and a refusal exits 1 and names each reason; a `--remainder` close
+  ships none, so it meets the coverage floor alone and needs no docs review.
+  A close that ships an intent then makes its fidelity review owed: it mints
   an OWED receipt, parks its marker in the intent's Audit Notes and writes the
   review request under `.abcd/.work.local/reviews/`. A failed emit is a warning
   on stderr and the intent ships regardless. A re-run against an intent already

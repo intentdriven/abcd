@@ -3483,7 +3483,8 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			"answers. A failed emit is a warning on stderr; the intent ships regardless.\n\n" +
 			"In the repository whose brief describes the binary, a close that ships an intent first runs the " +
 			"doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs " +
-			"review, or a confirmed false sentence refuses the close, and nothing moves.",
+			"review, or a confirmed false sentence refuses the close, and nothing moves. A close that ships no " +
+			"intent, a --remainder close included, still refuses a surface no brief chapter names, and needs no docs review.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
@@ -3506,11 +3507,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			}
 			// The doc-fidelity gate's first enforcement point (itd-60): a
 			// close that ships an intent is refused while the brief lags the
-			// surface it delivered. A --remainder close ships nothing.
+			// surface it delivered. A --remainder close ships nothing, so it
+			// meets the coverage floor alone (iss-2610020728118137).
+			var ships []string
 			if closeRemainder == "" {
-				if err := enforceDocFidelity(repoRoot, "abcd spec close", closeShips(repoRoot, args[0])); err != nil {
-					return err
-				}
+				ships = closeShips(repoRoot, args[0])
+			}
+			if err := enforceDocFidelity(repoRoot, "abcd spec close", ships); err != nil {
+				return err
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {

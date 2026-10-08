@@ -91,8 +91,10 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   the verdict is recorded, never when its edit is applied.
 - **Where the gate refuses.** The spec close runs it over the intents the close
   would ship, before anything moves, and the release cut runs it over every
-  intent shipped since the last tag. A close that mints a remainder ships nothing
-  and is not gated. The gate judges the brief against the binary, never against
+  intent shipped since the last tag. Layer 1 runs at both whatever they ship: a
+  close that ships no intent (one that mints a remainder included) and a cut
+  that ships none still refuse a surface no chapter names, and only the saved
+  docs review waits on a shipped intent. The gate judges the brief against the binary, never against
   the tag, so a chapter edited ahead of the last cut is current rather than
   drift. It is armed only in a repository that carries the command-tree snapshot
   and the brief's `04-surfaces/` chapters, since only that brief describes the

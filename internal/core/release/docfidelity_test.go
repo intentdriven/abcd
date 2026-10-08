@@ -77,3 +77,23 @@ func TestEmitWithNoIntentShippedJudgesNoPopulation(t *testing.T) {
 		t.Fatalf("an empty population refused: %+v", ref)
 	}
 }
+
+// A patch cut ships no intent, yet a surface an issue fix added still meets
+// layer 1: the coverage floor runs at every enforcement point whatever the
+// population, and only layer 2's saved review waits on a shipped intent
+// (iss-2610020728118137).
+func TestEmitWithNoIntentShippedStillRefusesAnUncoveredSurface(t *testing.T) {
+	r := releasedRepo(t)
+	r.Write(docfidelity.ChaptersDir+"/04-launch.md", "### `abcd launch`\n")
+	r.Write(docfidelity.AgentsDir+"/scribe.md", "# scribe\n")
+	r.Write(resolvedDir+"iss-24-x.md", "---\nid: iss-24\nslug: x\nimpact: fix\n---\n\nfixed.\n")
+	r.Commit("resolve an issue that adds an agent no chapter names")
+	cut := emit(t, r)
+	ref, ok := docFidelityRefusal(cut)
+	if !ok || cut.Ready {
+		t.Fatalf("a patch cut with an uncovered surface did not refuse: %+v", cut.Refusals)
+	}
+	if !strings.Contains(ref.Reason, "`scribe`") || strings.Contains(ref.Reason, docfidelity.RunReviewFirst) {
+		t.Fatalf("the refusal does not name the uncovered surface alone: %+v", ref)
+	}
+}

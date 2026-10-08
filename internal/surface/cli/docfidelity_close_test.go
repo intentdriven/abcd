@@ -102,11 +102,22 @@ func TestSpecCloseProceedsOnAMatchingDocsReview(t *testing.T) {
 	}
 }
 
-// A --remainder close ships nothing, so it has no shipped move to refuse.
-func TestSpecCloseWithARemainderIsNotGated(t *testing.T) {
+// A --remainder close ships nothing, so it needs no saved docs review.
+func TestSpecCloseWithARemainderNeedsNoDocsReview(t *testing.T) {
 	repo := armedCloseRepo(t)
 	runCLI(t, "spec", "close", "spc-1", "--remainder", "the-rest", "--production-mode", "dictated-and-formatted")
 	if _, err := os.Stat(filepath.Join(repo, cliPlanned, "itd-10-alpha.md")); err != nil {
 		t.Fatalf("the intent left planned/ on a remainder close: %v", err)
 	}
+}
+
+// A close that ships nothing still meets layer 1: the coverage floor runs at
+// every enforcement point whatever the population (iss-2610020728118137).
+func TestSpecCloseWithARemainderRefusesAnUndocumentedSurface(t *testing.T) {
+	repo := armedCloseRepo(t, "abcd spec close")
+	_, err := runCLIErr(t, "spec", "close", "spc-1", "--remainder", "the-rest", "--production-mode", "dictated-and-formatted")
+	if err == nil || !strings.Contains(err.Error(), "`abcd spec close`") || strings.Contains(err.Error(), docfidelity.RunReviewFirst) {
+		t.Fatalf("the remainder close did not refuse the undocumented sub-verb alone: %v", err)
+	}
+	assertUnmoved(t, repo)
 }

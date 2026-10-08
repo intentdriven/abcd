@@ -50,25 +50,30 @@ func closeShips(repoRoot, specID string) []string {
 
 // enforceDocFidelity runs the gate for population and returns the refusal the
 // verb exits with, or nil. The gate is armed only in the repository that ships
-// the binary its brief describes; elsewhere it judges nothing.
+// the binary its brief describes; elsewhere it judges nothing. An empty
+// population still meets layer 1, the coverage floor; only the saved docs
+// review waits on a shipped intent (iss-2610020728118137).
 func enforceDocFidelity(repoRoot, verb string, population []string) error {
-	if len(population) == 0 || !docfidelity.Armed(repoRoot) {
+	if !docfidelity.Armed(repoRoot) {
 		return nil
 	}
 	snap, err := SurfaceSnapshot(repoRoot)
 	if err != nil {
 		return &exitError{Code: 2, Msg: verb + ": the doc-fidelity gate cannot derive the command tree: " + scrubPaths(err)}
 	}
-	v, _, err := docfidelity.Gate(repoRoot, snap.Commands, population, false)
+	v, _, err := docfidelity.Enforce(repoRoot, snap.Commands, population)
 	if err != nil {
 		return &exitError{Code: 2, Msg: verb + ": the doc-fidelity gate cannot read its inputs (nothing moved): " + scrubPaths(err)}
 	}
 	if !v.Refuse {
 		return nil
 	}
+	lags := "the binary it ships"
+	if len(population) > 0 {
+		lags = "what " + strings.Join(population, ", ") + " delivered"
+	}
 	var b strings.Builder
-	b.WriteString(verb + ": refused by the doc-fidelity gate — the brief lags what " +
-		strings.Join(population, ", ") + " delivered (nothing moved):")
+	b.WriteString(verb + ": refused by the doc-fidelity gate — the brief lags " + lags + " (nothing moved):")
 	for _, r := range v.Reasons {
 		b.WriteString("\n  - " + termsafe.Sanitize(r))
 	}
