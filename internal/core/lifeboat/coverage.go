@@ -53,6 +53,11 @@ type SectionCoverage struct {
 	Evidence   []string   `json:"evidence,omitempty"`
 	Searched   []string   `json:"searched,omitempty"`
 	Question   string     `json:"question,omitempty"`
+	// Reason says why a partial row is partial: what the probe found and what
+	// would ground the section. It is set on every partial and on nothing else;
+	// omitempty keeps a grounded or blank row byte-identical, so no schema bump
+	// is owed.
+	Reason string `json:"reason,omitempty"`
 	// Resolution tracks a blank's fill state across the round-trip. It is
 	// meaningful only for a blank; a grounded/partial section leaves it empty.
 	Resolution Resolution `json:"resolution,omitempty"`
@@ -121,6 +126,9 @@ func (c Coverage) Render() string {
 		b.WriteString("\n")
 		if len(s.Evidence) > 0 {
 			fmt.Fprintf(&b, "    evidence: %s\n", strings.Join(sanitizeAll(s.Evidence), ", "))
+		}
+		if s.Status == StatusPartial && s.Reason != "" {
+			fmt.Fprintf(&b, "    why partial: %s\n", sanitize(s.Reason))
 		}
 		if s.Status == StatusBlank {
 			if s.Kind == KindHumanOwned {
