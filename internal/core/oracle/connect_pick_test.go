@@ -125,9 +125,11 @@ func TestConnectPicksFromAKeyedListing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
+	// Two listings: the picker's, and the one the verification call reads
+	// before it is sent, to judge the request's size; both keyed.
 	listAuth, chatModel := svc.seen()
-	if !reflect.DeepEqual(listAuth, []string{"Bearer " + callKey}) {
-		t.Fatalf("list requests carried %q, want one, keyed", listAuth)
+	if !reflect.DeepEqual(listAuth, []string{"Bearer " + callKey, "Bearer " + callKey}) {
+		t.Fatalf("list requests carried %q, want two (the picker's and the size check's), keyed", listAuth)
 	}
 	if !reflect.DeepEqual(offered, []string{"vendor/coder-large", "vendor/coder-small"}) {
 		t.Fatalf("the picker was offered %q", offered)
@@ -249,7 +251,8 @@ func TestConnectListsWithTheKeyItsHomeHolds(t *testing.T) {
 		if _, err := Connect(context.Background(), req); err != nil {
 			t.Fatalf("Connect: %v", err)
 		}
-		if listAuth, _ := svc.seen(); !reflect.DeepEqual(listAuth, []string{"Bearer " + callKey}) {
+		// The picker's listing and the verification's size check, both keyed.
+		if listAuth, _ := svc.seen(); !reflect.DeepEqual(listAuth, []string{"Bearer " + callKey, "Bearer " + callKey}) {
 			t.Fatalf("list requests carried %q", listAuth)
 		}
 	})
@@ -261,8 +264,9 @@ func TestConnectListsWithTheKeyItsHomeHolds(t *testing.T) {
 		if _, err := Connect(context.Background(), req); err != nil {
 			t.Fatalf("Connect: %v", err)
 		}
-		if listAuth, _ := svc.seen(); !reflect.DeepEqual(listAuth, []string{""}) {
-			t.Fatalf("list requests carried %q, want one, keyless", listAuth)
+		// The picker's listing and the verification's size check, both keyless.
+		if listAuth, _ := svc.seen(); !reflect.DeepEqual(listAuth, []string{"", ""}) {
+			t.Fatalf("list requests carried %q, want two, keyless", listAuth)
 		}
 	})
 	t.Run("a pointer at nothing lists nothing", func(t *testing.T) {

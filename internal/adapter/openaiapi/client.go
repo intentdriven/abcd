@@ -328,6 +328,10 @@ func loopback(host string) bool {
 // host sub-agent's payload is judged by; nil admits any answer (a
 // verification call, which judges only that the provider answered).
 //
+// Before sending, the request is judged against the model's served size
+// where the service's model list publishes one (size.go): a request estimated
+// over it is refused there, and without such a figure it is sent as before.
+//
 // The call asks for a stream and assembles its events into the answer
 // (stream.go); a server that answers with one chat-completion body instead is
 // read as that. It is bounded by ctx and by the first-byte, idle and total
@@ -336,6 +340,9 @@ func loopback(host string) bool {
 func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte) error) (Result, error) {
 	body, err := c.render(req)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := c.checkSize(ctx, req); err != nil {
 		return Result{}, err
 	}
 	l := c.limit(ctx)

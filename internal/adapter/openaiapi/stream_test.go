@@ -299,7 +299,7 @@ func TestASlowFirstTokenWithinTheFirstByteLimitIsWaitedFor(t *testing.T) {
 // sends nothing is abandoned at the first-byte limit, long before the total
 // cap, and is not unreachable (the brief was sent).
 func TestNoFirstByteWithinTheLimitIsRefused(t *testing.T) {
-	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) { <-r.Context().Done() })
+	f := newFake(t, chatOnly(func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) { <-r.Context().Done() }))
 	c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(200*time.Millisecond), WithIdleTimeout(time.Minute), WithTimeout(time.Minute))
 	_, err, d := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
 	if err == nil {
@@ -349,12 +349,12 @@ func TestSteadyChunksPastTheIdleLimitAreReadToTheEnd(t *testing.T) {
 // is abandoned at the idle limit, and sees the client go away.
 func TestAMidStreamStallHitsTheIdleLimit(t *testing.T) {
 	gone := make(chan struct{})
-	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+	f := newFake(t, chatOnly(func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
 		streamHead(w)
 		emit(w, chunkLine("m", `{"verdict":`, ""), "")
 		<-r.Context().Done()
 		close(gone)
-	})
+	}))
 	c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(200*time.Millisecond), WithTimeout(time.Minute))
 	_, err, d := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
 	if err == nil {
@@ -378,7 +378,7 @@ func TestAMidStreamStallHitsTheIdleLimit(t *testing.T) {
 // the idle limit never fires, is abandoned at the total cap.
 func TestTheTotalCapBoundsASteadyStream(t *testing.T) {
 	gone := make(chan struct{})
-	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+	f := newFake(t, chatOnly(func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
 		streamHead(w)
 		for {
 			select {
@@ -389,7 +389,7 @@ func TestTheTotalCapBoundsASteadyStream(t *testing.T) {
 				return
 			}
 		}
-	})
+	}))
 	c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(200*time.Millisecond), WithTimeout(500*time.Millisecond))
 	_, err, d := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
 	if err == nil {
@@ -461,7 +461,7 @@ func TestTheDefaultBoundsOutlastTheOldDeadline(t *testing.T) {
 // only keep-alive comments, one every 20ms, until the client goes away, which
 // it reports on gone.
 func keepAlives(gone chan<- struct{}, events ...string) func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) {
-	return func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+	return chatOnly(func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
 		streamHead(w)
 		emit(w, events...)
 		for {
@@ -473,7 +473,7 @@ func keepAlives(gone chan<- struct{}, events ...string) func(http.ResponseWriter
 				return
 			}
 		}
-	}
+	})
 }
 
 // TestAStreamOfOnlyKeepAlivesHitsTheEventLimit: a server that keeps the

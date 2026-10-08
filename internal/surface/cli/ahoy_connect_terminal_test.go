@@ -244,9 +244,11 @@ func TestConnectPicksAfterAKeyedListing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ahoy connect: %v\n%s%s", err, stdout, stderr)
 	}
+	// Two listings: the picker's, and the one the verification call reads
+	// before it is sent, to judge the request's size; both carry the key.
 	listAuth, chatAuth, chatModel := svc.seen()
-	if !reflect.DeepEqual(listAuth, []string{"Bearer " + connectKey}) {
-		t.Fatalf("list requests carried %q, want one, with the key", listAuth)
+	if !reflect.DeepEqual(listAuth, []string{"Bearer " + connectKey, "Bearer " + connectKey}) {
+		t.Fatalf("list requests carried %q, want two (the picker's and the size check's), with the key", listAuth)
 	}
 	if !reflect.DeepEqual(fake.offered, [][]string{{"vendor/coder-large", "vendor/coder-small"}}) || fake.pickHost != svc.base() {
 		t.Fatalf("the picker was offered %q for %s", fake.offered, fake.pickHost)

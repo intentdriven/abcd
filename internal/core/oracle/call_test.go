@@ -22,6 +22,10 @@ import (
 
 const callKey = "sk-or-v1-fedcba9876543210-not-a-real-key"
 
+// provFake is an OpenAI-compatible chat endpoint answering reply at code,
+// counting calls and recording the last one. It lists no models: the listing
+// a call reads before it is sent (to judge the request's size) is answered
+// not found and is neither counted nor recorded.
 type provFake struct {
 	srv   *httptest.Server
 	calls atomic.Int32
@@ -33,6 +37,10 @@ func newProvFake(t *testing.T, code int, reply string) *provFake {
 	t.Helper()
 	p := &provFake{}
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models") {
+			http.NotFound(w, r)
+			return
+		}
 		p.calls.Add(1)
 		p.auth.Store(r.Header.Get("Authorization"))
 		raw, _ := io.ReadAll(r.Body)
