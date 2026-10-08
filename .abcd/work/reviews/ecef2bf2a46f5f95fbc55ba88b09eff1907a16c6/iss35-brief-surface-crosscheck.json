@@ -1,0 +1,623 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "ecef2bf2a46f5f95fbc55ba88b09eff1907a16c6"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-10-08T11:00:52Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:a813a6101cd62f2d1f4f2d9347b5e2c1a6823b0ec6d77a9169c1545dc762eabe",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:5f7b7483c460d894116b7b860ca8def7b5ecda45a75eb56a89b2a03b63140ff2",
+    "briefVersion": "0.13.3"
+  },
+  "categories": {
+    "criterion-violation": 1,
+    "false-claim": 50,
+    "fictional-layout": 11,
+    "stale-count": 10,
+    "undocumented-surface": 2
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:46 (.abcd/development/brief/04-surfaces/01-ahoy.md): claim: `status` is a plugin-page alias for the bare form and has no CLI sub-command behind it: `abcd ahoy status` is refused as an unknown command. / reality: The CLI half holds (`abcd ahoy status` exits 2, unknown command), but the plugin page has no alias: commands/ahoy.md:24-26 says 'No argument is the bare read-only detection pass below; the binary refuses any other word, `status` included', and its argument-hint lists no `status`. `/abcd:ahoy status` is refused, not aliased to the bare form.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-002",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:253-312 (.abcd/development/brief/04-surfaces/01-ahoy.md): claim: The ~/.abcd.noindex/ tree is the user-scope inventory ('the two are one list and must agree' with 05-internals/03-configuration.md). / reality: The tree leaves out four user-scope entries that shipped code reads or writes, three of them named elsewhere in this same chapter: `cache-attestation` (01-ahoy.md:321; internal/core/ahoy/cache_attestation.go, hooks/bootstrap.sh), `oracle-routing.json` (01-ahoy.md:547, the install's oracle-routing offer), `interviews/` (01-ahoy.md:618-619; internal/core/interview/interview.go homeRecordsLeaf) and `statusline.json` (internal/core/statusline/settings.go; also listed as a user-scope file at 05-internals/03-configuration.md:544-545).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-003",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/03-embark.md:85-89 (.abcd/development/brief/04-surfaces/03-embark.md): claim: The unpack's write runs under the target's issue-ledger lock (when it writes an issue) and then its intent store's lock, 'the order every writer holding both takes'; a record created between plan and write is 'a capture, an intent minted in the target meanwhile'. / reality: embark from also takes the target's spec store lock as a third lock (ledger, then intent store, then spec store) via intent.WithLedgerThenMintLock, and the rejudge also catches a spec minted in the window (internal/core/lifeboat/embark.go:102-114, internal/core/intent/ledgerlock.go:93-100). The brief's two-lock account omits the spec store lock and the spec-mint race it closes.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-004",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:493 (.abcd/development/brief/04-surfaces/04-launch.md): claim: Refusal kind `stale-intent` is raised when \"an intent in `planned/` has a spec that has closed\". / reality: internal/core/release/emit.go:399-443 (staleIntents) refuses only when a planned intent has NO open spec left (every realising spec closed); a planned intent with one closed and one open spec is explicitly not stale. The code comment states: 'The question is \"any open spec left?\", never \"has its spec closed?\"' -- the brief states the rejected question.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-005",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:15 (also :229-230) (.abcd/development/brief/04-surfaces/04-launch.md): claim: \"The preview always exits 0, because a preview never blocks\"; \"Its report is preview-only and always exits 0.\" / reality: `abcd launch --dry-run` exits non-zero on several paths the same chapter (and the tests) describe: a --baseline that is not a release tag exits 2 (brief :377, :794; internal/surface/cli/launch_parity_test.go:96), --fetch-baseline misuse exits 2 (launch_parity_test.go:499), and an undeclared or unknown artefact kind refuses the preview before anything is written (brief :34-39).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-006",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:10-11 (also :149-150) (.abcd/development/brief/04-surfaces/04-launch.md): claim: \"the shipped verb writes a dated changelog heading and the release page and stops\"; \"every step past the changelog heading and the release page is performed by a human and by CI\". / reality: `abcd launch ship --help` states it 'Writes the CHANGELOG heading, RELEASE.md, and the archive pin' -- the cut also rewrites the catalog's plugin source (pinned archive, when publishes_plugin_archive is declared), moves the outgoing page to .abcd/development/releases/, rewrites moved target records, and stages a payload with --payload-dir (as the chapter itself says at :87-93, :104-106, :684-688). The exhaustive 'and stops' list omits these writes.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-007",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:3 (.abcd/development/brief/04-surfaces/05-intent.md): claim: Remaining backing intents sit in intents/planned/ (itd-27 grill, itd-34 kinds, itd-50 audit loop) / reality: Only itd-50 is in planned/. itd-27 is in .abcd/development/intents/superseded/ (superseded_by: itd-94) and itd-34 is in .abcd/development/intents/shipped/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-008",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:311 (.abcd/development/brief/04-surfaces/05-intent.md): claim: The grill step row: '(per itd-27, intents/planned/ — a later phase; no grill sub-verb ships yet)' / reality: itd-27 is in intents/superseded/ (superseded_by: itd-94), not planned/. No grill sub-verb ships, which is correct, but the backing intent is retired, not a planned later phase.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-009",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:441 (.abcd/development/brief/04-surfaces/05-intent.md): claim: Not shipped: the grill sub-verb ... are a design target (backing intent itd-27, intents/planned/) / reality: itd-27 is in intents/superseded/, so there is no planned backing intent for the grill sub-verb or the PRD fields.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-010",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:84 (.abcd/development/brief/04-surfaces/05-intent.md): claim: bundle-member examples itd-20, itd-24, itd-63, itd-69 (bundle spc-83-operator-surfaces, in planned/ — committed but unscheduled, named in no phase doc) / reality: All four do carry bundle: spc-83-operator-surfaces, but none is in planned/. itd-20 is in superseded/ and itd-24, itd-63 and itd-69 are in shipped/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-011",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:501 (.abcd/development/brief/04-surfaces/05-intent.md): claim: stale_edge/edge_cycle: 'this tree carries five findings': the drafts itd-22 (blocked_by) and itd-33 (builds_on) name itd-2, plus three mutual builds_on cycles / reality: itd-22 (drafts/) carries no blocked_by/builds_on naming itd-2. Its body says the edge was dropped. itd-33 is not a draft: it is in superseded/, with builds_on [itd-2609201916151817, itd-22] and blocked_by [itd-121], and neither names itd-2. Only the three cycle pairs (itd-14/itd-15, itd-2609201916056194/itd-2609201916151817, itd-2609081951381895/itd-2609170822093401) remain, so the count of five and the two stale-edge findings are out of date.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-012",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:503 (.abcd/development/brief/04-surfaces/05-intent.md): claim: surface_history entries are well-formed ... Lint code IL012 (severity: warn) / reality: No IL012 check exists in internal/ or cmd/, and no record-lint rule reads surface_history. The bullet is not marked (convention) even though the list's lead-in says each bullet names what holds it. Line 493 does call the IL0xx codes later-phase design, so this bullet contradicts that note.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-013",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:513 (.abcd/development/brief/04-surfaces/05-intent.md): claim: kind_at_supersession is (convention) — the reclassify verb writes it and no lint reads it, though every record in superseded/ carries it / reality: Three superseded records have no kind_at_supersession key: itd-17-model-effectiveness-tracking.md, itd-27-grill-skill-and-glossary.md and itd-58-session-reviewer-verdict-ingestion.md (all in .abcd/development/intents/superseded/).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-014",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/07-memory.md:20-21 (.abcd/development/brief/04-surfaces/07-memory.md): claim: The surface traces to itd-36, which sits in `intents/planned/`. / reality: itd-36 is at .abcd/development/intents/shipped/itd-36-memory-unification.md; no copy exists under intents/planned/. The same page's References (line 160) already links the shipped/ path, so the page contradicts itself.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-015",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:300 (.abcd/development/brief/04-surfaces/08-abcd.md): claim: Design target (itd-20, `intents/planned/`, `spec_id: null`) -- the board design is filed as a planned intent. / reality: itd-20 lives at .abcd/development/intents/superseded/itd-20-top-level-abcd-dispatcher.md with superseded_by: itd-121; there is no itd-20 under intents/planned/. The chapter's own Related documentation link (line 377) already points at intents/superseded/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-016",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:301-306 (.abcd/development/brief/04-surfaces/08-abcd.md): claim: The shipped status path reads `.git`, `.abcd/development` and the three work tiers, and nothing else: no visibility, no disembark log, no dev-sync record, no logbook, no linked intents, no spec store, and no thresholds, walks or timeouts (and line 352: every other section is a local read). / reality: The shipped board (bin/abcd-darwin-arm64 --json --view facilitator) also reads the user account's inbox and machine oracle routing outside the repo (JSON keys inbox, oracle), the mode state, peers, reviews (internal/core/reviews StaleAfter = 20, a threshold over a walk of .abcd/work/reviews/), and a status block computed from intents and the spec store via the readiness gate (internal/core/statusblock, intent.ReadinessIn, intent.StartChecksIn), as this same chapter's 'What ships today' section (lines 137-296) describes.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-017",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/10-docs.md:119-121 (.abcd/development/brief/04-surfaces/10-docs.md): claim: Bare `abcd docs` prints command usage rather than a status board; the surfaces index (README.md) carries the one enumeration of where the bare-status convention holds, and `docs` is not on it. / reality: .abcd/development/brief/04-surfaces/README.md:195-215 enumerates the EXCEPTIONS to the bare-status convention ('This paragraph is the one enumeration of the exceptions'), not where it holds, and `docs` IS on it ('Seven parents print usage with no state at all: `disembark`, `docs`, ...'). The behaviour (bare `abcd docs` prints usage) matches, but the description of the index and the statement that `docs` is absent from it are both false.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-018",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/10-docs.md:121-123 (.abcd/development/brief/04-surfaces/10-docs.md): claim: The working verbs accept the `docs-lint.json` to load and the repo to work over; the bare citation parent only routes and takes neither. / reality: Only `abcd docs cite confirm` and `abcd docs cite refresh` take `--config`/`--root`. The chapter's other working verbs, `abcd docs fidelity` (flags --apply, --autonomous, --intent, --report) and `abcd docs fidelity record` (flag --verdict-json), take neither (confirmed by `--help` and by the chapter's own generated appendix). The sentence holds only if it is narrowed to the citation verbs.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-019",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/11-history.md:333 (.abcd/development/brief/04-surfaces/11-history.md): claim: The corpus has three write paths that all redact: the explicit capture, the explicit drain, and the automatic session-start drain (with migration named as a fourth, non-redacting path). / reality: More redacting paths write records into the store than the three named: `abcd history ingest` (writes the --into repository's store), the live prompt-router drain on UserPromptSubmit (internal/surface/cli/cli.go:2115 livePromptDrainBudget, which the same chapter describes at line 236), and the runner transcript store used by `abcd build` and the written interview (internal/core/runner/transcript.go HistoryStore.Store -> history.Capture; wired at internal/surface/cli/build.go:698,953 and internal/surface/cli/written_interview.go:99). The enumeration is a stale count.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-020",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/12-version.md:15-17 (.abcd/development/brief/04-surfaces/12-version.md): claim: \"For one release the retired verb answers with the flag, or with the check when asked for it, and exits non-zero.\" / reality: The verb was retired in 0.11.0 (CHANGELOG.md:306, itd-2609212130136102), yet the redirect is still registered in the 0.13.3 binary, five releases later: `abcd version` exits 2 with a refusal naming `abcd --version`. The redirect does not answer with the check either: `abcd version --check` prints the framework's `unknown flag: --check`, followed by the same redirect line. So the 'one release' bound is stale, and 'answers ... with the check' does not match what the binary does.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-021",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/17-guard.md:81-82 (.abcd/development/brief/04-surfaces/17-guard.md): claim: The hook answers the host by its exit code and its message on stderr alone, and writes nothing on stdout in either output form. / reality: `abcd guard hook` writes the host's deny on stdout on a block: a Bash PreToolUse payload carrying a force push printed {\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",...}} on stdout with exit 0. A rows-only question finding also prints an additionalContext object on stdout (internal/surface/cli/guard_hook_output.go). `abcd guard hook --help`, and the same chapter at lines 51, 57-60 and 145-146, say the same. The sentence at 81-82 is stale and contradicts the shipped hook and the chapter's own verdict table.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-022",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/18-ideate.md:148-149 (.abcd/development/brief/04-surfaces/18-ideate.md): claim: the decision log's read-modify-write runs under the same advisory lock the ledger allocators use / reality: ideate takes its own lock file, .abcd/work/.decisions.lock (internal/core/ideate/ideate.go:64), separate from the issue allocator's .abcd/work/issues/.iss-alloc.lock (internal/core/capture/alloc.go:19). Only the mechanism is shared (fsutil.WithFileLock flock), so the two never serialise against each other. Read literally ('the same lock'), the claim is false; 'the same kind of advisory lock' would be accurate.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-023",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/19-identity.md:102 (.abcd/development/brief/04-surfaces/19-identity.md): claim: A surface whose candidate files are all absent is skipped rather than reported, because a file that does not exist carries no drift (stated in the Behaviour section, which also describes the lint's identity report as printing every surface's verdict). / reality: Only the identity-positioning lint rule skips it (internal/core/repolint/rule_positioning.go emits findings for drifted and unlocatable surfaces only). `abcd lint identity` still prints the absent surface: renderIdentity in internal/surface/cli/identity.go:155-160 writes a line '• [<id>] (absent) — absent' for every surface with status absent (positioning.StatusAbsent, internal/core/positioning/check.go:35). It does not count toward the 'surface(s) adrift' total, but it is reported.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-024",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:155-157 (.abcd/development/brief/04-surfaces/21-update.md): claim: A file swapped under either local proof has no old version, so the receipt reports the old digest and reads `updated <path>: an unpublished build -> <tag>`. / reality: internal/surface/cli/update.go renderUpdateReport prints update.UpdatedLine(old, new) with old = \"an unpublished build\", i.e. `abcd updated from an unpublished build to <tag>`, then `  path: <path>` on its own line and `  replaced: sha256 <digest> — in no published release; <proof>`. The `updated <path>: ... -> <tag>` form does not exist (and contradicts the brief's own line 139 and the 'An update says so once' section).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-025",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:9-12 (.abcd/development/brief/04-surfaces/21-update.md): claim: this verb, with its check, is the only **command** that reaches the release origin, and only when invoked / reality: `abcd launch --fetch-baseline` and `abcd launch ship --fetch-baseline` also fetch from the release origin (the tag's published plugin archive, verified against the release's checksums.txt, per their --help); commands/update.md itself documents `--fetch-baseline` as 'the one other flag that reaches it'.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-026",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/27-implement.md:53-54 (.abcd/development/brief/04-surfaces/27-implement.md): claim: outside a checkout, or in a repository with no commit, every sub-verb refuses and nothing is created / reality: Run outside any git checkout, `abcd implement load --site preflight` exits 0 with a load verdict, and `abcd implement report --log <file>` exits 0 and renders the report. Bare `implement` and `implement status` do refuse with exit 2 there. The claim also contradicts the chapter's own line 254 ('it never refuses'). It holds for the run-state sub-verbs only.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-027",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/34-build.md:31-34 (repeated at :153-154) (.abcd/development/brief/04-surfaces/34-build.md): claim: Naming a falsified pick in the run record (criterion 6) is not built; it 'waits on the unachievable verdict of itd-50'. / reality: It ships. internal/core/implement/loop/handback.go:8,33 records 'the pick of <run> is falsified ...' when a lane the pick started is handed back, and `abcd build next --help` says 'A lane handed back after its fix rounds falsifies the pick: the run record says so'. The same chapter at :529-531 also says a pick-started run gains a `pick` line naming the pick falsified, so the chapter contradicts itself.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-028",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/34-build.md:464-469 (.abcd/development/brief/04-surfaces/34-build.md): claim: The receipt's fields are schema_version, run_id, lane, branch, commits, definition_of_done, report, an optional model and an optional resolves, and it is decoded strictly ('no field the schema does not name'). / reality: The receipt schema also has an optional `handback` field (internal/core/implement/loop/receipt.go:73, with kind/reason/home). `abcd build --help` documents it for issue-keyed runs: 'A receipt carrying `handback` in its place ends the lane: its worktree and branch are discarded and the issue is handed back by kind.' This chapter's field list leaves it out. Its only brief home is 04-surfaces/35-drain.md:186.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-029",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/34-build.md:630-632 (Exit codes) (.abcd/development/brief/04-surfaces/34-build.md): claim: Exit 3 (contention) covers four cases: a peer holds the intent, the run is paused, the run state is locked, or a landing waits for its pull request to merge. Every other refusal is exit 2. / reality: The binary also exits 3 (contend(), internal/core/implement/loop/refusal.go:75) in four more cases. (1) `abcd build next` when the picked intent's run is already in progress (loop.go:397; `build next --help`: 'exit 3 when the chosen intent's run is already in progress'). The chapter at :151-153 calls this 'refused by name', which reads as exit 2. (2) A landing waiting for its preflight receipt (land.go:471). (3) A step while a round's validators are all out (validate.go:170). (4) `implement step --release/--discard` while other lanes are still at work (hold.go:128).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-030",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:303 (.abcd/development/brief/04-surfaces/README.md): claim: `consult.md` and `ingest.md` invoke the binary nowhere at all and carry the workflow itself / reality: Both pages instruct the host to run the binary: commands/consult.md:14 runs `\"${CLAUDE_PLUGIN_ROOT}/abcd\" source --json` (six `${CLAUDE_PLUGIN_ROOT}/abcd` invocations in the page, plus a binary-resolution ladder at :92-99) and routes every write through the `abcd source` verbs; commands/ingest.md:14 runs `abcd source --json`, :67 `abcd source add ...`, :101 `abcd source sync-banlist`. They back onto no verb of their own, but they do invoke the binary.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-031",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:353 (.abcd/development/brief/04-surfaces/README.md): claim: Four [agents: ruthless-reviewer, security-reviewer, sota-researcher, question-drafter] serve no verb, and no command page calls on them / reality: ruthless-reviewer and security-reviewer are the validators the `build` loop dispatches: internal/core/implement/loop/validate.go:74-75 (RoleRuthless/RoleSecurity) and commands/build.md:283-284 (`validate` step names a `ruthless-reviewer` and a `security-reviewer`). question-drafter is called on by commands/guard.md:100 and commands/intent.md:333 (draft each question through the abcd:question-drafter agent). Only sota-researcher is unreferenced by any verb or command page.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-032",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:233 (.abcd/development/brief/04-surfaces/README.md): claim: `changelog` delivered by itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/` / reality: Both records are in shipped/: .abcd/development/intents/shipped/itd-73-derived-versioning.md and .abcd/development/intents/shipped/itd-67-installable-versioned-plugin.md; neither is under intents/planned/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-033",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:14 (.abcd/development/brief/02-constraints/04-naming.md): claim: /abcd:ahoy: the bare form and the read-only sub-verbs report; `install`, `uninstall` and `remote apply` are the write paths. / reality: `abcd ahoy --help` registers two more writing sub-verbs: `ahoy connect` ('Writes ~/.abcd.noindex/ and the key's home') and `ahoy credential` ('Writes the chosen home only with --home'). The write-path list is incomplete.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-034",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:54-58 (.abcd/development/brief/02-constraints/04-naming.md): claim: The remaining surfaces are exempt ... (banlist, changelog, consult, decide, docs, guard, history, ideate, identity, ingest, lint, memory, prepare-this-repo, reading, rules, site, spec, update, version). They are registered here so the exemption is on the record. / reality: Registered verbs and commands/ pages that appear nowhere in this file (not in the maritime table, the reasoned exemptions or the plain exemption list): build, dashboard, drain, implement, inbox, lab, mode, peers, report, scribe, source (all have commands/<verb>.md and a binary verb), plus the binary verb statusline. Their maritime exemption is not on the record.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-035",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:182 (.abcd/development/brief/02-constraints/04-naming.md): claim: `task_classes` (capability_scope tokens) is a closed enum {oracle_review, intent_audit, spec_planning, code_rescue, principle_distillation, lifeboat_packing, audit, lint, surface_render, cross_document_audit, cold_reading}, PR-to-extend; this table is the source of truth. / reality: agents/intent-auditor.md declares `task_classes: [intent_audit, intent_consistency]`; `intent_consistency` is not in the closed enum.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-036",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:223 (.abcd/development/brief/02-constraints/04-naming.md): claim: voyage/ is split by operation: `disembark/history.jsonl`, `embark/provenance.json`, `embark/from/<timestamp>/`. / reality: Only internal/core/lifeboat/voyage.go builds a voyage path, and it writes only `<root-sha>/disembark/history.jsonl`. No code writes `embark/provenance.json` or `embark/from/<timestamp>/` under ~/.abcd.noindex/voyage/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-037",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:224 (.abcd/development/brief/02-constraints/04-naming.md): claim: history.jsonl has one line per disembark run carrying `manifest_sha256`, file list, oracle backend used, verdict. / reality: voyageEntry (internal/core/lifeboat/voyage.go:32-42) carries schema_version, event, at, manifest_sha256, source_name, source_root_sha, dest, files (a count, not a list), bytes. Its doc comment says it carries no oracle verdict because nothing produces one. There is no oracle-backend field.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-038",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:54 (.abcd/development/brief/05-internals/01-agents.md): claim: `agents/` also holds two plain docs, its README and its changelog, which carry no agent frontmatter; the loader globs agents/*.md and registers both as harness agents; iss-110 tracks the mis-registration. / reality: agents/ holds only the 18 prompt files plus per-agent fixtures/ directories; there is no agents/README.md or agents/CHANGELOG.md. iss-110 is in .abcd/work/issues/resolved/ (commit d5091dac6): both docs moved to .abcd/development/agents/, and .abcd/record-lint.json agent_contract now reads changelog from .abcd/development/agents/CHANGELOG.md.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-039",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:113 (.abcd/development/brief/05-internals/01-agents.md): claim: intent-auditor has three roles, each with its own verb: 'Only the first ships.' / reality: The same section marks role 2 '(shipped, itd-48)', and `abcd intent consistency` is a registered sub-verb (bin/abcd-darwin-arm64 intent --help). Two roles ship (audit, consistency); only `intent shape` is unregistered.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-040",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:261 (.abcd/development/brief/05-internals/01-agents.md): claim: `task_classes` is authored as a YAML inline list, never a block list, because the frontmatter parser does not support one nested there. / reality: internal/core/lint/agentcontract.go agentCapabilityScope (comment at ~line 444-451) decides block membership by column and reads a block-sequence member as present; it says the inline-list convention (.abcd/development/agents/README.md) is a style rule the parser does not adjudicate. The stated reason (parser cannot read a block list) is stale.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-041",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:182 (cited by 01-agents.md:278-280) (.abcd/development/brief/05-internals/01-agents.md): claim: 01-agents.md: the reserved-vocabulary table in 04-naming.md is the task_classes token set's source of truth; the table lists {oracle_review, intent_audit, spec_planning, code_rescue, principle_distillation, lifeboat_packing, audit, lint, surface_render, cross_document_audit, cold_reading}. / reality: agents/intent-auditor.md declares capability_scope.task_classes: [intent_audit, intent_consistency]; `intent_consistency` is not in the source-of-truth table.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-042",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:292-296 (.abcd/development/brief/05-internals/03-configuration.md): claim: eight of the thirteen committed records carry schema_version, and five do not, the record-lint and docs-lint configuration among them / reality: The tree holds fourteen committed JSON configuration records (.abcd/*.json: 9, .abcd/config/*.json: 5). Eight carry schema_version (citations-baseline, config.json via meta, positioning, prose-citations-baseline, rules, site-baseline, site, config/reading-presets). Six do not: docs-lint, record-lint, config/artefact, config/identity, config/launch-payload, config/version-location.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-043",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:1035-1038 (.abcd/development/brief/05-internals/03-configuration.md): claim: internal/adapter/ draws only scanner/ and gitleaks/: 'The scanner is the one seam with a package today' / reality: internal/adapter/ holds five packages: gitleaks, hosting (with cloudflare/), openaiapi, scanner, tailscale. The same chapter (line 89) describes the shipped OpenAI-compatible API adapter, which is internal/adapter/openaiapi.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-044",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:1038 (.abcd/development/brief/05-internals/03-configuration.md): claim: internal/surface/cli/ is 'the only front door that ships (an mcp/ door is adr-23's third)' / reality: internal/surface/ also holds dashboard/, which ships: it is 'the one package in abcd that opens a network listener', serving the product thinker's dashboard behind the shipped `abcd dashboard` verb (commands/dashboard.md). The plugin tree does not draw it.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-045",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:1041-1042 (.abcd/development/brief/05-internals/03-configuration.md): claim: agents/<name>.md: host-delegated agent prompts, plus per-agent fixtures/, README.md and CHANGELOG.md / reality: agents/ holds the 18 <name>.md prompts and the per-agent <name>/fixtures/ directories, but no README.md or CHANGELOG.md. Those two live at .abcd/development/agents/README.md and .abcd/development/agents/CHANGELOG.md.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-046",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:483-509 and 577-579 (.abcd/development/brief/05-internals/03-configuration.md): claim: The user-scope inventory of ~/.abcd.noindex/ (claimed to be one list with the 01-ahoy.md tree), and the list of stores that refuse a symlinked level (transcripts/, voyage/, lab/, inbox/, runs/) / reality: The binary also writes two user-scope stores that the chapter never names. ~/.abcd.noindex/dashboard/ holds the dashboard's run state, seen-devices file and lock (internal/surface/dashboard/control.go, stateDir = \"dashboard\"). ~/.abcd.noindex/backups/ holds the status-line settings backups ahoy keeps (internal/core/ahoy/statusline_guard.go, abcdhome.Rel(\"backups\")). The inventory paragraph also leaves out oracle-routing.json, statusline.json and cache-attestation; only the later symlink paragraph mentions them.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-047",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:1103-1109 (.abcd/development/brief/05-internals/03-configuration.md): claim: Under development/ sit the durable record's families: brief, intents, principles, decisions, roadmap, plans, spec store, cold-reading ledger, release surface declaration, release gate manifest, research, persona roster / reality: .abcd/development/ also holds agents/ (README.md, CHANGELOG.md), releases/ and retrospectives/. None of them is named in the enumeration.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-048",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:980-981 (.abcd/development/brief/05-internals/03-configuration.md): claim: Only the memory package exists today, and its shipped front door takes a URL rather than a harvested directory / reality: `abcd memory ingest <path-or-https-url>` takes a local file or an https URL ('Distil a local file or an https source into cited memory pages'), not only a URL.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-049",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:73-75 (.abcd/development/brief/05-internals/05-prompt-quality.md): claim: every shipped agent's `fixtures/` directory holds exactly one file, the injection canary / reality: Two agents hold more than one fixture: agents/intent-auditor/fixtures/ has injection-canary.json and injection-canary-consistency.json; agents/release-changelog-composer/fixtures/ has injection-canary.json, injection-canary-press-release.json and no-forecast.json. The other 16 hold exactly one.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-050",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:122-124 (.abcd/development/brief/05-internals/05-prompt-quality.md): claim: Most [prompts] say [the self-improvement pre-flight has not fired] in the changelog, in their own entry or in its dated section's preamble; the four review and research prompts say it nowhere. / reality: Seven prompts say it nowhere, not four: besides ruthless-reviewer, security-reviewer, docs-currency-reviewer and sota-researcher, the entries and section preambles for question-drafter 0.1.0, planning-interviewer 0.1.0 and reflection-composer 0.1.0/0.2.0/0.3.0 (.abcd/development/agents/CHANGELOG.md:15-70) never mention a pre-flight. The list of exceptions predates those three agents.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-051",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:114-116 (.abcd/development/brief/05-internals/05-prompt-quality.md): claim: the entries for the five prompts hardened on 2026-08-19, and one cold-reading bump, say [the delta is unmeasured] nowhere / reality: Three cold-reading bumps say it nowhere, in their own entry or their dated section's preamble: cold-reading-widening 0.2.0 (.abcd/development/agents/CHANGELOG.md:346), cold-reading-entailment 0.1.3 (:215) and cold-reading-detection 0.1.4 (:219). The last two say only 'the same source-list line as widening's, for the same reason'.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-052",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:27-28 (.abcd/development/brief/05-internals/05-prompt-quality.md): claim: `agents/` sits outside both the record-lint and docs-lint roots, so the per-file rules do not reach it / reality: agents/ is outside the `roots` of both configs, but docs-lint's links_resolve rule (blocker) names `agents` in its extra_roots (.abcd/docs-lint.json:282-289), and docs-lint's name_roots also list `agents` (.abcd/docs-lint.json:12). So docs-lint's per-file link and name checks do reach the prompt tree. The Makefile's docs-lint comment says the same thing ('the agent prompts ... through links_resolve's extra_roots').",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-053",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:13-14,56-57 (.abcd/development/brief/05-internals/05-prompt-quality.md): claim: catching a body edit that never bumped its version needs the check pointed at a diff range, which the continuous-integration caller supplies ... The range comes from the CI caller / reality: CI is not the only caller that arms it. The Makefile's record-lint target runs `go run ./cmd/record-lint -agent-diff origin/main...HEAD` (Makefile:164-165), so every `make record-lint` and `make preflight` also arms the unbumped-edit check. The brief presents this as CI-only.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-054",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:74-75 (.abcd/development/brief/05-internals/08-skills.md): claim: Five verbs have a Go verb and no command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. / reality: Six: `abcd --help --agent` also lists `statusline` (\"Render abcd's status-line row from the host's payload on stdin\"), and commands/ has no statusline.md. 04-surfaces/README.md:145 and :238 document statusline as a CLI-only verb.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-055",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:76-77 (.abcd/development/brief/05-internals/08-skills.md): claim: Three command pages carry no Go verb of their own name: the host-delegated three above. / reality: commands/version.md also has no Go verb of its name: `abcd version --help` falls through to the root help, because the binary has no `version` verb. The page runs the root `--version` flag (`\"${CLAUDE_PLUGIN_ROOT}/abcd\" --version --json`). That makes four pages: consult, ingest, prepare-this-repo and version.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-056",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:77-79 (.abcd/development/brief/05-internals/08-skills.md): claim: Two of those three call no part of the binary at all; `/abcd:prepare-this-repo` is the exception / reality: commands/consult.md runs the binary (`\"${CLAUDE_PLUGIN_ROOT}/abcd\" source --json` at line 14, `source ledger` at 54, `source sync-banlist` at 84, `source cite-check` at 87). commands/ingest.md does too (`source --json` at 14, `source add` at 67). All three host-delegated pages call the binary.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-057",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:19 (.abcd/development/brief/05-internals/08-skills.md): claim: The release payload declares all four kinds. / reality: .abcd/config/launch-payload.json includes commands, agents and hooks but no skills directory. The same page says so at lines 114-115 (\"the include list still names commands, agents and hooks and no skills directory\"). Only the install-surface resolver (internal/core/launch/installsurface.go conventionRules) recognises all four kinds; the payload does not declare skills.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-058",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:33 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: The scanner is the one seam standing — the native secret and PII scan, with an external backend as its config-selected plug-in. / reality: internal/adapter/ holds five packages: scanner, gitleaks (the scanner's external backend), hosting (its package doc: 'the second seam under internal/adapter beside the scanners', the provider seam `abcd site setup` routes through), openaiapi (OpenAI-compatible API adapter) and tailscale (the tailscale command as an adapter, used by the dashboard).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-059",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:34-40 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: The oracle, history, spec and run seams ... are planned rather than present ... History and spec ship as core packages with no adapter interface behind them yet. / reality: The oracle ships too: internal/core/oracle (call.go, dispatch.go, route.go, connect.go, receipt.go) with an opt-in API adapter internal/adapter/openaiapi behind it, configured through the shipped `abcd ahoy connect`, `abcd ahoy credential` and `abcd ahoy --providers`. Only the adapter/oracle/ path is absent; the sentence naming what ships as core packages omits oracle.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-060",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:53-56 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: the bare invocation, its `--dry-run`, `--identity` and `--remote` modes, and `doctor` are the read-only halves. Two further forms write: `uninstall` ... and `remote apply` / reality: `abcd ahoy --help` also lists a `--providers` read-only mode and two more writing sub-verbs, `connect` ('Writes ~/.abcd.noindex/ and the key's home') and `credential` ('Writes the chosen home only with --home'); the enumeration of read-only and writing forms is stale.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-061",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:50-51 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: `abcd ahoy install` ... injecting the conventions marker block and the rules loader (itd-3) / reality: install writes the marker block only when `--docs-target agents_md` is chosen; the default (`skip`) writes none (`abcd ahoy install --help`: 'whether AGENTS.md carries the managed block ... (default skip)'; commands/ahoy.md: 'A default install writes abcd's name into none of the repository's conventions files').",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-062",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:49 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: `abcd ahoy install` ... carrying its configuration as flags rather than a wizard / reality: install runs an interactive setup interview at a terminal: `--answers` answers 'the setup questions' (interview \"setup\"), a question no flag or file answers refuses with exit 2, and `--yes` excludes the identity pin, status line and model-tier tables, 'which need an answered prompt'.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-063",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:80-81 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: memory: the curated knowledge substrate (itd-36); a vendor memory harvest is an opt-in, read-only source over it. / reality: No vendor memory harvest exists: `abcd memory --help` lists only ask, ingest and lint, and no non-lab Go source under internal/ implements a memory harvest (the only harvest is internal/core/lab/harvest.go). The claim is unmarked as a design target.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-064",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:90 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: `grill` is a design target (itd-27) / reality: itd-27 lives in .abcd/development/intents/superseded/ (superseded_by: itd-94, which is in shipped/); the cited backing intent is no longer a live design target.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-065",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:98 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: `internal/surface/` holds one door, `cli` / reality: internal/surface/ holds cli and dashboard (internal/surface/dashboard: 'the one package in abcd that opens a network listener', behind the shipped `abcd dashboard` verb).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-066",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:129 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: Nothing of this ships: the binary registers no `run` verb / reality: No `run` verb is registered, but an autonomous run loop ships under other verbs: `abcd build` ('Start the loop that takes one READY intent to delivered: Writes the run's state file') and `abcd implement` ('Share one autonomous run between sessions and drive the implement loop').",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-067",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:130-131 (.abcd/development/brief/06-delivery/01-build-sequence.md): claim: the operator surface over it is itd-29, in `intents/planned/` / reality: itd-29 is at .abcd/development/intents/superseded/itd-29-autonomous-run-resilience.md, superseded_by itd-2609201916151817 (in intents/planned/).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-068",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:25 (.abcd/development/brief/06-delivery/02-verification-matrix.md): claim: Front-door wiring row: the MCP half waits on that door because `internal/surface/` holds `cli` alone / reality: internal/surface/ holds two front doors: internal/surface/cli and internal/surface/dashboard (the dashboard surface). The staged-MCP conclusion stands, but 'cli alone' is false",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-069",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:71 (.abcd/development/brief/06-delivery/02-verification-matrix.md): claim: Capture migration (staged): 'The binary registers no migration verb' / reality: The binary registers three `migrate` sub-verbs: `capture migrate` (retired promote back-links, which row 69 of this same table documents), `history migrate` and `banlist migrate`. None of them promotes a pre-ledger flat issue list, so the staged capability is really absent, but the blanket 'no migration verb' statement is false as written",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-070",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:74 (CLI verb tree): claim: Five verbs have a Go verb and no command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. / reality: The binary registers six such verbs: `statusline` (listed in `abcd --help --agent`, and in 04-surfaces/README.md's Operator-internal verbs table) also has a Go verb and no commands/statusline.md. The count and the enumeration are both one short.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-071",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:100 (CLI verb tree): claim: Several parents print usage with no state, two verbs refuse instead of rendering / reality: Three top-level verbs refuse unconditionally when run bare: `abcd launch` (exit 1, asks for --dry-run), `abcd decide` (exit 2) and `abcd build` (exit 2). 04-surfaces/README.md § Bare invocation, the enumeration this passage defers to, names all three, plus `source` and `report`, which refuse conditionally.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-072",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:77 (plugin command surface): claim: Two of those three [consult, ingest, prepare-this-repo] call no part of the binary at all / reality: commands/consult.md and commands/ingest.md both run `\"${CLAUDE_PLUGIN_ROOT}/abcd\" source --json` and delegate writes to `abcd source` sub-verbs; none of the three host-delegated pages is binary-free",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-073",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:75-76 (plugin command surface): claim: Three command pages carry no Go verb of their own name: the host-delegated three above / reality: commands/version.md also has no Go verb of its name: the command tree registers no `abcd version` (bin/abcd-darwin-arm64 version exits 2; 04-surfaces/12-version.md:147 says it ships as the root flag `--version`), and commands/abcd.md is the bare command; the count of three is stale",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-074",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:19 (skills surface): claim: The plugin carries commands, skills, agents (agents/) and hooks (hooks/); \"The release payload declares all four kinds.\" / reality: The release payload include list .abcd/config/launch-payload.json names .claude-plugin, commands, agents, hooks, scripts, docs, README.md, LICENSE, .gitignore. It has no skills entry, so it declares three of the four kinds. The same page at lines 112-115 says so correctly (\"the include list still names commands, agents and hooks and no skills directory\"), so the page contradicts itself. Only the install-surface model (internal/core/launch/installsurface.go conventionRules/declarationKeys) knows all four kinds, and that is not the release payload. The rest of the skills documentation matches the tree: skills/ is absent, abcd ships zero skills (04-surfaces/README.md:333-342, 05-internals/08-skills.md:8), and consult, ingest and prepare-this-repo are commands with chapters 13/14/15.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred to the systematic brief pass iss-2609091956001547, the standing home for crosscheck findings of this kind; not introduced by a defect in the shipped code."
+    }
+  ],
+  "_reviewProvenance": "Full tier for an additive release: both directions, the manifest's 46 checkers (Direction A over the 41 brief docs, Direction B over the 5 surfaces), each an Opus 5.5 agent that read its prompt verbatim from a file holding the manifest's pinned context and direction template filled for its item, run by hand through the host's agent tool at most seven at a time and merged by the workflow script's own dedup rule (where + first 60 characters of the claim, first kept), over an exact export of content commit ecef2bf2a46f5f95fbc55ba88b09eff1907a16c6 with the binary built from it. 74 discrepancies after dedup: 74 in brief prose, deferred to iss-2609091956001547; 0 on a user-facing page, deferred to the post-cut follow-up."
+}
