@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -334,5 +335,61 @@ func TestACountThatReachedTheServerIsNeverUnreachable(t *testing.T) {
 	}
 	if errors.Is(err, ErrUnreachable) {
 		t.Fatalf("the brief reached /tokenize, yet the failure says nothing left this machine: %v", err)
+	}
+}
+
+// TestEveryDerivedAddressStaysOnTheBaseURLsHost proves the chat endpoint, the
+// model listing and the exact count are each derived from the parsed base URL,
+// never by string surgery on it: whatever the base's path, every address the
+// key and the brief go to keeps the base's scheme and host (port included).
+// A base whose host is literally v1 once gave a count address on the host
+// "tokenize", so the brief and the key left for a host the block never named.
+func TestEveryDerivedAddressStaysOnTheBaseURLsHost(t *testing.T) {
+	cases := []struct {
+		base, chat, models, tokenize string
+	}{
+		{"https://v1", "https://v1/chat/completions", "https://v1/models", ""},
+		{"https://v1/", "https://v1/chat/completions", "https://v1/models", ""},
+		{"https://v1:8000", "https://v1:8000/chat/completions", "https://v1:8000/models", ""},
+		{"https://v1/v1", "https://v1/v1/chat/completions", "https://v1/v1/models", "https://v1/tokenize"},
+		{"https://host/v1", "https://host/v1/chat/completions", "https://host/v1/models", "https://host/tokenize"},
+		{"https://host/prefix/v1", "https://host/prefix/v1/chat/completions", "https://host/prefix/v1/models", "https://host/prefix/tokenize"},
+		{"https://host/v1/", "https://host/v1/chat/completions", "https://host/v1/models", "https://host/tokenize"},
+		{"https://host:8443/v1", "https://host:8443/v1/chat/completions", "https://host:8443/v1/models", "https://host:8443/tokenize"},
+		{"https://host", "https://host/chat/completions", "https://host/models", ""},
+		{"https://host/xv1", "https://host/xv1/chat/completions", "https://host/xv1/models", ""},
+		{"https://host/a%2Fv1", "https://host/a%2Fv1/chat/completions", "https://host/a%2Fv1/models", ""},
+		{"http://LOCALHOST:8000/v1", "http://localhost:8000/v1/chat/completions", "http://localhost:8000/v1/models", "http://localhost:8000/tokenize"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.base, func(t *testing.T) {
+			c, err := New(tc.base, "")
+			if err != nil {
+				t.Fatalf("New(%q): %v", tc.base, err)
+			}
+			b, err := url.Parse(tc.base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, a := range []struct{ name, got, want string }{
+				{"chat", c.endpoint, tc.chat},
+				{"models", c.models, tc.models},
+				{"tokenize", c.tokenize, tc.tokenize},
+			} {
+				if a.got != a.want {
+					t.Errorf("%s address = %q, want %q", a.name, a.got, a.want)
+				}
+				if a.got == "" {
+					continue
+				}
+				d, err := url.Parse(a.got)
+				if err != nil {
+					t.Fatalf("%s address %q does not parse: %v", a.name, a.got, err)
+				}
+				if d.Scheme != b.Scheme || !strings.EqualFold(d.Host, b.Host) {
+					t.Errorf("%s address %q left the base's scheme and host %s://%s", a.name, a.got, b.Scheme, b.Host)
+				}
+			}
+		})
 	}
 }

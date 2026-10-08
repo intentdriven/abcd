@@ -255,11 +255,13 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 	if strings.EqualFold(u.Hostname(), "localhost") {
 		u.Host = strings.ToLower(u.Host)
 	}
-	base := strings.TrimSuffix(u.String(), "/")
+	// Every address is derived from the parsed URL, never by string surgery
+	// on it, so only the path changes: the scheme, host and port the block
+	// names are the ones each request goes to.
 	c := &Client{
-		endpoint:  base + "/chat/completions",
-		models:    base + "/models",
-		tokenize:  tokenizeURL(base),
+		endpoint:  under(u, basePath(u)+"/chat/completions"),
+		models:    under(u, basePath(u)+"/models"),
+		tokenize:  tokenizeURL(u),
 		listWait:  ListTimeout,
 		key:       key,
 		forms:     keyForms(key),
@@ -283,6 +285,27 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errRedirect },
 	}
 	return c, nil
+}
+
+// basePath is the base URL's path as escaped, without a trailing slash, so a
+// path appended to it reads the same whether the block wrote one or not.
+func basePath(u *url.URL) string {
+	return strings.TrimSuffix(u.EscapedPath(), "/")
+}
+
+// under is the base URL u with its path replaced by escaped, a path already
+// escaped: the scheme, host and port are u's own, and so is the escaping of
+// any part of the path kept from u.
+func under(u *url.URL, escaped string) string {
+	d := *u
+	p, err := url.PathUnescape(escaped)
+	if err != nil {
+		// Only a malformed escape fails, and the escaped form of a parsed
+		// URL's path has none; the plain path then carries the same bytes.
+		p = escaped
+	}
+	d.Path, d.RawPath = p, escaped
+	return d.String()
 }
 
 // ValidateBaseURL admits an absolute https URL, or an http URL to this machine

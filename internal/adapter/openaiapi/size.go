@@ -26,8 +26,8 @@ package openaiapi
 // TokenizeResponse). vLLM refuses a chat call whose prompt tokens plus
 // max_tokens exceed max_model_len (vllm/renderers/params.py,
 // _token_len_check), and the check refuses on exactly that sum. /tokenize is
-// served beside /v1, not under it, so it is asked only when the base URL
-// ends in /v1.
+// served beside /v1, not under it, so it is asked only when the base URL's
+// path ends in a /v1 segment.
 
 import (
 	"bytes"
@@ -37,6 +37,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -80,12 +81,14 @@ type served struct {
 	source string
 }
 
-// tokenizeURL is the exact count's address for a base URL ending in /v1 (the
-// server's root, then /tokenize), or empty for any other base URL, which
-// gives no address the count is known to be at.
-func tokenizeURL(base string) string {
-	if root, ok := strings.CutSuffix(base, "/v1"); ok {
-		return root + "/tokenize"
+// tokenizeURL is the exact count's address for a base URL whose path ends in
+// a /v1 segment (the server's root, then /tokenize), or empty for any other
+// base URL, which gives no address the count is known to be at. Only the
+// path is cut, never the URL as a string: a base whose host is v1 (https://v1)
+// has no /v1 path, so it gives no address rather than one on another host.
+func tokenizeURL(u *url.URL) string {
+	if root, ok := strings.CutSuffix(basePath(u), "/v1"); ok {
+		return under(u, root+"/tokenize")
 	}
 	return ""
 }
