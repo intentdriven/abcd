@@ -73,6 +73,18 @@ func TestAskingRulesWriteNumbersAsWords(t *testing.T) {
 	}
 }
 
+// TestAskingRulesSayTheRowsIncludeTheOptions: the rows a question fits are
+// the whole tab's, its options and their descriptions included, and the rule
+// says so, or the asker budgets them for the question text alone
+// (iss-2610071538055431).
+func TestAskingRulesSayTheRowsIncludeTheOptions(t *testing.T) {
+	text := joined(AskingRules(Default))
+	const want = "fits twenty-four rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description"
+	if !strings.Contains(text, want) {
+		t.Errorf("the rule text does not say %q:\n%s", want, text)
+	}
+}
+
 // TestAskingRecallIsTheGrillOverridesTerms: the recall terms are the ones the
 // repository override carried before the domain was generated (itd-201
 // decision 9 accepts their cost), and a caller cannot change them for the next.
@@ -85,5 +97,43 @@ func TestAskingRecallIsTheGrillOverridesTerms(t *testing.T) {
 	got[0] = "changed"
 	if AskingRecall()[0] != "grill" {
 		t.Fatal("a caller's edit to the returned terms reached the next caller")
+	}
+}
+
+// TestAskingRulesStateTheRowsExceptionAndTheDrafter: the layout rule says
+// what the check does with a question over the rows limit — it is shown, and
+// the agent is told afterwards — rather than claiming the check refuses it,
+// and one rule sends every abcd question through the drafter agent, which
+// counts rows as the check does. Neither names a record or a source-tree
+// command (itd-201 decision 8).
+func TestAskingRulesStateTheRowsExceptionAndTheDrafter(t *testing.T) {
+	text := joined(AskingRules(Default))
+	for _, want := range []string{
+		"The rows limit is the one the check does not refuse on",
+		"a question over it is shown, and the agent is told afterwards to keep the next question within it",
+		"abcd:question-drafter",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the asking rules do not state %q:\n%s", want, text)
+		}
+	}
+	drafter := ""
+	for _, r := range AskingRules(Default) {
+		if strings.Contains(r, "abcd:question-drafter") {
+			if drafter != "" {
+				t.Errorf("more than one rule names the drafter:\n%s\n%s", drafter, r)
+			}
+			drafter = r
+		}
+	}
+	for _, want := range []string{"the material", "whom the question is for", "answers"} {
+		if !strings.Contains(drafter, want) {
+			t.Errorf("the drafter rule must say what to hand it (%q): %s", want, drafter)
+		}
+	}
+	for _, banned := range []string{"iss-", "itd-", "spc-", "adr-", "go run", "make "} {
+		if strings.Contains(text, banned) {
+			t.Errorf("the asking rules name %q; they reach repositories that have no record and no source tree", banned)
+		}
 	}
 }

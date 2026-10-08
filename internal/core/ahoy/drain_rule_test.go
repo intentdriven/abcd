@@ -26,7 +26,7 @@ func (terminalScripted) AtTerminal() bool { return true }
 func drainRulePrompter(yes bool) terminalScripted {
 	return terminalScripted{&scriptedPrompter{confirm: func(q string) bool {
 		switch {
-		case strings.HasPrefix(q, "Apply "):
+		case askedCategory(q) != "":
 			return true
 		case strings.Contains(q, drainRuleQuestionTail):
 			return yes

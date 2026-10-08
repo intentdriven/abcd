@@ -8,10 +8,13 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // labCheckout is a one-commit repository under a temp HOME, with the process
-// standing in it, so the lab store the verb creates is the test's own.
+// standing in it, so the lab store the verb creates is the test's own. It is
+// not abcd's own repository unless asAbcd says so.
 func labCheckout(t *testing.T) (home, repo string) {
 	t.Helper()
 	home = t.TempDir()
@@ -34,10 +37,18 @@ func runLab(t *testing.T, args ...string) (int, string, string) {
 	return code, out.String(), errb.String()
 }
 
+// asAbcd makes the checkout stand in for abcd's own repository, whose labs the
+// dual-binary gate holds.
+func asAbcd(t *testing.T, repo string) {
+	t.Helper()
+	t.Cleanup(lab.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
+}
+
 // The verb is wired: every sub-verb executes from the CLI, a gate refusal exits
 // 1 with its artefact rendered, and no output carries the home path.
 func TestLabVerbRunsEverySubverbFromTheCLI(t *testing.T) {
 	home, repo := labCheckout(t)
+	asAbcd(t, repo)
 
 	code, out, errOut := runLab(t, "lab", "--json", "mint", "does", "the", "procedure", "transfer?")
 	if code != 0 {
@@ -83,6 +94,40 @@ func TestLabVerbRunsEverySubverbFromTheCLI(t *testing.T) {
 	}
 	if got := gitCmd(t, repo, "status", "--porcelain", "--ignored"); got != "" {
 		t.Errorf("the lab verbs wrote into the repository: %q", got)
+	}
+}
+
+// A lab of a repository that is not abcd's own passes its preflight, the
+// dual-binary group shown not applicable in the text and the JSON alike, and
+// mint's next steps never ask for a bin/abcd it cannot build.
+func TestLabPreflightShowsTheDualBinaryGroupNotApplicableOutsideAbcd(t *testing.T) {
+	_, _ = labCheckout(t)
+	code, out, errOut := runLab(t, "lab", "mint", "does", "the", "control", "panel", "load?")
+	if code != 0 || strings.Contains(out, "bin/abcd") {
+		t.Fatalf("lab mint (exit %d) names bin/abcd outside abcd's own repository:\n%s%s", code, out, errOut)
+	}
+	id := strings.Fields(out)[1] // "minted <lab-id> at pin <sha>"
+	code, out, _ = runLab(t, "lab", "preflight", id)
+	if code != 0 || !strings.Contains(out, ": PASSED") || !strings.Contains(out, "n/a   binary.work") ||
+		!strings.Contains(out, "not applicable: this repository is not abcd's own") {
+		t.Errorf("preflight outside abcd (exit %d):\n%s", code, out)
+	}
+	code, out, _ = runLab(t, "lab", "--json", "preflight", id)
+	var res struct {
+		Passed bool `json:"passed"`
+		Checks []struct {
+			ID            string `json:"id"`
+			OK            bool   `json:"ok"`
+			NotApplicable bool   `json:"not_applicable"`
+		} `json:"checks"`
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &res) != nil || !res.Passed {
+		t.Fatalf("preflight --json (exit %d): %s", code, out)
+	}
+	for _, c := range res.Checks {
+		if strings.HasPrefix(c.ID, "binary.") != c.NotApplicable || !c.OK {
+			t.Errorf("check %+v: want the binary checks, and only they, passing as not applicable", c)
+		}
 	}
 }
 

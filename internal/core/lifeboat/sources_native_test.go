@@ -267,3 +267,52 @@ func TestNativeProbeIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestNativeEvidenceSectionsGroundFromTheirBriefFiles: the two evidence sections
+// a dedicated adapter owns ground from the section's own authored brief file, as
+// every other brief section does, even when the record holds no open issue, no
+// intent, no ADR alternative and no decision log (iss-2610040758387938).
+func TestNativeEvidenceSectionsGroundFromTheirBriefFiles(t *testing.T) {
+	prose := "This section is authored by the project, not scaffolded. It names the " +
+		"questions the team still carries and the trade-offs it weighed, each with " +
+		"the reason it was left open or settled, so a reader can pick the work up " +
+		"without reconstructing it from history.\n"
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		".abcd/development/brief/03-evidence/03-open-questions.md": "# Open questions\n\n" + prose,
+		".abcd/development/brief/03-evidence/04-tradeoffs.md":      "# Trade-offs\n\n" + prose,
+	})
+	ctx, err := newSourceContext(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+
+	for section, file := range map[Section]string{
+		"evidence/open-questions": ".abcd/development/brief/03-evidence/03-open-questions.md",
+		"evidence/tradeoffs":      ".abcd/development/brief/03-evidence/04-tradeoffs.md",
+	} {
+		ev := nativeSourceForSection(t, section).Probe(ctx)
+		if ev.Status != StatusGrounded {
+			t.Errorf("%s = %s with an authored %s, want grounded", section, ev.Status, file)
+		}
+		if !containsSource(ev.Sources, file) {
+			t.Errorf("%s evidence = %v, want %s cited", section, ev.Sources, file)
+		}
+	}
+
+	// A stub brief file alone is partial, never grounded, and says why.
+	stub := t.TempDir()
+	writeTree(t, stub, map[string]string{
+		".abcd/development/brief/03-evidence/03-open-questions.md": "# Open questions\n\nTODO.\n",
+	})
+	sctx, err := newSourceContext(stub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sctx.Close()
+	ev := nativeSourceForSection(t, "evidence/open-questions").Probe(sctx)
+	if ev.Status != StatusPartial || ev.Reason == "" {
+		t.Errorf("stub open-questions = %s (reason %q), want partial with a reason", ev.Status, ev.Reason)
+	}
+}

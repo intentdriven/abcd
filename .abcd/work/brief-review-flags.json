@@ -4,7 +4,7 @@
     {
       "chapter": "17-guard.md",
       "sentence": "written. A trailing `.` after such a `..` (`../.`) warns too, though rm",
-      "replacement": "written. A trailing `.` after such a `..` (`./../.`) warns too, though rm",
+      "replacement": "written. A trailing `.` after such a `..` (`../.`, `./../.`) warns too, though rm",
       "evidence": "Probes at 4d634c4f0 via guard check on stdin (scratch binary): `rm -rf ../.` ALLOWS (exit 0), and so do `rm -rf ../../.`, `rm -rf ./.`, `rm -rf /.`; while `rm -rf ./../.`, `rm -rf $PWD/../.` and `rm -rf x/../../.` WARN on rm-rf-working-directory (exit 0) and `rm -rf ..`, `rm -rf ../` warn. The chapter's own example `../.` is the one form that allows. internal/core/guard/match.go:883-885 (foldParents comment) claims a trailing `.` is folded, and no test in internal/core/guard/*_test.go names `../.`; the sentence entered the chapter in 4ef5013bd (2026-09-29), an ancestor of a76d7f52b, so it is pre-existing and outside every delta reviewed since. Every other probed claim in the chapter holds: only `guard check` speaks JSON (`guard hook --json` writes nothing on stdout and answers by exit 2/1/0 and stderr), `matches` lists every entry tripped with the fired one first (`[\"git-push-force\",\"git-clean\"]`, rendered `also matched: git-clean`), `git-stash-shared-stack` and `interpreter-reads-stream` fire (stash.go, payload.go) and are absent from `rules SHELL` (17 registry entries, none of those ids), the verdict table, `command-unparsable` on the hook, `git pus? --force`, `r[[:lower:]] -rf /`, `git clea[!n] -fd`, `rm $(true) -rf *`, `mkdir -p foo/{a,b}` (allow), `git push {--force,} origin main`, `${HOME%/*}`, `~/../*/*`, `/**`, `~/.?/*`, `~/.[a-z]/*`, `~/.?` (allow), `'/**'`, `${X:+$HOME}`, `IFS=x; rm -rf ${U:-x/x}`, `IFS=Uv; rm -rf $HOME/x`, `${X:-$'\\x2f'}`, `$!/`, `${PWD:0:1}` (block), `cat x | sh`, `pkill -u`, `kill $(pgrep make)`, `cd /tmp \u0026\u0026 rm -rf x`, `pushd /tmp; rm -rf x`, `core.hooksPath`, a same-line git alias, and the whole unseen list at lines 449-490 (`$(echo /)`, `\"$DIR\"/*`, `/?*`, `/tmp/$X/../../*`, `~/../?*`, `x/../*`, `~root/../../*`, `ps | grep | xargs kill`, `p=$(pgrep make); kill $p`, `python -c`, `$(cat msg.txt)`, `$(date)` all allow).",
       "commit": "4d634c4f0baf4d23fde0c76b811e0619ee927d48",
       "applied": "2026-09-30T23:00:13Z"
@@ -44,7 +44,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "#   conditions AND no nullity) exits the gate non-zero, naming the field",
-      "replacement": "#   conditions AND no nullity) is reported on the advisory row, naming the field, and never withholds readiness",
+      "replacement": "#   conditions AND no nullity) is reported on the advisory row, naming the",
       "evidence": "internal/core/intent/ready.go:232",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -76,7 +76,7 @@
     {
       "chapter": "10-docs.md",
       "sentence": "workflow's docs-currency step, CI's, and the `docs-lint` make target each run",
-      "replacement": "workflow's docs-currency step runs `lint docs --release-gate`; CI's step and the `docs-lint` make target each run",
+      "replacement": "workflow's docs-currency step runs the lint in its release-gate mode; CI's step and the `docs-lint` make target each run",
       "evidence": ".github/workflows/release.yml:148; .github/workflows/ci.yml:411; Makefile:245",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -148,7 +148,7 @@
     {
       "chapter": "23-reading.md",
       "sentence": "Writes are staged. Nothing durable is written or deleted until the whole payload",
-      "replacement": "Writes are staged. Save a refusal's own record and its rollback of the same run, nothing durable is written or deleted until the whole payload",
+      "replacement": "Writes are staged. Except for a refusal's own record and its rollback of the same run, nothing durable is written or deleted until the whole payload",
       "evidence": "internal/core/reading/ingest.go:466-471 (the protocol's own statement names two exceptions: the refusal record and the rollback of this run's own earlier attempt); refuse() runs rollbackThisRun (ingest.go:1110) and writes the refusal record into the committed ledger (ingest.go:1130-1133), both before write() at :704 and before the general sweep at :696",
       "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
       "applied": "2026-10-05T00:04:19Z"
@@ -156,7 +156,7 @@
     {
       "chapter": "27-implement.md",
       "sentence": "one) blocks nothing but its own record, and that only for a one-minute grace",
-      "replacement": "one) blocks nothing but its own record — the claim verb for a one-minute grace, the build's peers check until a claim replaces the file — counted",
+      "replacement": "one) blocks nothing but its own record. The build's peers check counts it as a holder until a claim replaces the file; the claim verb",
       "evidence": "internal/core/implement/loop/check.go:358-364 counts `c.Live || c.Unreadable` as a holder ('an unreadable claim file holds it') with no time bound; claim.go:363-364 keeps Unreadable true after LapsesAt; the one-minute grace governs only the claim verb (claim.go:61, 182-200)",
       "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
       "applied": "2026-10-05T00:04:19Z"
@@ -172,7 +172,7 @@
     {
       "chapter": "22-site.md",
       "sentence": "Anything else is a build error naming file and line. Passing an unknown construct",
-      "replacement": "Anything else is a build error naming file and line, save an HTML comment, dropped as every reader drops it, and a link reference definition, consumed to resolve the links that name it. Passing an unknown construct",
+      "replacement": "Anything else is a build error naming file and line, except an HTML comment, which is dropped as every reader drops it, and a link reference definition, which is consumed to resolve the links that name it. Passing an unknown construct",
       "evidence": "internal/core/mdrender/render.go:244,288-296 (a terminated HTML comment is dropped; only an unterminated one is refused); render.go:77-85,246-249 (a link reference definition block is consumed to resolve references, not refused)",
       "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
       "applied": "2026-10-05T00:04:19Z"

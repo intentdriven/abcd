@@ -1157,6 +1157,13 @@ func createRepoJSON(cwd, rel string, v any) (wrote bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	return createRepoFile(cwd, rel, data)
+}
+
+// createRepoFile is createRepoJSON for bytes already rendered: the same
+// contained, exclusive create, the same 0644 pin, and the same wrote=false with
+// no error when the path already exists.
+func createRepoFile(cwd, rel string, data []byte) (wrote bool, err error) {
 	root, err := os.OpenRoot(cwd)
 	if err != nil {
 		return false, err

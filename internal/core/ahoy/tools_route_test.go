@@ -214,7 +214,7 @@ func TestNamedToolApprovesTheDependencyCategory(t *testing.T) {
 		{ID: "skeleton.config_missing", Category: SafeAutocreate, Resolvable: true},
 	}
 	p := &recordingPrompter{}
-	approved, declined := resolveApproval(gaps, InstallOptions{ApproveDependency: true}, p)
+	approved, declined := resolveApproval(gaps, InstallOptions{ApproveDependency: true}, nil, p)
 	asked := p.asked
 	if !approved[Dependency] {
 		t.Fatalf("a named tool did not approve the dependency category (declined %v)", declined)
@@ -228,7 +228,7 @@ func TestNamedToolApprovesTheDependencyCategory(t *testing.T) {
 		t.Errorf("the other categories were not left to their own answers: approved %v asked %v", approved, asked)
 	}
 
-	approved, _ = resolveApproval(gaps, InstallOptions{ApproveDependency: true, ApprovedCategories: map[GapCategory]bool{}}, &recordingPrompter{})
+	approved, _ = resolveApproval(gaps, InstallOptions{ApproveDependency: true, ApprovedCategories: map[GapCategory]bool{}}, nil, &recordingPrompter{})
 	if !approved[Dependency] {
 		t.Fatal("an explicit category subset dropped the named tool's approval")
 	}

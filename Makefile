@@ -285,10 +285,11 @@ scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
 
 # Write the asking rules (internal/core/question: asking.go, limits.go) into the
-# generated block of commands/intent.md (spc-2610030944505997). Nothing in CI
+# generated blocks of commands/intent.md (spc-2610030944505997) and of
+# agents/question-drafter.md, which also carries the row count. Nothing in CI
 # calls either target: the drift is GATED by `go test`
-# (TestIntentPageAskingBlockIsGenerated, under preflight); these are the
-# read-only look at it and the one-command fix.
+# (TestIntentPageAskingBlockIsGenerated and TestDrafterBlockIsGenerated, under
+# preflight); these are the read-only look at it and the one-command fix.
 asking-sync:
 	@go run ./cmd/asking-sync
 

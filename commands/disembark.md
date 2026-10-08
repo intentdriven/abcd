@@ -22,8 +22,9 @@ anything. The repo argument is optional and defaults to the current directory:
 ```
 
 This is the coverage experiment's read-only readout: every brief section comes
-back marked `grounded`, `partial`, or `blank`, alongside what was searched. It
-writes nothing into the source and runs in a small fraction of a full pack's time
+back marked `grounded`, `partial`, or `blank`, alongside what was searched, and
+every `partial` carries a `reason` naming what was found and what would ground
+it. It writes nothing into the source and runs in a small fraction of a full pack's time
 (no delegated model work). `coverage.{json,md}` are written only by `pack`.
 
 ## Dry run next (recommended)

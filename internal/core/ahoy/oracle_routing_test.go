@@ -20,7 +20,7 @@ import (
 func routingPrompter(machine, repo bool) *scriptedPrompter {
 	return &scriptedPrompter{confirm: func(q string) bool {
 		switch {
-		case strings.HasPrefix(q, "Apply "):
+		case askedCategory(q) != "":
 			return true
 		case strings.Contains(q, oracleRoutingMachineQuestionTail):
 			return machine

@@ -31,18 +31,16 @@ func preToolUse(t *testing.T, tool, command, cwd string) string {
 }
 
 // TestGuardHookBlocksWithHostExitCode is AC 2 on the guard plane: a blocker match
-// exits 2 — the host's blocking status — and puts the successor and the why on
-// stderr, which is the channel the host feeds back to the agent. The block is the
-// lesson, so both must be present.
+// is the host's deny — exit 0 and one JSON object on stdout — whose reason
+// carries the successor and the why, the text the host shows the person and
+// hands the agent. The block is the lesson, so both must be present.
 func TestGuardHookBlocksWithHostExitCode(t *testing.T) {
 	dir := guardRepo(t)
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
 
-	if code != 2 {
-		t.Errorf("a blocker must map to the host's blocking exit status 2; got %d (stderr %q)", code, stderr)
-	}
-	if !strings.Contains(stderr, "absolute path") || !strings.Contains(stderr, "the delete still runs") {
-		t.Errorf("the block message must carry the successor and the why; stderr = %q", stderr)
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.Contains(reason, "absolute path") || !strings.Contains(reason, "the delete still runs") {
+		t.Errorf("the block message must carry the successor and the why; reason = %q", reason)
 	}
 }
 
@@ -61,7 +59,7 @@ func TestGuardHookAllowsSilently(t *testing.T) {
 }
 
 // TestGuardHookWarnAllowsAndSurfaces is AC 2's warn half on the guard plane: the
-// command runs (never the blocking status 2) and the warning is said out loud. It
+// command runs (never a block) and the warning is said out loud. It
 // exits 1, not 0, because a pre-tool-use hook that exits 0 has its stderr
 // DISCARDED — the same loud-but-non-blocking status failOpen uses — so a warn is
 // visible rather than silent (iss-231).
@@ -106,10 +104,10 @@ func TestGuardHookFailsOpenLoud(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := guardRepo(t)
-			_, stderr, code := runGuard(tc.stdin(t, dir), "guard", "hook")
+			stdout, stderr, code := runGuard(tc.stdin(t, dir), "guard", "hook")
 
-			if code == 2 {
-				t.Errorf("must fail OPEN: the blocking status must never come from a non-decision")
+			if code == 2 || isDeny(stdout) {
+				t.Errorf("must fail OPEN: a block must never come from a non-decision; stdout = %q", stdout)
 			}
 			if code == 0 {
 				t.Errorf("must fail LOUD: exit 0 discards the hook's stderr, so the warning would never be seen")
@@ -125,7 +123,7 @@ func TestGuardHookFailsOpenLoud(t *testing.T) {
 // tokenizer used to refuse are inputs bash RUNS: a trailing backslash (dropped
 // by bash 3.2 and zsh) and a here-document body with no delimiter line
 // (recovered silently). On the hook a tokenizer error is fail-open, so each was
-// a one-byte bypass of every blocker. Both must now reach the blocking status
+// a one-byte bypass of every blocker. Both must now reach the host's deny
 // with the entry named. A line the tokenizer cannot split at all is blocked
 // too (TestGuardHookBlocksAnUnparsableLine).
 func TestGuardHookBlocksWhatBashWouldRun(t *testing.T) {
@@ -136,12 +134,10 @@ func TestGuardHookBlocksWhatBashWouldRun(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := guardRepo(t)
-			_, stderr, code := runGuard(preToolUse(t, "Bash", command, dir), "guard", "hook")
-			if code != 2 {
-				t.Errorf("bash runs this line, so the hook must block it: want exit 2, got %d (stderr %q)", code, stderr)
-			}
-			if !strings.Contains(stderr, "git-push-force") {
-				t.Errorf("the block must name the entry; stderr = %q", stderr)
+			stdout, stderr, code := runGuard(preToolUse(t, "Bash", command, dir), "guard", "hook")
+			reason := mustDeny(t, stdout, stderr, code)
+			if !strings.Contains(reason, "git-push-force") {
+				t.Errorf("the block must name the entry; reason = %q", reason)
 			}
 		})
 	}
@@ -156,15 +152,13 @@ func TestGuardHookBlocksWhatBashWouldRun(t *testing.T) {
 // reserved id, with the way past: close the quote.
 func TestGuardHookBlocksAnUnparsableLine(t *testing.T) {
 	dir := guardRepo(t)
-	_, stderr, code := runGuard(preToolUse(t, "Bash", `rm -rf "unterminated`, dir), "guard", "hook")
-	if code != 2 {
-		t.Errorf("an unparsable line must be blocked: want exit 2, got %d (stderr %q)", code, stderr)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", `rm -rf "unterminated`, dir), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.Contains(reason, "command-unparsable") || !strings.Contains(reason, "quote") {
+		t.Errorf("the block must name the reserved id and the way past; reason = %q", reason)
 	}
-	if !strings.Contains(stderr, "command-unparsable") || !strings.Contains(stderr, "quote") {
-		t.Errorf("the block must name the reserved id and the way past; stderr = %q", stderr)
-	}
-	if strings.Contains(stderr, "UNGUARDED") {
-		t.Errorf("a block is not a fail-open; stderr = %q", stderr)
+	if strings.Contains(reason, "UNGUARDED") {
+		t.Errorf("a block is not a fail-open; reason = %q", reason)
 	}
 }
 
@@ -179,9 +173,9 @@ func TestGuardHookRunsANestedQuoteInABraceExpansion(t *testing.T) {
 		`printf '%s\n' "${NAME:-"O'Brien"}"`,
 		`echo "${X//"'"/x}"`,
 	} {
-		_, stderr, code := runGuard(preToolUse(t, "Bash", line, dir), "guard", "hook")
-		if code != 0 || strings.Contains(stderr, "command-unparsable") {
-			t.Errorf("%s is valid bash and must run: want exit 0, got %d (stderr %q)", line, code, stderr)
+		stdout, stderr, code := runGuard(preToolUse(t, "Bash", line, dir), "guard", "hook")
+		if code != 0 || isDeny(stdout) || strings.Contains(stderr, "command-unparsable") {
+			t.Errorf("%s is valid bash and must run: want a silent exit 0, got %d (stdout %q stderr %q)", line, code, stdout, stderr)
 		}
 	}
 }
@@ -205,15 +199,13 @@ func TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed(t *testing.T) {
 		writeBroken(t, dir)
 		// git commit --no-verify is a bundled blocker that never depended on the
 		// repo layer; a broken repo config must not defang it.
-		_, stderr, code := runGuard(preToolUse(t, "Bash", `git commit --no-verify -m "wip"`, dir), "guard", "hook")
-		if code != 2 {
-			t.Fatalf("a bundled blocker must still exit 2 when only the repo layer is broken; got %d, stderr = %q", code, stderr)
+		stdout, stderr, code := runGuard(preToolUse(t, "Bash", `git commit --no-verify -m "wip"`, dir), "guard", "hook")
+		reason := mustDeny(t, stdout, stderr, code)
+		if !strings.Contains(reason, guard.RepoRelPath) {
+			t.Errorf("the dropped repo layer must be announced by name; reason = %q", reason)
 		}
-		if !strings.Contains(stderr, guard.RepoRelPath) {
-			t.Errorf("the dropped repo layer must be announced by name; stderr = %q", stderr)
-		}
-		if !strings.Contains(stderr, "DROPPED") {
-			t.Errorf("the broken repo layer must be announced loudly as dropped; stderr = %q", stderr)
+		if !strings.Contains(reason, "DROPPED") {
+			t.Errorf("the broken repo layer must be announced loudly as dropped; reason = %q", reason)
 		}
 	})
 
@@ -223,9 +215,9 @@ func TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed(t *testing.T) {
 		// An innocuous command the bundled registry allows. The drop notice must
 		// still reach a human — exit 0 would discard it — so the hook exits 1
 		// (loud, non-blocking), never 0, and never the blocking 2.
-		_, stderr, code := runGuard(preToolUse(t, "Bash", "ls -la", dir), "guard", "hook")
-		if code == 2 {
-			t.Fatalf("an allowed command must not be blocked; got exit 2, stderr = %q", stderr)
+		stdout, stderr, code := runGuard(preToolUse(t, "Bash", "ls -la", dir), "guard", "hook")
+		if code == 2 || isDeny(stdout) {
+			t.Fatalf("an allowed command must not be blocked; got exit %d, stdout = %q", code, stdout)
 		}
 		if code == 0 {
 			t.Fatalf("exit 0 discards stderr, so the broken-repo notice would be lost; stderr = %q", stderr)
@@ -247,10 +239,10 @@ func TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed(t *testing.T) {
 func TestGuardHookAnnouncesADisabledRegistry(t *testing.T) {
 	dir := guardRepo(t)
 	commitGuardConfig(t, dir, `{"schema_version":1,"disabled":true,"entries":{}}`)
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
 
-	if code == 2 {
-		t.Error("a disabled registry allows: it must never produce the blocking status")
+	if code == 2 || isDeny(stdout) {
+		t.Error("a disabled registry allows: it must never produce a block")
 	}
 	if code == 0 {
 		t.Error("exit 0 discards the hook's stderr, so a disabled guard would run in silence")
@@ -266,7 +258,7 @@ func TestGuardHookAnnouncesADisabledRegistry(t *testing.T) {
 // TestGuardHookIgnoresAncestorKillSwitch is GHSA-vvqc-3mv2-5p49 on the guard
 // plane: a guard.json with the kill switch set, planted ABOVE the git working
 // tree, must not disarm the guard for a session inside it. The bundled hazards
-// stay armed and the blocker still blocks with the host's exit status.
+// stay armed and the blocker still blocks with the host's deny.
 func TestGuardHookIgnoresAncestorKillSwitch(t *testing.T) {
 	outer := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(outer, ".abcd"), 0o755); err != nil {
@@ -279,12 +271,9 @@ func TestGuardHookIgnoresAncestorKillSwitch(t *testing.T) {
 	inner := filepath.Join(outer, "inner-repo")
 	gitInitAt(t, inner)
 
-	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", inner), "guard", "hook")
-	if code != 2 {
-		t.Errorf("a guard.json planted above the working tree disarmed the guard: exit %d, stderr %q", code, stderr)
-	}
-	if !strings.Contains(stderr, "rm-rf-after-cd-chain") {
-		t.Errorf("the bundled blocker must still fire; stderr = %q", stderr)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", inner), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "rm-rf-after-cd-chain") {
+		t.Errorf("the bundled blocker must still fire; reason = %q", reason)
 	}
 }
 
@@ -302,11 +291,9 @@ func TestGuardCheckAndHookAgreeOnAHereDocumentLeftOpen(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := guardRepo(t)
-			_, stderr, code := runGuard(preToolUse(t, "Bash", command, dir), "guard", "hook")
-			if code != 2 {
-				t.Errorf("hook: an unterminated here-document must block: want exit 2, got %d (stderr %q)", code, stderr)
-			}
-			stdout, stderr, code := runGuard(command, "guard", "check")
+			stdout, stderr, code := runGuard(preToolUse(t, "Bash", command, dir), "guard", "hook")
+			mustDeny(t, stdout, stderr, code)
+			stdout, stderr, code = runGuard(command, "guard", "check")
 			if code != 1 {
 				t.Errorf("check on stdin: want the blocking exit 1, got %d (stdout %q stderr %q)", code, stdout, stderr)
 			}

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
@@ -291,11 +292,10 @@ func isRegularFile(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// isSourceCheckout reports whether a plugin root is abcd's own source checkout:
-// the curated payload carries no cmd/, so its presence is the tell the
-// resolution ladder itself relies on (internal/core/launch/commandladder_test.go).
+// isSourceCheckout reports whether a plugin root is abcd's own source checkout,
+// by the one layout check abcdrepo.LooksLikeSourceTree keeps.
 func isSourceCheckout(pluginRoot string) bool {
-	return isRegularFile(filepath.Join(pluginRoot, "cmd", "abcd", "main.go"))
+	return abcdrepo.LooksLikeSourceTree(pluginRoot)
 }
 
 // executableUnder reports whether the running binary sits inside root — beside

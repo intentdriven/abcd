@@ -87,6 +87,14 @@ const (
 // runShimPayload is runShimHome with the hook payload the shim reads on stdin.
 func runShimPayload(t *testing.T, command, pluginRoot, pathDir, home, payload string) (stderr string, code int) {
 	t.Helper()
+	_, stderr, code = runShimOutput(t, command, pluginRoot, pathDir, home, payload)
+	return stderr, code
+}
+
+// runShimOutput is runShimPayload with the shim's stdout kept too: the host
+// reads a deny there, so a test of the pass-through needs it.
+func runShimOutput(t *testing.T, command, pluginRoot, pathDir, home, payload string) (stdout, stderr string, code int) {
+	t.Helper()
 	pathEnv := "/usr/bin:/bin"
 	if pathDir != "" {
 		pathEnv = pathDir + ":" + pathEnv
@@ -117,19 +125,19 @@ func runShimPayload(t *testing.T, command, pluginRoot, pathDir, home, payload st
 		"HOME="+home,
 		"CLAUDE_PLUGIN_ROOT="+pluginRoot)
 	cmd.Stdin = strings.NewReader(payload)
-	var se strings.Builder
+	var so, se strings.Builder
 	cmd.Stderr = &se
-	cmd.Stdout = &strings.Builder{}
+	cmd.Stdout = &so
 	err := cmd.Run()
 	if err == nil {
-		return se.String(), 0
+		return so.String(), se.String(), 0
 	}
 	var ee *exec.ExitError
 	if ok := asExitError(err, &ee); ok {
-		return se.String(), ee.ExitCode()
+		return so.String(), se.String(), ee.ExitCode()
 	}
 	t.Fatalf("running the shim failed structurally: %v", err)
-	return "", 0
+	return "", "", 0
 }
 
 func asExitError(err error, out **exec.ExitError) bool {
@@ -256,6 +264,32 @@ func TestGuardShimPropagatesRealDecisions(t *testing.T) {
 	}
 	if strings.Contains(stderr, "FAILED TO RUN") {
 		t.Errorf("a binary that ran and reported must not be described as failing to run; stderr = %q", stderr)
+	}
+}
+
+// TestGuardShimPassesADenyThrough: the binary blocks by printing the host's
+// deny on stdout and exiting 0, so the shim must hand that stdout to the host
+// byte for byte, add nothing to stderr, and pass the exit 0 through. The deny
+// the stub prints is the one writeHookDeny writes, so the test reads the real
+// encoding and not a copy of it.
+func TestGuardShimPassesADenyThrough(t *testing.T) {
+	_, command := preToolUseGuardCommand(t)
+	var deny strings.Builder
+	if err := writeHookDeny(&deny, "Blocked by the abcd guard (test): it's a block."); err != nil {
+		t.Fatal(err)
+	}
+	root := fakePluginRoot(t, "cat >/dev/null; cat \"${0%/abcd}/deny.json\"; exit 0")
+	if err := os.WriteFile(filepath.Join(root, "deny.json"), []byte(deny.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range []string{shellPayload, questionPayload} {
+		stdout, stderr, code := runShimOutput(t, command, root, "", t.TempDir(), payload)
+		if reason := mustDeny(t, stdout, stderr, code); reason != "Blocked by the abcd guard (test): it's a block." {
+			t.Errorf("the deny reached the host changed: reason %q", reason)
+		}
+		if stdout != deny.String() {
+			t.Errorf("the shim must pass the binary's stdout through byte for byte:\n got %q\nwant %q", stdout, deny.String())
+		}
 	}
 }
 

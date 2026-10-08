@@ -102,7 +102,10 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   false sentence (`replacement`). The gate proposes that edit and still refuses.
   The gate's apply form replaces the sentence in its chapter (it must occur
   exactly once, or nothing is written) and records a flag in
-  `.abcd/work/brief-review-flags.json` for the product thinker to read. The gate
+  `.abcd/work/brief-review-flags.json` for the product thinker to read. The flag
+  records the sentence as committed: one tidied by hand after the apply takes
+  its flag's replacement with it, and record-lint's `brief_flag_landed` rule
+  refuses a flag whose replacement no line of its chapter contains. The gate
   then lets the change proceed and lists the edit as awaiting review. It does so
   only while the chapter no longer carries the sentence, does carry the draft,
   and a flag names the edit. The autonomous form applies the drafts for an
@@ -172,7 +175,9 @@ promotion is reached by the release workflow's verify job and by a human typing 
   who decides how. The `roles/retired-role-word` banned token refuses the one
   word that blurred them, as a blocker, and it reaches past the documentation:
   its `extra_roots` add the plugin command pages, this repository's rules
-  overrides and the bundled rules source (itd-2609212137129937). An entry's
+  overrides, the bundled rules source (itd-2609212137129937), and this brief,
+  the principles and the personas registry (iss-2610020731591808); the intents
+  stay out, since a record's historical text keeps its words. An entry's
   `extra_roots` widen that entry alone, reading every text file there and not
   only markdown (a rules file is JSON), with `exempt_paths`, the escape and the
   fence default applying as they do under `roots`; the rest of the family is

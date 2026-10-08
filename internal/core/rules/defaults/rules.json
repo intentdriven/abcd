@@ -31,8 +31,8 @@
       "recall": ["roadmap", "milestone", "phase"],
       "aliases": ["build plan"],
       "rules": [
-        "The roadmap is intent-driven; each phase ends in a milestone.",
-        "No time estimates — the press-release intent format carries priority, not dates."
+        "Phases and milestones are retired: sequencing is dependencies (blocked_by, builds_on) plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release plus each intent's acceptance criteria; an intent that must land by a cut carries target_release, which the cut reports and moves forward.",
+        "No time estimates and no roadmap document: the press-release intent format carries priority, and the word roadmap is retired."
       ]
     },
     "ISSUES": {
@@ -50,7 +50,7 @@
       "aliases": ["press release", "press-release", "acceptance criteria"],
       "rules": [
         "Intents are press-release-first; acceptance criteria are BDD (Given/When/Then).",
-        "Personas are always Alice, Bob, Carol — never other names.",
+        "Personas take their names from an open alphabetical sequence — Alice, Bob, Carol, Dave, and on — that the repository extends when it needs another; where the repository declares a persona roster (the `registry` file its `persona_registry` lint rule names in `.abcd/docs-lint.json`), take each persona's name and role from that roster and pick by role.",
         "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is the product thinker's decision.",
         "The change that lands a planned intent's work closes its spec in the same change (abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
       ]

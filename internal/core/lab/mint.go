@@ -116,8 +116,9 @@ func layDown(s store, sr *os.Root, dir, repoRoot string, e Entry) (Minted, error
 			return Minted{}, fmt.Errorf("cannot scaffold %s: %v", d, redact(err, s.home))
 		}
 	}
+	abcd := studiesAbcd(s.rootSHA, snap, e.Pin)
 	docs := []struct{ rel, body string }{
-		{intentionName, intentionDoc(e)},
+		{intentionName, intentionDoc(e, abcd)},
 		{findingsName, findingsDoc(e)},
 		{correctionsName, correctionsDoc(e)},
 		{amendmentsName, amendmentsDoc(e)},
@@ -137,22 +138,23 @@ func layDown(s store, sr *os.Root, dir, repoRoot string, e Entry) (Minted, error
 	if err := fsutil.AppendLineIn(sr, indexName, line, fileMode); err != nil {
 		return Minted{}, fmt.Errorf("cannot register the lab: %v", redact(err, s.home))
 	}
+	next := []string{"write the hypothesis, measures and STOP conditions into INTENTION.md before anything mutates"}
+	if abcd {
+		next = append(next, "build the work binary once from the pristine snapshot into bin/abcd, and never rebuild it")
+	}
 	return Minted{
 		Entry:    e,
 		Home:     s.display(e.ID),
 		Snapshot: s.display(e.ID, snapshotDir),
 		Written:  written,
-		Next: []string{
-			"write the hypothesis, measures and STOP conditions into INTENTION.md before anything mutates",
-			"build the work binary once from the pristine snapshot into bin/abcd, and never rebuild it",
-			"run the preflight: abcd lab preflight " + e.ID,
-		},
+		Next:     append(next, "run the preflight: abcd lab preflight "+e.ID),
 	}, nil
 }
 
 // intentionDoc is the INTENTION scaffold: the pre-mutation contract the
 // harvest is scored against, and the map of the lifecycle onto the lab home.
-func intentionDoc(e Entry) string {
+// The work binary bin/abcd is mapped only for a lab of abcd's own repository.
+func intentionDoc(e Entry, abcd bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "---\nlab_id: %s\nroot_sha: %s\nsnapshot_pin: %s\ncreated: %s\n---\n\n", e.ID, e.RootSHA, e.Pin, e.Created)
 	fmt.Fprintf(&b, "# INTENTION — %s\n\n", e.ID)
@@ -167,7 +169,11 @@ func intentionDoc(e Entry) string {
 	b.WriteString("## Lifecycle\n\n")
 	b.WriteString("| Stage | Where |\n| --- | --- |\n")
 	b.WriteString("| INTENTION | this file |\n")
-	b.WriteString("| SNAPSHOT | `snapshot/` (a standalone clone at the pin), `bin/abcd`, `state/preflight.md` |\n")
+	if abcd {
+		b.WriteString("| SNAPSHOT | `snapshot/` (a standalone clone at the pin), `bin/abcd`, `state/preflight.md` |\n")
+	} else {
+		b.WriteString("| SNAPSHOT | `snapshot/` (a standalone clone at the pin), `state/preflight.md` |\n")
+	}
 	b.WriteString("| MUTATE | `state/probes/`, `findings.md`, `corrections.md` |\n")
 	b.WriteString("| HARVEST | `harvest/harvest.md`, after `state/sweep.md` passes |\n")
 	b.WriteString("| RECORD | the capture candidates the harvest lists, filed through capture |\n")

@@ -236,8 +236,10 @@ substance:
   markdown beyond the standard set.
 - Privacy: no absolute local paths, hostnames, usernames, emails, tokens, or
   private repository names in anything committed; repo-relative paths only.
-- Examples and user stories use the personas Alice, Bob, and Carol — never
-  other names.
+- Examples and user stories take their personas from an open alphabetical
+  sequence — Alice, Bob, Carol, Dave, and on — that the repository extends
+  when it needs another; where the repository declares a persona roster, take
+  names and roles from it and pick by role.
 - Refer to the product thinker and the technical facilitator as they/them in
   every artefact.
 - Never commit or push without being asked; substantive work goes on a branch

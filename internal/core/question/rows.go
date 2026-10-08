@@ -16,12 +16,23 @@ import (
 // figures were calibrated on 2026-10-03 against Claude Code's question view at
 // 80 by 24 (step 5 of spc-2610030944505997): the estimate of the screenshot's
 // question equals the 24 rows the host drew.
-func estimateRows(t Tab, l Limits) int {
-	rows := l.HostChromeRows + blockRows(t.Text, l.HostTextColumns)
+func estimateRows(t Tab, l Limits) int { return splitRows(t, l).total() }
+
+// rowSplit is the row estimate by part: the host's frame with the header's
+// chip row, the question text, and the options with their descriptions. The
+// rows refusal reports it, so the asker sees which part to cut
+// (iss-2610071538055431).
+type rowSplit struct{ frame, text, options int }
+
+func (s rowSplit) total() int { return s.frame + s.text + s.options }
+
+// splitRows is estimateRows by part.
+func splitRows(t Tab, l Limits) rowSplit {
+	s := rowSplit{frame: l.HostChromeRows, text: blockRows(t.Text, l.HostTextColumns)}
 	for _, o := range t.Options {
-		rows += max(1, blockRows(o.Label, l.HostOptionColumns)) + blockRows(o.Description, l.HostOptionColumns)
+		s.options += max(1, blockRows(o.Label, l.HostOptionColumns)) + blockRows(o.Description, l.HostOptionColumns)
 	}
-	return rows
+	return s
 }
 
 // blockRows is the rows text takes wrapped at width: each line wrapped on its

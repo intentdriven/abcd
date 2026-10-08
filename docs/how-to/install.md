@@ -123,10 +123,10 @@ reads as non-blocking: the command you asked for still runs, unguarded, with
 that line in front of you. Exit 1 is the one status that both lets the command
 through and puts the warning where a human sees it, because a `PreToolUse` hook
 that exits 0 has its stderr discarded. What the degraded path never returns is
-that exit 0, the status the harness reads as the guard's own approval — a
-binary abcd cannot vouch for is never given the guard's verdict to answer with.
-Blocking is exit 2, and only a real `block` verdict from a resolved binary
-reaches it. A repository you have merely cloned does not get to supply the shell
+that exit 0 with nothing on stdout, which the harness reads as the guard's own
+approval — a binary abcd cannot vouch for is never given the guard's verdict to
+answer with. Blocking is the harness's deny, a JSON decision on stdout, and only
+a real `block` verdict from a resolved binary reaches it. A repository you have merely cloned does not get to supply the shell
 guard or the rules loader for the session that is reading it.
 
 The same principle bounds where those two read their configuration. The rules
@@ -379,7 +379,15 @@ package-manager install takes the manager's own upgrade.
 ## What adopting a repository commits
 
 Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
-it lays down the `.abcd/` layout and the commit gates. By default it writes abcd's name into none of the
+it lays down the `.abcd/` layout and the commit gates. The layout is the three
+tiers `abcd lint` checks for: `.abcd/development/` and `.abcd/work/`, the
+shared tiers, and `.abcd/.work.local/`, which stays on this machine. A missing
+tier is created with one starter file, because git keeps no empty folder and
+the tier would otherwise be missing from every clone: `.abcd/development/`
+gets a `README.md` saying what the tier holds, and `.abcd/work/` a
+`DECISIONS.md` that holds only a header saying how the log is kept. A starter
+file already there is left as it is. By default the install writes
+abcd's name into none of the
 repository's conventions files; the managed block that documents the rule
 loader, and names abcd, goes into `AGENTS.md`, and only into `AGENTS.md`, when
 you ask for it with `--docs-target agents_md`. abcd writes no other

@@ -51,7 +51,9 @@ Then summarise the JSON for the user:
   (the settings file is not a JSON object), or `no-harness` (no settings file
   was found, so nothing is offered).
 - abcd entries in the harness's user settings: a `harness.stray_hook.<Event>`
-  gap for each hook there that runs abcd, and a `statusline.untrusted` gap when
+  gap for each hook there that runs abcd (a second abcd hook on the same event
+  is reported as `harness.stray_hook.<Event>.<n>`, numbered from 2, so neither
+  hides the other), and a `statusline.untrusted` gap when
   the status line runs an abcd that fails the trust checks. Relay each gap's
   `detail` and `fix_hint` as they stand. abcd's hooks live in its plugin, so a
   hook in the user settings runs whatever binary it names, a stale build
@@ -110,7 +112,10 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 marker block (into `AGENTS.md` only, and only where `--docs-target agents_md`
 names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
 `PATH` entry. A saved `claude_md` or `both` is refused before any write, with
-the one setting to change in the notes; relay that note as it stands. Before
+the one setting to change in the notes; relay that note as it stands. A
+`refused` install (that setting, a `.abcd` that is not a real directory, or a
+stale binary) writes nothing and exits 2 after rendering its result, so the
+notes still say why. Before
 anything else, relay each line of the returned `warnings` as it stands: each
 names an agent tool's own conventions file holding the user's words, which that
 tool reads in place of `AGENTS.md` and abcd never edits or removes, or what
@@ -184,7 +189,11 @@ reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
 safe-autocreate, config-change, status-line, oracle-routing, drain-rule, conventions-file, user-state, plugin-owned), so a
-scripted stream of specific answers lines up with them. The drain-rule and
+scripted stream of specific answers lines up with them. Each approval lists
+what it would change above its question, one line per change naming the file
+or the setting, and asks in plain words ("Change the settings listed above?").
+Every change is listed, on every route, however long the list. When you relay an
+approval, quote its list with it, exactly as written. The drain-rule and
 conventions-file questions are asked only at a terminal, so a piped stream
 never meets them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
@@ -260,6 +269,14 @@ they are asked: a stop there leaves the steps before it done, says so, and
 the next run asks only what is still open. The git identity, the
 drain rule and installing a tool are never answered from a file. `--answers`
 replaces the piped answer stream for that run.
+
+**A value flag needs the settings approval.** `--visibility`, `--docs-target`,
+`--oracle-backend` and `--scan-deep` are held to the config-change approval
+like any other settings change: a flag that would change a saved setting puts
+the config-change question even when nothing else would, and only a yes, given
+at the prompt, as `approve.config-change` in the answers file, or by `--yes`,
+saves it. `later`, a no or end of input drops the flag: nothing it would change
+is saved or moved, and the run names each dropped flag in a note.
 
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
 question declines, so a run that was told nothing writes nothing — but a stdin
@@ -562,9 +579,10 @@ and changes nothing, so set `abcd mode facilitator` and present the question
 and the repository it names to the technical facilitator before answering it.
 `--yes` says yes in advance, and it is the technical facilitator's word to give —
 never pass it on their behalf. A run that changed nothing exits NON-ZERO
-(`refused` or `aborted`), so a failed invocation is never mistaken for a write
-that landed; `opted_out` is the one non-change that exits clean, because leaving
-the repo alone is what the repo asked for.
+(`refused` exits 2, as a refused install does; `aborted` exits 1), so a failed
+invocation is never mistaken for a write that landed; `opted_out` is the one
+non-change that exits clean, because leaving the repo alone is what the repo
+asked for.
 
 The API host is pinned to github.com on every request. `gh` would otherwise take
 it from `GH_HOST` or from whichever host the caller is authenticated to, which

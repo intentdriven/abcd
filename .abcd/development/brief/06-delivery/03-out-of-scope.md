@@ -140,6 +140,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610070544145422` — Someone on Windows installs abcd and it just works, the tool in PowerShell and the plugin in Claude Code, with no WSL (draft)
 - `itd-2610070549060530` — A word in a new idea marks it to revisit, and the board puts it first (draft)
 - `itd-2610070550516046` — On the dashboard, a product thinker sees the brief and their ideas together, and puts the ideas in order (draft)
+- `itd-2610071545369520` — A person confirms the assistant's verdict on each warned banned-name line instead of judging it alone (draft)
+- `itd-2610071545380041` — Work about abcd itself goes to abcd as a report, never into a managed repository's own plans (draft)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

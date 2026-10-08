@@ -115,15 +115,16 @@ func writeValidConfig(t *testing.T, dir, visibility, docsTarget, oracleBackend s
 // config gap) must still honour an explicitly-passed --visibility override,
 // overwriting the value and echoing the change — not silently no-op. This
 // exercises the --yes/non-interactive path (RefusingPrompter never consulted
-// because every slot is already valid).
+// because every slot is already valid). The flag puts the settings approval
+// of its own, which --yes gives (iss-2610071538032843).
 func TestStepConfigValuesExplicitOverrideForcesAlreadyValidSlot(t *testing.T) {
 	dir := t.TempDir()
 	writeValidConfig(t, dir, "private", "both", "host-delegated")
 
 	a := &applyCtx{
 		cwd:        dir,
-		approved:   map[GapCategory]bool{}, // no config gap => category not approved
-		gapPresent: map[string]bool{},      // no config.*_missing gaps
+		approved:   map[GapCategory]bool{ConfigChange: true}, // the flag's settings approval, given by --yes
+		gapPresent: map[string]bool{},                        // no config.*_missing gaps
 		overrides:  map[string]string{"visibility": "public"},
 		prompter:   RefusingPrompter{},
 		autoYes:    true,

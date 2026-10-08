@@ -521,7 +521,21 @@ start carries no `PATH` rung at all and fails closed.
 
 Each detected discrepancy becomes a **gap** with a stable id, a category, a
 scope, a title, detail and a fix hint. The category is what the apply pass asks
-about, one question per category present, never one per item.
+about, one question per category present, never one per item. The question
+shows what approving it would do (iss-2610071528375981): one line per change,
+the gap's title, which names the file or the setting, with a value flag that
+would change a saved setting listed under the settings approval; then the
+question in plain words ("Create the files and folders listed above?", "Change
+the settings listed above?"), never the category's internal name. Yes says how
+many listed changes it writes, or, for a category whose changes are each asked
+again (a tool, an offer, a conventions file), which questions it goes on to;
+the settings approval's says it writes the changes that need no answer (the
+identity pin, the `PATH` entry) and asks for each value not yet chosen, saving
+none if one is left unanswered. Every change is listed on every route, never cut to
+fit, so every door records the same question; a list taller than the host's
+rows is shown with the question check's note rather than refused. The question check refuses an answer
+whose meaning points at text above a question that has none, the shape the
+approvals had before they listed anything.
 
 | `category` | Examples | Apply behaviour |
 |---|---|---|
@@ -718,7 +732,13 @@ oracle backend, the deep-scan toggle and the repo visibility, select track-lates
 dogfood mode, proceed despite a stale running binary (the default refuses before
 the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
-and opt the repo into the attribution prompt hook.
+and opt the repo into the attribution prompt hook. A value flag (marker
+target, oracle backend, deep-scan toggle, visibility) is held to the
+`config-change` approval like any other settings change: one that would change
+a saved setting puts that approval even with no `config-change` gap, and a
+decline drops it, saves nothing and names it (the product thinker's ruling on
+iss-2610071538032843, "do what the user tells you in their response, no
+surprises").
 
 **The house-style question.** When the install seeds the docs-lint config, it
 asks one more question: whether the em-dash-in-list-item rule, abcd's own house
@@ -829,7 +849,8 @@ and notes the orphaned-predecessor possibility in the summary.
 status, root SHA, install mode where one resolves, vintage and staleness, the
 superseded-root note when the answering binary sits in a plugin root other than
 the one this session resolves, the citation baseline's coverage and age on a
-repo that has armed the citation gate, the gap count, and — on a repo — guard
+repo that has armed the citation gate, the gap count with each gap's title
+beneath it, and — on a repo — guard
 health and the banlist block with its reach, closing on a next-step line for the
 unmanaged kinds. In JSON form the same pass renders the detection envelope plus
 vintage and staleness, and `superseded_root` when the note applies; the plugin

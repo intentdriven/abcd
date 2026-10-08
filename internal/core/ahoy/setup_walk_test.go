@@ -143,10 +143,14 @@ func TestWalkPutsNothingTheInstallWouldNotAsk(t *testing.T) {
 		t.Fatalf("a repository with every value saved: put %v", got)
 	}
 	// A flag that turns the saved visibility private makes the deep-scan
-	// question askable with no gap for it, as the install asks it.
+	// question askable with no gap for it, as the install asks it, once the
+	// settings change the flag puts is approved (iss-2610071538032843).
 	trufflehogResolves(t, true)
 	private := InstallOptions{Adopt: &yes, ValueOverrides: map[string]string{"visibility": "private"}}
-	got := walk(private)
+	if got := walk(private); len(got) != 0 {
+		t.Fatalf("a flag changing a saved value with the settings change not approved: put %v", got)
+	}
+	got := walk(private, "approve.config-change")
 	installed := &valueKeyPrompter{}
 	if _, err := Install(repo, private, installed); err != nil {
 		t.Fatal(err)

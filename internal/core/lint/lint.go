@@ -586,6 +586,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, cu...)
 	}
 
+	// brief_flag_landed reads the brief's review flags against their chapters,
+	// both outside cfg.Roots' walk, so it runs once here.
+	if bfCfg, ok := cfg.Rules[ruleBriefFlagLanded]; ok && bfCfg.Enabled {
+		bf, err := checkBriefFlagLanded(repoRoot, bfCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, bf...)
+	}
+
 	// receipt_gate is the release-time verification of the semantic gates. It is
 	// disabled for ordinary development (a commit under review has no receipt yet)
 	// and armed only at release time with a target commit; it reads sha-keyed

@@ -485,7 +485,9 @@ func evidence(bl *blockLine) ([]string, error) {
 // path, a UNC path in either slash, a home-relative one, the environment's home
 // ($HOME, %USERPROFILE%), a Windows drive, a path after a colon, a file URL, or
 // a traversal segment. A slash between words, a tilde before a number, a clock
-// time and an http(s) URL are words, not locations.
+// time and an http(s) URL are words, not locations, and so is a plugin command
+// in its slash form, which refusePath blanks out before matching (see
+// slashCommandRe).
 //
 // It is a hygiene check over the block's fields, best effort, and not a
 // refusal boundary: the prose is never matched against it, and a determined
@@ -500,6 +502,53 @@ var pathRe = regexp.MustCompile(`(?i)` +
 	`|\$\{?home\b|%(userprofile|homepath|homedrive|appdata|localappdata)%` + // the environment's home
 	`|file:` + // a file URL
 	`|(^|[\\/\s])\.\.([\\/]|$)`) // a traversal segment
+
+// slashCommandRe finds a candidate plugin command in its slash form,
+// /name:verb, both parts lowercase letters, digits and hyphens
+// (iss-2610071538064699). It is the token alone: Go's regexp has no
+// lookaround, so blankSlashCommands judges what stands either side of it.
+var slashCommandRe = regexp.MustCompile(`/[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*`)
+
+// slashCommandBefore is what may stand before a slash command, the same
+// delimiters pathRe reads before an absolute path; slashCommandAfter is the
+// punctuation that may close one, before whitespace or the end of the value.
+const (
+	slashCommandBefore = " \t\n\r\f\v([<\"'=,"
+	slashCommandAfter  = ")]>\"'.,;:!?"
+)
+
+// blankSlashCommands replaces every slash command standing as a whole token
+// with a letter, so pathRe does not read its leading slash as an absolute
+// path. A whole token has the value's start or a pathRe delimiter before it
+// and, after it, at most a run of closing punctuation and then whitespace or
+// the value's end: "/abcd:report" and "(/abcd:capture)" are blanked, while
+// "/abcd:report/x" and "/abcd:report.d/x" go on into a path and are left for
+// pathRe to refuse. A colon further on in a real path ("/Users/a:b") never
+// forms one, because a part holds no slash. The letter is no delimiter of any
+// pathRe alternative, so the blank opens no match of its own.
+func blankSlashCommands(v string) string {
+	locs := slashCommandRe.FindAllStringIndex(v, -1)
+	if locs == nil {
+		return v
+	}
+	var b strings.Builder
+	last := 0
+	for _, loc := range locs {
+		start, end := loc[0], loc[1]
+		if start > 0 && !strings.ContainsRune(slashCommandBefore, rune(v[start-1])) {
+			continue
+		}
+		rest := strings.TrimLeft(v[end:], slashCommandAfter)
+		if rest != "" && !strings.ContainsRune(" \t\n\r\f\v", rune(rest[0])) {
+			continue
+		}
+		b.WriteString(v[last:start])
+		b.WriteByte('x')
+		last = end
+	}
+	b.WriteString(v[last:])
+	return b.String()
+}
 
 // refuseHidden refuses a value carrying a bidirectional control or a
 // zero-width rune, judged by termsafe's own predicate: such a value displays
@@ -517,7 +566,7 @@ func refuseHidden(key, v string) error {
 }
 
 func refusePath(key, v string) error {
-	if pathRe.MatchString(v) {
+	if pathRe.MatchString(blankSlashCommands(v)) {
 		return fieldErr(key, "names a filesystem location; a report points at records, commits and URLs, never at a path on a machine")
 	}
 	return nil

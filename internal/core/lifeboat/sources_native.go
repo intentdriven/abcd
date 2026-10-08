@@ -78,6 +78,61 @@ func nativeBriefFilePath(lifeboatPath string) string {
 	return p
 }
 
+// nativeSectionBriefFile returns the brief file nativeBriefFilePath reads for
+// section, from the section's mapping row, or "" for a section the Table does
+// not hold. It is how an adapter names, in a partial's reason, the one file
+// that would ground the section.
+func nativeSectionBriefFile(section Section) string {
+	for _, m := range Table {
+		if m.Section == section {
+			return nativeBriefFilePath(m.LifeboatPath)
+		}
+	}
+	return ""
+}
+
+// nativeWithBriefFile lets a dedicated adapter also ground its section from the
+// section's own brief file, as nativeBriefSource does for every other section:
+// the record signals the adapter synthesised (rec) are not the only place a
+// project writes the section down. An authored brief file grounds the section
+// whatever rec found, citing rec's sources beside it; a stub brief file is cited
+// beside a partial rec and lifts a blank rec to partial; a missing one leaves
+// rec as it is, naming the file among what a blank searched.
+func nativeWithBriefFile(ctx *SourceContext, section Section, rec Evidence) Evidence {
+	path := nativeSectionBriefFile(section)
+	data, ok := ctx.ReadFile(path)
+	if !ok {
+		if rec.Status == StatusBlank {
+			rec.Searched = append(rec.Searched, path)
+		}
+		return rec
+	}
+	if nativeBodyBytes(data) >= nativeGroundedBodyBytes {
+		return Evidence{
+			Status:     StatusGrounded,
+			Confidence: ConfidenceHigh,
+			Sources:    append([]string{path}, rec.Sources...),
+		}
+	}
+	stub := path + " (stub)"
+	switch rec.Status {
+	case StatusGrounded:
+		return rec
+	case StatusPartial:
+		rec.Sources = append(rec.Sources, stub)
+		return rec
+	default:
+		return partial(ConfidenceLow, []string{stub}, nativeStubReason(path, data))
+	}
+}
+
+// nativeStubReason is the reason a stub brief file is partial: what was found
+// (the file, and how little prose it carries) and what would ground it.
+func nativeStubReason(path string, data []byte) string {
+	return fmt.Sprintf("Found %s, but it is a stub (%d characters of body prose, under the %d an authored section carries); writing the section there would ground it.",
+		path, nativeBodyBytes(data), nativeGroundedBodyBytes)
+}
+
 // nativeBodyBytes counts the body-prose characters of a brief file: every
 // non-blank line except a single leading heading. It is the measure that
 // separates an authored section from a stub.
@@ -187,11 +242,7 @@ func (s nativeBriefSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if nativeBodyBytes(data) < nativeGroundedBodyBytes {
-		return Evidence{
-			Status:     StatusPartial,
-			Confidence: ConfidenceLow,
-			Sources:    []string{path + " (stub)"},
-		}
+		return partial(ConfidenceLow, []string{path + " (stub)"}, nativeStubReason(path, data))
 	}
 	return Evidence{
 		Status:     StatusGrounded,
@@ -259,16 +310,23 @@ func (nativeIssuesSource) Probe(ctx *SourceContext) Evidence {
 	}
 }
 
-// nativeTradeoffsSource grounds "evidence/tradeoffs" from the alternatives an ADR
-// weighed and the decision log. ADRs with an Alternatives-Considered section
-// ground it; the decision log alone is partial. Blank when the record has
-// neither.
+// nativeTradeoffsSource grounds "evidence/tradeoffs" from the section's own brief
+// file, the alternatives an ADR weighed, and the decision log. An authored brief
+// file or ADRs with an Alternatives-Considered section ground it; the decision
+// log alone, or a stub brief file, is partial. Blank when the record has none of
+// them.
 type nativeTradeoffsSource struct{}
 
 func (nativeTradeoffsSource) Section() Section { return "evidence/tradeoffs" }
 func (nativeTradeoffsSource) Tier() Tier       { return TierNative }
 
-func (nativeTradeoffsSource) Probe(ctx *SourceContext) Evidence {
+func (s nativeTradeoffsSource) Probe(ctx *SourceContext) Evidence {
+	return nativeWithBriefFile(ctx, s.Section(), s.probeRecord(ctx))
+}
+
+// probeRecord is the tradeoffs reading from ADR alternatives and the decision
+// log alone, before the brief file is consulted.
+func (nativeTradeoffsSource) probeRecord(ctx *SourceContext) Evidence {
 	adrsWithAlts := 0
 	for _, name := range ctx.ListDir(nativeADRDir) {
 		if !nativeIsNumbered(name) || !strings.HasSuffix(strings.ToLower(name), ".md") {
@@ -296,20 +354,28 @@ func (nativeTradeoffsSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if adrsWithAlts == 0 {
-		return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: sources}
+		return partial(ConfidenceMedium, sources,
+			"Found the decision log ("+nativeDecisions+") but no ADR with an Alternatives Considered section, so what was decided is known but not what it was weighed against; ADRs recording their alternatives, or an authored "+nativeSectionBriefFile("evidence/tradeoffs")+", would ground it.")
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 }
 
-// nativeOpenQuestionsSource grounds "evidence/open-questions" from open issues
-// and the intent corpus. Open issues are concrete open questions and ground it;
-// intents alone are partial. Blank when the record has neither.
+// nativeOpenQuestionsSource grounds "evidence/open-questions" from the section's
+// own brief file, open issues, and the intent corpus. An authored brief file or
+// open issues (concrete open questions) ground it; intents alone, or a stub
+// brief file, are partial. Blank when the record has none of them.
 type nativeOpenQuestionsSource struct{}
 
 func (nativeOpenQuestionsSource) Section() Section { return "evidence/open-questions" }
 func (nativeOpenQuestionsSource) Tier() Tier       { return TierNative }
 
-func (nativeOpenQuestionsSource) Probe(ctx *SourceContext) Evidence {
+func (s nativeOpenQuestionsSource) Probe(ctx *SourceContext) Evidence {
+	return nativeWithBriefFile(ctx, s.Section(), s.probeRecord(ctx))
+}
+
+// probeRecord is the open-questions reading from open issues and intents alone,
+// before the brief file is consulted.
+func (nativeOpenQuestionsSource) probeRecord(ctx *SourceContext) Evidence {
 	openDir := nativeIssuesDir + "/open"
 	openCount := nativeCountRecords(ctx, openDir, "iss-")
 	intents := nativeCountIntents(ctx)
@@ -328,7 +394,9 @@ func (nativeOpenQuestionsSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if openCount == 0 {
-		return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: sources}
+		return partial(ConfidenceMedium, sources,
+			fmt.Sprintf("Found %d intent(s) but no open issue, so what is planned is known but not what is still unresolved; open issues in %s, or an authored %s, would ground it.",
+				intents, openDir, nativeSectionBriefFile("evidence/open-questions")))
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 }
@@ -386,7 +454,8 @@ func (nativeInvariantsSource) Probe(ctx *SourceContext) Evidence {
 	}
 	sort.Strings(sources)
 	if !hasRouter {
-		return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: sources}
+		return partial(ConfidenceMedium, sources,
+			"Found lint configuration under .abcd/ but no conventions router, so some rules are enforced but none is stated; an AGENTS.md or CLAUDE.md stating the invariants would ground it.")
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 }
@@ -425,7 +494,9 @@ func (nativeNamingSource) Probe(ctx *SourceContext) Evidence {
 		)
 	}
 	if body < nativeGroundedBodyBytes {
-		return Evidence{Status: StatusPartial, Confidence: ConfidenceMedium, Sources: dedupeSorted(files)}
+		return partial(ConfidenceMedium, dedupeSorted(files),
+			fmt.Sprintf("Found %d glossary file(s) under %s carrying %d characters of body prose, under the %d an authored glossary carries; defining the project's terms there in prose would ground it.",
+				len(files), nativeGlossaryDir, body, nativeGroundedBodyBytes))
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: dedupeSorted(files)}
 }
@@ -447,9 +518,6 @@ func (nativePersonasSource) Probe(ctx *SourceContext) Evidence {
 			"Who are the personas this product serves? Personas are a human question, rarely derivable from a repository.",
 		)
 	}
-	return Evidence{
-		Status:     StatusPartial,
-		Confidence: ConfidenceLow,
-		Sources:    []string{nativePersonas},
-	}
+	return partial(ConfidenceLow, []string{nativePersonas},
+		"Found an authored "+nativePersonas+"; personas stay partial by design, because who a product serves is confirmed by a person, not derived from a repository — a person's confirmation would ground it.")
 }

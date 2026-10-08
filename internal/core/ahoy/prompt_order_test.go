@@ -23,6 +23,25 @@ func (p *recordingPrompter) Confirm(q string) bool {
 	return p.confirm
 }
 
+// askedCategory is the kind of change the approval text asks about, or ""
+// for a text that is no category approval.
+func askedCategory(text string) GapCategory {
+	c, ok := strings.CutPrefix(setupConfirmID(text), approvePrefix)
+	if !ok {
+		return ""
+	}
+	return GapCategory(c)
+}
+
+// askedCategories is the kinds of change asked about, in order, joined.
+func askedCategories(asked []string) string {
+	out := make([]string, len(asked))
+	for i, q := range asked {
+		out[i] = string(askedCategory(q))
+	}
+	return strings.Join(out, "|")
+}
+
 func (p *recordingPrompter) Prompt(_ string, _ []string, def string) string { return def }
 
 // allCategoryGaps is one resolvable gap per category, so every category is
@@ -51,21 +70,21 @@ func allCategoryGaps() []Gap {
 // often enough to be useless.
 func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 	want := []string{
-		"Apply dependency changes?",
-		"Apply safe-autocreate changes?",
-		"Apply config-change changes?",
-		"Apply status-line changes?",
-		"Apply oracle-routing changes?",
-		"Apply drain-rule changes?",
-		"Apply conventions-file changes?",
-		"Apply user-state changes?",
-		"Apply plugin-owned changes?",
+		"dependency",
+		"safe-autocreate",
+		"config-change",
+		"status-line",
+		"oracle-routing",
+		"drain-rule",
+		"conventions-file",
+		"user-state",
+		"plugin-owned",
 	}
 	for i := 0; i < 64; i++ {
 		p := &recordingPrompter{confirm: true, terminal: true}
-		resolveApproval(allCategoryGaps(), InstallOptions{}, p)
-		if strings.Join(p.asked, "|") != strings.Join(want, "|") {
-			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, p.asked, want)
+		resolveApproval(allCategoryGaps(), InstallOptions{}, nil, p)
+		if askedCategories(p.asked) != strings.Join(want, "|") {
+			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, askedCategories(p.asked), want)
 		}
 	}
 	// Off a terminal the drain-rule and conventions-file questions are not
@@ -74,14 +93,14 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 	// the offers existed still lines up.
 	offTerminal := make([]string, 0, len(want))
 	for _, q := range want {
-		if q != "Apply drain-rule changes?" && q != "Apply conventions-file changes?" {
+		if q != string(DrainRule) && q != string(ConventionsFile) {
 			offTerminal = append(offTerminal, q)
 		}
 	}
 	p := &recordingPrompter{confirm: false}
-	_, declined := resolveApproval(allCategoryGaps(), InstallOptions{}, p)
-	if strings.Join(p.asked, "|") != strings.Join(offTerminal, "|") {
-		t.Fatalf("off a terminal:\n got %v\nwant %v", p.asked, offTerminal)
+	_, declined := resolveApproval(allCategoryGaps(), InstallOptions{}, nil, p)
+	if askedCategories(p.asked) != strings.Join(offTerminal, "|") {
+		t.Fatalf("off a terminal:\n got %v\nwant %v", askedCategories(p.asked), offTerminal)
 	}
 	for _, c := range declined {
 		if c == string(DrainRule) || c == string(ConventionsFile) {
@@ -122,12 +141,12 @@ func TestResolveApprovalAsksUnknownCategoriesLast(t *testing.T) {
 	)
 	for i := 0; i < 32; i++ {
 		p := &recordingPrompter{confirm: true, terminal: true}
-		resolveApproval(gaps, InstallOptions{}, p)
+		resolveApproval(gaps, InstallOptions{}, nil, p)
 		if len(p.asked) != 11 {
 			t.Fatalf("asked %d questions, want 11: %v", len(p.asked), p.asked)
 		}
-		tail := strings.Join(p.asked[9:], "|")
-		if tail != "Apply alpha changes?|Apply zeta changes?" {
+		tail := askedCategories(p.asked[9:])
+		if tail != "alpha|zeta" {
 			t.Fatalf("run %d: unknown categories not asked last and sorted: %v", i, p.asked)
 		}
 	}
