@@ -2,6 +2,7 @@ package guard
 
 import (
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -106,6 +107,91 @@ func TestRecallTermsAreTheCommandHeads(t *testing.T) {
 		if strings.TrimSpace(term) == "" {
 			t.Fatal("the bundled registry yields an empty recall term")
 		}
+	}
+}
+
+// TestRecallTermsCarryAnEverydayVerbOnlyWithAShape: an entry whose command
+// head is an everyday English verb (`kill`) is marked so in the registry, and
+// its head is offered as a recall term only joined to an operand or flag shape
+// its own pattern declares, never bare, so prose that merely uses the verb
+// ("kill the feature flag") does not recall the teaching domain
+// (iss-2609300123431381). A shape that is punctuation alone would match as the
+// bare head, so it is not offered; and an entry marked false offers its head
+// bare, as an unmarked one does.
+func TestRecallTermsCarryAnEverydayVerbOnlyWithAShape(t *testing.T) {
+	yes := true
+	r := Registry{SchemaVersion: SchemaVersion, Entries: map[string]Entry{
+		"a": {EverydayVerb: &yes, Pattern: Pattern{Command: "kill", ArgsFrom: []Pattern{{Command: "pgrep"}, {Command: "pgrep", MinOperands: 1}, {Command: "pidof"}}}},
+		"b": {EverydayVerb: &yes, Pattern: Pattern{Command: "stop", Flags: []string{"-9|--now"}, FlagValues: []FlagValue{{Flag: "-s", Values: []string{"KILL"}}}}},
+		"c": {EverydayVerb: &yes, Pattern: Pattern{Command: "drop", ArgPrefixes: []string{"+"}, ArgValues: []string{"/", "table"}, MinOperands: 1}},
+		"d": {EverydayVerb: &yes, Pattern: Pattern{Command: "clear", MinOperands: 1}},
+		"e": {Pattern: Pattern{Command: "rm"}},
+	}}
+	want := []string{
+		"drop table",
+		"kill $(pgrep", "kill $(pidof",
+		"pgrep", "pidof",
+		"rm",
+		"stop --now", "stop -9", "stop -s",
+		"xargs kill",
+	}
+	if got := r.RecallTerms(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("RecallTerms() = %q, want %q", got, want)
+	}
+
+	off := false
+	r.Entries["d"] = Entry{EverydayVerb: &off, Pattern: Pattern{Command: "clear", MinOperands: 1}}
+	if got := r.RecallTerms(); !slices.Contains(got, "clear") {
+		t.Errorf("an entry marked everyday_verb false offers no bare head: %q", got)
+	}
+
+	bundled := Defaults()
+	terms := bundled.RecallTerms()
+	if slices.Contains(terms, "kill") {
+		t.Errorf("the bundled registry offers the bare everyday verb `kill` as a recall term: %q", terms)
+	}
+	for _, want := range []string{"kill $(pgrep", "kill $(pidof", "pgrep", "pidof", "xargs kill", "killall", "pkill", "rm"} {
+		if !slices.Contains(terms, want) {
+			t.Errorf("the bundled recall terms lack %q: %q", want, terms)
+		}
+	}
+	for id, e := range bundled.Entries {
+		if strings.TrimSpace(e.Pattern.Command) == "kill" && (e.EverydayVerb == nil || !*e.EverydayVerb) {
+			t.Errorf("bundled entry %s has the head `kill` and is not marked everyday_verb", id)
+		}
+	}
+}
+
+// TestEverydayVerbMergesPerField: the marker is an entry field like the rest,
+// so a repository override that leaves it out inherits it, and one that sets it
+// false lifts it — the reason it is a pointer, as after_cd is.
+func TestEverydayVerbMergesPerField(t *testing.T) {
+	base := Defaults()
+	kept := Merge(base, Registry{SchemaVersion: SchemaVersion, Entries: map[string]Entry{
+		"kill-by-search": {Why: "Reworded."},
+	}})
+	if e := kept.Entries["kill-by-search"]; e.EverydayVerb == nil || !*e.EverydayVerb {
+		t.Errorf("an override without everyday_verb dropped the bundled marker: %+v", e.EverydayVerb)
+	}
+	off := false
+	lifted := Merge(base, Registry{SchemaVersion: SchemaVersion, Entries: map[string]Entry{
+		"kill-by-search": {EverydayVerb: &off},
+	}})
+	if e := lifted.Entries["kill-by-search"]; e.EverydayVerb == nil || *e.EverydayVerb {
+		t.Errorf("an override setting everyday_verb false did not lift it: %+v", e.EverydayVerb)
+	}
+	if !slices.Contains(lifted.RecallTerms(), "kill") {
+		t.Errorf("a lifted marker still withholds the bare head: %q", lifted.RecallTerms())
+	}
+	if *base.Entries["kill-by-search"].EverydayVerb != true {
+		t.Error("Merge mutated the base registry's marker")
+	}
+	r, err := parse([]byte(`{"schema_version":1,"entries":{"x":{"everyday_verb":true,"tier":"warn","why":"w","successor":"s","pattern":{"command":"kill","flags":["-9"]}}}}`))
+	if err != nil {
+		t.Fatalf("a guard.json carrying everyday_verb does not parse: %v", err)
+	}
+	if got, want := r.RecallTerms(), []string{"kill -9"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RecallTerms() of a parsed marked entry = %q, want %q", got, want)
 	}
 }
 

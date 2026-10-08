@@ -74,19 +74,91 @@ func (r Registry) lessons(repo func(id string, e Entry) bool) []string {
 // vocabulary for the teaching plane — narrow by construction, because the head
 // carries the subcommand: `git push` recalls it and the bare word "push" does
 // not.
+//
+// An entry marked EverydayVerb offers its head only joined to a shape its own
+// pattern declares (recallShapes), never bare: `kill` is an ordinary English
+// verb, and "kill the feature flag" is not shell work (iss-2609300123431381).
+// The mark is the registry's, so the exclusion has one source; an unmarked
+// entry with the same head still offers it bare.
 func (r Registry) RecallTerms() []string {
 	seen := map[string]bool{}
 	var out []string
+	add := func(term string) {
+		if term == "" || seen[term] {
+			return
+		}
+		seen[term] = true
+		out = append(out, term)
+	}
 	for _, e := range r.Entries {
-		head := e.Pattern.head()
-		if head == "" || seen[head] {
+		if e.EverydayVerb != nil && *e.EverydayVerb {
+			for _, term := range e.Pattern.recallShapes() {
+				add(term)
+			}
 			continue
 		}
-		seen[head] = true
-		out = append(out, head)
+		add(e.Pattern.head())
 	}
 	sort.Strings(out)
 	return out
+}
+
+// recallShapes are the recall terms of a pattern whose head is an everyday
+// verb: the head joined to each flag or operand shape the pattern declares, as
+// it is written on a command line — every alternative of a flag group, every
+// flag a flag-value constraint names, every operand prefix and operand word,
+// and for an args_from source both readings the matcher makes, the command
+// substitution (`kill $(pgrep`) and the xargs pipeline (`xargs kill`), plus
+// the source's own head bare (`pgrep`, `pidof`). The source is the search the
+// hazard turns on, not the everyday verb, so it recalls wherever a signal flag
+// or a wrapping shell stands between the verb and it (`kill -9 $(pgrep make)`,
+// `kill $(sh -c 'pgrep make')`).
+//
+// The rules loader matches a term with its punctuation collapsed to spaces, so
+// a shape carrying no letter or digit (`+`, `/`) would match as the bare head;
+// it is not offered. A pattern that declares no shape left (only an operand
+// count) offers no term at all: the bare verb is exactly what the mark
+// withholds.
+func (p Pattern) recallShapes() []string {
+	head := p.head()
+	if head == "" {
+		return nil
+	}
+	var out []string
+	with := func(shape string) {
+		if strings.IndexFunc(shape, isAlnum) >= 0 {
+			out = append(out, head+" "+shape)
+		}
+	}
+	for _, group := range p.Flags {
+		for _, alt := range strings.Split(group, "|") {
+			with(strings.TrimSpace(alt))
+		}
+	}
+	for _, fv := range p.FlagValues {
+		for _, alt := range strings.Split(fv.Flag, "|") {
+			with(strings.TrimSpace(alt))
+		}
+	}
+	for _, pre := range p.ArgPrefixes {
+		with(strings.TrimSpace(pre))
+	}
+	for _, v := range p.ArgValues {
+		with(strings.TrimSpace(v))
+	}
+	for _, src := range p.ArgsFrom {
+		if h := src.head(); h != "" {
+			out = append(out, head+" $("+h, h)
+		}
+	}
+	if len(p.ArgsFrom) > 0 {
+		out = append(out, "xargs "+head)
+	}
+	return out
+}
+
+func isAlnum(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
 }
 
 // Lesson is the one-line rule an entry teaches: whether the guard refuses or

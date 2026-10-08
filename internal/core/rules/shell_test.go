@@ -124,18 +124,31 @@ func holds(xs []string, s string) bool {
 // recalls the domain; ordinary prompts that merely share a word do not.
 func TestShellDomainRecallsShellHeavyPrompts(t *testing.T) {
 	rs := Defaults()
-	for _, prompt := range []string{
+	shellHeavy := []string{
 		"clean up the scratch directory with rm -rf",
 		"cd into build and rm the old output",
 		"git push the branch when the tests pass",
 		"git reset the worktree to origin",
-		"kill the stale server process",
+		"stop it with kill $(pgrep -f make) for now",
+		"pgrep -f node | xargs kill",
+		// A signal flag between the everyday verb and the substitution.
+		"kill -9 $(pgrep make)",
+		"kill -9 $(pidof node)",
 		"pkill the dev server",
 		"write a bash script that loops over the fixtures",
 		"run it in the shell",
 		"force push the rebased branch",
 		"gh repo delete the throwaway fork",
-	} {
+	}
+	// An entry whose head is marked an everyday verb recalls only through the
+	// shapes its pattern declares, so every command line it is proven to fire
+	// on must still recall the domain that teaches it.
+	for _, e := range guard.Defaults().Entries {
+		if e.EverydayVerb != nil && *e.EverydayVerb {
+			shellHeavy = append(shellHeavy, e.Fixtures.KnownBad...)
+		}
+	}
+	for _, prompt := range shellHeavy {
 		if !has(rs.Match(prompt), ShellDomain) {
 			t.Errorf("shell-heavy prompt %q did not recall %s, got %v", prompt, ShellDomain, names(rs.Match(prompt)))
 		}
@@ -146,6 +159,10 @@ func TestShellDomainRecallsShellHeavyPrompts(t *testing.T) {
 		"push the release notes to the site",
 		"resolve the issue with a note",
 		"the reset button on the form",
+		// kill is an everyday verb: the registry marks it so, and the bare
+		// word no longer recalls the domain (iss-2609300123431381).
+		"kill the feature flag, we are not shipping it",
+		"kill the stale server process",
 	} {
 		if has(rs.Match(prompt), ShellDomain) {
 			t.Errorf("ordinary prompt %q recalled %s", prompt, ShellDomain)

@@ -152,6 +152,15 @@ type Entry struct {
 	Successor string   `json:"successor"`
 	Why       string   `json:"why"`
 	Fixtures  Fixtures `json:"fixtures,omitempty"`
+	// EverydayVerb, when true, marks the entry's command head as an everyday
+	// English verb (`kill`) rather than a shell-only word (`pkill`, `rm`). It
+	// changes nothing the guard refuses: it narrows the teaching plane's recall
+	// (RecallTerms), which offers such a head only joined to an operand or flag
+	// shape the pattern declares, so prose that merely uses the verb does not
+	// recall the shell lessons (iss-2609300123431381). It is a pointer, as
+	// Pattern.AfterCD is, so a per-repo override can lift the mark as well as
+	// set it.
+	EverydayVerb *bool `json:"everyday_verb,omitempty"`
 }
 
 // Registry is the merged, validated hazard model: the bundled defaults overlaid
@@ -817,6 +826,10 @@ func cloneEntry(e Entry) Entry {
 	out.Pattern = clonePattern(e.Pattern)
 	out.Fixtures.KnownBad = append([]string(nil), e.Fixtures.KnownBad...)
 	out.Fixtures.KnownGood = append([]string(nil), e.Fixtures.KnownGood...)
+	if e.EverydayVerb != nil {
+		v := *e.EverydayVerb
+		out.EverydayVerb = &v
+	}
 	return out
 }
 
