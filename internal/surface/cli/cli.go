@@ -2757,7 +2757,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent edge — %s  blocked_by: [%s]  builds_on: [%s]\n",
-					res.IntentID, strings.Join(res.BlockedBy, ", "), strings.Join(res.BuildsOn, ", "))
+					res.IntentID, termsafe.Sanitize(strings.Join(res.BlockedBy, ", ")), termsafe.Sanitize(strings.Join(res.BuildsOn, ", ")))
 				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
 			})
 		},
@@ -5112,7 +5112,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				list := "[]"
 				if len(res.BlockedBy) > 0 {
-					list = "[" + strings.Join(res.BlockedBy, ", ") + "]"
+					list = "[" + termsafe.Sanitize(strings.Join(res.BlockedBy, ", ")) + "]"
 				}
 				fmt.Fprintf(w, "%s  blocked_by: %s — %s\n", res.ID, list, termsafe.Sanitize(res.Path))
 			})

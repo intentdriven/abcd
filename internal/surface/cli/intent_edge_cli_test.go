@@ -50,4 +50,17 @@ func TestIntentEdgeAtTheCLI(t *testing.T) {
 	if !strings.Contains(text, "itd-10") || !strings.Contains(text, "blocked_by: []") || !strings.Contains(text, "builds_on: [itd-2]") {
 		t.Fatalf("the plain render names both lists after the write: %q", text)
 	}
+
+	// A record's list items are record bytes, and a planted record can carry a
+	// terminal escape in one. An edit to the other list keeps the item as it
+	// is, and the plain render must not hand its control bytes to the terminal.
+	writeRepoFile(t, repo, cliDrafts+"/itd-11-delta.md",
+		"---\nid: itd-11\nslug: delta\nspec_id: null\nkind: null\nblocked_by: [\"itd-27\x1b]0;PWNED\x07\"]\n---\n# delta\n")
+	text = string(runCLI(t, "intent", "edge", "itd-11", "--builds-on", "itd-2"))
+	if strings.ContainsAny(text, "\x1b\x07") {
+		t.Fatalf("the plain render passed a record's control bytes to the terminal: %q", text)
+	}
+	if !strings.Contains(text, "builds_on: [itd-2]") {
+		t.Fatalf("the plain render after an edit beside a planted item: %q", text)
+	}
 }
