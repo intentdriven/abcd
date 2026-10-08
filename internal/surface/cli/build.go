@@ -706,7 +706,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
-	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): close its pull request, remove its worktree and branch")
+	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
 	return cmd
 }
 

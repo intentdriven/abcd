@@ -456,7 +456,8 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 		"stage the versioned release payload in this directory (must be empty and outside the repository)")
 	cmd.Flags().BoolVar(&allowDirty, "allow-dirty", false,
 		"cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried "+
-			"(waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)")
+			"(waives the dirty-tree gate only — never lockstep, the archive pin's clean-payload refusal, the cut's uncommitted-records "+
+			"refusal, or the findings gate's refusal of an uncommitted open/ issue record)")
 	cmd.Flags().BoolVar(&fetchBaseline, "fetch-baseline", false,
 		"read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt "+
 			"(a network fetch; default: a fresh render at the tag)")
