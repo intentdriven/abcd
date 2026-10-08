@@ -24,16 +24,101 @@ import (
 // previousCommandBudget; on either, the verb prints what it has — a partial
 // row, the previous command's output so far, or nothing — and exits 0.
 
-// deadlineMargin is the slack a timing assertion allows over a budget: process
-// start-up, a loaded CI machine. It is generous on purpose: what these tests
-// catch is a verb that waits for a ten-second sleep, not one that is a few
-// hundred milliseconds late.
-const deadlineMargin = 2 * time.Second
+// These tests prove that a bound STOPS slow work, never how soon: a fixed
+// wall-clock budget asserted on a race-instrumented, shared runner fails on
+// scheduling jitter, not on a verb that waits (iss-2610080243367006). Each
+// slow fixture would run for slowWork; the verb must return under
+// stopCeiling, far above every budget and far below slowWork, so a verb that
+// waited for the work still fails while a loaded runner a few seconds late
+// does not. Which bound did the stopping is proven by the note the verb
+// prints, which names that budget, and the production values are pinned by
+// TestStatuslineBudgetIsUnderASecond.
+const (
+	slowWork    = 30 * time.Second
+	stopCeiling = slowWork / 3
+)
+
+// slowSleep is slowWork as a sleep(1) argument, for the shell fixtures.
+var slowSleep = "sleep " + strconv.Itoa(int(slowWork/time.Second))
+
+// loadedGitLatency is how long the fake git takes before it hands a question
+// it does not hang on to the real git: longer than the production git budget,
+// as a loaded runner's git can be. A test whose row needs git's answer widens
+// the budgets past it (widenBudgets), so its claim holds on a loaded machine
+// too.
+const loadedGitLatency = "sleep 0.4"
+
+// widenBudgets resizes the verb's budgets for one test to sizes a loaded
+// machine's real git cannot outrun, keeping their order (git's share inside
+// abcd's ceiling, with room after it) and keeping every slow fixture far
+// beyond them. The production values return when the test ends.
+func widenBudgets(t *testing.T) {
+	t.Helper()
+	overall, git, previous := statuslineBudget, statuslineGitBudget, previousCommandBudget
+	statuslineBudget, statuslineGitBudget, previousCommandBudget = 4*time.Second, 2*time.Second, 2*time.Second
+	t.Cleanup(func() { statuslineBudget, statuslineGitBudget, previousCommandBudget = overall, git, previous })
+}
+
+// hasNote reports whether stderr carries a note of the verb's own, from
+// "abcd statusline:" to the end of its line, that contains every one of want.
+// The note need not open stderr, nor a line: a previous command's own stderr
+// passes through ahead of it, with or without a final newline.
+func hasNote(stderr string, want ...string) bool {
+	for _, line := range strings.Split(stderr, "\n") {
+		at := strings.Index(line, "abcd statusline:")
+		if at < 0 {
+			continue
+		}
+		all := true
+		for _, w := range want {
+			all = all && strings.Contains(line[at:], w)
+		}
+		if all {
+			return true
+		}
+	}
+	return false
+}
+
+// goneWithin reports whether no process holds pid within stopCeiling: a
+// process the verb stopped is gone at once, and one it left running would
+// still be sleeping slowWork. A stopped process is reaped by its parent
+// (the verb's Wait, or the system for an orphan), so a short wait is not an
+// excuse.
+func goneWithin(pid int) bool {
+	deadline := time.Now().Add(stopCeiling)
+	for time.Now().Before(deadline) {
+		if syscall.Kill(pid, 0) != nil {
+			return true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return false
+}
+
+// readPid reads the pid a fixture wrote, or reports none when the fixture was
+// stopped before its first line ran (a loaded machine): nothing of it is left
+// to outlive the verb.
+func readPid(t *testing.T, path string) (int, bool) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 0, false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pid, true
+}
 
 // statuslineWithin runs the verb through the front door with stdin bound and
 // fails the test, rather than hanging it, when the verb has not returned
-// within limit.
-func statuslineWithin(t *testing.T, stdin io.Reader, limit time.Duration) (stdout, stderr string, code int, took time.Duration) {
+// within stopCeiling: it waited for the slow work rather than stopping it.
+func statuslineWithin(t *testing.T, stdin io.Reader) (stdout, stderr string, code int, took time.Duration) {
 	t.Helper()
 	type result struct {
 		so, se string
@@ -49,8 +134,8 @@ func statuslineWithin(t *testing.T, stdin io.Reader, limit time.Duration) (stdou
 	select {
 	case r := <-done:
 		return r.so, r.se, r.code, time.Since(start)
-	case <-time.After(limit):
-		t.Fatalf("the status verb had not returned after %s; the harness's status line would be frozen", limit)
+	case <-time.After(stopCeiling):
+		t.Fatalf("the status verb had not returned after %s; it waited for work it should have stopped, and the harness's status line would be frozen", stopCeiling)
 	}
 	return "", "", 0, 0
 }
@@ -72,10 +157,15 @@ func fakeGit(t *testing.T, script string) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// TestStatuslineBudgetIsUnderASecond pins the documented value: abcd's own
+// TestStatuslineBudgetIsUnderASecond pins the documented values: abcd's own
 // share of a refresh is bounded below one second, and the git share of it
-// leaves room inside it for the rest of the row.
+// leaves room inside it for the rest of the row. The budgets are variables so
+// the tests below can widen them; this is what keeps a changed production
+// value from passing.
 func TestStatuslineBudgetIsUnderASecond(t *testing.T) {
+	if statuslineBudget != 500*time.Millisecond || statuslineGitBudget != 300*time.Millisecond || previousCommandBudget != 5*time.Second {
+		t.Errorf("budgets = %s / %s / %s, want the documented 500ms / 300ms / 5s", statuslineBudget, statuslineGitBudget, previousCommandBudget)
+	}
 	if statuslineBudget <= 0 || statuslineBudget >= time.Second {
 		t.Errorf("statuslineBudget = %s, want a positive bound under one second", statuslineBudget)
 	}
@@ -88,34 +178,37 @@ func TestStatuslineBudgetIsUnderASecond(t *testing.T) {
 }
 
 // TestStatuslineHungGitDoesNotFreezeTheLine: every git the verb starts sleeps
-// for ten seconds. The verb returns within its budget, exits 0, and says on
-// stderr why the row is empty.
+// for slowWork. The verb returns at git's budget, not at the work's end,
+// exits 0, and says on stderr why the row is empty.
 func TestStatuslineHungGitDoesNotFreezeTheLine(t *testing.T) {
 	root := managedCheckout(t)
-	fakeGit(t, "exec sleep 10")
+	widenBudgets(t)
+	fakeGit(t, "exec "+slowSleep)
 
-	stdout, stderr, code, took := statuslineWithin(t, strings.NewReader(payloadFor(root)), statuslineBudget+deadlineMargin)
+	stdout, stderr, code, took := statuslineWithin(t, strings.NewReader(payloadFor(root)))
 	if code != 0 {
 		t.Errorf("exit %d, want 0: a slow git is not an error the harness should see (stderr %q)", code, stderr)
 	}
 	if stdout != "" {
 		t.Errorf("stdout = %q, want nothing: with no answer for the checkout there is no row to vouch for", stdout)
 	}
-	if !strings.HasPrefix(stderr, "abcd statusline:") || !strings.Contains(stderr, "git") {
-		t.Errorf("stderr = %q, want one note naming git as what did not answer", stderr)
+	if !hasNote(stderr, "git", "within "+statuslineGitBudget.String()) {
+		t.Errorf("stderr = %q, want one note naming git and its budget as what did not answer", stderr)
 	}
-	t.Logf("returned in %s (budget %s)", took, statuslineBudget)
+	t.Logf("returned in %s (git budget %s)", took, statuslineGitBudget)
 }
 
 // TestStatuslineSlowBranchStillRendersThePartialRow: git answers for the
-// checkout at once but hangs on the branch. The row renders without the
-// branch, badge first, within the budget — the best partial row.
+// checkout, as slowly as a loaded machine's git, but hangs on the branch. The
+// row renders without the branch, badge first, once git's budget stops the
+// branch — the best partial row.
 func TestStatuslineSlowBranchStillRendersThePartialRow(t *testing.T) {
 	root := managedCheckout(t)
-	fakeGit(t, `for a in "$@"; do case "$a" in symbolic-ref|--short) exec sleep 10;; esac; done
-exec "$REAL_GIT" "$@"`)
+	widenBudgets(t)
+	fakeGit(t, `for a in "$@"; do case "$a" in symbolic-ref|--short) exec `+slowSleep+`;; esac; done
+`+loadedGitLatency+`; exec "$REAL_GIT" "$@"`)
 
-	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(root)), statuslineBudget+deadlineMargin)
+	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(root)))
 	if code != 0 {
 		t.Fatalf("exit %d (stderr %q), want 0", code, stderr)
 	}
@@ -134,7 +227,7 @@ func TestStatuslineWithoutGitReturnsAtOnce(t *testing.T) {
 	root := managedCheckout(t)
 	t.Setenv("PATH", t.TempDir())
 
-	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(root)), statuslineBudget+deadlineMargin)
+	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(root)))
 	if code != 0 || stdout != "" {
 		t.Errorf("exit %d stdout %q stderr %q, want a quiet exit 0", code, stdout, stderr)
 	}
@@ -148,58 +241,65 @@ func TestStatuslineStdinThatNeverClosesDoesNotFreezeTheLine(t *testing.T) {
 	r, w := io.Pipe()
 	t.Cleanup(func() { _ = w.Close() })
 
-	stdout, stderr, code, _ := statuslineWithin(t, r, statuslineBudget+deadlineMargin)
+	stdout, stderr, code, _ := statuslineWithin(t, r)
 	if code != 0 || stdout != "" {
 		t.Errorf("exit %d stdout %q, want nothing and exit 0", code, stdout)
 	}
-	if !strings.HasPrefix(stderr, "abcd statusline:") {
-		t.Errorf("stderr = %q, want one note saying the budget ran out", stderr)
+	if !hasNote(stderr, "within "+statuslineBudget.String()) {
+		t.Errorf("stderr = %q, want one note saying abcd's budget ran out", stderr)
 	}
 }
 
 // TestStatuslineSlowPreviousCommandIsStopped: outside a managed checkout the
-// recorded previous command sleeps far past its budget, and starts a
-// background child that would write a file late. The verb returns at the
-// budget with the output the command had already printed, exits 0, and the
-// whole process group is stopped — the late write never happens.
+// recorded previous command prints to both streams, starts a background child
+// that records its pid, and sleeps for slowWork. The verb returns at the
+// command's budget, not at the work's end, with the output the command had
+// already printed, exits 0, and says why in a note of its own — after the
+// command's own stderr, which passes through first (a shell that reports its
+// killed jobs writes there too). The whole process group is stopped: the
+// background child is gone too.
 func TestStatuslineSlowPreviousCommandIsStopped(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(statuslineFallbackEnv, "")
 	repo := t.TempDir()
 	gitInitAt(t, repo)
 	t.Chdir(repo)
-	late := filepath.Join(t.TempDir(), "late")
-	writeUserSettings(t, `{"schema_version":1,"previous_command":"printf partial; (sleep 1; printf x > '`+late+`') & sleep 10"}`)
+	widenBudgets(t)
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	writeUserSettings(t, `{"schema_version":1,"previous_command":"printf partial; printf own-stderr >&2; sh -c 'echo $$ > \"$0\"; exec `+slowSleep+`' '`+pidFile+`' & `+slowSleep+`"}`)
 
-	orig := previousCommandBudget
-	previousCommandBudget = 300 * time.Millisecond
-	t.Cleanup(func() { previousCommandBudget = orig })
-
-	stdout, stderr, code, took := statuslineWithin(t, strings.NewReader(""), previousCommandBudget+deadlineMargin)
+	stdout, stderr, code, took := statuslineWithin(t, strings.NewReader(""))
 	if code != 0 {
 		t.Errorf("exit %d, want 0 (stderr %q)", code, stderr)
 	}
 	if stdout != "partial" {
 		t.Errorf("stdout = %q, want the output the command printed before it was stopped", stdout)
 	}
-	if !strings.HasPrefix(stderr, "abcd statusline:") || !strings.Contains(stderr, "previous status command") {
-		t.Errorf("stderr = %q, want one note naming the stopped previous command", stderr)
+	if !strings.HasPrefix(stderr, "own-stderr") {
+		t.Errorf("stderr = %q, want the command's own stderr passed through first", stderr)
+	}
+	if !hasNote(stderr, "previous status command", "within "+previousCommandBudget.String()) {
+		t.Errorf("stderr = %q, want one note naming the previous command and its budget as what was stopped", stderr)
 	}
 	t.Logf("returned in %s (budget %s)", took, previousCommandBudget)
 
-	time.Sleep(1500 * time.Millisecond)
-	if _, err := os.Lstat(late); err == nil {
-		t.Errorf("a child of the previous command outlived the stop and wrote %s", late)
+	pid, ok := readPid(t, pidFile)
+	if !ok {
+		return
+	}
+	if !goneWithin(pid) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Errorf("a background child of the previous command (pid %d) outlived the stop", pid)
 	}
 }
 
 // TestStatuslineKillsTheRootCommitGit: a checkout managed through the history
 // index alone carries no marker block, so whether abcd manages it needs git's
-// root commit. That git hangs. The verb returns within its budget with
+// root commit. That git hangs. The verb returns at git's budget with
 // nothing printed — whether abcd manages the checkout is unknown, so neither
 // abcd's row nor the previous command can be vouched for — and the git it
-// started is gone when it returns: killed at the deadline, not left to run on
-// after every refresh.
+// started is gone: killed at the deadline, not left to run on after every
+// refresh. The checkout's own git answers as slowly as a loaded machine's.
 func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -207,6 +307,7 @@ func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv(statuslineFallbackEnv, "")
+	widenBudgets(t)
 	repo := t.TempDir()
 	gitInitAt(t, repo)
 	gitCommitAt(t, repo, "one")
@@ -229,37 +330,26 @@ func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 	}
 	writeUserSettings(t, `{"schema_version":1,"previous_command":"printf previous"}`)
 	// Control: with a git that answers, the checkout is abcd's.
-	if out, _, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo)), statuslineBudget+deadlineMargin); code != 0 || !strings.Contains(out, "abcd-managed") {
+	if out, _, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo))); code != 0 || !strings.Contains(out, "abcd-managed") {
 		t.Fatalf("control: stdout %q exit %d, want abcd's row for a registered checkout", out, code)
 	}
 
 	pidFile := filepath.Join(t.TempDir(), "pid")
-	fakeGit(t, `for a in "$@"; do case "$a" in rev-list) echo $$ > '`+pidFile+`'; exec sleep 10;; esac; done
-exec "$REAL_GIT" "$@"`)
+	fakeGit(t, `for a in "$@"; do case "$a" in rev-list) echo $$ > '`+pidFile+`'; exec `+slowSleep+`;; esac; done
+`+loadedGitLatency+`; exec "$REAL_GIT" "$@"`)
 
-	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo)), statuslineBudget+deadlineMargin)
+	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo)))
 	if code != 0 || stdout != "" {
 		t.Errorf("exit %d stdout %q (stderr %q), want nothing and exit 0", code, stdout, stderr)
 	}
-	if !strings.HasPrefix(stderr, "abcd statusline:") || !strings.Contains(stderr, "whether abcd manages this checkout") {
+	if !hasNote(stderr, "whether abcd manages this checkout", "within "+statuslineGitBudget.String()) {
 		t.Errorf("stderr = %q, want one note saying git did not say whether abcd manages the checkout", stderr)
 	}
-	raw, err := os.ReadFile(pidFile)
-	if os.IsNotExist(err) {
-		// Killed before its first line ran (a loaded machine): nothing of it
-		// is left to outlive the verb.
+	pid, ok := readPid(t, pidFile)
+	if !ok {
 		return
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Give an abandoned git no excuse: a killed one is already reaped.
-	time.Sleep(100 * time.Millisecond)
-	if err := syscall.Kill(pid, 0); err == nil {
+	if !goneWithin(pid) {
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 		t.Errorf("the root-commit git (pid %d) outlived the verb", pid)
 	}
