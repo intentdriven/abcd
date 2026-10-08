@@ -32,8 +32,8 @@ Both branches have landed: itd-82 sits in `intents/planned` and itd-130 in `inte
 
 - The five deferred sites are live cross-references, correct as written: itd-82's one spc-24 is itd-119's `capture promote`, and itd-130's four spc-35 are itd-132's download cache and owned PATH copy.
 - New to the census: itd-33 entered `intents/superseded` from `drafts/` on 2026-10-03 (84bfc4bb1), bringing 4 sites. Its spc-33 is the spec a promotion of itd-33 would mint in its own press-release quote, and its spc-7 illustrates a task-granular claim (`spc-7.2`, `spc-7.3`). Both are illustrations, not references to either store's record, so they are left as written like itd-4's example resolution note.
-- Not on the 2026-09-30 lists: itd-132's 11 sites cite live spc-21, itd-105's hook-binary fetch whose verification posture itd-132 keeps; itd-29's 4 are the suffixed legacy-roadmap ids `spc-29-42i` and `spc-9-kbe`, which their lines already name as legacy, matched by the census only on their prefix; itd-36's 2 are the "live spc-38 ... live spc-39" contrast on line 92, which says live in words.
-- The other 76 sites are the live cross-references and data sites the 2026-09-30 lists already classify; read again at the tip, each keeps its classification.
+- Not on the 2026-09-30 lists: itd-29's 4 are the suffixed legacy-roadmap ids `spc-29-42i` and `spc-9-kbe`, which their lines already name as legacy, matched by the census only on their prefix; itd-36's 2 are the "live spc-38 ... live spc-39" contrast on line 92, which says live in words.
+- The other 87 sites are the live cross-references and data sites the 2026-09-30 lists already classify, among them itd-132's 11, which cite live spc-21 (itd-105's hook-binary fetch, whose verification posture itd-132 keeps) on the same lines as at 2b9d52fbb; read again at the tip, each keeps its classification.
 
 The census, run from the repository root:
 
