@@ -150,3 +150,37 @@ func TestEdgeRefusesWithNothingWritten(t *testing.T) {
 		})
 	}
 }
+
+// TestEdgeRefusesAHandShapedList: a list key the writer cannot rewrite without
+// guessing — a scalar value, or a key spelled with whitespace before its colon,
+// which the reader honours and the writer would duplicate — is refused, naming
+// the key, its line and the repair, with nothing written.
+func TestEdgeRefusesAHandShapedList(t *testing.T) {
+	for _, tc := range []struct {
+		name, line, key string
+	}{
+		{"a scalar value", "builds_on: itd-27", "builds_on"},
+		{"a spaced key", "blocked_by : [itd-27]", "blocked_by"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			rel := draftsDir + "/itd-10-alpha.md"
+			writeFile(t, root, rel, "---\nid: itd-10\nslug: alpha\n"+tc.line+"\n---\n# alpha\n")
+			writeFile(t, root, draftsDir+"/itd-27-beta.md", draftWithAC("itd-27", "beta"))
+			writeFile(t, root, draftsDir+"/itd-28-gamma.md", draftWithAC("itd-28", "gamma"))
+			before := readIntent(t, root, rel)
+			_, err := Edge(root, EdgeRequest{ID: "itd-10", BlockedBy: []string{"itd-28"}})
+			if err == nil {
+				t.Fatal("want a refusal")
+			}
+			for _, w := range []string{"`" + tc.key + "` line", "line 4", "repair it by hand", "nothing written"} {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("the refusal must name %q: %v", w, err)
+				}
+			}
+			if got := readIntent(t, root, rel); got != before {
+				t.Fatalf("a refusal wrote the record:\n%s", got)
+			}
+		})
+	}
+}
