@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -838,6 +838,36 @@ already written. Report the paths from `moved` and `written`, the `survivor`
 when there is one, and any `open_specs` — an open spec still naming a record
 just superseded is a fact to act on (close it, or retire it by hand), not
 something the verb decides.
+
+## Edge: add or remove a dependency edge
+
+An intent names the intents it depends on in two lists: `blocked_by` (it
+cannot ship before them) and `builds_on` (it is cheaper or better if they exist
+first). The build's pre-start check refuses an intent whose `blocked_by` names
+one not yet shipped, and record-lint's edge rules read both. `edge` is the verb
+that writes them, the intent counterpart of `capture link`:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent edge <itd-N> --blocked-by <itd-M,...> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent edge <itd-N> --unblock <itd-M,...> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent edge <itd-N> --builds-on <itd-M,...> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent edge <itd-N> --drop-builds-on <itd-M,...> --json
+```
+
+The flags combine in one call. For each list the removals are applied
+**before** the additions, so the same id on both sides is a net no-op, and an
+id the list already holds collapses, so a repeated edge succeeds unchanged.
+Report `intent_id`, `path`, `blocked_by` and `builds_on` (both lists **after**
+the write) from the JSON.
+
+Every refusal writes nothing: an id that is not `itd-N`, a record naming
+itself, a target no intent store holds in any bucket, and a removal of an edge
+the list does not currently hold, which is refused naming the current list.
+Naming a shipped, superseded or discipline intent is legal: existence is what
+the edge claims, and the build's check follows a superseded blocker to the
+record that replaced it. The subject may sit in any bucket and never moves. An
+emptied list is written `[]`, the shape a new draft carries, and a list spelled
+as a block sequence (one `- itd-N` per line) stays one.
 
 ## Link
 

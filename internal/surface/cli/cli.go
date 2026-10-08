@@ -2735,6 +2735,39 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
+	// edge <itd-N> — add or remove an intent's blocked_by and builds_on edges
+	// (iss-2610040758579292), the intent store's counterpart of `capture
+	// link`: the build's blocked check reads blocked_by, and no verb wrote it.
+	var edgeBlockedBy, edgeUnblock, edgeBuildsOn, edgeDropBuildsOn string
+	edgeCmd := &cobra.Command{
+		Use:  "edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>]",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := intent.Edge(repoRoot, intent.EdgeRequest{
+				ID:        args[0],
+				BlockedBy: splitIDList(edgeBlockedBy), Unblock: splitIDList(edgeUnblock),
+				BuildsOn: splitIDList(edgeBuildsOn), DropBuildsOn: splitIDList(edgeDropBuildsOn),
+			})
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent edge: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd intent edge — %s  blocked_by: [%s]  builds_on: [%s]\n",
+					res.IntentID, strings.Join(res.BlockedBy, ", "), strings.Join(res.BuildsOn, ", "))
+				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
+			})
+		},
+	}
+	edgeCmd.Flags().StringVar(&edgeBlockedBy, "blocked-by", "", "append: comma-separated itd-N ids this intent cannot ship before; each must exist in the intent store")
+	edgeCmd.Flags().StringVar(&edgeUnblock, "unblock", "", "remove: comma-separated itd-N ids to drop from blocked_by; each must currently be in the list")
+	edgeCmd.Flags().StringVar(&edgeBuildsOn, "builds-on", "", "append: comma-separated itd-N ids this intent builds on; each must exist in the intent store")
+	edgeCmd.Flags().StringVar(&edgeDropBuildsOn, "drop-builds-on", "", "remove: comma-separated itd-N ids to drop from builds_on; each must currently be in the list")
+	intentCmd.AddCommand(edgeCmd)
+
 	// hold <itd-N> --reason "<text>" / unhold <itd-N> — the hold is a
 	// frontmatter STATE the plan verb refuses on, written and lifted only here
 	// (iss-2609200830076665). The reason is validated at this door as well as in

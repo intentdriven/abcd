@@ -239,6 +239,8 @@ var sentences = map[string]string{
 		"Writes the request locally; refuses a superseded intent.",
 	"abcd intent consistency ingest": "Ingest consistency findings as a dated review and a capture per finding: " +
 		"Writes the report and the ledger records; refuses without --findings-json.",
+	"abcd intent edge": "Add or remove an intent's blocked_by and builds_on edges: " +
+		"Writes the two lists in place; refuses an id no intent store holds.",
 	"abcd intent hold": "Hold a draft or planned intent so that planning refuses it: " +
 		"Writes the held line with its reason; refuses without --reason.",
 	"abcd intent link": "Link a planned intent to an existing spec: " +
