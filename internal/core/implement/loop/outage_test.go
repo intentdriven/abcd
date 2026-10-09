@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // shared opens the shared run state for the fixture's repository on the
@@ -251,7 +252,9 @@ func joinShared(t *testing.T, root string, now func() time.Time) *implement.Run 
 // gitOut runs one git command in root and returns its output.
 func gitOut(t *testing.T, root string, args ...string) string {
 	t.Helper()
-	out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = gittest.Env(t)
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
