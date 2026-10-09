@@ -781,8 +781,10 @@ Start the dashboard on this computer's own Tailscale addresses and print one
 line saying where to open it and who can. It refuses outside a checkout abcd
 manages, when a dashboard already runs on this computer, when Tailscale is not
 running, and when the port is one Tailscale's own Serve or Funnel configuration
-uses. It returns once a fetch of its own address through Tailscale answers; if
-that fetch fails, the server is stopped and the failure named.
+uses. It returns once a fetch of its own address through Tailscale answers. An
+address the fetch cannot connect to at all is dropped, no longer listened on,
+and named with why in the line; if no address answers, or one that connects
+does not, the server is stopped and the failure named.
 
 **Flags:**
 

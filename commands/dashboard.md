@@ -37,7 +37,8 @@ Bare invocation is read-only and equals `status`. Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" dashboard status --json
 ```
 
-The payload carries `running`, and when it runs its `url`, its `addresses`,
+The payload carries `running`, and when it runs its `url`, its `addresses`
+(only those it listens on: an address start dropped is not among them),
 `since` and the server's `pid`, and `devices`: each device that opened it in
 this run, by its Tailscale `device` name, `person` and `login`, with
 `first_opened` and `last_opened`. A run file naming a process that is gone sets
@@ -56,11 +57,15 @@ dashboard. Run, from the project's checkout:
 ```
 
 It prints one line: the address to open on a device on the Tailscale network,
-that anyone on that network can open it, every address it listens on, and how
-to stop it. Relay that line as printed. The default port is 8080; pass
-`--port N` only when the user names another. It returns once a fetch of its
-own address through Tailscale answers; if that fetch fails, the server is
-stopped and the failure is named (exit 1). It refuses (exit 2, nothing
+that anyone on that network can open it, every address it listens on, any
+address it dropped and why, and how to stop it. Relay that line as printed. The
+default port is 8080; pass `--port N` only when the user names another. It
+returns once a fetch of each of its own addresses through Tailscale answers.
+An address this computer cannot connect to at all (a Tailscale that cannot
+reach its own IPv6 address) is dropped: the server stops listening on it, and
+`--json` names it under `dropped`, each with its `address` and `reason`, beside
+the `addresses` kept. If no address can be connected to, or one that connects
+does not answer, the server is stopped and the failure is named (exit 1). It refuses (exit 2, nothing
 started) outside a checkout abcd manages, when a dashboard already runs on this
 computer, when Tailscale is not running or is older than this abcd reads, when
 the `tailscale` command found sits in the working tree or in a folder anyone

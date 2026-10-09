@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -42,7 +43,7 @@ const (
 	selfCheckWait   = 5 * time.Second
 	stopWait        = 10 * time.Second
 	maxStateBytes   = 256 << 10
-	childConfigWire = 1
+	childConfigWire = 2
 )
 
 // killGroup kills the process group start launched the server in. Only a
@@ -67,6 +68,18 @@ func setBeforeConfigWriteForTest(f func()) (restore func()) {
 	old := beforeConfigWrite
 	beforeConfigWrite = f
 	return func() { beforeConfigWrite = old }
+}
+
+// dialSelf connects start's self-check to one of this computer's own
+// addresses. Only a test replaces it, to stand in a network on which one
+// address cannot be connected to.
+var dialSelf = (*net.Dialer).DialContext
+
+// setDialSelfForTest replaces dialSelf and returns the restore.
+func setDialSelfForTest(f func(d *net.Dialer, ctx context.Context, network, address string) (net.Conn, error)) (restore func()) {
+	old := dialSelf
+	dialSelf = f
+	return func() { dialSelf = old }
 }
 
 // exitGrace is how long start waits for a server that said it is exiting
@@ -145,8 +158,18 @@ type StartResult struct {
 	Name  string   `json:"name"`
 	Port  int      `json:"port"`
 	Addrs []string `json:"addresses"`
-	PID   int      `json:"pid"`
-	Line  string   `json:"line"`
+	// Dropped names each of this computer's Tailscale addresses the server
+	// stopped listening on because start's self-check could not connect to
+	// it; empty when every address answered.
+	Dropped []DroppedAddr `json:"dropped"`
+	PID     int           `json:"pid"`
+	Line    string        `json:"line"`
+}
+
+// DroppedAddr is a listening address start dropped, and why.
+type DroppedAddr struct {
+	Addr   string `json:"address"`
+	Reason string `json:"reason"`
 }
 
 // childConfig is what start hands the server over its config pipe, never on
@@ -162,15 +185,29 @@ type childConfig struct {
 	SelfCheck string   `json:"self_check"`
 }
 
-// readyMessage is the server's one line back over the readiness pipe.
+// readyMessage is a line back from the server over the readiness pipe: the
+// first once it listens, the second, naming the addresses it kept, once it
+// has read keepMessage.
 type readyMessage struct {
-	OK    bool   `json:"ok"`
-	Port  int    `json:"port,omitempty"`
-	Error string `json:"error,omitempty"`
+	OK    bool     `json:"ok"`
+	Port  int      `json:"port,omitempty"`
+	Addrs []string `json:"addresses,omitempty"`
+	Error string   `json:"error,omitempty"`
+}
+
+// keepMessage is start's second line over the config pipe, written once its
+// self-check has run: the listening addresses it reached, which the server
+// keeps. The server stops listening on every other address, and from then on
+// refuses this computer on it as on one whose self-check answered.
+type keepMessage struct {
+	Keep []string `json:"keep"`
 }
 
 // Start launches the dashboard and returns once a fetch of its own address
-// through the tailnet has answered. It refuses (a *Refusal) when Tailscale is
+// through the tailnet has answered. An address the fetch cannot connect to at
+// all is dropped: the server stops listening on it, and the result names it.
+// Only when no address can be connected to, or one that connects does not
+// answer, is the server stopped. It refuses (a *Refusal) when Tailscale is
 // not running or names no tailnet address for this computer, when the port is
 // one Tailscale's own Serve or Funnel configuration names, and when a
 // dashboard already runs on this computer.
@@ -322,15 +359,18 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 		return StartResult{}, err
 	}
 
+	// The config pipe stays open past the configuration: start writes the
+	// addresses to keep on it once its self-check has run. A server that
+	// finds it closed first stops (serve.go).
+	defer cfgW.Close()
 	data, _ := json.Marshal(cfg)
 	beforeConfigWrite()
-	_, werr := cfgW.Write(append(data, '\n'))
-	cfgW.Close()
-	if werr != nil {
+	if _, werr := cfgW.Write(append(data, '\n')); werr != nil {
 		// The server closed its end without reading it: it is exiting.
 		return fail(fmt.Errorf("handing the dashboard server its configuration: %w", werr), true)
 	}
-	msg, err := readReady(readyR)
+	ready := bufio.NewReader(io.LimitReader(readyR, 8192))
+	msg, err := readReady(ready)
 	if err != nil {
 		return fail(err, errors.Is(err, errServerExited))
 	}
@@ -339,17 +379,55 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 		return fail(&Refusal{msg: "the dashboard server refused to start: " + msg.Error}, true)
 	}
 	port := msg.Port
+	var kept []netip.Addr
+	var dropped []DroppedAddr
+	var unreached []string
 	for _, a := range addrs {
-		if err := fetchSelf(ctx, name, a, port, selfCheck); err != nil {
-			return fail(fmt.Errorf("the dashboard started, but %s could not be reached from this computer (%v), so it is stopped; check that nothing on this computer blocks the port", netip.AddrPortFrom(a, uint16(port)), err), false)
+		ap := netip.AddrPortFrom(a, uint16(port))
+		err := fetchSelf(ctx, name, a, port, selfCheck)
+		var nc *noConnectionError
+		switch {
+		case err == nil:
+			kept = append(kept, a)
+		case errors.As(err, &nc):
+			// Nothing on this computer connected to the address at all (a
+			// Tailscale that cannot reach its own IPv6 address): drop it.
+			dropped = append(dropped, DroppedAddr{Addr: ap.String(), Reason: nc.reason()})
+			unreached = append(unreached, fmt.Sprintf("%s (%v)", ap, err))
+		default:
+			// It connected but did not answer the self-check: something
+			// other than the server this run started may be in the way.
+			return fail(fmt.Errorf("the dashboard started, but %s could not be reached from this computer (%v), so it is stopped; check that nothing on this computer blocks the port", ap, err), false)
 		}
+	}
+	if len(kept) == 0 {
+		return fail(fmt.Errorf("the dashboard started, but %s could not be reached from this computer, so it is stopped; check that nothing on this computer blocks the port", strings.Join(unreached, " and ")), false)
+	}
+	keep := keepMessage{}
+	for _, a := range kept {
+		keep.Keep = append(keep.Keep, a.String())
+	}
+	data, _ = json.Marshal(keep)
+	if _, werr := cfgW.Write(append(data, '\n')); werr != nil {
+		return fail(fmt.Errorf("telling the dashboard server which addresses to keep: %w", werr), true)
+	}
+	cfgW.Close()
+	msg, err = readReady(ready)
+	if err != nil {
+		return fail(err, errors.Is(err, errServerExited))
+	}
+	if !msg.OK {
+		return fail(fmt.Errorf("the dashboard server could not keep the addresses that answered, so it is stopped: %s", msg.Error), true)
+	}
+	if !slices.Equal(msg.Addrs, keep.Keep) {
+		return fail(fmt.Errorf("the dashboard server kept %v, not the %v that answered, so it is stopped", msg.Addrs, keep.Keep), false)
 	}
 	proc, err := readProcess(pid)
 	if err != nil {
 		return fail(fmt.Errorf("reading the dashboard server's process: %w", err), false)
 	}
 	run := RunFile{PID: pid, Process: proc, Name: name, Port: port, Since: time.Now().UTC().Truncate(time.Second)}
-	for _, a := range addrs {
+	for _, a := range kept {
 		run.Addrs = append(run.Addrs, netip.AddrPortFrom(a, uint16(port)).String())
 	}
 	data, _ = json.MarshalIndent(run, "", "  ")
@@ -359,7 +437,10 @@ func launch(ctx context.Context, opts StartOptions, name string, addrs []netip.A
 	// Reap the server if it exits while this process still runs; once start
 	// returns and exits, the server belongs to the system.
 	go func() { _ = cmd.Wait() }()
-	res := StartResult{URL: run.URL(), Name: name, Port: port, Addrs: run.Addrs, PID: pid}
+	res := StartResult{URL: run.URL(), Name: name, Port: port, Addrs: run.Addrs, Dropped: dropped, PID: pid}
+	if res.Dropped == nil {
+		res.Dropped = []DroppedAddr{}
+	}
 	res.Line = StartLine(res)
 	return res, nil
 }
@@ -383,16 +464,16 @@ func serverEnv(extra []string) []string {
 	return append(env, serveMarkerEnv+"=1")
 }
 
-// readReady reads the server's one line from the readiness pipe, bounded in
-// size and time. The pipe closing first means the server exited.
-func readReady(r *os.File) (readyMessage, error) {
+// readReady reads the server's next line from the readiness pipe, bounded in
+// size (by r) and time. The pipe closing first means the server exited.
+func readReady(r *bufio.Reader) (readyMessage, error) {
 	type result struct {
 		msg readyMessage
 		err error
 	}
 	ch := make(chan result, 1)
 	go func() {
-		line, err := bufio.NewReader(io.LimitReader(r, 4096)).ReadBytes('\n')
+		line, err := r.ReadBytes('\n')
 		if err != nil && len(line) == 0 {
 			ch <- result{err: errServerExited}
 			return
@@ -412,19 +493,48 @@ func readReady(r *os.File) (readyMessage, error) {
 	}
 }
 
+// noConnectionError is a self-check that could not connect to its address
+// at all, as against one that connected and was not answered.
+type noConnectionError struct{ err error }
+
+func (e *noConnectionError) Error() string { return e.err.Error() }
+func (e *noConnectionError) Unwrap() error { return e.err }
+
+// reason is why, in the words start's line uses.
+func (e *noConnectionError) reason() string {
+	why := e.err
+	var op *net.OpError
+	if errors.As(why, &op) && op.Err != nil {
+		why = op.Err
+	}
+	return "this computer could not connect to it (" + why.Error() + ")"
+}
+
 // fetchSelf fetches the self-check from this computer's own address a, so the
 // gate judges this computer as it judges any device, with the one-time value
-// only this run knows.
+// only this run knows. It connects before the fetch, so a connection that
+// cannot be made at all is told apart, as a *noConnectionError, from one the
+// server did not answer.
 func fetchSelf(ctx context.Context, name string, a netip.Addr, port int, value string) error {
 	target := netip.AddrPortFrom(a, uint16(port)).String()
 	d := &net.Dialer{Timeout: selfCheckWait, LocalAddr: &net.TCPAddr{IP: a.AsSlice()}}
+	conn, err := dialSelf(d, ctx, "tcp", target)
+	if err != nil {
+		return &noConnectionError{err: err}
+	}
+	defer conn.Close()
+	var handed atomic.Bool
 	client := &http.Client{
 		Timeout: selfCheckWait,
 		Transport: &http.Transport{
 			Proxy:             nil,
 			DisableKeepAlives: true,
-			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return d.DialContext(ctx, network, target)
+			// The one connection made above, once; the fetch makes no other.
+			DialContext: func(context.Context, string, string) (net.Conn, error) {
+				if !handed.CompareAndSwap(false, true) {
+					return nil, errors.New("the self-check makes one connection")
+				}
+				return conn, nil
 			},
 		},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -447,10 +557,14 @@ func fetchSelf(ctx context.Context, name string, a netip.Addr, port int, value s
 }
 
 // StartLine is the one line start prints: where to open it, who can, every
-// address it listens on, and how to stop it.
+// address it listens on, each address it dropped and why, and how to stop it.
 func StartLine(r StartResult) string {
-	return "abcd dashboard: open " + r.URL + " on a device on your Tailscale network; anyone on that network can open it. " +
-		"It listens on " + strings.Join(r.Addrs, " and ") + " only. `abcd dashboard stop` stops it."
+	line := "abcd dashboard: open " + r.URL + " on a device on your Tailscale network; anyone on that network can open it. " +
+		"It listens on " + strings.Join(r.Addrs, " and ") + " only. "
+	for _, d := range r.Dropped {
+		line += "It does not listen on " + d.Addr + ": " + d.Reason + ". "
+	}
+	return line + "`abcd dashboard stop` stops it."
 }
 
 // readRun reads the run file, or reports none. A run file abcd did not write

@@ -107,7 +107,10 @@ report that it is listening. It then fetches its own address through
 Tailscale with the one-time value, which the server answers once for each
 address and to this computer alone, so the gate judges this computer as it
 judges any device, and only when that answers does it print one line: where to open it, that anyone on the
-Tailscale network can, and every address it listens on. A failed fetch stops
+Tailscale network can, and every address it listens on. An address the fetch
+cannot connect to at all is dropped: the server stops listening on it and
+refuses this computer there as on an answered one, and the line names it and
+why. A fetch that connects but is not answered, or no address answering, stops
 the server and names the address that could not be reached. The default port is
 8080.
 

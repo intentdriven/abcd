@@ -641,3 +641,37 @@ func TestThisComputerIsRefusedOnceTheSelfCheckAnswered(t *testing.T) {
 		t.Errorf("this computer was recorded as a device: %+v", ts.seen.ids)
 	}
 }
+
+// TestSelfCheckSettlesOnTheAddressesStartReached holds the drop to the gate's
+// properties: start may keep only an address whose self-check answered, and
+// once the self-check settles, this computer is refused on a dropped address
+// exactly as on one whose self-check answered, and the one-time value answers
+// nothing more anywhere.
+func TestSelfCheckSettlesOnTheAddressesStartReached(t *testing.T) {
+	v4, v6 := netip.MustParseAddr("100.101.102.103"), netip.MustParseAddr("fd7a:115c:a1e0::1")
+	value := []byte("0123456789abcdef0123456789abcdef")
+	s := newSelfCheck(value, []netip.Addr{v4, v6})
+	if s.settle([]netip.Addr{v4}) {
+		t.Fatal("settle kept an address whose self-check has not answered")
+	}
+	if self, waiting := s.state(v6); !self || !waiting {
+		t.Fatalf("a refused settle changed the self-check: v6 state = %v, %v", self, waiting)
+	}
+	if !s.answer(v4, value) {
+		t.Fatal("the self-check did not answer on v4")
+	}
+	if s.settle([]netip.Addr{netip.MustParseAddr("100.64.0.9")}) {
+		t.Fatal("settle kept an address that is not a listening one")
+	}
+	if !s.settle([]netip.Addr{v4}) {
+		t.Fatal("settle refused the address that answered")
+	}
+	for _, a := range []netip.Addr{v4, v6} {
+		if self, waiting := s.state(a); !self || waiting {
+			t.Errorf("after settle, %s state = self %v, waiting %v; want this computer, refused", a, self, waiting)
+		}
+		if s.answer(a, value) {
+			t.Errorf("after settle, the one-time value answered on %s", a)
+		}
+	}
+}

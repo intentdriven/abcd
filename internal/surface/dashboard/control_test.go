@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,8 +38,11 @@ func TestMain(m *testing.M) {
 		_, _ = os.NewFile(readyFD, "ready").Write(append(data, '\n'))
 		os.Exit(2)
 	}
-	if os.Getenv(childEnv) == "1" && len(os.Args) == 3 && os.Args[1] == "dashboard" && os.Args[2] == "serve" {
+	if v := os.Getenv(childEnv); (v == "1" || v == "dual") && len(os.Args) == 3 && os.Args[1] == "dashboard" && os.Args[2] == "serve" {
 		setTailnetForTest(loopbackPrefixes)
+		if v == "dual" {
+			setTailnetForTest(dualLoopbackPrefixes)
+		}
 		if err := Serve(context.Background()); err != nil {
 			fmt.Fprintln(os.Stderr, "abcd dashboard serve:", err)
 			os.Exit(2)
@@ -201,6 +205,89 @@ func TestStartChecksItCanReachItself(t *testing.T) {
 	calls := strings.Join(f.calls(t), " ")
 	if !strings.Contains(calls, "whois") {
 		t.Errorf("the self-fetch never reached the gate's lookup: %s", calls)
+	}
+}
+
+// dualLoopbackPrefixes stands both loopback addresses in for the tailnet's
+// IPv4 and IPv6 addresses.
+var dualLoopbackPrefixes = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
+
+// TestStartDropsAnAddressItCannotConnectTo holds start to the addresses that
+// answer its self-check (iss-2610090841317423): on a Mac whose Tailscale
+// cannot connect to its own IPv6 address while its IPv4 address answers,
+// start keeps the IPv4 address, stops listening on the IPv6 one, and names
+// it, and why, in its line and in its JSON, rather than stopping the
+// dashboard.
+func TestStartDropsAnAddressItCannotConnectTo(t *testing.T) {
+	probe, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("this machine cannot listen on ::1: %v", err)
+	}
+	probe.Close()
+	f := newFakeTailscale(t)
+	f.write(t, "status.json", `{"Version":"1.102.4","BackendState":"Running","Self":{"DNSName":"`+testName+`.","TailscaleIPs":["127.0.0.1","::1"]}}`)
+	home := t.TempDir()
+	opts := startOpts(t, f, home)
+	opts.Launch.Env = []string{childEnv + "=dual"}
+	restoreTailnet := setTailnetForTest(dualLoopbackPrefixes)
+	defer restoreTailnet()
+	var dialled []string
+	restoreDial := setDialSelfForTest(func(d *net.Dialer, ctx context.Context, network, address string) (net.Conn, error) {
+		dialled = append(dialled, address)
+		if strings.HasPrefix(address, "[::1]:") {
+			return nil, &net.OpError{Op: "dial", Net: network, Addr: net.TCPAddrFromAddrPort(netip.MustParseAddrPort(address)), Err: os.ErrDeadlineExceeded}
+		}
+		return d.DialContext(ctx, network, address)
+	})
+	defer restoreDial()
+
+	res := startForTest(t, opts)
+	v4 := fmt.Sprintf("127.0.0.1:%d", res.Port)
+	v6 := fmt.Sprintf("[::1]:%d", res.Port)
+	if len(dialled) != 2 {
+		t.Errorf("the self-check dialled %v, want both addresses", dialled)
+	}
+	if len(res.Addrs) != 1 || res.Addrs[0] != v4 {
+		t.Errorf("addresses = %v, want only %s, the one that answered", res.Addrs, v4)
+	}
+	for _, want := range []string{v4, v6, "could not connect", "i/o timeout", "`abcd dashboard stop` stops it"} {
+		if !strings.Contains(res.Line, want) {
+			t.Errorf("the start line does not say %q:\n%s", want, res.Line)
+		}
+	}
+	if strings.Contains(res.Line, "\n") {
+		t.Errorf("the start line is more than one line:\n%s", res.Line)
+	}
+	data, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Addrs   []string `json:"addresses"`
+		Dropped []struct {
+			Addr   string `json:"address"`
+			Reason string `json:"reason"`
+		} `json:"dropped"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Dropped) != 1 || payload.Dropped[0].Addr != v6 || !strings.Contains(payload.Dropped[0].Reason, "i/o timeout") {
+		t.Errorf("--json dropped = %+v in %s, want %s and why", payload.Dropped, data, v6)
+	}
+	// The dropped address is no longer listened on; the kept one answers.
+	if !answers(v4) {
+		t.Errorf("nothing answers at %s, the address start kept", v4)
+	}
+	if answers(v6) {
+		t.Errorf("%s still answers: a dropped address must stop being listened on", v6)
+	}
+	run, ok, err := readRun(home)
+	if err != nil || !ok {
+		t.Fatalf("readRun = %v, %v", ok, err)
+	}
+	if len(run.Addrs) != 1 || run.Addrs[0] != v4 {
+		t.Errorf("the run file names %v, want only %s", run.Addrs, v4)
 	}
 }
 
