@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "agents and sub-agents in autonomous runs (internal/core/implement)"
 remedy: "On any lost connection (the host's model calls, a sub-agent, or a tool's network call such as git push or gh), a lane keeps doing offline work and, at a network step, waits on one shared probe recorded in the run state and run log: retry at 1, 5 and 10 minutes, then hourly for up to 8 hours, then stop the run and notify the product thinker; a lane whose agent died restarts as a fresh agent from its last commit, with uncommitted edits saved aside for review."
+resolution: "Autonomous runs now wait out a lost connection or a model-service outage on one machine-shared outage record: one shared probe on the 1, 5, 10 minute then hourly-for-8-hours schedule, each probe testing only what failed, lanes held only at the steps that need the lost service, a give-up that stops every step with what was done and what is left and notifies once, and implement step --restart to save a dead or yielded lane's edits aside and restart it from its last commit. The live network-cut lab follows in iss-2610091937218987."
+impact: additive
+resolved_by:
+  commit: "87b60f42c"
 ---
 
 When an agent or sub-agent loses its network connection mid-task, the work stalls or fails instead of waiting the outage out, and this keeps happening on the product thinker's machine. An agent that notices a lost connection should pause and retry on a widening schedule: wait one minute and try again, then five minutes, then ten, then an hour. Sibling agents should also learn of the outage without depending on each other over the network, since they may have lost the connection too: a channel on the machine itself, such as the run state and run log abcd already shares between sessions, would let one agent record the outage and the others hold off instead of each failing on its own.
@@ -31,3 +35,7 @@ When an agent or sub-agent loses its network connection mid-task, the work stall
 - **Q3, proving the model service back:** only the canary agent proves it, never the lead's own turn running. The canary runs only when `implement outage` shows a probe is due (read `next_probe_at` first), never once per lane.
 
 Proof belongs in a lab that cuts the network during a live run and shows each of the three kinds waited out, the shared probe holding the other lanes, a dead lane restarted from its last commit, and the give-up path ending in one notification.
+
+## Grounds
+
+- pursued: a run that loses its connection now waits on one shared probe instead of failing lane by lane; the live lab in iss-2610091937218987 would show it wrong if a lane fails, retries alone, or a give-up sends more than one notification
