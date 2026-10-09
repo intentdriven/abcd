@@ -1424,6 +1424,20 @@ const (
 // wrapper's grammar (wrappers, wrapperValueFlags, wrapperOperands).
 const someWrapper = unknownText
 
+// envAssigns names the wrappers that take every operand carrying `=` before
+// the command as an environment assignment, whatever its name: env sets it
+// with putenv, and sudo passes VAR=value to the command's environment. The
+// shell's own prefix rule (isAssignment) admits identifier names only, so a
+// `BASH_FUNC_f%%=…` word reaches a command's environment through these alone
+// (iss-2610090925399967).
+var envAssigns = map[string]bool{"env": true, "sudo": true}
+
+// isWrapperAssignment reports whether an operand of an envAssigns wrapper is an
+// assignment: a known word with `=` after its first byte.
+func isWrapperAssignment(tok string) bool {
+	return !isUnknown(tok) && strings.IndexByte(tok, '=') > 0
+}
+
 // commandArrivals walks a segment's tokens to command position and returns
 // every place the walk can arrive at, in token order. Environment assignments
 // and reserved words are stepped; a wrapper is stepped with its own options and
@@ -1471,7 +1485,13 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			push(state{pos: pos, mode: walkArrive, noglob: noglob})
 		}
 		if left == 0 {
-			push(state{pos: pos, mode: walkArrive, noglob: noglob})
+			// env and sudo take every `=` operand as an assignment, so the
+			// arrival after them carries the wrapper to apply that rule.
+			arriveVia := ""
+			if envAssigns[w] {
+				arriveVia = w
+			}
+			push(state{pos: pos, mode: walkArrive, wrapper: arriveVia, noglob: noglob})
 			return
 		}
 		push(state{pos: pos, mode: walkOperands, wrapper: w, left: left, noglob: noglob})
@@ -1489,7 +1509,11 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 		switch st.mode {
 		case walkArrive:
 			if isAssignment(tok) || reserved[tok] {
-				push(state{pos: st.pos + 1, noglob: st.noglob})
+				push(state{pos: st.pos + 1, wrapper: st.wrapper, noglob: st.noglob})
+				continue
+			}
+			if envAssigns[st.wrapper] && isWrapperAssignment(tok) {
+				push(state{pos: st.pos + 1, wrapper: st.wrapper, noglob: st.noglob})
 				continue
 			}
 			if tok == "coproc" {

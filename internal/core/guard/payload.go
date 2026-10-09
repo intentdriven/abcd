@@ -1258,6 +1258,19 @@ func payloadsOf(s segment) []payloadRef {
 		add(kindEnvS, familyEnvS, v.value, v.trailing, true)
 	}
 	out = append(out, execStringPayloads(s.tokens, arrivals)...)
+	for _, w := range []string{"env", "sudo"} {
+		known, guessed := starts(arrivals, w)
+		for _, group := range []struct {
+			at      []int
+			guessed bool
+		}{{known, false}, {guessed, true}} {
+			for _, i := range group.at {
+				for _, body := range exportedFunctionBodies(s.tokens[i:], w) {
+					add(kindShell, familyShell, body, nil, group.guessed)
+				}
+			}
+		}
+	}
 
 	sites := commandSites(s)
 	// A shell's `-c`: literal names, globbed names that can expand to one, and
@@ -1612,6 +1625,40 @@ func evalPayload(args []string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(args, " "), true
+}
+
+// exportedFunctionBodies returns the body of every exported function an env
+// or sudo (w) puts in the command's environment: an operand before the command
+// named BASH_FUNC_<name>%% whose value starts `()`, which bash imports as a
+// function at startup, so a command named <name> runs the body
+// (iss-2610090925399967). The scan steps w's own options, with the value a
+// value flag takes (wrapperValueFlags), and the `=` operands envAssigns admits;
+// it stops at the first other word, which is the command.
+func exportedFunctionBodies(args []string, w string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			continue
+		case strings.HasPrefix(a, "-"):
+			for _, f := range wrapperValueFlags[w] {
+				if a == f {
+					i++
+					break
+				}
+			}
+			continue
+		case !isWrapperAssignment(a):
+			return out
+		}
+		eq := strings.IndexByte(a, '=')
+		name, value := a[:eq], strings.TrimLeft(a[eq+1:], " \t\n")
+		if strings.HasPrefix(name, "BASH_FUNC_") && strings.HasSuffix(name, "%%") && strings.HasPrefix(value, "()") {
+			out = append(out, value[2:])
+		}
+	}
+	return out
 }
 
 // trapAction returns the command line `trap ACTION SIGNAL…` stores, which the
