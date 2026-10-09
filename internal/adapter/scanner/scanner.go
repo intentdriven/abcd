@@ -1150,8 +1150,9 @@ func fingerprintSpan(out, src []byte, start, end int, whole bool) {
 // sets (extension, filename, fragment) is read through the guarded, capped
 // primitive and its bytes scanned with the byte rules (scanBytes), reported
 // under ScannedBinary (a plaintext allow-listed name) or ContentUnverified; any
-// other file is sniffed (null byte + UTF-8) and scanned with the full rule
-// set, or surfaced in Unscanned (with UnscannedWhy) when it cannot be. If the
+// other file is scanned with the full rule set when it is text throughout (no
+// NUL, valid UTF-8 — every byte, not a sniff), or surfaced in Unscanned (with
+// UnscannedWhy) when it is not. If the
 // scanner is unavailable (config unreadable), it returns Unavailable=true and
 // scans nothing (fail-closed).
 func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
@@ -1218,8 +1219,17 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 			unscanned(f.LogicalPath, guardedReadWhy(err))
 			continue
 		}
-		if !isText(data) {
-			unscanned(f.LogicalPath, "binary content without a reviewed skip")
+		// The text rules read every byte they are credited with, so the
+		// whole file must be text, not just the 8 KiB sniff: prose with a
+		// compressed member appended past the window is not text the rules
+		// read, and counting it scanned would vouch for the member
+		// (iss-2610090821502084).
+		if !isTextWhole(data) {
+			why := "binary content without a reviewed skip"
+			if isText(data) {
+				why = "text for its first 8 KiB, then a NUL byte or invalid UTF-8 the text rules cannot read"
+			}
+			unscanned(f.LogicalPath, why)
 			continue
 		}
 		res.FilesScanned++
@@ -1511,7 +1521,9 @@ func path_base(p string) string {
 	return p
 }
 
-// isText sniffs the first 8KB: a null byte or invalid UTF-8 means binary. When
+// isText sniffs the first 8KB: a null byte or invalid UTF-8 means binary. It
+// names what a file looks like at its head; it never vouches for the bytes past
+// the window, which is isTextWhole's question (container.go). When
 // the file is longer than the sniff window the cut can land mid-rune; a dangling
 // partial trailing rune (at most UTFMax-1 bytes) is trimmed before validating, so
 // a valid multibyte file whose rune straddles the boundary is not misread as
