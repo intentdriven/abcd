@@ -58,12 +58,42 @@ func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctio
 // bytes is found where it sits on disk (iss-2609261647358395,
 // iss-2609251639263391). The literal-home backstop (residual.go) and, through
 // DecodedViews, the committed-text lint rules read the same list.
+//
+// The two decoders also run over each other's output, once each way, so a
+// value spelled with both stacked is read: a JSON escape of the percent sign
+// (\u0025 before two hex digits) becomes a percent escape only once the JSON
+// layer is decoded, and a percent encoding of the backslash (%5C before
+// u0067) becomes a JSON escape only once the percent view is
+// (iss-2610090821491948). Each composed view maps back to the raw line
+// through both position maps. A third alternation is the bounded-work
+// residual, the same trade the layer caps make.
 func lineViews(line string) []decodedView {
-	var views []decodedView
+	var views, composed []decodedView
 	if decoded, posMap := percentDecodeBounded(line); posMap != nil {
 		views = append(views, decodedView{decoded, posMap})
+		for _, v := range jsonEscapeLayers(decoded) {
+			composed = append(composed, v.through(posMap))
+		}
 	}
-	return append(views, jsonEscapeLayers(line)...)
+	layers := jsonEscapeLayers(line)
+	views = append(views, layers...)
+	for _, l := range layers {
+		if decoded, posMap := percentDecodeBounded(l.text); posMap != nil {
+			composed = append(composed, decodedView{decoded, posMap}.through(l.posMap))
+		}
+	}
+	return append(views, composed...)
+}
+
+// through re-homes a view decoded from an intermediate text onto the raw line
+// that text was decoded from: outer maps each intermediate offset to its raw
+// offset, so the composed map sends each decoded byte straight to the raw line.
+func (v decodedView) through(outer []int) decodedView {
+	m := make([]int, len(v.posMap))
+	for i, at := range v.posMap {
+		m[i] = outer[at]
+	}
+	return decodedView{text: v.text, posMap: m}
 }
 
 // DecodedViews returns the decoded spellings of one line that the scan reads

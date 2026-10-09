@@ -1062,8 +1062,8 @@ if [ ! -s "$candidate" ]; then exit "$rc"; fi
 # stops at a layer that holds no escape or at decode_layers, the number of JSON
 # layers the scanner reads (its maxJSONDecodeLayers; a test holds the two equal).
 # A name behind more escape-spelled backslashes than that is left unread here,
-# as it is in the scanner; a `%5C` before a JSON escape, which the scanner does
-# not decode as one, is read here too. Over-reading can only refuse more; a guard
+# as it is in the scanner; a `%5C` before a JSON escape is read here too, as the
+# scanner reads it. Over-reading can only refuse more; a guard
 # that reads less than the redactors lets through what they would have caught.
 #
 # Every step is checked and a failure refuses: a decoded copy that could not be
