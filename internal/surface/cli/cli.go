@@ -3757,6 +3757,10 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						// home-relative, and the one repair for it
 						// (iss-2610050728100598).
 						fmt.Fprintf(w, "  worktree:    unlinked — %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
+					case ahoy.FilterRootsIgnoredGapID:
+						// Report-only too: the check the file failed and its
+						// repair (iss-2610091920437492).
+						fmt.Fprintf(w, "  filters:     %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {
