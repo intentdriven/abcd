@@ -95,3 +95,99 @@ func TestIsolatedObjectReadRefusesAPartialCloneBelowTheLazyFetchFloor(t *testing
 		t.Fatalf("git 3.0 is past the floor, yet the read refused: %v", err)
 	}
 }
+
+// TestIgnoreReadsRefuseAPartialCloneBelowTheLazyFetchFloor is
+// iss-2610091935324732. Below 2.44 the floor exempted check-ignore and
+// ls-files as reading no objects, but git reads a skip-worktree .gitignore (or
+// .gitattributes) missing from disk out of the object store, so in a partial
+// clone those lookups lazy-fetch through the promisor remote's transport. Now
+// check-ignore counts as reading objects unless it is --no-index, and ls-files
+// does for any flag that consults the exclude files or blob content; the plain
+// index listings still run, and a repository with no promisor remote runs
+// every form as before.
+func TestIgnoreReadsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write(".gitignore", "secret.txt\n")
+	r.Write("kept.txt", "kept\n")
+	r.Commit("c0")
+	r.Write("secret.txt", "s\n")
+	root := r.Root()
+
+	gitutil.SetGitVersionSource(t, func() (string, error) { return "git version 2.39.5 (Apple Git-154)", nil })
+
+	reading := [][]string{
+		{"check-ignore", "-z", "-v", "--stdin"},
+		{"check-ignore", "secret.txt"},
+		{"-c", "core.excludesFile=", "check-ignore", "-v", "secret.txt"},
+		{"ls-files", "-o"},
+		{"ls-files", "--others"},
+		{"ls-files", "-o", "-i", "--exclude-standard"},
+		{"ls-files", "-oi", "--exclude-standard"},
+		{"ls-files", "--others", "--ignored", "--exclude-standard", "--directory"},
+		{"ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "x"},
+		{"ls-files", "--exclude-standard"},
+		{"ls-files", "--exclude-per-directory=.gitignore"},
+		{"ls-files", "--exclude-from=.gitignore"},
+		{"ls-files", "-X", ".gitignore"},
+		{"ls-files", "-x", "*.txt"},
+		{"ls-files", "--exclude=*.txt"},
+		{"ls-files", "--with-tree=HEAD"},
+		{"ls-files", "--with-tree", "HEAD"},
+		{"ls-files", "--eol"},
+		{"ls-files", "--format=%(eolinfo:index) %(path)"},
+		{"ls-files", "-m"},
+		{"ls-files", "--modified"},
+		{"ls-files", "--", ":(attr:foo)"},
+		{"config", "--blob=HEAD:.gitignore", "--list"},
+		{"config", "--blob", "HEAD:.gitignore", "--list"},
+	}
+	running := [][]string{
+		{"ls-files"},
+		{"ls-files", "-z"},
+		{"ls-files", "--cached", "-z"},
+		{"ls-files", "--stage", "-z", "--", ":(glob)**/.gitattributes"},
+		{"ls-files", "--", "kept.txt"},
+		{"check-ignore", "--no-index", "-v", "secret.txt"},
+		{"config", "--get", "remote.origin.promisor"},
+	}
+	// Only the refusal matters here: a form git itself rejects or that exits 1
+	// (check-ignore with no match) still ran.
+	run := func(args []string) error {
+		t.Helper()
+		_, err := gitutil.Run(root, args...)
+		return err
+	}
+
+	// No promisor declared: every form runs on old git.
+	for _, args := range append(append([][]string{}, reading...), running...) {
+		if err := run(args); errors.Is(err, gitutil.ErrLazyFetchFloor) {
+			t.Errorf("no promisor remote, git %v refused: %v", args, err)
+		}
+	}
+	if !gitutil.IsIgnored(root, "secret.txt") {
+		t.Fatal("no promisor remote: IsIgnored no longer answers on old git")
+	}
+	if got := gitutil.IgnoredUnder(root, "."); len(got) == 0 {
+		t.Fatal("no promisor remote: IgnoredUnder no longer answers on old git")
+	}
+
+	r.Git("config", "remote.origin.promisor", "true")
+	for _, args := range reading {
+		if err := run(args); !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+			t.Errorf("partial clone on git 2.39: git %v was not refused (err %v)", args, err)
+		}
+	}
+	for _, args := range running {
+		if err := run(args); errors.Is(err, gitutil.ErrLazyFetchFloor) {
+			t.Errorf("partial clone on git 2.39: git %v reads no object, yet refused: %v", args, err)
+		}
+	}
+	// The helpers go through the same guard: git never runs, so nothing is
+	// reported ignored.
+	if gitutil.IsIgnored(root, "secret.txt") {
+		t.Error("partial clone on git 2.39: CheckIgnored ran git check-ignore")
+	}
+	if got := gitutil.IgnoredUnder(root, "."); len(got) != 0 {
+		t.Errorf("partial clone on git 2.39: IgnoredUnder ran git ls-files --ignored: %v", got)
+	}
+}

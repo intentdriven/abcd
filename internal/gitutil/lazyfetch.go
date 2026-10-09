@@ -123,8 +123,17 @@ func lazyFetchGuard(root string, args []string) error {
 // readsObjects reports whether an isolated command line can read an object,
 // and so lazy-fetch one. The exemptions are the commands that read only the
 // config, refs, the index or the filesystem, which root discovery and the
-// gitignore and worktree probes use; anything else is assumed to read objects,
-// so a command added later is guarded until it is shown not to need it.
+// worktree probes use; anything else is assumed to read objects, so a command
+// added later is guarded until it is shown not to need it.
+//
+// Reading the ignore or attribute rules is NOT an index-only read: for a
+// .gitignore or .gitattributes marked skip-worktree and missing from disk, git
+// reads the blob the index names out of the object store
+// (iss-2610091935324732). So check-ignore is exempt only with --no-index, and
+// ls-files only when every flag is one of lsFilesIndexOnly and no pathspec
+// carries attr magic: the exclude flags (-o, -i, --exclude-standard, ...),
+// --with-tree, --eol, --format and -m all count as reading objects. config
+// --blob reads its config out of a blob, so it counts too.
 func readsObjects(args []string) bool {
 	i := 0
 	for i+1 < len(args) && args[i] == "-c" {
@@ -135,13 +144,39 @@ func readsObjects(args []string) bool {
 	}
 	sub, rest := args[i], args[i+1:]
 	switch sub {
-	case "config", "check-ignore", "symbolic-ref":
+	case "symbolic-ref":
 		return false
+	case "config":
+		// --blob reads the config out of a blob, not a file.
+		for _, a := range rest {
+			if a == "--blob" || strings.HasPrefix(a, "--blob=") {
+				return true
+			}
+		}
+		return false
+	case "check-ignore":
+		for _, a := range rest {
+			if a == "--" {
+				break
+			}
+			if a == "--no-index" {
+				return false
+			}
+		}
+		return true
 	case "worktree":
 		return len(rest) == 0 || rest[0] != "list"
 	case "ls-files":
+		operands := false
 		for _, a := range rest {
-			if a == "--with-tree" || strings.HasPrefix(a, "--with-tree=") {
+			switch {
+			case operands || !strings.HasPrefix(a, "-"):
+				if pathspecReadsAttributes(a) {
+					return true
+				}
+			case a == "--":
+				operands = true
+			case !lsFilesIndexOnly[a]:
 				return true
 			}
 		}
@@ -157,6 +192,33 @@ func readsObjects(args []string) bool {
 		return false
 	}
 	return true
+}
+
+// lsFilesIndexOnly are the ls-files flags that list the index (or stat the
+// files it names) without consulting the ignore rules or reading blob
+// content. Any other flag, a combined short form like -oi included, counts as
+// reading objects.
+var lsFilesIndexOnly = map[string]bool{
+	"-z": true, "-c": true, "--cached": true, "-s": true, "--stage": true,
+	"-d": true, "--deleted": true, "-u": true, "--unmerged": true,
+	"-t": true, "-v": true, "-f": true, "--full-name": true,
+	"--error-unmatch": true, "--deduplicate": true, "--sparse": true,
+}
+
+// pathspecReadsAttributes reports whether a pathspec carries attr magic
+// (":(attr:...)"), which matches against the attribute rules and so reads a
+// skip-worktree .gitattributes from the object store.
+func pathspecReadsAttributes(p string) bool {
+	if !strings.HasPrefix(p, ":(") {
+		return false
+	}
+	magic, _, _ := strings.Cut(p[2:], ")")
+	for _, m := range strings.Split(magic, ",") {
+		if strings.HasPrefix(strings.TrimSpace(m), "attr") {
+			return true
+		}
+	}
+	return false
 }
 
 // declaresPromisor reports whether the repository under root declares a
