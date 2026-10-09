@@ -227,3 +227,38 @@ func TestToplevelRefusesAnAncestorNamedByCoreWorktree(t *testing.T) {
 		}
 	}
 }
+
+// TestToplevelResolvesASymlinkedGitDirectory: git follows a `.git` that is a
+// symlink to the repository's git directory, so the toplevel holding it holds
+// that directory, as a gitfile naming it does. Toplevel refused it, because
+// the identity check read the entry without following it.
+func TestToplevelResolvesASymlinkedGitDirectory(t *testing.T) {
+	base := t.TempDir()
+	co := filepath.Join(base, "co")
+	if out, err := runGit(t, base, "init", "-q", "co"); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	moved := filepath.Join(base, "store.git")
+	if err := os.Rename(filepath.Join(co, ".git"), moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, filepath.Join(co, ".git")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	sub := filepath.Join(co, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The premise: git itself answers for the tree.
+	if out, err := runGit(t, sub, "rev-parse", "--show-toplevel"); err != nil {
+		t.Fatalf("premise: git does not answer through a symlinked .git: %v: %s", err, out)
+	}
+	top, err := gitutil.Toplevel(sub)
+	if err != nil {
+		t.Fatalf("Toplevel through a symlinked .git: %v", err)
+	}
+	want, _ := filepath.EvalSymlinks(co)
+	if got, _ := filepath.EvalSymlinks(top); got != want {
+		t.Fatalf("Toplevel = %q, want %q", top, co)
+	}
+}

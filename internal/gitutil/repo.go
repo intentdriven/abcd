@@ -615,7 +615,7 @@ func ToplevelContext(ctx context.Context, dir string) (string, error) {
 const gitfileCap = 4 << 10
 
 // holdsGitDir reports whether top's own .git entry is gitDir: the directory
-// itself, or a regular file whose "gitdir: " line names it (relative to top
+// itself, a symlink to it, or a regular file whose "gitdir: " line names it (relative to top
 // when the path is relative). Identity is compared by file, never by spelling,
 // so a symlinked temp root or a case variant on a case-insensitive volume does
 // not refuse a real checkout. A gitDir that is not one absolute line is no
@@ -636,6 +636,11 @@ func holdsGitDir(top, gitDir string) bool {
 	switch {
 	case fi.IsDir():
 		return os.SameFile(fi, want)
+	case fi.Mode()&os.ModeSymlink != 0:
+		// git follows a symlinked .git to the directory it names; the
+		// toplevel holds that directory as it holds one a gitfile names.
+		got, err := os.Stat(entry)
+		return err == nil && got.IsDir() && os.SameFile(got, want)
 	case fi.Mode().IsRegular():
 		f, err := os.Open(entry)
 		if err != nil {
