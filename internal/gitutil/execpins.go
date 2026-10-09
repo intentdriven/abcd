@@ -23,6 +23,12 @@ import (
 //   - merge.verifySignatures=false: a merge does not verify the merged tip's
 //     signature, which starts gpg.program or gpg.ssh.program
 //     (iss-2610090821520843).
+//   - diff.submodule=short: a patch diff shows a moved submodule as its
+//     pointer change alone, never by starting a second git diff inside the
+//     submodule, which reads the submodule's own config and is passed none of
+//     the parent's --no-ext-diff/--no-textconv, so its diff.external or
+//     textconv would run and write into the text a check parses
+//     (iss-2610091935325886).
 //
 // Every isolated command (Run and its siblings) carries them, and a caller that
 // must build its own git command (one that keeps global config, say) prepends
@@ -41,6 +47,7 @@ func ExecPins() []string {
 		"-c", "log.showSignature=false",
 		"-c", "commit.gpgsign=false",
 		"-c", "merge.verifySignatures=false",
+		"-c", "diff.submodule=short",
 	}
 }
 
