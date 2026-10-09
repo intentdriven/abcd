@@ -1278,6 +1278,14 @@ func payloadsOf(s segment) []payloadRef {
 			shellKnown = append(shellKnown, a.idx)
 		case cmd == "eval":
 			evalKnown = append(evalKnown, a.idx)
+		case cmd == "trap":
+			if p, ok := trapAction(s.tokens[a.idx+1:]); ok {
+				add(kindShell, familyShell, p, nil, false)
+			}
+		case cmd == "mapfile" || cmd == "readarray":
+			for _, p := range mapfileCallbacks(s.tokens[a.idx+1:]) {
+				add(kindShell, familyShell, p, nil, false)
+			}
 		case !a.noglob && s.globAt(a.idx):
 			if name, ok := shellFamilyGlob(cmd); ok {
 				if name == "eval" {
@@ -1604,6 +1612,61 @@ func evalPayload(args []string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(args, " "), true
+}
+
+// trapAction returns the command line `trap ACTION SIGNAL…` stores, which the
+// shell runs when a listed signal arrives, EXIT included
+// (iss-2610090821476887). The forms that carry no command return false:
+// `-p`/`-l` list, `-` resets, a single operand resets that signal, and a first
+// operand that is a signal number makes every operand a signal to reset
+// (POSIX). An empty ACTION ignores the signal and runs nothing.
+func trapAction(args []string) (string, bool) {
+	if len(args) > 0 && (args[0] == "-p" || args[0] == "-l") {
+		return "", false
+	}
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	if len(args) < 2 || args[0] == "-" || args[0] == "" || allDigits(args[0]) {
+		return "", false
+	}
+	return args[0], true
+}
+
+// mapfileCallbacks returns the CALLBACK of `mapfile -C CALLBACK` (or
+// `readarray`), which bash evaluates as a command line every quantum of lines
+// read. The option is read separate (`-C cb`) or glued (`-Ccb`); the scan
+// stops at `--` or the first operand. An unknown dash-word that can carry C
+// (clusterCouldCarry) may glue the callback on or take the next word, so both
+// are returned to be judged: the unknown word itself keeps the verdict text
+// the guard cannot read always gets, and the next word is read as a command.
+func mapfileCallbacks(args []string) []string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" || a == "-" || (!isUnknown(a) && !strings.HasPrefix(a, "-")) {
+			return nil
+		}
+		switch {
+		case a == "-C":
+			if i+1 < len(args) {
+				return []string{args[i+1]}
+			}
+			return nil
+		case !isUnknown(a) && strings.HasPrefix(a, "-C"):
+			return []string{a[2:]}
+		case isUnknown(a) && clusterCouldCarry(a, 'C'):
+			out := []string{a}
+			if i+1 < len(args) {
+				out = append(out, args[i+1])
+			}
+			return out
+		case isUnknown(a):
+			return nil // an operand a substitution prints ends the options
+		case a == "-c" || a == "-d" || a == "-n" || a == "-O" || a == "-s" || a == "-u":
+			i++ // a value-taking option's separate value
+		}
+	}
+	return nil
 }
 
 // guessedEvalPayload is evalPayload for a name a substitution prints, which

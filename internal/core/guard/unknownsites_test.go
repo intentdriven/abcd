@@ -61,6 +61,8 @@ var wordReaders = map[string]string{
 	"namesIFS":             "exempt: reads a declaration's literal nameref flag (`-n`); a flag word holding an expansion is already read as a name the builtin assigns (nameMarked)",
 	"guessedEvalPayload":   "exempt: reads eval's literal `--`; vanishable drops a word that may print nothing",
 	"evalPayload":          "exempt: reads eval's literal `--`, which no substitution spells (the rule's terminator clause)",
+	"trapAction":           "exempt: reads trap's literal `-p`, `-l`, `--` and `-`; an unknown first word falls to the ACTION reading, which is judged, never skipped",
+	"mapfileCallbacks":     "clusterCouldCarry on every unknown dash-word",
 	"shellCPayloads":       "clusterCouldCarry on every word",
 	"shellOperands":        "readWord on every unknown word",
 	"pipesIntoInterpreter": "commandSites and nameCouldBeAny",
