@@ -1258,6 +1258,9 @@ func payloadsOf(s segment) []payloadRef {
 		add(kindEnvS, familyEnvS, v.value, v.trailing, true)
 	}
 	out = append(out, execStringPayloads(s.tokens, arrivals)...)
+	for _, p := range promptPayloads(s.tokens) {
+		add(kindShell, familyShell, p, nil, false)
+	}
 	for _, w := range []string{"env", "sudo"} {
 		known, guessed := starts(arrivals, w)
 		for _, group := range []struct {
@@ -1625,6 +1628,75 @@ func evalPayload(args []string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(args, " "), true
+}
+
+// promptVars are the prompt strings bash decodes and then expands, command
+// substitutions included: PS4 before each traced command, PS0/PS1/PS2 at an
+// interactive prompt.
+var promptVars = map[string]bool{"PS0": true, "PS1": true, "PS2": true, "PS4": true}
+
+// promptPayloads returns the text a line hands bash to run through a prompt
+// variable (iss-2610090925390900): the decoded value of every PS0/PS1/PS2/PS4
+// assignment, whose substitutions the judge then reads, and the value of every
+// PROMPT_COMMAND assignment, which bash runs as a command line. Any known word
+// spelling the assignment counts, so a prefix, an env operand and a
+// declaration builtin's argument (`export PS4=…`) are all read; whether
+// tracing or an interactive shell then reaches the value is not decided here,
+// because `bash -x`, SHELLOPTS, BASHOPTS and `-i` each do.
+func promptPayloads(tokens []string) []string {
+	var out []string
+	for _, t := range tokens {
+		if isUnknown(t) {
+			continue
+		}
+		eq := strings.IndexByte(t, '=')
+		if eq <= 0 {
+			continue
+		}
+		name, value := t[:eq], t[eq+1:]
+		switch {
+		case promptVars[name]:
+			// The expanded prompt is printed, not run, so the value is judged
+			// as echo's argument: its substitutions run, their output does not.
+			if v := decodePromptOctal(value); strings.Contains(v, "$(") || strings.Contains(v, "`") {
+				out = append(out, "echo "+v)
+			}
+		case name == "PROMPT_COMMAND" && strings.TrimSpace(value) != "":
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// decodePromptOctal decodes the `\nnn` octal escapes bash decodes in a prompt
+// string before expanding it, so `\044(…)` is read as the `$(…)` it becomes.
+func decodePromptOctal(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && isOctal3(s[i+1:]) {
+			b.WriteByte((s[i+1]-'0')<<6 | (s[i+2]-'0')<<3 | (s[i+3] - '0'))
+			i += 3
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// isOctal3 reports whether s starts with three octal digits.
+func isOctal3(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		if s[i] < '0' || s[i] > '7' {
+			return false
+		}
+	}
+	return true
 }
 
 // exportedFunctionBodies returns the body of every exported function an env

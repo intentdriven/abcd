@@ -378,10 +378,22 @@ check and the run; a writer missing from the list above; a variable a sourced
 file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
-the current directory; `INPUTRC` (key bindings, not commands); the startup text
-a variable carries inline (a prompt with a substitution, an exported function,
-ksh's expanded `ENV`), which this reading does not cover; and any spelling not listed
-here.
+the current directory; `INPUTRC` (key bindings, not commands); ksh's expanded
+`ENV`; a `PROMPT_COMMAND` set as an array; and any spelling not listed here.
+
+Startup text a line carries in a variable, rather than in a file, is judged as
+the command it becomes. A `PS0`, `PS1`, `PS2` or `PS4` value is decoded the way
+bash decodes a prompt (an octal escape such as `\044` is read as the `$` it
+spells), and each command substitution in it is judged, because bash expands a
+traced command's `PS4` and an interactive prompt; a `PROMPT_COMMAND` value is
+judged as the command line bash runs before each prompt. Either is read wherever
+the line assigns it: as a prefix, as an `env` operand, or as the argument of a
+declaration builtin (`export PS4=…`). `env` and `sudo` take every operand that
+carries `=` before the command as an assignment, and so does the guard; the body
+of a function they export (`BASH_FUNC_<name>%%=() { …; }`) is judged. A `trap`
+action, and the callback of `mapfile -C` or `readarray -C`, is read the way an
+`eval` string is: the reset and list forms (`trap - EXIT`, `trap -p`) carry no
+command, and text the guard cannot read keeps the verdict `eval` gives it.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
