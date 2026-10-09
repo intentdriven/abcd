@@ -112,12 +112,11 @@ func probeGitVersion() (string, error) {
 // ErrLazyFetchFloor otherwise. On a git at or past the floor it costs nothing
 // after the first call.
 //
-// ls-files is index-only for the flags readsObjects admits, unless the index
-// is sparse: with core.sparseCheckout or index.sparse enabled, git can expand
-// a sparse index by reading tree objects, so in a partial clone below the
-// floor EVERY ls-files is refused (coordinator ruling on
-// iss-2610091935324732). The settings are read through the same isolated
-// config view, and from any -c the command line carries.
+// ls-files reads the index, and git expands a sparse index by reading tree
+// objects whenever the index file itself carries the sparse-directory
+// extension, whatever the config says, so in a partial clone below the floor
+// EVERY ls-files is refused (coordinator ruling on iss-2610091935324732,
+// tightened after review: the config cannot vouch for the index on disk).
 func lazyFetchGuard(root string, args []string) error {
 	if ok, _ := gitVersion.honoursNoLazyFetch(); ok {
 		return nil
@@ -131,7 +130,7 @@ func lazyFetchGuard(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	cmdPromisor, cmdSparse := commandLineFloorConfig(args)
+	cmdPromisor, _ := commandLineFloorConfig(args)
 	if !cfg.promisor && !cmdPromisor {
 		return nil
 	}
@@ -139,10 +138,7 @@ func lazyFetchGuard(root string, args []string) error {
 	if reads {
 		return fmt.Errorf("%w (git on PATH: %q)", ErrLazyFetchFloor, raw)
 	}
-	if cfg.sparse || cmdSparse {
-		return fmt.Errorf("%w (git on PATH: %q; the repository enables a sparse checkout or sparse index, so ls-files can read tree objects to expand it)", ErrLazyFetchFloor, raw)
-	}
-	return nil
+	return fmt.Errorf("%w (git on PATH: %q; ls-files can read tree objects to expand a sparse index)", ErrLazyFetchFloor, raw)
 }
 
 // subcommand is the git subcommand an isolated command line names, past any

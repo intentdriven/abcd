@@ -140,13 +140,15 @@ func TestIgnoreReadsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
 		{"ls-files", "--", ":(attr:foo)"},
 		{"config", "--blob=HEAD:.gitignore", "--list"},
 		{"config", "--blob", "HEAD:.gitignore", "--list"},
-	}
-	running := [][]string{
+		// Every listing too: git expands a sparse index the index file itself
+		// marks, whatever the config says, by reading tree objects.
 		{"ls-files"},
 		{"ls-files", "-z"},
 		{"ls-files", "--cached", "-z"},
 		{"ls-files", "--stage", "-z", "--", ":(glob)**/.gitattributes"},
 		{"ls-files", "--", "kept.txt"},
+	}
+	running := [][]string{
 		{"check-ignore", "--no-index", "-v", "secret.txt"},
 		{"config", "--get", "remote.origin.promisor"},
 	}
@@ -250,14 +252,15 @@ func TestSparseListingsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
 	r.Git("config", "index.sparse", "true")
 	allRun("sparse, no promisor remote", listings)
 
-	// A partial clone that is not sparse keeps the index-only allowance.
+	// A partial clone that is not sparse by its config is refused too: the
+	// on-disk index, not the config, decides whether git expands it.
 	r.Git("config", "--unset", "core.sparseCheckout")
 	r.Git("config", "--unset", "index.sparse")
 	r.Git("config", "remote.origin.promisor", "true")
-	allRun("partial clone, not sparse", listings)
+	allRefused("partial clone, not sparse", listings)
 	r.Git("config", "core.sparseCheckout", "false")
 	r.Git("config", "index.sparse", "0")
-	allRun("partial clone, sparse settings false", listings)
+	allRefused("partial clone, sparse settings false", listings)
 
 	// core.sparseCheckout alone.
 	r.Git("config", "core.sparseCheckout", "true")
@@ -276,8 +279,9 @@ func TestSparseListingsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
 			t.Errorf("partial clone, -c %s ls-files: not refused (err %v)", kv, err)
 		}
 	}
-	if err := run([]string{"-c", "index.sparse=false", "ls-files", "-z"}); errors.Is(err, gitutil.ErrLazyFetchFloor) {
-		t.Errorf("partial clone, -c index.sparse=false ls-files: refused: %v", err)
+	// A -c turning the setting off cannot vouch for the index on disk either.
+	if err := run([]string{"-c", "index.sparse=false", "ls-files", "-z"}); !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+		t.Errorf("partial clone, -c index.sparse=false ls-files: not refused (err %v)", err)
 	}
 
 	// At the floor the sparse partial clone lists.
