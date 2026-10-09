@@ -1,9 +1,11 @@
 package implement
 
 import (
+	"encoding/json"
 	"math"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -163,6 +165,27 @@ type Report struct {
 	// run's report names which mode it would keep, and says why.
 	Leader      string `json:"leader"`
 	LeaderBasis string `json:"leader_basis"`
+	// Outages are the run's lost connections, each with how long it lasted and
+	// what was retried, so a short outage is reported though nobody was told of
+	// it at the time.
+	Outages []OutageSpan `json:"outages"`
+}
+
+// OutageSpan is one outage as the log records it.
+type OutageSpan struct {
+	Start time.Time `json:"start"`
+	// End is the outage_end or outage_give_up line; nil while it is open.
+	End *time.Time `json:"end,omitempty"`
+	// Outcome is "ended" (a probe proved every service back), "cleared" (closed
+	// by hand), "gave_up", or "open" at the log's last line.
+	Outcome string `json:"outcome"`
+	// Minutes is the line's own figure for a closed outage, and for an open one
+	// the minutes to the log's last line.
+	Minutes  float64  `json:"minutes"`
+	Services []string `json:"services"`
+	Kinds    []string `json:"kinds"`
+	Retried  []string `json:"retried"`
+	Probes   int      `json:"probes"`
 }
 
 // Compare derives the comparison from a log. It never fails: a line it cannot
@@ -304,7 +327,7 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 
 	rep := Report{Events: len(sorted), Unparsed: unparsed, Modes: []ModeTally{}, Context: []SessionContext{},
 		LeaderBasis: "lanes landed per wall-clock hour", Evidence: evidenceOf(sorted),
-		MissingFields: missingFields(sorted), Coverage: coverageGaps(sorted)}
+		MissingFields: missingFields(sorted), Coverage: coverageGaps(sorted), Outages: outageSpans(sorted)}
 	for _, c := range contexts {
 		rep.Context = append(rep.Context, *c)
 	}
@@ -454,6 +477,111 @@ func missingFields(events []Event) []FieldGap {
 		}
 		return out[i].Field < out[j].Field
 	})
+	return out
+}
+
+// outageSpans reads the outages from the log: an outage_start opens one, each
+// outage_probe while it is open counts, and an outage_end or outage_give_up
+// closes it with the figures it carries. A closing line with no open outage
+// (a log read from a later day than the start) opens and closes one from its
+// started_at; the clear that follows a give-up closes nothing new. events are
+// in time order.
+func outageSpans(events []Event) []OutageSpan {
+	out := []OutageSpan{}
+	open := -1
+	var last time.Time
+	for _, e := range events {
+		if e.TS.After(last) {
+			last = e.TS
+		}
+		switch e.Event {
+		case EventOutageStart:
+			if open >= 0 {
+				continue
+			}
+			out = append(out, OutageSpan{Start: e.TS, Outcome: "open",
+				Services: listField(e, "service"), Kinds: listField(e, "kind"), Retried: listField(e, "what")})
+			open = len(out) - 1
+		case EventOutageProbe:
+			if open >= 0 {
+				out[open].Probes++
+			}
+		case EventOutageEnd, EventOutageGiveUp:
+			start, _ := time.Parse(time.RFC3339, e.String("started_at"))
+			if open < 0 {
+				// A closer for the outage just closed (a clear after a give-up,
+				// or a probe that ended it again because the record's removal
+				// failed) is the same outage, not a new one.
+				if n := len(out); n > 0 && out[n-1].End != nil && out[n-1].Start.Equal(start) {
+					continue
+				}
+				if start.IsZero() {
+					start = e.TS
+				}
+				out = append(out, OutageSpan{Start: start})
+				open = len(out) - 1
+			}
+			s := &out[open]
+			end := e.TS
+			s.End = &end
+			switch {
+			case e.Event == EventOutageGiveUp:
+				s.Outcome = "gave_up"
+			case e.String("how") == "cleared":
+				s.Outcome = "cleared"
+			default:
+				s.Outcome = "ended"
+			}
+			if m, ok := e.Number("minutes"); ok && m >= 0 && !math.IsInf(m, 0) {
+				s.Minutes = round2(m)
+			} else {
+				s.Minutes = round2(end.Sub(s.Start).Minutes())
+			}
+			for key, dst := range map[string]*[]string{"services": &s.Services, "kinds": &s.Kinds, "retried": &s.Retried} {
+				if v := listField(e, key); len(v) > 0 {
+					*dst = v
+				}
+			}
+			if n, ok := e.Number("probes"); ok && n >= 0 {
+				s.Probes = int(n)
+			}
+			open = -1
+		}
+	}
+	if open >= 0 {
+		out[open].Minutes = round2(last.Sub(out[open].Start).Minutes())
+	}
+	for i := range out {
+		for _, l := range []*[]string{&out[i].Services, &out[i].Kinds, &out[i].Retried} {
+			if *l == nil {
+				*l = []string{}
+			}
+		}
+	}
+	return out
+}
+
+// listField reads a field holding a JSON list of strings, or one string (a
+// comma-separated list when written by hand), as a list.
+func listField(e Event, key string) []string {
+	raw, ok := e.Fields[key]
+	if !ok {
+		return nil
+	}
+	var list []string
+	if json.Unmarshal(raw, &list) == nil {
+		return list
+	}
+	s := e.String(key)
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
 	return out
 }
 

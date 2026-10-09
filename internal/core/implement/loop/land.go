@@ -477,6 +477,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	}
 	ref := "refs/heads/" + lane.Branch
 	if _, err := netGit(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
+		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
+			return Outcome{}, r
+		}
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+fsutil.RedactHome(err.Error()),
 			"settle what git or the pre-push hook reports, then run `abcd implement step` again")
 	}
@@ -491,13 +494,47 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 // netGit runs one git command that reaches the remote, from the checkout the
 // run lives in. Its hooks run (the pre-push gate is the point), under the
 // developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*.
+// A connection that stalls is cut off in about a minute rather than at
+// netTimeout, so a lost network is met as a failure the outage classifier
+// reads while the run's lock is held only briefly (iss-2610080620372731): an
+// HTTP transfer slower than netLowSpeedLimit bytes a second for
+// netLowSpeedTime is aborted, and ssh, unless the developer configured their
+// own ssh command, gives up a connect after netConnectTimeout and a silent
+// connection after netServerAlive missed keepalives.
 func netGit(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
 	defer cancel()
-	full := append([]string{"-c", "core.quotePath=false", "-C", dir}, args...)
+	full := append([]string{"-c", "core.quotePath=false",
+		"-c", "http.lowSpeedLimit=" + netLowSpeedLimit, "-c", "http.lowSpeedTime=" + netLowSpeedTime, "-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
+	if ssh := netSSHCommand(dir); ssh != "" {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+	}
 	return runCapped(cmd, "git "+args[0])
+}
+
+// The bounds netGit sets on a stalled connection.
+const (
+	netLowSpeedLimit = "1000"
+	netLowSpeedTime  = "60"
+	netSSHOptions    = "-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+)
+
+// netSSHCommand is the ssh command netGit runs git's ssh transport through:
+// ssh with the connect and keepalive bounds, or "" when the developer chose
+// their own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as
+// it is.
+func netSSHCommand(dir string) string {
+	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
+		return ""
+	}
+	cmd := exec.Command("git", "-C", dir, "config", "--get", "core.sshCommand")
+	cmd.Env = gitutil.ScrubbedEnv()
+	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
+		return ""
+	}
+	return "ssh " + netSSHOptions
 }
 
 // runCapped runs cmd, returning its stdout within the forge cap and its
@@ -531,8 +568,12 @@ func forge(c Context, lane Lane, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = c.RepoRoot
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
-	out, err := runCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
+	what := "gh " + strings.Join(args[:min(2, len(args))], " ")
+	out, err := runCapped(cmd, what)
 	if err != nil {
+		if r := netFailure(StageLand, lane.ID, what, err); r != nil {
+			return "", r
+		}
 		return "", refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()),
 			"settle what the forge client reports, then run `abcd implement step` again")
 	}
@@ -934,6 +975,9 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 	}
 	tracking := "refs/remotes/" + Remote + "/" + def
 	if _, err := netGit(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+		if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
+			return Outcome{}, r
+		}
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+fsutil.RedactHome(err.Error()),
 			"settle what git reports, then run `abcd implement step` again")
 	}

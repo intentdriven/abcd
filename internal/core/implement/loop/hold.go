@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -67,6 +68,10 @@ func holdLane(c Context, lane *Lane) (Outcome, error) {
 				}
 				if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
 					r, _ := AsRefusal(err)
+					if r != nil && r.outage != nil {
+						// A lost network is waited out on the shared probe.
+						return Outcome{}, r
+					}
 					why := err.Error()
 					if r != nil {
 						why = r.Reason
@@ -166,15 +171,26 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 // the pull request open and the lane held, and a retry finds nothing half done:
 // a worktree or branch already gone is passed over. It changes nothing when the
 // lane is not held or any lane is still at work.
+//
+// While the network is down a lane with a pull request to close waits on the
+// shared probe, changing nothing, and a close the network refuses is recorded
+// as the run's outage (outage.go).
 func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
+	g, err := outageFor(repoRoot, runID, o)
+	if err != nil {
+		return StepResult{}, err
+	}
 	var res StepResult
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		i, err := decidable(*st, laneID, "--discard")
 		if err != nil {
 			return false, err
 		}
 		now := o.now()
 		lane := st.Lanes[i]
+		if lane.PR > 0 && g.down(implement.ServiceNetwork) {
+			return false, g.networkWait(string(StageHeld), lane.ID, fmt.Sprintf("the discard of %s (closing pull request #%d)", lane.ID, lane.PR))
+		}
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
 		did := []string{}
 		if lane.Worktree != "" {
@@ -196,6 +212,9 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		if lane.PR > 0 {
 			n := strconv.Itoa(lane.PR)
 			if _, err := forge(c, lane, "pr", "close", n); err != nil {
+				if r, ok := AsRefusal(err); ok {
+					g.take(r)
+				}
 				return false, err
 			}
 			did = append(did, "closed pull request #"+n)
@@ -208,5 +227,11 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		res = laneResult(*st, lane, "", nil)
 		return true, nil
 	})
+	g.record()
+	if note := g.recordNote(); note != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + note
+		}
+	}
 	return res, err
 }

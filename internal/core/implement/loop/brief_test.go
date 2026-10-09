@@ -187,6 +187,49 @@ func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
 	}
 }
 
+// TestTheBriefTellsTheImplementerToYieldOnALostConnection is the agent's half
+// of a lost connection (iss-2610080620372731, ruling Q1 of 2026-10-09): an
+// implementer whose network or model service drops mid-task neither retries
+// nor commits what it has; it stops and ends its hand-back with exactly one
+// `NETWORK: <cmd>` line and no receipt, the line `implement step --restart
+// --yielded` takes. A usage or rate limit is not a lost connection. The rule is
+// the brief's own instruction, before the record it carries.
+func TestTheBriefTellsTheImplementerToYieldOnALostConnection(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanceTo(t, repo, start.RunID, StageImplement)
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(st.Lanes[0].Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	brief := string(raw)
+	if n := strings.Count(brief, lostConnectionRule); n != 1 {
+		t.Fatalf("the brief must carry the lost-connection rule once; it does %d time(s):\n%s", n, brief)
+	}
+	for _, want := range []string{
+		"## A lost connection\n",
+		"do not retry",
+		"do not commit",
+		"`" + NetworkLinePrefix + " <the failing command>`",
+		"no receipt",
+		"usage or rate limit",
+	} {
+		if !strings.Contains(lostConnectionRule, want) {
+			t.Errorf("the lost-connection rule says %q:\n%s", want, lostConnectionRule)
+		}
+	}
+	if at, record := strings.Index(brief, lostConnectionRule), strings.Index(brief, "<!-- begin "); record < 0 || at > record {
+		t.Fatalf("the rule is the brief's own instruction, before the record it carries (rule at %d, record at %d)", at, record)
+	}
+}
+
 // TestTheBriefIsRenderedFromTheLaneBase: the lane is built off the default
 // branch, so the brief reads the record there. An intent planned only on the
 // branch the checkout has checked out, and a base with no AGENTS.md, are each

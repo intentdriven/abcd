@@ -45,6 +45,9 @@ type Options struct {
 	// Roots are where the pace's configuration layers are read; nil reads
 	// them at layered.RootsFor(repoRoot).
 	Roots *layered.Roots
+	// NetworkProbe proves the network back for the shared outage probe a
+	// step runs when it is due; nil is implement.RemoteProbe at the checkout.
+	NetworkProbe func() (bool, string)
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -231,7 +234,11 @@ type StepResult struct {
 	// Fallback is the fallback receipt this call recorded when the runner a
 	// role is routed to did not run it and the host is handed the role.
 	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
-	Next     string                  `json:"next"`
+	// Outage is the run's lost connection while one is open: the lanes that
+	// reach the network or an agent wait on its shared probe (Blocked names
+	// them) while the others move.
+	Outage *OutageInfo `json:"outage,omitempty"`
+	Next   string      `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
@@ -575,11 +582,31 @@ func openLane(st *State, k int) {
 // next_eligible_at. A stage whose body this build does not carry is refused
 // naming the piece that delivers it. The state is written only after a body
 // succeeds, and then once.
+//
+// The run's lost connection is read first, outside the lock, and its shared
+// probe run when due (outage.go); a run that gave up on it is refused at the
+// stage `outage`, and a lane whose move needs the connection that is down
+// waits on the probe while the others move. An outage a stage met is recorded
+// once the lock is released.
 func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
+	return advanceWith(repoRoot, runID, steps, o, nil)
+}
+
+// advanceWith is advance; routed reports whether a role is started through a
+// runner (Drive), which a network outage holds as well as a model one.
+func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool) (StepResult, error) {
+	g, err := outageFor(repoRoot, runID, o)
+	if err != nil {
+		return StepResult{}, err
+	}
+	g.runner = routed
 	var res StepResult
 	var wait error
-	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
+		if g.gaveUp() && !st.Complete() {
+			return false, g.stopRefusal(*st)
+		}
 		if st.NextEligibleAt != nil && now.Before(*st.NextEligibleAt) {
 			return false, contend("pause", "", "", "the run is paused until "+st.NextEligibleAt.UTC().Format(time.RFC3339),
 				"run `abcd implement step` again at or after that time")
@@ -603,7 +630,7 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 			res.Next = pausedMove(*st, until)
 			return true, nil
 		}
-		r, moved, err := move(repoRoot, st, steps, now)
+		r, moved, err := move(repoRoot, st, steps, now, g)
 		if err != nil {
 			if moved {
 				// The wait, or a later lane's refusal, is the call's answer,
@@ -618,9 +645,25 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 		return changed || moved, nil
 	})
 	if err == nil && wait != nil {
-		return StepResult{}, wait
+		err = wait
 	}
-	return res, err
+	// The outage a stage met is recorded with the tier lock released, and the
+	// answer names it.
+	g.record()
+	if note := g.recordNote(); note != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + note
+		} else if err == nil {
+			res.Next += "; " + note
+		}
+	}
+	if err != nil {
+		return StepResult{}, err
+	}
+	if !res.Complete {
+		res.Outage = g.info()
+	}
+	return res, nil
 }
 
 // windowElapsed reports whether a paced run's window has run its working

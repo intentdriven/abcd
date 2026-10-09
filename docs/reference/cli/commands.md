@@ -1099,7 +1099,10 @@ the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
 is all); at the cap, or when nothing eligible is left, the drain reports and ends,
 and the next `abcd drain` begins a new one. A cap or pace named while a drain is in
-progress that differs from the one it began with is refused.
+progress that differs from the one it began with is refused. Once a run gives up on a
+lost connection (`abcd implement outage`), the drain opens nothing and ends with
+stopped "outage", naming the services down, since when, the probes and the lanes it
+opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
@@ -1828,6 +1831,131 @@ mode in force is the log's last window_mode line, whoever wrote it.
 abcd implement mode single --session s-example
 ```
 
+#### `abcd implement outage`
+
+Render the run's shared lost connection and when its next probe is due: Writes nothing; refuses any argument.
+
+**Usage:** `abcd implement outage`
+
+The run's shared lost connection. A lane that loses the network (git, gh, a
+download) or the model service (an agent back overloaded, with a 5xx, a timed-out
+request or a lost connection) records it (`record`); the run keeps one outage record
+in the run state, and every lane keeps to offline work and waits on one shared
+probe (`probe`) instead of retrying alone. The probe runs a minute after the
+outage opens, then five minutes and ten minutes after each failed probe, then
+hourly; the failed probe eight hours into the hourly stage gives up, stops the
+run and raises one notification, held until a session acknowledges it (`ack`).
+An authentication error (401), an invalid request (400) or a usage or rate limit
+(429) is not an outage: the service answered, so it is an ordinary failure.
+
+The network is proven back by `git ls-remote origin HEAD`; the model service only
+by a canary agent the lead runs and reports with `probe --model ok|fail` — the
+lead's own turn running is not proof. The outage ends when every service down is
+proven back, and `report` lists each outage with its minutes and what was retried.
+
+Bare `abcd implement outage` is read-only: the outage in force, the services down,
+when the next probe is due and who holds it. It creates nothing.
+
+##### `abcd implement outage ack`
+
+Acknowledge the notification an outage's give-up raised: Writes the outage record; refuses when no notification is pending.
+
+**Usage:** `abcd implement outage ack --session <id> [flags]`
+
+Acknowledge the give-up's notification once the product thinker has been told.
+Refused when no notification is pending, so it is never raised twice.
+
+**Flags:**
+
+```
+      --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement outage ack --session s-example
+```
+
+##### `abcd implement outage clear`
+
+Close the run's outage by hand, with the reason: Writes an outage_end and an intervention line; refuses without --reason.
+
+**Usage:** `abcd implement outage clear --session <id> --reason <why> [flags]`
+
+Close the outage by hand, open or given up. It logs outage_end with the reason and
+an intervention: the shared probe did not prove the connection back on its own.
+
+**Flags:**
+
+```
+      --reason string    why it is cleared by hand
+      --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement outage clear --session s-example --reason "the network is back"
+```
+
+##### `abcd implement outage probe`
+
+Run the shared outage probe when it is due: Writes the probe's result and its run-log lines; refuses a run that gave up.
+
+**Usage:** `abcd implement outage probe --session <id> [--model ok|fail] [flags]`
+
+Run the shared probe if it is due and no other session is running it. The network,
+when down, is probed with `git ls-remote --exit-code origin HEAD` (20s at most); the
+model service, when down, takes --model, the verdict of the canary agent the lead
+ran — without it the model side stays down. Read the bare verb's next probe time
+before running the canary, so it runs once per due probe.
+
+Exit 0: no outage, or every service proven back — the network step may go ahead.
+Exit 3: wait — the probe is not due, another session holds it, or a service is
+still down; --json carries next_probe_at. Exit 2: the run gave up, or a refusal.
+
+**Flags:**
+
+```
+      --model string     the canary agent's verdict on the model service: ok | fail
+      --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement outage probe --session s-example
+```
+
+##### `abcd implement outage record`
+
+Report a lost network or model-service connection: Writes the outage record and, opening it, an outage_start line; refuses an unknown service or kind.
+
+**Usage:** `abcd implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [flags]`
+
+Report a lost connection: the service lost (network or model), what noticed it
+(host: the host's own model calls; agent: a sub-agent back failed; tool: a tool's
+network call), the lane and what it was doing. The first report opens the run's
+outage and logs outage_start; a later one joins it. A report to an outage that
+gave up joins it and raises no second notification.
+
+**Flags:**
+
+```
+      --kind string      what noticed it: agent | host | tool
+      --lane string      the lane that lost it
+      --service string   the service lost: model | network
+      --session string   this session's id
+      --what string      what the lane was doing (the step it will retry)
+```
+
+**Example:**
+
+```
+abcd implement outage record --session s-example --service network --kind tool --lane cli --what "git push"
+```
+
 #### `abcd implement receipt`
 
 Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
@@ -1941,7 +2069,8 @@ across the run, with the last used_pct seen. `leader` is the mode with the most 
 a figure, not a verdict. Over the whole run it counts the evidence (interventions by
 kind, stops, decisions), names the lines lacking a field `log` requires of their event
 (missing_fields), and names each of lane_open, lane_close, agent_start, agent_end and
-gate_run whose lines stop more than six hours before the run's last line (coverage).
+gate_run whose lines stop more than six hours before the run's last line (coverage),
+and lists each outage with its minutes, how it ended and what was retried (outages).
 Lines the reader cannot use are listed, never dropped silently.
 
 By default the run's whole log is read, every day of it; --date reads one day, and
@@ -1976,7 +2105,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -2032,6 +2161,15 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work.
+--restart <lane-id> restarts a lane whose implementer died, or yielded on a network
+failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
+last commit: everything left uncommitted is saved aside under the lane's directory
+(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
+proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
+names the aside for review, and the implementer await is re-told; the brief never names
+the aside. It is refused, changing nothing, while the run has an outage (open or given
+up), for a blank --yielded, for a lane with no implementer out, or for a worktree that
+is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -2079,6 +2217,18 @@ nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming i
 agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
 
+The run's lost connection (`abcd implement outage`) is read before every move. While
+the network is down, a lane whose move reaches the remote or the forge (a landing's
+push, pull request, arming or merged check; a hold's disarm) waits on the shared probe,
+named under blocked: with the next probe's time, and the other lanes move; while the
+model service is down no agent is handed work, and while the network is down no runner
+is started. A git or gh failure that reads as the network becomes the same wait and is
+recorded for the session whose claim names the run. A call that finds the network
+probe due runs it; the model side waits for the lead's canary. Once the run has given
+up on the outage, every call is refused at the stage outage, naming since when, the
+probes, what was done, what is left and whether the product thinker's notification is
+pending (notify).
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
 
@@ -2087,7 +2237,9 @@ refusal, exit 3 on a pause or a locked run state.
 ```
       --discard string   discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
       --release string   land a held lane as it is (lane-<n>), once no lane has work left
+      --restart string   restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --run string       the run to step (run-<16 digits>); the one run in progress when omitted
+      --yielded string   with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
 ### `abcd inbox`

@@ -198,6 +198,16 @@ var sentences = map[string]string{
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +
 		"Writes a window_mode line; refuses any session but the first.",
+	"abcd implement outage": "Render the run's shared lost connection and when its next probe is due: " +
+		"Writes nothing; refuses any argument.",
+	"abcd implement outage ack": "Acknowledge the notification an outage's give-up raised: " +
+		"Writes the outage record; refuses when no notification is pending.",
+	"abcd implement outage clear": "Close the run's outage by hand, with the reason: " +
+		"Writes an outage_end and an intervention line; refuses without --reason.",
+	"abcd implement outage probe": "Run the shared outage probe when it is due: " +
+		"Writes the probe's result and its run-log lines; refuses a run that gave up.",
+	"abcd implement outage record": "Report a lost network or model-service connection: " +
+		"Writes the outage record and, opening it, an outage_start line; refuses an unknown service or kind.",
 	"abcd implement receipt": "Hand back the receipt an agent stage of a loop run awaits: " +
 		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
 	"abcd implement record": "Render a loop run's record and capture its transcripts: " +

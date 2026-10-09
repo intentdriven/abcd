@@ -466,6 +466,20 @@ func decisionsNaming(log string, ids ...string) []string {
 	return out
 }
 
+// lostConnectionRule is the implementer's half of a lost connection
+// (iss-2610080620372731, ruling Q1 of 2026-10-09): the run waits the outage
+// out on one shared probe, so an agent cut off mid-task neither retries nor
+// commits; it yields with the one line `implement step --restart --yielded`
+// takes, and the fresh agent starts from the lane's last commit with the
+// uncommitted edits saved aside for review. The rule never says "aside": the
+// brief never names the aside (restart.go).
+const lostConnectionRule = "## A lost connection\n\n" +
+	"If the network (git, gh, a download) or the model service fails you (a connection error, an API\n" +
+	"error, overloaded, a timed-out request): do not retry, and do not commit what you have. Stop, and\n" +
+	"end your hand-back with exactly one line, `" + NetworkLinePrefix + " <the failing command>`, and no receipt.\n" +
+	"The run waits the outage out and restarts the lane from its last commit; your uncommitted edits are\n" +
+	"kept for review, never built on. A usage or rate limit is not a lost connection.\n\n"
+
 // renderBrief writes the brief. laneDir is the lane's directory as the
 // implementer, working in another checkout, must address it: absolute.
 func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
@@ -535,6 +549,8 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("A pull-request body, an issue, a comment, a commit message and a release note are public the moment\n")
 	p("they exist. This holds whatever the conventions below say:\n\n")
 	p("> %s\n\n", scanner.OutboundPolicy)
+
+	p("%s", lostConnectionRule)
 
 	p("%s", fenceQuoteNote)
 	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, fenceQuote(strings.TrimSpace(src.intentText)), src.intentPath)

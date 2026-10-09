@@ -16,6 +16,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
@@ -47,7 +48,11 @@ type RunRecord struct {
 	// criterion 4).
 	Fallbacks      []runner.FallbackReceipt `json:"fallbacks"`
 	FallbackCounts runner.Counts            `json:"fallback_counts"`
-	Record         []Entry                  `json:"record"`
+	// Outages are the lost connections the shared run's log records over the
+	// run's lifetime, each with its minutes, its outcome and what was retried,
+	// so a short outage nobody was told of still appears.
+	Outages []implement.OutageSpan `json:"outages"`
+	Record  []Entry                `json:"record"`
 }
 
 // RecordLane is one lane of the run record.
@@ -92,7 +97,7 @@ func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver,
 		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace,
 		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record,
-		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks)}
+		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks), Outages: []implement.OutageSpan{}}
 	if rec.Fallbacks == nil {
 		rec.Fallbacks = []runner.FallbackReceipt{}
 	}
@@ -135,7 +140,11 @@ func ReadRecord(repoRoot, runID string) (RunRecord, error) {
 	if err != nil {
 		return RunRecord{}, err
 	}
-	return recordOf(st), nil
+	rec := recordOf(st)
+	if rec.Outages, err = runOutages(repoRoot, st); err != nil {
+		return RunRecord{}, err
+	}
+	return rec, nil
 }
 
 // LatestRun names the run a record read addresses when none is named: the one
@@ -189,6 +198,7 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 		return RunRecord{}, errors.New("no transcript capturer")
 	}
 	var rec RunRecord
+	var final State
 	var failed error
 	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		if !st.Complete() {
@@ -221,9 +231,13 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 			st.UpdatedAt = now
 		}
 		rec = recordOf(*st)
+		final = *st
 		return changed, nil
 	})
 	if err != nil {
+		return RunRecord{}, err
+	}
+	if rec.Outages, err = runOutages(repoRoot, final); err != nil {
 		return RunRecord{}, err
 	}
 	return rec, failed

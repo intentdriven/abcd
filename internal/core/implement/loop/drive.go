@@ -92,7 +92,11 @@ func toolsFor(role string) []string {
 // that did not run it, returns the await for the host to act on, as advance
 // returns it; the latter also names the fallback it recorded.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
-	res, err := advance(repoRoot, runID, steps, o)
+	var routed func(string) bool
+	if rs.Config != nil {
+		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
+	}
+	res, err := advanceWith(repoRoot, runID, steps, o, routed)
 	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {
 		// Nothing awaits, or the await is one an earlier call began: the
 		// host, or the runner that call started, is already on it.

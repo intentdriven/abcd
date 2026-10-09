@@ -61,6 +61,11 @@ func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string)
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 	f := &parFixture{repo: repo, gh: gh, stages: DefaultStages(), now: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)}
 	o.Now = f.clock
+	if o.Session != "" {
+		// A run started for a session claims its intent in the shared run
+		// state, which the session joins first.
+		sharedRun(t, repo.Root(), repo.Git("rev-list", "--max-parents=0", "HEAD"), o.Session)
+	}
 	start, err := Start(repo.Root(), "itd-10", o)
 	if err != nil {
 		t.Fatal(err)

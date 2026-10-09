@@ -144,6 +144,16 @@ what it did in `next`:
 - **It ends.** At `--max <n>` lanes (`stopped: "cap"`), or when nothing eligible
   is left (`stopped: "empty"`), it reports and ends; `complete` is `true`. The
   next `abcd drain` begins a new drain.
+- **It stops on a lost connection.** A drain's lane waits out a lost network or
+  model-service connection as any run does (`/abcd:build` names the protocol).
+  Once that run gives up, after eight hours of failed hourly probes, the next
+  drain opens nothing and ends with `stopped: "outage"` and `complete: true`;
+  `next` names the services down, since when, the probes made and the lanes the
+  drain opened, and says how to resume: once the connection is back, close the
+  outage with `abcd implement outage clear --session <id> --reason <why>`, and
+  the next `abcd drain` begins a new drain. The text form reads "ended: the run
+  gave up on a lost connection". Tell the user the drain stopped on an outage,
+  the lanes it had opened, and `next`.
 
 `--pace`, `--sub-agents` and `--fix-rounds` are `abcd build`'s, read when a
 drain begins; `--max` is set then too. Naming another while the drain runs is
@@ -177,8 +187,9 @@ the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`, `kind`, `route`, `draft`,
 `question`, `rule`, `home`, `reason`, `wrote`); `flags` are the rule's
 hand-backs; `passed` names an eligible issue this move did not take, with why;
-`dispositions` is the plan; `next_eligible_at`, `stopped` and `complete` say
-whether it paused or ended; `next` is the one move to make.
+`dispositions` is the plan; `next_eligible_at`, `stopped` (`cap`, `empty` or
+`outage`) and `complete` say whether it paused or ended; `next` is the one move
+to make.
 
 Tell the user any loosened floors first, then what this move did (the lane
 opened, the hand-back routed, the pause or the end), then every hand-back with

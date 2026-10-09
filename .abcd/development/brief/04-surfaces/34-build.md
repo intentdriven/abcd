@@ -397,6 +397,20 @@ always drives this: the no-host path, where a host-routed role goes to the
 machine's `runner.fallback_host`, is the process driver's reversal of the
 host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
 
+**The lost connection** (iss-2610080620372731). The step verb reads the shared
+run's outage before every move ([`27-implement.md`](27-implement.md) states the
+record, the probe and its schedule): while the network is down a lane whose move
+reaches the remote or the forge waits on the one shared probe, as a landing
+waits on its merge, and the other lanes move; while the model service is down
+no agent is handed work. Once the run gives up, every step is refused at the
+stage `outage`, naming what was done and what is left. The restart flag starts a
+lane whose implementer died, or yielded with a `NETWORK: <cmd>` line, afresh from
+its last commit, its uncommitted edits saved aside for review and never named in
+a brief; the implementer's brief tells it to yield so on a lost connection,
+neither retrying nor committing. The host's half (the canary that proves the
+model service back, the standing wake-up, the one notification on the give-up)
+is the build command page's protocol.
+
 ## The lane
 
 A lane lands one step of the spec, and its files live in its own directory of
@@ -628,8 +642,9 @@ fails stops the call, with the transcripts before it recorded.
 `0` done, including a resumed start, a stage that re-tells an await, a call
 that closes an elapsed window, and a complete run; `2` refused, naming the stage, the reason and the remedy, with
 nothing written; `3` contention: a peer holds the intent, the run is paused, the
-run state is locked by another invocation, or a landing waits for its pull
-request to merge. A refusal in the JSON form is its
+run state is locked by another invocation, a landing waits for its pull
+request to merge, or a lane waits on the shared outage probe with nothing else
+to move. A refusal in the JSON form is its
 own document before the error envelope, with the stage (`refusal.stage`), the check, the reason and
 the remedy as fields.
 

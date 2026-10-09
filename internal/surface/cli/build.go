@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
@@ -435,6 +436,51 @@ func redactAwait(a *loop.Await) *loop.Await {
 // implementStatusRuns is `implement status`'s --json shape.
 type implementStatusRuns struct {
 	Runs []loop.State `json:"runs"`
+	// Outage is the shared run's lost connection in force, null when there is
+	// none (iss-2610080620372731).
+	Outage *implement.Outage `json:"outage"`
+	// OutageError names why the outage record could not be read, when it
+	// could not: the read-only status renders the runs regardless.
+	OutageError string `json:"outage_error,omitempty"`
+}
+
+// renderStatusOutage renders the outage in force above the runs, as
+// `abcd implement outage` renders it; nothing when there is none.
+func renderStatusOutage(w io.Writer, o *implement.Outage) {
+	if o != nil {
+		renderOutage(w, o)
+	}
+}
+
+// renderStepOutage is a step's line for the outage open: the services down,
+// since when, the probes and the next one due.
+func renderStepOutage(w io.Writer, in *loop.OutageInfo) {
+	if in == nil {
+		return
+	}
+	fmt.Fprintf(w, "outage: %s down since %s; %d probe(s)", strings.Join(in.Down, " and "), in.Since.UTC().Format(time.RFC3339), in.Probes)
+	if in.NextProbeAt != nil {
+		fmt.Fprintf(w, "; next probe %s", in.NextProbeAt.UTC().Format("15:04"))
+	}
+	fmt.Fprintln(w, "; the lanes that need it wait on the shared probe")
+}
+
+// renderRecordOutages renders the outages over a run's lifetime.
+func renderRecordOutages(w io.Writer, spans []implement.OutageSpan) {
+	if len(spans) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "  outages: %d\n", len(spans))
+	for _, s := range spans {
+		how := s.Outcome
+		if s.Outcome != "open" {
+			how += " after"
+		} else {
+			how += " for"
+		}
+		fmt.Fprintf(w, "    %s  %s %g minute(s): %s down, %d probe(s); retried %s\n", s.Start.UTC().Format(time.RFC3339), how,
+			s.Minutes, strings.Join(s.Services, " and "), s.Probes, termsafe.Sanitize(fsutil.RedactHome(strings.Join(s.Retried, "; "))))
+	}
 }
 
 func newImplementStatusCommand(asJSON *bool) *cobra.Command {
@@ -463,6 +509,13 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			} else if runs, err = loop.Runs(root); err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			// An unreadable outage record does not hide the runs: the status
+			// is read-only, so it names the bad record in the outage's place.
+			var outageErr string
+			cur, err := loop.CurrentOutage(root)
+			if err != nil {
+				cur, outageErr = nil, fsutil.RedactHome(err.Error())
+			}
 			for i := range runs {
 				for j := range runs[i].Lanes {
 					if runs[i].Lanes[j].Awaits != nil {
@@ -471,7 +524,11 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs}, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur, OutageError: outageErr}, func(w io.Writer) {
+				if outageErr != "" {
+					fmt.Fprintf(w, "outage: unreadable: %s\n", termsafe.Sanitize(outageErr))
+				}
+				renderStatusOutage(w, cur)
 				if len(runs) == 0 {
 					fmt.Fprintln(w, "no run in this checkout — start one with `abcd build <itd-N>`")
 					return
@@ -556,13 +613,14 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	for _, r := range res.Blocked {
 		fmt.Fprintf(w, "blocked: %s (%s): %s\n", r.Lane, termsafe.Sanitize(r.Stage), termsafe.Sanitize(fsutil.RedactHome(r.Reason)))
 	}
+	renderStepOutage(w, res.Outage)
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 }
 
 func newImplementStepCommand(asJSON *bool) *cobra.Command {
-	var runID, release, discard string
+	var runID, release, discard, restart, yielded string
 	cmd := &cobra.Command{
-		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id>]",
+		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]]",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
 			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
@@ -615,6 +673,15 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work.\n" +
+			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
+			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
+			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
+			"(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is\n" +
+			"proved to apply to that commit, the lane's worktree is reset and cleaned, the run record\n" +
+			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
+			"the aside. It is refused, changing nothing, while the run has an outage (open or given\n" +
+			"up), for a blank --yielded, for a lane with no implementer out, or for a worktree that\n" +
+			"is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
 			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -658,6 +725,17 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
 			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
 			"is refused as a pause and nothing changes; at or after it, a new window opens.\n\n" +
+			"The run's lost connection (`abcd implement outage`) is read before every move. While\n" +
+			"the network is down, a lane whose move reaches the remote or the forge (a landing's\n" +
+			"push, pull request, arming or merged check; a hold's disarm) waits on the shared probe,\n" +
+			"named under blocked: with the next probe's time, and the other lanes move; while the\n" +
+			"model service is down no agent is handed work, and while the network is down no runner\n" +
+			"is started. A git or gh failure that reads as the network becomes the same wait and is\n" +
+			"recorded for the session whose claim names the run. A call that finds the network\n" +
+			"probe due runs it; the model side waits for the lead's canary. Once the run has given\n" +
+			"up on the outage, every call is refused at the stage outage, naming since when, the\n" +
+			"probes, what was done, what is left and whether the product thinker's notification is\n" +
+			"pending (notify).\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,
@@ -672,7 +750,22 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			var res loop.StepResult
+			// A --yielded given at all is judged trimmed: a blank one names
+			// no line, and is never read as an agent that died.
+			yieldedSet := cmd.Flags().Changed("yielded")
+			yielded = strings.TrimSpace(yielded)
 			switch {
+			case yieldedSet && restart == "":
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
+					Reason: "--yielded names why a restarted agent stopped, so it goes with --restart", Remedy: "run `abcd implement step --restart <lane-id> --yielded '<the agent's NETWORK: line>'`"})
+			case restart != "" && (release != "" || discard != ""):
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
+					Reason: "--restart, --release and --discard name one decision each; give one", Remedy: "run `abcd implement step` with one of them, one lane per invocation"})
+			case yieldedSet && yielded == "":
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
+					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
+			case restart != "":
+				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
 					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
@@ -707,6 +800,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
 	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
+	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
+	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	return cmd
 }
 
@@ -860,6 +955,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 		}
 	}
 	renderPending(w, rec.Pending)
+	renderRecordOutages(w, rec.Outages)
 	renderFallbacks(w, rec.FallbackCounts)
 	for _, fb := range rec.Fallbacks {
 		fmt.Fprintf(w, "    %s  %s asked %s: %s (%s); %s ran it\n", fb.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(fb.Role),

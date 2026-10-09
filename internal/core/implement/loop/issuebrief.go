@@ -178,6 +178,8 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("they exist. This holds whatever the conventions below say:\n\n")
 	p("> %s\n\n", scanner.OutboundPolicy)
 
+	p("%s", lostConnectionRule)
+
 	p("---\n\n## The issue: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", id, src.issuePath, fenceQuote(strings.TrimSpace(src.issueText)), src.issuePath)
 	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
 	p("### Entries of `%s` naming %s\n\n", DecisionsLogRel, id)

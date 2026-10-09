@@ -110,6 +110,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 		newImplementStepCommand(asJSON),
 		newImplementReceiptCommand(asJSON),
 		newImplementRecordCommand(asJSON),
+		newImplementOutageCommand(asJSON),
 	)
 	return cmd
 }
@@ -545,7 +546,8 @@ func newImplementReportCommand(asJSON *bool) *cobra.Command {
 			"a figure, not a verdict. Over the whole run it counts the evidence (interventions by\n" +
 			"kind, stops, decisions), names the lines lacking a field `log` requires of their event\n" +
 			"(missing_fields), and names each of lane_open, lane_close, agent_start, agent_end and\n" +
-			"gate_run whose lines stop more than six hours before the run's last line (coverage).\n" +
+			"gate_run whose lines stop more than six hours before the run's last line (coverage),\n" +
+			"and lists each outage with its minutes, how it ended and what was retried (outages).\n" +
 			"Lines the reader cannot use are listed, never dropped silently.\n\n" +
 			"By default the run's whole log is read, every day of it; --date reads one day, and\n" +
 			"--log reads one log file named directly. Reads only; creates nothing.",
@@ -579,6 +581,7 @@ func newImplementReportCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "coverage stops: %s's last line (of %d) is at %s, %.1f h before the run's last\n",
 						g.Event, g.Lines, g.Last.Format(time.RFC3339), g.HoursBefore)
 				}
+				renderOutageSpans(w, rep.Outages)
 				for _, c := range rep.Context {
 					fmt.Fprintf(w, "context: %s  %d measurement(s), last %.0f%% used at %s\n", termsafe.Sanitize(c.Session),
 						c.Events, c.LastUsedPct, c.LastAt.Format(time.RFC3339))

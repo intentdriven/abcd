@@ -143,18 +143,23 @@ itd-2609201916151817): each invocation of the bare verb performs one move and
 exits. It reads the ledger afresh (the classification is re-derived every move
 and written nowhere, decision 8), then does the first of these that applies:
 
-1. Before the drain's `next_eligible_at`, it opens nothing and names the time.
-2. When the drain's window has run its working minutes, it writes
+1. When the implement loop's run has given up on a lost connection (the
+   shared outage's eight hours of hourly probes have failed), it opens nothing
+   and ends with the stop reason `outage`, naming the services down, since when,
+   the probes made and the lanes it opened; once the outage is cleared, the next
+   invocation begins a new drain.
+2. Before the drain's `next_eligible_at`, it opens nothing and names the time.
+3. When the drain's window has run its working minutes, it writes
    `next_eligible_at` (now plus the pause) into the drain's state and opens
    nothing; the next invocation after that time opens the next window and
    continues.
-3. When the lane it opened last is still in progress, it names the run to drive
+4. When the lane it opened last is still in progress, it names the run to drive
    with the implement loop's step verb and opens nothing: one lane at a time.
-4. It reads what that lane has come to: its pull request opened (armed, or left
+5. It reads what that lane has come to: its pull request opened (armed, or left
    open where the repository has no merge queue), the run complete, or the lane
    handed back, which it routes (below).
-5. When the drain has opened as many lanes as its cap, it ends and says so.
-6. It starts the implement loop for the next eligible issue in the drain order
+6. When the drain has opened as many lanes as its cap, it ends and says so.
+7. It starts the implement loop for the next eligible issue in the drain order
    that the drain has not taken and this checkout has no run for, and names the
    run. An issue the loop's own checks refuse (a peer holds it) is passed over,
    named with the check. When none is left, the drain ends and says so.

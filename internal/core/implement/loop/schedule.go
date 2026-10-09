@@ -445,7 +445,12 @@ func agentWants(st State) []want {
 // wrote the time a lane began waiting for its full check, which the caller
 // writes: the time is when the wait began, so a later refusal in the same call
 // does not let it drift to the next call's.
-func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
+//
+// While the run's outage holds the network, a lane whose binary move reaches
+// it waits on the shared probe as a landing waits on its merge, and a stage
+// that met a network failure waits the same way, its report collected for the
+// call to record (outage.go).
+func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate) (StepResult, bool, error) {
 	// A landing waiting on the forge's merge or on its full check (a
 	// contention refusal, ruling DR6d-2) holds only its own lane: the call
 	// moves the next lane and names the wait beside what it did; when nothing
@@ -467,12 +472,19 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 		if w.kind != wantBinary {
 			continue
 		}
-		res, err := performMove(repoRoot, st, steps, w, now)
+		var res StepResult
+		var err error
+		if g.holdsMove(*st, w) {
+			err = g.networkWait(string(st.Lanes[i].Stage), st.Lanes[i].ID, st.Lanes[i].ID+"'s landing")
+		} else {
+			res, err = performMove(repoRoot, st, steps, w, now)
+		}
 		if err != nil {
 			r, ok := AsRefusal(err)
 			if !ok || !r.Contention {
 				return StepResult{}, began, err
 			}
+			g.take(r)
 			if beganCheckWait(st, i, r, now) {
 				began = true
 			}
@@ -489,7 +501,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 	// stage body succeeds replaces a slice or appends past its length, so the
 	// shallow copy is the state as it was.
 	before := *st
-	res, did, err := moveAgent(repoRoot, st, steps, now)
+	res, did, err := moveAgent(repoRoot, st, steps, now, g)
 	if err != nil {
 		*st = before
 		return StepResult{}, began, err
@@ -518,7 +530,7 @@ func withBlocked(next string, blocked []Refusal) string {
 // moveAgent hands the first waiting work an agent when a slot is free, or
 // records the work the ceiling, or the want of a free helper, holds back; it
 // reports whether it moved or wrote.
-func moveAgent(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
+func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate) (StepResult, bool, error) {
 	wants := agentWants(*st)
 	if len(wants) == 0 {
 		return idleResult(*st), false, nil
@@ -530,6 +542,13 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time) (StepRes
 		res.Next = ceilingMove(*st)
 		return res, changed, nil
 	}
+	// The run's outage holds the agents it reaches: every one while the
+	// model service is down, those a runner starts while the network is.
+	free := slices.DeleteFunc(slices.Clone(wants), func(w want) bool { return g.holdsAgent(w.role) })
+	if len(free) == 0 {
+		return idleResult(*st), false, g.agentWait(*st, wants[0])
+	}
+	wants = free
 	// A new lane opens only while a helper is free for it (ruling DR6d-1). When
 	// every piece of waiting work is a step no helper is free for (the slots
 	// left are promised to lanes opened, or the step worktrees on disk are at

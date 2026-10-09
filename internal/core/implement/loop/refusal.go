@@ -34,9 +34,16 @@ type Refusal struct {
 	// Excluded is every planned intent a pick excluded and the check that
 	// excluded it, when a pick found no candidate.
 	Excluded []Excluded `json:"excluded,omitempty"`
+	// Outage is the run's lost connection a refusal is held by: the shared
+	// probe a lane waits on, or, at the stage "outage", the give-up with what
+	// the run had done and what is left (iss-2610080620372731).
+	Outage *OutageInfo `json:"outage,omitempty"`
 	// checkWait is when a landing began waiting for its full check (ruling
 	// DR6d-2): the call that finds the wait writes it on the lane once.
 	checkWait time.Time
+	// outage is the lost connection a stage met, which the call records in
+	// the shared run once the tier lock is released.
+	outage *outageReport
 }
 
 // Error renders the refusal as one line: stage, reason, remedy.
