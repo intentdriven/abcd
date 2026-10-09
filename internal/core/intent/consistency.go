@@ -252,14 +252,16 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 // a corpus whose index stat no longer matches, git re-hashes each document
 // through filter.<name>.clean, a program the repository names
 // (iss-2610090821548169). A filter git still insists on fails the read rather
-// than reading as clean.
+// than reading as clean. --ignore-submodules=dirty keeps the diff from
+// starting a status inside a checked-out submodule, under the submodule's own
+// config (iss-2610091935327982).
 func dirtyCorpusPaths(repoRoot string, c consistencyCorpus, commit string) ([]string, error) {
 	roots := []string{"--", briefRelDir, filepath.ToSlash(IntentsRelDir)}
 	filters, err := gitutil.FilterOverrides(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("intent: reading how the corpus differs from %s: %w", commit, err)
 	}
-	diff := append(filters, "diff", "--name-only", "-z", "--no-renames", commit)
+	diff := append(filters, "diff", "--name-only", "-z", "--no-renames", "--ignore-submodules=dirty", commit)
 	changed, err := gitutil.RunCapped(repoRoot, 8<<20, append(diff, roots...)...)
 	if err != nil {
 		return nil, fmt.Errorf("intent: reading how the corpus differs from %s: %w", commit, err)

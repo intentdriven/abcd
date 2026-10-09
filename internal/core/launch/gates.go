@@ -932,11 +932,16 @@ func DirtyTreeFiles(repoRoot string) ([]string, error) {
 	// through filter.<name>.clean, a program the repository names, which then
 	// decides what "changed" means (iss-2610090821548169). The overrides go
 	// before the subcommand, where -c is git's own option.
+	//
+	// --ignore-submodules=dirty: without it git starts a status inside each
+	// checked-out submodule, under the submodule's own config, whose filters
+	// the overrides cannot name (iss-2610091935327982). A moved submodule
+	// pointer is still listed; uncommitted content inside one is not dirt.
 	filters, err := gitutil.FilterOverrides(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
 	}
-	changed, err := gitutil.Run(repoRoot, append(filters, "diff", "--no-renames", "--name-only", "-z", "HEAD")...)
+	changed, err := gitutil.Run(repoRoot, append(filters, "diff", "--no-renames", "--ignore-submodules=dirty", "--name-only", "-z", "HEAD")...)
 	if err != nil {
 		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
 	}

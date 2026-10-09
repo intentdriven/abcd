@@ -81,6 +81,13 @@ type StatusOptions struct {
 // checkout by listing it in ~/.abcd.noindex/filter-roots (FiltersSwitchedOn).
 // With them off, a file a filter would have rewritten can read as modified,
 // and a filter the repository marks required fails the read.
+//
+// --ignore-submodules=dirty keeps git from starting a status inside each
+// checked-out submodule, which reads the submodule's own config and so runs a
+// clean filter FilterOverrides cannot see (iss-2610091935327982). The flag,
+// not diff.ignoreSubmodules: a repository's submodule.<name>.ignore=none beats
+// that config and loses to the flag. A moved submodule pointer is still
+// listed; uncommitted content inside a submodule is not.
 func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error) {
 	var args []string
 	if on, _ := FiltersSwitchedOn(root); !on {
@@ -90,7 +97,7 @@ func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error)
 		}
 		args = filters
 	}
-	args = append(args, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	args = append(args, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty")
 	if opt.Ignored {
 		args = append(args, "--ignored=matching")
 	}

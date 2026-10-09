@@ -422,7 +422,10 @@ func NewRootCommand() *cobra.Command {
 			"(filter.<name>.required, which `git lfs install --local` sets) makes git refuse the\n" +
 			"comparison instead wherever the file timestamps git saved do not match the working\n" +
 			"tree (a copied or restored checkout, say): the gate then reports the tree unreadable,\n" +
-			"never clean.",
+			"never clean.\n\n" +
+			"The comparison does not look inside a checked-out submodule, so uncommitted content\n" +
+			"inside one does not make the tree dirty and no program the submodule's own\n" +
+			"configuration names runs; a submodule moved to a different commit still does.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()

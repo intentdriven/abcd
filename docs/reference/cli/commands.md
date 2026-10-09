@@ -2749,6 +2749,10 @@ comparison instead wherever the file timestamps git saved do not match the worki
 tree (a copied or restored checkout, say): the gate then reports the tree unreadable,
 never clean.
 
+The comparison does not look inside a checked-out submodule, so uncommitted content
+inside one does not make the tree dirty and no program the submodule's own
+configuration names runs; a submodule moved to a different commit still does.
+
 **Flags:**
 
 ```
@@ -2848,6 +2852,10 @@ repository marks required (filter.<name>.required, which `git lfs install --loca
 meets file timestamps git saved that do not match the working tree, git refuses the
 comparison, and the cut is refused rather than read as committed; --allow-dirty does not
 waive that refusal.
+
+None of these comparisons looks inside a checked-out submodule, so uncommitted content
+inside one does not make the tree dirty and no program the submodule's own
+configuration names runs; a submodule moved to a different commit still does.
 
 **Flags:**
 

@@ -342,7 +342,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			"repository marks required (filter.<name>.required, which `git lfs install --local` sets)\n" +
 			"meets file timestamps git saved that do not match the working tree, git refuses the\n" +
 			"comparison, and the cut is refused rather than read as committed; --allow-dirty does not\n" +
-			"waive that refusal.",
+			"waive that refusal.\n\n" +
+			"None of these comparisons looks inside a checked-out submodule, so uncommitted content\n" +
+			"inside one does not make the tree dirty and no program the submodule's own\n" +
+			"configuration names runs; a submodule moved to a different commit still does.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()

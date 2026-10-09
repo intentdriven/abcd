@@ -320,6 +320,11 @@ repository's filters off for these reads, so no such program runs. The cost is
 that a file a filter would have rewritten can show as changed, and a filter the
 repository marks required makes the read fail rather than pass.
 
+These reads do not look inside a checked-out submodule either, because there git
+would read the submodule's own configuration and run the filters it names. A
+submodule moved to a different commit still shows as changed; uncommitted
+content inside a submodule does not.
+
 If you trust a checkout's filters and want them on for these reads, list it
 once, from your own home directory:
 

@@ -437,13 +437,16 @@ func agentChangelogEntries(text string) map[string]bool {
 // A range of one revision compares the working tree, which git re-reads
 // through the repository's content filters when the index stat no longer
 // matches; both diffs here blank them first (gitutil.FilterOverrides), so no
-// filter program runs and none decides what changed.
+// filter program runs and none decides what changed. --ignore-submodules=dirty
+// keeps that working-tree comparison from starting a status inside a
+// checked-out submodule, under the submodule's own config
+// (iss-2610091935327982).
 func changedPaths(repoRoot, rangeSpec string) (map[string]bool, error) {
 	filters, err := gitutil.FilterOverrides(repoRoot)
 	if err != nil {
 		return nil, err
 	}
-	out, err := gitutil.Run(repoRoot, append(filters, "diff", "--name-only", "-z", rangeSpec, "--")...)
+	out, err := gitutil.Run(repoRoot, append(filters, "diff", "--name-only", "-z", "--ignore-submodules=dirty", rangeSpec, "--")...)
 	if err != nil {
 		return nil, err
 	}
