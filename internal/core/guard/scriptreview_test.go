@@ -14,6 +14,7 @@ func TestScriptReadingReviewFindings(t *testing.T) {
 		"a.sh": "bash b.sh",
 		"b.sh": "bash c.sh",
 		"c.sh": "echo deep",
+		"sub/keep": "",
 	})
 	runScriptCases(t, dir, []scriptCase{
 		// declare -x and typeset -x export as export does.
@@ -24,6 +25,11 @@ func TestScriptReadingReviewFindings(t *testing.T) {
 		{`export BASH_ENV={d}/e; export -n BASH_ENV; bash -c true`, VerdictAllow, ""},
 		// ln writes its target as cp does.
 		{`ln -sf {d}/s.sh {d}/l.sh && bash {d}/l.sh`, VerdictBlock, scriptWrittenEntryID},
+		// A single operand links the target's own name into the directory ln
+		// runs in, and reading the source is not that write.
+		{`cd {d}/sub && ln -s {d}/s.sh && bash s.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd {d}/sub && ln {d}/s.sh && ./s.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd {d}/sub && ln -s {d}/s.sh && bash {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		// A chain past the depth names the script and its own fix.
 		{`bash a.sh`, VerdictBlock, scriptUnreadEntryID},
 	})

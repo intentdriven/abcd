@@ -112,6 +112,7 @@ var wordReaders = map[string]string{
 	"operandIdx":     "exempt: steps a writer's literal options; each operand goes through resolveToken, which refuses an unknown word (the writer list is incomplete by design, adr-2610091150447054 decision 6)",
 	"flagValues":     "exempt: reads a writer's literal options; each value goes through resolveToken or valueAt, which refuse an unknown word",
 	"copyTarget":     "exempt: reads a writer's literal options; each target goes through resolveToken, which refuses an unknown word",
+	"lnTarget":       "exempt: reads ln's literal options; a single operand that is unknown, globbed or a variable is an unplaced write, and the others go through resolveToken, which refuses an unknown word",
 	"sedTargets":     "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
 	"gitTargets":     "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
 	"tarExtracts":    "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",

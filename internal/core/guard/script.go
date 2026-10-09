@@ -716,7 +716,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 		case name == "export" || name == "declare" || name == "typeset":
 			// `declare -x`/`typeset -x` export as `export` does; `export -n`
 			// and `declare +x` take the export away. A declare without -x sets
-			// the variable unexported.
+			// the value and leaves the export attribute as it was, as bash does.
 			exports, unexports := name == "export", false
 			for _, w := range args {
 				switch {

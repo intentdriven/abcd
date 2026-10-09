@@ -49,8 +49,10 @@ func writerTargets(rc *readCtx, s segment, st *shellState) []writeTarget {
 		switch strings.ToLower(path.Base(tok)) {
 		case "tee":
 			out = append(out, w.operands(nil, nil)...)
-		case "cp", "mv", "install", "ln":
+		case "cp", "mv", "install":
 			out = append(out, w.copyTarget()...)
+		case "ln":
+			out = append(out, w.lnTarget()...)
 		case "dd":
 			for i := w.from; i < len(s.tokens); i++ {
 				if strings.HasPrefix(s.tokens[i], "of=") {
@@ -180,6 +182,28 @@ func (w writerArgs) copyTarget() []writeTarget {
 	idx := w.operandIdx([]string{"-S", "--suffix", "-m", "--mode", "-o", "--owner", "-g", "--group"})
 	if len(idx) == 0 {
 		return nil
+	}
+	return []writeTarget{w.at(idx[len(idx)-1])}
+}
+
+// lnTarget is the link ln makes: the -t value, else the last of two or more
+// operands, and with a single operand a link of the target's own name in the
+// directory ln runs in (`ln -s /path/s.sh` writes ./s.sh).
+func (w writerArgs) lnTarget() []writeTarget {
+	if vs := w.flagValues([]string{"-t", "--target-directory"}); len(vs) > 0 {
+		return vs
+	}
+	idx := w.operandIdx([]string{"-S", "--suffix"})
+	switch len(idx) {
+	case 0:
+		return nil
+	case 1:
+		tok := w.s.tokens[idx[0]]
+		if isUnknown(tok) || w.s.globAt(idx[0]) || strings.ContainsRune(tok, varMark) {
+			return []writeTarget{{}}
+		}
+		p, ok := w.st.resolve(w.rc, path.Base(tok), false)
+		return []writeTarget{{path: p, ok: ok}}
 	}
 	return []writeTarget{w.at(idx[len(idx)-1])}
 }
