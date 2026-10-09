@@ -715,6 +715,17 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
 			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
 			"is refused as a pause and nothing changes; at or after it, a new window opens.\n\n" +
+			"The run's lost connection (`abcd implement outage`) is read before every move. While\n" +
+			"the network is down, a lane whose move reaches the remote or the forge (a landing's\n" +
+			"push, pull request, arming or merged check; a hold's disarm) waits on the shared probe,\n" +
+			"named under blocked: with the next probe's time, and the other lanes move; while the\n" +
+			"model service is down no agent is handed work, and while the network is down no runner\n" +
+			"is started. A git or gh failure that reads as the network becomes the same wait and is\n" +
+			"recorded for the session whose claim names the run. A call that finds the network\n" +
+			"probe due runs it; the model side waits for the lead's canary. Once the run has given\n" +
+			"up on the outage, every call is refused at the stage outage, naming since when, the\n" +
+			"probes, what was done, what is left and whether the product thinker's notification is\n" +
+			"pending (notify).\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,

@@ -335,6 +335,75 @@ A lane's stages run in order:
    next lane. A pull request closed without merging, or merged in a way that
    rewrote its head, is refused and nothing is cleaned up: report it as it is.
 
+### When a connection is lost
+
+The network (git, `gh`, a download) or the model service can drop mid-run.
+Either is one outage for the whole run, waited out on one shared probe rather
+than retried lane by lane (`/abcd:implement` names the record and the probe):
+a minute after the outage opens, then five and ten minutes after each failed
+probe, then hourly for up to eight hours. A usage or rate limit (a 429, "usage
+limit") is not an outage: report it as it is.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage record --session <id> --service model|network --kind agent|tool|host --lane <lane-id> --what <text> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage probe --session <id> [--model ok|fail] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step --restart <lane-id> [--yielded "NETWORK: <cmd>"] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage ack --session <id> --json
+```
+
+Join the shared run (`implement join`) and start the run with `--session`
+(above): the outage verbs act for that session, and `implement step` records
+and probes a network outage for it.
+
+**Arm a standing wake-up when the run starts.** With the host's own scheduling
+facility, wake this session every 20 minutes for the whole run, and remove the
+wake-up once the run is complete or has stopped. An outage can end the lead's
+own turn as well as an agent's, and the wake-up is what brings the lead back to
+follow the probe schedule. At each wake-up, read `implement outage`, then drive
+the run as below.
+
+Record each loss when you meet it:
+
+- An agent returns an API, connection or overloaded error, or returns without a
+  receipt: `implement outage record --kind agent`, with `--service model` for an
+  error from the model service and `--service network` for a hand-back ending
+  in a `NETWORK: <cmd>` line, the agent's lane as `--lane` and its role and
+  stage as `--what`.
+- A command you run yourself fails on the network (a preflight, a download,
+  `gh`): `--service network --kind tool`, with the command as `--what`.
+- Your own turn stalled and you are resuming it: `--kind host`, with the
+  service you lost.
+
+While `implement outage` shows an open outage, keep moving the lanes that need
+neither service; do not start an agent, and do not rerun the failed command
+yourself. Wait until its `next_probe_at`. Then, if `down` holds `model`, start
+the **canary**: one tiny agent on the host's quickest, cheapest tier, asked for a
+one-word reply, and pass its verdict as `implement outage probe --model ok`
+(it answered) or `--model fail` (an API, connection or overloaded error).
+Otherwise run `implement outage probe` alone. Exit 0: the outage is over. Exit
+3: wait until the `next_probe_at` it names. Start the canary only when a probe is
+due, once per probe and never once per lane; your own turn running is no proof
+that the model service is back.
+
+Once the probe clears the outage, restart each lane whose agent died or
+yielded: `implement step --restart <lane-id>`, adding `--yielded` with the
+agent's `NETWORK: <cmd>` line when it ended with one. The lane's uncommitted
+edits are saved aside for review, and its fresh implementer starts from its
+last commit; do not apply the aside or hand it to an agent. Then drive the run
+as before.
+
+When eight hours of hourly probes have failed, the run gives up: `implement
+step` is refused at the stage `outage`, and `refusal.outage` names what was
+`done` and what is `left`. When it carries `notify: true`, run
+`"${CLAUDE_PLUGIN_ROOT}/abcd" mode product-thinker`, send the product thinker
+one notification through the host's notification facility naming the outage,
+what was done and what is left, then run `implement outage ack`, and stop
+driving the run. This is the only time the product thinker is told; a shorter
+outage appears in the run's record (`outages`) at the end. Once the connection
+is back, `implement outage clear --session <id> --reason <why>` and then
+`implement step` resume the run where it stopped.
+
 When the run is complete, read its record and capture its transcripts:
 
 ```bash
@@ -343,8 +412,9 @@ When the run is complete, read its record and capture its transcripts:
 
 The record names every lane, the receipts with the model each runner
 reported, every verdict the loop recorded, the captures fixed, the pull
-requests and what each landing did, and the transcripts captured into the
-history store. Name the transcript of this session and of every agent it
+requests and what each landing did, every outage over the run (`outages`, each
+with its minutes, its outcome and what was retried), and the transcripts
+captured into the history store. Name the transcript of this session and of every agent it
 started; each is captured as `history capture <path>` captures it, one capture
 per path.
 

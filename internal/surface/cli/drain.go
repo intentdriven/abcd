@@ -69,7 +69,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
 			"is all); at the cap, or when nothing eligible is left, the drain reports and ends,\n" +
 			"and the next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
-			"progress that differs from the one it began with is refused.\n\n" +
+			"progress that differs from the one it began with is refused. Once a run gives up on a\n" +
+			"lost connection (`abcd implement outage`), the drain opens nothing and ends with\n" +
+			"stopped \"outage\", naming the services down, since when, the probes and the lanes it\n" +
+			"opened; the next `abcd drain`, once the outage is cleared, begins a new one.\n\n" +
 			"Without the repository's record, the dry run and the run both refuse (exit 2),\n" +
 			"naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or\n" +
 			"merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another\n" +

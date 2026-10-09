@@ -87,6 +87,7 @@ func TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy(t *testing.T) {
 		"fails before the fix and passes after",
 		"\"issue\": \"" + eligibleIssue + "\"",
 		"Working conventions",
+		lostConnectionRule,
 	} {
 		if !strings.Contains(string(brief), want) {
 			t.Errorf("the issue brief carries %q:\n%s", want, brief)

@@ -22,4 +22,12 @@ When an agent or sub-agent loses its network connection mid-task, the work stall
 - **A lane whose agent died:** when the network returns, a fresh agent starts from the lane's last commit; uncommitted edits are saved aside for review, never built on.
 - **Telling the product thinker:** a notification only when the 8-hour limit is reached and the run stops; shorter outages appear in the end-of-run report with how long each lasted and what was retried.
 
+### Further decisions (2026-10-09, while building)
+
+- **One outage, two services:** the model service (Claude) being down is the same issue as the network being down. Each probe tests only what failed: the network by the git remote, the model service by a tiny canary agent the lead starts on the quickest, cheapest tier and reports with `implement outage probe --model ok|fail`.
+- **A usage limit is not an outage:** a usage or rate limit (a 429, "usage limit") is reported as it is and never waited out as a lost connection.
+- **Q1, an agent cut off mid-task:** it does not commit its edits. It stops and hands back with a final `NETWORK: <cmd>` line and no receipt; its uncommitted edits are saved aside for review through `implement step --restart <lane> --yielded "NETWORK: <cmd>"`, and the fresh agent starts from the last commit.
+- **Q2, a lead whose own turn died:** every run arms a standing wake-up every 20 minutes for its whole duration, so a lead whose turn died to an outage still follows the schedule.
+- **Q3, proving the model service back:** only the canary agent proves it, never the lead's own turn running. The canary runs only when `implement outage` shows a probe is due (read `next_probe_at` first), never once per lane.
+
 Proof belongs in a lab that cuts the network during a live run and shows each of the three kinds waited out, the shared probe holding the other lanes, a dead lane restarted from its last commit, and the give-up path ending in one notification.

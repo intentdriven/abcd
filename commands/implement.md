@@ -138,8 +138,8 @@ One line per event, appended in a single write, so two sessions writing at once
 each land whole lines. The events are `backoff`, `lane_open`, `lane_close`,
 `agent_start`, `agent_end`, `ceiling_wait`, `gate_run`, `review`, `fallback`,
 `stop`, `refusal`, `pr`, `capture`, `context`, `ceiling_overrun`,
-`intervention` and `decision`. The session, window and claim events belong to
-their own sub-verbs and are refused here.
+`intervention` and `decision`. The session, window, claim, load and outage
+events belong to their own sub-verbs and are refused here.
 
 An event missing a field the report reads is refused at exit 2, naming the
 field, with nothing written:
@@ -200,7 +200,7 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
@@ -292,6 +292,37 @@ refused naming the runs when there are several. A refusal exits 2 (3 on a pause
 or a locked state), writes nothing, and under `--json` comes as its own document
 before the error envelope, naming `refusal.stage`, `refusal.reason` and
 `refusal.remedy`.
+
+`step` reads the run's outage ([Wait out a lost connection](#wait-out-a-lost-connection))
+before it moves anything. While the network is down, a lane whose next move
+reaches the remote or the forge (a landing's push, pull request, arming or
+merged check; a hold's disarm) waits on the shared probe as a landing waits on
+its merge: `blocked` names it with the next probe's time, and the other lanes
+move. While the model service is down no agent is handed work; while the network
+is down, neither is an agent a runner starts. A git or `gh` failure the step
+meets that reads as the network becomes the same wait, and the step records the
+outage for the session `build --session` claimed the run for (without one, the
+result names the `outage record` to run). The result carries `outage` while one
+is open. A `step` that finds the network probe due runs it; the model side
+waits for the lead's canary. Once the run has given up, every `step` is refused
+at the stage `outage`, and `refusal.outage` names `since`, the `services`, the
+`probes`, `done` (the lanes landed and the pull requests open), `left` (each
+lane with its stage, and the pending spec steps) and `notify`, true until
+`outage ack`.
+
+`step --restart <lane-id>` restarts a lane whose implementer died, or yielded on
+a lost connection. The brief tells an implementer cut off mid-task not to retry
+and not to commit, but to stop and end its hand-back with one
+`NETWORK: <the failing command>` line and no receipt; pass that line as
+`--yielded`. The lane restarts as a fresh agent from its last commit: whatever
+was left uncommitted (staged, unstaged or untracked) is saved aside under the
+lane's directory, `aside/<UTC stamp>/` with `changes.patch`, `aside.json` and any
+partial receipt, once the patch is proved to apply to that commit; the lane's
+worktree is reset and cleaned; the run record names the aside for review; and
+the implementer await is re-told. The brief never names the aside, so no agent
+builds on it. It is refused, changing nothing, while the outage is open, for a
+lane with no implementer out, and for a worktree that is not the one the loop
+derives.
 
 The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
@@ -468,15 +499,61 @@ the run log as a `load` event (`run_log`).
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement outage [--json]
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [--json]
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement outage probe --session <id> [--model ok|fail] [--json]
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage ack|clear --session <id> [--reason <why>] [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage ack --session <id> [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage clear --session <id> --reason <why> [--json]
 ```
 
-A lane that loses the network or the model service records it with `outage
-record`, keeps to offline work, and at a network step waits on the one shared
-`outage probe`: exit 0 goes ahead, exit 3 waits until `next_probe_at`, exit 2
-means the run gave up and stops. Report every refusal as it is.
+A lost connection to the network (git, `gh`, a download) or to the model
+service (an agent back with an API error, overloaded, a 5xx, a timed-out
+request) is one **outage** for the whole run. The run keeps one outage record in
+the shared run state, so every session and every lane in every worktree sees the
+same one. Each lane keeps to the work it can do offline, and a lane that needs
+the lost service waits on one shared probe rather than retrying alone. A usage
+or rate limit (a 429, "usage limit") is not an outage: report it as it is and
+record nothing here.
 
- Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
+Bare `implement outage` is read-only and creates nothing. `outage` is null when
+there is none; otherwise it carries `status` (`open` or `gave_up`), `services`
+(every service the outage took) and `down` (those still down), `kinds` (what
+noticed it), `reports` (each lane and what it was doing), `probes`,
+`next_probe_at`, the `lease` of a session probing now, and `notify_pending`.
+Every sub-verb acts for a joined session (`--session`).
+
+- `record` reports one loss: `--service` names what was lost; `--kind` what
+  noticed it (`agent`: an agent came back failed, or with no receipt; `tool`: a
+  network call the lead made, a preflight, a download or `gh`; `host`: the
+  lead's own turn, recorded on resuming after it stalled); `--lane` the lane and
+  `--what` the step it will retry. The first report opens the outage and logs
+  `outage_start`; a later one joins it, adding its service. A report to an
+  outage that gave up joins it and raises no second notification.
+- `probe` runs the shared probe when it is due and no other session holds it.
+  The network is probed with `git ls-remote --exit-code origin HEAD`. The model
+  service is proven back only by a **canary**: a tiny agent the lead starts on
+  the quickest, cheapest tier, whose verdict it passes as `--model ok|fail`. The
+  lead's own turn running proves nothing, and without `--model` the model side
+  stays down. Read `next_probe_at` from the bare verb first and start the canary
+  only once a probe is due: once per due probe, never once per lane.
+  - Exit 0: no outage, or every service down is proven back. Go ahead.
+  - Exit 3: wait. The probe is not due, another session holds it, or a service
+    is still down; `--json` carries `next_probe_at`.
+  - Exit 2: the run gave up, or a refusal.
+- The probe falls due a minute after the outage opens, then five and ten
+  minutes after each failed probe, then hourly. The failed probe eight hours
+  into the hourly stage gives up: `status` becomes `gave_up`, the run stops, and
+  one notification is raised for the product thinker (`notify_pending`), the
+  only time they are told of the outage.
+- `ack` acknowledges that notification once the product thinker has been told.
+  It is refused when none is pending, so they are never told twice.
+- `clear` closes the outage by hand, open or given up, with `--reason`. It logs
+  `outage_end` and an `intervention`: the probe did not prove the connection
+  back on its own. A run that gave up resumes at its next `step`.
+
+Every outage, short or long, is logged (`outage_start`, `outage_probe`,
+`outage_end`, `outage_give_up`), and `report` and the run's `record` list each
+one with its minutes, its outcome and what was retried, so an outage nobody was
+told of still appears. Report every refusal as it is.
+
+**Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
 too, you are in a source checkout of this repo, where — and only there —

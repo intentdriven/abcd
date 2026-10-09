@@ -170,7 +170,7 @@ the fields; it reaches the file in one `O_APPEND` write through
 `fsutil.AppendLineIn`, which refuses a symlinked or non-regular leaf as its read
 twin does, so two writers each land whole lines and a log leaf planted as a link
 onto a claim file appends nothing. The session, window,
-claim and load events are refused here: they are written by their own sub-verbs,
+claim, load and outage events are refused here: they are written by their own sub-verbs,
 so the log cannot record a claim the run state does not hold, or a load warning
 the check did not give. A hand-logged `backoff` names its `reason` and the
 `minutes` it spent (a number no smaller than zero), or it is refused with nothing
@@ -310,6 +310,31 @@ reason and, for a design finding or a second package, the home: the receipt
 verb then discards the lane's worktree and branch, records the discarded head,
 and ends the lane before its validators, and the drain routes the hand-back by
 kind ([`35-drain.md`](35-drain.md)).
+
+## The lost connection
+
+A lost connection to the network (git, gh, a download) or to the model service
+is one outage for the run (iss-2610080620372731), kept in the shared run state
+beside the claims, so every session and lane in every worktree reads the same
+one. The outage sub-verb renders it, and its own sub-verbs report a loss (the
+service, what noticed it: the host, an agent or a tool, the lane and what it was
+doing), logging `outage_start` when the report opens the outage; run the one
+shared probe when it falls due, under a lease so one session probes while the
+others wait; acknowledge the give-up's notification; and close the outage by
+hand, logged as an intervention. The probe falls due a minute after the outage
+opens, then five and ten minutes after each failed probe, then hourly; the
+failed probe eight hours into the hourly stage gives up, stops the run and
+raises one notification for the product thinker, held until acknowledged. Each
+probe tests only what failed: the network by the git remote, the model service
+only by the verdict of a canary agent the lead runs, since abcd calls no model.
+A usage or rate limit is not an outage. The report lists every outage with its
+minutes, its outcome and what was retried, so a short one nobody was told of
+still appears.
+
+The loop's half is in [`34-build.md`](34-build.md): a step holds only the lanes
+the outage reaches, refuses every move once the run gave up, and restarts a lane
+whose implementer died or yielded from its last commit, the uncommitted edits
+saved aside.
 
 ## Exit codes
 

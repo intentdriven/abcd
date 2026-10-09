@@ -1099,7 +1099,10 @@ the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
 is all); at the cap, or when nothing eligible is left, the drain reports and ends,
 and the next `abcd drain` begins a new one. A cap or pace named while a drain is in
-progress that differs from the one it began with is refused.
+progress that differs from the one it began with is refused. Once a run gives up on a
+lost connection (`abcd implement outage`), the drain opens nothing and ends with
+stopped "outage", naming the services down, since when, the probes and the lanes it
+opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
@@ -2211,6 +2214,18 @@ The run's window clock: once the run's working window has elapsed, the call star
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
 agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
+
+The run's lost connection (`abcd implement outage`) is read before every move. While
+the network is down, a lane whose move reaches the remote or the forge (a landing's
+push, pull request, arming or merged check; a hold's disarm) waits on the shared probe,
+named under blocked: with the next probe's time, and the other lanes move; while the
+model service is down no agent is handed work, and while the network is down no runner
+is started. A git or gh failure that reads as the network becomes the same wait and is
+recorded for the session whose claim names the run. A call that finds the network
+probe due runs it; the model side waits for the lead's canary. Once the run has given
+up on the outage, every call is refused at the stage outage, naming since when, the
+probes, what was done, what is left and whether the product thinker's notification is
+pending (notify).
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
