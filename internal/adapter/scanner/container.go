@@ -813,6 +813,7 @@ func (s *Scanner) decodeTar(data []byte, secrets []Pattern, label string, b *dec
 	tr := tar.NewReader(counted)
 	verified, why := true, ""
 	for {
+		start := counted.n
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
 			break
@@ -824,6 +825,12 @@ func (s *Scanner) decodeTar(data []byte, secrets []Pattern, label string, b *dec
 			return false, formatTar + ": more than " + strconv.Itoa(maxDecodeEntries) + " entries"
 		}
 		name := entryLabel(label, h.Name)
+		// Next consumes the extension headers ahead of the entry it returns
+		// and keeps only what it parses out of them; the rest of their bodies
+		// is read by nobody unless the walk reads it here.
+		if ok, why := s.coverTarExtensions(data[start:counted.n], start, secrets, name, b, depth, out); !ok {
+			return false, why
+		}
 		s.scanEntryHeader(secrets, name, out, h.Name, h.Linkname, h.Uname, h.Gname)
 		// The header's own fields are the tar counterpart of a zip's names and
 		// comments. PAX lifts the classic length limits and forbids NUL only in
@@ -864,6 +871,96 @@ func (s *Scanner) decodeTar(data []byte, secrets []Pattern, label string, b *dec
 		return s.cover(tail, secrets, label+"!trailer", b, depth+1, out)
 	}
 	return true, ""
+}
+
+// coverTarExtensions covers the extension headers tar.Reader.Next consumed
+// while finding one entry: window is the raw bytes Next read, starting at
+// offset start in the archive. A GNU long name or long link (type L, K) keeps
+// only the C string before its first NUL as the next entry's name, and a later
+// one of the same type replaces it outright; a PAX record set (type x, g) is
+// parsed into a map, so a key written twice keeps only its last value. The
+// discarded bytes were never read by anyone, and the archive was reported
+// decoded (iss-2610090821512707). So each body is covered from the raw bytes:
+// a long name's string is a structural field like the name it becomes, the
+// bytes after its NUL are a region, a PAX body is a structural field whole, and
+// each body's padding to the block must be zero, as an entry's is.
+//
+// The window opens with the previous entry's block padding, which decodeTar
+// already judged, so the walk starts at the next block boundary; it stops at
+// the first header that is not an extension, which is the entry's own.
+func (s *Scanner) coverTarExtensions(window []byte, start int, secrets []Pattern, label string, b *decodeBudget, depth int, out *[]Finding) (bool, string) {
+	o := (512 - start%512) % 512
+	for o+512 <= len(window) {
+		blk := window[o : o+512]
+		typ := blk[156]
+		if typ != tar.TypeGNULongName && typ != tar.TypeGNULongLink && typ != tar.TypeXHeader && typ != tar.TypeXGlobalHeader {
+			return true, ""
+		}
+		size, ok := tarHeaderSize(blk[124:136])
+		bodyAt := o + 512
+		if !ok || size > len(window)-bodyAt {
+			return false, label + ": an extension header's size does not match what the reader consumed"
+		}
+		body := window[bodyAt : bodyAt+size]
+		next := bodyAt + size + (512-size%512)%512
+		if !allZero(window[bodyAt+size : min(next, len(window))]) {
+			return false, label + ": an extension header's padding to the block boundary is not zero"
+		}
+		field := label + "!" + string(typ)
+		switch typ {
+		case tar.TypeGNULongName, tar.TypeGNULongLink:
+			str, rest := body, []byte(nil)
+			if i := bytes.IndexByte(body, 0); i >= 0 {
+				str, rest = body[:i], body[i+1:]
+			}
+			if ok, why := s.coverStructuralField(str, field); !ok {
+				return false, why
+			}
+			if !allZero(rest) {
+				if ok, why := s.cover(rest, secrets, field+"!trailer", b, depth+1, out); !ok {
+					return false, why
+				}
+			}
+		default:
+			if ok, why := s.coverStructuralField(body, field); !ok {
+				return false, why
+			}
+		}
+		o = next
+	}
+	return true, ""
+}
+
+// tarHeaderSize parses a header's size field the way archive/tar does: base-256
+// when the high bit of the first byte is set, otherwise octal padded with
+// spaces or NULs. A field it cannot parse, a negative size, or one past any
+// archive the scan caps admit is reported as unparsed.
+func tarHeaderSize(field []byte) (int, bool) {
+	if len(field) > 0 && field[0]&0x80 != 0 {
+		if field[0]&0x40 != 0 {
+			return 0, false // negative
+		}
+		n := int64(field[0] & 0x3f)
+		for _, c := range field[1:] {
+			if n > maxBinaryScanBytes {
+				return 0, false
+			}
+			n = n<<8 | int64(c)
+		}
+		if n > maxBinaryScanBytes {
+			return 0, false
+		}
+		return int(n), true
+	}
+	digits := strings.Trim(string(field), " \x00")
+	if digits == "" {
+		return 0, true
+	}
+	n, err := strconv.ParseUint(digits, 8, 63)
+	if err != nil || n > maxBinaryScanBytes {
+		return 0, false
+	}
+	return int(n), true
 }
 
 // coverTarHeader judges the fields a tar header carries: the four the format
