@@ -1,4 +1,4 @@
-package gitutil
+package gitutil_test
 
 import (
 	"os"
@@ -7,6 +7,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestReadOnlyLogDoesNotRunARepoSigningProgram is iss-2610090821531394. With
@@ -31,7 +34,7 @@ func TestReadOnlyLogDoesNotRunARepoSigningProgram(t *testing.T) {
 	git := func(stdin string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = gitEnv()
+		cmd.Env = gittest.Env(t)
 		if stdin != "" {
 			cmd.Stdin = strings.NewReader(stdin)
 		}
@@ -71,12 +74,12 @@ func TestReadOnlyLogDoesNotRunARepoSigningProgram(t *testing.T) {
 	}
 
 	reads := map[string]func() (string, error){
-		"Run log": func() (string, error) { return Run(repo, "log", "-1", "--format=%s") },
+		"Run log": func() (string, error) { return gitutil.Run(repo, "log", "-1", "--format=%s") },
 		"RunLimited log": func() (string, error) {
-			return RunLimited(repo, 4096, "log", "--format=%s")
+			return gitutil.RunLimited(repo, 4096, "log", "--format=%s")
 		},
 		"RunCapped show": func() (string, error) {
-			return RunCapped(repo, 4096, "show", "--no-patch", "--format=%s", "HEAD")
+			return gitutil.RunCapped(repo, 4096, "show", "--no-patch", "--format=%s", "HEAD")
 		},
 	}
 	for name, read := range reads {

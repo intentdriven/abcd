@@ -1,10 +1,13 @@
-package gitutil
+package gitutil_test
 
 import (
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestFilterOverridesBlanksEveryConfiguredFilter: no filter is an empty list
@@ -22,14 +25,14 @@ func TestFilterOverridesBlanksEveryConfiguredFilter(t *testing.T) {
 	git := func(args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = gitEnv()
+		cmd.Env = gittest.Env(t)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v: %s", args, err, out)
 		}
 	}
 	git("init", "-q")
 
-	got, err := FilterOverrides(repo)
+	got, err := gitutil.FilterOverrides(repo)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("no filter configured: got %q, %v; want an empty list and no error", got, err)
 	}
@@ -37,7 +40,7 @@ func TestFilterOverridesBlanksEveryConfiguredFilter(t *testing.T) {
 	git("config", "filter.lfs.clean", "x")
 	git("config", "filter.lfs.required", "true")
 	git("config", "filter.a.b.process", "y")
-	got, err = FilterOverrides(repo)
+	got, err = gitutil.FilterOverrides(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +51,7 @@ func TestFilterOverridesBlanksEveryConfiguredFilter(t *testing.T) {
 	}
 
 	git("config", "filter.x=y.clean", "z")
-	if got, err := FilterOverrides(repo); err == nil {
+	if got, err := gitutil.FilterOverrides(repo); err == nil {
 		t.Fatalf("a filter name holding '=' must be refused, got %q", got)
 	}
 }
@@ -69,14 +72,14 @@ func TestMergeDriverOverridesReplaceEveryConfiguredDriver(t *testing.T) {
 	git := func(args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = gitEnv()
+		cmd.Env = gittest.Env(t)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v: %s", args, err, out)
 		}
 	}
 	git("init", "-q")
 
-	got, err := MergeDriverOverrides(repo)
+	got, err := gitutil.MergeDriverOverrides(repo)
 	if err != nil || strings.Join(got, " ") != "-c merge.default=text" {
 		t.Fatalf("no driver configured: got %q, %v; want only merge.default pinned", got, err)
 	}
@@ -85,17 +88,17 @@ func TestMergeDriverOverridesReplaceEveryConfiguredDriver(t *testing.T) {
 	git("config", "merge.evil.driver", "x %A")
 	git("config", "merge.evil.recursive", "binary")
 	git("config", "merge.a.b.name", "named only")
-	got, err = MergeDriverOverrides(repo)
+	got, err = gitutil.MergeDriverOverrides(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "-c merge.default=text -c merge.evil.driver=" + BuiltinMergeDriver + " -c merge.a.b.driver=" + BuiltinMergeDriver
+	want := "-c merge.default=text -c merge.evil.driver=" + gitutil.BuiltinMergeDriver + " -c merge.a.b.driver=" + gitutil.BuiltinMergeDriver
 	if strings.Join(got, " ") != want {
 		t.Fatalf("got %q\nwant %q", strings.Join(got, " "), want)
 	}
 
 	git("config", "merge.x=y.driver", "z")
-	if got, err := MergeDriverOverrides(repo); err == nil {
+	if got, err := gitutil.MergeDriverOverrides(repo); err == nil {
 		t.Fatalf("a driver name holding '=' must be refused, got %q", got)
 	}
 }

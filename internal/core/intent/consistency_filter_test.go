@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestConsistencyDirtyCheckRunsNoRepoFilter is iss-2610090821548169: the
@@ -41,7 +43,7 @@ func TestConsistencyDirtyCheckRunsNoRepoFilter(t *testing.T) {
 
 	// The fixture is live: a plain diff under the same environment runs it.
 	cmd := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD")
-	cmd.Env = r.Env()
+	cmd.Env = gittest.Env(t)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fixture diff: %v: %s", err, out)
 	}

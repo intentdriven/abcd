@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestCheckReleaseReceiptsRunsNoRepoFilter is iss-2610090821548169: the
@@ -49,7 +51,7 @@ func TestCheckReleaseReceiptsRunsNoRepoFilter(t *testing.T) {
 
 	// The fixture is live: a plain status under the same environment runs it.
 	cmd := exec.Command("git", "-C", r.Root(), "status", "--porcelain", "--", ".abcd/work/reviews")
-	cmd.Env = r.Env()
+	cmd.Env = gittest.Env(t)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fixture status: %v: %s", err, out)
 	}
