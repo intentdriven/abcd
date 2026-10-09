@@ -171,7 +171,7 @@ func (r Registry) ScriptLesson() string {
 	if r.Disabled {
 		lead = guardOffLead + " (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"
 	}
-	return lead + ": a script a shell runs — `bash f`, `source f`, a direct `./f.sh`, " +
+	return lead + ": a script a shell runs — `bash f`, `source f`, `bash < f`, a direct `./f.sh`, " +
 		"and the startup files `BASH_ENV`, `ENV`, `--rcfile`/`--init-file` or an assigned `ZDOTDIR`/`HOME` select — " +
 		"is read before the command and judged by the entries above, and a script written earlier on the same line " +
 		"is refused outright, because the file read now is not the one that runs. Instead: write a script in one " +

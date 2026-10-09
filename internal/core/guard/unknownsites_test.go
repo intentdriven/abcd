@@ -103,6 +103,7 @@ var wordReaders = map[string]string{
 	"curlTargets":    "isUnknown on every URL it names; an unknown one is a write the guard cannot place",
 	"cdTarget":       "exempt: reads cd's literal options; its target goes through resolveToken, which refuses a word holding a substitution's output or a variable's value",
 	"sourceIndex":    "exempt: reads source's literal `--`; its operand goes through fixedToken, which refuses an unknown word",
+	"applyRedirects": "exempt: reads redirection operators and targets the tokenizer recorded, whose target is marked unfixed (pathWord.ok) where it holds an expansion",
 	"writesOf":       "exempt: reads redirection operators and targets the tokenizer recorded, whose target is marked unfixed (pathWord.ok) where it holds an expansion",
 	"isShellScript":  "exempt: reads a file's shebang line, never a command word",
 	"operandIdx":     "exempt: steps a writer's literal options; each operand goes through resolveToken, which refuses an unknown word (the writer list is incomplete by design, adr-2610091150447054 decision 6)",

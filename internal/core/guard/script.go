@@ -18,15 +18,15 @@ import (
 // (adr-2610091150447054). The stream refusal (interpreter-reads-stream) told
 // the agent to save a script and run it as a file, and every file form was an
 // allow that the shell then ran: `printf '<blocker>' > s.sh; bash s.sh`,
-// `source s.sh`, `BASH_ENV=e bash -c true`, `bash --init-file e -i -c true`.
-// The successor was the route around the guard.
+// `source s.sh`, `BASH_ENV=e bash -c true`, `bash --init-file e -i -c true`,
+// `bash < s.sh`. The successor was the route around the guard.
 //
 // So a shell-family shell pointed at a file has the file read and judged with
-// the registry's Tier 1 rules: its script operand, a `source`/`.` operand,
-// and the startup files the line selects (BASH_ENV, ENV for an interactive
-// shell, --rcfile/--init-file, the zsh files under an assigned ZDOTDIR or
-// HOME, and a login or interactive bash's under an assigned HOME). A path run
-// directly is classified by its
+// the registry's Tier 1 rules: its script operand, a `source`/`.` operand, the
+// file a redirection makes its standard input, and the startup files the line
+// selects (BASH_ENV, ENV for an interactive shell, --rcfile/--init-file, the
+// zsh files under an assigned ZDOTDIR or HOME, and a login or interactive
+// bash's under an assigned HOME). A path run directly is classified by its
 // first bytes, and read only when it is a shell script. A file written earlier
 // on the same line blocks, because the file read at check time is not the one
 // that runs. Where the guard cannot be sure which bytes the shell will run it
@@ -76,6 +76,11 @@ const (
 	// each is read, so a line naming thousands of scripts costs what sixty-four
 	// do. Past it the guard warns through the budget's signal.
 	maxScriptTargets = 4 * maxScriptFiles
+
+	// maxTrackedFDs bounds the descriptors the reading follows; one opened
+	// past it is not followed, and a shell's standard input duplicated from it
+	// is not read.
+	maxTrackedFDs = 64
 )
 
 // trackedVars are the only variables the reading follows: the ones that
@@ -231,14 +236,16 @@ type scriptRun struct {
 
 // shellState is what the guard knows of the shell a command runs in: its
 // directory (dirOK false where it cannot say), a `cd` the next commands run
-// in only while each is chained after it with `&&`, and the variables the
-// line set and which of them are exported.
+// in only while each is chained after it with `&&`, the variables the line
+// set and which of them are exported, and the descriptors the line opened on
+// files.
 type shellState struct {
 	dir      string
 	dirOK    bool
 	cd       *pendingCD
 	vars     map[string]varVal
 	exported map[string]bool
+	fds      map[int]fdFile
 }
 
 type pendingCD struct {
@@ -253,6 +260,13 @@ type varVal struct {
 	ok   bool
 }
 
+// fdFile is a descriptor open on a file; ok is false where the line does not
+// fix which.
+type fdFile struct {
+	path string
+	ok   bool
+}
+
 func (st *shellState) clone() *shellState {
 	n := *st
 	n.vars = make(map[string]varVal, len(st.vars))
@@ -262,6 +276,10 @@ func (st *shellState) clone() *shellState {
 	n.exported = make(map[string]bool, len(st.exported))
 	for k, v := range st.exported {
 		n.exported[k] = v
+	}
+	n.fds = make(map[int]fdFile, len(st.fds))
+	for k, v := range st.fds {
+		n.fds[k] = v
 	}
 	return &n
 }
@@ -384,12 +402,85 @@ func (st *shellState) env(s segment, site int) map[string]varVal {
 // childState is the state a child shell starts in: the directory st runs
 // in, and the environment it hands down, every variable of it exported.
 func childState(st *shellState, env map[string]varVal) *shellState {
-	n := &shellState{dir: st.dir, dirOK: st.dirOK, vars: map[string]varVal{}, exported: map[string]bool{}}
+	n := &shellState{dir: st.dir, dirOK: st.dirOK, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
 	for k, v := range env {
 		n.vars[k] = v
 		n.exported[k] = true
 	}
+	for k, v := range st.fds {
+		n.fds[k] = v
+	}
 	return n
+}
+
+// applyRedirects opens the descriptors redirections name, in order, on top
+// of fds, which it changes.
+func (st *shellState) applyRedirects(rc *readCtx, fds map[int]fdFile, rs []redirect) {
+	set := func(fd int, f fdFile) {
+		if fd >= 0 && fd < maxTrackedFDs {
+			fds[fd] = f
+		}
+	}
+	for _, r := range rs {
+		fd := r.fd
+		switch r.op {
+		case "&>", "&>>":
+			delete(fds, 1)
+			delete(fds, 2)
+			continue
+		case "<&", ">&":
+			if fd < 0 {
+				fd = 0
+				if r.op == ">&" {
+					fd = 1
+				}
+			}
+			switch t := r.target.text; {
+			case !r.target.ok:
+				set(fd, fdFile{})
+			case t == "-":
+				delete(fds, fd)
+			case isAllDigits([]byte(t)):
+				src := 0
+				fmt.Sscan(t, &src)
+				if f, ok := fds[src]; ok {
+					set(fd, f)
+				} else {
+					delete(fds, fd)
+				}
+			default:
+				// `>&file` is a file opened for writing on fd 1 and 2.
+				p, ok := st.resolve(rc, t, r.target.tilde)
+				set(fd, fdFile{path: p, ok: ok})
+			}
+			continue
+		}
+		if fd < 0 {
+			fd = 0
+			if strings.HasPrefix(r.op, ">") {
+				fd = 1
+			}
+		}
+		if !r.target.ok {
+			set(fd, fdFile{})
+			continue
+		}
+		p, ok := st.resolve(rc, r.target.text, r.target.tilde)
+		set(fd, fdFile{path: p, ok: ok})
+	}
+}
+
+// stdinOf is the file the command s reads as standard input, when a
+// redirection on the line puts one there; ok reports one does, and fixed
+// whether the line fixes which.
+func (st *shellState) stdinOf(rc *readCtx, s segment) (f fdFile, ok bool) {
+	fds := make(map[int]fdFile, len(st.fds))
+	for k, v := range st.fds {
+		fds[k] = v
+	}
+	st.applyRedirects(rc, fds, s.redirects)
+	f, ok = fds[0]
+	return f, ok
 }
 
 // writeTarget is a path a command writes; ok is false where the line does
@@ -439,7 +530,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		top = run.state
 	} else {
 		top = &shellState{dir: rc.files.dir, dirOK: rc.files.dir != "" && filepath.IsAbs(rc.files.dir),
-			vars: map[string]varVal{}, exported: map[string]bool{}}
+			vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
 	}
 
 	// The state each segment runs in, walked in order within each shell: the
@@ -456,6 +547,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				cs := recs[c].state
 				site := lastSite(segs[c])
 				st = childState(cs, cs.env(segs[c], site))
+				cs.applyRedirects(rc, st.fds, segs[c].redirects)
 				if s.fromFixedOutput || isEvalCarrier(segs[c]) {
 					// Another reading of the carrier, or a string eval runs in
 					// the carrier's own shell.
@@ -561,6 +653,11 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				n.vars[name] = v
 			}
 		}
+		return n
+	}
+	if len(s.tokens) == 1 && s.tokens[0] == "exec" && len(s.redirects) > 0 {
+		n := st.clone()
+		st.applyRedirects(rc, n.fds, s.redirects)
 		return n
 	}
 	out := st
@@ -1030,6 +1127,10 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 		case variableCarried(s, idx) || scriptIsStream(w, s.stdinStream):
 			// A stream the stream refusal reads; a variable's value the class
 			// (2) ruling owes a verdict.
+		case containsString(stdinDevices, w):
+			if f, ok := st.stdinOf(rc, s); ok && f.ok {
+				out = append(out, child(f.path, w+" (its standard input, "+f.path+")", targetScript))
+			}
 		default:
 			if p, ok := st.resolveToken(rc, s, idx); ok {
 				if _, err := os.Lstat(p); err != nil && !strings.Contains(w, "/") {
@@ -1039,6 +1140,10 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 				}
 				out = append(out, child(p, w, targetScript))
 			}
+		}
+	} else if c.stdin && !c.cmdString {
+		if f, ok := st.stdinOf(rc, s); ok && f.ok {
+			out = append(out, child(f.path, "its standard input ("+f.path+")", targetScript))
 		}
 	}
 	return out, sigs
@@ -1116,6 +1221,7 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		state.cd = nil
 	} else {
 		state = childState(st, t.env)
+		state.fds = map[int]fdFile{}
 	}
 	if t.kind == targetDirect && t.startupEnv {
 		// A shell script run directly is run by a non-interactive shell, which

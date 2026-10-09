@@ -327,7 +327,9 @@ does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
-`PATH` and then in the working directory when it has no slash), and the
+`PATH` and then in the working directory when it has no slash), the file a
+redirection makes a shell's standard input when it has no `-c` string and no
+script (`bash < s.sh`, `bash -s < s.sh`, `exec 3< s.sh; bash <&3`), and the
 startup files the line selects — `BASH_ENV=f`, `ENV=f` on an interactive shell
 (`-i`), `--rcfile f` and `--init-file f`, the zsh startup files under an
 assigned `ZDOTDIR` or `HOME` (`.zshenv`, and `.zprofile`, `.zshrc`, `.zlogin`
