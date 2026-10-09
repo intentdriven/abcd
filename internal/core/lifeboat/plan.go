@@ -200,6 +200,9 @@ func Plan(repoRoot string, opts ...ProbeOption) (Lifeboat, error) {
 		o(ctx)
 	}
 	defer ctx.Close()
+	if err := ctx.ignoreScopeErr(); err != nil {
+		return Lifeboat{}, err
+	}
 
 	pb := newPlanBuilder()
 

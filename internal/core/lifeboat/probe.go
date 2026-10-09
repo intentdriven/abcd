@@ -1,6 +1,7 @@
 package lifeboat
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -169,6 +170,11 @@ type SourceContext struct {
 	includeIgnored bool
 	ignoredOnce    sync.Once
 	notIgnored     map[string]struct{} // nil when unknown or not applicable
+	// ignoreRefusal is the lazy-fetch floor's refusal of the ignore listing
+	// (gitutil.ErrLazyFetchFloor), set by the same once. It is the one git
+	// failure that does NOT widen: Probe and Plan refuse on it, and a walk
+	// that runs anyway narrows every path (iss-2610091935324732).
+	ignoreRefusal error
 
 	// listCap bounds a single directory listing (ListDir / listDirNoted) and each
 	// directory WalkFiles reads — the one per-directory bound. It is a field
@@ -625,6 +631,13 @@ func (c *SourceContext) walkStart(start string) (isDir, isFile bool) {
 // not silently narrow on a repository it could not interrogate: losing evidence
 // quietly is the failure this whole adapter family exists to avoid.
 //
+// The exception is the lazy-fetch floor. Below git 2.44 a partial clone refuses
+// the listing, because reading the ignore rules can fetch a skip-worktree
+// .gitignore through the repository's configured transport. That is not a git
+// that could not answer but a scan abcd declined to make, and widening on it
+// would read every ignored file by default; so the refusal is kept for Probe
+// and Plan to report (ignoreScopeErr), and every path reads as ignored.
+//
 // The not-ignored set is computed ONCE per context, from a single
 // `ls-files --cached --others --exclude-standard`. That is git's own answer to
 // "everything tracked, plus everything untracked that is not ignored", so the
@@ -646,6 +659,10 @@ func (c *SourceContext) pathIsIgnored(rel string) bool {
 		out, err := gitutil.RunCapped(c.RepoRoot, ignoredListCapBytes,
 			"ls-files", "--cached", "--others", "--exclude-standard", "-z")
 		if err != nil {
+			if errors.Is(err, gitutil.ErrLazyFetchFloor) {
+				c.ignoreRefusal = err
+				return
+			}
 			return // unknown: git could not answer, so narrow nothing
 		}
 		// An empty listing is a definite answer, not an unknown: git is saying
@@ -662,11 +679,29 @@ func (c *SourceContext) pathIsIgnored(rel string) bool {
 		}
 		c.notIgnored = set
 	})
+	if c.ignoreRefusal != nil {
+		return true // refused, not unknown: narrow everything, never widen
+	}
 	if c.notIgnored == nil {
 		return false
 	}
 	_, ok := c.notIgnored[rel]
 	return !ok
+}
+
+// ignoreScopeErr computes the ignore listing (once, shared with pathIsIgnored)
+// and returns the lazy-fetch floor's refusal of it, wrapped to say what the
+// default scan needed; nil when the listing ran, failed any other way, or is
+// not needed (the wide scan, or a non-git tree).
+func (c *SourceContext) ignoreScopeErr() error {
+	if c.includeIgnored || !c.isGit {
+		return nil
+	}
+	c.pathIsIgnored(".")
+	if c.ignoreRefusal != nil {
+		return fmt.Errorf("the default scan leaves out what git ignores, and git cannot list it here: %w", c.ignoreRefusal)
+	}
+	return nil
 }
 
 // IgnoredAreIncluded reports whether this walk reads files git ignores. Adapters
@@ -771,6 +806,9 @@ func Probe(repoRoot string, opts ...ProbeOption) (Coverage, error) {
 		o(ctx)
 	}
 	defer ctx.Close()
+	if err := ctx.ignoreScopeErr(); err != nil {
+		return Coverage{}, err
+	}
 
 	present := tiersPresent(ctx)
 	presentSet := map[Tier]bool{}

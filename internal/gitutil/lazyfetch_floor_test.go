@@ -167,8 +167,8 @@ func TestIgnoreReadsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
 	if !gitutil.IsIgnored(root, "secret.txt") {
 		t.Fatal("no promisor remote: IsIgnored no longer answers on old git")
 	}
-	if got := gitutil.IgnoredUnder(root, "."); len(got) == 0 {
-		t.Fatal("no promisor remote: IgnoredUnder no longer answers on old git")
+	if got, err := gitutil.IgnoredUnder(root, "."); err != nil || len(got) == 0 {
+		t.Fatalf("no promisor remote: IgnoredUnder no longer answers on old git: %q, %v", got, err)
 	}
 
 	r.Git("config", "remote.origin.promisor", "true")
@@ -187,7 +187,101 @@ func TestIgnoreReadsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
 	if gitutil.IsIgnored(root, "secret.txt") {
 		t.Error("partial clone on git 2.39: CheckIgnored ran git check-ignore")
 	}
-	if got := gitutil.IgnoredUnder(root, "."); len(got) != 0 {
-		t.Errorf("partial clone on git 2.39: IgnoredUnder ran git ls-files --ignored: %v", got)
+	// IgnoredUnder returns the refusal, so a caller pruning by it can say so.
+	if got, err := gitutil.IgnoredUnder(root, "."); len(got) != 0 || !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+		t.Errorf("partial clone on git 2.39: IgnoredUnder = %q, %v; want nothing and ErrLazyFetchFloor", got, err)
 	}
+}
+
+// TestSparseListingsRefuseAPartialCloneBelowTheLazyFetchFloor is the
+// coordinator's ruling on iss-2610091935324732: with a sparse checkout or a
+// sparse index, ls-files can expand the index by reading tree objects, so
+// below 2.44 a partial clone whose config enables core.sparseCheckout or
+// index.sparse (read through the same isolated config view, or set on the
+// command line) refuses EVERY ls-files, the plain index listings included. A
+// partial clone without those settings keeps the index-only allowance, a
+// repository with no promisor remote runs as before, and at the floor the
+// sparse partial clone lists again.
+func TestSparseListingsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("kept.txt", "kept\n")
+	r.Commit("c0")
+	root := r.Root()
+
+	gitutil.SetGitVersionSource(t, func() (string, error) { return "git version 2.39.5 (Apple Git-154)", nil })
+
+	listings := [][]string{
+		{"ls-files"},
+		{"ls-files", "-z"},
+		{"ls-files", "--cached", "-z"},
+		{"ls-files", "--stage", "-z", "--", ":(glob)**/.gitattributes"},
+		{"ls-files", "--sparse"},
+		{"ls-files", "--", "kept.txt"},
+	}
+	others := [][]string{
+		{"rev-parse", "--show-toplevel"},
+		{"config", "--get", "core.sparsecheckout"},
+		{"check-ignore", "--no-index", "kept.txt"},
+	}
+	run := func(args []string) error {
+		t.Helper()
+		_, err := gitutil.Run(root, args...)
+		return err
+	}
+	allRun := func(label string, set [][]string) {
+		t.Helper()
+		for _, args := range set {
+			if err := run(args); errors.Is(err, gitutil.ErrLazyFetchFloor) {
+				t.Errorf("%s: git %v refused: %v", label, args, err)
+			}
+		}
+	}
+	allRefused := func(label string, set [][]string) {
+		t.Helper()
+		for _, args := range set {
+			if err := run(args); !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+				t.Errorf("%s: git %v was not refused (err %v)", label, args, err)
+			}
+		}
+	}
+
+	// Sparse but no promisor remote: nothing can lazy-fetch.
+	r.Git("config", "core.sparseCheckout", "true")
+	r.Git("config", "index.sparse", "true")
+	allRun("sparse, no promisor remote", listings)
+
+	// A partial clone that is not sparse keeps the index-only allowance.
+	r.Git("config", "--unset", "core.sparseCheckout")
+	r.Git("config", "--unset", "index.sparse")
+	r.Git("config", "remote.origin.promisor", "true")
+	allRun("partial clone, not sparse", listings)
+	r.Git("config", "core.sparseCheckout", "false")
+	r.Git("config", "index.sparse", "0")
+	allRun("partial clone, sparse settings false", listings)
+
+	// core.sparseCheckout alone.
+	r.Git("config", "core.sparseCheckout", "true")
+	allRefused("partial clone, core.sparseCheckout", listings)
+	allRun("partial clone, core.sparseCheckout, not ls-files", others)
+	r.Git("config", "core.sparseCheckout", "false")
+
+	// index.sparse alone, as a bare (true) key in a different case.
+	r.Git("config", "index.Sparse", "yes")
+	allRefused("partial clone, index.sparse", listings)
+	r.Git("config", "index.sparse", "false")
+
+	// The same settings on the command line count too.
+	for _, kv := range []string{"core.sparseCheckout=true", "index.sparse", "INDEX.SPARSE=on"} {
+		if err := run([]string{"-c", kv, "ls-files", "-z"}); !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+			t.Errorf("partial clone, -c %s ls-files: not refused (err %v)", kv, err)
+		}
+	}
+	if err := run([]string{"-c", "index.sparse=false", "ls-files", "-z"}); errors.Is(err, gitutil.ErrLazyFetchFloor) {
+		t.Errorf("partial clone, -c index.sparse=false ls-files: refused: %v", err)
+	}
+
+	// At the floor the sparse partial clone lists.
+	r.Git("config", "core.sparseCheckout", "true")
+	gitutil.SetGitVersionSource(t, func() (string, error) { return "git version 2.44.0", nil })
+	allRun("sparse partial clone on git 2.44", listings)
 }

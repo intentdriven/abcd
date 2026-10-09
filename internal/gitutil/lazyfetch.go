@@ -43,6 +43,15 @@ type versionCache struct {
 
 var gitVersion = &versionCache{src: probeGitVersion}
 
+// SwapGitVersionForTest replaces the `git version` probe the lazy-fetch floor
+// reads, so a test in any package can put git on either side of the floor
+// whatever is installed. It returns the restore, which puts the real probe
+// back; the cached answer is cleared both ways.
+func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
+	gitVersion.set(src)
+	return func() { gitVersion.set(probeGitVersion) }
+}
+
 // set replaces the source and clears the cached answer.
 func (v *versionCache) set(src func() (string, error)) {
 	v.mu.Lock()
@@ -102,22 +111,72 @@ func probeGitVersion() (string, error) {
 // objects, or when the repository under root declares no promisor remote;
 // ErrLazyFetchFloor otherwise. On a git at or past the floor it costs nothing
 // after the first call.
+//
+// ls-files is index-only for the flags readsObjects admits, unless the index
+// is sparse: with core.sparseCheckout or index.sparse enabled, git can expand
+// a sparse index by reading tree objects, so in a partial clone below the
+// floor EVERY ls-files is refused (coordinator ruling on
+// iss-2610091935324732). The settings are read through the same isolated
+// config view, and from any -c the command line carries.
 func lazyFetchGuard(root string, args []string) error {
 	if ok, _ := gitVersion.honoursNoLazyFetch(); ok {
 		return nil
 	}
-	if !readsObjects(args) {
+	reads := readsObjects(args)
+	listing := subcommand(args) == "ls-files"
+	if !reads && !listing {
 		return nil
 	}
-	promisor, err := declaresPromisor(root)
+	cfg, err := readFloorConfig(root)
 	if err != nil {
 		return err
 	}
-	if promisor {
-		_, raw := gitVersion.honoursNoLazyFetch()
+	cmdPromisor, cmdSparse := commandLineFloorConfig(args)
+	if !cfg.promisor && !cmdPromisor {
+		return nil
+	}
+	_, raw := gitVersion.honoursNoLazyFetch()
+	if reads {
 		return fmt.Errorf("%w (git on PATH: %q)", ErrLazyFetchFloor, raw)
 	}
+	if cfg.sparse || cmdSparse {
+		return fmt.Errorf("%w (git on PATH: %q; the repository enables a sparse checkout or sparse index, so ls-files can read tree objects to expand it)", ErrLazyFetchFloor, raw)
+	}
 	return nil
+}
+
+// subcommand is the git subcommand an isolated command line names, past any
+// leading -c pairs; "" when there is none.
+func subcommand(args []string) string {
+	i := 0
+	for i+1 < len(args) && args[i] == "-c" {
+		i += 2
+	}
+	if i >= len(args) {
+		return ""
+	}
+	return args[i]
+}
+
+// commandLineFloorConfig reads the floor's settings from the leading -c pairs
+// of a command line: a promisor declaration (extensions.partialClone, or a
+// remote.<name>.promisor git reads as true) and a sparse setting
+// (core.sparseCheckout or index.sparse read as true). A -c key with no "=" is
+// true, as git reads it.
+func commandLineFloorConfig(args []string) (promisor, sparse bool) {
+	for i := 0; i+1 < len(args) && args[i] == "-c"; i += 2 {
+		key, val, hasVal := strings.Cut(args[i+1], "=")
+		on := !hasVal || !isGitFalse(val)
+		switch k := strings.ToLower(key); {
+		case k == "extensions.partialclone":
+			promisor = promisor || (hasVal && strings.TrimSpace(val) != "")
+		case strings.HasPrefix(k, "remote.") && strings.HasSuffix(k, ".promisor"):
+			promisor = promisor || on
+		case k == "core.sparsecheckout", k == "index.sparse":
+			sparse = sparse || on
+		}
+	}
+	return promisor, sparse
 }
 
 // readsObjects reports whether an isolated command line can read an object,
@@ -221,16 +280,23 @@ func pathspecReadsAttributes(p string) bool {
 	return false
 }
 
-// declaresPromisor reports whether the repository under root declares a
-// promisor remote: extensions.partialClone set, or any remote.<name>.promisor
-// true. It reads through the same isolated config view the guarded command
-// would (global and system config neutralised, includes followed), so a key
-// git would act on is a key it sees. A config read git cannot answer (exit
-// other than 1, which is "no such key") is returned as an error: the guard
-// fails closed.
-func declaresPromisor(root string) (bool, error) {
+// floorConfig is what the lazy-fetch floor reads from a repository's config.
+type floorConfig struct {
+	promisor bool // extensions.partialClone set, or a remote.<name>.promisor true
+	sparse   bool // core.sparseCheckout or index.sparse true
+}
+
+// readFloorConfig reads the repository's promisor and sparse settings: a
+// promisor remote is extensions.partialClone set or any remote.<name>.promisor
+// true; sparse is core.sparseCheckout or index.sparse true. It reads through
+// the same isolated config view the guarded command would (global and system
+// config neutralised, includes followed, the worktree config where git reads
+// it), so a key git would act on is a key it sees. A config read git cannot
+// answer (exit other than 1, which is "no such key") is returned as an error,
+// and a listing past the cap counts as both: the guard fails closed.
+func readFloorConfig(root string) (floorConfig, error) {
 	cmd := exec.Command("git", isolatedArgs(root, []string{"config", "-z", "--get-regexp",
-		`^(extensions\.partialclone|remote\..*\.promisor)$`})...)
+		`^(extensions\.partialclone|remote\..*\.promisor|core\.sparsecheckout|index\.sparse)$`})...)
 	cmd.Env = gitEnv()
 	w := &capWriter{remaining: 64 << 10}
 	e := &capWriter{remaining: 4096}
@@ -238,28 +304,32 @@ func declaresPromisor(root string) (bool, error) {
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
-			return false, nil
+			return floorConfig{}, nil
 		}
-		return false, fmt.Errorf("reading the repository's promisor config before an object read: %w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+		return floorConfig{}, fmt.Errorf("reading the repository's promisor config before an object read: %w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 	}
 	if w.overflowed {
-		return true, nil
+		return floorConfig{promisor: true, sparse: true}, nil
 	}
+	var cfg floorConfig
 	for _, entry := range bytes.Split(w.buf, []byte{0}) {
 		if len(entry) == 0 {
 			continue
 		}
 		key, val, hasVal := strings.Cut(string(entry), "\n")
-		if key == "extensions.partialclone" {
-			return true, nil
-		}
-		// remote.<name>.promisor: a bare key is true; only a value git reads
-		// as false clears it, and an unparseable one counts as true.
-		if !hasVal || !isGitFalse(val) {
-			return true, nil
+		// A bare key is true; only a value git reads as false clears it, and
+		// an unparseable one counts as true.
+		on := !hasVal || !isGitFalse(val)
+		switch key {
+		case "extensions.partialclone":
+			cfg.promisor = true
+		case "core.sparsecheckout", "index.sparse":
+			cfg.sparse = cfg.sparse || on
+		default: // remote.<name>.promisor
+			cfg.promisor = cfg.promisor || on
 		}
 	}
-	return false, nil
+	return cfg, nil
 }
 
 // isGitFalse reports whether git reads a boolean config value as false.
