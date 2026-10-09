@@ -38,6 +38,7 @@ related_adrs: [adr-47, adr-2610091010387033]
 ## Open Questions
 
 - Which repositories are rendered, and how does one join or leave? Every public repository carrying abcd's managed marker, or only those whose owners opt in, and how an owner withdraws one. Decided in adr-2610091010387033, which reverses adr-47's decision that the site renders abcd's repository and nothing else.
+- Since abcdev.app renders private repositories too (Decisions, 2026-10-09), what does a private project's page show to someone not signed in: nothing, or that it exists?
 - What does a page say about who wrote it? The site renders spans of a repository's own files; a third party's files are not abcd's, under abcd's domain.
 - How are pages built: on a schedule, on the owner's request, or from the owner's own release, within the GitHub API's limits? The research is owed first (iss-2610091010558682).
 - What sits at abcdev.app/ itself once abcd's pages move to /intentdriven/abcd/: a general landing page, a directory of projects, or abcd's showcase again?
@@ -49,3 +50,4 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 ## Decisions
 
 - 2026-10-09: the product thinker ruled that abcdev.app and abcdesign.app are both kept: abcdev.app shows a project's landing page and record, abcdesign.app is where anyone opens and edits its brief (itd-2610052000411162). Answer verbatim: "Keep both sites".
+- 2026-10-09: the product thinker ruled that the reach and load rules set for abcdesign.app apply to abcdev.app too. Answer verbatim: "same applies to abcdev.app, too (not just abcdesign.app)". So public and private repositories are both supported, a private one only through the person's own GitHub sign-in; read-only builds without a sign-in are rate-limited so bots cannot exhaust the site's GitHub allowance; a signed-in build spends the person's own allowance; and a shared cache serves public pages to everyone but a private page only to people the repository admits (adr-2610091010387033).

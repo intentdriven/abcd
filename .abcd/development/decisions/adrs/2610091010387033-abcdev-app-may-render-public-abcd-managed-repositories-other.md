@@ -22,7 +22,14 @@ Open before this record can be decided:
 
 - Which repositories are rendered: every public repository carrying an abcd-managed marker, or only those whose owners opt in, and how an owner withdraws one.
 - What may be rendered from a repository abcd's maintainers do not control, under abcd's domain, and what the page says about who wrote it (the site's single-source rule renders spans of a repository's own files; a third party's files are not abcd's).
-- How builds run: on a schedule, on the owner's request, or from the owner's own release, within the GitHub API's limits, and what abuse or takedown path exists. On 2026-10-09 the product thinker required, for abcdesign.app and the local route, that a read-only build for someone not signed in is rate-limited so anonymous traffic, bots included, cannot exhaust the allowance the site serves from, and that a signed-in build spends the person's own allowance (adr-2610091016270711); the same bound is assumed here for abcdev.app's read-only pages until this record decides otherwise.
+- How builds run: on a schedule, on the owner's request, or from the owner's own release, within the GitHub API's limits, and what abuse or takedown path exists. On 2026-10-09 the product thinker required, for abcdesign.app and the local route, that a read-only build for someone not signed in is rate-limited so anonymous traffic, bots included, cannot exhaust the allowance the site serves from, and that a signed-in build spends the person's own allowance (adr-2610091016270711); on the same day they ruled that the same applies to abcdev.app: "same applies to abcdev.app, too (not just abcdesign.app)".
+
+Requirements the product thinker set on 2026-10-09, which any decision here must meet:
+
+- Public and private repositories are both supported; a private repository is reached only through the person's own GitHub sign-in.
+- A read-only build for someone not signed in is rate-limited, so anonymous traffic, bots included, can never exhaust the GitHub allowance the site serves from.
+- A build for a signed-in person spends that person's own GitHub allowance, never the site's.
+- A shared cache serves a page built from a public repository to everyone; a page built from a private repository is served only to people that repository admits, never beyond.
 
 ## Decision
 
