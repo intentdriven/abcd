@@ -1,6 +1,8 @@
 package guard
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -112,11 +114,32 @@ func BenchmarkCheck(b *testing.B) {
 	for _, c := range boundCases {
 		cases = append(cases, struct{ name, cmd string }{"worst-" + c.name, c.build(stdinCapBytes)})
 	}
+	// A script the line runs is read and judged (adr-2610091150447054
+	// decision 7): one ordinary script, and a line naming more than the read
+	// budget allows.
+	dir := b.TempDir()
+	body := strings.Repeat("git status --short\necho done\n", 64)
+	var many []string
+	for i := 0; i < maxScriptFiles+4; i++ {
+		name := "s" + itoa(i) + ".sh"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			b.Fatal(err)
+		}
+		many = append(many, "bash "+name)
+	}
+	cases = append(cases,
+		struct{ name, cmd string }{"script-read", "bash s0.sh"},
+		struct{ name, cmd string }{"script-budget", strings.Join(many, "; ")})
 	for _, c := range cases {
 		r := Defaults()
+		reads := strings.HasPrefix(c.name, "script-")
 		b.Run(c.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
+				if reads {
+					// A fresh read per check, as each hook call makes.
+					r = r.ReadingFrom(NewFiles(dir))
+				}
 				if _, err := r.Check(c.cmd); err != nil {
 					b.Fatalf("Check: %v", err)
 				}

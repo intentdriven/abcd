@@ -30,6 +30,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -420,16 +421,7 @@ func commandWord(seg string) string {
 // binary's path — `~/`, `$HOME/` and `${HOME}/` — so the trust check judges
 // the file the shell would run. Anything else is returned as written.
 func expandHome(p string) string {
-	home := userHome()
-	if home == "" {
-		return p
-	}
-	for _, prefix := range []string{"~/", "$HOME/", "${HOME}/"} {
-		if rest, ok := strings.CutPrefix(p, prefix); ok {
-			return filepath.Join(home, rest)
-		}
-	}
-	return p
+	return fsutil.ExpandHome(p, userHome())
 }
 
 // shownCommand is cmd as a finding quotes it: home-relative, sanitised, and

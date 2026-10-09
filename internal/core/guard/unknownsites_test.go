@@ -91,6 +91,27 @@ var wordReaders = map[string]string{
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
 	"allNoglob":     "commandSites",
 
+	// script.go, scriptwrites.go: the files a command points a shell at, and
+	// the files it writes (adr-2610091150447054).
+	"after":          "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
+	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
+	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
+	"isEvalCarrier":  "commandSites and nameCouldBe",
+	"segChangesDir":  "commandSites and nameCouldBeAny",
+	"lastSite":       "commandSites",
+	"writerTargets":  "commandSites and isUnknown: no writer is read for a program name the line does not fix",
+	"curlTargets":    "isUnknown on every URL it names; an unknown one is a write the guard cannot place",
+	"cdTarget":       "exempt: reads cd's literal options; its target goes through resolveToken, which refuses a word holding a substitution's output or a variable's value",
+	"sourceIndex":    "exempt: reads source's literal `--`; its operand goes through fixedToken, which refuses an unknown word",
+	"writesOf":       "exempt: reads redirection operators and targets the tokenizer recorded, whose target is marked unfixed (pathWord.ok) where it holds an expansion",
+	"isShellScript":  "exempt: reads a file's shebang line, never a command word",
+	"operandIdx":     "exempt: steps a writer's literal options; each operand goes through resolveToken, which refuses an unknown word (the writer list is incomplete by design, adr-2610091150447054 decision 6)",
+	"flagValues":     "exempt: reads a writer's literal options; each value goes through resolveToken or valueAt, which refuse an unknown word",
+	"copyTarget":     "exempt: reads a writer's literal options; each target goes through resolveToken, which refuses an unknown word",
+	"sedTargets":     "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
+	"gitTargets":     "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
+	"tarExtracts":    "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
+
 	// Grammar and registry readers, not command words.
 	"seqWidth":          "exempt: a brace sequence's number sign, before any word exists",
 	"padInt":            "exempt: writes a brace sequence's number sign, before any word exists",

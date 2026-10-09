@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -419,6 +420,16 @@ func guardHookDecide(cmd *cobra.Command) error {
 			"Blocked by the abcd guard (tool_input.workdir): the working directory this call names is refused — %s. The guard cannot tell where the command would run. Run instead: the same command with workdir omitted, or set to a plain directory path.",
 			termsafe.Sanitize(scrubPaths(err))))
 	}
+	// A script the command runs is read from the directory it runs in: the
+	// host's workdir when it names an existing one, else the session
+	// directory. Both registries read through the same Files, so each script
+	// is read once for this call (adr-2610091150447054 decision 4).
+	runDir := cwd
+	if wd.Exists {
+		runDir = wd.Path
+	}
+	files := guard.NewFiles(runDir)
+	reg = reg.ReadingFrom(files)
 	dec, err := reg.Check(candidate)
 	switch {
 	case errors.Is(err, guard.ErrUnparsableCommand):
@@ -439,19 +450,27 @@ func guardHookDecide(cmd *cobra.Command) error {
 	if wd.Exists {
 		if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
 			wld := guard.LoadRepo(root)
-			wreg := wld.Registry
+			wreg := wld.Registry.ReadingFrom(files)
 			if wld.Posture == guard.LoadRepoDropped {
 				repoDropped = true
 				diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the working directory's", wld.Err))
 			}
 			if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
 				if wdec, cerr := wreg.Check(candidate); cerr == nil {
+					diags := dec.Diagnostics
 					dec = guard.Strictest(dec, wdec)
+					dec.Diagnostics = mergeDiagnostics(diags, wdec.Diagnostics)
 				}
 			}
 		}
 	}
 
+	// A diagnostic changes no verdict (a script that does not exist, so
+	// there was nothing to read); it goes to stderr, where a warn's message
+	// goes, and on an allow the host keeps it only beside a loud exit.
+	for _, n := range dec.Diagnostics {
+		diagnosticLine(cmd.ErrOrStderr(), "%s", termsafe.Sanitize(scrubPaths(errors.New(n))))
+	}
 	switch dec.Verdict {
 	case guard.VerdictBlock:
 		// The host's deny: its reason is what the person sees and the
@@ -652,6 +671,9 @@ func guardHealthLine(h ahoy.GuardHealth) string {
 // it reaches a terminal.
 func writeGuardDecision(w io.Writer, dec guard.Decision) {
 	fmt.Fprintf(w, "abcd guard — %s\n", dec.Verdict)
+	for _, n := range dec.Diagnostics {
+		fmt.Fprintf(w, "  note:        %s\n", termsafe.Sanitize(n))
+	}
 	if dec.Verdict == guard.VerdictAllow {
 		return
 	}
@@ -670,4 +692,15 @@ func writeGuardDecision(w io.Writer, dec guard.Decision) {
 	if len(also) > 0 {
 		fmt.Fprintf(w, "  also matched: %s\n", termsafe.Sanitize(strings.Join(also, ", ")))
 	}
+}
+
+// mergeDiagnostics is a and then each of b not already in a.
+func mergeDiagnostics(a, b []string) []string {
+	out := append([]string(nil), a...)
+	for _, n := range b {
+		if !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }

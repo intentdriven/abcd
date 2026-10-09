@@ -64,6 +64,13 @@ type payloadSignal struct {
 	family    string
 	reason    string
 	successor string
+	// also names the entries a verdict carried out of a script tripped there
+	// (script.go), listed in Matches beside the signal's own id.
+	also []string
+	// fromRead marks a verdict of the script reading itself — a write the
+	// guard cannot place, a file it cannot read, a spent budget — which a
+	// script's reading carries out whatever its tier (script.go).
+	fromRead bool
 }
 
 // entryID is the id this signal is reported under.
@@ -76,8 +83,17 @@ func (s payloadSignal) entryID() string {
 
 // expandPayloads expands every execute-a-string payload in segs once, appending
 // each inspectable payload's segments in a disjoint chain range, and collecting a
-// synthetic signal for each uninspectable or fail-closed payload.
-func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
+// synthetic signal for each uninspectable or fail-closed payload. depth is the
+// layer segs themselves sit at: 0 for a command line, more for a script the
+// line runs (script.go), which shares the one depth budget.
+//
+// Each appended segment records the command that carried it (segment.carrier)
+// and its depth, and takes its carrier's end, so a reading of the text names
+// the line the carrier stands on.
+func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
+	for i := range segs {
+		segs[i].depth = depth
+	}
 	out := append([]segment(nil), segs...)
 	var signals []payloadSignal
 
@@ -96,6 +112,8 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 	type work struct {
 		segs  []segment
 		depth int
+		// base is the index in out of segs[0].
+		base int
 	}
 	// A line that names IFS reads every word whose fields rest on the
 	// default IFS as past its bound (capIFSSplits), before any string is
@@ -105,19 +123,20 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 	if ifsNamed {
 		capIFSSplits(segs)
 	}
-	queue := []work{{segs: segs, depth: 0}}
+	queue := []work{{segs: segs, depth: depth}}
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:]
-		for _, s := range item.segs {
+		for k, s := range item.segs {
 			// A word that is an unquoted `$(cat <<'EOF' … EOF)` runs the
 			// words its document splits into. That command is read at this
 			// layer, in this chain, as the segment it makes, and any payload
 			// it carries is followed from there; the words hold no literal of
 			// their own, so the reading does not repeat.
 			if fs, ok := fixedOutputSegment(s); ok {
+				fs.carrier, fs.depth, fs.end = item.base+k+1, item.depth, s.end
 				out = append(out, fs)
-				queue = append(queue, work{segs: []segment{fs}, depth: item.depth})
+				queue = append(queue, work{segs: []segment{fs}, depth: item.depth, base: len(out) - 1})
 			}
 			// What reaches the commands of a string s runs is read once per
 			// segment, however many strings it carries (payloadInput).
@@ -197,10 +216,12 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 						psegs[i].stdinIn = append(append([]feed(nil), psegs[i].stdinIn...), stdin...)
 					}
 					psegs[i].argsIn = args
+					psegs[i].carrier, psegs[i].depth, psegs[i].end = item.base+k+1, item.depth+1, s.end
 				}
 				if s.home != nil {
 					s.home.addPayload(s.at, psegs)
 				}
+				base := len(out)
 				out = append(out, psegs...)
 				switch {
 				case ifsNamed:
@@ -209,7 +230,7 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 					ifsNamed = true
 					capIFSSplits(out)
 				}
-				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
+				queue = append(queue, work{segs: psegs, depth: item.depth + 1, base: base})
 			}
 		}
 	}
@@ -1967,8 +1988,8 @@ func interpreterStreamSignal() payloadSignal {
 		family:  familyInterpreterStream,
 		reason: "This command hands a shell its script as a stream — through a pipe, a here-document, a here-string, " +
 			"the stdin device or a process substitution — so the commands that shell runs are text the guard read as data and has not checked.",
-		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them; " +
-			"to run a script, save it and run it as a file after reading it.",
+		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them. " +
+			"A script file is read and judged when it is run, so write it in one command and run it in the next.",
 	}
 }
 

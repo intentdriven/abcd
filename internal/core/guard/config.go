@@ -40,6 +40,11 @@ func Load(repoRoot string) (Registry, error) {
 	// Whatever layer the registry ended up holding, it was loaded for this
 	// repository, so it can read the repository's worktree count (stash.go).
 	r.worktrees = worktreeCounter(repoRoot)
+	// And it reads the scripts a command runs (script.go), resolved against
+	// the process's working directory until a front door names the one the
+	// command runs in (ReadingFrom).
+	cwd, _ := os.Getwd()
+	r.files = NewFiles(cwd)
 	return r, err
 }
 

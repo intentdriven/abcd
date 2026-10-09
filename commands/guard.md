@@ -56,7 +56,10 @@ Run it from the directory the command will run in: a command headed for another
 repository can meet hazards that repository's `.abcd/guard.json` adds, and the
 check run from here does not see them. The hook, given a per-call working
 directory, reads both registries, so for such a command the two can answer
-differently.
+differently. A script the command runs is resolved the same way: the check
+reads it relative to its own working directory, and the hook relative to the
+per-call working directory when the host names an existing one, else the
+session directory.
 
 ## `hook` — the host adapter
 
@@ -318,9 +321,57 @@ A shell reading its script from a pipe, a here-document or a here-string
 what it runs is text the guard read as data. So is a shell handed the stdin
 device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
 `source` handed a process substitution as its script (`bash <(curl …)`, `bash <
-<(curl …)`, `source <(curl …)`). A shell handed a script file (`bash
-script.sh`, `bash script.sh < input`) is not. A command line longer than 64 KiB
-is a **block** (`command-too-long`), because the guard does not read it.
+<(curl …)`, `source <(curl …)`). A command line longer than 64 KiB is a
+**block** (`command-too-long`), because the guard does not read it.
+
+A script file a shell runs is **read and judged** before the command is: a
+shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
+`PATH` and then in the working directory when it has no slash), and the
+startup files the line selects — `BASH_ENV=f`, and `ENV=f` on an interactive
+shell (`-i`). An assignment counts as a prefix, through `env`, or exported earlier
+on the line. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
+classify it: a shell-family shebang, or no shebang and no NUL byte, makes it a
+shell script, read the same way; anything else is a program, allowed unread. A
+relative path resolves against the working directory, and against a `cd` or
+`pushd` earlier on the line only when its target exists and the script is
+chained after it with `&&`; after any other `cd` the path is not resolved, and
+the script is allowed unread, as an operand held in a variable or a substitution
+is. The verdicts:
+
+- a registry entry at command position in the script is carried out at its own
+  tier (`script-runs-hazard`), naming the script, the line and the entry; an
+  entry-less block inside it (a stream, a payload past the depth) is carried
+  out as a block; a speculative (Tier 2) hit inside it is not;
+- a script written earlier on the same line — by a redirection, or as the
+  target of `tee`, `cp`, `mv`, `install`, `dd of=`, `curl -o`/`-O`, `wget -O`,
+  `sed -i`, `patch`, `git checkout`/`restore`/`clone`, `tar -x` or `unzip` — is a
+  **block** (`script-written-then-run`): the file the guard reads now is not the
+  file that runs. Write it in one command and run it in the next. A write the
+  guard cannot place (`> "$LOG"`) before a script runs is a **warn**;
+- a script that does not exist is allowed with a note naming it (the shell
+  refuses it); a startup file that does not exist is skipped, silently;
+- a file a shell is handed that holds a NUL byte in its first 8 KiB is a
+  **block** (`script-unread`); one the guard cannot read, or a shell script over
+  256 KiB, is a **warn** (`script-unread`);
+- a script that runs a script is read in turn, sharing the two-layer depth with
+  `sh -c`, and one past it is a **block**; one check reads at most 16 files and
+  1 MiB, and past that it **warns** (`script-unread`).
+
+What the reading does not see: another interpreter's file (`python3 f.py`,
+`node f.js`, `ruby`, `perl`, a `Makefile`, `npm run`); a program run directly or
+found through `PATH`, including a `PATH` assignment on the line that changes
+which file a bare name finds; the files a shell loads from the account's real
+`HOME` (`~/.bashrc`, `~/.zshenv`, `/etc/profile`), though a `source` naming one is
+read like any other; file text substituted into a command string (`eval "$(cat
+f)"`, `bash -c "$(<f)"`), which keeps its warn; a file changed between the
+check and the run; a writer missing from the list above; a variable a sourced
+file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
+files after it; a login shell made by its name (`exec -a -bash bash`) or for
+another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
+the current directory; `INPUTRC` (key bindings, not commands); the startup text
+a variable carries inline (a prompt with a substitution, an exported function,
+ksh's expanded `ENV`), which this reading does not cover; and any spelling not listed
+here.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin

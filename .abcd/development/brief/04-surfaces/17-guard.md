@@ -95,7 +95,8 @@ the same release, with no second edit. A hazard the guard reads in code rather
 than from the registry, such as `git-stash-shared-stack` (a bare `git stash` in
 a checkout with more than one worktree) or `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`), is enforced but not
-taught. The registry taught is the one the guard
+taught; the scripts the guard reads are taught by one rule the generator adds
+after the entries'. The registry taught is the one the guard
 enforces in the repository: an entry the repository adds in its
 `.abcd/guard.json` is taught by the same generator as the bundled ones, its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
@@ -379,7 +380,14 @@ script, a `source` of one, and a line longer than the guard reads. An unquoted
 brace group is expanded as bash expands it and every word it produces is
 checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A
-command string handed to a shell is opened and read. A git alias declared on the same command line is resolved, and the
+command string handed to a shell is opened and read, and so is a script file a
+shell runs: its script operand, a `source`d file, a path run directly that its first bytes show is a shell
+script, and the startup files the line selects (`BASH_ENV`, `ENV`). It is judged by the registry's command-position matches,
+which are carried out naming the script, the line and the entry; a script
+written earlier on the same line is refused, because the file read at check
+time is not the one that runs, and a write the guard cannot place before it
+warns
+([adr-2610091150447054](../../decisions/adrs/2610091150447054-the-guard-reads-a-script-the-command-names-before-it-judges.md)). A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. A commit or push that
 moves `core.hooksPath` for itself is read as skipping its hooks, which is what
 it does. A delete chained after `pushd` or `popd` is read as one chained after
@@ -538,8 +546,10 @@ string, as in `n="1 + --$x"` for an integer `n`),
 since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
 grep` chain;
 a payload inside a non-shell interpreter such as `python -c`, which is
-one opaque token and today a silent allow; and any dangerous form no entry
-describes. Nor does an allow see what a variable carries in from an earlier
+one opaque token and today a silent allow; another interpreter's file, a
+program, the account's own startup files, file text substituted into a command
+string, and a script changed between the check and the run; and any dangerous
+form no entry describes. Nor does an allow see what a variable carries in from an earlier
 command: a pid list (`p=$(pgrep make); kill $p`), a stream path handed to a
 shell, shell text run through `eval "$X"` or placed in a string a shell runs,
 or `pkill` or `killall` as a variable's value standing as the program with an

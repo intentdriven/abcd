@@ -161,6 +161,24 @@ func isAlnum(r rune) bool {
 	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
 }
 
+// ScriptLesson is the rule the teaching plane carries for the script reading
+// (adr-2610091150447054), which no registry entry describes: what the guard
+// reads before it judges a command, what blocks, and what it does not see. It
+// is written beside the reading (script.go) so the two change together, and
+// opens with the guard-off lead under a disabled registry, as every lesson does.
+func (r Registry) ScriptLesson() string {
+	lead := "Read by the guard (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"
+	if r.Disabled {
+		lead = guardOffLead + " (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"
+	}
+	return lead + ": a script a shell runs — `bash f`, `source f`, a direct `./f.sh`, " +
+		"and the startup files `BASH_ENV` and `ENV` select — " +
+		"is read before the command and judged by the entries above, and a script written earlier on the same line " +
+		"is refused outright, because the file read now is not the one that runs. Instead: write a script in one " +
+		"command and run it in the next. Not read: other interpreters' files (`python3 f.py`, `make`, `npm run`), " +
+		"programs, the account's own `~/.bashrc` and `~/.zshenv`, `eval \"$(cat f)\"`, or a file changed after the check."
+}
+
 // Lesson is the one-line rule an entry teaches: whether the guard refuses or
 // warns, the entry id, the command it describes, the plain-language why, and
 // the safe successor.
