@@ -136,6 +136,15 @@ func landStage(c Context, lane *Lane) (Outcome, error) {
 	if err := loopWorktree(c, *lane, string(StageLand)); err != nil {
 		return Outcome{}, err
 	}
+	// The landing pushes the lane's branch and, once it has landed, deletes it;
+	// a branch outside the loop's prefix, which only a hand-written state file
+	// names, is refused here as the discards refuse it, so a state naming
+	// `main` neither pushes nor deletes the default branch
+	// (iss-2610090821552801).
+	if !strings.HasPrefix(lane.Branch, BranchPrefix) {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's branch is not one the loop made, so it is not the loop's to push or delete",
+			"restore the run's state file")
+	}
 	if lane.Landing == nil {
 		// A sibling lane of the run that landed since this lane's base is
 		// merged in first, and a fresh round judges the merge head.

@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,5 +130,78 @@ func TestADiscardRefusesToRemoveAWorktreeTheLaneDidNotMake(t *testing.T) {
 	}
 	if gitErr(f.repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+BranchPrefix+"peer") != nil {
 		t.Fatal("the peer's branch is gone")
+	}
+}
+
+// TestADiscardRefusesToDeleteABranchTheLoopDidNotMake: the hold discard
+// deleted the lane's branch from the state alone, without the prefix refusal
+// the hand-back discard applies, so a state naming `main` as a held lane's
+// branch had `implement step --discard` delete the default branch. The discard
+// refuses a branch outside the loop's prefix before it removes anything.
+func TestADiscardRefusesToDeleteABranchTheLoopDidNotMake(t *testing.T) {
+	f := armedSibling(t, false)
+	f.handedBack(t)
+	f.step(t)
+	if l2 := f.lane(t, "lane-2"); l2.Stage != StageHeld {
+		t.Fatalf("premise: lane 2 is held: %+v", l2)
+	}
+	mainTip := strings.TrimSpace(f.repo.Git("rev-parse", "refs/heads/main"))
+	err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		for i := range st.Lanes {
+			if st.Lanes[i].ID == "lane-2" {
+				st.Lanes[i].Worktree, st.Lanes[i].Branch = "", "main"
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, f.repo.Root(), f.runID)
+	_, err = Discard(f.repo.Root(), f.runID, "lane-2", f.opts())
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "branch") {
+		t.Fatalf("a discard of a lane naming main refuses on its branch: %+v", r)
+	}
+	if got := strings.TrimSpace(f.repo.Git("rev-parse", "--verify", "--quiet", "refs/heads/main")); got != mainTip {
+		t.Fatalf("the discard deleted or moved main: %q, want %q", got, mainTip)
+	}
+	if !bytes.Equal(before, stateBytes(t, f.repo.Root(), f.runID)) {
+		t.Fatal("a refused discard leaves the lane held")
+	}
+	if n := strings.Count(f.ghLog(t), "pr close"); n != 0 {
+		t.Fatalf("a refused discard closes no pull request: %d", n)
+	}
+}
+
+// TestALandingRefusesABranchTheLoopDidNotMake is the same rule at the land
+// stage, which pushes the lane's branch and deletes it once it has landed: a
+// state naming `main`, with main's tip as the judged head, is refused before
+// the landing pushes, records or deletes anything.
+func TestALandingRefusesABranchTheLoopDidNotMake(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.validated(t)
+	mainTip := strings.TrimSpace(f.repo.Git("rev-parse", "refs/heads/main"))
+	err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		if i < 0 {
+			t.Fatal("no lane is in progress")
+		}
+		// main's own tip as the judged head, so the head check that would
+		// otherwise refuse a branch at another commit is passed.
+		st.Lanes[i].Branch, st.Lanes[i].HeadSHA = "main", mainTip
+		return true, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "branch") {
+		t.Fatalf("a landing of a lane naming main refuses on its branch: %+v", r)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing != nil {
+		t.Fatalf("a landing was recorded for a planted branch: %+v", l.Landing)
+	}
+	if got := strings.TrimSpace(f.repo.Git("rev-parse", "--verify", "--quiet", "refs/heads/main")); got != mainTip {
+		t.Fatalf("the landing moved or deleted main: %q, want %q", got, mainTip)
 	}
 }
