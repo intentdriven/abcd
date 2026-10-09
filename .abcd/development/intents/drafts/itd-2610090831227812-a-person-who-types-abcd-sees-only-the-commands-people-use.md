@@ -87,6 +87,8 @@ _Proposed by the drafting reviews; not yet confirmed by the product thinker._
 ## Decisions
 
 - 2026-10-09: the product thinker ruled who a command belongs to. Asked whose command menu it is, given that some commands marked for agents are typed by people (the inbox, the drain, the dashboard), they answered: "who marked them for agents? If people have to use them to do their job, they're not agents-only". Most of the current agent labels were placed on 2026-09-25 by an autonomous run's orchestrator, recorded and not asked, with a tie-break that sent a command either side could claim to the agents' side to keep the person's list under its cap (.abcd/work/DECISIONS.md, that date). So a command a person needs to do their job is a person's command whatever else also runs it; the verb audit (iss-2610090831317531) re-labels every command by who actually types it, and only commands no person types leave the person's menu.
+- 2026-10-09: the product thinker chose to try the host's hiding before choosing between hiding and grouping. Answer verbatim: "Try it first". One command no person types is hidden in a real session, with captures before and after of what a person sees on typing it and whether an agent still runs it; the choice of mechanism (the first open question) waits on that trial.
+- 2026-10-09, settled by the ruling above without a further question (one defensible answer each): `ideate` and `dashboard` are a person's commands, since the product thinker types both; `consult` and `ingest` are classed by the audit on the same rule; and each command keeps its one-sentence description unchanged wherever it is listed (itd-2609212113220149).
 
 ## Audit Notes
 
