@@ -133,6 +133,9 @@ func landStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane records no branch, worktree, base and head to land",
 			"the earlier stages record them; restore the run's state file")
 	}
+	if err := loopWorktree(c, *lane, string(StageLand)); err != nil {
+		return Outcome{}, err
+	}
 	if lane.Landing == nil {
 		// A sibling lane of the run that landed since this lane's base is
 		// merged in first, and a fresh round judges the merge head.
@@ -1036,6 +1039,9 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 // path on the lane's branch; git refuses a worktree with changes, and the loop
 // never forces it.
 func removeLaneWorktree(c Context, lane Lane) error {
+	if err := loopWorktree(c, lane, string(StageLand)); err != nil {
+		return err
+	}
 	wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
 	if err != nil {
 		return fmt.Errorf("listing the repository's worktrees: %w", err)
