@@ -100,7 +100,11 @@ Then summarise the JSON for the user:
   store that its repository no longer links back to, with the
   `git -C … worktree repair` line for that worktree, and a
   `history.home_symlinked` gap names the history registry abcd leaves alone
-  behind a linked home folder. Never tell the user `/abcd:ahoy install` closes
+  behind a linked home folder. A `filter_roots.ignored` gap, reported from any
+  folder, names a `~/.abcd.noindex/filter-roots` file abcd ignores and the
+  check it failed (writable by others, not owned by you, a symbolic link, or
+  behind a linked folder): every checkout it lists reads with its content
+  filters off until the person fixes or removes it. Never tell the user `/abcd:ahoy install` closes
   a report-only gap.
 
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply

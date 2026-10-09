@@ -104,6 +104,9 @@ func Detect(cwd string) (DetectionResult, error) {
 	// folder because a stray there runs in every session, and report-only —
 	// abcd never edits that file to remove one.
 	gaps = append(gaps, detectHarnessStrays(harness, pluginRoot, pluginOK)...)
+	// A filter-roots declaration abcd ignored (iss-2610091920437492): a
+	// machine-scope fact, reported from any folder.
+	gaps = append(gaps, detectFilterRoots()...)
 	if kind != UnmanagedFolder {
 		gaps = append(gaps, detectDependencies(abs)...)
 		gaps = append(gaps, detectSkeleton(abs)...)

@@ -336,7 +336,9 @@ One absolute path per line; `#` starts a comment. A linked worktree is a
 checkout of its own, listed by its own path. As with `trusted-roots` above, the
 declaration is read only from your home directory, only while that file is
 yours and not writable by others, and never through a symbolic link: a
-repository cannot switch its own filters on. The release gates of
+repository cannot switch its own filters on. A file abcd ignores for one of
+those reasons is named, with the check it failed, by `abcd ahoy` as a
+`filter_roots.ignored` note, whichever folder you run it from. The release gates of
 `abcd launch` keep the filters off whatever the file lists.
 
 ## CLI

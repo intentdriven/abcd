@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -179,4 +180,29 @@ func TestStatusRunsNoContentFilterUnlessTheOwnerSwitchesThemOn(t *testing.T) {
 			t.Fatal("a filter-roots file behind a symlinked ~/.abcd.noindex switched the filters on")
 		}
 	})
+}
+
+// TestFilterRootsIgnoredNamesTheFileAndTheCheck is iss-2610091920437492: a
+// filter-roots file abcd ignores is named with the check it failed, for a
+// front door to report; an absent or honoured file names nothing.
+func TestFilterRootsIgnoredNamesTheFileAndTheCheck(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if note := gitutil.FilterRootsIgnored(); note != "" {
+		t.Fatalf("an absent file names nothing, got %q", note)
+	}
+	p := declare(t, home, "/some/checkout\n", 0o600)
+	if note := gitutil.FilterRootsIgnored(); note != "" {
+		t.Fatalf("an honoured file names nothing, got %q", note)
+	}
+	if err := os.Chmod(p, 0o602); err != nil {
+		t.Fatal(err)
+	}
+	note := gitutil.FilterRootsIgnored()
+	if !strings.Contains(note, abcdhome.Display("filter-roots")) || !strings.Contains(note, "writable by others") {
+		t.Fatalf("the note must name the file and the check it failed, got %q", note)
+	}
+	if on, why := gitutil.FiltersSwitchedOn("/some/checkout"); on || why != note {
+		t.Fatalf("FiltersSwitchedOn must give the same note and switch nothing on: %v %q", on, why)
+	}
 }

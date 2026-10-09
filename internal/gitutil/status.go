@@ -25,14 +25,34 @@ const maxFilterRootsBytes = 64 << 10
 // fsutil.HomeDeclarationNames, the reader every "declare this checkout"
 // opt-in shares, so it is honoured only while it is a regular file this
 // account owns that no one else can write, reached through no symlinked
-// folder; ignored names why a present declaration was not honoured, and is
-// empty when there is none or it was read.
+// folder; ignored is the one-line note saying why a present declaration was
+// not honoured, naming the file in tilde form, and is empty when there is none
+// or it was read. Status has no output channel and drops it; FilterRootsIgnored
+// is the reading a front door reports (iss-2610091920437492).
 func FiltersSwitchedOn(root string) (on bool, ignored string) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return false, ""
 	}
-	return fsutil.HomeDeclarationNames(home, FilterRootsRelPath, maxFilterRootsBytes, root, fsutil.CaseFoldingFS())
+	on, why := fsutil.HomeDeclarationNames(home, FilterRootsRelPath, maxFilterRootsBytes, root, fsutil.CaseFoldingFS())
+	if why != "" {
+		return false, "IGNORED " + FilterRootsDisplay + " — " + why + "; content filters stay off in every checkout it lists"
+	}
+	return on, ""
+}
+
+// FilterRootsDisplay is the filter-roots declaration's path in tilde form, so a
+// message naming it carries no home path.
+var FilterRootsDisplay = abcdhome.Display("filter-roots")
+
+// FilterRootsIgnored is the note FiltersSwitchedOn gives when a present
+// ~/.abcd.noindex/filter-roots file fails its ownership, mode or symlink
+// checks, naming the file and the check it failed; empty when the file is
+// absent or was read. Which checkout is asked about does not change it: the
+// checks are the file's, not an entry's.
+func FilterRootsIgnored() string {
+	_, note := FiltersSwitchedOn("")
+	return note
 }
 
 // StatusEntry is one entry of git's NUL-separated status listing
