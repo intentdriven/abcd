@@ -2029,7 +2029,21 @@
           "hidden": false
         },
         {
+          "name": "restart",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "yielded",
           "shorthand": "",
           "type": "string",
           "required": false,

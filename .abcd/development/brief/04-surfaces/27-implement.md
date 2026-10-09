@@ -493,6 +493,8 @@ Sub-verbs: none.
 |---|---|
 | `--discard` | string |
 | `--release` | string |
+| `--restart` | string |
 | `--run` | string |
+| `--yielded` | string |
 
 <!-- surface-appendix:end -->

@@ -609,9 +609,9 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 }
 
 func newImplementStepCommand(asJSON *bool) *cobra.Command {
-	var runID, release, discard string
+	var runID, release, discard, restart, yielded string
 	cmd := &cobra.Command{
-		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id>]",
+		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]]",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
 			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
@@ -664,6 +664,14 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work.\n" +
+			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
+			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
+			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
+			"(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is\n" +
+			"proved to apply to that commit, the lane's worktree is reset and cleaned, the run record\n" +
+			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
+			"the aside. It is refused, changing nothing, while the run's outage is open, for a lane\n" +
+			"with no implementer out, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
 			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -722,6 +730,14 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			}
 			var res loop.StepResult
 			switch {
+			case yielded != "" && restart == "":
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
+					Reason: "--yielded names why a restarted agent stopped, so it goes with --restart", Remedy: "run `abcd implement step --restart <lane-id> --yielded '<the agent's NETWORK: line>'`"})
+			case restart != "" && (release != "" || discard != ""):
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
+					Reason: "--restart, --release and --discard name one decision each; give one", Remedy: "run `abcd implement step` with one of them, one lane per invocation"})
+			case restart != "":
+				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
 					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
@@ -756,6 +772,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
 	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
+	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
+	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	return cmd
 }
 

@@ -2101,7 +2101,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -2157,6 +2157,14 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work.
+--restart <lane-id> restarts a lane whose implementer died, or yielded on a network
+failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
+last commit: everything left uncommitted is saved aside under the lane's directory
+(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
+proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
+names the aside for review, and the implementer await is re-told; the brief never names
+the aside. It is refused, changing nothing, while the run's outage is open, for a lane
+with no implementer out, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -2212,7 +2220,9 @@ refusal, exit 3 on a pause or a locked run state.
 ```
       --discard string   discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
       --release string   land a held lane as it is (lane-<n>), once no lane has work left
+      --restart string   restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --run string       the run to step (run-<16 digits>); the one run in progress when omitted
+      --yielded string   with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
 ### `abcd inbox`
