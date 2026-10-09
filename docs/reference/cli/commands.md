@@ -342,7 +342,8 @@ the run's state. The reason is one `pursued:` grounds entry opening `picked by r
 on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
 falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
-receipt verifier does not count that commit as the implementer's. The checkout you run this
+receipt verifier does not count that commit as the implementer's. That commit runs no hook
+and is unsigned, even where your git configuration signs every commit. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
@@ -2131,7 +2132,9 @@ under blocked:; any other refused stage is the call's answer. Landing is one lan
 time; a lane whose sibling landed
 since its base is synced first (the default branch merged in with a merge commit, never a
 rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
-a sync counts no fix round.
+a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where
+your git configuration signs every commit, and the merge does not verify the signature of the
+commit it merges in.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
@@ -2176,7 +2179,7 @@ worktree and ingests the audit that lane took, and for every capture the lane's 
 declared fixed it runs `capture resolve` with the lane's commit, committing them on the
 lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model
 the lane's receipts reported (refused when one reported none), the repository's hooks
-running; it pushes the branch only once the
+running and the commit signed as your git configuration says; it pushes the branch only once the
 repository's preflight receipt names its head (the pre-push hook runs; nothing is
 skipped or forced); it opens the pull request through gh, with a body built from the
 records and passed through the outbound scrub, then re-reads the body the forge holds and
@@ -2734,6 +2737,17 @@ Preview the public launch bundle, its secret scan, and the release gates: Writes
 
 **Usage:** `abcd launch [flags]`
 
+Preview the release bundle and run the release gates with --dry-run; nothing is
+published.
+
+The dirty-tree gate compares the working tree with HEAD byte for byte. The repository's
+content filters (filter.<name>.clean, .smudge and .process) are switched off for that
+comparison, so no program a filter names runs. A filter the repository marks required
+(filter.<name>.required, which `git lfs install --local` sets) makes git refuse the
+comparison instead wherever the file timestamps git saved do not match the working
+tree (a copied or restored checkout, say): the gate then reports the tree unreadable,
+never clean.
+
 **Flags:**
 
 ```
@@ -2822,6 +2836,17 @@ Scaffold the release gate for the declared artefact kind: Writes its workflows a
 Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.
 
 **Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [flags]`
+
+Cut a release from HEAD, deriving its version and changelog from the records that shipped
+since the last tag. A fresh cut runs the pre-flight gates before it writes anything.
+
+The dirty-tree gate, the check for uncommitted records, and the check that the plugin
+payload is committed each compare the working tree with HEAD with the repository's
+content filters switched off, so no program a filter names runs. Where a filter the
+repository marks required (filter.<name>.required, which `git lfs install --local` sets)
+meets file timestamps git saved that do not match the working tree, git refuses the
+comparison, and the cut is refused rather than read as committed; --allow-dirty does not
+waive that refusal.
 
 **Flags:**
 

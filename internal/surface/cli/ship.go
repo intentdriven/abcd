@@ -333,7 +333,16 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var allowDirty, fetchBaseline bool
 	var shipRoute *routeFlag
 	cmd := &cobra.Command{
-		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline]",
+		Use: "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline]",
+		Long: "Cut a release from HEAD, deriving its version and changelog from the records that shipped\n" +
+			"since the last tag. A fresh cut runs the pre-flight gates before it writes anything.\n\n" +
+			"The dirty-tree gate, the check for uncommitted records, and the check that the plugin\n" +
+			"payload is committed each compare the working tree with HEAD with the repository's\n" +
+			"content filters switched off, so no program a filter names runs. Where a filter the\n" +
+			"repository marks required (filter.<name>.required, which `git lfs install --local` sets)\n" +
+			"meets file timestamps git saved that do not match the working tree, git refuses the\n" +
+			"comparison, and the cut is refused rather than read as committed; --allow-dirty does not\n" +
+			"waive that refusal.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()

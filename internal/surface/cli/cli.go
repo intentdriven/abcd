@@ -413,7 +413,16 @@ func NewRootCommand() *cobra.Command {
 	var launchDryRun, launchDeepSmoke, launchFetchBaseline bool
 	var launchBaseline string
 	launchCmd := &cobra.Command{
-		Use:  "launch",
+		Use: "launch",
+		Long: "Preview the release bundle and run the release gates with --dry-run; nothing is\n" +
+			"published.\n\n" +
+			"The dirty-tree gate compares the working tree with HEAD byte for byte. The repository's\n" +
+			"content filters (filter.<name>.clean, .smudge and .process) are switched off for that\n" +
+			"comparison, so no program a filter names runs. A filter the repository marks required\n" +
+			"(filter.<name>.required, which `git lfs install --local` sets) makes git refuse the\n" +
+			"comparison instead wherever the file timestamps git saved do not match the working\n" +
+			"tree (a copied or restored checkout, say): the gate then reports the tree unreadable,\n" +
+			"never clean.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
