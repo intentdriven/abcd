@@ -35,9 +35,10 @@ type ScanResult struct {
 	Unavailable       bool      `json:"unavailable"`
 	UnavailableReason string    `json:"unavailable_reason,omitempty"`
 	// Unscanned lists bundle files that were present but could NOT be covered:
-	// unreadable, over the byte-scan cap, a non-regular or symlinked leaf, or
+	// unreadable, over the byte-scan cap, a non-regular or symlinked leaf,
 	// classified binary by the content sniff (e.g. a leading-NUL file) WITHOUT
-	// a reviewed skip explaining it. They are the fail-closed coverage gap —
+	// a reviewed skip explaining it, or matched by a skip fragment alone, which
+	// would have read it with the byte rules only (iss-2610090821506490). They are the fail-closed coverage gap —
 	// the launch gate refuses on them, so a crafted binary cannot smuggle
 	// unscanned content into a source bundle (GHSA-5mmm-3whv-3rqp).
 	Unscanned []string `json:"unscanned,omitempty"`
@@ -45,7 +46,7 @@ type ScanResult struct {
 	// covered, so an asset over the cap is distinguishable from an I/O error.
 	UnscannedWhy map[string]string `json:"unscanned_why,omitempty"`
 	// ScannedBinary lists bundle files that matched the reviewed skip sets (a
-	// binary media extension, a skip filename, or a skip fragment) AND whose
+	// binary media extension or a skip filename) AND whose
 	// name is on the plaintext allow-list (plaintextNames): a skip-listed file
 	// known to carry no compressed region, so the byte scan covers all of it.
 	// The raw bytes run through the byte rules — every secret rule, the
@@ -99,6 +100,14 @@ type ScanResult struct {
 	// "zip" and is decoded as one, which the record names as the defect in the
 	// old name-keyed label.
 	ContentFormat map[string]string `json:"content_format,omitempty"`
+	// Excluded lists bundle files an exclusion in the scanner config matched
+	// (Config.ExcludePathFragments): excluded by choice, with the reason the
+	// config gives in ExcludedWhy. They are not read, never counted as
+	// scanned and never a coverage gap, so they do not refuse on their own;
+	// a bundle they leave with no file scanned in full still trips the
+	// zero-coverage sentinel.
+	Excluded    []string          `json:"excluded,omitempty"`
+	ExcludedWhy map[string]string `json:"excluded_why,omitempty"`
 	// FindingsOmitted counts the findings dropped past maxBundleFindings. They
 	// are counted in HardFails all the same, so a truncated list never reads
 	// as a smaller verdict.
@@ -146,12 +155,24 @@ var plaintextNames = toSet([]string{".gitignore"})
 // Config is the on-disk scanner configuration (the per-repo pii.json override
 // shape). Only the consumed fields are modelled.
 type Config struct {
-	SkipDirs           []string              `json:"skip_dirs"`
-	SkipPathFragments  []string              `json:"skip_path_fragments"`
-	SkipExtensions     []string              `json:"skip_extensions"`
-	SkipFilenames      []string              `json:"skip_filenames"`
-	Patterns           map[string]patternDef `json:"patterns"`
-	IdentitySeverities map[string]Severity   `json:"identity_severities"`
+	SkipDirs          []string `json:"skip_dirs"`
+	SkipPathFragments []string `json:"skip_path_fragments"`
+	// ExcludePathFragments are the exclusions the technical facilitator
+	// declares: a bundle file whose path contains a fragment is left out of
+	// the scan by choice and reported so, with the reason, never as scanned.
+	ExcludePathFragments []Exclusion           `json:"exclude_path_fragments"`
+	SkipExtensions       []string              `json:"skip_extensions"`
+	SkipFilenames        []string              `json:"skip_filenames"`
+	Patterns             map[string]patternDef `json:"patterns"`
+	IdentitySeverities   map[string]Severity   `json:"identity_severities"`
+}
+
+// Exclusion is one declared exclusion: a path fragment and the reason it is
+// left out of the scan, which is required and travels with every file it
+// matches.
+type Exclusion struct {
+	Fragment string `json:"fragment"`
+	Reason   string `json:"reason"`
 }
 
 // patternDef is one pattern definition in a config override.
@@ -173,6 +194,7 @@ type Scanner struct {
 	skipExtensions map[string]struct{}
 	skipFilenames  map[string]struct{}
 	skipFragments  []string
+	exclusions     []Exclusion
 	unavailable    bool
 	unavailReason  string
 
@@ -356,6 +378,18 @@ func (s *Scanner) mergeConfig(cfg Config) error {
 			continue
 		}
 		s.skipFragments = append(s.skipFragments, frag)
+	}
+	for _, ex := range cfg.ExcludePathFragments {
+		// An exclusion is a decision, so a blank one is a fault rather than an
+		// entry to drop: a fragment every path contains would exclude the whole
+		// bundle, and an exclusion with no reason is one nobody can review.
+		if strings.Trim(ex.Fragment, "/ \t\r\n") == "" {
+			return errUnreadable("exclude_path_fragments: an entry's fragment is blank or only slashes, which every path contains")
+		}
+		if strings.TrimSpace(ex.Reason) == "" {
+			return errUnreadable("exclude_path_fragments: the exclusion of " + strconv.Quote(ex.Fragment) + " gives no reason")
+		}
+		s.exclusions = append(s.exclusions, ex)
 	}
 
 	floors := defaultPatternFloors()
@@ -1146,10 +1180,13 @@ func fingerprintSpan(out, src []byte, start, end int, whole bool) {
 }
 
 // ScanBundle scans the resolved content of every bundle file, reading
-// ResolvedPath and reporting under LogicalPath. A file on the reviewed skip
-// sets (extension, filename, fragment) is read through the guarded, capped
-// primitive and its bytes scanned with the byte rules (scanBytes), reported
-// under ScannedBinary (a plaintext allow-listed name) or ContentUnverified; any
+// ResolvedPath and reporting under LogicalPath. A file a declared exclusion
+// matches is not read and is reported under Excluded with its reason. A file
+// on the reviewed skip sets (extension, filename) is read through the guarded,
+// capped primitive and its bytes scanned with the byte rules (scanBytes),
+// reported under ScannedBinary (a plaintext allow-listed name),
+// ContentDecoded or ContentUnverified. A file a skip fragment alone matches is
+// Unscanned, with the fragment named as its reason; any
 // other file is scanned with the full rule set when it is text throughout (no
 // NUL, valid UTF-8 — every byte, not a sniff), or surfaced in Unscanned (with
 // UnscannedWhy) when it is not. If the
@@ -1169,7 +1206,28 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 	}
 	secrets := secretPatterns(s.patterns)
 	for _, f := range files {
-		if s.skipByName(f.LogicalPath) || s.skipByFragment(f.LogicalPath) {
+		if why, ok := s.excludedBy(f.LogicalPath); ok {
+			res.Excluded = append(res.Excluded, f.LogicalPath)
+			if res.ExcludedWhy == nil {
+				res.ExcludedWhy = map[string]string{}
+			}
+			res.ExcludedWhy[f.LogicalPath] = why
+			continue
+		}
+		// A skip fragment matches a path, not a kind of content, so it
+		// cannot vouch that the byte rules suffice for what it matches: a
+		// fragment of "." sent every dotted path to the byte branch, which
+		// drops the identity and network rules, and the file was never
+		// counted as a gap (iss-2610090821506490). A file a fragment alone
+		// matches is therefore a coverage gap; one whose extension or name is
+		// on the reviewed skip sets takes the byte branch as it would anyway,
+		// and a file left out on purpose is a declared exclusion.
+		if !s.skipByName(f.LogicalPath) && s.skipByFragment(f.LogicalPath) {
+			unscanned(f.LogicalPath, "a skip fragment matches it, and byte-only scanning does not count as scanned; "+
+				"declare an exclusion with its reason (exclude_path_fragments) to leave it out")
+			continue
+		}
+		if s.skipByName(f.LogicalPath) {
 			// A reviewed skip exempts the file from the short/generic identity
 			// rules, never from the secret, harness-leak or long-literal
 			// identity rules: its bytes still ship, so its bytes are still
@@ -1279,6 +1337,9 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 			" bundle files with the full rule set: " + strconv.Itoa(byteScanned) + " of " +
 			strconv.Itoa(len(files)) + " bundle files byte-scanned only, " +
 			strconv.Itoa(len(res.Unscanned)) + " could not be read"
+		if n := len(res.Excluded); n > 0 {
+			res.UnavailableReason += ", " + strconv.Itoa(n) + " excluded by choice"
+		}
 	}
 	return res, nil
 }
@@ -1500,6 +1561,18 @@ func (s *Scanner) skipByName(logical string) bool {
 	base := path_base(logical)
 	_, ok := s.skipFilenames[base]
 	return ok
+}
+
+// excludedBy reports the reason of the first declared exclusion whose
+// fragment the logical path contains.
+func (s *Scanner) excludedBy(logical string) (string, bool) {
+	l := filepath.ToSlash(logical)
+	for _, ex := range s.exclusions {
+		if strings.Contains(l, ex.Fragment) {
+			return ex.Reason, true
+		}
+	}
+	return "", false
 }
 
 func (s *Scanner) skipByFragment(logical string) bool {
