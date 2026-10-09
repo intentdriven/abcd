@@ -647,7 +647,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;\n" +
 			"a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where\n" +
 			"your git configuration signs every commit, and the merge does not verify the signature of the\n" +
-			"commit it merges in.\n\n" +
+			"commit it merges in. The merge is git's built-in merge on every path, whatever merge driver\n" +
+			"the repository configures or merge.default names, so a driver's program never runs.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, " + abcdhome.Display("worktrees/<root-sha>/<run-id>-<lane-id>") + ", on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +

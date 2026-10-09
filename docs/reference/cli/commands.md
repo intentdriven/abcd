@@ -2134,7 +2134,8 @@ since its base is synced first (the default branch merged in with a merge commit
 rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
 a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where
 your git configuration signs every commit, and the merge does not verify the signature of the
-commit it merges in.
+commit it merges in. The merge is git's built-in merge on every path, whatever merge driver
+the repository configures or merge.default names, so a driver's program never runs.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>

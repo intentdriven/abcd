@@ -31,7 +31,8 @@ import (
 //
 // They do not blank content filters or diff and merge drivers, because those
 // are keyed on a name the repository chooses; FilterOverrides covers filters
-// for a command that must not run one, and a diff passes --no-ext-diff and
+// for a command that must not run one, MergeDriverOverrides makes every merge
+// driver git's built-in merge, and a diff passes --no-ext-diff and
 // --no-textconv.
 func ExecPins() []string {
 	return []string{
@@ -58,19 +59,72 @@ func ExecPins() []string {
 // `=` or a line break) is refused: blanking a different key would leave the
 // filter live.
 func FilterOverrides(root string) ([]string, error) {
-	cmd := isolatedGit(root, "config", "--null", "--name-only", "--get-regexp", `^filter\.`)
+	names, err := configNames(root, "filter")
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, name := range names {
+		for _, v := range []string{"clean", "smudge", "process"} {
+			out = append(out, "-c", "filter."+name+"."+v+"=")
+		}
+	}
+	return out, nil
+}
+
+// BuiltinMergeDriver is the merge.<name>.driver command line that makes a
+// driver git's built-in text merge: `git merge-file` over the three versions,
+// with the conflict-marker size and the three conflict labels git passes a
+// driver, and the histogram diff git's merge itself uses. Its result, clean
+// or conflicted, is byte for byte the built-in driver's, and it exits non-zero
+// on a conflict, as a driver must.
+const BuiltinMergeDriver = "git merge-file --marker-size=%L --diff-algorithm=histogram -L %X -L %S -L %Y %A %O %B"
+
+// MergeDriverOverrides returns the `git -c` overrides that make every merge
+// driver the repository at root configures git's built-in text merge —
+// `merge.<name>.driver` set to BuiltinMergeDriver for each name — and pin
+// merge.default to the built-in text driver, so a merge abcd composes never
+// starts a program the repository names, whichever driver an attribute or
+// merge.default selects (iss-2610090821510097). A driver cannot be blanked as
+// a filter is: git fails to start an empty driver command and reports every
+// path both sides changed as a conflict. The overrides go before the
+// subcommand.
+//
+// Config is read as FilterOverrides reads it, and a name `-c` cannot carry
+// intact is refused the same way.
+func MergeDriverOverrides(root string) ([]string, error) {
+	names, err := configNames(root, "merge")
+	if err != nil {
+		return nil, err
+	}
+	out := []string{"-c", "merge.default=text"}
+	for _, name := range names {
+		out = append(out, "-c", "merge."+name+".driver="+BuiltinMergeDriver)
+	}
+	return out, nil
+}
+
+// configNames lists, once each and in config order, the subsection names of
+// section that the repository at root configures (`<section>.<name>.<var>`),
+// reading config the way the isolated command reads it: repository config and
+// its includes, global and system neutralised. A key with no subsection
+// (`merge.ff`) names nothing. A name `-c` cannot carry intact (one holding `=`
+// or a line break) is refused: overriding a different key would leave the
+// configured program live.
+func configNames(root, section string) ([]string, error) {
+	cmd := isolatedGit(root, "config", "--null", "--name-only", "--get-regexp", `^`+section+`\.`)
 	e := &capWriter{remaining: 4096}
 	w := &capWriter{remaining: 1 << 20}
 	cmd.Stdout, cmd.Stderr = w, e
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(w.buf) == 0 {
-			return nil, nil // no filter key at all
+			return nil, nil // no key in the section at all
 		}
-		return nil, fmt.Errorf("reading the repository's filter config: %w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+		return nil, fmt.Errorf("reading the repository's %s config: %w (stderr: %q)", section, err, strings.TrimSpace(string(e.buf)))
 	}
 	if w.overflowed {
-		return nil, errors.New("reading the repository's filter config: the key list exceeded its cap")
+		return nil, fmt.Errorf("reading the repository's %s config: the key list exceeded its cap", section)
 	}
 	seen := map[string]bool{}
 	var out []string
@@ -78,23 +132,21 @@ func FilterOverrides(root string) ([]string, error) {
 		if key == "" {
 			continue
 		}
-		// filter.<name>.<variable>: the name is everything between the first
-		// and the last dot, and may itself hold dots.
+		// <section>.<name>.<variable>: the name is everything between the
+		// first and the last dot, and may itself hold dots.
 		first, last := strings.IndexByte(key, '.'), strings.LastIndexByte(key, '.')
 		if last <= first {
-			continue // filter.<variable>: no name, no driver
+			continue // <section>.<variable>: no name
 		}
 		name := key[first+1 : last]
 		if seen[name] {
 			continue
 		}
 		if strings.ContainsAny(name, "=\n\r") {
-			return nil, fmt.Errorf("the repository configures a filter whose name %q cannot be passed to git -c, so it cannot be switched off", name)
+			return nil, fmt.Errorf("the repository configures a %s whose name %q cannot be passed to git -c, so it cannot be switched off", section, name)
 		}
 		seen[name] = true
-		for _, v := range []string{"clean", "smudge", "process"} {
-			out = append(out, "-c", "filter."+name+"."+v+"=")
-		}
+		out = append(out, name)
 	}
 	return out, nil
 }

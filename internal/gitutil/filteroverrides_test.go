@@ -52,3 +52,50 @@ func TestFilterOverridesBlanksEveryConfiguredFilter(t *testing.T) {
 		t.Fatalf("a filter name holding '=' must be refused, got %q", got)
 	}
 }
+
+// TestMergeDriverOverridesReplaceEveryConfiguredDriver: with no driver
+// configured only merge.default is pinned; each configured name (a dotted one
+// included, and one with no driver line) gets git's built-in merge once; a key
+// with no name (merge.ff) names nothing; a name -c cannot carry intact is
+// refused.
+func TestMergeDriverOverridesReplaceEveryConfiguredDriver(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	repo := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = gitEnv()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+
+	got, err := MergeDriverOverrides(repo)
+	if err != nil || strings.Join(got, " ") != "-c merge.default=text" {
+		t.Fatalf("no driver configured: got %q, %v; want only merge.default pinned", got, err)
+	}
+
+	git("config", "merge.ff", "false")
+	git("config", "merge.evil.driver", "x %A")
+	git("config", "merge.evil.recursive", "binary")
+	git("config", "merge.a.b.name", "named only")
+	got, err = MergeDriverOverrides(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "-c merge.default=text -c merge.evil.driver=" + BuiltinMergeDriver + " -c merge.a.b.driver=" + BuiltinMergeDriver
+	if strings.Join(got, " ") != want {
+		t.Fatalf("got %q\nwant %q", strings.Join(got, " "), want)
+	}
+
+	git("config", "merge.x=y.driver", "z")
+	if got, err := MergeDriverOverrides(repo); err == nil {
+		t.Fatalf("a driver name holding '=' must be refused, got %q", got)
+	}
+}

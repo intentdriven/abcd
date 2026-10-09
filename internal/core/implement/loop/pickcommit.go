@@ -76,15 +76,21 @@ func pickGit(dir string, args ...string) (string, error) {
 	cmd.Env = gitutil.ScrubbedEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// The subcommand an error names follows any `-c` overrides the caller put
+	// before it.
+	sub := args
+	for len(sub) > 2 && sub[0] == "-c" {
+		sub = sub[2:]
+	}
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if len(msg) > 2048 {
 			msg = msg[:2048]
 		}
-		return "", fmt.Errorf("git %s: %v (%s)", args[0], err, msg)
+		return "", fmt.Errorf("git %s: %v (%s)", sub[0], err, msg)
 	}
 	if stdout.Len() > maxGitOutput {
-		return "", fmt.Errorf("git %s wrote more than %d bytes", args[0], maxGitOutput)
+		return "", fmt.Errorf("git %s wrote more than %d bytes", sub[0], maxGitOutput)
 	}
 	return stdout.String(), nil
 }
