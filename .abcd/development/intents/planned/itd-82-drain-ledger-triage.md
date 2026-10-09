@@ -71,6 +71,7 @@ Ruled by the product thinker on 2026-09-21, in the interview that revived this d
 6. **A `remedy:` field, required from now on** (ruled 2026-09-21): eligibility reads it; the backlog without it waits for someone to add it.
 7. **Order and categories declared** over the ledger's own enum (scope above), so no implementer decides them alone.
 8. **The classification is re-derived every run** and recorded with each disposition in the summary; nothing is written onto the issue for it (ruled 2026-09-21; the durable-field alternative is left for a ledger that outgrows re-derivation).
+- 2026-10-09: the product thinker grouped what the drain still needs to run end to end into this intent's plan: the judgement before a lane opens and the summary's remaining counts, plus three steps from issues (merged lanes finished, iss-2610090936460789; one issue or package held back for now, iss-2610090642385898; a pull request that leaves the merge queue put back, iss-2610090642376032). Pacing stays its own intent (itd-2609201925079472), built alongside; this intent builds on it. The drain joins the person's command list when this intent ships (ruling BX1 kept). Answer verbatim: "Group as proposed".
 
 ## Prior Art
 

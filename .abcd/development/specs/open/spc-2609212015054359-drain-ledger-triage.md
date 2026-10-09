@@ -75,6 +75,24 @@ ADR is minted in the first delivery and reviewed with the diff.
   hand-back routing per kind; the `related_intents` stamp as the only write; the window
   exit and `--max`; the refusal without the ADR.
 
+## Steps
+
+1. The judgement before a lane opens (scope 3)
+   - packages: internal/core/implement, internal/core/capture
+   - tests: an eligible issue whose remedy changes a user-visible surface or a trust boundary is handed back before any lane opens; one that changes neither opens a lane
+2. The summary's remaining counts (scope 8)
+   - packages: internal/core/implement, internal/surface/cli
+   - tests: the summary carries every count scope 8 names, in text and --json
+3. Merged lanes are finished (iss-2610090936460789)
+   - packages: internal/core/implement
+   - tests: a lane parked at land whose pushed head is on the default branch is removed and marked done on the next drain move, outside the pacing window
+4. One issue or package held back for now (iss-2610090642385898)
+   - packages: internal/core/implement, internal/surface/cli
+   - tests: an issue on the skip list is passed over with its reason in the plan's passed entries, and the list clears when the drain ends
+5. A pull request that leaves the merge queue is put back (iss-2610090642376032)
+   - packages: internal/core/implement/loop
+   - tests: a landed pull request left unqueued at CLEAN is enqueued, and one dropped after a failed merge-group check is reported with the failed check
+
 ## How the criteria are satisfied
 
 | Criterion | Where |
