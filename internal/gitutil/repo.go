@@ -16,11 +16,11 @@ import (
 
 // isolatedGit builds a git command under root with global and system config
 // neutralised, so a developer's environment cannot change what abcd observes —
-// and with the two repo-local config knobs that can execute code on an
+// and with the repo-local config knobs that can execute code on an
 // otherwise read-only command forced off. The probe points git at arbitrary,
 // possibly-hostile repositories, and a repo's own .git/config is fully trusted
-// by git and cannot be disabled by env; core.hooksPath=/dev/null stops any hook
-// firing and core.fsmonitor=false stops an fsmonitor daemon being spawned. These
+// by git and cannot be disabled by env; ExecPins forces off the knobs that would
+// start a program — a hook, an fsmonitor daemon, a signature verifier. These
 // are the defence for read-only commands (log/tag/rev-list/rev-parse); a command
 // that honours external-diff/textconv/pager config must not be added to the
 // probe without further hardening.
@@ -48,18 +48,17 @@ func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.
 }
 
 // isolatedArgs is the isolated command line: the config knobs that can run
-// code forced off, verbatim paths, then -C root and the caller's arguments.
+// code forced off (ExecPins), verbatim paths, then -C root and the caller's
+// arguments.
 func isolatedArgs(root string, args []string) []string {
-	return append([]string{
-		"-c", "core.hooksPath=/dev/null",
-		"-c", "core.fsmonitor=false",
+	return append(append(ExecPins(),
 		// Emit paths verbatim (UTF-8), not the default C-quoted, double-quoted
 		// form for non-ASCII bytes: a caller that matches a git-reported path
 		// against a filesystem-derived one (site date history) would never match
 		// the quoted key and lose the record's dates.
 		"-c", "core.quotePath=false",
 		"-C", root,
-	}, args...)
+	), args...)
 }
 
 // gitEnv builds the child environment for an isolated git command: the parent
