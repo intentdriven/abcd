@@ -25,10 +25,25 @@ import (
 // are the defence for read-only commands (log/tag/rev-list/rev-parse); a command
 // that honours external-diff/textconv/pager config must not be added to the
 // probe without further hardening.
+//
+// Every isolated command passes lazyFetchGuard first: a refusal is set as the
+// command's Err, so Run, Output and Start return it and git never starts.
 func isolatedGit(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
+	guardObjectRead(cmd, root, args)
 	return cmd
+}
+
+// guardObjectRead applies lazyFetchGuard to an isolated command, setting a
+// refusal as cmd.Err (which exec returns from Start before anything runs).
+func guardObjectRead(cmd *exec.Cmd, root string, args []string) {
+	if cmd.Err != nil {
+		return
+	}
+	if err := lazyFetchGuard(root, args); err != nil {
+		cmd.Err = err
+	}
 }
 
 // contextWaitDelay is how long a context-bound git's Wait waits, once the
@@ -45,6 +60,7 @@ func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	cmd.WaitDelay = contextWaitDelay
+	guardObjectRead(cmd, root, args)
 	return cmd
 }
 
@@ -103,7 +119,8 @@ func gitEnv() []string {
 	// checkout ran a program that checkout chose (iss-2610090821527948). A
 	// missing object is an error instead; a present one still reads. It is
 	// appended after the parent's environment, so it wins over an inherited
-	// value (git 2.44 and later honour it).
+	// value. git honours it from 2.44; below that floor lazyFetchGuard refuses
+	// an object read in a repository that declares a promisor remote.
 	return append(env,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",

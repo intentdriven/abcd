@@ -66,7 +66,7 @@ If you wish to experiment with `abcd`, we recommend installing it as a plugin *(
 
 ### Requirements
 
-- **Git**: Always. `abcd` shells out to the `git` binary and anchors every record it keeps to a repository.
+- **Git**: Always. `abcd` shells out to the `git` binary and anchors every record it keeps to a repository. In a partial clone (a repository with a promisor remote) it needs git 2.44 or later: an older git fetches a missing object through the transport the repository configures, so `abcd` refuses to read that repository's objects until git is upgraded.
 - **A released platform**: macOS or Linux, on amd64 or arm64. *(Windows runs the Linux route inside WSL)*.
 - **An agent harness**: The plugin route and the verbs that hand their work to a model, and nothing else.
 

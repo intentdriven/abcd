@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gitutil/repo.go"
 remedy: "Set `GIT_NO_LAZY_FETCH=1` in `gitEnv` so a missing object returns an error instead of fetching; prove it with a gitutil test (watched fail first) that Plan on a local-path promisor with a missing manifest blob leaves the uploadpack mark empty and returns the git error, `GitExistingTags` with `tag.sort=taggerdate` and a missing v* object leaves the mark empty, a present blob and tag still read, and the sshCommand and ext:: marks stay empty; sweep siblings (ScrubbedEnv and pickGit, and every other git environment abcd builds)."
-resolution: "gitEnv now sets GIT_NO_LAZY_FETCH=1, so a read of a missing object in a promisor repository (show, cat-file, a tag list under an object-reading tag.sort) is an error and starts no configured transport; Run, RunLimited and IsolatedEnv share it, covering GitExistingTags"
+resolution: "gitEnv sets GIT_NO_LAZY_FETCH=1, so on git 2.44 or later a read of a missing object in a promisor repository (show, cat-file, a tag list under an object-reading tag.sort) is an error and starts no configured transport. git older than 2.44 ignores the variable (Apple's Command Line Tools ship 2.39), so below that floor every isolated git command that reads objects (Run, RunLimited, RunCapped, RunLimitedContext, IsAncestor, ArchiveTree, and GitExistingTags, now routed through Run) refuses, before git starts and naming the 2.44 floor, a repository that declares extensions.partialClone or a true remote.<name>.promisor; a repository with no promisor remote reads as before, root discovery still answers, and the README states the floor"
 impact: fix
 ---
 
