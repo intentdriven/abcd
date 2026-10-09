@@ -9,11 +9,11 @@ import (
 // Review findings on the script reading (2026-10-09).
 func TestScriptReadingReviewFindings(t *testing.T) {
 	dir := scriptTree(t, map[string]string{
-		"e":    hazardLine,
-		"s.sh": hazardLine,
-		"a.sh": "bash b.sh",
-		"b.sh": "bash c.sh",
-		"c.sh": "echo deep",
+		"e":        hazardLine,
+		"s.sh":     hazardLine,
+		"a.sh":     "bash b.sh",
+		"b.sh":     "bash c.sh",
+		"c.sh":     "echo deep",
 		"sub/keep": "",
 	})
 	runScriptCases(t, dir, []scriptCase{
