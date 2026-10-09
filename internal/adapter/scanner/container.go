@@ -816,6 +816,12 @@ func (s *Scanner) decodeTar(data []byte, secrets []Pattern, label string, b *dec
 		start := counted.n
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
+			// The call that finds the end marker can still have consumed
+			// extension headers that no entry followed; their bodies were
+			// read by nobody unless the walk reads them here.
+			if ok, why := s.coverTarExtensions(data[start:counted.n], start, secrets, label, b, depth, out); !ok {
+				return false, why
+			}
 			break
 		}
 		if err != nil {
@@ -887,13 +893,18 @@ func (s *Scanner) decodeTar(data []byte, secrets []Pattern, label string, b *dec
 //
 // The window opens with the previous entry's block padding, which decodeTar
 // already judged, so the walk starts at the next block boundary; it stops at
-// the first header that is not an extension, which is the entry's own.
+// the first header that is not an extension, which is the entry's own, or the
+// end marker's first block when no entry followed. Whatever Next read past
+// that header is judged by tarSparseMapSlackIsZero.
 func (s *Scanner) coverTarExtensions(window []byte, start int, secrets []Pattern, label string, b *decodeBudget, depth int, out *[]Finding) (bool, string) {
 	o := (512 - start%512) % 512
 	for o+512 <= len(window) {
 		blk := window[o : o+512]
 		typ := blk[156]
 		if typ != tar.TypeGNULongName && typ != tar.TypeGNULongLink && typ != tar.TypeXHeader && typ != tar.TypeXGlobalHeader {
+			if !tarSparseMapSlackIsZero(typ, window[o+512:]) {
+				return false, label + ": a sparse map carries bytes past what the reader parsed"
+			}
 			return true, ""
 		}
 		size, ok := tarHeaderSize(blk[124:136])
@@ -929,6 +940,61 @@ func (s *Scanner) coverTarExtensions(window []byte, start int, secrets []Pattern
 		o = next
 	}
 	return true, ""
+}
+
+// tarSparseMapSlackIsZero judges the bytes Next consumed after an entry's own
+// header and before its data: empty for an ordinary entry, the end marker's
+// second block when Next found the end, and otherwise a sparse map Next parsed
+// only part of (iss-2610090821512707). An old GNU sparse entry (typeflag S) is
+// followed by extension blocks, each 21 entries of 24 bytes, an isExtended
+// byte at 504 and seven bytes of padding; the reader stops reading a block's
+// entries at the first whose offset opens with a NUL. A PAX sparse 1.0 entry
+// opens its data with a map of decimal numbers, a count then two per entry,
+// each ended by a newline, in whole blocks; the reader parses up to the last
+// newline it needs. Every writer zero-fills what the reader skips (GNU tar
+// clears both blocks before filling them), so the rule is that it is zero: a
+// byte there was read by nobody, so the archive is not promoted.
+func tarSparseMapSlackIsZero(typ byte, rest []byte) bool {
+	if allZero(rest) {
+		return true
+	}
+	if typ == tar.TypeGNUSparse {
+		if len(rest)%512 != 0 {
+			return false
+		}
+		for blk := rest; len(blk) > 0; blk = blk[512:] {
+			end := 504
+			for i := 0; i < 504; i += 24 {
+				if blk[i] == 0 {
+					end = i
+					break
+				}
+			}
+			if !allZero(blk[end:504]) || !allZero(blk[505:512]) {
+				return false
+			}
+		}
+		return true
+	}
+	nl := bytes.IndexByte(rest, '\n')
+	if nl < 0 {
+		return false
+	}
+	n, err := strconv.ParseInt(string(rest[:nl]), 10, 64)
+	if err != nil || n < 0 {
+		return false
+	}
+	at := nl + 1
+	for ; n > 0; n-- {
+		for range 2 {
+			i := bytes.IndexByte(rest[at:], '\n')
+			if i < 0 {
+				return false
+			}
+			at += i + 1
+		}
+	}
+	return allZero(rest[at:])
 }
 
 // tarHeaderSize parses a header's size field the way archive/tar does: base-256
