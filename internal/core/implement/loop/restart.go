@@ -147,16 +147,14 @@ func whyOf(yielded string) (string, error) {
 
 // restartWorktree is the worktree the loop derives for the lane, refusing a
 // lane whose state names any other path or branch: the reset runs only where
-// the loop itself made the lane.
-//
-// TODO(loopWorktree): fold this into the peer's loopWorktree helper in lane.go
-// once it lands, so one function answers where a lane's worktree is.
+// the loop itself made the lane. The path is the one derivedLaneWorktree
+// answers for every stage; the restart also holds the branch to the loop's.
 func restartWorktree(repoRoot, runID string, lane Lane) (LaneWorktree, error) {
-	lw, err := laneWorktree(repoRoot, runID, lane.ID)
+	lw, err := derivedLaneWorktree(repoRoot, runID, lane, string(stageRestart))
 	if err != nil {
 		return LaneWorktree{}, err
 	}
-	if lane.Worktree == "" || filepath.Clean(lane.Worktree) != filepath.Clean(lw.Path) || lane.Branch != lw.Branch {
+	if lane.Branch != lw.Branch {
 		return LaneWorktree{}, refuse(stageRestart, "", lane.ID,
 			fmt.Sprintf("the state names %s's worktree as %s on %s, not the loop's own %s on %s, so nothing there is saved or reset",
 				lane.ID, fsutil.RedactHome(lane.Worktree), lane.Branch, fsutil.RedactHome(lw.Path), lw.Branch),

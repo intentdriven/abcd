@@ -137,16 +137,25 @@ func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
 // non-empty string and laid the close's local tier in a directory the state
 // named (iss-2610090821552801). stage labels the refusal.
 func loopWorktree(c Context, lane Lane, stage string) error {
-	lw, err := laneWorktree(c.RepoRoot, c.State.RunID, lane.ID)
+	_, err := derivedLaneWorktree(c.RepoRoot, c.State.RunID, lane, stage)
+	return err
+}
+
+// derivedLaneWorktree is the worktree the loop derives for lane, refusing a
+// lane whose state names any other path: the one answer to where a lane's
+// worktree is, which every stage that hands the path on, and the restart,
+// asks (loopWorktree, restartWorktree).
+func derivedLaneWorktree(repoRoot, runID string, lane Lane, stage string) (LaneWorktree, error) {
+	lw, err := laneWorktree(repoRoot, runID, lane.ID)
 	if err != nil {
-		return relabel(err, Stage(stage))
+		return LaneWorktree{}, relabel(err, Stage(stage))
 	}
-	if lane.Worktree == "" || lane.Worktree != lw.Path {
-		return refuse(stage, "", lane.ID,
+	if lane.Worktree == "" || filepath.Clean(lane.Worktree) != filepath.Clean(lw.Path) {
+		return LaneWorktree{}, refuse(stage, "", lane.ID,
 			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
 			"the worktree stage makes it; restore the run's state file")
 	}
-	return nil
+	return lw, nil
 }
 
 // worktreeStage is the worktree stage's body. It finds what it made last time
