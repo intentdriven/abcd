@@ -70,10 +70,22 @@ func pickMessage(st State) string {
 // returns its stdout verbatim: a porcelain status line opens with a space when
 // the change is unstaged, and the comparison below is made against the line as
 // git wrote it.
+//
+// Automatic maintenance is off (gc.auto=0, maintenance.auto=false, on the
+// command line where they outrank the repository's config): the isolated
+// environment pins them, ScrubbedEnv does not, and a commit or merge would
+// otherwise start `maintenance run --auto` and `gc --auto`, which can run
+// gc.recentObjectsHook, a program the repository names. GIT_NO_LAZY_FETCH=1
+// keeps a merge in a partial clone from fetching a missing object through the
+// repository's promisor remote (iss-2610091935334207).
 func pickGit(dir string, args ...string) (string, error) {
-	full := append(append(gitutil.ExecPins(), "-c", "core.quotePath=false", "-C", dir), args...)
+	full := append(append(gitutil.ExecPins(),
+		"-c", "core.quotePath=false",
+		"-c", "gc.auto=0",
+		"-c", "maintenance.auto=false",
+		"-C", dir), args...)
 	cmd := exec.Command("git", full...)
-	cmd.Env = gitutil.ScrubbedEnv()
+	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	// The subcommand an error names follows any `-c` overrides the caller put
