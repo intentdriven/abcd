@@ -65,7 +65,7 @@ func newDashboardStartCommand(asJSON *bool) *cobra.Command {
 			"manages, when a dashboard already runs on this computer, when Tailscale is not\n" +
 			"running, and when the port is one Tailscale's own Serve or Funnel configuration\n" +
 			"uses. It returns once a fetch of its own address through Tailscale answers. An\n" +
-			"address the fetch cannot connect to at all is dropped, no longer listened on,\n" +
+			"address the fetch cannot connect to at all is dropped: its listener is closed,\n" +
 			"and named with why in the line; if no address answers, or one that connects\n" +
 			"does not, the server is stopped and the failure named.",
 		Args: cobra.NoArgs,
