@@ -1156,14 +1156,17 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		return nil
 	}
 	var sigs []payloadSignal
-	if t.kind != targetDirect {
-		written, unplaced := writtenBefore(t.path, before)
-		if written {
-			return []payloadSignal{scriptWrittenSignal(t.shown)}
-		}
-		if unplaced {
-			sigs = append(sigs, scriptWriteUnplacedSignal(t.shown))
-		}
+	// A file the line writes before running it is not the file the guard can
+	// read now, so the run blocks whatever the file is, a direct run included
+	// (product thinker ruling 2026-10-09). An unplaced write is noted only for a
+	// file a shell is pointed at: a direct run the guard cannot read is a
+	// program, which runs unread like every program.
+	written, unplaced := writtenBefore(t.path, before)
+	if written {
+		return []payloadSignal{scriptWrittenSignal(t.shown)}
+	}
+	if unplaced && t.kind != targetDirect {
+		sigs = append(sigs, scriptWriteUnplacedSignal(t.shown))
 	}
 	real, err := filepath.EvalSymlinks(t.path)
 	if err != nil {
@@ -1196,10 +1199,6 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 	if t.kind == targetDirect {
 		if fr.err != nil || fr.tooBig || !isShellScript(fr) {
 			return sigs // a program, allowed unread as every program is
-		}
-		written, unplaced := writtenBefore(t.path, before)
-		if written {
-			return []payloadSignal{scriptWrittenSignal(t.shown)}
 		}
 		if unplaced {
 			sigs = append(sigs, scriptWriteUnplacedSignal(t.shown))
@@ -1304,10 +1303,13 @@ func writtenBefore(p string, before []writeTarget) (written, unplaced bool) {
 }
 
 // scriptSignals carries out of a script what its reading found that
-// propagates (decision 5): every registry entry matched at command position,
+// propagates (decision 5): every registry blocker matched at command position,
 // named with the script, the line and the entry; every entry-less block; and
-// the reading's own verdicts. A Tier 2 hit never gets here, and an entry-less
-// warn stays inside.
+// the reading's own verdicts (a file it could not read). Only block-level
+// verdicts on the script's commands propagate (product thinker ruling
+// 2026-10-09): a warn-tier entry inside a script, a Tier 2 hit and an
+// entry-less warn stay inside, so a script that runs `git clean` on its own
+// scratch does not make every run of it warn.
 func (r Registry) scriptSignals(v verdicts, text, shown string) []payloadSignal {
 	var out []payloadSignal
 	entry := func(verdict Verdict, ids []string, named bool) {
@@ -1344,8 +1346,6 @@ func (r Registry) scriptSignals(v verdicts, text, shown string) []payloadSignal 
 	}
 	entry(VerdictBlock, v.blockers, true)
 	entry(VerdictBlock, v.unnamedBlockers, false)
-	entry(VerdictWarn, v.warns, true)
-	entry(VerdictWarn, v.unnamedWarns, false)
 	for _, sig := range v.signals {
 		if sig.verdict == VerdictBlock || sig.fromRead {
 			out = append(out, carriedOut(sig, shown))

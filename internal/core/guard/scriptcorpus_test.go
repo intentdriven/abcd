@@ -14,10 +14,11 @@ import (
 // maxScriptCorpusWarns is the ceiling on warns across the repository's own
 // scripts. Raising it is allowed and never quiet: the test logs every warn.
 // Measured at four when the reading landed, every one a warn-tier registry
-// entry at command position (decision 5 carries Tier 1 out of a script): three
-// test harnesses that run `git clean` or `git reset --hard` in a scratch
-// repository, and a hook that execs a program named by a variable.
-const maxScriptCorpusWarns = 4
+// entry at command position: three test harnesses that run `git clean` or
+// `git reset --hard` in a scratch repository, and a hook that execs a program
+// named by a variable. The product thinker then ruled that only block-level
+// verdicts come out of a script (2026-10-09), and the count is zero.
+const maxScriptCorpusWarns = 0
 
 // scriptCorpusBlocks are the repository scripts that do run a blocker, and so
 // block when an agent runs them: each is named with what it runs.

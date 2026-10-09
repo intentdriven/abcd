@@ -222,6 +222,15 @@ test that runs the repository's own `scripts/*.sh`, `.githooks/*` and
 warn ceiling in the `corpus_test.go` shape, so the warn-rate STOP of adr-42
 decision 8 is measured rather than assumed.
 
+**11. Two refinements the product thinker ruled while it was built
+(2026-10-09).** Decision 5 carries out of a script only block-level verdicts:
+a registry entry that only warns, met inside a script, stays inside it with the
+Tier 2 hits, so a script that runs `git clean` on its own scratch does not make
+every run of it warn; the repository's own scripts then warn on none. Decision
+6 applies to a direct run too: a file the line writes and then runs by path
+blocks whatever the file is, closing the gap decision 3 left for a file that is
+absent, or a program, at check time.
+
 ## Alternatives Considered
 
 - **B: name script files a known limit, block only `BASH_ENV`/`ENV`.** Small and

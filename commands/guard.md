@@ -348,16 +348,20 @@ chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
 is. The verdicts:
 
-- a registry entry at command position in the script is carried out at its own
-  tier (`script-runs-hazard`), naming the script, the line and the entry; an
-  entry-less block inside it (a stream, a payload past the depth) is carried
-  out as a block; a speculative (Tier 2) hit inside it is not;
+- a registry blocker at command position in the script is a **block**
+  (`script-runs-hazard`), naming the script, the line and the entry, and so is
+  an entry-less block inside it (a stream, a payload past the depth); a command
+  the registry only warns on inside a script (`git clean` on its own scratch),
+  and a speculative (Tier 2) hit, stay inside it, so running the script does
+  not warn;
 - a script written earlier on the same line — by a redirection, or as the
   target of `tee`, `cp`, `mv`, `install`, `dd of=`, `curl -o`/`-O`, `wget -O`,
   `sed -i`, `patch`, `git checkout`/`restore`/`clone`, `tar -x` or `unzip` — is a
   **block** (`script-written-then-run`): the file the guard reads now is not the
-  file that runs. Write it in one command and run it in the next. A write the
-  guard cannot place (`> "$LOG"`) before a script runs is a **warn**;
+  file that runs. A file the line writes and then runs by path is a **block**
+  the same way, whatever the file is (`curl -o x … && ./x`). Write it in one
+  command and run it in the next. A write the guard cannot place (`> "$LOG"`)
+  before a script a shell is pointed at is a **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
 - a file a shell is handed that holds a NUL byte in its first 8 KiB is a
