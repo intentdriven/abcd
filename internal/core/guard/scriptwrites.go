@@ -49,7 +49,7 @@ func writerTargets(rc *readCtx, s segment, st *shellState) []writeTarget {
 		switch strings.ToLower(path.Base(tok)) {
 		case "tee":
 			out = append(out, w.operands(nil, nil)...)
-		case "cp", "mv", "install":
+		case "cp", "mv", "install", "ln":
 			out = append(out, w.copyTarget()...)
 		case "dd":
 			for i := w.from; i < len(s.tokens); i++ {

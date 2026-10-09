@@ -355,7 +355,7 @@ is. The verdicts:
   and a speculative (Tier 2) hit, stay inside it, so running the script does
   not warn;
 - a script written earlier on the same line — by a redirection, or as the
-  target of `tee`, `cp`, `mv`, `install`, `dd of=`, `curl -o`/`-O`, `wget -O`,
+  target of `tee`, `cp`, `mv`, `install`, `ln`, `dd of=`, `curl -o`/`-O`, `wget -O`,
   `sed -i`, `patch`, `git checkout`/`restore`/`clone`, `tar -x` or `unzip` — is a
   **block** (`script-written-then-run`): the file the guard reads now is not the
   file that runs. A file the line writes and then runs by path is a **block**

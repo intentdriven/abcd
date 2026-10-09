@@ -259,7 +259,7 @@ func TestScriptReadingIsBoundedByDepthAndBudget(t *testing.T) {
 	dir := scriptTree(t, files)
 	runScriptCases(t, dir, []scriptCase{
 		{`bash b.sh`, VerdictAllow, ""},
-		{`bash a.sh`, VerdictBlock, syntheticEntryID},
+		{`bash a.sh`, VerdictBlock, scriptUnreadEntryID},
 		{`bash many.sh`, VerdictWarn, scriptUnreadEntryID},
 	})
 }

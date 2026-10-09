@@ -98,6 +98,42 @@ type Files struct {
 
 	mu    sync.Mutex
 	cache map[string]fileRead
+	stats map[string]statResult
+	// statCalls counts the filesystem lookups made, so a test can prove the
+	// site bound holds before any lookup (maxScriptTargets).
+	statCalls int
+}
+
+// statResult is one cached lookup of a path.
+type statResult struct {
+	fi  os.FileInfo
+	err error
+}
+
+// stat is os.Stat (or os.Lstat when link is set) of p, kept for the rest of
+// the command's checks, so the hook's second registry pays no lookup again.
+func (f *Files) stat(p string, link bool) (os.FileInfo, error) {
+	key := p
+	if link {
+		key = "\x00l" + p
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if r, ok := f.stats[key]; ok {
+		return r.fi, r.err
+	}
+	f.statCalls++
+	var r statResult
+	if link {
+		r.fi, r.err = os.Lstat(p)
+	} else {
+		r.fi, r.err = os.Stat(p)
+	}
+	if f.stats == nil {
+		f.stats = map[string]statResult{}
+	}
+	f.stats[key] = r
+	return r.fi, r.err
 }
 
 // NewFiles returns the reading context for a command run in dir: the host's
@@ -109,7 +145,7 @@ func NewFiles(dir string) *Files {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = ""
 	}
-	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cache: map[string]fileRead{}}
+	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cache: map[string]fileRead{}, stats: map[string]statResult{}}
 }
 
 // ReadingFrom returns r reading the files a command names from f.
@@ -179,6 +215,8 @@ type readCtx struct {
 	nFiles       int
 	nBytes       int
 	nTargets     int
+	nSites       int
+	nDirProbes   int
 	budgetWarned bool
 	stack        []string
 	notes        []string
@@ -675,13 +713,38 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 			out = out.unresolved()
 		case (name == "source" || name == ".") && sourcedChangesDir(rc, out, s, a.idx):
 			out = out.unresolved()
-		case name == "export":
+		case name == "export" || name == "declare" || name == "typeset":
+			// `declare -x`/`typeset -x` export as `export` does; `export -n`
+			// and `declare +x` take the export away. A declare without -x sets
+			// the variable unexported.
+			exports, unexports := name == "export", false
+			for _, w := range args {
+				switch {
+				case w == "-n" && name == "export":
+					exports, unexports = false, true
+				case len(w) > 1 && w[0] == '-' && strings.ContainsRune(w[1:], 'x') && name != "export":
+					exports = true
+				case len(w) > 1 && w[0] == '+' && strings.ContainsRune(w[1:], 'x'):
+					exports, unexports = false, true
+				}
+			}
 			n := out.clone()
 			for _, w := range args {
-				if nm, v, ok := assignment(w); ok && trackedVars[nm] {
-					n.vars[nm], n.exported[nm] = v, true
-				} else if trackedVars[w] {
-					n.exported[w] = true
+				nm, v, ok := assignment(w)
+				if !ok {
+					nm = w
+				}
+				if !trackedVars[nm] {
+					continue
+				}
+				if ok {
+					n.vars[nm] = v
+				}
+				switch {
+				case exports:
+					n.exported[nm] = true
+				case unexports:
+					delete(n.exported, nm)
 				}
 			}
 			out = n
@@ -736,6 +799,12 @@ func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 // sourcedChangesDir reports whether the file a `source` at site reads holds a
 // directory change, which leaves the shell's directory unknown after it.
 func sourcedChangesDir(rc *readCtx, st *shellState, s segment, site int) bool {
+	// The same bound as the targets, before any lookup: past it the directory
+	// after the source is unknown, the safe reading.
+	if rc.nDirProbes >= maxScriptTargets {
+		return true
+	}
+	rc.nDirProbes++
 	p, ok := sourcePath(rc, st, s, site)
 	if !ok {
 		return false
@@ -804,6 +873,16 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			continue
 		}
 		name := strings.ToLower(path.Base(tok))
+		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") {
+			continue
+		}
+		// The bound holds before any lookup: a line naming thousands of
+		// scripts resolves sixty-four of them and warns through the budget.
+		if rc.nSites >= maxScriptTargets {
+			sigs = append(sigs, rc.budgetSignal()...)
+			break
+		}
+		rc.nSites++
 		env := st.env(s, a.idx)
 		switch {
 		case isShellFamily(name):
@@ -815,7 +894,7 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 				out = append(out, readTarget{path: p, shown: sourceWord(s, a.idx), kind: targetScript, sourced: true, env: env})
 			} else if w := sourceWord(s, a.idx); w != "" && !strings.Contains(w, "/") {
 				if _, fixed := fixedToken(s, sourceIndex(s, a.idx)); fixed && !scriptIsStream(w, s.stdinStream) {
-					rc.note("abcd guard: `%s %s` names no file the shell can find, so there was nothing to read; the shell will refuse it.", tok, w)
+					rc.note("abcd guard: `%s %s` names no file the shell can find, so there was nothing to read; if the shell reaches it, it refuses it.", tok, w)
 				}
 			}
 		case strings.Contains(tok, "/"):
@@ -877,13 +956,13 @@ func searchPath(rc *readCtx, st *shellState, name string, thenCwd bool) (string,
 			continue
 		}
 		p := filepath.Join(d, name)
-		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+		if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
 			return p, true
 		}
 	}
 	if thenCwd {
 		if p, ok := st.resolve(rc, name, false); ok {
-			if _, err := os.Stat(p); err == nil {
+			if _, err := rc.files.stat(p, false); err == nil {
 				return p, true
 			}
 		}
@@ -1073,7 +1152,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 					if !ok {
 						break
 					}
-					if _, err := os.Lstat(p); err == nil {
+					if _, err := rc.files.stat(p, true); err == nil {
 						out = append(out, child(p, "the startup file "+p, targetStartup))
 						break
 					}
@@ -1133,7 +1212,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 			}
 		default:
 			if p, ok := st.resolveToken(rc, s, idx); ok {
-				if _, err := os.Lstat(p); err != nil && !strings.Contains(w, "/") {
+				if _, err := rc.files.stat(p, true); err != nil && !strings.Contains(w, "/") {
 					if q, found := searchPath(rc, st, w, false); found {
 						p = q
 					}
@@ -1186,11 +1265,16 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 	}
 	if s.depth+1 > maxPayloadDepth {
 		if t.kind == targetDirect {
-			if fr := rc.files.read(real); fr.err != nil || !isShellScript(fr) {
+			// Classified through the budget like any other read.
+			fr, ok := rc.take(real)
+			if !ok {
+				return append(sigs, rc.budgetSignal()...)
+			}
+			if fr.err != nil || fr.tooBig || !isShellScript(fr) {
 				return sigs
 			}
 		}
-		return append(sigs, depthBlockSignal(familyScript))
+		return append(sigs, scriptDepthSignal(t.shown))
 	}
 	fr, ok := rc.take(real)
 	if !ok {
@@ -1402,6 +1486,18 @@ func scriptBinarySignal(shown string) payloadSignal {
 		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
 		reason:    "A shell is handed " + shown + " as text to run, and it holds binary bytes the guard cannot judge.",
 		successor: "Run the program directly instead of handing it to a shell.",
+	}
+}
+
+// scriptDepthSignal is the block for a script run past the depth the reading
+// follows (decision 7): it names the script and its own fix, not the
+// execute-string layers the shared depth was first written for.
+func scriptDepthSignal(shown string) payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: fmt.Sprintf("This command runs %s inside a chain of scripts deeper than the guard reads "+
+			"(%d layers, shared with `sh -c`), so its commands have not been checked.", shown, maxPayloadDepth),
+		successor: "Run the inner script directly, in a command of its own, so the guard reads it; or flatten the chain.",
 	}
 }
 
