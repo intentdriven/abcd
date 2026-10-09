@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -60,6 +61,7 @@ const (
 	// DrainStoppedEmpty: no eligible issue is left that this drain has not
 	// taken.
 	DrainStoppedEmpty = "empty"
+	// DrainStoppedOutage (outage.go): the run gave up on a lost connection.
 )
 
 // The outcomes of a lane the drain opened, as the drain reads its run.
@@ -259,6 +261,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			res.Lane = &l
 		}
 		return res, nil
+	}
+
+	// A run that gave up on a lost connection has stopped (iss-2610080620372731),
+	// and the drain stops with it: it opens no lane while the outage stands.
+	if cur, err := CurrentOutage(repoRoot); err != nil {
+		return DrainResult{}, outageUnreadable(err)
+	} else if cur != nil && cur.Status == implement.OutageGaveUp {
+		st.Stopped, st.EndedAt = DrainStoppedOutage, &now
+		res.Next = fmt.Sprintf("the run gave up on the %s outage open since %s after %d probe(s), so the drain stops here with %d lane(s) opened; once the connection is back, close the outage with `abcd implement outage clear --session <id> --reason <why>`, then `abcd drain` begins a new drain",
+			strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339), len(cur.Probes), len(st.Lanes))
+		return finish(true)
 	}
 
 	// The window clock, as a run keeps it: before next_eligible_at nothing

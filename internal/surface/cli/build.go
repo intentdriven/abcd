@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
@@ -435,6 +436,48 @@ func redactAwait(a *loop.Await) *loop.Await {
 // implementStatusRuns is `implement status`'s --json shape.
 type implementStatusRuns struct {
 	Runs []loop.State `json:"runs"`
+	// Outage is the shared run's lost connection in force, null when there is
+	// none (iss-2610080620372731).
+	Outage *implement.Outage `json:"outage"`
+}
+
+// renderStatusOutage renders the outage in force above the runs, as
+// `abcd implement outage` renders it; nothing when there is none.
+func renderStatusOutage(w io.Writer, o *implement.Outage) {
+	if o != nil {
+		renderOutage(w, o)
+	}
+}
+
+// renderStepOutage is a step's line for the outage open: the services down,
+// since when, the probes and the next one due.
+func renderStepOutage(w io.Writer, in *loop.OutageInfo) {
+	if in == nil {
+		return
+	}
+	fmt.Fprintf(w, "outage: %s down since %s; %d probe(s)", strings.Join(in.Down, " and "), in.Since.UTC().Format(time.RFC3339), in.Probes)
+	if in.NextProbeAt != nil {
+		fmt.Fprintf(w, "; next probe %s", in.NextProbeAt.UTC().Format("15:04"))
+	}
+	fmt.Fprintln(w, "; the lanes that need it wait on the shared probe")
+}
+
+// renderRecordOutages renders the outages over a run's lifetime.
+func renderRecordOutages(w io.Writer, spans []implement.OutageSpan) {
+	if len(spans) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "  outages: %d\n", len(spans))
+	for _, s := range spans {
+		how := s.Outcome
+		if s.Outcome != "open" {
+			how += " after"
+		} else {
+			how += " for"
+		}
+		fmt.Fprintf(w, "    %s  %s %g minute(s): %s down, %d probe(s); retried %s\n", s.Start.UTC().Format(time.RFC3339), how,
+			s.Minutes, strings.Join(s.Services, " and "), s.Probes, termsafe.Sanitize(fsutil.RedactHome(strings.Join(s.Retried, "; "))))
+	}
 }
 
 func newImplementStatusCommand(asJSON *bool) *cobra.Command {
@@ -463,6 +506,10 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			} else if runs, err = loop.Runs(root); err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			cur, err := loop.CurrentOutage(root)
+			if err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
 			for i := range runs {
 				for j := range runs[i].Lanes {
 					if runs[i].Lanes[j].Awaits != nil {
@@ -471,7 +518,8 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs}, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur}, func(w io.Writer) {
+				renderStatusOutage(w, cur)
 				if len(runs) == 0 {
 					fmt.Fprintln(w, "no run in this checkout — start one with `abcd build <itd-N>`")
 					return
@@ -556,6 +604,7 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	for _, r := range res.Blocked {
 		fmt.Fprintf(w, "blocked: %s (%s): %s\n", r.Lane, termsafe.Sanitize(r.Stage), termsafe.Sanitize(fsutil.RedactHome(r.Reason)))
 	}
+	renderStepOutage(w, res.Outage)
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 }
 
@@ -860,6 +909,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 		}
 	}
 	renderPending(w, rec.Pending)
+	renderRecordOutages(w, rec.Outages)
 	renderFallbacks(w, rec.FallbackCounts)
 	for _, fb := range rec.Fallbacks {
 		fmt.Fprintf(w, "    %s  %s asked %s: %s (%s); %s ran it\n", fb.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(fb.Role),

@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -280,6 +281,12 @@ type Outages struct {
 	run *Run
 	// Schedule is the probe schedule; the zero value is DefaultSchedule.
 	Schedule Schedule
+	// resultWait bounds how long a finished probe waits for the run's lock to
+	// write its result (zero is ProbeResultWait), lockTry each attempt's wait
+	// (zero is lockTimeout), and onBusy is called after each attempt another
+	// session's change held the lock. Tests set them.
+	resultWait, lockTry time.Duration
+	onBusy              func()
 }
 
 // Outage returns the run's outage handle, on DefaultSchedule.
@@ -468,7 +475,7 @@ func (o *Outages) ProbeIfDue(session string, p Prober) (ProbeOutcome, error) {
 	}
 
 	var out ProbeOutcome
-	err = o.run.withLock(session, func() error {
+	err = o.withResultLock(session, func() error {
 		cur, err := o.read()
 		if err != nil {
 			return err
@@ -558,6 +565,39 @@ func (o *Outages) ProbeIfDue(session string, p Prober) (ProbeOutcome, error) {
 		return nil
 	})
 	return out, err
+}
+
+// ProbeResultWait bounds how long a finished probe waits for the run's lock to
+// write its result: well inside the lease the probe holds (ProbeLease less the
+// network probe's own bound), so a result that waited is still the lease
+// holder's to write.
+const ProbeResultWait = ProbeLease - NetworkProbeTimeout - 10*time.Second
+
+// withResultLock runs fn under the run's lock for a finished probe's result.
+// The lock is held for file operations only, so another session's change
+// holding it is brief; a probe that ran is worth waiting for, so the writer
+// tries again until resultWait has passed instead of dropping the result and
+// leaving every lane to wait out the lease. Past the bound the last attempt is
+// an ordinary withLock, whose contention is logged and returned.
+func (o *Outages) withResultLock(session string, fn func() error) error {
+	try, bound := o.lockTry, o.resultWait
+	if try <= 0 {
+		try = lockTimeout
+	}
+	if bound <= 0 {
+		bound = ProbeResultWait
+	}
+	deadline := time.Now().Add(bound)
+	for time.Now().Before(deadline) {
+		err := fsutil.WithFileLock(filepath.Join(o.run.Dir, lockFileName), min(try, time.Until(deadline)), fn)
+		if !errors.Is(err, fsutil.ErrLockContention) {
+			return err
+		}
+		if o.onBusy != nil {
+			o.onBusy()
+		}
+	}
+	return o.run.withLock(session, fn)
 }
 
 // probeService proves one service back, or says why it could not.

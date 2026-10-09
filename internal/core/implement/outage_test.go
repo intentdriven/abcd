@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -645,5 +646,57 @@ func TestRemoteProbeAnswersFromALocalOrigin(t *testing.T) {
 	lone := gittest.NewRepo(t)
 	if ok, detail := RemoteProbe(lone.Root())(); !ok || !strings.Contains(detail, "refused") {
 		t.Fatalf("a checkout with no origin = %v %q; want reached-but-refused (not a network failure)", ok, detail)
+	}
+}
+
+// TestOutageProbeResultWaitsForABusyLock: a finished probe whose re-lock finds
+// the run's lock held by another session's change waits for it, within a
+// bound, and writes its result, rather than dropping a probe that ran and
+// leaving the lease to lapse.
+func TestOutageProbeResultWaitsForABusyLock(t *testing.T) {
+	r, c := newRun(t)
+	join(t, r, "alpha", RoleFirst)
+	recordOutage(t, r, "alpha", ServiceNetwork, "tool", "lane-1", "git push")
+	c.advance(time.Minute)
+
+	held, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(free)
+	holder := func() {
+		// Another session's change takes the lock while the probe runs, and
+		// holds it until the probe's writer has met it busy (or a safety bound,
+		// so a writer that never retries fails rather than hangs).
+		_ = fsutil.WithFileLock(filepath.Join(r.Dir, lockFileName), time.Second, func() error {
+			close(held)
+			select {
+			case <-release:
+			case <-time.After(5 * time.Second):
+			}
+			return nil
+		})
+	}
+	probe := func() (bool, string) {
+		go holder()
+		<-held
+		return false, "dial tcp: connection refused"
+	}
+	var busy atomic.Int32
+	o := r.Outage()
+	o.lockTry, o.resultWait = 20*time.Millisecond, 10*time.Second
+	o.onBusy = func() {
+		busy.Add(1)
+		free()
+	}
+	out, err := o.ProbeIfDue("alpha", Prober{Network: probe})
+	if err != nil || !out.Probed || out.Probe == nil || out.Probe.OK {
+		t.Fatalf("a probe whose re-lock met a busy lock = %+v, %v; want its result written", out, err)
+	}
+	if busy.Load() == 0 {
+		t.Fatal("the writer never met the lock busy; the test proves nothing")
+	}
+	cur, err := r.Outage().Current()
+	if err != nil || cur == nil || len(cur.Probes) != 1 || cur.Lease != nil {
+		t.Fatalf("after the probe = %+v, %v; want its result recorded and the lease released", cur, err)
 	}
 }

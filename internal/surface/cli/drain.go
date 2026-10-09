@@ -215,6 +215,8 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		fmt.Fprintln(w, "  ended: the cap is reached")
 	case loop.DrainStoppedEmpty:
 		fmt.Fprintln(w, "  ended: nothing eligible is left")
+	case loop.DrainStoppedOutage:
+		fmt.Fprintln(w, "  ended: the run gave up on a lost connection")
 	}
 	fmt.Fprintln(w, "  the host judgement over each remedy is not built; a lane may still hand its issue back")
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(res.Next))
