@@ -15,9 +15,11 @@ package loop
 // isolated one less the global-config neutralisers (gitutil.ScrubbedEnv): the
 // commit is authored by the person whose identity git is configured with, as
 // every commit of the repository is, and no inherited GIT_DIR, GIT_WORK_TREE
-// or injected configuration can redirect it. Hooks and the fsmonitor are off:
-// the message and the entry are computed, the lane's pull request runs every
-// gate over the commit, and a hook dispatcher is code the loop does not run.
+// or injected configuration can redirect it. Hooks, the fsmonitor and commit
+// signing are off (gitutil.ExecPins): the message and the entry are computed,
+// the lane's pull request runs every gate over the commit, and a hook
+// dispatcher or a signing program the repository names is code the loop does
+// not run (iss-2610090821520843).
 // Every argument is derived: the paths come from the intent store's validated
 // ids, after `--`, and the message from the run and intent ids.
 //
@@ -69,7 +71,7 @@ func pickMessage(st State) string {
 // the change is unstaged, and the comparison below is made against the line as
 // git wrote it.
 func pickGit(dir string, args ...string) (string, error) {
-	full := append([]string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", dir}, args...)
+	full := append(append(gitutil.ExecPins(), "-c", "core.quotePath=false", "-C", dir), args...)
 	cmd := exec.Command("git", full...)
 	cmd.Env = gitutil.ScrubbedEnv()
 	var stdout, stderr bytes.Buffer

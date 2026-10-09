@@ -17,6 +17,9 @@ import (
 //   - core.fsmonitor=false: no fsmonitor daemon is spawned to refresh the index.
 //   - log.showSignature=false: `log` and `show` do not verify a signed commit's
 //     signature, which starts gpg.program (iss-2610090821531394).
+//   - commit.gpgsign=false: a commit or merge commit abcd composes is not
+//     signed, which would start gpg.program, gpg.ssh.program or
+//     gpg.ssh.defaultKeyCommand (iss-2610090821520843).
 //
 // Every isolated command (Run and its siblings) carries them, and a caller that
 // must build its own git command (one that keeps global config, say) prepends
@@ -32,6 +35,7 @@ func ExecPins() []string {
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "core.fsmonitor=false",
 		"-c", "log.showSignature=false",
+		"-c", "commit.gpgsign=false",
 	}
 }
 
