@@ -1496,6 +1496,12 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				push(state{pos: skipCoproc(tokens, st.pos+1), noglob: st.noglob})
 				continue
 			}
+			// `function NAME` and zsh's `repeat COUNT` each take one word of
+			// their own before the command they run (skipFunction).
+			if tok == "function" || tok == "repeat" {
+				push(state{pos: skipFunction(tokens, st.pos+1), noglob: st.noglob})
+				continue
+			}
 			// The wrapper name is folded to lower case before lookup: on a
 			// case-insensitive filesystem (macOS's default) `SUDO`/`ENV`/`NICE`
 			// resolve to and run the real binary (gh-315).

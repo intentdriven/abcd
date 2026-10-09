@@ -207,6 +207,29 @@ func skipCoproc(tokens []string, pos int) int {
 	return pos
 }
 
+// skipFunction advances past the `function` keyword's NAME, from pos (the
+// token just after `function`), and returns the index where the function's
+// body begins. `function NAME { …; }` defines a function as `NAME() { …; }`
+// does, and the body runs when the line calls it (iss-2610090821313095): the
+// NAME is stepped so the body's first command reaches command position, and
+// a `{` or a reserved word opening the body is stepped as reserved. The
+// tokenizer splits `function NAME() {` at the parentheses, which leaves
+// `function NAME` a segment of its own and the body a segment after it, so
+// stepping the NAME leaves that segment no command, as `NAME()` leaves none.
+// The NAME is any word: bash accepts a function name no identifier rule
+// covers (`function a-b {`), so it is never read as the body.
+//
+// zsh's `repeat COUNT command` is the same shape, a keyword and one word of
+// its own before the command it runs, and is stepped the same way. Like
+// `coproc`, it is a keyword of one shell only; elsewhere it names a program
+// that is not found, so the command after it never runs there.
+func skipFunction(tokens []string, pos int) int {
+	if pos < len(tokens) {
+		return pos + 1
+	}
+	return pos
+}
+
 // isShellName reports whether a token is a shell identifier — a letter or
 // underscore followed by letters, digits, or underscores — the only shape a
 // coprocess NAME may take.
