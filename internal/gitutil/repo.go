@@ -73,7 +73,7 @@ func isolatedArgs(root string, args []string) []string {
 // dropped (deliberate pass-throughs such as GIT_EXEC_PATH are kept).
 func gitEnv() []string {
 	base := os.Environ()
-	env := make([]string, 0, len(base)+5)
+	env := make([]string, 0, len(base)+16)
 	for _, kv := range base {
 		if scrubGitVar(kv) {
 			continue
@@ -96,10 +96,19 @@ func gitEnv() []string {
 	// inits its own repository — inherits them too. The parent's own
 	// GIT_CONFIG_COUNT injection was scrubbed above, so this is the only
 	// environment config in effect.
+	// GIT_NO_LAZY_FETCH=1: in a partial clone git answers a read of a MISSING
+	// object by fetching it, and the fetch runs the transport the repository's
+	// own config names (remote.<name>.uploadpack for a local URL,
+	// core.sshCommand for ssh://), so an object read abcd made in a copied
+	// checkout ran a program that checkout chose (iss-2610090821527948). A
+	// missing object is an error instead; a present one still reads. It is
+	// appended after the parent's environment, so it wins over an inherited
+	// value (git 2.44 and later honour it).
 	return append(env,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_NO_LAZY_FETCH=1",
 		"GIT_CONFIG_COUNT=4",
 		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
 		"GIT_CONFIG_KEY_1=gc.autodetach", "GIT_CONFIG_VALUE_1=false",
