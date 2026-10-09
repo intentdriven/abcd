@@ -142,6 +142,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610070550516046` — On the dashboard, a product thinker sees the brief and their ideas together, and puts the ideas in order (draft)
 - `itd-2610071545369520` — A person confirms the assistant's verdict on each warned banned-name line instead of judging it alone (draft)
 - `itd-2610071545380041` — Work about abcd itself goes to abcd as a report, never into a managed repository's own plans (draft)
+- `itd-2610091010348892` — abcdev.app shows the record of any public abcd-managed project, with abcd as the showcase (draft)
+- `itd-2610091016262335` — The product thinker and facilitator make a project's design decisions on abcdesign.app (draft)
 - `itd-2610090831227812` — A person's /abcd: list shows only the commands people use (draft)
 <!-- /index -->
 
