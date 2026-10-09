@@ -267,6 +267,30 @@ func (s *selfCheck) answer(a netip.Addr, got []byte) bool {
 	return true
 }
 
+// settle ends the self-check once start has run it: keep names the
+// listening addresses start reached, each of which must have answered. Every
+// other listening address is dropped, and from then on this computer is
+// refused on it as on one whose self-check answered. It reports false, and
+// changes nothing, when keep names an address that has not answered or is not
+// a listening address.
+func (s *selfCheck) settle(keep []netip.Addr) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range keep {
+		waiting, listening := s.waiting[a.Unmap()]
+		if !listening || waiting {
+			return false
+		}
+	}
+	for a := range s.waiting {
+		s.waiting[a] = false
+	}
+	return true
+}
+
 // identConn is a connection the gate let in, carrying who it is and whether
 // it comes from this computer itself. Closing it gives its slot back.
 type identConn struct {
