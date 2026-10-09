@@ -37,6 +37,11 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `step` | — | shipped |
 | `receipt` | — | shipped |
 | `record` | — | shipped |
+| `outage` | — | shipped |
+| `outage record` | — | shipped |
+| `outage probe` | — | shipped |
+| `outage ack` | — | shipped |
+| `outage clear` | — | shipped |
 
 ## Where the run lives
 
@@ -323,7 +328,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
 
 Flags: none.
 
@@ -393,6 +398,50 @@ Sub-verbs: none.
 |---|---|
 | `--session` | string |
 | `--window` | int |
+
+### `abcd implement outage`
+
+Sub-verbs: `abcd implement outage ack`, `abcd implement outage clear`, `abcd implement outage probe`, `abcd implement outage record`.
+
+Flags: none.
+
+### `abcd implement outage ack`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--session` | string |
+
+### `abcd implement outage clear`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--reason` | string |
+| `--session` | string |
+
+### `abcd implement outage probe`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--model` | string |
+| `--session` | string |
+
+### `abcd implement outage record`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--kind` | string |
+| `--lane` | string |
+| `--service` | string |
+| `--session` | string |
+| `--what` | string |
 
 ### `abcd implement receipt`
 

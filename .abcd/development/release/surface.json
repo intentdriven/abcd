@@ -1822,6 +1822,110 @@
       ]
     },
     {
+      "path": "abcd implement outage",
+      "hidden": false,
+      "sentence": "Render the run's shared lost connection and when its next probe is due: Writes nothing; refuses any argument.",
+      "flags": []
+    },
+    {
+      "path": "abcd implement outage ack",
+      "hidden": false,
+      "sentence": "Acknowledge the notification an outage's give-up raised: Writes the outage record; refuses when no notification is pending.",
+      "flags": [
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement outage clear",
+      "hidden": false,
+      "sentence": "Close the run's outage by hand, with the reason: Writes an outage_end and an intervention line; refuses without --reason.",
+      "flags": [
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement outage probe",
+      "hidden": false,
+      "sentence": "Run the shared outage probe when it is due: Writes the probe's result and its run-log lines; refuses a run that gave up.",
+      "flags": [
+        {
+          "name": "model",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement outage record",
+      "hidden": false,
+      "sentence": "Report a lost network or model-service connection: Writes the outage record and, opening it, an outage_start line; refuses an unknown service or kind.",
+      "flags": [
+        {
+          "name": "kind",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "lane",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "service",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "what",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement receipt",
       "hidden": false,
       "sentence": "Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",

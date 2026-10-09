@@ -78,12 +78,14 @@ const (
 	EventLoad = "load"
 )
 
-// verbOwnedEvents are written by join, leave, mode, claim, release and load
-// alone.
+// verbOwnedEvents are written by join, leave, mode, claim, release, load and
+// the outage verbs alone: a hand-written outage_end would end an outage the
+// run state still holds.
 var verbOwnedEvents = []string{
 	EventSessionOpen, EventSessionClose, EventWindowMode,
 	EventClaim, EventClaimDenied, EventClaimLapsed, EventClaimReleased,
 	EventLoad,
+	EventOutageStart, EventOutageProbe, EventOutageEnd, EventOutageGiveUp,
 }
 
 // loggableEvents are the events `implement log` writes on a session's word.
@@ -137,6 +139,15 @@ var eventFields = map[string][]fieldRule{
 		{names: []string{"noticed_after_min"}, kind: fieldNumber, optional: true}},
 	EventDecision: {{names: []string{"what"}}, {names: []string{"alternative"}}, {names: []string{"why"}},
 		{names: []string{"at"}, kind: fieldTime, optional: true}},
+	// The outage events are verb-owned: these rules hold the verbs' own lines
+	// (checkOutageFields) and let the report name a hand-appended line that
+	// lacks what it reads.
+	EventOutageStart: {{names: []string{"service"}}, {names: []string{"kind"}}, {names: []string{"lane"}}, {names: []string{"what"}}},
+	EventOutageProbe: {{names: []string{"ok"}}, {names: []string{"failures"}, kind: fieldNumber}},
+	EventOutageEnd: {{names: []string{"minutes"}, kind: fieldNumber}, {names: []string{"services"}}, {names: []string{"kinds"}},
+		{names: []string{"retried"}}, {names: []string{"started_at"}, kind: fieldTime}},
+	EventOutageGiveUp: {{names: []string{"minutes"}, kind: fieldNumber}, {names: []string{"services"}}, {names: []string{"kinds"}},
+		{names: []string{"retried"}}, {names: []string{"started_at"}, kind: fieldTime}, {names: []string{"hourly_since"}, kind: fieldTime}},
 }
 
 // RequiredFields returns the fields `implement log` requires on event, each as

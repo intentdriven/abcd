@@ -1828,6 +1828,130 @@ mode in force is the log's last window_mode line, whoever wrote it.
 abcd implement mode single --session s-example
 ```
 
+#### `abcd implement outage`
+
+Render the run's shared lost connection and when its next probe is due: Writes nothing; refuses any argument.
+
+**Usage:** `abcd implement outage`
+
+The run's shared lost connection. A lane that loses the network (git, gh, a
+download) or the model service (an agent back with an API error, overloaded, a
+5xx, a timed-out request) records it (`record`); the run keeps one outage record
+in the run state, and every lane keeps to offline work and waits on one shared
+probe (`probe`) instead of retrying alone. The probe runs a minute after the
+outage opens, then five minutes and ten minutes after each failed probe, then
+hourly; the failed probe eight hours into the hourly stage gives up, stops the
+run and raises one notification, held until a session acknowledges it (`ack`).
+A usage or rate limit is not an outage.
+
+The network is proven back by `git ls-remote origin HEAD`; the model service only
+by a canary agent the lead runs and reports with `probe --model ok|fail` — the
+lead's own turn running is not proof. The outage ends when every service down is
+proven back, and `report` lists each outage with its minutes and what was retried.
+
+Bare `abcd implement outage` is read-only: the outage in force, the services down,
+when the next probe is due and who holds it. It creates nothing.
+
+##### `abcd implement outage ack`
+
+Acknowledge the notification an outage's give-up raised: Writes the outage record; refuses when no notification is pending.
+
+**Usage:** `abcd implement outage ack --session <id> [flags]`
+
+Acknowledge the give-up's notification once the product thinker has been told.
+Refused when no notification is pending, so it is never raised twice.
+
+**Flags:**
+
+```
+      --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement outage ack --session s-example
+```
+
+##### `abcd implement outage clear`
+
+Close the run's outage by hand, with the reason: Writes an outage_end and an intervention line; refuses without --reason.
+
+**Usage:** `abcd implement outage clear --session <id> --reason <why> [flags]`
+
+Close the outage by hand, open or given up. It logs outage_end with the reason and
+an intervention: the shared probe did not prove the connection back on its own.
+
+**Flags:**
+
+```
+      --reason string    why it is cleared by hand
+      --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement outage clear --session s-example --reason "the network is back"
+```
+
+##### `abcd implement outage probe`
+
+Run the shared outage probe when it is due: Writes the probe's result and its run-log lines; refuses a run that gave up.
+
+**Usage:** `abcd implement outage probe --session <id> [--model ok|fail] [flags]`
+
+Run the shared probe if it is due and no other session is running it. The network,
+when down, is probed with `git ls-remote --exit-code origin HEAD` (20s at most); the
+model service, when down, takes --model, the verdict of the canary agent the lead
+ran — without it the model side stays down. Read the bare verb's next probe time
+before running the canary, so it runs once per due probe.
+
+Exit 0: no outage, or every service proven back — the network step may go ahead.
+Exit 3: wait — the probe is not due, another session holds it, or a service is
+still down; --json carries next_probe_at. Exit 2: the run gave up, or a refusal.
+
+**Flags:**
+
+```
+      --model string     the canary agent's verdict on the model service: ok | fail
+      --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement outage probe --session s-example
+```
+
+##### `abcd implement outage record`
+
+Report a lost network or model-service connection: Writes the outage record and, opening it, an outage_start line; refuses an unknown service or kind.
+
+**Usage:** `abcd implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [flags]`
+
+Report a lost connection: the service lost (network or model), what noticed it
+(host: the host's own model calls; agent: a sub-agent back failed; tool: a tool's
+network call), the lane and what it was doing. The first report opens the run's
+outage and logs outage_start; a later one joins it. A report to an outage that
+gave up joins it and raises no second notification.
+
+**Flags:**
+
+```
+      --kind string      what noticed it: agent | host | tool
+      --lane string      the lane that lost it
+      --service string   the service lost: model | network
+      --session string   this session's id
+      --what string      what the lane was doing (the step it will retry)
+```
+
+**Example:**
+
+```
+abcd implement outage record --session s-example --service network --kind tool --lane cli --what "git push"
+```
+
 #### `abcd implement receipt`
 
 Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
@@ -1941,7 +2065,8 @@ across the run, with the last used_pct seen. `leader` is the mode with the most 
 a figure, not a verdict. Over the whole run it counts the evidence (interventions by
 kind, stops, decisions), names the lines lacking a field `log` requires of their event
 (missing_fields), and names each of lane_open, lane_close, agent_start, agent_end and
-gate_run whose lines stop more than six hours before the run's last line (coverage).
+gate_run whose lines stop more than six hours before the run's last line (coverage),
+and lists each outage with its minutes, how it ended and what was retried (outages).
 Lines the reader cannot use are listed, never dropped silently.
 
 By default the run's whole log is read, every day of it; --date reads one day, and

@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
-argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|record] …"
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|record|outage] …"
 block: agents
 ---
 
@@ -462,7 +462,21 @@ line, `#` for comments. An unusable file is reported (`limits.malformed`) and
 both defaults are used. Inside an autonomous run, a warning is also written to
 the run log as a `load` event (`run_log`).
 
-**Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
+## Wait out a lost connection
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage probe --session <id> [--model ok|fail] [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement outage ack|clear --session <id> [--reason <why>] [--json]
+```
+
+A lane that loses the network or the model service records it with `outage
+record`, keeps to offline work, and at a network step waits on the one shared
+`outage probe`: exit 0 goes ahead, exit 3 waits until `next_probe_at`, exit 2
+means the run gave up and stops. Report every refusal as it is.
+
+ Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
 too, you are in a source checkout of this repo, where — and only there —
