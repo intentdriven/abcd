@@ -400,6 +400,9 @@ func (s *Scanner) mergeConfig(cfg Config) error {
 		if strings.Trim(ex.Fragment, "/ \t\r\n") == "" {
 			return errUnreadable("exclude_path_fragments: an entry's fragment is blank or only slashes, which every path contains")
 		}
+		if !strings.ContainsFunc(ex.Fragment, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+			return errUnreadable("exclude_path_fragments: the fragment " + strconv.Quote(ex.Fragment) + " is punctuation alone, which nearly every path contains; name the directory or file")
+		}
 		if strings.TrimSpace(ex.Reason) == "" {
 			return errUnreadable("exclude_path_fragments: the exclusion of " + strconv.Quote(ex.Fragment) + " gives no reason")
 		}

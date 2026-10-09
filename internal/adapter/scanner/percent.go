@@ -4,7 +4,10 @@ import "strings"
 
 // maxPercentDecodePasses bounds the percent-decode pre-pass. One pass reverses a
 // single layer of URL encoding (%3D -> '='); a second reaches a double-encoded
-// delimiter (%253D -> %3D -> '='); the third is slack. The bound is deliberate:
+// delimiter (%253D -> %3D -> '='); the third is slack. The alternating chain
+// (alternatingLayers) is bounded separately at four passes and may spend all of
+// them on one decoder, so it reads one percent layer deeper than this pre-pass.
+// The bound is deliberate:
 // each pass strictly shrinks the string (three bytes collapse to one) so a fixed
 // point is reached quickly, and capping the passes keeps a crafted deeply-nested
 // input from turning one line into unbounded work. A token buried under more

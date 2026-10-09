@@ -136,6 +136,10 @@ func TestExclusionWithoutAReasonIsAConfigFault(t *testing.T) {
 		"no reason":      `{"exclude_path_fragments": [{"fragment": "testdata/"}]}`,
 		"blank reason":   `{"exclude_path_fragments": [{"fragment": "testdata/", "reason": "  "}]}`,
 		"blank fragment": `{"exclude_path_fragments": [{"fragment": "/", "reason": "everything"}]}`,
+		// A fragment of punctuation alone (".") matches nearly every path, so
+		// it names no part of the tree a reviewer can weigh.
+		"punctuation fragment": `{"exclude_path_fragments": [{"fragment": ".", "reason": "everything dotted"}]}`,
+		"dash fragment":        `{"exclude_path_fragments": [{"fragment": "-_.", "reason": "everything"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()

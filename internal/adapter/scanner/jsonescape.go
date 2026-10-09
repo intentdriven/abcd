@@ -49,7 +49,8 @@ import (
 
 // maxJSONDecodeLayers bounds the JSON-unescape walk: one layer for a
 // transcript line, a second for JSON quoted inside it (a tool result), a third
-// for slack. Each layer strictly shrinks the line, so the walk ends early on
+// for slack; the alternating chain (alternatingLayers) may reach a fourth when it
+// spends its passes on this decoder. Each layer strictly shrinks the line, so the walk ends early on
 // ordinary input. The pre-commit name guard, which is shell and cannot import
 // this, reads the same number of layers as its decode_layers, and
 // TestNameGuardHooksReadTheScannersJSONLayers holds the two equal.

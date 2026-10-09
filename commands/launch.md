@@ -274,8 +274,9 @@ Then summarise the JSON for the user:
   carries `.jar` elsewhere (`lib.jar.d/notes.md`); `scan.excluded` names every
   file it matched. An exclusion takes precedence over every skip entry, so it
   is the way to leave out a file a repository-added skip extension or filename
-  matches. An entry with no reason, a blank fragment, or a fragment of slashes
-  alone makes the scanner unavailable, and the release refuses.
+  matches. An entry with no reason, a blank fragment, a fragment of slashes
+  alone, or a fragment of punctuation alone (`.`) makes the scanner
+  unavailable, and the release refuses.
 - `smoke.ok` — whether the payload would install (a plugin only; for another
   kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
   the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,
