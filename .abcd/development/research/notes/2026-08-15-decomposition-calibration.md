@@ -2332,3 +2332,14 @@ Verdict: FILE-AS-IS, decided by the facilitator on the product thinker's "Clear?
 Verdict: FILE-AS-IS. The facilitator proposed one goal or two (review/prioritise, and the picture); the product thinker chose one. The links and the stance's routing were not put to a question, so those rows are graded as unconfirmed.
 
 Follow-up the same day on the revisit mark (itd-2610070549060530): the product thinker answered its six open questions, and ruled that the mark also raises an idea in the build pick, so the row flagged as a possible change to itd-2609211116005482 is now confirmed as an intended change, to be specified at planning.
+
+## 2026-10-09: people's and agents' verbs kept apart (technical facilitator, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a person's /abcd: list shows only the commands people use; agent commands move under one agent namespace or off the list | capability | intent itd-2610090831227812 (draft); refines itd-146, which split the CLI help |
+| a review of the whole verb set: keep, merge, rename or retire each, and class it as a person's or an agent's | audit | issue iss-2610090831317531, feeding the intent's spec |
+| a rule for which class a verb belongs to | trust rule | held: a decision record only if the audit finds a verb whose class decides who may run it |
+| "every verb is reachable from both the CLI and the plugin surface" | standing boundary, flagged as a possible reversal for confirmation | the intent's Open Questions, not decided here |
+
+Verdict: SPLIT. The facilitator proposed the three-way routing and confirmed it as proposed ("Split as proposed"). The reversal flag was carried in the question, not put to a separate one, so that row is graded unconfirmed.
