@@ -20,6 +20,9 @@ import (
 //   - commit.gpgsign=false: a commit or merge commit abcd composes is not
 //     signed, which would start gpg.program, gpg.ssh.program or
 //     gpg.ssh.defaultKeyCommand (iss-2610090821520843).
+//   - merge.verifySignatures=false: a merge does not verify the merged tip's
+//     signature, which starts gpg.program or gpg.ssh.program
+//     (iss-2610090821520843).
 //
 // Every isolated command (Run and its siblings) carries them, and a caller that
 // must build its own git command (one that keeps global config, say) prepends
@@ -36,6 +39,7 @@ func ExecPins() []string {
 		"-c", "core.fsmonitor=false",
 		"-c", "log.showSignature=false",
 		"-c", "commit.gpgsign=false",
+		"-c", "merge.verifySignatures=false",
 	}
 }
 

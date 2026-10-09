@@ -5,11 +5,30 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
+
+// signedCommit writes a commit object over HEAD's tree, with HEAD as its
+// parent, whose header carries a (bogus) PGP signature, and returns its name.
+// No signing program is involved in making it.
+func signedCommit(t *testing.T, r *gittest.Repo, subject string) string {
+	t.Helper()
+	tree := strings.TrimSpace(r.Git("rev-parse", "HEAD^{tree}"))
+	parent := strings.TrimSpace(r.Git("rev-parse", "HEAD"))
+	who := "Fixture <fixture@example.invalid> 1700000000 +0000"
+	obj := "tree " + tree + "\nparent " + parent + "\nauthor " + who + "\ncommitter " + who + "\n" +
+		"gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n =AAAA\n -----END PGP SIGNATURE-----\n" +
+		"\n" + subject + "\n"
+	path := filepath.Join(t.TempDir(), "commit-object")
+	if err := os.WriteFile(path, []byte(obj), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(r.Git("hash-object", "-t", "commit", "-w", path))
+}
 
 // TestPickGitStartsNoRepoSigningProgram is iss-2610090821520843. The pick's
 // record commit and a sync's merge commit go through pickGit, which keeps the
@@ -96,6 +115,29 @@ func TestPickGitStartsNoRepoSigningProgram(t *testing.T) {
 			}
 			if _, err := os.Stat(mark); err == nil {
 				t.Fatalf("pickGit's merge commit started the repository's %s", tc.key)
+			}
+
+			// merge.verifySignatures=true makes the merge verify the merged
+			// tip's signature, which starts gpg.program for a tip whose commit
+			// object carries a gpgsig header.
+			r.Git("config", "merge.verifySignatures", "true")
+			r.Git("config", "gpg.program", signer)
+			signedTip := signedCommit(t, r, "signed tip")
+			plainMerge := exec.Command("git", "-C", r.Root(), "merge", "--no-ff", "--no-edit", "-m", "plain", signedTip)
+			plainMerge.Env = gitutil.ScrubbedEnv()
+			_ = plainMerge.Run()
+			if _, err := os.Stat(mark); err != nil {
+				t.Fatal("fixture: a plain merge of the signed tip did not verify it, so this test proves nothing")
+			}
+			if err := os.Remove(mark); err != nil {
+				t.Fatal(err)
+			}
+			_, mergeErr := pickGit(r.Root(), "merge", "--no-ff", "--no-edit", "-m", "sync", signedTip)
+			if _, err := os.Stat(mark); err == nil {
+				t.Fatal("pickGit's merge verified the merged tip's signature, starting the repository's gpg.program")
+			}
+			if mergeErr != nil {
+				t.Fatalf("the sync merge of a signed tip must still be made: %v", mergeErr)
 			}
 		})
 	}
