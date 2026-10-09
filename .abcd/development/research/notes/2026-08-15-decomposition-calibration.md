@@ -2354,3 +2354,13 @@ Verdict: SPLIT. The facilitator proposed the three-way routing and confirmed it 
 | the overlap with abcdesign.app (itd-2610052000411162) | overlap | asked separately; the product thinker ruled "Keep both sites": abcdev.app shows, abcdesign.app edits |
 
 Verdict: SPLIT, confirmed as proposed ("Split as proposed"). The reversal of adr-47 decision 1 was flagged in the question and is carried as the proposed record's open decision, not settled.
+
+## 2026-10-09: the product thinker and facilitator decide on abcdesign.app (technical facilitator, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| the product thinker and facilitator of an abcd-managed project make its design decisions on abcdesign.app, read-only for everyone else | capability | intent itd-2610091016262335 (draft), beside itd-2610052000411162 |
+| who may change a project, which change each role may make, and how it lands | trust rule | adr-2610091016270711 (proposed) |
+| the local dashboard's planned routes for acting | overlap | kept both ("Keep both routes"); itd-2610040740122709 and itd-2610040740135705 stand |
+
+Verdict: SPLIT. The facilitator offered rewriting the existing draft, a new intent beside it, or superseding it; the product thinker chose "New intent beside it", so the proposed routing (a rewrite) did not survive the confirmation.
