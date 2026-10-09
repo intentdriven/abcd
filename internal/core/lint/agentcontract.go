@@ -385,8 +385,18 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 
 // promptVersionChanged reports whether the range's diff for one path adds a
 // prompt_version line.
+//
+// The diff is git's own: --no-ext-diff and --no-textconv keep the
+// repository's diff.external, diff.<driver>.command and
+// diff.<driver>.textconv programs from running and from writing the text this
+// check parses (iss-2610090821531570), as the decisions-append diff already
+// does.
 func promptVersionChanged(repoRoot, rangeSpec, rel string) (bool, error) {
-	diff, err := gitutil.Run(repoRoot, "diff", "--unified=0", rangeSpec, "--", rel)
+	filters, err := gitutil.FilterOverrides(repoRoot)
+	if err != nil {
+		return false, err
+	}
+	diff, err := gitutil.Run(repoRoot, append(filters, "diff", "--no-ext-diff", "--no-textconv", "--unified=0", rangeSpec, "--", rel)...)
 	if err != nil {
 		return false, err
 	}
@@ -423,8 +433,17 @@ func agentChangelogEntries(text string) map[string]bool {
 // NUL-delimited (-z) so a path git would otherwise quote is read verbatim, and
 // `--` terminates the revision list so a range that somehow survived validation
 // still cannot be read as a pathspec.
+//
+// A range of one revision compares the working tree, which git re-reads
+// through the repository's content filters when the index stat no longer
+// matches; both diffs here blank them first (gitutil.FilterOverrides), so no
+// filter program runs and none decides what changed.
 func changedPaths(repoRoot, rangeSpec string) (map[string]bool, error) {
-	out, err := gitutil.Run(repoRoot, "diff", "--name-only", "-z", rangeSpec, "--")
+	filters, err := gitutil.FilterOverrides(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	out, err := gitutil.Run(repoRoot, append(filters, "diff", "--name-only", "-z", rangeSpec, "--")...)
 	if err != nil {
 		return nil, err
 	}
