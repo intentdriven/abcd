@@ -343,7 +343,9 @@ on <date>`: every candidate with its score, the rule, the runner-up and why it l
 falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
 receipt verifier does not count that commit as the implementer's. That commit runs no hook
-and is unsigned, even where your git configuration signs every commit. The checkout you run this
+and is unsigned, even where your git configuration signs every commit. It does run the
+repository's content filters: staging the entry passes it through its clean filter, as
+Git LFS needs. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
@@ -2135,7 +2137,10 @@ rebase) and judged by a fresh round, and a conflicting sync goes to a fresh impl
 a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where
 your git configuration signs every commit, and the merge does not verify the signature of the
 commit it merges in. The merge is git's built-in merge on every path, whatever merge driver
-the repository configures or merge.default names, so a driver's program never runs.
+the repository configures or merge.default names, so a driver's program never runs. The
+merge does run the repository's content filters: each file it writes passes through its
+smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs
+the repository's own code.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>

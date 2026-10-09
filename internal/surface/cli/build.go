@@ -233,7 +233,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and\n" +
 			"commits it there as the lane branch's first commit, record-only, before the brief; the\n" +
 			"receipt verifier does not count that commit as the implementer's. That commit runs no hook\n" +
-			"and is unsigned, even where your git configuration signs every commit. The checkout you run this\n" +
+			"and is unsigned, even where your git configuration signs every commit. It does run the\n" +
+			"repository's content filters: staging the entry passes it through its clean filter, as\n" +
+			"Git LFS needs. The checkout you run this\n" +
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
 			"One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace\n" +
@@ -648,7 +650,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where\n" +
 			"your git configuration signs every commit, and the merge does not verify the signature of the\n" +
 			"commit it merges in. The merge is git's built-in merge on every path, whatever merge driver\n" +
-			"the repository configures or merge.default names, so a driver's program never runs.\n\n" +
+			"the repository configures or merge.default names, so a driver's program never runs. The\n" +
+			"merge does run the repository's content filters: each file it writes passes through its\n" +
+			"smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs\n" +
+			"the repository's own code.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, " + abcdhome.Display("worktrees/<root-sha>/<run-id>-<lane-id>") + ", on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
