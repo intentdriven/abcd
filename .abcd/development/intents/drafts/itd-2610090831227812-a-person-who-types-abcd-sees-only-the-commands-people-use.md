@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> A person who types /abcd: sees only the commands people use. The commands agents run, such as the ones that apply a host's verdict or step a build loop, sit under one agent namespace or off the person's list, so the list a person scans reads as their own toolbox and an agent still finds every verb it needs. The command-line help already splits the two into For people and For agents and hosts; the plugin's command list now follows the same split.
+> A person who types /abcd: sees the commands people use, not the ones only agents run, such as the guard that judges a shell command or the loop that steps an autonomous run, so the list a person scans reads as their own toolbox and an agent still finds every verb it needs. The command-line help already sorts every verb into For people and For agents and hosts; the plugin's command list keeps that same classification, and `abcd --help --agent` stays the one place both lists render.
 
 ## Why This Matters
 
@@ -35,8 +35,10 @@ production_mode: hand-written
 
 ## Open Questions
 
-- Does an agent verb leave the /abcd: list altogether, or move under one agent command page? The boundary that every verb is reachable from both the CLI and the plugin surface (AGENTS.md, Boundaries) is flagged as a possible reversal here, for the product thinker to confirm or keep.
-- Which verbs are a person's and which an agent's is settled by the verb audit, iss-2610090831317531, before planning.
+- Which host mechanism carries the split? The host offers two. Hiding a page (`user-invocable: false`) shortens the person's menu and renames nothing, but a person can no longer type that page; only the agent can run it. A subdirectory namespace (`/abcd:agent:<page>`) keeps every page typeable but does not shorten the menu, only clusters it, and renames every agent invocation across the command pages, help placements and their gates. (Adversarial review 1, finding 3, from the host's plugin documentation.)
+- Does the split act at page grain only, or are agent sub-verbs moved to pages of their own? A person's page can carry agent sub-verbs: `/abcd:intent` carries `audit ingest`, `prepass` and `consistency ingest`. Page grain is the only option that changes no invocation. (Finding 2.)
+- The person/agent class of every binary-backed page is already recorded in its `block:` frontmatter and gated by `TestCommandPagesDeclareTheirBlock` (itd-146; the 2026-09-25 and 2026-09-29 rulings). The audit, iss-2610090831317531, starts from that table and rules what it leaves open: the five pages with no block (`abcd`, `version`, `consult`, `ingest`, `prepare-this-repo`), the provisional placement of `drain`, the pages either side could claim (`report`, `ideate`, `dashboard`), and the keep/merge/rename/retire column no record holds. (Finding 1.)
+- Hiding or namespacing a page keeps it on the plugin surface, so the boundary that every verb is reachable from both the CLI and the plugin surface (AGENTS.md, Boundaries) holds; only deleting a page would reverse it, and this intent deletes none. (Finding 4.)
 - Would a later recommendation of which verb fits a situation belong to this intent, or to a separate one?
 
 ## Audit Notes
