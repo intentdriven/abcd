@@ -232,14 +232,38 @@ func (b *decodeBudget) entry() bool {
 	return true
 }
 
-// inflate decompresses a zlib stream under the budget.
-func (b *decodeBudget) inflate(data []byte) ([]byte, error) {
-	zr, err := zlib.NewReader(bytes.NewReader(data))
+// inflate decompresses a zlib stream under the budget and returns what it
+// produced together with the bytes the stream left unread. A zlib reader stops
+// at its Adler-32 without minding what follows, so a chunk whose length field
+// claims more than the stream occupies carries a tail the reader never looks
+// at: the caller covers it, exactly as decodeStream covers a top-level
+// trailer and zipEntryBody an entry's (iss-2610090821499579). The source is a
+// bytes.Reader, an io.ByteReader, so the decompressor reads it exactly and
+// what is left in it IS the tail.
+func (b *decodeBudget) inflate(data []byte) ([]byte, []byte, error) {
+	src := bytes.NewReader(data)
+	zr, err := zlib.NewReader(src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer zr.Close()
-	return b.read(zr)
+	body, err := b.read(zr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if left := src.Len(); left > 0 {
+		return body, data[len(data)-left:], nil
+	}
+	return body, nil, nil
+}
+
+// coverChunkTail covers the bytes a compressed PNG chunk carries after its
+// zlib stream, which nothing else reads. A well-formed chunk has none.
+func (s *Scanner) coverChunkTail(tail []byte, secrets []Pattern, label string, b *decodeBudget, depth int, out *[]Finding) (bool, string) {
+	if len(tail) == 0 {
+		return true, ""
+	}
+	return s.cover(tail, secrets, label+"!trailer", b, depth+1, out)
 }
 
 // decodeContent decodes one skip-listed payload file as far as the known
@@ -971,20 +995,26 @@ func (s *Scanner) decodePNG(data []byte, secrets []Pattern, label string, b *dec
 			if !b.entry() {
 				return false, formatPNG + ": more than " + strconv.Itoa(maxDecodeEntries) + " compressed chunks"
 			}
-			body, err := b.inflate(afterNulThen(payload, 1, 1))
+			body, tail, err := b.inflate(afterNulThen(payload, 1, 1))
 			if err != nil {
 				return false, chunkWhy("zTXt", err)
 			}
 			if ok, why := s.cover(body, secrets, label+"!zTXt", b, depth+1, out); !ok {
 				return false, why
 			}
+			if ok, why := s.coverChunkTail(tail, secrets, label+"!zTXt", b, depth, out); !ok {
+				return false, why
+			}
 		case typ == "iCCP":
 			if !b.entry() {
 				return false, formatPNG + ": more than " + strconv.Itoa(maxDecodeEntries) + " compressed chunks"
 			}
-			body, err := b.inflate(afterNulThen(payload, 1, 1))
+			body, tail, err := b.inflate(afterNulThen(payload, 1, 1))
 			if err != nil {
 				return false, chunkWhy("iCCP", err)
+			}
+			if ok, why := s.coverChunkTail(tail, secrets, label+"!iCCP", b, depth, out); !ok {
+				return false, why
 			}
 			// An ICC profile is binary BY DEFINITION, so asking cover to vouch
 			// for it would send every colour-managed PNG to ContentUnverified,
@@ -1008,11 +1038,14 @@ func (s *Scanner) decodePNG(data []byte, secrets []Pattern, label string, b *dec
 			if !b.entry() {
 				return false, formatPNG + ": more than " + strconv.Itoa(maxDecodeEntries) + " compressed chunks"
 			}
-			body, err := b.inflate(afterNulThen(rest[2:], 2, 0))
+			body, tail, err := b.inflate(afterNulThen(rest[2:], 2, 0))
 			if err != nil {
 				return false, chunkWhy("iTXt", err)
 			}
 			if ok, why := s.cover(body, secrets, label+"!iTXt", b, depth+1, out); !ok {
+				return false, why
+			}
+			if ok, why := s.coverChunkTail(tail, secrets, label+"!iTXt", b, depth, out); !ok {
 				return false, why
 			}
 		default:
@@ -1040,9 +1073,12 @@ func (s *Scanner) decodePNG(data []byte, secrets []Pattern, label string, b *dec
 	if len(idat) == 0 {
 		return false, formatPNG + ": no image data"
 	}
-	body, err := b.inflate(idat)
+	body, tail, err := b.inflate(idat)
 	if err != nil {
 		return false, chunkWhy("IDAT", err)
+	}
+	if ok, why := s.coverChunkTail(tail, secrets, label+"!IDAT", b, depth, out); !ok {
+		return false, why
 	}
 	// IDAT inflates to filtered pixel data: bytes, not a region with a format.
 	// They are scanned, not covered — asking cover to vouch for them would
