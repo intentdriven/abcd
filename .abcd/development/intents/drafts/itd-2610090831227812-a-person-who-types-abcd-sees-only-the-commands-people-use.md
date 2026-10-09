@@ -84,6 +84,10 @@ _Proposed by the drafting reviews; not yet confirmed by the product thinker._
 - What gates the plugin menu's classification, the way `TestCommandPagesDeclareTheirBlock` and the surface snapshot gate the CLI's? The person's menu needs a test that fails when a page's `block:` and its menu placement disagree, and a count the way itd-2609212130136102's AC5 counts the CLI list; what that test reads depends on the mechanism chosen above.
 - Would a later recommendation of which verb fits a situation belong to this intent, or to a separate one? The nearest record today is itd-2609212113220149, one actionable sentence per verb, and bare `abcd <record-id>` already names a record's next move.
 
+## Decisions
+
+- 2026-10-09: the product thinker ruled who a command belongs to. Asked whose command menu it is, given that some commands marked for agents are typed by people (the inbox, the drain, the dashboard), they answered: "who marked them for agents? If people have to use them to do their job, they're not agents-only". Most of the current agent labels were placed on 2026-09-25 by an autonomous run's orchestrator, recorded and not asked, with a tie-break that sent a command either side could claim to the agents' side to keep the person's list under its cap (.abcd/work/DECISIONS.md, that date). So a command a person needs to do their job is a person's command whatever else also runs it; the verb audit (iss-2610090831317531) re-labels every command by who actually types it, and only commands no person types leave the person's menu.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
