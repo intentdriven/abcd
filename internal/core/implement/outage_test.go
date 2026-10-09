@@ -604,6 +604,27 @@ func TestCompareReportsOutages(t *testing.T) {
 	}
 }
 
+// TestCompareCountsAReEndedOutageOnce: a probe that logs its end and then
+// fails to remove the record ends the same outage again on the next probe,
+// so the log holds two closers with one started_at; the report shows one.
+func TestCompareCountsAReEndedOutageOnce(t *testing.T) {
+	log := strings.Join([]string{
+		`{"ts":"2026-10-09T10:05:00Z","session":"A","event":"outage_start","service":"network","kind":"tool","lane":"l1","what":"git push"}`,
+		`{"ts":"2026-10-09T10:06:00Z","session":"A","event":"outage_probe","ok":true,"failures":0}`,
+		`{"ts":"2026-10-09T10:06:00Z","session":"A","event":"outage_end","how":"probe","minutes":1,"services":["network"],"kinds":["tool"],"retried":["git push"],"started_at":"2026-10-09T10:05:00Z","probes":1}`,
+		`{"ts":"2026-10-09T10:07:00Z","session":"B","event":"outage_probe","ok":true,"failures":0}`,
+		`{"ts":"2026-10-09T10:07:00Z","session":"B","event":"outage_end","how":"probe","minutes":2,"services":["network"],"kinds":["tool"],"retried":["git push"],"started_at":"2026-10-09T10:05:00Z","probes":2}`,
+	}, "\n")
+	events, bad := ParseLog("outages.jsonl", []byte(log))
+	if len(bad) != 0 {
+		t.Fatalf("fixture lines unparsed: %+v", bad)
+	}
+	rep := Compare(events, bad)
+	if len(rep.Outages) != 1 || rep.Outages[0].Outcome != "ended" || rep.Outages[0].Minutes != 1 {
+		t.Fatalf("outages = %+v; want the one outage, ended after 1 minute", rep.Outages)
+	}
+}
+
 // TestRemoteProbeAnswersFromALocalOrigin: the production network probe, with
 // no network — an origin on disk answers, and a checkout whose origin is
 // reached but holds no HEAD is reached all the same.

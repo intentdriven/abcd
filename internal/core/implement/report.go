@@ -509,7 +509,10 @@ func outageSpans(events []Event) []OutageSpan {
 		case EventOutageEnd, EventOutageGiveUp:
 			start, _ := time.Parse(time.RFC3339, e.String("started_at"))
 			if open < 0 {
-				if n := len(out); n > 0 && out[n-1].Outcome == "gave_up" && out[n-1].Start.Equal(start) {
+				// A closer for the outage just closed (a clear after a give-up,
+				// or a probe that ended it again because the record's removal
+				// failed) is the same outage, not a new one.
+				if n := len(out); n > 0 && out[n-1].End != nil && out[n-1].Start.Equal(start) {
 					continue
 				}
 				if start.IsZero() {
