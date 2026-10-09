@@ -23,6 +23,14 @@ A hosted page that changes a project's record is a trust boundary abcd has not d
 - How a change lands in the repository: a pull request the other role reviews, a direct commit, or a proposal the local session applies; and what is written under the person's name.
 - What a reader without access sees, and what is never shown (a private repository, an unpublished idea).
 
+Requirements the product thinker set on 2026-10-09, which any decision here must meet:
+
+- Public and private repositories are both supported, on abcdesign.app and on the local route; a private repository is reached only through the person's own GitHub sign-in.
+- A read-only build for someone not signed in is rate-limited, so anonymous traffic, bots included, can never exhaust the GitHub allowance the site serves from.
+- A build for a signed-in person spends that person's own GitHub allowance, never the site's.
+- A shared cache is wanted where it is possible: a page built from a public repository can be served to everyone, but one built from a private repository with one person's sign-in may be served only to people that repository also admits, so a private cache entry is keyed to access, never shared beyond it.
+
+
 ## Decision
 
 _Not yet decided; settled at the planning interview of itd-2610091016262335._

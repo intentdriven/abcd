@@ -22,7 +22,7 @@ Open before this record can be decided:
 
 - Which repositories are rendered: every public repository carrying an abcd-managed marker, or only those whose owners opt in, and how an owner withdraws one.
 - What may be rendered from a repository abcd's maintainers do not control, under abcd's domain, and what the page says about who wrote it (the site's single-source rule renders spans of a repository's own files; a third party's files are not abcd's).
-- How builds run: on a schedule, on the owner's request, or from the owner's own release, within the GitHub API's limits, and what abuse or takedown path exists.
+- How builds run: on a schedule, on the owner's request, or from the owner's own release, within the GitHub API's limits, and what abuse or takedown path exists. On 2026-10-09 the product thinker required, for abcdesign.app and the local route, that a read-only build for someone not signed in is rate-limited so anonymous traffic, bots included, cannot exhaust the allowance the site serves from, and that a signed-in build spends the person's own allowance (adr-2610091016270711); the same bound is assumed here for abcdev.app's read-only pages until this record decides otherwise.
 
 ## Decision
 
