@@ -37,16 +37,18 @@ type ScanResult struct {
 	// Unscanned lists bundle files that were present but could NOT be covered:
 	// unreadable, over the byte-scan cap, a non-regular or symlinked leaf,
 	// classified binary by the content sniff (e.g. a leading-NUL file) WITHOUT
-	// a reviewed skip explaining it, or matched by a skip fragment alone, which
-	// would have read it with the byte rules only (iss-2610090821506490). They are the fail-closed coverage gap —
+	// a reviewed skip explaining it, or matched by an unreviewed skip alone (a
+	// skip fragment, or an extension or filename the repository's config adds),
+	// which would have read it with the byte rules only
+	// (iss-2610090821506490). They are the fail-closed coverage gap —
 	// the launch gate refuses on them, so a crafted binary cannot smuggle
 	// unscanned content into a source bundle (GHSA-5mmm-3whv-3rqp).
 	Unscanned []string `json:"unscanned,omitempty"`
 	// UnscannedWhy carries, per Unscanned path, the reason it could not be
 	// covered, so an asset over the cap is distinguishable from an I/O error.
 	UnscannedWhy map[string]string `json:"unscanned_why,omitempty"`
-	// ScannedBinary lists bundle files that matched the reviewed skip sets (a
-	// binary media extension or a skip filename) AND whose
+	// ScannedBinary lists bundle files that matched the reviewed skip sets
+	// (abcd's bundled binary extensions and filenames) AND whose
 	// name is on the plaintext allow-list (plaintextNames): a skip-listed file
 	// known to carry no compressed region, so the byte scan covers all of it.
 	// The raw bytes run through the byte rules — every secret rule, the
@@ -60,9 +62,8 @@ type ScanResult struct {
 	// DEFAULT for the byte branch, because a closed list of compressed
 	// formats would label whatever it missed as verified. An archive, but
 	// equally a PNG (deflate IDAT and zTXt), a JPEG entropy stream, a PDF
-	// FlateDecode stream, an mp4 box, a database blob, a packed executable,
-	// or any extension a repo's pii.json adds to skip_extensions. They get
-	// the same byte scan as ScannedBinary (cheap, and it still catches
+	// FlateDecode stream, an mp4 box, a database blob, or a packed
+	// executable. They get the same byte scan as ScannedBinary (cheap, and it still catches
 	// plaintext such as an uncompressed tar's entries or PNG tEXt metadata),
 	// but a compressed region is invisible to it, so they are NOT counted as
 	// content-verified and the report says so rather than claiming coverage
@@ -188,15 +189,22 @@ type patternDef struct {
 // Scanner holds the merged config, compiled patterns and probed identity for a
 // repo. Construct it with New.
 type Scanner struct {
-	patterns       []Pattern
-	identity       Identity
-	identSev       map[string]Severity
+	patterns []Pattern
+	identity Identity
+	identSev map[string]Severity
+	// skipExtensions / skipFilenames are the reviewed skip sets: abcd's
+	// bundled lists, and nothing a repository's config adds.
 	skipExtensions map[string]struct{}
 	skipFilenames  map[string]struct{}
-	skipFragments  []string
-	exclusions     []Exclusion
-	unavailable    bool
-	unavailReason  string
+	// repoSkipExtensions / repoSkipFilenames are the entries a repository's
+	// config adds. They are not reviewed, so a file one matches is a coverage
+	// gap unless a declared exclusion leaves it out (iss-2610090821506490).
+	repoSkipExtensions map[string]struct{}
+	repoSkipFilenames  map[string]struct{}
+	skipFragments      []string
+	exclusions         []Exclusion
+	unavailable        bool
+	unavailReason      string
 
 	// aug is the opt-in external detector (augment.go), nil when none is
 	// wired or the configured one is not installed (augState.gap says so).
@@ -365,10 +373,16 @@ func (s *Scanner) mergeConfig(cfg Config) error {
 		if strings.TrimSpace(e) == "" {
 			continue
 		}
-		s.skipExtensions[strings.ToLower(e)] = struct{}{}
+		if s.repoSkipExtensions == nil {
+			s.repoSkipExtensions = map[string]struct{}{}
+		}
+		s.repoSkipExtensions[strings.ToLower(e)] = struct{}{}
 	}
 	for _, f := range cfg.SkipFilenames {
-		s.skipFilenames[f] = struct{}{}
+		if s.repoSkipFilenames == nil {
+			s.repoSkipFilenames = map[string]struct{}{}
+		}
+		s.repoSkipFilenames[f] = struct{}{}
 	}
 	for _, frag := range cfg.SkipPathFragments {
 		// A blank or slash-only fragment is a substring of every logical path,
@@ -1182,11 +1196,12 @@ func fingerprintSpan(out, src []byte, start, end int, whole bool) {
 // ScanBundle scans the resolved content of every bundle file, reading
 // ResolvedPath and reporting under LogicalPath. A file a declared exclusion
 // matches is not read and is reported under Excluded with its reason. A file
-// on the reviewed skip sets (extension, filename) is read through the guarded,
-// capped primitive and its bytes scanned with the byte rules (scanBytes),
-// reported under ScannedBinary (a plaintext allow-listed name),
-// ContentDecoded or ContentUnverified. A file a skip fragment alone matches is
-// Unscanned, with the fragment named as its reason; any
+// on the reviewed skip sets (abcd's bundled extensions and filenames) is read
+// through the guarded, capped primitive and its bytes scanned with the byte
+// rules (scanBytes), reported under ScannedBinary (a plaintext allow-listed
+// name), ContentDecoded or ContentUnverified. A file an unreviewed skip alone
+// matches (a skip fragment, or an extension or filename the repository's
+// config adds) is Unscanned, with the entry named as its reason; any
 // other file is scanned with the full rule set when it is text throughout (no
 // NUL, valid UTF-8 — every byte, not a sniff), or surfaced in Unscanned (with
 // UnscannedWhy) when it is not. If the
@@ -1214,18 +1229,23 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 			res.ExcludedWhy[f.LogicalPath] = why
 			continue
 		}
-		// A skip fragment matches a path, not a kind of content, so it
-		// cannot vouch that the byte rules suffice for what it matches: a
-		// fragment of "." sent every dotted path to the byte branch, which
-		// drops the identity and network rules, and the file was never
-		// counted as a gap (iss-2610090821506490). A file a fragment alone
-		// matches is therefore a coverage gap; one whose extension or name is
-		// on the reviewed skip sets takes the byte branch as it would anyway,
-		// and a file left out on purpose is a declared exclusion.
-		if !s.skipByName(f.LogicalPath) && s.skipByFragment(f.LogicalPath) {
-			unscanned(f.LogicalPath, "a skip fragment matches it, and byte-only scanning does not count as scanned; "+
-				"declare an exclusion with its reason (exclude_path_fragments) to leave it out")
-			continue
+		// Only abcd's bundled binary lists are reviewed. A skip fragment
+		// matches a path, not a kind of content, and an extension or filename
+		// a repository's config adds is the repository's say-so, so neither
+		// can vouch that the byte rules suffice for what it matches: a
+		// fragment of "." or a repo-added ".md" sent text to the byte branch,
+		// which drops the identity and network rules, and the file was never
+		// counted as a gap (iss-2610090821506490). Such a file is therefore a
+		// coverage gap; one whose extension or name is on the bundled lists
+		// takes the byte branch as it would anyway, and a file left out on
+		// purpose is a declared exclusion.
+		if !s.skipByName(f.LogicalPath) {
+			if what, ok := s.unreviewedSkip(f.LogicalPath); ok {
+				unscanned(f.LogicalPath, what+" matches it, only abcd's bundled binary list counts as reviewed, "+
+					"and byte-only scanning does not count as scanned; "+
+					"declare an exclusion with its reason (exclude_path_fragments) to leave it out")
+				continue
+			}
 		}
 		if s.skipByName(f.LogicalPath) {
 			// A reviewed skip exempts the file from the short/generic identity
@@ -1561,6 +1581,24 @@ func (s *Scanner) skipByName(logical string) bool {
 	base := path_base(logical)
 	_, ok := s.skipFilenames[base]
 	return ok
+}
+
+// unreviewedSkip names the unreviewed skip entry that matches the logical
+// path: an extension or filename the repository's config adds, or a skip
+// fragment. abcd's bundled lists are checked apart, by skipByName.
+func (s *Scanner) unreviewedSkip(logical string) (string, bool) {
+	ext := strings.ToLower(filepath.Ext(logical))
+	if _, ok := s.repoSkipExtensions[ext]; ok {
+		return "the repository's skip_extensions entry " + strconv.Quote(ext), true
+	}
+	base := path_base(logical)
+	if _, ok := s.repoSkipFilenames[base]; ok {
+		return "the repository's skip_filenames entry " + strconv.Quote(base), true
+	}
+	if s.skipByFragment(logical) {
+		return "a skip fragment", true
+	}
+	return "", false
 }
 
 // excludedBy reports the reason of the first declared exclusion whose

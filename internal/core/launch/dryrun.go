@@ -297,8 +297,9 @@ func scanRefusals(scan scanner.ScanResult) []string {
 	// — an archive whose entries do not tile it, a tar entry padded with
 	// something other than zeros, a header field carrying a member nothing
 	// read. Those got the byte scan alone and, per iss-2608291832160371, do
-	// not refuse on their own. A file a skip fragment alone matched is in
-	// scan.Unscanned and refuses below, while a file a declared exclusion
+	// not refuse on their own. A file an unreviewed skip alone matched (a skip
+	// fragment, or an extension or filename the repository's config adds) is
+	// in scan.Unscanned and refuses below, while a file a declared exclusion
 	// matched (scan.Excluded) was left out by choice, its reason recorded,
 	// and does not (iss-2610090821506490). The gate row counts that tier apart from the decoded
 	// one rather than folding the two into a single green, and the scan

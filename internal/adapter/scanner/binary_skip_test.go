@@ -89,19 +89,21 @@ func TestSkipListedBinaryPEMKeyIsCaught(t *testing.T) {
 	}
 }
 
-// TestScannedBinaryIsPlainByteScan: a skip-listed name on the plaintext
-// allow-list (.gitignore, once a repo's config skip-lists it by name) is
+// TestScannedBinaryIsPlainByteScan: a reviewed skip-listed name on the
+// plaintext allow-list (.gitignore, were it on the bundled filename list) is
 // byte-scanned and reported as ScannedBinary; every other skip-listed format
 // defaults to ContentUnverified. By default .gitignore is not skip-listed at
-// all and takes the full text rules (TestGitignoreIsScannedAsText).
+// all and takes the full text rules (TestGitignoreIsScannedAsText), and a
+// repository's config cannot add it to the reviewed list
+// (TestRepoAddedSkipFilenameIsUnscanned), so the test places it there itself.
 func TestScannedBinaryIsPlainByteScan(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".abcd/config/pii.json", `{"skip_filenames":[".gitignore"]}`)
 	abs := writeFile(t, root, "sub/.gitignore", "# token="+fakeToken()+"\n")
 	sc, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	sc.skipFilenames[".gitignore"] = struct{}{}
 	res := scanOne(t, sc, "sub/.gitignore", abs)
 	if !contains(res.ScannedBinary, "sub/.gitignore") || contains(res.ContentUnverified, "sub/.gitignore") {
 		t.Errorf("a plaintext skip-listed name is ScannedBinary: %+v", res)
@@ -113,21 +115,18 @@ func TestScannedBinaryIsPlainByteScan(t *testing.T) {
 
 // TestUnlistedSkipFormatsDefaultToContentUnverified: the classification is
 // closed on the PLAINTEXT side, not the compressed side. A database, an
-// executable, a bytecode file or a config-added skip extension (.jar reaches
-// the byte branch once a repo lists it) can all carry compressed payloads, so
-// none of them may be labelled content-verified by default.
+// executable or a bytecode file can all carry compressed payloads, so none of
+// them may be labelled content-verified by default. A repo-added skip
+// extension never reaches the byte branch at all: it is Unscanned
+// (TestRepoAddedSkipExtensionIsUnscanned).
 func TestUnlistedSkipFormatsDefaultToContentUnverified(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".abcd/config/pii.json", `{"skip_extensions":[".jar"]}`)
 	sc, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bad, why := sc.Unavailable(); bad {
-		t.Fatalf("override must load: %s", why)
-	}
 	var files []BundleFile
-	for _, name := range []string{"a.sqlite", "a.wav", "a.exe", "a.pyc", "a.so", "a.ico", "a.jar"} {
+	for _, name := range []string{"a.sqlite", "a.wav", "a.exe", "a.pyc", "a.so", "a.ico"} {
 		files = append(files, BundleFile{LogicalPath: name, ResolvedPath: writeFile(t, root, name, "\x00opaque\n")})
 	}
 	res, _ := sc.ScanBundle(files)
@@ -135,9 +134,6 @@ func TestUnlistedSkipFormatsDefaultToContentUnverified(t *testing.T) {
 		if !contains(res.ContentUnverified, f.LogicalPath) || contains(res.ScannedBinary, f.LogicalPath) {
 			t.Errorf("%s must default to ContentUnverified: binary=%v unverified=%v", f.LogicalPath, res.ScannedBinary, res.ContentUnverified)
 		}
-	}
-	if contains(res.Unscanned, "a.jar") {
-		t.Errorf("a config-added skip extension takes the byte branch, not Unscanned: %+v", res)
 	}
 }
 
