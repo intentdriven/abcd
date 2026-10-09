@@ -13,3 +13,7 @@ remedy: "When a fix round's receipt names new commits, re-derive each resolves e
 ---
 
 A fix round that rebases the lane branch leaves the lane receipt's resolves[].commit at the pre-rebase sha, which is no longer reachable from the lane head, so the landing would stamp an unreachable resolved_by.commit that RS003 refuses at preflight. Met overnight on run-2610072316033117 (fab3f1704 rebased to 90f48d5f9); corrected by hand in the run state.
+
+## Evidence 2026-10-08
+
+Second occurrence the same night: the doc-fidelity lane's fix round rebased its branch at 03:31Z, leaving the receipt's resolves commit at the pre-rebase bec781f96; it was repointed by hand to c3a7d23fd before landing, as the personas lane's had been (fab3f1704 to 90f48d5f9).

@@ -29,3 +29,7 @@ Deferred past v0.11.1: The product thinker's ruling M19 of 2026-09-23: planned n
 ## Evidence 2026-10-07
 
 The macOS leg hit its 45-minute job cap in the merge queue again. On #839's merge-group run (37590582904), `check (macos-latest)` ran 07:57:44 to 08:43:14 and was cancelled in `Test (race, internal)`, which had started at 08:14:47. The ubuntu leg was green. The queue dropped the pull request and it had to be re-queued by hand, adding a full cycle. This is the second time in two release cycles (the v0.13.1 release PR, 2026-10-05, was cancelled the same way). The queue retries nothing on a runner timeout, so an unattended run has to watch for it.
+
+## Evidence 2026-10-08
+
+The macOS leg's 45-minute cap recurred three more times in the overnight drain, though iss-2609281514435020 was resolved for the same class. PR #852's own macOS check failed at 45m31s (2026-10-07 23:11Z). PR #854 was dropped from the merge queue at 2026-10-08 00:36Z on a failed merge-group check, its own checks green. PR #867 was dropped at 07:43Z: its merge-group ci run 37740516314 had check (macos-latest) cancelled at the cap (07:07 to 07:52). Each needed a hand re-run or re-enqueue (iss-2610090642376032 covers the silent drop).

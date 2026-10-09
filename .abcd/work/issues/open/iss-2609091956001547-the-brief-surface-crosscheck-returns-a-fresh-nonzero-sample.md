@@ -126,3 +126,7 @@ x-083 to x-100 in `02-constraints/04-naming.md` and
 `05-internals/03-configuration.md`, which other branches were editing at the
 time. The two stable armings the acceptance asks for are not run: they fan out
 the pinned checkers and are the orchestrator's to arm, with the person's opt-in.
+
+## Evidence 2026-10-08
+
+The v0.13.3 full-tier crosscheck (46 checkers over 41 brief documents and 5 surfaces) recorded 74 minor brief discrepancies, all deferred here: 50 false claims, 11 fictional layouts, 10 stale counts, 2 undocumented surfaces and 1 criterion violation. Each is listed with its location in the committed receipt .abcd/work/reviews/ecef2bf2a46f5f95fbc55ba88b09eff1907a16c6/iss35-brief-surface-crosscheck.json (failing[]). Two examples from the verb-tree checker: 05-internals/08-skills.md says five verbs have no command page where statusline makes six, and 02-constraints/04-naming.md says two verbs refuse when run bare where launch, decide and build make three.
