@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // A run's lost connection (iss-2610080620372731) reads in `implement step`, in
@@ -61,5 +64,51 @@ func TestOutageRendersInStepStatusRefusalAndRecord(t *testing.T) {
 		Services: []string{"network"}, Kinds: []string{"tool"}, Retried: []string{"git push build/x"}, Probes: 1}}})
 	if !strings.Contains(b.String(), "outages: 1") || !strings.Contains(b.String(), "2026-10-09T09:00:00Z  ended after 3 minute(s): network down, 1 probe(s); retried git push build/x") {
 		t.Fatalf("the record names each outage:\n%s", b.String())
+	}
+}
+
+// TestRenderProbeClearedWhileItRan: a probe that ran while another session
+// cleared the outage returns no outage; its text says so rather than failing.
+func TestRenderProbeClearedWhileItRan(t *testing.T) {
+	probe := implement.OutageProbe{Results: []implement.ServiceResult{{Service: "network", Detail: "Could not resolve host: github.com"}}}
+	var b bytes.Buffer
+	renderProbe(&b, implement.ProbeOutcome{Probed: true, Probe: &probe})
+	if !strings.Contains(b.String(), "the outage was cleared while the probe ran") {
+		t.Fatalf("the text names the clear:\n%s", b.String())
+	}
+}
+
+// TestImplementStatusNamesAnUnreadableOutage: read-only `implement status`
+// still renders the runs over an outage record it cannot read, naming the bad
+// file in the outage's place, in text and in --json.
+func TestImplementStatusNamesAnUnreadableOutage(t *testing.T) {
+	repo := buildRepo(t)
+	mustImplement(t, "build", "itd-10", "--json")
+	mustImplement(t, "implement", "join", "--session", "alpha", "--role", "first", "--json")
+	run, err := implement.Peek(gitutil.RootCommit(repo.Root()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(run.Dir, "outage.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	text := mustImplement(t, "implement", "status")
+	for _, want := range []string{"run-", "outage: unreadable", "outage.json"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the status names %q:\n%s", want, text)
+		}
+	}
+	var st struct {
+		Runs        []json.RawMessage `json:"runs"`
+		Outage      json.RawMessage   `json:"outage"`
+		OutageError string            `json:"outage_error"`
+	}
+	out := mustImplement(t, "implement", "status", "--json")
+	if err := json.Unmarshal([]byte(out), &st); err != nil {
+		t.Fatalf("status --json is one object: %v\n%s", err, out)
+	}
+	if len(st.Runs) != 1 || string(st.Outage) != "null" || !strings.Contains(st.OutageError, "outage.json") {
+		t.Fatalf("--json carries the run and names the bad file: %s", out)
 	}
 }

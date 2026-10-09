@@ -17,8 +17,9 @@ package loop
 // does not prove out refuses the restart with nothing changed, because a reset
 // after a save that cannot be replayed would lose the work. The reset runs in
 // the lane's worktree alone, at the path the loop derives for the lane, never
-// at a path the state file merely names. A restart is refused while the run's
-// outage is open: a fresh agent started into the same outage dies the same way.
+// at a path the state file merely names. A restart is refused while the run has
+// an outage, open or given up: a fresh agent started into the same outage dies
+// the same way.
 
 import (
 	"encoding/json"
@@ -122,11 +123,15 @@ func applyCheck(worktree, patch string) error {
 // whyOf reads the restart's reason: WhyDied when no yield is named, and
 // otherwise the agent's NETWORK: line, which must be one line naming a command.
 func whyOf(yielded string) (string, error) {
-	line := strings.TrimSpace(yielded)
-	if line == "" {
+	remedy := "pass the agent's own line, `" + NetworkLinePrefix + " <cmd>`, or no --yielded for an agent that died; nothing was changed"
+	if yielded == "" {
 		return WhyDied, nil
 	}
-	remedy := "pass the agent's own line, `" + NetworkLinePrefix + " <cmd>`, or no --yielded for an agent that died; nothing was changed"
+	line := strings.TrimSpace(yielded)
+	if line == "" {
+		// A blank yield names nothing: never read it as a death.
+		return "", refuse(stageRestart, "", "", "the yield is blank", remedy)
+	}
 	if len(line) > maxYieldBytes {
 		return "", refuse(stageRestart, "", "", fmt.Sprintf("the yield is %d bytes, over %d", len(line), maxYieldBytes), remedy)
 	}
@@ -204,8 +209,8 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 // uncommitted is saved aside under the lane's directory, the lane's worktree
 // is reset to its last commit and cleaned, the run record names the aside, and
 // the implementer await is re-told so the lead starts a fresh agent from the
-// same brief. It is refused, changing nothing, while the run's outage is open,
-// for a lane with no implementer out, for a lane whose worktree is not the
+// same brief. It is refused, changing nothing, while the run has an outage
+// (open or given up), for a blank yield, for a lane with no implementer out, for a lane whose worktree is not the
 // one the loop derives for it, and when the saved patch would not apply to
 // the lane's head.
 func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
@@ -364,8 +369,10 @@ func asideDir(root *os.Root, parent string, now time.Time) (string, error) {
 		"run the restart again in a second; nothing was changed")
 }
 
-// outageOpen refuses a restart while the run's outage is open: the fresh agent
-// would meet the same lost connection.
+// outageOpen refuses a restart while the run has any outage in force: the
+// fresh agent would meet the same lost connection. An open outage is a wait;
+// one the run gave up on is a stop, since every step refuses after the give-up
+// and the fresh agent starts only once the connection is back.
 func outageOpen(repoRoot, laneID string) error {
 	run, err := implement.Peek(gitutil.RootCommit(repoRoot))
 	if err != nil {
@@ -375,11 +382,21 @@ func outageOpen(repoRoot, laneID string) error {
 	if err != nil {
 		return err
 	}
-	if cur == nil || cur.Status != implement.OutageOpen {
+	if cur == nil {
 		return nil
+	}
+	down := strings.Join(cur.Down, " and ")
+	if cur.Status == implement.OutageGaveUp {
+		at := "an unrecorded time"
+		if cur.GaveUpAt != nil {
+			at = cur.GaveUpAt.UTC().Format(time.RFC3339)
+		}
+		return refuse(stageRestart, "", laneID,
+			fmt.Sprintf("the run gave up on its %s outage at %s and has stopped, so a fresh agent would lose its connection too", down, at),
+			"once the connection is back, close the outage with `abcd implement outage clear --session <id> --reason <why>`, then restart the lane; nothing was changed")
 	}
 	return contend(stageRestart, "", laneID,
 		fmt.Sprintf("the run's %s outage is still open (next probe at %s), so a fresh agent would lose its connection too",
-			strings.Join(cur.Down, " and "), cur.NextProbeAt.UTC().Format(time.RFC3339)),
-		"wait for the shared probe to prove the connection back (`abcd implement outage`), then restart the lane; nothing was changed")
+			down, cur.NextProbeAt.UTC().Format(time.RFC3339)),
+		"wait for a successful shared probe (`abcd implement outage probe`), or, once the connection is back, `abcd implement outage clear --session <id> --reason <why>`; then restart the lane; nothing was changed")
 }

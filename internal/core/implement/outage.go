@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -517,15 +516,21 @@ func (o *Outages) ProbeIfDue(session string, p Prober) (ProbeOutcome, error) {
 			if err := checkOutageFields(EventOutageEnd, endFields); err != nil {
 				return err
 			}
-			if err := o.remove(); err != nil {
-				return err
-			}
+			// Log the end before removing the record: a log that refuses the
+			// line leaves the record, and the next probe ends it again; a
+			// record removed first would leave the log's outage open forever.
+			// A remove that fails after the end is logged ends it again too.
 			if _, err := o.run.append(session, EventOutageProbe, probeFields); err != nil {
 				return err
 			}
+			if _, err := o.run.append(session, EventOutageEnd, endFields); err != nil {
+				return err
+			}
+			if err := o.remove(); err != nil {
+				return err
+			}
 			out.Ended, out.Minutes = true, end.Minutes
-			_, err := o.run.append(session, EventOutageEnd, endFields)
-			return err
+			return nil
 		}
 		s := o.schedule()
 		if cur.HourlySince == nil && failures >= len(s.Waits) {
@@ -826,6 +831,13 @@ var networkMarkers = []string{
 	"failed to connect",
 	"couldn't connect to server",
 	"error connecting to", // gh: error connecting to api.github.com
+	// The stall bounds' own aborts: ssh's ServerAliveInterval ("Timeout,
+	// server github.com not responding."), curl's low-speed limit ("curl 28
+	// Operation too slow"), and the cut stream either leaves behind.
+	"not responding",
+	"operation too slow",
+	"early eof",
+	"broken pipe",
 }
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
@@ -847,46 +859,6 @@ var notNetworkMarkers = []string{
 	"protected branch",
 	"conflict",
 }
-
-// IsModelFailure reports whether an agent's output says the model service
-// failed it: an API error, the service overloaded (529), a server error, a
-// request that timed out or lost its connection. A usage or rate limit (429)
-// is not an outage — the service answered, and waiting on a probe is not how
-// a limit is met — so it reads false.
-func IsModelFailure(output string) bool {
-	s := strings.ToLower(output)
-	for _, m := range []string{"usage limit", "rate limit", "rate_limit"} {
-		if strings.Contains(s, m) {
-			return false
-		}
-	}
-	if status429Re.MatchString(s) {
-		return false
-	}
-	for _, m := range modelMarkers {
-		if strings.Contains(s, m) {
-			return true
-		}
-	}
-	return status529Re.MatchString(s)
-}
-
-// modelMarkers are the lower-cased phrases a failed model call prints.
-var modelMarkers = []string{
-	"api error",
-	"overloaded",
-	"internal server error",
-	"bad gateway",
-	"service unavailable",
-	"gateway timeout",
-	"request timed out",
-	"connection error",
-}
-
-var (
-	status429Re = regexp.MustCompile(`\b429\b`)
-	status529Re = regexp.MustCompile(`\b529\b`)
-)
 
 // RemoteProbe is the production network probe: `git ls-remote --exit-code
 // origin HEAD` in repoRoot through the isolated git helper, bounded by

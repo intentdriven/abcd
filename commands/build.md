@@ -341,8 +341,11 @@ The network (git, `gh`, a download) or the model service can drop mid-run.
 Either is one outage for the whole run, waited out on one shared probe rather
 than retried lane by lane (`/abcd:implement` names the record and the probe):
 a minute after the outage opens, then five and ten minutes after each failed
-probe, then hourly for up to eight hours. A usage or rate limit (a 429, "usage
-limit") is not an outage: report it as it is.
+probe, then hourly for up to eight hours. Only an overloaded service (a 529),
+a server error (a 5xx), a timed-out request or a lost connection is an outage.
+An authentication error (a 401), an invalid request (a 400) and a usage or rate
+limit (a 429, "usage limit") are not: the service answered, and waiting does
+not fix them, so report each as an ordinary failure and record no outage.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement outage --json
@@ -365,24 +368,27 @@ the run as below.
 
 Record each loss when you meet it:
 
-- An agent returns an API, connection or overloaded error, or returns without a
-  receipt: `implement outage record --kind agent`, with `--service model` for an
-  error from the model service and `--service network` for a hand-back ending
-  in a `NETWORK: <cmd>` line, the agent's lane as `--lane` and its role and
-  stage as `--what`.
+- An agent returns an overloaded, server (5xx), timeout or connection error, or
+  returns without a receipt: `implement outage record --kind agent`, with
+  `--service model` for an error from the model service and `--service network`
+  for a hand-back ending in a `NETWORK: <cmd>` line, the agent's lane as
+  `--lane` and its role and stage as `--what`.
 - A command you run yourself fails on the network (a preflight, a download,
   `gh`): `--service network --kind tool`, with the command as `--what`.
 - Your own turn stalled and you are resuming it: `--kind host`, with the
   service you lost.
 
 While `implement outage` shows an open outage, keep moving the lanes that need
-neither service; do not start an agent, and do not rerun the failed command
-yourself. Wait until its `next_probe_at`. Then, if `down` holds `model`, start
-the **canary**: one tiny agent on the host's quickest, cheapest tier, asked for a
-one-word reply, and pass its verdict as `implement outage probe --model ok`
-(it answered) or `--model fail` (an API, connection or overloaded error).
-Otherwise run `implement outage probe` alone. Exit 0: the outage is over. Exit
-3: wait until the `next_probe_at` it names. Start the canary only when a probe is
+neither service, and do not rerun the failed command yourself. Do not start an
+agent while `down` includes `model`. While only the network is down, you may
+start host agents for work they can do offline; an agent a runner starts is
+held until the outage ends. Wait until the outage's `next_probe_at`. Then, if
+`down` holds `model`, start the **canary**: one tiny agent on the host's
+quickest, cheapest tier, asked for a one-word reply, and pass its verdict as
+`implement outage probe --model ok` (it answered) or `--model fail` (an
+overloaded, server (5xx), timeout or connection error). Otherwise run
+`implement outage probe` alone. Exit 0: the outage is over. Exit 3: wait until
+the `next_probe_at` it names. Start the canary only when a probe is
 due, once per probe and never once per lane; your own turn running is no proof
 that the model service is back.
 

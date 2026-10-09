@@ -43,14 +43,15 @@ func newImplementOutageCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "outage",
 		Long: "The run's shared lost connection. A lane that loses the network (git, gh, a\n" +
-			"download) or the model service (an agent back with an API error, overloaded, a\n" +
-			"5xx, a timed-out request) records it (`record`); the run keeps one outage record\n" +
+			"download) or the model service (an agent back overloaded, with a 5xx, a timed-out\n" +
+			"request or a lost connection) records it (`record`); the run keeps one outage record\n" +
 			"in the run state, and every lane keeps to offline work and waits on one shared\n" +
 			"probe (`probe`) instead of retrying alone. The probe runs a minute after the\n" +
 			"outage opens, then five minutes and ten minutes after each failed probe, then\n" +
 			"hourly; the failed probe eight hours into the hourly stage gives up, stops the\n" +
 			"run and raises one notification, held until a session acknowledges it (`ack`).\n" +
-			"A usage or rate limit is not an outage.\n\n" +
+			"An authentication error (401), an invalid request (400) or a usage or rate limit\n" +
+			"(429) is not an outage: the service answered, so it is an ordinary failure.\n\n" +
 			"The network is proven back by `git ls-remote origin HEAD`; the model service only\n" +
 			"by a canary agent the lead runs and reports with `probe --model ok|fail` — the\n" +
 			"lead's own turn running is not proof. The outage ends when every service down is\n" +
@@ -231,6 +232,11 @@ func renderProbe(w io.Writer, out implement.ProbeOutcome) {
 	}
 	if out.GaveUp {
 		fmt.Fprintln(w, "the run gave up on the outage and stops here; tell the product thinker, then `abcd implement outage ack`")
+		return
+	}
+	if out.Outage == nil {
+		// Another session cleared the outage while this probe ran.
+		fmt.Fprintln(w, "the outage was cleared while the probe ran: nothing to wait on")
 		return
 	}
 	fmt.Fprintf(w, "still down (%s); next probe at %s\n", strings.Join(out.Outage.Down, ", "), out.Outage.NextProbeAt.Format(time.RFC3339))

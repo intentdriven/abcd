@@ -439,6 +439,9 @@ type implementStatusRuns struct {
 	// Outage is the shared run's lost connection in force, null when there is
 	// none (iss-2610080620372731).
 	Outage *implement.Outage `json:"outage"`
+	// OutageError names why the outage record could not be read, when it
+	// could not: the read-only status renders the runs regardless.
+	OutageError string `json:"outage_error,omitempty"`
 }
 
 // renderStatusOutage renders the outage in force above the runs, as
@@ -506,9 +509,12 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			} else if runs, err = loop.Runs(root); err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			// An unreadable outage record does not hide the runs: the status
+			// is read-only, so it names the bad record in the outage's place.
+			var outageErr string
 			cur, err := loop.CurrentOutage(root)
 			if err != nil {
-				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				cur, outageErr = nil, fsutil.RedactHome(err.Error())
 			}
 			for i := range runs {
 				for j := range runs[i].Lanes {
@@ -518,7 +524,10 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur}, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur, OutageError: outageErr}, func(w io.Writer) {
+				if outageErr != "" {
+					fmt.Fprintf(w, "outage: unreadable: %s\n", termsafe.Sanitize(outageErr))
+				}
 				renderStatusOutage(w, cur)
 				if len(runs) == 0 {
 					fmt.Fprintln(w, "no run in this checkout — start one with `abcd build <itd-N>`")
@@ -670,8 +679,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is\n" +
 			"proved to apply to that commit, the lane's worktree is reset and cleaned, the run record\n" +
 			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
-			"the aside. It is refused, changing nothing, while the run's outage is open, for a lane\n" +
-			"with no implementer out, or for a worktree that is not the one the loop derives.\n" +
+			"the aside. It is refused, changing nothing, while the run has an outage (open or given\n" +
+			"up), for a blank --yielded, for a lane with no implementer out, or for a worktree that\n" +
+			"is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
 			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -740,13 +750,20 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			var res loop.StepResult
+			// A --yielded given at all is judged trimmed: a blank one names
+			// no line, and is never read as an agent that died.
+			yieldedSet := cmd.Flags().Changed("yielded")
+			yielded = strings.TrimSpace(yielded)
 			switch {
-			case yielded != "" && restart == "":
+			case yieldedSet && restart == "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--yielded names why a restarted agent stopped, so it goes with --restart", Remedy: "run `abcd implement step --restart <lane-id> --yielded '<the agent's NETWORK: line>'`"})
 			case restart != "" && (release != "" || discard != ""):
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--restart, --release and --discard name one decision each; give one", Remedy: "run `abcd implement step` with one of them, one lane per invocation"})
+			case yieldedSet && yielded == "":
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
+					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
 			case restart != "":
 				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
 			case release != "" && discard != "":

@@ -30,6 +30,13 @@ func TestImplementStepRestartIsWired(t *testing.T) {
 			t.Fatalf("--restart beside %s is refused: %v", other, ref)
 		}
 	}
+	// A blank --yielded is refused as blank, never read as an agent that died.
+	for _, blank := range []string{"", "   ", " \t "} {
+		ref = refusalDocs(t, 2, "implement", "step", "--restart", "lane-1", "--yielded", blank, "--json")
+		if !strings.Contains(ref["reason"].(string), "--yielded is blank") {
+			t.Fatalf("--yielded %q is refused as blank: %v", blank, ref)
+		}
+	}
 	ref = refusalDocs(t, 2, "implement", "step", "--yielded", "NETWORK: git push", "--json")
 	if !strings.Contains(ref["reason"].(string), "--yielded") {
 		t.Fatalf("--yielded without --restart is refused: %v", ref)

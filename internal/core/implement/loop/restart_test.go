@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -189,6 +190,15 @@ func TestRestartRecordsYieldReason(t *testing.T) {
 	noAside(t, dir)
 	editsIntact(t, repo, l)
 
+	// A yield that is blank is no yield: it is refused, not read as a death.
+	if _, err := Restart(repo.Root(), runID, "lane-1", " \t\n", Options{}); err == nil {
+		t.Fatal("a blank yield is refused")
+	} else {
+		mustRefusal(t, err)
+	}
+	noAside(t, dir)
+	editsIntact(t, repo, l)
+
 	if _, err := Restart(repo.Root(), runID, "lane-1", "  NETWORK: git push origin build/x \n", Options{}); err != nil {
 		t.Fatal(err)
 	}
@@ -226,6 +236,38 @@ func TestRestartRefusedWhileOutageOpen(t *testing.T) {
 	r := mustRefusal(t, err)
 	if !r.Contention || !strings.Contains(r.Reason, "outage") {
 		t.Fatalf("an open outage is a wait, named: %+v", r)
+	}
+	noAside(t, dir)
+	editsIntact(t, repo, l)
+	if after := stateBytes(t, repo.Root(), runID); string(before) != string(after) {
+		t.Fatal("a refused restart leaves the state unchanged")
+	}
+}
+
+// TestRestartRefusedAfterOutageGaveUp: once the run has given up on an
+// outage, a restart is refused (not a wait), changes nothing, and names the
+// way on: clearing the outage once the connection is back.
+func TestRestartRefusedAfterOutageGaveUp(t *testing.T) {
+	repo, runID, l, dir, _ := deadLane(t)
+	run, err := implement.Open(gitutil.RootCommit(repo.Root()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	run.Now = func() time.Time { return now }
+	if _, err := run.Join("lead", implement.RoleFirst, "", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	giveUp(t, run, "lead", func(d time.Duration) { now = now.Add(d) })
+	if cur, err := run.Outage().Current(); err != nil || cur == nil || cur.Status != implement.OutageGaveUp {
+		t.Fatalf("the outage gave up: %+v, %v", cur, err)
+	}
+	before := stateBytes(t, repo.Root(), runID)
+
+	_, err = Restart(repo.Root(), runID, "lane-1", "", Options{})
+	r := mustRefusal(t, err)
+	if r.Contention || !strings.Contains(r.Reason, "gave up") || !strings.Contains(r.Remedy, "implement outage clear") {
+		t.Fatalf("a given-up outage refuses the restart, naming the clear: %+v", r)
 	}
 	noAside(t, dir)
 	editsIntact(t, repo, l)

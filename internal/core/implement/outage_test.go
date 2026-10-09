@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -476,34 +477,6 @@ func TestOutageModelServiceNeedsTheCanary(t *testing.T) {
 	}
 }
 
-// TestIsModelFailure: the model service's own failures count; a usage or rate
-// limit is not an outage.
-func TestIsModelFailure(t *testing.T) {
-	for _, c := range []struct {
-		out  string
-		want bool
-	}{
-		{`API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`, true},
-		{"API Error: 500 Internal Server Error", true},
-		{"Overloaded", true},
-		{"API Error: Request timed out.", true},
-		{"API Error: Connection error.", true},
-		{"503 Service Unavailable", true},
-		{"status 529", true},
-
-		{"", false},
-		{"Claude usage limit reached. Your limit will reset at 5pm.", false},
-		{"API Error: 429 rate limit exceeded", false},
-		{`API Error: 429 {"type":"error","error":{"type":"rate_limit_error"}}`, false},
-		{"the agent finished: 15290 lines read, all tests pass", false},
-		{"go test: FAIL TestServer500Path", false},
-	} {
-		if got := IsModelFailure(c.out); got != c.want {
-			t.Errorf("IsModelFailure(%q) = %v, want %v", c.out, got, c.want)
-		}
-	}
-}
-
 // TestIsNetworkFailure: the network errors git and gh actually print count; an
 // authentication failure, a hook's refusal and a merge conflict do not, even
 // when their output also carries a network-sounding line.
@@ -527,6 +500,11 @@ func TestIsNetworkFailure(t *testing.T) {
 		{"read tcp 192.0.2.2:51234->203.0.113.6:443: read: connection reset by peer", true},
 		{"fatal: unable to access 'https://github.com/': Temporary failure in name resolution", true},
 		{"ssh: connect to host github.com port 22: No route to host", true},
+		// The stall bounds' own aborts: ssh's ServerAliveInterval and curl's
+		// low-speed limit.
+		{"Timeout, server github.com not responding.\nfatal: the remote end hung up unexpectedly", true},
+		{"error: RPC failed; curl 28 Operation too slow. Less than 1000 bytes/sec transferred the last 60 seconds\nfatal: early EOF", true},
+		{"client_loop: send disconnect: Broken pipe\nfatal: the remote end hung up unexpectedly", true},
 
 		{"", false},
 		{"remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/o/r.git/'", false},
@@ -541,6 +519,8 @@ func TestIsNetworkFailure(t *testing.T) {
 		{"CONFLICT (content): Merge conflict in go.mod\nAutomatic merge failed; fix conflicts and then commit the result.", false},
 		{"error: could not apply 1234abc... fix\nhint: Resolve all conflicts manually", false},
 		// A hook may print anything: its refusal wins over a word it quoted.
+		{"remote: error: GH013: push declined (pre-receive hook declined)\nfatal: the remote end hung up unexpectedly\nfatal: early EOF", false},
+		{"git@github.com: Permission denied (publickey).\nclient_loop: send disconnect: Broken pipe", false},
 		{"pre-push hook: Connection refused to the receipt store\nerror: failed to push some refs (pre-receive hook declined)", false},
 	} {
 		if got := IsNetworkFailure(c.stderr); got != c.want {
@@ -698,5 +678,49 @@ func TestOutageProbeResultWaitsForABusyLock(t *testing.T) {
 	cur, err := r.Outage().Current()
 	if err != nil || cur == nil || len(cur.Probes) != 1 || cur.Lease != nil {
 		t.Fatalf("after the probe = %+v, %v; want its result recorded and the lease released", cur, err)
+	}
+}
+
+// TestOutageEndKeepsTheRecordWhenTheLogFails: a successful probe logs the
+// end before it removes the record. When the log cannot take the line, the
+// record stays, so the outage is not left open in the log forever with no
+// record to end it: the next probe ends it, and logs it.
+func TestOutageEndKeepsTheRecordWhenTheLogFails(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root writes through a read-only file")
+	}
+	r, c := newRun(t)
+	join(t, r, "alpha", RoleFirst)
+	recordOutage(t, r, "alpha", ServiceNetwork, "tool", "lane-1", "git push")
+	logPath := filepath.Join(r.Dir, logFileName(c.now()))
+	if err := os.Chmod(logPath, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(logPath, 0o600) })
+
+	c.advance(time.Minute)
+	if _, err := r.Outage().ProbeIfDue("alpha", Prober{Network: netUp}); err == nil {
+		t.Fatal("a probe whose end the log cannot take reports the failure")
+	}
+	if cur, err := r.Outage().Current(); err != nil || cur == nil {
+		t.Fatalf("the record outlives an end the log did not take: %+v, %v", cur, err)
+	}
+	if n := countEvents(t, r, EventOutageEnd); n != 0 {
+		t.Fatalf("%d outage_end lines through a read-only log", n)
+	}
+
+	if err := os.Chmod(logPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c.advance(ProbeLease)
+	out, err := r.Outage().ProbeIfDue("alpha", Prober{Network: netUp})
+	if err != nil || !out.Ended {
+		t.Fatalf("the next probe ends the outage: %+v, %v", out, err)
+	}
+	if n := countEvents(t, r, EventOutageEnd); n != 1 {
+		t.Fatalf("%d outage_end lines; want the one the second probe logged", n)
+	}
+	if cur, err := r.Outage().Current(); err != nil || cur != nil {
+		t.Fatalf("Current after the logged end = %+v, %v; want none", cur, err)
 	}
 }

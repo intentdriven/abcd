@@ -320,9 +320,10 @@ lane's directory, `aside/<UTC stamp>/` with `changes.patch`, `aside.json` and an
 partial receipt, once the patch is proved to apply to that commit; the lane's
 worktree is reset and cleaned; the run record names the aside for review; and
 the implementer await is re-told. The brief never names the aside, so no agent
-builds on it. It is refused, changing nothing, while the outage is open, for a
-lane with no implementer out, and for a worktree that is not the one the loop
-derives.
+builds on it. It is refused, changing nothing, while the run has an outage
+(open, or given up until `implement outage clear` closes it once the connection
+is back), for a blank `--yielded`, for a lane with no implementer out, and for a
+worktree that is not the one the loop derives.
 
 The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
@@ -504,13 +505,14 @@ the run log as a `load` event (`run_log`).
 ```
 
 A lost connection to the network (git, `gh`, a download) or to the model
-service (an agent back with an API error, overloaded, a 5xx, a timed-out
-request) is one **outage** for the whole run. The run keeps one outage record in
+service (an agent back overloaded, with a 5xx, a timed-out request or a lost
+connection) is one **outage** for the whole run. The run keeps one outage record in
 the shared run state, so every session and every lane in every worktree sees the
 same one. Each lane keeps to the work it can do offline, and a lane that needs
-the lost service waits on one shared probe rather than retrying alone. A usage
-or rate limit (a 429, "usage limit") is not an outage: report it as it is and
-record nothing here.
+the lost service waits on one shared probe rather than retrying alone. An
+authentication error (a 401), an invalid request (a 400) and a usage or rate
+limit (a 429, "usage limit") are not outages: the service answered, so report
+each as an ordinary failure and record nothing here.
 
 Bare `implement outage` is read-only and creates nothing. `outage` is null when
 there is none; otherwise it carries `status` (`open` or `gave_up`), `services`

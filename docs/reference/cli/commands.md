@@ -1838,14 +1838,15 @@ Render the run's shared lost connection and when its next probe is due: Writes n
 **Usage:** `abcd implement outage`
 
 The run's shared lost connection. A lane that loses the network (git, gh, a
-download) or the model service (an agent back with an API error, overloaded, a
-5xx, a timed-out request) records it (`record`); the run keeps one outage record
+download) or the model service (an agent back overloaded, with a 5xx, a timed-out
+request or a lost connection) records it (`record`); the run keeps one outage record
 in the run state, and every lane keeps to offline work and waits on one shared
 probe (`probe`) instead of retrying alone. The probe runs a minute after the
 outage opens, then five minutes and ten minutes after each failed probe, then
 hourly; the failed probe eight hours into the hourly stage gives up, stops the
 run and raises one notification, held until a session acknowledges it (`ack`).
-A usage or rate limit is not an outage.
+An authentication error (401), an invalid request (400) or a usage or rate limit
+(429) is not an outage: the service answered, so it is an ordinary failure.
 
 The network is proven back by `git ls-remote origin HEAD`; the model service only
 by a canary agent the lead runs and reports with `probe --model ok|fail` — the
@@ -2166,8 +2167,9 @@ last commit: everything left uncommitted is saved aside under the lane's directo
 (aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
 proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
 names the aside for review, and the implementer await is re-told; the brief never names
-the aside. It is refused, changing nothing, while the run's outage is open, for a lane
-with no implementer out, or for a worktree that is not the one the loop derives.
+the aside. It is refused, changing nothing, while the run has an outage (open or given
+up), for a blank --yielded, for a lane with no implementer out, or for a worktree that
+is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
