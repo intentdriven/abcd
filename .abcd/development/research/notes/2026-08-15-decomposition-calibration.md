@@ -2364,3 +2364,13 @@ Verdict: SPLIT, confirmed as proposed ("Split as proposed"). The reversal of adr
 | the local dashboard's planned routes for acting | overlap | kept both ("Keep both routes"); itd-2610040740122709 and itd-2610040740135705 stand |
 
 Verdict: SPLIT. The facilitator offered rewriting the existing draft, a new intent beside it, or superseding it; the product thinker chose "New intent beside it", so the proposed routing (a rewrite) did not survive the confirmation.
+
+## 2026-10-09: agents keep memory notes with /abcd:memory (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| an agent adds, lists, removes and promotes memory notes, recalled by the rules loader | capability | intent itd-2610091918433290 (draft); builds on itd-3, beside itd-39 |
+| what may enter a note without the person's yes, and how a note is promoted | trust rule | adr-2610091918443997 (proposed) |
+| where notes are stored (memory.json beside rules.json, or inside rules.json) | design choice | the intent's Open Questions, with the facilitator's lean |
+
+Verdict: SPLIT, as proposed ("yes, file it as A"). The storage file was raised by the product thinker and is carried as an open question.

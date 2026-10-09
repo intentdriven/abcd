@@ -145,6 +145,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610091010348892` — abcdev.app shows the record of any public abcd-managed project, with abcd as the showcase (draft)
 - `itd-2610091016262335` — The product thinker and facilitator make a project's design decisions on abcdesign.app (draft)
 - `itd-2610090831227812` — A person's /abcd: list shows only the commands people use (draft)
+- `itd-2610091918433290` — Agents keep memory notes with /abcd:memory, recalled when they matter (draft)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
