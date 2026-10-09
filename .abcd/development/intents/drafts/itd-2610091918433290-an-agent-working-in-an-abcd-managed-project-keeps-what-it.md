@@ -33,7 +33,7 @@ related_adrs: [adr-2610091918443997]
 
 ## Acceptance Criteria
 
-> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+- **Given** a person reading abcd's user-facing docs after this intent ships, **when** they look up memory, **then** the page explains memory and the library side by side in plain words (what each holds, who adds to it, how it comes back, where it can go), the same comparison the brief's surfaces overview carries, so the two are never mistaken for one store. (Required by the product thinker, 2026-10-09: "explain both in that accessible way in the docs and in the brief".)
 
 ## Open Questions
 
