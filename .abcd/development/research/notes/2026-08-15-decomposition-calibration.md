@@ -2343,3 +2343,14 @@ Follow-up the same day on the revisit mark (itd-2610070549060530): the product t
 | "every verb is reachable from both the CLI and the plugin surface" | standing boundary, flagged as a possible reversal for confirmation | the intent's Open Questions, not decided here |
 
 Verdict: SPLIT. The facilitator proposed the three-way routing and confirmed it as proposed ("Split as proposed"). The reversal flag was carried in the question, not put to a separate one, so that row is graded unconfirmed.
+
+## 2026-10-09: abcdev.app shows any public abcd-managed project (technical facilitator, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcdev.app renders a landing page and record for any public abcd-managed GitHub repository, at /<owner>/<repo>/, with abcd's own pages as the showcase at /intentdriven/abcd/ | capability | intent itd-2610091010348892 (draft); builds on itd-135 |
+| which repositories may be rendered, how one joins or leaves, and what a page says about who wrote it | trust rule | adr-2610091010387033 (proposed), flagged as reversing adr-47 decision 1 ("this repository and nothing else") |
+| building from GitHub within its rate limits and terms | research | iss-2610091010558682, owing a dated research note before planning |
+| the overlap with abcdesign.app (itd-2610052000411162) | overlap | asked separately; the product thinker ruled "Keep both sites": abcdev.app shows, abcdesign.app edits |
+
+Verdict: SPLIT, confirmed as proposed ("Split as proposed"). The reversal of adr-47 decision 1 was flagged in the question and is carried as the proposed record's open decision, not settled.
