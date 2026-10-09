@@ -1,4 +1,4 @@
-package abcdhome
+package abcdhome_test
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -35,7 +36,7 @@ func TestPrintedRepairReachesWorktreesAtAnyDepth(t *testing.T) {
 	repo.Commit("init")
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
 
-	oldStore := filepath.Join(home, oldName, "worktrees")
+	oldStore := filepath.Join(home, abcdhome.OldName, "worktrees")
 	lanes := []struct{ rel, branch string }{
 		{filepath.Join(sha, "lane one"), "lane-one"},
 		{filepath.Join(sha, "docs", "some-branch"), "docs/some-branch"},
@@ -71,10 +72,10 @@ func TestPrintedRepairReachesWorktreesAtAnyDepth(t *testing.T) {
 	gitIn(t, repo.Env(), oldStore, "clone", "--quiet", repo.Root(), clone)
 	gitIn(t, repo.Env(), clone, "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub.Root(), "vendored")
 
-	if err := os.Rename(filepath.Join(home, oldName), Path(home)); err != nil {
+	if err := os.Rename(filepath.Join(home, abcdhome.OldName), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
-	subGit := Path(home, "worktrees", sha, "a-clone", "vendored", ".git")
+	subGit := abcdhome.Path(home, "worktrees", sha, "a-clone", "vendored", ".git")
 	subLinkBefore, err := os.ReadFile(subGit)
 	if err != nil {
 		t.Fatal(err)
@@ -86,12 +87,12 @@ func TestPrintedRepairReachesWorktreesAtAnyDepth(t *testing.T) {
 		t.Fatalf("precondition: want all %d moved worktrees listed as prunable:\n%s", len(lanes), list)
 	}
 
-	cmd := exec.Command("sh", "-c", RepairCommand)
+	cmd := exec.Command("sh", "-c", abcdhome.RepairCommand)
 	cmd.Dir = home
 	cmd.Env = repo.Env()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("the printed repair %q exited %v:\n%s", RepairCommand, err, out)
+		t.Fatalf("the printed repair %q exited %v:\n%s", abcdhome.RepairCommand, err, out)
 	}
 	for _, bad := range []string{"not a git repository", "Not a directory", "No such file", "fatal:", "error:"} {
 		if strings.Contains(string(out), bad) {
@@ -106,7 +107,7 @@ func TestPrintedRepairReachesWorktreesAtAnyDepth(t *testing.T) {
 		t.Errorf("the printed repair walked into a clone in the store and rewrote its submodule's .git from %q to %q (err %v)", subLinkBefore, after, err)
 	}
 	for _, l := range lanes {
-		wt := Path(home, "worktrees", l.rel)
+		wt := abcdhome.Path(home, "worktrees", l.rel)
 		if back := backLink(t, wt); !sameFile(back, filepath.Join(wt, ".git")) {
 			t.Errorf("worktree %s: its repository's link names %q, not its own .git", l.rel, back)
 		}
@@ -165,22 +166,22 @@ func TestWorktreeRepairCommandRunsAsPrinted(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Write("README.md", "fixture\n")
 	repo.Commit("init")
-	rel := Rel("worktrees", "it's a lane")
-	old := filepath.Join(home, oldName, "worktrees", "it's a lane")
+	rel := abcdhome.Rel("worktrees", "it's a lane")
+	old := filepath.Join(home, abcdhome.OldName, "worktrees", "it's a lane")
 	if err := os.MkdirAll(filepath.Dir(old), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	repo.Git("worktree", "add", "-b", "lane", old)
-	if err := os.Rename(filepath.Join(home, oldName), Path(home)); err != nil {
+	if err := os.Rename(filepath.Join(home, abcdhome.OldName), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("sh", "-c", WorktreeRepairCommand(rel))
+	cmd := exec.Command("sh", "-c", abcdhome.WorktreeRepairCommand(rel))
 	cmd.Env = repo.Env()
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%q exited %v:\n%s", WorktreeRepairCommand(rel), err, out)
+		t.Fatalf("%q exited %v:\n%s", abcdhome.WorktreeRepairCommand(rel), err, out)
 	}
 	wt := filepath.Join(home, filepath.FromSlash(rel))
 	if back := backLink(t, wt); !sameFile(back, filepath.Join(wt, ".git")) {
-		t.Fatalf("after %q the repository's link names %q, not the worktree", WorktreeRepairCommand(rel), back)
+		t.Fatalf("after %q the repository's link names %q, not the worktree", abcdhome.WorktreeRepairCommand(rel), back)
 	}
 }
