@@ -679,3 +679,24 @@ func repoRoot(t *testing.T) string {
 		dir = parent
 	}
 }
+
+// A self-check whose dial fails because start was cancelled reports the
+// cancellation, never a *noConnectionError: a cancelled start must stop the
+// server, not drop the address and report success.
+func TestFetchSelfReportsCancellationNotNoConnection(t *testing.T) {
+	restore := setDialSelfForTest(func(_ *net.Dialer, ctx context.Context, _, _ string) (net.Conn, error) {
+		<-ctx.Done()
+		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: ctx.Err()}
+	})
+	defer restore()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := fetchSelf(ctx, "localhost", netip.MustParseAddr("127.0.0.1"), 1, "value")
+	var nc *noConnectionError
+	if errors.As(err, &nc) {
+		t.Fatalf("fetchSelf on a cancelled start = %v, a *noConnectionError; want the cancellation", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("fetchSelf on a cancelled start = %v, want context.Canceled", err)
+	}
+}

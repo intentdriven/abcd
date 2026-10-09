@@ -520,6 +520,11 @@ func fetchSelf(ctx context.Context, name string, a netip.Addr, port int, value s
 	d := &net.Dialer{Timeout: selfCheckWait, LocalAddr: &net.TCPAddr{IP: a.AsSlice()}}
 	conn, err := dialSelf(d, ctx, "tcp", target)
 	if err != nil {
+		// A cancelled start is not an address that cannot be reached: it
+		// stops the server rather than dropping the address.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return &noConnectionError{err: err}
 	}
 	defer conn.Close()
