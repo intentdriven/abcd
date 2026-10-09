@@ -75,10 +75,52 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	res, err := c.launch.run(ctx, Claude, bin, c.args(req), nil, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
+		// A harness refused at a usage limit exits non-zero: the response it
+		// printed first is the reason, not the exit.
+		if claudeRateLimited(res.stdout) {
+			return Answer{}, transcript, claudeLimit()
+		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseClaude(res.stdout)
 	return ans, transcript, err
+}
+
+// claudeRateLimit is the event a rate limit is reported in, and the status
+// that says the provider refused the run. The shape is the Agent SDK's
+// rate-limit event as this build assumes it (a rate_limit_event whose
+// rate_limit_info.status is "rejected"; "allowed" and "allowed_warning" let
+// the run go on); the live shape is owed to a person's check, as the opencode
+// events' are.
+const (
+	claudeRateLimitType     = "rate_limit_event"
+	claudeRateLimitRejected = "rejected"
+)
+
+// claudeLimit is the failure a rate-limit response is. Its detail is abcd's
+// own: nothing of the harness's text reaches it.
+func claudeLimit() *Failure {
+	return fail(Claude, ReasonRateLimited, "its provider refused the run at a usage limit (a rejected %s)", claudeRateLimitType)
+}
+
+// claudeRateLimited reports whether out carries a rejected rate-limit event
+// and no successful result after it. Lines that are not events are passed
+// over: a stream cut short by the exit is read for what it holds.
+func claudeRateLimited(out []byte) bool {
+	limited := false
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev claudeEvent
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil {
+			continue
+		}
+		switch {
+		case ev.Type == claudeRateLimitType && ev.RateLimit != nil && ev.RateLimit.Status == claudeRateLimitRejected:
+			limited = true
+		case ev.Type == "result" && !ev.IsError && ev.Subtype == "success":
+			limited = false
+		}
+	}
+	return limited
 }
 
 // claudeEvent is the part of a stream-json event the runner reads.
@@ -89,6 +131,10 @@ type claudeEvent struct {
 	Model     string `json:"model"`
 	IsError   bool   `json:"is_error"`
 	Result    string `json:"result"`
+	// RateLimit is a rate_limit_event's report; nil on every other event.
+	RateLimit *struct {
+		Status string `json:"status"`
+	} `json:"rate_limit_info"`
 }
 
 // parseClaude reads the event stream: one JSON object per line, the init
@@ -122,6 +168,9 @@ func parseClaude(out []byte) (Answer, error) {
 			e := ev
 			result = &e
 		}
+	}
+	if (result == nil || result.IsError || result.Subtype != "success") && claudeRateLimited(out) {
+		return Answer{}, claudeLimit()
 	}
 	if result == nil {
 		return Answer{}, fail(Claude, ReasonUnparsable, "its output carries no result event")

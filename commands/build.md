@@ -184,6 +184,24 @@ each other beside one another. A step runs beside earlier steps only when the
 spec's `- needs:` line under it says so (`- needs: none`, or `- needs: 1, 3`
 naming the steps it waits for); without the line it needs every step before it.
 
+## The budget check
+
+Before a new run writes anything, it checks its budget. Each route the run's
+roles take (the host, or a runner the machine routes a role to) is asked for the
+quota it has left, and the run's estimate is compared with what each route
+reports for its own roles: about 80000 tokens an agent, for the implementer and
+the two reviewers on every step the run opens a lane for, and the
+intent-auditor once (an issue run takes no audit). The estimate is the first
+round, not the worst case: fix rounds are not counted. A route whose estimate
+exceeds the quota it reports refuses the start at the `budget` stage with exit
+2, naming the route, both numbers and the remedy, and nothing is written; tell
+the user both numbers. A route that reports no quota is named and its check is
+skipped out loud: the host never reports one (abcd cannot read a host session's
+quota), and no shipped runner reports one yet. The payload's `budget` carries a
+row per route (`route`, `roles`, `estimate_tokens`, `remaining_tokens`, null when
+none was reported, `checked` and `detail`), and the run record's `budget` line
+names the same. A resumed start checks no budget, and its `budget` is null.
+
 ## Drive it
 
 The host session drives the loop, one move per call:
@@ -250,6 +268,18 @@ started may still finish: hand its receipt back as usual. Before
 naming the time, and nothing changes; stop driving the run and invoke it again
 at or after that time, when a new window opens. The pause lives in the state
 file, so no process waits through it.
+
+A runner that answers a routed role with a rate-limit response ends the window
+early for the whole run, since every lane spends the same budget; the role is
+not handed to you as a fallback. The call frees that agent's slot, checkpoints
+every lane with work in flight to its own branch (the run record's `checkpoint`
+lines name each branch and the commit it holds), writes `next_eligible_at` once
+(now plus the run's pause), records a `rate-limit` line naming the lane, the
+role and the runner, and exits 0 with `rate_limit` (`lane`, `role`, `runner`,
+`detail`) and `next_eligible_at` in the payload. An agent already out on
+another lane may still hand its receipt back. Stop driving the run, tell the
+user the lane and the time, and invoke it again at or after that time: the work
+the response stopped is handed out afresh from its branch.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
 lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep

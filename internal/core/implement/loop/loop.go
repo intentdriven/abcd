@@ -45,6 +45,14 @@ type Options struct {
 	// Roots are where the pace's configuration layers are read; nil reads
 	// them at layered.RootsFor(repoRoot).
 	Roots *layered.Roots
+	// Runners is the runner configuration read before a new run starts
+	// (LoadRunners): the route each role takes, which the budget check asks
+	// for its quota. nil leaves every role on the host.
+	Runners *runner.Config
+	// Quota reads the quota a route reports for the budget check; nil asks
+	// Runners (runner.Config.QuotaFor). A test sets it to play a runner that
+	// reports one.
+	Quota QuotaReader
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -189,6 +197,10 @@ type StartResult struct {
 	// Pace is the run's pace, each number with the layer that supplied it.
 	// Null for a run started before the loop paced a run.
 	Pace *Pace `json:"pace"`
+	// Budget is the budget check the call took when it created the run, a
+	// row per route with its estimate and the quota it reported, or that it
+	// reported none; null on a resumed start, which checks none.
+	Budget *Budget `json:"budget"`
 	// HandBack is set when the run's lane stands handed back to the person.
 	HandBack *HandBack `json:"hand_back,omitempty"`
 	Next     string    `json:"next"`
@@ -231,7 +243,10 @@ type StepResult struct {
 	// Fallback is the fallback receipt this call recorded when the runner a
 	// role is routed to did not run it and the host is handed the role.
 	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
-	Next     string                  `json:"next"`
+	// RateLimit is the rate-limit response a runner answered with in this
+	// call, which ended the run's window early (NextEligibleAt).
+	RateLimit *RateLimit `json:"rate_limit,omitempty"`
+	Next      string     `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
@@ -308,6 +323,12 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if !chk.OK {
 		return StartResult{}, chk.refusal()
 	}
+	// The budget check (criterion 7) comes after the checks and before
+	// anything is written: a run it refuses leaves no state.
+	budget, err := checkBudget(len(chk.steps), chk.Intent != "", o)
+	if err != nil {
+		return StartResult{}, err
+	}
 	if err := fsutil.EnsureRealDirAll(repoRoot, RunRelDir, dirPerm); err != nil {
 		return StartResult{}, fmt.Errorf("creating %s: %w", RunRelDir, err)
 	}
@@ -367,6 +388,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
+		st.Record = append(st.Record, Entry{At: now, Stage: StageBudget, Note: budget.String()})
 		if pick != nil {
 			rp := *pick
 			rp.Lane = st.Lanes[0].ID
@@ -386,6 +408,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
+		res.Budget = budget
 		return nil
 	})
 	return res, err

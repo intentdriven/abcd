@@ -76,6 +76,11 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	res, err := o.launch.run(ctx, OpenCode, bin, o.args(req), openCodeSeal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
+		// A harness refused at a usage limit may exit non-zero: the error
+		// event it printed first is the reason, not the exit.
+		if openCodeRateLimited(res.stdout) {
+			return Answer{}, transcript, openCodeLimit()
+		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseOpenCode(res.stdout)
@@ -94,6 +99,41 @@ type openCodeEvent struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"part"`
+	// Error is an error event's error; its status code is the provider's
+	// HTTP status when the error is an API error.
+	Error *struct {
+		Data struct {
+			StatusCode int `json:"statusCode"`
+		} `json:"data"`
+	} `json:"error"`
+}
+
+// openCodeRateLimitStatus is the provider's status a rate limit is reported
+// with: an error event whose error.data.statusCode is 429 (HTTP's Too Many
+// Requests). The field is opencode's API error as this build assumes it; the
+// live shape is owed to a person's check, as its other events' are.
+const openCodeRateLimitStatus = 429
+
+// openCodeLimit is the failure a rate-limit response is, in abcd's words.
+func openCodeLimit() *Failure {
+	return fail(OpenCode, ReasonRateLimited, "its provider refused the run at a rate limit (an error event with status %d)", openCodeRateLimitStatus)
+}
+
+// limited reports whether the event is a rate-limit response.
+func (ev openCodeEvent) limited() bool {
+	return ev.Type == "error" && ev.Error != nil && ev.Error.Data.StatusCode == openCodeRateLimitStatus
+}
+
+// openCodeRateLimited reports whether out carries a rate-limit response.
+// Lines that are not events are passed over.
+func openCodeRateLimited(out []byte) bool {
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev openCodeEvent
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.limited() {
+			return true
+		}
+	}
+	return false
 }
 
 // parseOpenCode reads the event stream: one JSON object per line. An error
@@ -117,6 +157,9 @@ func parseOpenCode(out []byte) (Answer, error) {
 		}
 		switch ev.Type {
 		case "error":
+			if ev.limited() {
+				return Answer{}, openCodeLimit()
+			}
 			return Answer{}, fail(OpenCode, ReasonRefused, "it reported an error event")
 		case "text":
 			ans.Text = ev.Part.Text

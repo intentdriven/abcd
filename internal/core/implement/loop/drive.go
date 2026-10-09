@@ -21,7 +21,10 @@ package loop
 //     receipt the verifier refuses leaves the lane awaiting, writes one
 //     fallback receipt into the run's state (Fallbacks) and the record, and
 //     hands the role to the host with the reason (criterion 3), which the run
-//     record counts per runner and per role (criterion 4).
+//     record counts per runner and per role (criterion 4);
+//   - a runner that answers with a rate-limit response is not fallen back on:
+//     the run is checkpointed and its window ends early (ratelimit.go,
+//     itd-2609201925079472 criterion 8).
 //
 // The runner is started outside the run's lock, which is held only for the
 // advance before it and the Receipt or the fallback write after it, so a
@@ -137,13 +140,19 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 			done = &r
 			return nil
 		},
-		Record: func(fb runner.FallbackReceipt) error { return recordFallback(repoRoot, runID, res.Lane, fb, o) },
-		Now:    o.Now,
+		Record:           func(fb runner.FallbackReceipt) error { return recordFallback(repoRoot, runID, res.Lane, fb, o) },
+		Now:              o.Now,
+		PauseOnRateLimit: true,
 	}
 	out, err := d.Dispatch(ctx, req)
 	if err != nil {
 		return res, refuse(StageRunner, "", res.Lane, err.Error(),
 			"the lane still awaits its receipt: correct what the reason names and step again, or start the agent the step names by hand")
+	}
+	if out.RateLimited != nil {
+		// Every lane spends the run's budget: the window ends early, and the
+		// role is not handed to the host (criterion 8, ratelimit.go).
+		return rateLimited(repoRoot, runID, res.Lane, aw, out.RateLimited, o)
 	}
 	if out.Handoff {
 		res.Fallback = out.Fallback

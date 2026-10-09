@@ -278,6 +278,14 @@ ceiling is free. A lane whose validators still do not pass after its fix rounds 
 handed back: it stops as unachievable with the last round's findings, the run starts nothing
 further for it, and `abcd implement step` refuses naming the hand-back.
 
+A new run checks its budget before anything is written: each route the run's roles take
+(the host, or a runner) is asked for the quota it has left, and the run's estimate, about
+80000 tokens an agent for the implementer and the two reviewers on every step and the
+intent-auditor once, is compared with what each route reports for its roles. A route whose
+estimate exceeds its quota refuses the start naming both numbers, and writes nothing; a
+route that reports none (the host, and every shipped runner) is named and its check is
+skipped out loud, in the result and the run record.
+
 The run then moves one step per `abcd implement step`, driven by the host session.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
@@ -2078,6 +2086,13 @@ The run's window clock: once the run's working window has elapsed, the call star
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
 agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
+
+A runner that answers with a rate-limit response is not fallen back on, since every lane
+spends the run's budget: its agent's slot is freed, every lane with work in flight is
+checkpointed to its own branch (the run record names the branch and the commit it holds),
+the window ends early with next_eligible_at written once (now plus the run's pause), the
+record names the lane, the role and the runner the response came from, and the call exits
+0 naming the time. At next_eligible_at the work is handed out afresh.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.

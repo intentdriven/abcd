@@ -64,6 +64,15 @@ func loopFakeHarness(mode string) int {
 		argv, _ := json.Marshal(os.Args[1:])
 		_ = os.WriteFile(filepath.Join(dir, name+".argv.json"), argv, 0o600)
 	}
+	if mode == "ratelimit" {
+		// The provider refuses the run at a usage limit: the rate-limit event
+		// as the claude runner assumes it, an error result, a non-zero exit,
+		// and no receipt written.
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-3","model":"fake-model"}`)
+		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour"},"session_id":"fake-session-3"}`)
+		fmt.Println(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
+		return 1
+	}
 	prompt := os.Args[len(os.Args)-1]
 	field := func(prefix string) string {
 		sc := bufio.NewScanner(strings.NewReader(prompt))

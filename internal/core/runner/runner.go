@@ -19,6 +19,13 @@
 // the role, the runner asked for, the reason and the route that ran. Tally
 // counts those receipts per runner and per role for the run's summary.
 //
+// A harness whose provider refused the run at a rate or usage limit fails
+// with ReasonRateLimited; a dispatcher that pauses on it (the loop's process
+// driver) hands the response back instead of falling back, so the loop can
+// end the run's window early (itd-2609201925079472 criterion 8). A route
+// reports its remaining quota through QuotaFor (quota.go) for the budget a run
+// checks before it starts (criterion 7).
+//
 // The package never prints. It starts processes only through Dispatch and the
 // adapters' Run, and never logs a harness in: a harness's credential is its
 // own, read from its own environment or configuration, and abcd never puts one
@@ -117,6 +124,11 @@ const (
 	ReasonUnparsable Reason = "unparsable"
 	// ReasonInvalid: the answer failed the contract's validator.
 	ReasonInvalid Reason = "invalid"
+	// ReasonRateLimited: the harness reported that its provider refused the
+	// run at a rate or usage limit (itd-2609201925079472 criterion 8). A
+	// dispatcher that pauses on it (PauseOnRateLimit) hands it back rather
+	// than falling back, since every route of a run spends the same budget.
+	ReasonRateLimited Reason = "rate-limited"
 )
 
 // Failure is a runner's failure. Detail is written by abcd, never copied from

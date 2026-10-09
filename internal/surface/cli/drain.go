@@ -126,7 +126,13 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	for _, n := range notes {
 		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
 	}
-	o := loop.Options{Roots: &roots}
+	// The runner configuration is read as `abcd build` reads it: a run the
+	// drain starts checks its budget on the routes its roles take.
+	cfg, err := loadRunners(cmd, roots)
+	if err != nil {
+		return loopFail(cmd.OutOrStdout(), asJSON, prefix, err)
+	}
+	o := loop.Options{Roots: &roots, Runners: cfg}
 	if cmd.Flags().Changed("pace") {
 		o.Pace = &pace
 	}

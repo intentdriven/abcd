@@ -52,6 +52,12 @@ type Dispatcher struct {
 	Prepare func(runner string, req Request) error
 	// Now is the clock the receipts are stamped with; time.Now when nil.
 	Now func() time.Time
+	// PauseOnRateLimit is set by a caller that pauses its run on a rate-limit
+	// response (the loop's process driver, itd-2609201925079472 criterion 8):
+	// a runner that answers with one is not fallen back on, and the outcome
+	// carries the response in RateLimited instead, with no fallback receipt
+	// written. Unset, a rate-limit response is a failure like any other.
+	PauseOnRateLimit bool
 }
 
 // Outcome is one dispatch's result.
@@ -66,6 +72,10 @@ type Outcome struct {
 	Fallback *FallbackReceipt
 	// Receipt is the role's receipt block.
 	Receipt RoleReceipt
+	// RateLimited is the rate-limit response the runner answered with, when
+	// the dispatcher pauses on one: nothing ran the role, and no fallback was
+	// taken or recorded.
+	RateLimited *Failure
 }
 
 // Dispatch runs req by its role's route.
@@ -96,6 +106,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 			return out, nil
 		}
 		ans, err := d.runOn(ctx, landing, req)
+		if rl := d.rateLimit(err); rl != nil {
+			return out.limited(rl), nil
+		}
 		if err != nil {
 			return Outcome{}, fmt.Errorf("runner: the configured host %s did not run %s: %w", landing, req.Role, err)
 		}
@@ -105,6 +118,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	ans, err := d.runOn(ctx, route.Runner, req)
 	if err == nil {
 		return out.ran(route.Runner, ans), nil
+	}
+	if rl := d.rateLimit(err); rl != nil {
+		return out.limited(rl), nil
 	}
 	var fl *Failure
 	if !errors.As(err, &fl) {
@@ -132,6 +148,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		return out, nil
 	}
 	ans, err = d.runOn(ctx, landing, req)
+	if rl := d.rateLimit(err); rl != nil {
+		return out.limited(rl), nil
+	}
 	if err != nil {
 		return Outcome{}, fmt.Errorf("runner: %s %s for %s, and the configured host %s did not run it either: %w",
 			route.Runner, fl.Reason, req.Role, landing, err)
@@ -141,6 +160,24 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 
 // none is the route a receipt names when nothing could run the role.
 const none = "none"
+
+// rateLimit is err's rate-limit response when the dispatcher pauses on one,
+// else nil.
+func (d *Dispatcher) rateLimit(err error) *Failure {
+	var fl *Failure
+	if d.PauseOnRateLimit && errors.As(err, &fl) && fl.Reason == ReasonRateLimited {
+		return fl
+	}
+	return nil
+}
+
+// limited is the outcome of a run its runner's provider refused at a rate
+// limit: nothing ran the role.
+func (o Outcome) limited(fl *Failure) Outcome {
+	o.RateLimited = fl
+	o.Receipt.Route.Ran = none
+	return o
+}
 
 func (o Outcome) ran(route string, ans Answer) Outcome {
 	o.Answer = &ans

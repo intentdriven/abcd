@@ -285,7 +285,12 @@ pause, and exits 0 with `next_eligible_at` in the result and `next` naming the
 time; an agent already started may still hand its receipt back. Before the
 run's `next_eligible_at` a `step` is refused as a pause (exit 3) naming the
 time, and nothing changes; at or after it a new window opens and the stage
-proceeds.
+proceeds. A routed runner that answers with a rate-limit response ends the
+window early instead of falling back to the host: the agent's slot is freed,
+every lane with work in flight is checkpointed to its own branch, and the call
+writes `next_eligible_at` once, records the lane, the role and the runner the
+response came from, and exits 0 with `rate_limit` and `next_eligible_at` in the
+result; at or after that time the stopped work is handed out afresh.
 
 Without `--run`, both act on the one run in progress in this checkout, and are
 refused naming the runs when there are several. A refusal exits 2 (3 on a pause

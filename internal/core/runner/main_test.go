@@ -92,6 +92,30 @@ func fakeHarness(mode string) int {
 			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"refused","session_id":"fake-session-1"}`)
 		}
 		return 0
+	case "ratelimit", "ratelimit-passed":
+		// A harness whose provider refuses the run at a usage limit, exiting
+		// non-zero; and one whose limit warned and then let the run finish.
+		if name == "opencode" {
+			if mode == "ratelimit" {
+				fmt.Fprintln(os.Stdout, `{"type":"step_start","sessionID":"ses_fake1","part":{"type":"step-start"}}`)
+				fmt.Fprintln(os.Stdout, `{"type":"error","sessionID":"ses_fake1","error":{"name":"APIError","data":{"message":"rate limited","statusCode":429,"isRetryable":true}}}`)
+				return 1
+			}
+			fmt.Fprintln(os.Stdout, `{"type":"text","sessionID":"ses_fake1","part":{"type":"text","text":"done"}}`)
+			return 0
+		}
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		if mode == "ratelimit" {
+			fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","resetsAt":1790000000},"session_id":"fake-session-1"}`)
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"limit reached","session_id":"fake-session-1"}`)
+			return 1
+		}
+		if rec := promptField(prompt, "Receipt: "); rec != "" {
+			_ = os.WriteFile(rec, []byte(`{"ok":true}`), 0o600)
+		}
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-1"}`)
+		return 0
 	case "hugemodel", "ctrlmodel", "suffixmodel":
 		// A harness whose init event reports a model: one past any bound,
 		// one carrying control bytes, and a real id's bracketed suffix.
