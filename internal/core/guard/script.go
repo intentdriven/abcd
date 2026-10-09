@@ -18,13 +18,15 @@ import (
 // (adr-2610091150447054). The stream refusal (interpreter-reads-stream) told
 // the agent to save a script and run it as a file, and every file form was an
 // allow that the shell then ran: `printf '<blocker>' > s.sh; bash s.sh`,
-// `source s.sh`, `BASH_ENV=e bash -c true`. The successor was the route
-// around the guard.
+// `source s.sh`, `BASH_ENV=e bash -c true`, `bash --init-file e -i -c true`.
+// The successor was the route around the guard.
 //
 // So a shell-family shell pointed at a file has the file read and judged with
 // the registry's Tier 1 rules: its script operand, a `source`/`.` operand,
-// and the startup files the line selects (BASH_ENV, and ENV for an
-// interactive shell). A path run directly is classified by its
+// and the startup files the line selects (BASH_ENV, ENV for an interactive
+// shell, --rcfile/--init-file, the zsh files under an assigned ZDOTDIR or
+// HOME, and a login or interactive bash's under an assigned HOME). A path run
+// directly is classified by its
 // first bytes, and read only when it is a shell script. A file written earlier
 // on the same line blocks, because the file read at check time is not the one
 // that runs. Where the guard cannot be sure which bytes the shell will run it
@@ -931,6 +933,95 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	}
 	if v, ok := env["ENV"]; ok && v.ok && v.text != "" && c.interactive {
 		startup("ENV", v.text, strings.HasPrefix(v.text, "~"))
+	}
+	if c.rcfile >= 0 {
+		idx := site + 1 + c.rcfile
+		w := s.tokens[idx]
+		if wordCouldBe(w, procSubOperand) && !variableCarried(s, idx) {
+			sigs = append(sigs, interpreterStreamSignal())
+		} else if p, ok := st.resolveToken(rc, s, idx); ok {
+			out = append(out, child(p, "the startup file "+w, targetStartup))
+		}
+	}
+	switch name {
+	case "zsh":
+		base, ok := env["ZDOTDIR"]
+		if !ok {
+			base, ok = env["HOME"]
+		}
+		if ok && base.ok && base.text != "" && !c.norcs {
+			files := []string{".zshenv"}
+			if c.login {
+				files = append(files, ".zprofile")
+			}
+			if c.interactive {
+				files = append(files, ".zshrc")
+			}
+			if c.login {
+				// .zlogin after the others, and .zlogout when a login zsh exits.
+				files = append(files, ".zlogin", ".zlogout")
+			}
+			for _, f := range files {
+				if p, ok := st.resolve(rc, filepath.Join(base.text, f), strings.HasPrefix(base.text, "~")); ok {
+					out = append(out, child(p, "the startup file "+p, targetStartup))
+				}
+			}
+		}
+	case "bash", "rbash", "sh":
+		if home, ok := env["HOME"]; ok && home.ok && home.text != "" {
+			tilde := strings.HasPrefix(home.text, "~")
+			if c.login && !c.noprofile {
+				for _, f := range []string{".bash_profile", ".bash_login", ".profile"} {
+					p, ok := st.resolve(rc, filepath.Join(home.text, f), tilde)
+					if !ok {
+						break
+					}
+					if _, err := os.Lstat(p); err == nil {
+						out = append(out, child(p, "the startup file "+p, targetStartup))
+						break
+					}
+				}
+			}
+			if c.login {
+				// Read when a login bash exits.
+				if p, ok := st.resolve(rc, filepath.Join(home.text, ".bash_logout"), tilde); ok {
+					out = append(out, child(p, "the startup file "+p, targetStartup))
+				}
+			}
+			if c.interactive && !c.norc && c.rcfile < 0 {
+				if p, ok := st.resolve(rc, filepath.Join(home.text, ".bashrc"), tilde); ok {
+					out = append(out, child(p, "the startup file "+p, targetStartup))
+				}
+			}
+		}
+	default:
+		// The other members read a profile under HOME when they log in, and
+		// ksh, mksh and yash an rc file when interactive (ksh and mksh only
+		// when ENV names none).
+		home, ok := env["HOME"]
+		if !ok || !home.ok || home.text == "" {
+			break
+		}
+		var files []string
+		if c.login {
+			profile := ".profile"
+			if name == "yash" {
+				profile = ".yash_profile"
+			}
+			files = append(files, profile)
+		}
+		if c.interactive {
+			if _, envSet := env["ENV"]; !envSet || name == "yash" {
+				if rcf := map[string]string{"ksh": ".kshrc", "mksh": ".mkshrc", "yash": ".yashrc"}[name]; rcf != "" {
+					files = append(files, rcf)
+				}
+			}
+		}
+		for _, f := range files {
+			if p, ok := st.resolve(rc, filepath.Join(home.text, f), strings.HasPrefix(home.text, "~")); ok {
+				out = append(out, child(p, "the startup file "+p, targetStartup))
+			}
+		}
 	}
 	if c.script >= 0 {
 		idx := site + 1 + c.script

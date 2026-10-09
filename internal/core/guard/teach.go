@@ -172,7 +172,7 @@ func (r Registry) ScriptLesson() string {
 		lead = guardOffLead + " (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"
 	}
 	return lead + ": a script a shell runs — `bash f`, `source f`, a direct `./f.sh`, " +
-		"and the startup files `BASH_ENV` and `ENV` select — " +
+		"and the startup files `BASH_ENV`, `ENV`, `--rcfile`/`--init-file` or an assigned `ZDOTDIR`/`HOME` select — " +
 		"is read before the command and judged by the entries above, and a script written earlier on the same line " +
 		"is refused outright, because the file read now is not the one that runs. Instead: write a script in one " +
 		"command and run it in the next. Not read: other interpreters' files (`python3 f.py`, `make`, `npm run`), " +

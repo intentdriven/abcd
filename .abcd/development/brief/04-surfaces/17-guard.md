@@ -382,7 +382,9 @@ checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A
 command string handed to a shell is opened and read, and so is a script file a
 shell runs: its script operand, a `source`d file, a path run directly that its first bytes show is a shell
-script, and the startup files the line selects (`BASH_ENV`, `ENV`). It is judged by the registry's command-position matches,
+script, and the startup files the line selects (`BASH_ENV`, `ENV`,
+`--rcfile`/`--init-file`, and the zsh and bash startup files under an assigned
+`ZDOTDIR` or `HOME`). It is judged by the registry's command-position matches,
 which are carried out naming the script, the line and the entry; a script
 written earlier on the same line is refused, because the file read at check
 time is not the one that runs, and a write the guard cannot place before it

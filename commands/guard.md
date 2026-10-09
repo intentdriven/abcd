@@ -321,14 +321,22 @@ A shell reading its script from a pipe, a here-document or a here-string
 what it runs is text the guard read as data. So is a shell handed the stdin
 device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
 `source` handed a process substitution as its script (`bash <(curl …)`, `bash <
-<(curl …)`, `source <(curl …)`). A command line longer than 64 KiB is a
-**block** (`command-too-long`), because the guard does not read it.
+<(curl …)`, `source <(curl …)`, `bash --init-file <(…) -i -c true`). A command
+line longer than 64 KiB is a **block** (`command-too-long`), because the guard
+does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
 `PATH` and then in the working directory when it has no slash), and the
-startup files the line selects — `BASH_ENV=f`, and `ENV=f` on an interactive
-shell (`-i`). An assignment counts as a prefix, through `env`, or exported earlier
+startup files the line selects — `BASH_ENV=f`, `ENV=f` on an interactive shell
+(`-i`), `--rcfile f` and `--init-file f`, the zsh startup files under an
+assigned `ZDOTDIR` or `HOME` (`.zshenv`, and `.zprofile`, `.zshrc`, `.zlogin`
+for a login or interactive zsh), and a login or interactive bash's under an
+assigned `HOME` (`.bash_profile`, else `.bash_login`, else `.profile`, and
+`.bashrc`), the files a login bash or zsh reads as it exits (`.bash_logout`,
+`.zlogout`), and the other shells' profile (`.profile`, yash's `.yash_profile`)
+and rc file (`.kshrc`, `.mkshrc`, `.yashrc`) under an assigned `HOME`. An
+assignment counts as a prefix, through `env`, or exported earlier
 on the line. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
 classify it: a shell-family shebang, or no shebang and no NUL byte, makes it a
 shell script, read the same way; anything else is a program, allowed unread. A
