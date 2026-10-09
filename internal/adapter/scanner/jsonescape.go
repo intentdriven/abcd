@@ -42,9 +42,10 @@ import (
 // percent passes, and a layer that decodes nothing ends the walk.
 //
 // The percent spelling is the percent pre-pass's business (percent.go), and
-// lineViews composes the two, once each way: a JSON escape can spell the '%'
-// of a percent escape, and a percent escape can spell the backslash of a JSON
-// one, so each decoder also reads the other's output (iss-2610090821491948).
+// lineViews alternates the two to a fixed point within four passes: a JSON
+// escape can spell the '%' of a percent escape, and a percent escape can spell
+// the backslash of a JSON one, so each decoder also reads the other's output
+// (iss-2610090821491948).
 
 // maxJSONDecodeLayers bounds the JSON-unescape walk: one layer for a
 // transcript line, a second for JSON quoted inside it (a tool result), a third

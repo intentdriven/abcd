@@ -57,3 +57,42 @@ func TestSingleEncodingsOfATokenStillHardFail(t *testing.T) {
 		}
 	}
 }
+
+// iss-2610090821491948, review round: composing the two decoders once each
+// way left a third alternation unread. A percent escape of the backslash of a
+// JSON escape of the percent sign (percent, then JSON, then percent) and its
+// mirror (JSON, then percent, then JSON) each need three decodes in turn.
+func TestThreeStepStackedEncodingsAreDecoded(t *testing.T) {
+	token := syntheticPAT(2610090821491950)
+	tail := token[1:] // the token's first byte is 'g', 0x67
+	for name, line := range map[string]string{
+		"percent json percent":      "token=%5Cu002567" + tail,
+		"json percent json":         "token=" + jsonU("0025") + "5Cu0067" + tail,
+		"json percent percent":      "token=" + jsonU("0025") + "2567" + tail,
+		"percent json json":         "token=%5C%5Cu0067" + tail,
+		"percent percent json":      "token=%255Cu0067" + tail,
+		"percent json percent json": "token=%5Cu00255Cu0067" + tail,
+	} {
+		t.Run(name, func(t *testing.T) {
+			text := line + "\n"
+			findings := ScanText(text, testIdent(), DefaultPatterns(), DefaultIdentitySeverities(), "memory")
+			if !hasKind(findings, "token:github_pat") {
+				t.Fatalf("no finding for the stacked spelling %q: %+v", line, findings)
+			}
+			redacted, _ := Redact(text, findings)
+			if strings.Contains(redacted, tail) {
+				t.Errorf("the encoded value survived redaction:\n%s", redacted)
+			}
+		})
+	}
+}
+
+// The bound: five alternating decodes is past the four-layer cap, and stays
+// unread, the same bounded-work trade the layer caps make.
+func TestStackedEncodingsPastTheLayerCapStayRaw(t *testing.T) {
+	token := syntheticPAT(2610090821491951)
+	line := "token=%5Cu00255Cu002567" + token[1:] // percent, JSON, percent, JSON, percent
+	if f := ScanText(line+"\n", testIdent(), DefaultPatterns(), DefaultIdentitySeverities(), "memory"); hasKind(f, "token:github_pat") {
+		t.Fatalf("a fifth layer was decoded; the cap is four: %+v", f)
+	}
+}
