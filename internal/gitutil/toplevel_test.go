@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,5 +142,88 @@ func TestCheckoutRootRefusalNamesAWorktreeSettingPointingElsewhere(t *testing.T)
 	}
 	if !strings.Contains(err.Error(), "git could not name the repository root") {
 		t.Errorf("the refusal lost the phrase its front-door tests match: %v", err)
+	}
+}
+
+// TestToplevelRefusesAnAncestorNamedByCoreWorktree is iss-2610090821543020: a
+// repo-local core.worktree is resolved by git relative to the .git directory, so
+// `core.worktree=../..` in <parent>/co/.git/config names <parent> as the
+// toplevel. That answer CONTAINS the directory asked about, so containment alone
+// accepted it and every record store addressed through CheckoutRoot widened to
+// the parent. A toplevel is git's answer only when it holds the git directory
+// git discovered: its .git is that directory, or a gitfile naming it. The
+// controls keep the ordinary shapes resolving: a subdirectory of a plain
+// checkout, a linked worktree, and a gitfile checkout (the submodule and
+// --separate-git-dir layout).
+func TestToplevelRefusesAnAncestorNamedByCoreWorktree(t *testing.T) {
+	parent := t.TempDir()
+	co := filepath.Join(parent, "co")
+	if out, err := runGit(t, parent, "init", "-q", "co"); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if out, err := runGit(t, co, "commit", "-q", "--allow-empty", "-m", "c0"); err != nil {
+		t.Fatalf("git commit: %v: %s", err, out)
+	}
+	sub := filepath.Join(co, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := func(p string) string {
+		t.Helper()
+		r, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	t.Run("a linked worktree still resolves", func(t *testing.T) {
+		wt := filepath.Join(t.TempDir(), "wt")
+		if out, err := runGit(t, co, "worktree", "add", "-q", "--detach", wt); err != nil {
+			t.Fatalf("git worktree add: %v: %s", err, out)
+		}
+		wsub := filepath.Join(wt, "x")
+		if err := os.Mkdir(wsub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		top, err := gitutil.Toplevel(wsub)
+		if err != nil || real(top) != real(wt) {
+			t.Fatalf("Toplevel(linked worktree subdir) = %q, %v; want %q", top, err, wt)
+		}
+	})
+
+	t.Run("a gitfile checkout still resolves", func(t *testing.T) {
+		base := t.TempDir()
+		gfco := filepath.Join(base, "gfco")
+		if out, err := runGit(t, base, "init", "-q", "--separate-git-dir", filepath.Join(base, "gd"), "gfco"); err != nil {
+			t.Fatalf("git init --separate-git-dir: %v: %s", err, out)
+		}
+		top, err := gitutil.Toplevel(gfco)
+		if err != nil || real(top) != real(gfco) {
+			t.Fatalf("Toplevel(gitfile checkout) = %q, %v; want %q", top, err, gfco)
+		}
+	})
+
+	t.Run("a subdirectory of the plain checkout still resolves", func(t *testing.T) {
+		top, err := gitutil.Toplevel(sub)
+		if err != nil || real(top) != real(co) {
+			t.Fatalf("Toplevel(sub) = %q, %v; want %q", top, err, co)
+		}
+	})
+
+	if out, err := runGit(t, co, "config", "core.worktree", "../.."); err != nil {
+		t.Fatalf("git config: %v: %s", err, out)
+	}
+	// The premise: git itself names the parent, which contains co.
+	if out, err := runGit(t, sub, "rev-parse", "--show-toplevel"); err != nil || real(strings.TrimSpace(out)) != real(parent) {
+		t.Fatalf("premise: git names %q (%v), want the parent %q", out, err, parent)
+	}
+	for _, dir := range []string{co, sub} {
+		if top, err := gitutil.Toplevel(dir); !errors.Is(err, gitutil.ErrToplevelShape) {
+			t.Errorf("Toplevel(%s) = %q, %v; want ErrToplevelShape for an ancestor named by core.worktree", dir, top, err)
+		}
+		if root, err := gitutil.CheckoutRoot(dir, "the decision store"); err == nil {
+			t.Errorf("CheckoutRoot(%s) = %q; an ancestor named by core.worktree became the store root", dir, root)
+		}
 	}
 }
