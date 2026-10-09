@@ -926,7 +926,17 @@ func DirtyTreeFiles(repoRoot string) ([]string, error) {
 	// --no-renames: with git's default rename detection a staged move is
 	// listed by its destination alone, so a file moved out of a folder a
 	// caller filters on would vanish from the list; both halves are named.
-	changed, err := gitutil.Run(repoRoot, "diff", "--no-renames", "--name-only", "-z", "HEAD")
+	//
+	// The repository's content filters are blanked: over a tree whose index
+	// stat no longer matches (a copied checkout) git re-hashes each file
+	// through filter.<name>.clean, a program the repository names, which then
+	// decides what "changed" means (iss-2610090821548169). The overrides go
+	// before the subcommand, where -c is git's own option.
+	filters, err := gitutil.FilterOverrides(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
+	}
+	changed, err := gitutil.Run(repoRoot, append(filters, "diff", "--no-renames", "--name-only", "-z", "HEAD")...)
 	if err != nil {
 		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
 	}
