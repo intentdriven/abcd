@@ -1,7 +1,7 @@
 ---
 name: question-drafter
 description: Draft one of abcd's questions so it follows every asking rule and fits the rows limit — given the material to quote, the addressee, the decision and the defensible answers, return the host question tool's input and the rows each tab takes. Never puts anything to the person itself.
-prompt_version: 0.1.1
+prompt_version: 0.1.2
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]

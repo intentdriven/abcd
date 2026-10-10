@@ -124,7 +124,7 @@ a literal path instead. A sub-agent is handed none of the session's SHELL
 rules, so the block is where it learns the rule before the guard refuses the
 command. Nothing else changes. Unmeasured, in the `0.x` band.
 
-### question-drafter 0.1.1
+### question-drafter 0.1.2
 
 PATCH: the definition ends with the generated guard-lessons block, which
 restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
