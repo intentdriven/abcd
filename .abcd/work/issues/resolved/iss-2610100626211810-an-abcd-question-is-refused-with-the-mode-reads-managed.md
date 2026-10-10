@@ -18,6 +18,8 @@ resolved_by:
 
 An abcd question is refused with 'the mode reads managed' whenever the agent has not run abcd mode just before it, although the question's own chip ('Tech Q3', 'Product Q2') already names whom it is for. The mode is reset two ways: the asking rules tell the agent to set it back to managed after every answer, and the prompt hook resets it on the next prompt the session receives while a question is marked open, which in a turn of several questions can be a peer session's message or a message the person sends mid-turn (inferred from a refusal on 2026-10-10 after a peer message arrived; not yet reproduced). So an interview of several questions is refused intermittently, and the person sees the hook's error line each time (iss-2610070637562567 measured that every refusal reaches them framed as an error). The product thinker chose on 2026-10-10 to fix this in code first, before the general rewriter.
 
+Verified live on 2026-10-10 on Claude Code 2.1.296, in a scratch folder whose only hooks logged the question tool's PreToolUse and PostToolUse events: an answered question fired PostToolUse with `tool_name` AskUserQuestion, `cwd`, and the answers in `tool_response`; a question dismissed with Esc fired PreToolUse and no PostToolUse, so a dismissed question leaves the mode set until the next prompt's reset, the fallback this fix keeps.
+
 ## Grounds
 
 - pursued: an interview of several chipped questions is never refused on the mode and the status line names whom each question is for; a chipped question refused with 'the mode reads managed', or a mode still parked after the answer on a host that runs PostToolUse, would show it wrong
