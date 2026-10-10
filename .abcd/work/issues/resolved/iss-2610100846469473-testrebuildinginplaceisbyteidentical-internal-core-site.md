@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site"
 remedy: "Make a git call that misses its WaitDelay under load distinguishable from a real answer in both lookups the site build makes: the root lookup, which reports the timeout as 'git cannot name its root', and gitutil.RootCommit (internal/gitutil/repo.go:281), which folds every rev-list error into an empty root commit; retry once or return the timeout as its own error, and reproduce with the test under a CPU-bound load before and after."
+resolution: "A git with no deadline (the site build's root lookup and gitutil.RootCommit, which the lane worktree store also keys on) no longer runs under the 50ms WaitDelay that a loaded machine's slow output copy missed, so it waits for git's answer. Under a deadline, a WaitDelay miss is retried once and a second miss is returned as gitutil.ErrGitTimedOut, which RootCommitContext passes on rather than reading as no root commit. Proven by fault injection, not by load: a fake git that answers and leaves a process holding its output pipe reproduced both refusals word for word before the fix, and the build and the lookups answer correctly after it."
+impact: fix
+resolved_by:
+  commit: "f1703a29f"
 ---
 
 TestRebuildingInPlaceIsByteIdentical (internal/core/site) failed in make preflight on 2026-10-10 with 'sits inside a checkout but git cannot name its root (exec: WaitDelay expired before I/O complete (stderr: ""))' while the machine's five-minute load average was about 48 on 16 cores, from concurrent sessions' preflights; the same test passed three times in a row once the load fell. The site build's root lookup turns a git subprocess that misses its WaitDelay into a refusal, so a loaded machine fails a records-only branch's preflight on code it did not touch.
