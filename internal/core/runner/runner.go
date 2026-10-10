@@ -117,7 +117,39 @@ const (
 	ReasonUnparsable Reason = "unparsable"
 	// ReasonInvalid: the answer failed the contract's validator.
 	ReasonInvalid Reason = "invalid"
+	// ReasonRateLimited: the harness reported a rate-limit response and did
+	// not finish. It is never fallen back on (dispatch.go): every route spends
+	// the budget the run's window paces, so the caller ends the window
+	// (itd-2609201925079472 criterion 8).
+	ReasonRateLimited Reason = "rate-limited"
 )
+
+// Quota is what a runner reports of its budget before a run starts
+// (itd-2609201925079472 criterion 7): the agent runs it can still start in its
+// current window. A runner whose harness counts its budget in another unit
+// converts it, or reports none.
+type Quota struct {
+	Remaining int `json:"remaining"`
+}
+
+// QuotaReporter is a Runner that reports its remaining quota. Neither shipped
+// runner is one: the claude CLI and opencode expose no remaining quota a
+// launch can read before it starts, so a run routed to either names it and
+// skips the budget check out loud.
+type QuotaReporter interface {
+	Quota(ctx context.Context) (Quota, error)
+}
+
+// QuotaOf asks r for its remaining quota. reported is false when r reports
+// none; an error is r's failure to report the one it keeps.
+func QuotaOf(ctx context.Context, r Runner) (q Quota, reported bool, err error) {
+	qr, ok := r.(QuotaReporter)
+	if !ok {
+		return Quota{}, false, nil
+	}
+	q, err = qr.Quota(ctx)
+	return q, true, err
+}
 
 // Failure is a runner's failure. Detail is written by abcd, never copied from
 // the harness's output, so it cannot carry anything the harness printed, a

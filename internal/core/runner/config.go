@@ -35,6 +35,7 @@ package runner
 // absent runner and falls back.
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -313,6 +314,16 @@ func (c *Config) Runner(name string) (RunnerConfig, bool) {
 // FallbackHost is the runner that runs a role when there is no host session,
 // "" when none is configured.
 func (c *Config) FallbackHost() string { return c.fallback }
+
+// Quota asks the runner the machine enabled under name for its remaining
+// quota. The host, and a name the machine has not enabled, report none.
+func (c *Config) Quota(ctx context.Context, name string) (Quota, bool, error) {
+	rc, ok := c.runners[name]
+	if !ok {
+		return Quota{}, false, nil
+	}
+	return QuotaOf(ctx, c.adapter(rc))
+}
 
 // adapter builds the enabled runner's adapter.
 func (c *Config) adapter(rc RunnerConfig) Runner {
