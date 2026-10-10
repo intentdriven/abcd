@@ -170,20 +170,11 @@ func judgementMove(j DrainJudging) string {
 		j.Issue, j.Request, j.Answer, j.Answer)
 }
 
-// fence is a code fence longer than any backtick run in s, so quoted record
-// text cannot close it early.
-func fence(s string) string {
-	longest, run := 0, 0
-	for _, r := range s {
-		if r == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
-	return strings.Repeat("`", max(3, longest+1))
-}
+// judgementQuoteNote tells the request's reader the one substitution
+// fenceQuote makes in the record text it quotes.
+const judgementQuoteNote = "The remedy and the record are quoted as the ledger holds them, save one substitution: an HTML\n" +
+	"comment opener or closer inside a quote has its second hyphen written `&#45;`, so no quote can end\n" +
+	"its fence early.\n\n"
 
 // judgementRequest is the request's text: the question, what each answer
 // does, the issue with its remedy and record, and the answer's shape.
@@ -212,16 +203,14 @@ func judgementRequest(iss capture.Issue, v capture.DrainVerdict, j DrainJudging)
 	p("- record: %s\n", iss.Path)
 	p("- severity: %s\n", iss.Severity)
 	p("- category: %s\n\n", iss.Category)
-	f := fence(iss.Remedy)
-	p("### The remedy\n\n%stext\n%s\n%s\n\n", f, iss.Remedy, f)
-	body := strings.TrimSpace(iss.Body)
-	f = fence(body)
-	p("### The record's body\n\n%stext\n%s\n%s\n\n", f, body, f)
+	b.WriteString(judgementQuoteNote)
+	p("### The remedy\n\n<!-- begin remedy -->\n\n%s\n\n<!-- end remedy -->\n\n", fenceQuote(iss.Remedy))
+	p("### The record's body\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", iss.Path, fenceQuote(strings.TrimSpace(iss.Body)), iss.Path)
 	p("## Your answer\n\n")
 	p("Write this JSON to `%s`, strictly in this shape (any other field refuses it):\n\n", j.Answer)
-	p("```json\n{\n  \"schema_version\": %d,\n  \"issue\": %q,\n  \"remedy_sha256\": %q,\n", DrainJudgementSchemaVersion, iss.ID, j.RemedySHA256)
-	p("  \"answer\": \"yes or no\",\n  \"kind\": \"%s or %s, with yes only; leave the field out with no\",\n", HandBackUserVisible, HandBackTrustRule)
-	p("  \"reason\": \"one sentence; with %s, the question the decision record must answer\"\n}\n```\n\n", HandBackTrustRule)
+	p("    {\n      \"schema_version\": %d,\n      \"issue\": %q,\n      \"remedy_sha256\": %q,\n", DrainJudgementSchemaVersion, iss.ID, j.RemedySHA256)
+	p("      \"answer\": \"yes or no\",\n      \"kind\": \"%s or %s, with yes only; leave the field out with no\",\n", HandBackUserVisible, HandBackTrustRule)
+	p("      \"reason\": \"one sentence; with %s, the question the decision record must answer\"\n    }\n\n", HandBackTrustRule)
 	p("`remedy_sha256` is the remedy's digest as this request showed it; copy it as it stands. Then run\n")
 	p("`abcd drain --judgement %s`. A remedy rewritten in the meantime refuses the answer, and the next\n", j.Answer)
 	p("`abcd drain` asks again.\n")

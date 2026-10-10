@@ -188,8 +188,9 @@ as written, change what a user sees, or a trust boundary? The drain asks it the
 host-pass way. It writes a request into the local tier,
 `.abcd/.work.local/run/drain-judgement.request.md`, carrying the question, what
 each answer does, the issue's id, record path, severity and category, its
-remedy and its record's body, each quoted inside a fence longer than any
-backtick run in it, and the answer's exact shape; it records in its state the
+remedy and its record's body, each quoted between begin and end markers with
+any comment marker inside escaped, as a lane's brief quotes them, and the
+answer's exact shape; it records in its state the
 issue, the request and the answer's path, and the sha256 of the remedy the
 request shows, and opens nothing. One judgement is awaited at a time. A move
 made while it is awaited asks again over the same issue and keeps any answer
