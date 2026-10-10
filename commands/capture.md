@@ -77,8 +77,7 @@ Append a structured issue from free-form text:
 written as the record's `remedy:` field, and `abcd drain` reads it to decide
 whether the issue needs no decision. A capture without it, or with a blank one,
 is refused (exit 2, nothing written) with a message naming the flag. When no
-fix was given, ask the product thinker for it (set `abcd mode product-thinker`
-first); when they have none yet, let them choose the words rather than
+fix was given, ask the product thinker for it, under a `Product` chip; when they have none yet, let them choose the words rather than
 inventing a fix for them. A remedy chosen in an autonomous run cites its
 grounds in the record's text: where the fix depends on outside practice, a
 prior-art or state-of-the-art check (principle `prefer-sota`) names what it
@@ -148,9 +147,8 @@ Nothing is refused or dropped. The JSON's `match` object carries `matches`
 `near_misses` (the best five below the threshold, with their scores),
 `threshold`, and `skipped` when nothing was compared: a text with fewer than
 eight distinct terms, a record set that could not be read, or a match
-configuration the reader refuses. Set `abcd mode facilitator`, relay each
-match with its id and relation, and ask the technical facilitator to confirm
-it. A confirmed link is left as it is; a wrong one is removed by deleting its
+configuration the reader refuses. Relay each match with its id and relation,
+and ask the technical facilitator to confirm it, under a `Tech` chip. A confirmed link is left as it is; a wrong one is removed by deleting its
 line, which leaves an ordinary record. The match
 never proposes `reverses` or `supersedes`: a reversal is a person's judgement.
 

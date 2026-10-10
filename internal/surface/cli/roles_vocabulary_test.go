@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/mode"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/spf13/cobra"
 )
 
@@ -99,16 +100,29 @@ var questionBlock = regexp.MustCompile(`(?:(?:^|[.!?:;,—]\s+|\*\*\s*|\bthen\s+
 
 // TestPluginQuestionBlocksNameTheAddressee (AC3): every question a plugin page
 // has the agent put to a human names which of the two roles it asks, in the
-// paragraph that asks it, and the page's section sets the mode to that role —
-// the addressee comes from the mode (itd-2609212130146198), whose vocabulary
-// this test reads rather than restating.
+// paragraph that asks it, and the page's section says how the mode comes to
+// name that role: the question's chip, which sets the mode when the guard
+// admits the question (iss-2610100626211810), or `abcd mode` at a stop that is
+// not a question (itd-2609212130146198). The test reads the mode's vocabulary
+// and the chip roles rather than restating them.
 func TestPluginQuestionBlocksNameTheAddressee(t *testing.T) {
-	type role struct{ name, setter string }
+	type role struct {
+		name    string
+		setters []string
+	}
 	var roles []role
 	for _, s := range mode.States() {
-		if who := s.Addressee(); who != "" {
-			roles = append(roles, role{name: who, setter: "mode " + string(s)})
+		who := s.Addressee()
+		if who == "" {
+			continue
 		}
+		r := role{name: who, setters: []string{"mode " + string(s)}}
+		for _, chip := range question.Default.ChipRoles {
+			if chipRoleState(chip) == s {
+				r.setters = append(r.setters, "`"+chip+"` chip")
+			}
+		}
+		roles = append(roles, r)
 	}
 	if len(roles) != 2 {
 		t.Fatalf("the mode names %d roles, want the product thinker and the technical facilitator", len(roles))
@@ -134,9 +148,13 @@ func TestPluginQuestionBlocksNameTheAddressee(t *testing.T) {
 						continue
 					}
 					named = true
-					if !strings.Contains(flat, r.setter) {
-						t.Errorf("%s:%d asks the %s but its section never sets `abcd %s` first",
-							filepath.ToSlash(p), para.line, r.name, r.setter)
+					set := false
+					for _, setter := range r.setters {
+						set = set || strings.Contains(flat, setter)
+					}
+					if !set {
+						t.Errorf("%s:%d asks the %s but its section names none of %q, so nothing says the mode names them",
+							filepath.ToSlash(p), para.line, r.name, r.setters)
 					}
 				}
 				if !named {

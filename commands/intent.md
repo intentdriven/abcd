@@ -111,8 +111,8 @@ is written onto the draft as `duplicates: [<id>]` (the same proposal filed
 again) or `refines: [<id>]` (the other record is broader), at most three links.
 The create is never refused by the match. The JSON's `match` object carries the
 matches, the `near_misses` below the threshold with their scores, and `skipped`
-when nothing was compared. Set `abcd mode product-thinker`, relay each match
-and ask the product thinker to confirm it; a wrong link is removed by deleting
+when nothing was compared. Relay each match and ask the product thinker to
+confirm it, under a `Product` chip; a wrong link is removed by deleting
 its line, which leaves an ordinary draft.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
@@ -338,8 +338,8 @@ any question is a valid answer, but silence is not consent.
 - In abcd's own interviews, address the person in their register: The product thinker gets outcomes and choices in product terms, with no record ids, no code, and no internals; the technical facilitator gets the mechanism, the ids, and the trade-offs.
 - In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.
 - What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at .abcd/development/brief/glossary/interview/knowledge-floor.md under abcd's plugin root (in abcd's own repository, at that path from its root).
-- In abcd's own interviews, before stopping for an answer, record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
-- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator); when it differs from the current mode, set the mode, then ask, and the chip names that role. The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.
+- In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
+- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and head the question with the chip naming that role: the chip sets the mode when the question is asked, and the answer sets it back to managed, so a question needs no `abcd mode` before it. The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.
 
 The knowledge floor every explanation is measured against: [knowledge-floor.md](../.abcd/development/brief/glossary/interview/knowledge-floor.md).
 <!-- /generated -->
@@ -1116,9 +1116,9 @@ condition carries rather than to its wording, and joined to what occasioned it.
 - **With a condition id** it appends one dated block to `## Audit Notes`:
   the identity, the value, the occasion and the grounds, with the narrowing
   under a `narrowed` value. The occasion is a reading item at any position, or
-  an intent in `shipped/` whose delivery changed the condition's standing. Set
-  `abcd mode product-thinker` and ask the product thinker, who reads as the
-  researcher here, for the value and the grounds; the reading names the tension
+  an intent in `shipped/` whose delivery changed the condition's standing. Ask
+  the product thinker, who reads as the researcher here, for the value and the
+  grounds, under a `Product` chip; the reading names the tension
   and never marks the condition itself.
 
 A condition's standing is its latest reading-occasioned block where it has one,

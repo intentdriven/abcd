@@ -68,7 +68,7 @@ Only URLs the documentation actually cites can be confirmed. The receipt records
 user for their method, and never record one: the schema has no field for it and
 loading rejects unknown keys.
 
-Set `abcd mode facilitator` first, then confirm on the technical facilitator's
+Ask the technical facilitator under a `Tech` chip, and confirm only on their
 word that they checked. An agent must never run `confirm` on its own initiative
 to clear a red gate.
 

@@ -18,8 +18,9 @@ versions: null
 The **technical facilitator** decides *how*: the person at the terminal running the agents, who
 operates the gates, merges, CI, hooks and installs, and addresses the mechanism and the record
 ids that the [product thinker](product-thinker.md) is spared. A stop that waits on them is
-announced as one: `abcd mode facilitator` parks the loop on them, and the status line reads
-`waiting on the technical facilitator` until they answer.
+announced as one: a question's `Tech` or `Setup` chip, or `abcd mode facilitator` at a stop
+that is not a question, parks the loop on them, and the status line reads `waiting on the
+technical facilitator` until they answer.
 
 itd-97 (a draft) holds that **the facilitator is a mode, not a person**. A project runs duo,
 with a human technical facilitator beside the product thinker, or solo, where abcd itself
@@ -41,7 +42,7 @@ person" or names both.
 ## Examples
 
 - "abcd writes what is missing and never replaces what the technical facilitator put there."
-- "Set `abcd mode facilitator`, ask the technical facilitator first, then pipe the answer."
+- "Ask the technical facilitator first, under a `Tech` chip, then pipe the answer."
 
 ## Related terms
 

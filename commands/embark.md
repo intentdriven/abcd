@@ -80,8 +80,8 @@ ranks them against the new voyage's brief by term overlap (a heuristic, named in
 names, such as the press release the interview is drafting. With neither, the
 lessons are listed unranked (`unranked: true`). It writes nothing.
 
-Set `abcd mode product-thinker`, then show the product thinker the `top` few (three), each with the release it came from, and
-ask which apply, in one question; the `rest` are a list opened on request.
+Show the product thinker the `top` few (three), each with the release it came from, and
+ask which apply, in one question under a `Product` chip; the `rest` are a list opened on request.
 That question follows the asking rules in `commands/intent.md` (the block
 marked `generated: asking-rules`): the lessons themselves first, quoted in
 full, and the question last. Each lesson arrives cleaned to one inert line and is the

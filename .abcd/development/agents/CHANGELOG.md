@@ -12,6 +12,17 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-10 (iss-2610100626211810 — a question's chip sets the mode)
+
+### question-drafter 0.1.1
+
+PATCH: its generated asking-rules block now says a question's chip sets the
+mode when the question is asked and the answer sets it back to managed, so a
+question needs no `abcd mode` before it, and keeps `abcd mode` for a stop that
+is not a question. The drafter's own behaviour is unchanged: it heads each
+question with the chip naming its addressee, as before. Unmeasured, in the
+`0.x` band.
+
 ## 2026-10-07 (iss-2610070637562567 — abcd's questions are drafted to fit)
 
 ### question-drafter 0.1.0

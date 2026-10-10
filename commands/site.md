@@ -139,8 +139,8 @@ sets up the site of a repository abcd manages, in three stages, and emits
 
 Both remote stages ask before they write, naming each change. An unanswered
 run declines them and exits `1`; `--yes` confirms in advance — pass it only
-when the technical facilitator has asked for the forge and host changes, and set
-`abcd mode facilitator` before asking them. A second run over an
+when the technical facilitator has asked for the forge and host changes, in a
+question headed with a `Tech` chip. A second run over an
 unchanged repository reports `no_change` and writes nothing.
 
 The first run names the host after the repository; `--name` and `--domain`
