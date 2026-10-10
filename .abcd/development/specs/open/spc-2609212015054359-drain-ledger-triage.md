@@ -160,8 +160,16 @@ until the run itself closes it.
   `next_eligible_at` in `.abcd/.work.local/run/drain.json`; `--max <n>` ending
   the drain at the cap. The summary is text and `--json`, and a move that opens
   or merges nothing exits 0 saying why.
-- **Remaining:** scope 3 (the host judgement over each eligible remedy; the run
-  opens a lane for every eligible issue until it lands, and only the lane can
-  hand its issue back), and the counts of scope 8 not yet in the summary (the
-  spend), and the decision-record marker on a trust-rule hand-back (decision
-  10).
+- **Landed (the judgement, step 1): scope 3.** Before the drain opens the next
+  eligible issue's lane it writes a host-pass request
+  (`.abcd/.work.local/run/drain-judgement.request.md`) asking whether the
+  remedy changes what a user sees or a trust boundary, records the issue and
+  the remedy's digest, and opens nothing; `abcd drain --judgement <file>` takes
+  the strict answer (`loop/judgement.go`). A yes hands the issue back before
+  any lane opens, routed as a lane's hand-back of its kind (`from:
+  "judgement"`); a no opens the lane; an answer over an issue no longer
+  eligible decides nothing, and one over a remedy rewritten since is refused
+  and asked again. Every answer is kept in the drain's state and summary.
+- **Remaining:** the counts of scope 8 not yet in the summary (the spend), and
+  the decision-record marker on a trust-rule hand-back (decision 10), and the
+  steps from issues the plan names.
