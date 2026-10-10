@@ -1,8 +1,8 @@
 ---
 id: itd-2610090831227812
 slug: a-person-who-types-abcd-sees-only-the-commands-people-use
-spec_id: null
-kind: null
+spec_id: spc-2610100613109045
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-146]
@@ -11,6 +11,7 @@ origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-2609212130136102, itd-2609212113220149]
 related_adrs: [adr-40]
+impact: breaking
 ---
 
 # A person who types `/abcd:` sees the commands people use
@@ -23,24 +24,20 @@ related_adrs: [adr-40]
 
 ## Why This Matters
 
-_Proposed by the drafting reviews; not yet confirmed by the product thinker._
+`/abcd:` lists 35 commands; a person reads them all to find the few they type. An autonomous run set most agent labels unasked, so ideate and the dashboard sat with agents. Now the menu holds the 15 people use and hides the other 15; four source commands become `library`; three fold into commands doing their job.
 
-`/abcd:` lists thirty-five commands. Thirteen carry `block: people`, seventeen carry `block: agents`, and five carry no block at all. A person scanning that menu reads every entry to find the handful they type, and seventeen of the entries are pages an agent runs from a hook, a loop or a reviewer's instruction, never from a person's keyboard. `abcd --help` already solved this for the terminal (itd-146): the default list is the person's, one line says `--agent` expands it, and every verb runs the same whichever block lists it. The slash menu is the surface a person actually meets inside the host, and it is the one surface that still shows the two audiences as one undifferentiated list.
 
 ## Mechanism
 
-_Proposed by the drafting reviews; not yet confirmed by the product thinker._
+A person finds their command faster and stops opening agent pages by mistake: the menu drops from 35 to 15, all typed by people, and an agent still reaches each hidden page by name. Shown wrong if people ask agents to run hidden commands for their own work, or an agent can't find a page the help names.
 
-We expect a person to find their command faster and to stop opening agent pages by mistake, because the person's menu drops from thirty-five entries to the people block's thirteen, the same sorting itd-146 made for `abcd --help`, and because an agent reaches a page by its name from the help line that names it (`(read commands/<page>.md)`), never by scanning the menu. Shown wrong if session transcripts after it ships show a person typing an agent page, or an agent failing to find a page the help names.
 
 ## Scope Conditions
 
-_Proposed by the drafting reviews; not yet confirmed by the product thinker._
-
-- Holds for a host whose plugin loader registers every markdown file under `commands/` as a slash command and honours `user-invocable: false` on it, as the trial of 2026-10-10 showed on the host then current. A host without that key re-decides the mechanism.
-- Holds while itd-146's two-block classification stands and each binary-backed page's `block:` frontmatter is the one source of its class, gated by `TestCommandPagesDeclareTheirBlock`.
-- Holds for the pages with no block: their class is ruled by the audit iss-2610090831317531, since no tree placement can be checked for them.
-- Holds while abcd ships zero skills; the `/abcd:` namespace is commands only (`05-internals/08-skills.md`), so a page moved off the person's list stays a command.
+- Holds for a host whose plugin loader registers every markdown file under `commands/` as a slash command and honours `user-invocable: false` on it, as the trial of 2026-10-10 showed on the host then current. A host without that key re-decides the mechanism. <!-- cond: cond-2610100613101033 -->
+- Holds while itd-146's two-block classification stands and each binary-backed page's `block:` frontmatter is the one source of its class, gated by `TestCommandPagesDeclareTheirBlock`. <!-- cond: cond-2610100613106642 -->
+- Holds for the pages with no block: their class is ruled by the audit iss-2610090831317531, since no tree placement can be checked for them. <!-- cond: cond-2610100613103552 -->
+- Holds while abcd ships zero skills; the `/abcd:` namespace is commands only (`05-internals/08-skills.md`), so a page moved off the person's list stays a command. <!-- cond: cond-2610100613103858 -->
 
 ## What's In Scope
 
@@ -102,7 +99,12 @@ _Proposed by the drafting reviews; not yet confirmed by the product thinker._
 - 2026-10-10: the product thinker chose hiding over grouping, after the trial they asked for. In a live session with a trial plugin holding one visible command (capture) and one hidden with the host's `user-invocable: false` (scribe): typing the plugin's prefix listed capture alone; typing the hidden command's full name was refused by the host with "This skill can only be invoked by Claude, not directly by users"; and an agent asked in plain words ran it and printed its help. Answer: "Hide them". So an agent-only page keeps its name and its place in the flat `commands/` directory, carries `user-invocable: false`, and is run by asking the agent; its documentation stays published and gated, and the agents-block help lines keep naming it. Grouping under `/abcd:agent:` is not taken, so no invocation is renamed and the three gates that locate a page by its verb name stand. The open question on the mechanism is closed by this entry.
 - 2026-10-10: the product thinker confirmed the press release. They took a rewritten opening paragraph that states the hiding, the host's answer to a hidden name typed in full, and the same list in `abcd --help` (answer: "Take it"). They kept the quote word for word, asking whether Iris was the right persona; the persona registry picks the name from the role, and asked whose voice the quote should carry they chose the product thinker (answer: "Iris, product thinker").
 - 2026-10-10: the product thinker walked the acceptance criteria. They accepted the three a person sees (the menu listing only people's commands, the host's answer to a hidden name typed in full, the docs setting the library beside memory notes) and, as one list, the five technical ones carried from the draft, with the gate re-read for hiding. Asked where the merges and the retirement ship, they answered "In this intent", so the out-of-scope ban on renames and retirements narrows to any beyond these, and five criteria for the merges were added and accepted ("Accept all").
+- 2026-10-10: the product thinker confirmed Why This Matters, the Mechanism with its falsifier, and the four scope conditions, each as put to them ("Take it", "Take it", "Accept all"), and the grounds recorded on the intent ("Record it"). Settled without a further question by the ruling that only commands no person types leave the person's menu: `banlist`, typed by no person in the saved sessions and run by an agent at a person's word, stays agent-only. The impact is breaking, because the merged commands' old names go with no alias (adr-40).
 
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: a menu of only people's commands lets a person find theirs without reading agents'; shown wrong if people keep asking agents to run hidden commands for their own work.
