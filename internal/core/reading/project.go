@@ -477,6 +477,20 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 			"whether an excluded heading sits there", rel, at+1)
 	}
 
+	// The same walk over the ORIGINAL document, for a heading inside an HTML
+	// block. Over the redacted text it can miss the case it exists for: the
+	// redactor's span runs up to the heading the section walk saw, so the line
+	// that opened the block went with the excluded section and what remains
+	// reads as a heading in the open.
+	origLines := strings.Split(original, "\n")
+	_, origClose, origHasBlock := firstBlockRange(origLines, make([]bool, len(origLines)))
+	if at, opener, ok := headingInHTMLBlock(origLines, bodyStart(origHasBlock, origClose, len(origLines))); ok {
+		return fmt.Errorf("reading: %s writes the heading %q at line %d inside the HTML block "+
+			"opened at line %d; a renderer reads it as raw HTML and the section scan as a heading "+
+			"that ends the section above it, so the floor refuses rather than guess where an "+
+			"excluded section ends", rel, strings.TrimSpace(strings.TrimRight(origLines[at], "\r")), at+1, opener+1)
+	}
+
 	// The heading check does NOT reuse the redactor's reading. The redactor
 	// spans sections by the site walk; a verifier that re-read the same walk
 	// would agree with it by construction, which is how an excluded section
@@ -1495,10 +1509,7 @@ func htmlBlockEnd(line string) (terminator string, raw bool) {
 // mdrecord rule, that sits inside an HTML block — the block a renderer reads as
 // raw HTML up to its end condition, delimiter and all. The fences are
 // mdrecord's; what this adds is only where an HTML block ends, which no fence
-// reader models. A line every mdrecord reading agrees is code updates nothing,
-// and every other line may open or end a block, which is the fail-closed
-// direction: a line one reading calls code and another calls live can still
-// open a block that swallows the next opener.
+// reader models (htmlBlockInterior).
 func fenceInHTMLBlock(lines []string, start int) (int, bool) {
 	if start >= len(lines) {
 		return 0, false
@@ -1510,12 +1521,50 @@ func fenceInHTMLBlock(lines []string, start int) (int, bool) {
 			opener[sp.Start] = true
 		}
 	}
+	for i, in := range htmlBlockInterior(body) {
+		if opener[i] && in >= 0 {
+			return start + i, true
+		}
+	}
+	return 0, false
+}
+
+// headingInHTMLBlock reports the first ATX heading line that sits inside an
+// HTML block, with the line that opened the block. The section walk reads such
+// a line as a heading, so the redactor ends the section above it there, while a
+// renderer reads it as raw HTML and the section as running on through the
+// block: an excluded section's tail travelled behind a `## Next` inside a
+// `<div>` (iss-2610101930219027). Which of the two is right is the guess this
+// floor does not make, so the caller refuses.
+func headingInHTMLBlock(lines []string, start int) (line, opener int, ok bool) {
+	if start >= len(lines) {
+		return 0, 0, false
+	}
+	body := lines[start:]
+	for i, in := range htmlBlockInterior(body) {
+		if in >= 0 && floorATXRe.MatchString(strings.TrimRight(body[i], "\r")) {
+			return start + i, start + in, true
+		}
+	}
+	return 0, 0, false
+}
+
+// htmlBlockInterior reports, for each line of body, the index of the line that
+// opened the HTML block it sits inside, or -1 for a line no open block holds.
+// An opening line is not inside its own block. The end conditions are
+// htmlBlockEnd's. A line every mdrecord reading agrees is code updates nothing,
+// and every other line may open or end a block, which is the fail-closed
+// direction: a line one reading calls code and another calls live can still
+// open a block that swallows the next line.
+func htmlBlockInterior(body []string) []int {
 	code := mdrecord.FencedUnderEveryRule(body)
-	open, terminator, raw := false, "", false
+	inside := make([]int, len(body))
+	open, terminator, raw, from := false, "", false, -1
 	for i, rawLine := range body {
 		ln := strings.TrimRight(rawLine, "\r")
-		if opener[i] && open {
-			return start + i, true
+		inside[i] = -1
+		if open {
+			inside[i] = from
 		}
 		if code[i] {
 			continue
@@ -1540,9 +1589,10 @@ func fenceInHTMLBlock(lines []string, start int) (int, bool) {
 			// past the `<` and the character after it, which no terminator
 			// can share.
 			open = terminator == "" || !strings.Contains(hay[min(len(hay), 2):], terminator)
+			from = i
 		}
 	}
-	return 0, false
+	return inside
 }
 
 // displacedFrontmatter reports a delimited block that does not open at line 0

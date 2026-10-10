@@ -768,6 +768,50 @@ func TestCaseVariantExcludedHeadingIsRedacted(t *testing.T) {
 	}
 }
 
+// TestAHeadingInsideAnHTMLBlockRefuses: the section walk reads a column-0
+// `## Next` as a heading even inside a `<div>` block, which a renderer reads as
+// raw HTML, so the redactor's span for the excluded section above it ended
+// there and the rest of the block travelled (iss-2610101930219027). The
+// redactor and a renderer disagree about where the section ends, and the floor
+// refuses rather than pick one. A heading after a blank line has closed the
+// block is a heading to both, and is admitted.
+func TestAHeadingInsideAnHTMLBlockRefuses(t *testing.T) {
+	const inDiv = "SENTINEL-IN-THE-HTML-BLOCK"
+	root := fixtureRepo(t)
+	writeFile(t, root, ".abcd/development/specs/open/spc-5-html-block.md",
+		"---\nid: spc-5\n---\n\n# A spec\n\n## audit notes\n\n"+sentinelAuditNotes+
+			"\n<div>\n## Next\n"+inDiv+"\n</div>\n\n## After\n\nKEPT\n")
+	gitCommitAll(t, root)
+
+	res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+	if err == nil {
+		if strings.Contains(bundleText(res.Bundle), inDiv) {
+			t.Fatal("a heading inside an HTML block ended the excluded section early and the rest of it travelled")
+		}
+		t.Fatal("a heading inside an HTML block was admitted; the redactor and a renderer disagree about " +
+			"where the excluded section ends, and the floor must refuse rather than pick one")
+	}
+	for _, want := range []string{"spc-5-html-block.md", "HTML block", "## Next", "line 11"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+
+	closed := fixtureRepo(t)
+	writeFile(t, closed, ".abcd/development/specs/open/spc-6-closed-block.md",
+		"---\nid: spc-6\n---\n\n# A spec\n\n## audit notes\n\n"+sentinelAuditNotes+
+			"\n<div>\nraw\n</div>\n\n## After\n\nKEPT-AFTER-THE-CLOSED-BLOCK\n")
+	gitCommitAll(t, closed)
+	res, err = Assemble(AssembleRequest{RepoRoot: closed, Position: PositionWidening, Target: "HEAD", DryRun: true})
+	if err != nil {
+		t.Fatalf("a heading after a blank line closed the HTML block was refused: %v", err)
+	}
+	if text := bundleText(res.Bundle); strings.Contains(text, sentinelAuditNotes) ||
+		!strings.Contains(text, "KEPT-AFTER-THE-CLOSED-BLOCK") {
+		t.Errorf("a closed HTML block changed what the redaction kept:\n%s", text)
+	}
+}
+
 // TestStagedRenameOutOfTheIncludeSetRefuses: a rename's SOURCE path is the one
 // that was in the target commit. Discarding it leaves an included file that is
 // neither in the bundle nor refused, and the manifest names HEAD for a bundle
