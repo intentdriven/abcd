@@ -27,21 +27,27 @@ Then tell the user the `state`. An absent store reads as `managed`; outside any 
 
 ## Set the state — two writers, one verb
 
-**The agent, at a stop.** When you stop to obtain a verdict, record whom you
-are addressing *before* you stop, so the parked stop is visible on the status
-line and the board while you wait:
+**The agent, at a question.** A question through the host's question tool
+needs no setting: its chip already names whom it is for. When the guard admits
+abcd's question in a repository abcd manages, it sets the state from the chip's
+role (`Product` names the product thinker; `Tech` and `Setup` name the
+technical facilitator), so a chipped question is never refused on the mode,
+and it marks the question open. The answer resets the state to `managed`: the
+plugin's hook on the question tool's result resets it when the answer comes
+back, and on a host that does not run that hook the prompt hook resets it on
+the next human message. Either says so once on stderr, so you do not set it
+back yourself.
+
+**The agent, at a stop that is not a question.** When you stop to obtain a
+verdict any other way, such as a hand-off or a step the person runs, record
+whom you are addressing *before* you stop, so the parked stop is visible on
+the status line and the board while you wait:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode product-thinker --json
 ```
 
-Use `facilitator` when the verdict is the technical facilitator's to give.
-The guard holds you to this: abcd's question through the host's question tool
-(one headed with abcd's chip, such as `Product Q1`) is refused while the state
-reads `managed`, and the refusal names the two settings. Choose the product thinker or the technical facilitator, set it,
-then ask. An admitted question is marked open, and the next human message is
-its answer: the prompt hook resets the state to `managed` and says so once on
-stderr, so you do not set it back yourself. At a stop with no question tool,
+Use `facilitator` when the verdict is the technical facilitator's to give, and
 set it back when the loop resumes:
 
 ```bash

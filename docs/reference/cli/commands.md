@@ -1373,12 +1373,13 @@ limit and the remedy. The rows limit is the exception: a question whose
 only finding is its height is shown, and the hook's stdout carries a note
 for the agent (additionalContext, no permission decision) naming each tab
 over the limit and the agent that drafts a question to fit. The hook never
-rewrites a question. In a checkout abcd manages,
-abcd's question asked while `abcd mode` reads managed is also refused,
-naming `abcd mode product-thinker` and `abcd mode facilitator`; once the
-mode names somebody the question runs and is marked open in the local tier,
-and the next human message resets the mode to managed. A questions field
-the hook cannot read lets the question run and warns loudly.
+rewrites a question. In a checkout abcd manages, an admitted question
+carrying abcd's chip sets `abcd mode` from the chip's role (Product to
+product-thinker, Tech and Setup to facilitator), so it is never refused on
+the mode, and the question is marked open in the local tier; the answer
+resets the mode to managed, from `abcd hook question-answered` on the
+question tool's PostToolUse or else on the next human message. A questions
+field the hook cannot read lets the question run and warns loudly.
 
 ### `abcd help`
 
@@ -3022,18 +3023,20 @@ on the product thinker, who answers on a surface of their own). An absent
 store reads as `managed`.
 
 `abcd mode <state>` sets it. Two writers share the verb: the agent runs it
-when it stops for a verdict, naming whom it is addressing, and the human runs
-it by hand to say which hat they wear. The state lives per checkout at
+when it stops for a verdict other than a question, naming whom it is
+addressing, and the human runs it by hand to say which hat they wear. The state lives per checkout at
 `.abcd/.work.local/mode`, so only a repository abcd manages — one that has
 the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
 nothing. The next status-line refresh and the bare `abcd` board read the
 same file.
 
-The guard holds the agent to it: a question through the host's question
-tool is refused while the state reads `managed`, and once the state names
-somebody the question runs and is marked open. The next human message is
-its answer, so the prompt hook resets the state to `managed` and says so
-once on stderr. A state set by hand with no question open is left as it is.
+A question needs no setting: when the guard admits abcd's question through
+the host's question tool, it sets the state from the question's chip
+(Product to product-thinker, Tech and Setup to facilitator) and marks the
+question open. The answer resets the state to `managed` and says so once on
+stderr: the question tool's PostToolUse hook resets it when the answer comes
+back, and the prompt hook on the next human message where the host runs no
+PostToolUse. A state set by hand with no question open is left as it is.
 
 Where this machine has no status surface — no `~/.abcd.noindex/statusline.json`, or
 one with `disabled` set — the set form prints one line naming whose answer

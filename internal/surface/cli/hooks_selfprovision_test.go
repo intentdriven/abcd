@@ -50,6 +50,7 @@ type binaryHook struct {
 var binaryHooks = []binaryHook{
 	{event: "UserPromptSubmit", verb: "prompt-router"},
 	{event: "PreToolUse", verb: "guard"},
+	{event: "PostToolUse", verb: "question-answered"},
 	{event: "PreCompact", verb: "prompt-router-reset"},
 	{event: "SessionEnd", verb: "session-end", neverBootstraps: true},
 	{event: "SubagentStop", verb: "subagent-stop", neverBootstraps: true},

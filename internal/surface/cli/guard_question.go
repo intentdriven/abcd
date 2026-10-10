@@ -15,17 +15,18 @@ import (
 )
 
 // The question check, the question gate and its reset (itd-2609212130146198;
-// spc-2610030944505997).
+// spc-2610030944505997; iss-2610100626211810).
 //
 // The guard hook, on the host's question tool, holds abcd's own questions to
 // the field limits of internal/core/question wherever it runs, and refuses a
 // badly built one naming each part to fix. In a checkout abcd manages it also
-// refuses abcd's question while the mode reads managed — the agent has not
-// said whom it is asking, so the badge would read "nobody is waiting" while
-// somebody is — and marks an admitted question open. The prompt hook, on the
-// next human message, resets the mode to managed when a question is marked
-// open, because that message is the answer. Another tool's question is none of
-// this file's business and runs unchecked.
+// keeps the status-line badge true: abcd's question carries a chip naming
+// whom it is for, so an admitted question sets the mode from the chip's role
+// and is marked open. The answer resets the mode to managed: the question
+// tool's PostToolUse hook runs the reset when the answer comes back, and the
+// prompt hook runs the same reset on the next human message, for a host that
+// does not run PostToolUse. Another tool's question is none of this file's
+// business and runs unchecked.
 //
 // This file is the whole of the feature on the front-door side. The guard's
 // own hook calls questionGate once, before its shell-command path, and touches
@@ -33,7 +34,8 @@ import (
 
 // questionTools are the host tool names that put a question to the human. The
 // hook manifest's PreToolUse matcher names exactly these beside the shell tool
-// (TestGuardHookIsInstalledForBashCalls holds the two together).
+// (TestGuardHookIsInstalledForBashCalls holds the two together), and its
+// PostToolUse matcher names exactly these alone (TestQuestionAnswerHookIsInstalled).
 var questionTools = []string{"AskUserQuestion"}
 
 // isQuestionTool reports whether a hook payload's tool is a question tool.
@@ -46,14 +48,6 @@ func isQuestionTool(name string) bool {
 	return false
 }
 
-// questionRefusal is the one line the host replays to the agent when it asks
-// while the mode reads managed. It names the two settings and the verb, and
-// reminds the agent that choosing is its job.
-const questionRefusal = "Blocked by the abcd guard (question tool): the mode reads managed, so the status line says nobody is waiting. " +
-	"Before asking, say whom the question is for: run `abcd mode product-thinker` if it is for the product thinker, " +
-	"or `abcd mode facilitator` if it is for the technical facilitator, then ask again. " +
-	"The mode resets to managed on the next human message."
-
 // questionGate is the guard hook's answer for a question-tool call
 // (itd-2609212130146198; spc-2610030944505997, "The question check in the
 // guard hook"). It never rewrites the question: it admits it or refuses it
@@ -65,22 +59,22 @@ const questionRefusal = "Blocked by the abcd guard (question tool): the mode rea
 // cannot read is not a decision, so the question runs on the loud, non-blocking
 // status. Then the gate decides whether the question is abcd's: a header in
 // abcd's chip grammar, which only abcd's interview pages are taught to write,
-// or a mode naming somebody, which only abcd's mode verb sets (itd-201 decision
-// 10). Anything else is another tool's question and runs, unchecked and
-// unmarked, wherever it is asked.
+// or a mode naming somebody, which only abcd's mode verb and this gate set
+// (itd-201 decision 10). Anything else is another tool's question and runs,
+// unchecked and unmarked, wherever it is asked.
 //
 // abcd's question is held to the field limits wherever the hook runs, managed
 // or not: the setup interview asks before a repository is managed, and the
-// limits need no store. Where the badge shows (a checkout abcd manages, with the
-// local tier the mode verb writes to), the mode gate runs as well: an abcd
-// question while the mode reads managed is refused, naming `abcd mode`, and an
-// admitted one is marked open, so the next human message resets the mode. A
-// store or marker the gate cannot read or write is not a decision: the question
-// runs and the gate says so, the guard's fail-open-loud contract. A tier the
-// verb cannot write is the same case seen from the refusal's side: a remedy that
-// cannot run would hold the question refused forever, so there the mode gate
-// stands down, loudly, and only the field findings, whose remedy is the
-// agent's own, can refuse.
+// limits need no store. A chipped question is checked against the addressee
+// each tab's chip names, and a question without a chip against the person the
+// mode names. Only the field findings refuse: a chipped question is never
+// refused on the mode (iss-2610100626211810), because its chip already says
+// whom it is for. Where the badge shows (a checkout abcd manages, with the
+// local tier the mode verb writes to), an admitted question is marked open and
+// a chipped one sets the mode from its chip (chipState), so the status line
+// names whom the question on screen is for. A store or marker the gate cannot
+// read or write is not a decision: the question runs and the gate says so, the
+// guard's fail-open-loud contract.
 func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 	stderr := cmd.ErrOrStderr()
 	fields, err := decodeQuestions(raw)
@@ -103,45 +97,45 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 		return nil
 	}
 
+	// A chip names the addressee of its own tab, and the mode the gate sets
+	// follows the chip, so a chipped question is checked against its chips
+	// and not against a mode it is about to replace.
+	who := addresseeOf(st)
+	if chip {
+		who = question.Unnamed
+	}
 	findings := question.CheckLimits(fields, question.Default, question.Addressee{
-		Person: addresseeOf(st),
+		Person: who,
 		Verbs:  verbsOf(cmd.Root()),
 	})
 	// The rows limit alone does not refuse (iss-2610070637562567): a question
 	// too tall for the narrow window is shown, and the agent is told
 	// afterwards. Refusing it made the agent redraft a question the person
 	// was ready to answer.
-	refuses := len(findings) > 0 && !rowsOnly(findings)
-	modeRefuses := false
-	if badge && st == mode.Managed {
-		// A refusal whose remedy cannot run would refuse this question
-		// forever (iss-2609260100382261), so the gate refuses on the mode
-		// only where the verb it names could set the state.
-		if err := mode.CanSet(root); err != nil {
-			if !refuses {
-				return questionFailOpen(stderr, "the mode reads managed but cannot be set here, so `abcd mode` could not answer a refusal (%s)", err)
-			}
-		} else {
-			modeRefuses = true
+	if len(findings) > 0 && !rowsOnly(findings) {
+		why := ""
+		if !chip {
+			why = modeMadeAbcds(st)
 		}
-	}
-	if refuses || modeRefuses {
 		var reason strings.Builder
-		if len(findings) > 0 {
-			why := ""
-			if !chip {
-				why = modeMadeAbcds(st)
-			}
-			writeLimitsRefusal(&reason, findings, why)
-		}
-		if modeRefuses {
-			fmt.Fprintln(&reason, questionRefusal)
-		}
+		writeLimitsRefusal(&reason, findings, why)
 		return denyCall(reason.String())
 	}
 	if badge {
-		if err := mode.MarkQuestionOpen(root, st); err != nil {
-			return questionFailOpen(stderr, "the question could not be marked open, so the mode will not reset on the answer (%s)", err)
+		want := st
+		if chip {
+			want = chipState(fields)
+		}
+		// The marker first: a marker written for a mode that then could not
+		// be set costs one reset to managed on the answer, while a mode set
+		// with no marker would stay parked with nothing left to reset it.
+		if err := mode.MarkQuestionOpen(root, want); err != nil {
+			return questionFailOpen(stderr, "the question could not be marked open, so the mode was not set from its chip and will not reset on the answer (%s)", err)
+		}
+		if want != st {
+			if err := mode.SetAt(root, want); err != nil {
+				return questionFailOpen(stderr, "the mode could not be set from the question's chip, so the status line does not say whom the question is for (%s)", err)
+			}
 		}
 	}
 	if len(findings) > 0 {
@@ -153,6 +147,35 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// chipState is the mode a chipped question sets (iss-2610100626211810): the
+// person its chips name. The Product chip names the product thinker, and the
+// Tech chip the technical facilitator. The Setup chip names the facilitator
+// too: the setup interview asks how abcd is installed and configured in a
+// repository (its visibility, its keys, the oracles it connects), which is
+// the how of the work, the facilitator's half, never the what. A call whose
+// tabs name both people sets the product thinker, so the status line never
+// says only the facilitator is owed an answer the product thinker owes too.
+func chipState(f question.Fields) mode.State {
+	st := mode.Facilitator
+	for _, t := range f.Tabs {
+		if role, ok := question.ChipRole(t.Header, question.Default); ok && chipRoleState(role) == mode.ProductThinker {
+			st = mode.ProductThinker
+		}
+	}
+	return st
+}
+
+// chipRoleState is the mode one chip role word names: the product thinker
+// for the Product role, the technical facilitator for every other role (Tech
+// and Setup). The interview pages' test reads it to accept a page that names
+// a question's chip in place of setting the mode.
+func chipRoleState(role string) mode.State {
+	if role == question.ProductRole {
+		return mode.ProductThinker
+	}
+	return mode.Facilitator
 }
 
 // rowsOnly reports whether every finding is the rows limit's.
@@ -294,8 +317,8 @@ func modeMadeAbcds(st mode.State) string {
 // one of the parts to fix and is not counted among them
 // (iss-2610100626327722): listed among them, the agent read it as a cause and
 // cut a question the gate would have shown. It follows the refusing parts
-// instead, after rowsNotRefusingLine, bounded as they are. With no refusing
-// finding at all (a refusal for the mode alone) the head line is left out.
+// instead, after rowsNotRefusingLine, bounded as they are. It is called only
+// with at least one refusing finding.
 func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
 	var refusing, rows []question.Finding
 	for _, f := range findings {
@@ -305,9 +328,7 @@ func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
 			refusing = append(refusing, f)
 		}
 	}
-	if len(refusing) > 0 {
-		fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(refusing))
-	}
+	fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(refusing))
 	if why != "" {
 		fmt.Fprintln(w, why)
 	}
@@ -341,11 +362,14 @@ func questionFailOpen(w io.Writer, format string, err error) error {
 	return &exitError{Code: 1}
 }
 
-// resetModeOnAnswer is the prompt hook's half: when a question is marked open,
-// this human message is its answer, so the mode goes back to managed, the
-// marker is cleared, and one line on stderr says so. Nothing goes to stdout,
-// which the host injects into the session's context. Every failure is named
-// and never stops the prompt.
+// resetModeOnAnswer is the reset an answer triggers, run from two hooks: the
+// question tool's PostToolUse hook, when the answer comes back
+// (iss-2610100626211810), and the prompt hook, on the next human message, for
+// a host that does not run PostToolUse. When a question is marked open the
+// mode goes back to managed, the marker is cleared, and one line on stderr
+// says so; whichever hook runs first clears the marker, so the other changes
+// nothing. Nothing goes to stdout, which the host hands the agent. Every
+// failure is named and never stops the session.
 func resetModeOnAnswer(w io.Writer, cwd string) {
 	root, err := mode.Root(cwd)
 	if err != nil {

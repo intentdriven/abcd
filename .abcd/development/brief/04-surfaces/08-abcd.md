@@ -150,16 +150,18 @@ spc-2609212139593041). The badge reads exactly one of its three labels and
 never the bare tool name, and its colour ends at the badge: the closing
 sequence restores the default foreground and background and nothing else, so
 the rest of the row keeps whatever styling the host gives it. The two moments
-the badge must change are two moments the hooks already see. The agent sets
-the state with `abcd mode` when it stops to ask, naming whom it addresses; the
-guard hook, on the host's question tool, refuses abcd's own question (one
-headed in abcd's chip grammar, [`17-guard.md`](17-guard.md)) while the state
-reads managed, naming `abcd mode product-thinker` and `abcd mode facilitator`,
-and when it admits one it writes a `question_open` marker beside the state in
-`.abcd/.work.local/`. The next human message is the answer: the prompt hook
-finds the marker, resets the state to managed, clears the marker and says so in
-one line on stderr. With no marker the prompt hook changes nothing, so a state
-the human set by hand survives the message they type next. A repository abcd
+the badge must change are two moments the hooks already see. When the
+guard hook, on the host's question tool, admits abcd's own question (one headed
+in abcd's chip grammar, [`17-guard.md`](17-guard.md)), it sets the state from
+the chip's role, naming whom the question is for, and writes a `question_open`
+marker beside the state in `.abcd/.work.local/`; a chipped question is never
+refused on the mode. The answer resets it: the question tool's `PostToolUse`
+hook, when the answer comes back, or the prompt hook on the next human message
+where the host runs no `PostToolUse`, finds the marker, resets the state to
+managed, clears the marker and says so in one line on stderr. With no marker
+neither hook changes anything, so a state the human set by hand survives the
+message they type next. At a stop that is not a question the agent sets the
+state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
 questions are not gated.
 

@@ -300,7 +300,7 @@ func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 // TestProductThinkerQuestionNamesNoRecordOrCommand is criterion R4 at the
 // hook. With the mode at product-thinker a record number, a command named by
 // one of the binary's verbs, and a label in backticks are each refused; the
-// same questions under the facilitator mode are admitted. With no mode store,
+// same questions chipped for the facilitator are admitted. With no mode store,
 // the "Product" chip stands in for the mode and refuses the same way.
 func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 	cases := []struct {
@@ -328,8 +328,12 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 				t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 			}
 
+			// The chip names the addressee (iss-2610100626211810): the same
+			// question chipped for the facilitator is theirs to read.
 			setMode(t, root, mode.Facilitator)
-			if stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
+			tech := q
+			tech.Header = "Tech Q2"
+			if stdout, stderr, code := runGuard(askPayload(t, root, tech), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
 				t.Errorf("facilitator: the mechanism and the ids are theirs; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 			}
 
@@ -389,33 +393,39 @@ func TestForeignQuestionIsNotRefused(t *testing.T) {
 	}
 }
 
-// TestAbcdChipWhileManagedIsRefused is the other half of the mode gate's
-// scope: an abcd chip while the mode reads managed is refused with the
-// existing one-line refusal and its `abcd mode` remedy, and nothing is marked
-// open. With a field finding as well, both are named: the finding lines first,
-// then the mode's line.
-func TestAbcdChipWhileManagedIsRefused(t *testing.T) {
+// TestAbcdChipWhileManagedIsNeverRefusedOnTheMode is the other half of the
+// mode gate's scope (iss-2610100626211810): an abcd chip names whom the
+// question is for, so while the mode reads managed it is admitted and sets the
+// mode from the chip. With a field finding it is refused on that finding
+// alone: no line about the mode, the mode left managed, nothing marked open.
+func TestAbcdChipWhileManagedIsNeverRefusedOnTheMode(t *testing.T) {
 	root := managedCheckout(t)
 	q := wellBuilt()
 	q.Header = "Product Q1"
+	q.Options[0].Label = "Keep it (Recommended)"
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	if reason != questionRefusal {
-		t.Errorf("want the existing one-line refusal alone; reason = %q", reason)
+	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
+		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), reason)
+	}
+	for _, not := range []string{"mode reads managed", "abcd mode"} {
+		if strings.Contains(reason, not) {
+			t.Errorf("a chipped question is never refused on the mode, yet the refusal says %q:\n%s", not, reason)
+		}
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Managed {
+		t.Errorf("a refused question set the mode to %q", got)
 	}
 	if markedOpen(t, root) {
 		t.Error("a refused question was marked open")
 	}
 
-	q.Options[0].Label = "Keep it (Recommended)"
-	stdout, stderr, code = runGuard(askPayload(t, root, q), "guard", "hook")
-	reason = mustDeny(t, stdout, stderr, code)
-	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
-		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), reason)
+	q.Options[0].Label = "Keep it"
+	if stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("the fixed question must be admitted silently; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-	all := strings.Split(strings.TrimRight(reason, "\n"), "\n")
-	if all[len(all)-1] != questionRefusal {
-		t.Errorf("the mode's refusal must close the lines; reason:\n%s", reason)
+	if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+		t.Errorf("mode = %q, want the chip's product-thinker", got)
 	}
 }
 

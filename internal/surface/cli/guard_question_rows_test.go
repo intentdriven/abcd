@@ -145,25 +145,20 @@ func TestRowsWithAnotherFindingIsDenied(t *testing.T) {
 	}
 }
 
-// TestRowsOnlyWhileManagedIsDenied: the mode gate still refuses. A tall
-// question asked while the mode reads managed is refused with the mode's line,
-// and the rows finding follows it as one that does not refuse on its own.
-func TestRowsOnlyWhileManagedIsDenied(t *testing.T) {
+// TestRowsOnlyWhileManagedIsAdmitted (iss-2610100626211810): the chip names
+// whom the question is for, so a tall chipped question asked while the mode
+// reads managed is admitted with the rows note, sets the mode from the chip
+// and is marked open.
+func TestRowsOnlyWhileManagedIsAdmitted(t *testing.T) {
 	root := managedCheckout(t)
 	q := tallQuestion()
 	mustBeRowsOnly(t, q, question.ProductThinker)
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
-	reason := mustDeny(t, stdout, stderr, code)
-	if !strings.Contains(reason, questionRefusal) {
-		t.Errorf("the mode's refusal must be named; reason = %q", reason)
+	mustAdmitWithNote(t, stdout, stderr, code)
+	if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+		t.Errorf("mode = %q, want the chip's product-thinker", got)
 	}
-	if _, rows := rowsAfterRefusal(reason); !slices.Equal(rulesNamed(rows), []string{string(question.RuleRows)}) {
-		t.Errorf("want the rows finding named after the rows line; got %v:\n%s", rulesNamed(rows), reason)
-	}
-	if strings.Contains(reason, "part(s) of this question break") {
-		t.Errorf("no part refuses but the mode, so no head line may count one; reason:\n%s", reason)
-	}
-	if markedOpen(t, root) {
-		t.Error("a refused question was marked open")
+	if !markedOpen(t, root) {
+		t.Error("the admitted question was not marked open")
 	}
 }

@@ -38,17 +38,19 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			"on the product thinker, who answers on a surface of their own). An absent\n" +
 			"store reads as `managed`.\n\n" +
 			"`abcd mode <state>` sets it. Two writers share the verb: the agent runs it\n" +
-			"when it stops for a verdict, naming whom it is addressing, and the human runs\n" +
-			"it by hand to say which hat they wear. The state lives per checkout at\n" +
+			"when it stops for a verdict other than a question, naming whom it is\n" +
+			"addressing, and the human runs it by hand to say which hat they wear. The state lives per checkout at\n" +
 			"`.abcd/.work.local/mode`, so only a repository abcd manages — one that has\n" +
 			"the local-ephemeral tier — can hold it; elsewhere the set refuses and creates\n" +
 			"nothing. The next status-line refresh and the bare `abcd` board read the\n" +
 			"same file.\n\n" +
-			"The guard holds the agent to it: a question through the host's question\n" +
-			"tool is refused while the state reads `managed`, and once the state names\n" +
-			"somebody the question runs and is marked open. The next human message is\n" +
-			"its answer, so the prompt hook resets the state to `managed` and says so\n" +
-			"once on stderr. A state set by hand with no question open is left as it is.\n\n" +
+			"A question needs no setting: when the guard admits abcd's question through\n" +
+			"the host's question tool, it sets the state from the question's chip\n" +
+			"(Product to product-thinker, Tech and Setup to facilitator) and marks the\n" +
+			"question open. The answer resets the state to `managed` and says so once on\n" +
+			"stderr: the question tool's PostToolUse hook resets it when the answer comes\n" +
+			"back, and the prompt hook on the next human message where the host runs no\n" +
+			"PostToolUse. A state set by hand with no question open is left as it is.\n\n" +
 			"Where this machine has no status surface — no `" + abcdhome.Display("statusline.json") + "`, or\n" +
 			"one with `disabled` set — the set form prints one line naming whose answer\n" +
 			"is owed, once, because the verb call is the stop. Setting `managed` owes\n" +
