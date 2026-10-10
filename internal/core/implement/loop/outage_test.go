@@ -348,9 +348,9 @@ func TestDrainStopsOnOutage(t *testing.T) {
 	repo := drainRepo(t)
 	c := &clock{t: time.Date(2026, 10, 9, 9, 0, 0, 0, time.UTC)}
 	o := Options{Now: c.now}
-	first, err := Drain(repo.Root(), o, DrainOptions{})
-	if err != nil || first.Start == nil {
-		t.Fatalf("the drain opens its first lane: %+v %v", first, err)
+	first := drainToLane(t, repo, o, DrainOptions{})
+	if first.Start == nil {
+		t.Fatalf("the drain opens its first lane: %+v", first)
 	}
 	run := joinShared(t, repo.Root(), c.now)
 	giveUp(t, run, "host-a", func(d time.Duration) { c.t = c.t.Add(d) })

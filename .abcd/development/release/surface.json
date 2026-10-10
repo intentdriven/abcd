@@ -1271,6 +1271,13 @@
           "hidden": false
         },
         {
+          "name": "judgement",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "max",
           "shorthand": "",
           "type": "int",

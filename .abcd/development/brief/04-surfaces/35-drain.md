@@ -5,12 +5,11 @@ unattended: the issues that need no decision are fixed, and the rest are handed
 back to the place a person decides them (itd-82, spc-2609212015054359). This
 chapter describes what ships: the rule that decides which issues a machine may
 take alone, the order it takes them in, a dry run that shows every open issue's
-disposition and writes nothing, and the run, which hands each eligible issue to
-the implement loop keyed by the issue, one lane at a time, routes every
-hand-back by its kind, and is bounded by the pace rule's window and a cap on
-the lanes it opens. The host judgement over each eligible remedy is not built:
-the run opens a lane for every eligible issue, and only the lane itself can
-hand its issue back.
+disposition and writes nothing, and the run, which asks the host to judge each
+eligible issue's remedy before its lane opens, hands each issue the judgement
+does not hand back to the implement loop keyed by the issue, one lane at a
+time, routes every hand-back by its kind, and is bounded by the pace rule's
+window and a cap on the lanes it opens.
 
 ## Sub-verbs
 
@@ -113,8 +112,8 @@ back too.
 The fields are the rule because a model's judgement of its own ambiguity is
 unreliable, and the failure runs one way: a machine that decides a thing needs
 no decision, and then makes one. The host judgement over an eligible remedy is
-therefore allowed only to hand an issue back; it does not run in the dry run,
-and the dry run says so beside every eligible issue.
+therefore allowed only to hand an issue back (below); it does not run in the
+dry run, and the dry run says so beside every eligible issue.
 
 ## The order
 
@@ -159,10 +158,17 @@ and written nowhere, decision 8), then does the first of these that applies:
    open where the repository has no merge queue), the run complete, or the lane
    handed back, which it routes (below).
 6. When the drain has opened as many lanes as its cap, it ends and says so.
-7. It starts the implement loop for the next eligible issue in the drain order
-   that the drain has not taken and this checkout has no run for, and names the
-   run. An issue the loop's own checks refuse (a peer holds it) is passed over,
-   named with the check. When none is left, the drain ends and says so.
+7. For the next eligible issue in the drain order that the drain has not taken
+   or handed back and this checkout has no run for, it asks the host judgement
+   over the issue's remedy (below) and opens nothing, unless the host has
+   already answered no over the remedy as it stands. With that no, it starts
+   the implement loop for the issue and names the run. An issue the loop's own
+   checks refuse (a peer holds it) is passed over, named with the check. When
+   none is left, the drain ends and says so.
+
+The host's answer is taken first of all, before the window clock and the
+lane's routing: an invocation given the answer's path validates it and records
+it, routes a yes, and then moves as above.
 
 The drain's state is one file beside the runs,
 `.abcd/.work.local/run/drain.json`: when it began, the rule's record, its cap
@@ -173,6 +179,52 @@ kept for reading, and the next invocation begins a new one. The cap and the
 pace are set when a drain begins; a different cap or pace named while it runs is
 refused rather than ignored. The pace is the implement loop's, resolved through
 the same layers, and each lane's run is paced as a run is.
+
+### The judgement before a lane opens
+
+The field rule decides what a machine may consider; one question is left that
+no field answers, and it is the host's (adr-25): does this remedy, carried out
+as written, change what a user sees, or a trust boundary? The drain asks it the
+host-pass way. It writes a request into the local tier,
+`.abcd/.work.local/run/drain-judgement.request.md`, carrying the question, what
+each answer does, the issue's id, record path, severity and category, its
+remedy and its record's body, each quoted inside a fence longer than any
+backtick run in it, and the answer's exact shape; it records in its state the
+issue, the request and the answer's path, and the sha256 of the remedy the
+request shows, and opens nothing. One judgement is awaited at a time. A move
+made while it is awaited asks again over the same issue and keeps any answer
+already written; a move that asks about another issue, or about a remedy since
+rewritten, first removes the earlier answer, so it can never be taken for this
+one.
+
+The host writes its answer to `.abcd/.work.local/run/drain-judgement.json` and
+hands it back to the run, naming the answer's path. The answer is strict JSON:
+`schema_version` 1, the `issue` and the `remedy_sha256` the request names,
+`answer` `yes` or `no`, a `kind` with a yes (`user-visible`, or `trust-rule`,
+which a remedy that changes both takes) and none with a no, and a `reason`; any
+other field refuses it. The request tells the host to answer yes when the
+remedy does not let it tell, since the failure the judgement guards runs one
+way.
+
+- A **no** changes nothing: the issue's lane opens in that same move, as its
+  fields already allow, and is never asked about again in this drain while its
+  remedy stands.
+- A **yes** hands the issue back before any lane opens, routed exactly as a
+  lane's hand-back of the same kind (the table below): a user-visible change is
+  promoted to an intent draft, and a trust rule is flagged as needing a
+  decision record with the host's reason as its question. The route is in the
+  summary with `from` `judgement`, and the drain asks about the next issue.
+- **It never lets an issue through.** The question is asked only of an issue
+  the field rule found eligible in the same move. An answer over an issue that
+  has left the eligible set since the request (its severity raised, a blocker
+  filed, the record resolved) is recorded with a note saying why and decides
+  nothing, whatever it says. An answer over a remedy rewritten since the
+  request is refused, since it judges a remedy the lane would not work from,
+  and the next move asks again.
+
+Every answer is kept in the drain's state with whether it decided the issue's
+disposition, and is in the summary in text and in the machine-readable payload;
+nothing is written onto the issue for it (decision 8).
 
 ### The lane
 
@@ -232,6 +284,12 @@ so that a later drain takes issues a person would have decided. What guards it:
   and its records are held to one rule: the decision record is the one
   committed at its own path, and one reached through a link, even a link inside
   the checkout, is not it.
+- The host's judgement is read as untrusted input: only from the answer's
+  path the drain named, as a regular file within 64 KiB through the capped
+  trust-boundary reader, strictly decoded (no unknown or repeated field), and
+  bound to the issue and the digest of the remedy the request showed; a
+  refused value is described, never echoed, and the reason it carries is
+  capped and sanitised. Whatever it says, it can only hand an issue back.
 - A lane's hand-back is the implementer's word, read as untrusted input: its
   kind is one of the four the loop routes, its reason and home are present,
   capped and sanitised, and a hand-back beside a resolution is refused. The
@@ -253,7 +311,11 @@ records, naming both, and a store or record that cannot be read safely. The run
 also refuses a checkout without the local tier, a cap that is not a whole
 number, a cap or pace other than the one a drain in progress began with, and a
 drain state it cannot read as its own; another drain moving in the checkout is
-a contention (exit 3). The dry run refuses the run's own flags. A run that
+a contention (exit 3). It refuses a judgement's answer when the drain awaits
+none, when it is given at another path than the one the request names, when it
+cannot be read or is not exactly the request's shape, and when the remedy it
+judges has been rewritten since; each refusal writes nothing. The dry run
+refuses the run's own flags. A run that
 opens nothing or merges nothing exits 0 and says why. A checkout that cannot be resolved,
 or a ledger holding one id in two status folders, is refused as every capture
 verb refuses it.
@@ -261,7 +323,8 @@ verb refuses it.
 ## Where this sits
 
 - The intent and its decisions: itd-82; the design record:
-  spc-2609212015054359, which stays open for the host judgement.
+  spc-2609212015054359, which stays open for the summary's remaining counts,
+  the decision-record marker and the issues its plan names.
 - The lane it hands issues to: itd-2609201916151817 decision 10,
   [`34-build.md`](34-build.md) and [`27-implement.md`](27-implement.md).
 - The field it reads is written by capture: [`06-capture.md`](06-capture.md).
@@ -281,6 +344,7 @@ Sub-verbs: none.
 |---|---|
 | `--dry-run` | bool |
 | `--fix-rounds` | string |
+| `--judgement` | string |
 | `--max` | int |
 | `--pace` | string |
 | `--sub-agents` | string |

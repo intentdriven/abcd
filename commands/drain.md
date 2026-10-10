@@ -1,7 +1,7 @@
 ---
 name: drain
 description: "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record."
-argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]"
+argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>]"
 block: agents
 ---
 
@@ -75,9 +75,9 @@ decides its one disposition:
 | `unreadable` | `unreadable` | the ledger reader refuses the record; the reason names why |
 | `eligible` | `fields` | every field rule passes |
 
-The host judgement over an eligible remedy (a user-visible or trust-boundary
-change hands it back) is not built: the run opens a lane for every eligible
-issue, and only the lane itself can hand its issue back.
+The dry run stops at the fields. The run asks one more question of each
+eligible issue before its lane opens, the host judgement over its remedy
+(below), and that judgement can only ever hand an issue back.
 
 ## The order
 
@@ -126,7 +126,24 @@ on. Do not act on the list: a hand-back is a person's decision.
 Each `abcd drain` without `--dry-run` performs one move and exits 0, saying
 what it did in `next`:
 
-- **It opens a lane.** The next eligible issue in the order gets the implement
+- **It asks the host judgement.** Before the next eligible issue's lane opens,
+  the drain writes a request, `.abcd/.work.local/run/drain-judgement.request.md`,
+  and opens nothing: `judging` names the issue, the request, the answer's path
+  and the digest of the remedy the request shows. Read the request and answer
+  its one question yourself, from the request alone: does this remedy, carried
+  out as written, change what a user sees, or a trust boundary? Write the JSON
+  it asks for to the answer's path,
+  `.abcd/.work.local/run/drain-judgement.json`, then run
+  `abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json`.
+  A `no` lets the lane open in that same move. A `yes` names its kind,
+  `user-visible` or `trust-rule` (`trust-rule` when it is both), and hands the
+  issue back before any lane opens, routed as a lane's hand-back of that kind
+  (below), `from: "judgement"`; the drain then asks about the next eligible
+  issue. When the remedy does not let you tell, answer `yes` and say what you
+  could not tell. Do not open the lane, edit the record or fix anything while
+  judging.
+- **It opens a lane.** The next eligible issue in the order, once judged `no`
+  over its remedy as it stands, gets the implement
   loop's issue-keyed run (the run `abcd build <iss-N>` starts): `start` names
   the run, and `lane` the issue and run id. Drive it as any run:
   `abcd implement step --run <run-id>` until it awaits an agent, then start that
@@ -161,7 +178,8 @@ refused.
 
 ### The hand-back, by kind
 
-A lane that meets a decision writes `"handback": {"kind", "reason", "home"}` in
+A `yes` from the host judgement is routed by its kind as the table below routes
+a lane's, before any lane opens. A lane that meets a decision writes `"handback": {"kind", "reason", "home"}` in
 its receipt in place of `resolves`; the loop discards the lane's worktree and
 branch and ends it. The drain routes it:
 
@@ -184,16 +202,23 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
 `handed-back` or `done`, and `pr`); `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
-`hand_backs` every one the drain has (`issue`, `from`, `kind`, `route`, `draft`,
-`question`, `rule`, `home`, `reason`, `wrote`); `flags` are the rule's
+`hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement` or
+`field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
+`wrote`); `judging` is the host judgement the drain awaits (`issue`,
+`remedy_sha256`, `request`, `answer`, `requested_at`), `null` when it awaits
+none; `judged` is the answer this move took and `judgements` every one the
+drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
+`applied`, `note`, `at`), `applied` being `false`, with the `note` saying why,
+for an answer over an issue that left the eligible set before it was taken;
+`flags` are the rule's
 hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `next_eligible_at`, `stopped` (`cap`, `empty` or
 `outage`) and `complete` say whether it paused or ended; `next` is the one move
 to make.
 
-Tell the user any loosened floors first, then what this move did (the lane
-opened, the hand-back routed, the pause or the end), then every hand-back with
-its route and what it wrote, then `next`. Do not plan a promoted draft or write
+Tell the user any loosened floors first, then what this move did (the
+judgement asked or taken, the lane opened, the hand-back routed, the pause or
+the end), then every hand-back with its route and what it wrote, then `next`. Do not plan a promoted draft or write
 a flagged decision: those are a person's.
 
 ## Refusals
@@ -215,8 +240,18 @@ a flagged decision: those are a person's.
   a negative `--max`, and a `--max` or pace other than the one a drain in
   progress began with; a drain state it cannot read as its own is refused,
   naming the file. Another drain moving in the checkout exits 3: back off and
-  retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents` and
-  `--fix-rounds`.
+  retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents`,
+  `--fix-rounds` and `--judgement`.
+- `--judgement` refuses (exit 2, nothing written) when the drain awaits no
+  judgement, when the path is not the answer's path the request names, when
+  the answer cannot be read as a regular file within 64 KiB, and when it is not
+  exactly the request's shape: `schema_version` 1, the `issue` and
+  `remedy_sha256` the request names, `answer` `yes` or `no`, a `kind` of
+  `user-visible` or `trust-rule` with `yes` and none with `no`, and a `reason`
+  within 4096 bytes, no other field. It refuses an answer over a remedy
+  rewritten since the request; the next `abcd drain` asks again over the
+  remedy as it stands. An answer over an issue that has left the eligible set
+  is taken and decides nothing: the judgement never makes an issue eligible.
 - Outside a checkout, or on a ledger holding one id in two status folders, it
   refuses (exit 2) as every capture verb does.
 

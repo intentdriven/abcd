@@ -107,6 +107,10 @@ type DrainState struct {
 	NextEligibleAt  *time.Time   `json:"next_eligible_at,omitempty"`
 	Lanes           []DrainLane  `json:"lanes"`
 	HandBacks       []DrainRoute `json:"hand_backs"`
+	// Judging is the host judgement the drain awaits before it opens the next
+	// issue's lane (scope 3), and Judgements every answer it has taken.
+	Judging    *DrainJudging    `json:"judging,omitempty"`
+	Judgements []DrainJudgement `json:"judgements,omitempty"`
 	// Stopped says why the drain ended, and EndedAt when; empty while it runs.
 	Stopped string     `json:"stopped,omitempty"`
 	EndedAt *time.Time `json:"ended_at,omitempty"`
@@ -124,7 +128,8 @@ type DrainLane struct {
 // DrainRoute is one hand-back and where it went.
 type DrainRoute struct {
 	Issue string `json:"issue"`
-	// From is "lane" for a lane's hand-back, "field" for the rule's.
+	// From is "lane" for a lane's hand-back, "judgement" for the host
+	// judgement's before any lane opened, "field" for the rule's.
 	From  string `json:"from"`
 	Kind  string `json:"kind"`
 	Route string `json:"route"`
@@ -146,6 +151,9 @@ type DrainRoute struct {
 type DrainOptions struct {
 	// Max is --max as typed; 0 when not given, which is all.
 	Max int
+	// Judgement is --judgement: the path of the host's answer to the
+	// judgement the drain awaits; empty when not given.
+	Judgement string
 }
 
 // DrainResult is one drain invocation's summary.
@@ -170,6 +178,12 @@ type DrainResult struct {
 	Routed    []DrainRoute `json:"routed"`
 	HandBacks []DrainRoute `json:"hand_backs"`
 	Flags     []DrainRoute `json:"flags"`
+	// Judging is the host judgement the drain awaits after this call, if any;
+	// Judged the answer this call took; Judgements every answer the drain
+	// has taken, each with whether it decided the issue's disposition.
+	Judging    *DrainJudging    `json:"judging"`
+	Judged     *DrainJudgement  `json:"judged,omitempty"`
+	Judgements []DrainJudgement `json:"judgements"`
 	// Passed are eligible issues this call did not take, each with why.
 	Passed         []Excluded             `json:"passed"`
 	Dispositions   []capture.DrainVerdict `json:"dispositions"`
@@ -255,12 +269,38 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			}
 		}
 		res.Max, res.Pace, res.Lanes, res.HandBacks = st.Max, st.Pace, st.Lanes, st.HandBacks
+		res.Judging, res.Judgements = st.Judging, st.Judgements
+		if res.Judgements == nil {
+			res.Judgements = []DrainJudgement{}
+		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
 		if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Outcome == DrainLaneInProgress }); i >= 0 {
 			l := st.Lanes[i]
 			res.Lane = &l
 		}
 		return res, nil
+	}
+
+	// The host's answer to the judgement the drain awaits (scope 3): taken
+	// before anything else moves, so a refusal writes nothing. A yes routes the
+	// issue as a lane's hand-back of its kind is routed; a no lets the lane
+	// open below.
+	if d.Judgement != "" {
+		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
+		if err != nil {
+			return DrainResult{}, err
+		}
+		if j.Applied && j.Answer == JudgementYes {
+			r, err := routeHandBack(repoRoot, j.Issue, DrainFromJudgement, HandBack{Kind: j.Kind, Reason: j.Reason}, now)
+			if err != nil {
+				return DrainResult{}, err
+			}
+			st.HandBacks = append(st.HandBacks, r)
+			res.Routed = append(res.Routed, r)
+		}
+		st.Judgements = append(st.Judgements, j)
+		st.Judging = nil
+		res.Judged = &j
 	}
 
 	// A run that gave up on a lost connection has stopped (iss-2610080620372731),
@@ -313,7 +353,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 				l.Issue, l.RunID, l.RunID)
 			return finish(true)
 		case DrainLaneHandedBack:
-			r, err := routeLaneHandBack(repoRoot, l.Issue, *hb, now)
+			r, err := routeHandBack(repoRoot, l.Issue, "lane", *hb, now)
 			if err != nil {
 				return DrainResult{}, err
 			}
@@ -330,16 +370,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 	}
 
 	// The next eligible issue in the drain order, less any this drain has
-	// taken and any this checkout already has a run for.
+	// taken or handed back and any this checkout already has a run for. Its
+	// lane opens only once the host judgement over its remedy has answered no
+	// for the remedy as it stands; until then the drain asks and opens nothing.
 	runs, err := Runs(repoRoot)
 	if err != nil {
 		return DrainResult{}, err
 	}
+	var issues map[string]capture.Issue
 	for _, v := range plan.Dispositions {
 		if v.Outcome != capture.DrainEligible {
 			continue
 		}
-		if slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == v.ID }) {
+		if slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == v.ID }) ||
+			slices.ContainsFunc(st.HandBacks, func(r DrainRoute) bool { return r.Issue == v.ID }) {
 			continue
 		}
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 {
@@ -347,6 +391,25 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 				Reason: "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"})
 			continue
 		}
+		if issues == nil {
+			if issues, err = openIssues(repoRoot); err != nil {
+				return DrainResult{}, err
+			}
+		}
+		iss, ok := issues[v.ID]
+		if !ok {
+			continue
+		}
+		if j := judgementFor(st, v.ID, remedyDigest(iss.Remedy)); j == nil || j.Answer != JudgementNo {
+			judging, err := requestJudgement(repoRoot, iss, v, st.Judging, now)
+			if err != nil {
+				return DrainResult{}, err
+			}
+			st.Judging = &judging
+			res.Next = judgementMove(judging)
+			return finish(true)
+		}
+		st.Judging = nil
 		started, err := Start(repoRoot, v.ID, o)
 		if err != nil {
 			r, ok := AsRefusal(err)
@@ -362,6 +425,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			v.ID, started.RunID, started.Next)
 		return finish(true)
 	}
+	st.Judging = nil
 	st.Stopped, st.EndedAt = DrainStoppedEmpty, &now
 	res.Next = fmt.Sprintf("nothing eligible is left: the drain opened %d lane(s) and ends here", len(st.Lanes))
 	return finish(true)
@@ -411,13 +475,14 @@ func fieldFlags(plan capture.DrainPlan) []DrainRoute {
 	return out
 }
 
-// routeLaneHandBack routes a lane's hand-back by its kind (scope 5) and makes
-// the one record change a route makes: a user moment is promoted to an intent
-// draft (`capture promote`, which stamps the issue's related_intents and
-// nothing else); every other kind is a flag and writes nothing. A promotion a
-// killed call already made is found, not made twice.
-func routeLaneHandBack(repoRoot, issue string, hb HandBack, now time.Time) (DrainRoute, error) {
-	r := DrainRoute{Issue: issue, From: "lane", Kind: hb.Kind, Reason: hb.Reason, Wrote: "nothing: a flag in this summary", At: &now}
+// routeHandBack routes a hand-back by its kind (scope 5), from a lane or from
+// the host judgement before one opened, and makes the one record change a
+// route makes: a user moment is promoted to an intent draft (`capture
+// promote`, which stamps the issue's related_intents and nothing else); every
+// other kind is a flag and writes nothing. A promotion a killed call already
+// made is found, not made twice.
+func routeHandBack(repoRoot, issue, from string, hb HandBack, now time.Time) (DrainRoute, error) {
+	r := DrainRoute{Issue: issue, From: from, Kind: hb.Kind, Reason: hb.Reason, Wrote: "nothing: a flag in this summary", At: &now}
 	switch hb.Kind {
 	case HandBackUserVisible:
 		r.Route = RoutePromoted
@@ -432,7 +497,7 @@ func routeLaneHandBack(repoRoot, issue string, hb HandBack, now time.Time) (Drai
 			}
 			r.Draft = into
 		default:
-			return DrainRoute{}, refuse(StageDrain, "", "", "`capture promote "+issue+"` refused routing its lane's hand-back: "+fsutil.RedactHome(err.Error()),
+			return DrainRoute{}, refuse(StageDrain, "", "", "`capture promote "+issue+"` refused routing its "+from+"'s hand-back: "+fsutil.RedactHome(err.Error()),
 				"settle what the capture store names, then run `abcd drain` again; the hand-back is routed then")
 		}
 		r.Wrote = "intent draft " + r.Draft + ", and " + issue + "'s related_intents names it"

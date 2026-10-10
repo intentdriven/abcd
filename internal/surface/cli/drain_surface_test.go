@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 )
 
 // The front doors of the drain's field-only slice (itd-82,
@@ -107,9 +108,11 @@ func TestDrainDryRunRendersEveryDispositionAndWritesNothing(t *testing.T) {
 }
 
 // TestTheBareDrainOpensALaneAndSaysWhatItDid: without --dry-run the drain
-// performs one move: it opens the first eligible issue's lane through the
-// implement loop, names the run to drive, flags every issue the rule hands
-// back naming the rule, and exits 0; --dry-run refuses --max.
+// performs one move: it first asks the host judgement over the first eligible
+// issue's remedy and opens nothing; given the host's no through --judgement,
+// it opens that issue's lane through the implement loop, names the run to
+// drive, flags every issue the rule hands back naming the rule, and exits 0;
+// --dry-run refuses --max and --judgement.
 func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
@@ -123,9 +126,42 @@ func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	if code := Run([]string{"drain", "--max", "1"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("a bare drain exited %d:\n%s%s", code, stdout.String(), stderr.String())
 	}
-	for _, want := range []string{"the drain begins", "cap:   --max 1", id, "in-progress", major, "severity", "abcd implement step"} {
+	for _, want := range []string{"the drain begins", "cap:   --max 1", "awaiting the host judgement on " + id, loop.DrainJudgementRequestRel, major, "severity", "--judgement"} {
 		if !strings.Contains(stdout.String(), want) {
-			t.Errorf("the drain's summary does not carry %q:\n%s", want, stdout.String())
+			t.Errorf("the drain's first move does not carry %q:\n%s", want, stdout.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "in-progress") {
+		t.Errorf("no lane opens before the judgement:\n%s", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --json exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	var judging struct {
+		Judging struct {
+			Issue        string `json:"issue"`
+			RemedySHA256 string `json:"remedy_sha256"`
+			Answer       string `json:"answer"`
+		} `json:"judging"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &judging); err != nil || judging.Judging.Issue != id {
+		t.Fatalf("--json names the judgement awaited: %v\n%s", err, stdout.String())
+	}
+	answer, _ := json.Marshal(map[string]any{"schema_version": 1, "issue": id, "remedy_sha256": judging.Judging.RemedySHA256,
+		"answer": "no", "reason": "an internal ordering fix"})
+	if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(judging.Judging.Answer)), answer, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--judgement", judging.Judging.Answer}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --judgement exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{"judged: " + id + ": no", "in-progress", "abcd implement step"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("the judged move does not carry %q:\n%s", want, stdout.String())
 		}
 	}
 	stdout.Reset()
@@ -143,17 +179,24 @@ func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 			Issue string `json:"issue"`
 			Route string `json:"route"`
 		} `json:"flags"`
+		Judgements []struct {
+			Issue  string `json:"issue"`
+			Answer string `json:"answer"`
+		} `json:"judgements"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatalf("--json is not JSON: %v\n%s", err, stdout.String())
 	}
-	if res.Started || res.Max != 1 || res.Lane.Issue != id || len(res.Flags) != 1 || res.Flags[0].Issue != major {
-		t.Errorf("the second move continues the drain, waits on its lane, and flags the major issue: %+v", res)
+	if res.Started || res.Max != 1 || res.Lane.Issue != id || len(res.Flags) != 1 || res.Flags[0].Issue != major ||
+		len(res.Judgements) != 1 || res.Judgements[0].Answer != "no" {
+		t.Errorf("the move continues the drain, waits on its lane, flags the major issue and keeps the judgement: %+v", res)
 	}
-	stdout.Reset()
-	stderr.Reset()
-	if code := Run([]string{"drain", "--dry-run", "--max", "2"}, &stdout, &stderr); code != 2 {
-		t.Errorf("--dry-run with --max exited %d, want 2", code)
+	for _, args := range [][]string{{"drain", "--dry-run", "--max", "2"}, {"drain", "--dry-run", "--judgement", "x.json"}} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run(args, &stdout, &stderr); code != 2 {
+			t.Errorf("%v exited %d, want 2", args, code)
+		}
 	}
 }
 

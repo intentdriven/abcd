@@ -1070,7 +1070,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1091,8 +1091,17 @@ order a drain takes them (by category, then severity, then oldest first), and
 writes nothing. The host judgement over each eligible remedy does not run; it can
 only ever hand an issue back.
 
-Without --dry-run, each invocation performs one move of the drain and exits. It
-hands the next eligible issue, in that order, to the implement loop's issue-keyed
+Without --dry-run, each invocation performs one move of the drain and exits. Before
+the next eligible issue's lane opens, the host judges its remedy: the drain writes
+a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the
+remedy changes what a user sees or a trust boundary, and opens nothing. The host
+writes its answer where the request says and hands it back with --judgement <file>,
+which is validated strictly; a refused answer changes nothing. A yes hands the
+issue back before any lane opens, routed as a lane's hand-back of the same kind
+(below); a no lets the lane open. The judgement can never make an issue eligible:
+an answer over an issue that has left the eligible set decides nothing, and one over
+a remedy rewritten since the request is refused and asked again. Once judged, the
+drain hands the next eligible issue, in that order, to the implement loop's issue-keyed
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
 pull request is open, and it routes the lane's outcome and opens the next. A lane
@@ -1126,6 +1135,7 @@ drain or run holds the state lock.
 ```
       --dry-run             show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string   the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --judgement string    the host's answer to the judgement the drain awaits, at the path its request names
       --max int             cap the lanes this drain opens; the default is all
       --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
@@ -1138,6 +1148,7 @@ abcd drain --dry-run
   abcd drain --dry-run --json
   abcd drain --max 3
   abcd drain --json
+  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json
 ```
 
 ### `abcd embark`
