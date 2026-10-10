@@ -74,6 +74,17 @@ func loopFakeHarness(mode string) int {
 		}
 		return ""
 	}
+	if mode == "ratelimit" {
+		// The claude CLI cut off by a rate limit mid-work: an edit left
+		// uncommitted in the worktree it runs in, a partial receipt, and the
+		// rejected rate_limit_event and error result its stream carries.
+		_ = os.WriteFile("halfway.txt", []byte("half done\n"), 0o600)
+		_ = os.WriteFile(field("Receipt: "), []byte(`{"schema_version": 1, "run_id": "`), 0o600)
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-3","model":"fake-model"}`)
+		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-3"}`)
+		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
+		return 1
+	}
 	if mode == "ok" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {

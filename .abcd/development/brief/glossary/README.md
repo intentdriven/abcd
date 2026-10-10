@@ -79,8 +79,10 @@ glossary/
 │   ├── disembark.md
 │   ├── intent.md
 │   ├── ledger.md
+│   ├── library.md
 │   ├── lifeboat.md
 │   ├── loop.md
+│   ├── memory-note.md
 │   ├── milestone.md
 │   ├── oracle.md
 │   ├── persona.md
@@ -215,8 +217,10 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | [disembark](core/disembark.md) | stable | The act of packing a lifeboat — `abcd disembark pack <source-repo> <dest>` reads a source repository without writing to it and distils its settled artefacts, decisions, and configuration into a portable lifeboat directory at a destination outside that repository, which a fresh context can later unpack via `/abcd:embark`. |
 | [intent](core/intent.md) | stable | A press-release-shaped description of a feature written before implementation begins, capturing the user problem, proposed solution, and success criteria. |
 | [ledger](core/ledger.md) | stable | An append-or-move store a command writes and a human reads back, the issue ledger under .abcd/work/issues/ when the word stands bare; inside the cold-reading experiment the word means the warm material and its stores, which the read-block keeps from a reading (the ledger context's entries govern that sense). Four further ledgers share the word and are always named in full. |
+| [library](core/library.md) | draft | The person's collection of outside material (papers, links and the cited notes drawn from them), each item marked confidential or public when it is added, and consulted on request with every answer citing the item it came from. |
 | [lifeboat](core/lifeboat.md) | stable | A portable directory artefact packed by `/abcd:disembark` that captures the distilled knowledge and configuration of a source project so it can be unpacked into a fresh context by `/abcd:embark`. It always lands outside the source repository, at an operator-chosen destination. |
 | [loop](core/loop.md) | draft | The record loop — brief to intent to spec to shipped work to audited verdict and back onto the brief — which shipping closes twice, once by grading the acceptance criteria and once by rewriting the brief passage. Two other loops carry the word and are always qualified: the autonomous-run loop and the lifeboat round-trip. |
+| [memory-note](core/memory-note.md) | draft | A short lesson an agent learned while working (a fact about the project, the person or the machine), kept with the words that should recall it and brought back into a session automatically when a prompt matches; kept on the person's machine until promoted into the project's record. |
 | [milestone](core/milestone.md) | superseded | A planned end condition for a stretch of work; retired: the checkpoint is the derived release plus each intent's acceptance criteria. |
 | [oracle](core/oracle.md) | stable | An AI model invoked to review, reason over, or validate a project's artefacts — host-delegated by default, or reached through an opt-in oracle adapter. |
 | [persona](core/persona.md) | stable | A placeholder stakeholder character drawn from the abcd personas registry, used in press releases, intents, and design documents to represent a real user archetype without using real names. |

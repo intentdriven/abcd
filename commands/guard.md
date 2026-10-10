@@ -101,20 +101,25 @@ line keeps the full count. The rows limit is the exception: a question whose
 only finding is that a tab runs past the rows limit is shown, and the hook tells
 the agent afterwards which tab ran over, by how much, and to draft the next
 question through the `abcd:question-drafter` agent, which counts rows the way
-the check does. A question with no abcd chip, held to the limits
+the check does. In a question refused for another part, a tab over the rows
+limit is not one of the parts to fix and the head line does not count it: it
+follows them, under a line saying the rows limit does not refuse on its own and
+that the question would have been shown. A question with no abcd chip, held to the limits
 because `/abcd:mode` names somebody, carries one more line under the head line
 saying so: another tool's question asked while the mode names somebody is held
 to abcd's rules. The hook refuses and never rewrites the question.
 
-In a repository abcd manages, abcd's question asked while `/abcd:mode` reads
-`managed` is also refused, and the refusal names `abcd mode product-thinker`
-and `abcd mode facilitator`: set the one that names whom you are asking, then
-ask again. An admitted question is marked open in
-`.abcd/.work.local/question_open`, and the next human message resets the state
-to `managed`. Where `abcd mode` could not write the state — a local tier that
-is not writable — the mode does not refuse the question, which runs with a loud
-`NOT CHECKED` warning rather than a refusal nobody could answer. A questions
-field the hook cannot read is the same case: the question runs, and the hook
+In a repository abcd manages, an admitted question carrying abcd's chip sets
+`/abcd:mode` from the chip's role: `Product` to `product-thinker`, `Tech` and
+`Setup` to `facilitator`. So a chipped question is never refused on the mode,
+and the status line names whom the question on screen is for, a chip naming
+the other person re-setting the mode. An admitted question is marked open in
+`.abcd/.work.local/question_open`, and the answer resets the state to
+`managed`: the plugin's hook on the question tool's result resets it when the
+answer comes back, and the next human message resets it on a host that does
+not run that hook. Where the state cannot be written or the question cannot be
+marked open, such as a local tier that is not writable, the question runs with
+a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
 warns loudly. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
 read the warning names no tool.

@@ -83,10 +83,10 @@ func AskingRules(l Limits) []string {
 
 		"What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at " + KnowledgeFloorPage + " under abcd's plugin root (in abcd's own repository, at that path from its root).",
 
-		"In abcd's own interviews, before stopping for an answer, record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. " +
+		"In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. " +
 			"Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.",
 
-		"In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator); when it differs from the current mode, set the mode, then ask, and the chip names that role. " +
+		"In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and head the question with the chip naming that role: the chip sets the mode when the question is asked, and the answer sets it back to managed, so a question needs no `abcd mode` before it. " +
 			"The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.",
 	}
 }

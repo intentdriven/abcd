@@ -267,12 +267,13 @@ func newGuardHookCommand() *cobra.Command {
 			"only finding is its height is shown, and the hook's stdout carries a note\n" +
 			"for the agent (additionalContext, no permission decision) naming each tab\n" +
 			"over the limit and the agent that drafts a question to fit. The hook never\n" +
-			"rewrites a question. In a checkout abcd manages,\n" +
-			"abcd's question asked while `abcd mode` reads managed is also refused,\n" +
-			"naming `abcd mode product-thinker` and `abcd mode facilitator`; once the\n" +
-			"mode names somebody the question runs and is marked open in the local tier,\n" +
-			"and the next human message resets the mode to managed. A questions field\n" +
-			"the hook cannot read lets the question run and warns loudly.",
+			"rewrites a question. In a checkout abcd manages, an admitted question\n" +
+			"carrying abcd's chip sets `abcd mode` from the chip's role (Product to\n" +
+			"product-thinker, Tech and Setup to facilitator), so it is never refused on\n" +
+			"the mode, and the question is marked open in the local tier; the answer\n" +
+			"resets the mode to managed, from `abcd hook question-answered` on the\n" +
+			"question tool's PostToolUse or else on the next human message. A questions\n" +
+			"field the hook cannot read lets the question run and warns loudly.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return answerGuardHook(cmd, guardHookDecide)

@@ -25,41 +25,93 @@ func questionMarker(root string) string {
 	return filepath.Join(root, filepath.FromSlash(mode.QuestionOpenRelPath))
 }
 
-// TestGuardRefusesAQuestionWhileManaged is criterion 2: with the mode reading
-// managed, a question to the human through the host's question tool is refused
-// with the host's deny, and the refusal names the two settings and the verb
-// that sets them. Nothing is marked open.
-func TestGuardRefusesAQuestionWhileManaged(t *testing.T) {
-	root := managedCheckout(t)
-	stdout, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
+// chipCall is questionCall with the chip header given.
+func chipCall(t *testing.T, cwd, header string) string {
+	t.Helper()
+	q := wellBuilt()
+	q.Header = header
+	return askPayload(t, cwd, q)
+}
 
-	reason := mustDeny(t, stdout, stderr, code)
-	for _, want := range []string{
-		"abcd mode product-thinker", "abcd mode facilitator",
-		"the product thinker", "the technical facilitator",
-	} {
-		if !strings.Contains(reason, want) {
-			t.Errorf("the refusal must name %q; reason = %q", want, reason)
-		}
-	}
-	if strings.Contains(reason, "\n") {
-		t.Errorf("the refusal is one line; reason = %q", reason)
-	}
-	if _, err := os.Lstat(questionMarker(root)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("a refused question was marked open: %v", err)
+// chipStates are the chips the gate reads and the mode each one sets
+// (iss-2610100626211810): Product names the product thinker, and Tech and
+// Setup the technical facilitator.
+var chipStates = []struct {
+	header string
+	want   mode.State
+}{
+	{"Product Q1", mode.ProductThinker},
+	{"Tech Q3", mode.Facilitator},
+	{"Setup Q1/4", mode.Facilitator},
+}
+
+// TestGuardChipSetsTheModeWhileManaged (iss-2610100626211810): a question
+// carrying abcd's chip already names whom it is for, so with the mode reading
+// managed it is never refused on the mode. It runs silently, the mode is set
+// from the chip's role, and the question is marked open for the reset.
+func TestGuardChipSetsTheModeWhileManaged(t *testing.T) {
+	for _, tc := range chipStates {
+		t.Run(tc.header, func(t *testing.T) {
+			root := managedCheckout(t)
+			stdout, stderr, code := runGuard(chipCall(t, root, tc.header), "guard", "hook")
+			if code != 0 || stdout != "" || stderr != "" {
+				t.Fatalf("a chipped question must be admitted silently while managed; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if got, err := mode.ReadAt(root); err != nil || got != tc.want {
+				t.Errorf("mode after the question = %q (%v), want %q", got, err, tc.want)
+			}
+			data, err := os.ReadFile(questionMarker(root))
+			if err != nil {
+				t.Fatalf("the admitted question was not marked open: %v", err)
+			}
+			if strings.TrimSpace(string(data)) != string(tc.want) {
+				t.Errorf("marker = %q, want %q", data, tc.want)
+			}
+		})
 	}
 }
 
-// TestGuardAdmitsAQuestionOnceAddressed: with the mode naming whom the agent is
-// asking, the question runs silently and is marked open for the reset.
+// TestGuardChipReSetsADifferentMode (iss-2610100626211810): the status line
+// names whom the question on screen is for, so a chip whose role differs from
+// the mode a person or an earlier stop set re-sets it to the chip's role.
+func TestGuardChipReSetsADifferentMode(t *testing.T) {
+	for _, tc := range []struct {
+		from   mode.State
+		header string
+		want   mode.State
+	}{
+		{mode.Facilitator, "Product Q2", mode.ProductThinker},
+		{mode.ProductThinker, "Tech Q1", mode.Facilitator},
+		{mode.ProductThinker, "Setup Q2", mode.Facilitator},
+	} {
+		t.Run(string(tc.from)+"/"+tc.header, func(t *testing.T) {
+			root := managedCheckout(t)
+			setMode(t, root, tc.from)
+			stdout, stderr, code := runGuard(chipCall(t, root, tc.header), "guard", "hook")
+			if code != 0 || stdout != "" || stderr != "" {
+				t.Fatalf("the question must be admitted silently; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+			}
+			if got, _ := mode.ReadAt(root); got != tc.want {
+				t.Errorf("mode = %q, want the chip's %q", got, tc.want)
+			}
+			if !markedOpen(t, root) {
+				t.Error("the admitted question was not marked open")
+			}
+		})
+	}
+}
+
+// TestGuardAdmitsAQuestionOnceAddressed: with the mode already naming the
+// person the chip names, the question runs silently, the mode stays, and the
+// question is marked open for the reset.
 func TestGuardAdmitsAQuestionOnceAddressed(t *testing.T) {
-	for _, st := range []mode.State{mode.ProductThinker, mode.Facilitator} {
+	for st, header := range map[mode.State]string{mode.ProductThinker: "Product Q1", mode.Facilitator: "Tech Q1"} {
 		t.Run(string(st), func(t *testing.T) {
 			root := managedCheckout(t)
 			if err := mode.SetAt(root, st); err != nil {
 				t.Fatal(err)
 			}
-			stdout, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
+			stdout, stderr, code := runGuard(chipCall(t, root, header), "guard", "hook")
 			if code != 0 || stdout != "" || stderr != "" {
 				t.Fatalf("an addressed question must be admitted silently; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 			}
@@ -69,6 +121,9 @@ func TestGuardAdmitsAQuestionOnceAddressed(t *testing.T) {
 			}
 			if strings.TrimSpace(string(data)) != string(st) {
 				t.Errorf("marker = %q, want %q", data, st)
+			}
+			if got, _ := mode.ReadAt(root); got != st {
+				t.Errorf("mode = %q, want %q", got, st)
 			}
 		})
 	}
@@ -111,10 +166,11 @@ func TestGuardQuestionGateFailsOpenLoud(t *testing.T) {
 }
 
 // TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet
-// (iss-2609260100382261): a refusal whose remedy cannot run refuses forever.
-// With the tier present but not writable the mode reads managed, and `abcd
-// mode` would fail on permission denied, so the gate does not refuse: it lets
-// the question run on the loud status, names why, and leaves nothing behind.
+// (iss-2609260100382261, iss-2610100626211810): with the tier present but not
+// writable, the chip's mode cannot be set and the question cannot be marked
+// open. That is not a decision: the question runs on the loud, non-blocking
+// status, the gate says why, the mode stays where it was, and nothing is left
+// behind.
 func TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("a read-only directory does not refuse root")
@@ -129,17 +185,17 @@ func TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet(t *testing.T) {
 	if _, _, err := runSplit(t, "", "mode", "facilitator"); err == nil {
 		t.Fatal("precondition: `abcd mode facilitator` succeeded on a read-only tier")
 	}
-	_, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
-	if code != 1 {
-		t.Fatalf("a question whose remedy cannot run must fail open loud (exit 1); got %d (stderr %q)", code, stderr)
+	stdout, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
+	if code != 1 || stdout != "" {
+		t.Fatalf("a question whose mode cannot be set must fail open loud (exit 1); got %d (stdout %q stderr %q)", code, stdout, stderr)
 	}
-	for _, want := range []string{"NOT CHECKED", "UNGATED", "cannot be set"} {
+	for _, want := range []string{"NOT CHECKED", "UNGATED", "could not be"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("the fail-open must say %q; stderr = %q", want, stderr)
 		}
 	}
-	if strings.Contains(stderr, questionRefusal) {
-		t.Errorf("the gate still named a remedy that cannot run; stderr = %q", stderr)
+	if got, _ := mode.ReadAt(root); got != mode.Managed {
+		t.Errorf("mode = %q, want it left managed", got)
 	}
 	ents, err := os.ReadDir(tier)
 	if err != nil {
@@ -147,6 +203,79 @@ func TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet(t *testing.T) {
 	}
 	if len(ents) != 0 {
 		t.Errorf("the gate left residue in the tier: %v", ents)
+	}
+}
+
+// TestPostToolUseHookResetsTheModeOnTheAnswer (iss-2610100626211810): the
+// question tool's PostToolUse hook is the answer coming back, so it runs the
+// prompt hook's reset there and then: the mode goes back to managed, the
+// marker is cleared, and one stderr line says so, with nothing on stdout,
+// which the host would hand the agent. With no question open, or for a tool
+// that is not a question tool, it changes nothing and says nothing.
+func TestPostToolUseHookResetsTheModeOnTheAnswer(t *testing.T) {
+	root := managedCheckout(t)
+	if _, _, code := runGuard(chipCall(t, root, "Tech Q3"), "guard", "hook"); code != 0 {
+		t.Fatalf("precondition: the chipped question was not admitted (exit %d)", code)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Fatalf("precondition: mode = %q, want facilitator", got)
+	}
+	answered := func(tool string) string {
+		return `{"session_id":"s-post","hook_event_name":"PostToolUse","tool_name":"` + tool +
+			`","tool_input":{"questions":[]},"tool_response":{"answers":{}},"cwd":"` + root + `"}`
+	}
+
+	// Another tool's PostToolUse is none of the reset's business.
+	stdout, stderr, err := runSplit(t, answered("Bash"), "hook", "question-answered")
+	if err != nil || stdout != "" {
+		t.Fatalf("question-answered on another tool: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Errorf("another tool's PostToolUse moved the mode to %q", got)
+	}
+
+	stdout, stderr, err = runSplit(t, answered(questionTools[0]), "hook", "question-answered")
+	if err != nil || stdout != "" {
+		t.Fatalf("question-answered: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Managed {
+		t.Errorf("mode after the answer = %q, want managed", got)
+	}
+	if markedOpen(t, root) {
+		t.Error("the marker survived the answer")
+	}
+	if n := modeResetLines(stderr); n != 1 {
+		t.Errorf("want exactly one stderr line saying the mode was reset, got %d:\n%s", n, stderr)
+	}
+
+	// A hand-set mode with no question open is left alone.
+	setMode(t, root, mode.ProductThinker)
+	_, stderr, err = runSplit(t, answered(questionTools[0]), "hook", "question-answered")
+	if err != nil {
+		t.Fatalf("question-answered: %v\n%s", err, stderr)
+	}
+	if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+		t.Errorf("with no question open the mode moved to %q", got)
+	}
+	if n := modeResetLines(stderr); n != 0 {
+		t.Errorf("no question was open, yet the hook reported a reset:\n%s", stderr)
+	}
+}
+
+// TestQuestionAnswerHookIsInstalled holds the PostToolUse wiring: one entry,
+// scoped to exactly the question tools the gate reads, whose script runs
+// `hook question-answered`.
+func TestQuestionAnswerHookIsInstalled(t *testing.T) {
+	doc := decodedHooksManifest(t)
+	entries := doc.Hooks["PostToolUse"]
+	if len(entries) != 1 || len(entries[0].Hooks) != 1 {
+		t.Fatalf("want one PostToolUse entry with one command; got %+v", entries)
+	}
+	if want := strings.Join(questionTools, "|"); entries[0].Matcher != want {
+		t.Errorf("the PostToolUse entry must be scoped to the question tools; matcher = %q, want %q", entries[0].Matcher, want)
+	}
+	if body := resolveHookCommand(t, entries[0].Hooks[0].Command); !strings.Contains(body, "hook question-answered") {
+		t.Errorf("the PostToolUse script must run `hook question-answered`; it runs:\n%s", body)
 	}
 }
 

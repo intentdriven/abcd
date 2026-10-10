@@ -151,7 +151,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"guard"}, {"guard", "hook"},
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
-		{"hook", "subagent-stop"},
+		{"hook", "subagent-stop"}, {"hook", "question-answered"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -1523,6 +1523,9 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// ToolName is supplied by the PostToolUse hook; read by `hook
+	// question-answered` only.
+	ToolName string `json:"tool_name"`
 	// TranscriptPath is supplied by the Stop hook; it names the session
 	// transcript on disk. Read by `hook session-end` only.
 	TranscriptPath string `json:"transcript_path"`
@@ -1758,6 +1761,37 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// %q quotes the untrusted hook_event_name so an embedded newline or
 			// ANSI escape cannot spoof the operator's diagnostic stream.
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset session (%q)\n", in.Event)
+			return nil
+		},
+	})
+
+	// question-answered — PostToolUse on the question tool: the answer has come
+	// back, so the badge's reset runs now rather than on the next prompt
+	// (iss-2610100626211810). The prompt router runs the same reset as the
+	// fallback for a host that does not run PostToolUse; whichever runs first
+	// clears the marker, so the other changes nothing. Fail-open like every
+	// hook verb: an unreadable payload is named on stderr and exits 0, and
+	// nothing goes to stdout, which the host hands the agent.
+	hookCmd.AddCommand(&cobra.Command{
+		Use:   "question-answered",
+		Short: "PostToolUse on the question tool: reset the mode once the answer is back",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			in, err := readHookInput(cmd)
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd mode: unreadable hook payload (%s); the mode resets on the next message instead\n", termsafe.Sanitize(err.Error()))
+				return nil
+			}
+			if !isQuestionTool(in.ToolName) {
+				return nil
+			}
+			cwd := in.Cwd
+			if cwd == "" {
+				if wd, err := os.Getwd(); err == nil {
+					cwd = wd
+				}
+			}
+			resetModeOnAnswer(cmd.ErrOrStderr(), cwd)
 			return nil
 		},
 	})

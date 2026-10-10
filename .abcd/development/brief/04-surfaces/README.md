@@ -390,6 +390,19 @@ that everything it reads is data, never instruction.
 `docs-currency-reviewer`, the reviewer the release gate runs as a semantic gate,
 is documented in [`10-docs.md`](10-docs.md).
 
+## Library and memory: two different jobs
+
+abcd keeps two kinds of remembered material, and they do different jobs. The **library** is evidence you consult; **memory** is know-how that finds you.
+
+| | Library (`/abcd:library`) | Memory (`/abcd:memory`) |
+|---|---|---|
+| What it holds | Outside material: papers, links, and the cited notes drawn from them | Short lessons learned while working, such as "this test is flaky under load" or "the person wants every question to carry an example" |
+| Who adds to it | The person, deliberately, saying whether each item is confidential or public (abcd asks when they did not say) | Mostly agents, in the middle of a session |
+| How it comes back | The person asks ("what do my sources say about pacing?") and gets answers that cite the item they came from | Brought into a session automatically when a prompt matches the words the note was saved with |
+| Where it can go | Into a decision as a cited source; a confidential item is never named in anything public | Into the project's record, when a note is promoted so that every agent receives it |
+
+A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The library merges what the sources, memory, consult and ingest pages hold today (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
+
 ## Where to find related design
 
 - **Plumbing internals**: [`05-internals/`](../05-internals)

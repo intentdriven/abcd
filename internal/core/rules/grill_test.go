@@ -169,7 +169,8 @@ func TestGrillTextScopesRegisterToAbcdInterviews(t *testing.T) {
 	}{
 		{"register", []string{"in their register", "outcomes and choices in product terms", "the mechanism, the ids, and the trade-offs"}},
 		{"role first", []string{"which role the person holds", "the first question asks that"}},
-		{"mode verb", []string{"`abcd mode facilitator`", "`abcd mode product-thinker`", "`abcd mode managed`", "relay it verbatim"}},
+		{"mode verb", []string{"`abcd mode facilitator`", "`abcd mode product-thinker`", "`abcd mode managed`", "relay it verbatim", "a stop that is not a question"}},
+		{"chip sets the mode", []string{"the chip sets the mode", "the answer sets it back to managed", "needs no `abcd mode` before it"}},
 		{"addressee first", []string{"classify each question's addressee first", "a mixed interview re-sets the mode per question"}},
 	} {
 		r := ruleWith(rules, c.phrases...)

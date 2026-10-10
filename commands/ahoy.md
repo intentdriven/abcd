@@ -238,7 +238,7 @@ still sets the value in a scripted run, and the question returns on its own once
 a second answer has an adapter.
 
 That is a channel for passing on an answer the technical facilitator has GIVEN
-— set `abcd mode facilitator`, ask the technical facilitator first, then pipe;
+— ask the technical facilitator first, under a `Tech` chip, then pipe;
 it is never a licence to answer on their behalf. Note that `yes |` approves
 EVERY question, so only reach for it once they have agreed to all of them.
 
@@ -584,8 +584,8 @@ caller must CONFIRM the specific toggles named. A repo that sets
 as it is and is not contacted at all.
 
 The confirmation is the fourth gate, not a formality: an unanswered run declines
-and changes nothing, so set `abcd mode facilitator` and present the question
-and the repository it names to the technical facilitator before answering it.
+and changes nothing, so present the question and the repository it names to
+the technical facilitator, under a `Tech` chip, before answering it.
 `--yes` says yes in advance, and it is the technical facilitator's word to give —
 never pass it on their behalf. A run that changed nothing exits NON-ZERO
 (`refused` exits 2, as a refused install does; `aborted` exits 1), so a failed
@@ -725,9 +725,9 @@ command for the person.**
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
 [--model <model>…] --home <home> [--key <name>]`. **This writes, under
-`~/.abcd.noindex/` and, for the keychain home, into the platform keychain.** Set
-`abcd mode facilitator` and ask the technical facilitator which home through
-your question tool, after relaying `key_homes`, and offer the three without
+`~/.abcd.noindex/` and, for the keychain home, into the platform keychain.** Ask the
+technical facilitator which home through your question tool, under a `Tech`
+chip, after relaying `key_homes`, and offer the three without
 marking one: `external` takes `--env <VARIABLE>` or
 `--file ~/<file>.json --field <dotted.field>` (abcd keeps only where the key
 is); `abcd` and `keychain` take the key piped in on stdin from a file or a
@@ -793,9 +793,9 @@ The walkthrough is `abcd ahoy credential <name> --home <home>`, with the same
 three homes as `connect`: `external` with `--env`, or `--file` and `--field`;
 `abcd` and `keychain` with the value piped in on stdin. **This writes the
 chosen home only after the reading adapter's own verification call succeeds**
-(the provider's one short exchange, the hosting provider's account read). Set
-`abcd mode facilitator` and ask the technical facilitator for the home through
-your question tool; never ask for the value, and never pass it yourself: give
+(the provider's one short exchange, the hosting provider's account read). Ask the
+technical facilitator for the home through your question tool, under a `Tech`
+chip; never ask for the value, and never pass it yourself: give
 the person the command to run in their own shell and relay `name`, `home`,
 `verified` and each `wrote` entry. A name another home already holds, or a
 different value for a name already kept, is refused: abcd never replaces a

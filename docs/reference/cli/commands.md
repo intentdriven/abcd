@@ -290,6 +290,15 @@ a runner is skipped with a warning on stderr, and the role runs on the host as i
 One it sets to host keeps the role on the host over a runner route in ~/.abcd.noindex/config.json,
 since that spends nothing of the person's, with a warning naming both routes.
 
+The budget check runs last, once every other check passes: each runner a role of the
+run is routed to is asked for its remaining quota, in agent runs, and compared with the
+run's estimate on it (per step to build, one implementer and one round of the two
+reviewers, and the fidelity audit once for an intent). An estimate over a runner's
+quota is refused at the check budget, naming both numbers, and nothing is written. A
+runner that reports no quota, the host included, is named and the check is skipped out
+loud; neither shipped runner reports one. The result's budget line and the run record
+say which.
+
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
 repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
 open blocks it, its category and severity are ones the rule takes, it carries a remedy a
@@ -1364,12 +1373,13 @@ limit and the remedy. The rows limit is the exception: a question whose
 only finding is its height is shown, and the hook's stdout carries a note
 for the agent (additionalContext, no permission decision) naming each tab
 over the limit and the agent that drafts a question to fit. The hook never
-rewrites a question. In a checkout abcd manages,
-abcd's question asked while `abcd mode` reads managed is also refused,
-naming `abcd mode product-thinker` and `abcd mode facilitator`; once the
-mode names somebody the question runs and is marked open in the local tier,
-and the next human message resets the mode to managed. A questions field
-the hook cannot read lets the question run and warns loudly.
+rewrites a question. In a checkout abcd manages, an admitted question
+carrying abcd's chip sets `abcd mode` from the chip's role (Product to
+product-thinker, Tech and Setup to facilitator), so it is never refused on
+the mode, and the question is marked open in the local tier; the answer
+resets the mode to managed, from `abcd hook question-answered` on the
+question tool's PostToolUse or else on the next human message. A questions
+field the hook cannot read lets the question run and warns loudly.
 
 ### `abcd help`
 
@@ -2226,6 +2236,16 @@ nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming i
 agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
 
+A runner that answers with a rate-limit response is not fallen back on, since every
+lane spends the same budget: the run's window ends early, next_eligible_at is written
+(now plus the run's pause; a pause already running is kept), and the call exits 0
+naming the response and the lane it came from. That lane is checkpointed to its branch:
+its agent's uncommitted work and partial receipt are saved aside for review, never built
+on, its worktree is reset to its last commit, and the first call after the pause hands
+the same work to a fresh agent. Every other lane with work in flight is checkpointed at
+its branch's head and left running; its agents may hand back their receipts inside the
+pause. The run record names each checkpoint.
+
 The run's lost connection (`abcd implement outage`) is read before every move. While
 the network is down, a lane whose move reaches the remote or the forge (a landing's
 push, pull request, arming or merged check; a hold's disarm) waits on the shared probe,
@@ -3003,18 +3023,20 @@ on the product thinker, who answers on a surface of their own). An absent
 store reads as `managed`.
 
 `abcd mode <state>` sets it. Two writers share the verb: the agent runs it
-when it stops for a verdict, naming whom it is addressing, and the human runs
-it by hand to say which hat they wear. The state lives per checkout at
+when it stops for a verdict other than a question, naming whom it is
+addressing, and the human runs it by hand to say which hat they wear. The state lives per checkout at
 `.abcd/.work.local/mode`, so only a repository abcd manages — one that has
 the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
 nothing. The next status-line refresh and the bare `abcd` board read the
 same file.
 
-The guard holds the agent to it: a question through the host's question
-tool is refused while the state reads `managed`, and once the state names
-somebody the question runs and is marked open. The next human message is
-its answer, so the prompt hook resets the state to `managed` and says so
-once on stderr. A state set by hand with no question open is left as it is.
+A question needs no setting: when the guard admits abcd's question through
+the host's question tool, it sets the state from the question's chip
+(Product to product-thinker, Tech and Setup to facilitator) and marks the
+question open. The answer resets the state to `managed` and says so once on
+stderr: the question tool's PostToolUse hook resets it when the answer comes
+back, and the prompt hook on the next human message where the host runs no
+PostToolUse. A state set by hand with no question open is left as it is.
 
 Where this machine has no status surface — no `~/.abcd.noindex/statusline.json`, or
 one with `disabled` set — the set form prints one line naming whose answer

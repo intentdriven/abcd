@@ -285,7 +285,12 @@ pause, and exits 0 with `next_eligible_at` in the result and `next` naming the
 time; an agent already started may still hand its receipt back. Before the
 run's `next_eligible_at` a `step` is refused as a pause (exit 3) naming the
 time, and nothing changes; at or after it a new window opens and the stage
-proceeds.
+proceeds. A runner's rate-limit response ends the window early in the same way
+for every lane (`rate_limit` in the result, a pause already running kept): the
+lane it came from is checkpointed to its last commit, its agent's uncommitted
+work saved aside, and is handed to a fresh agent after the pause; every other
+lane in flight is checkpointed at its branch's head and its agents may still
+hand their receipts back.
 
 Without `--run`, both act on the one run in progress in this checkout, and are
 refused naming the runs when there are several. A refusal exits 2 (3 on a pause

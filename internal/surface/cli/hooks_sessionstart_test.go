@@ -28,7 +28,8 @@ import (
 // what is asserted is modelled; anything else in the manifest is ignored.
 type sessionStartHooks struct {
 	Hooks map[string][]struct {
-		Hooks []struct {
+		Matcher string `json:"matcher"`
+		Hooks   []struct {
 			Type string `json:"type"`
 			// Timeout is a pointer so an absent field (the host's per-event
 			// default) reads differently from a declared one.

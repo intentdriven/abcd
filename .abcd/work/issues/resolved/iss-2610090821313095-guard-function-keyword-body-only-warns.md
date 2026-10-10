@@ -5,7 +5,7 @@ slug: "guard-function-keyword-body-only-warns"
 severity: "minor"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-6h89-gjcg-3h3h, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/match.go"
@@ -16,6 +16,8 @@ impact: fix
 
 `abcd guard` only warns on a bash `function f { ...; }; f` whose body is a blocker, and the PreToolUse hook lets a warning run, so the function executes.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-6h89-gjcg-3h3h (draft, severity medium). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (lines at main 7549ca2d5): `function` is not in the reserved-word set the walk steps over before command position (internal/core/guard/match.go:158, `reserved`), so the keyword form falls to unrecognised-launcher while the POSIX form `f() { ...; }` has its body judged. The hook maps a warn to exit 1, which surfaces the message and lets the tool run; only a block (exit 2) stops it (internal/surface/cli/guard.go:455-466).
+
+Reproduction: `Defaults().Check("function f { git push --force origin main; }; f")` is warn / unrecognised-launcher; `Defaults().Check("f() { git push --force origin main; }; f")` is block / git-push-force. On /bin/bash 3.2.57, `/bin/bash -c "function f { touch $MARK; }; f"` creates the mark.

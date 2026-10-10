@@ -144,7 +144,9 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610071545380041` — Work about abcd itself goes to abcd as a report, never into a managed repository's own plans (draft)
 - `itd-2610091010348892` — abcdev.app shows the record of any public abcd-managed project, with abcd as the showcase (draft)
 - `itd-2610091016262335` — The product thinker and facilitator make a project's design decisions on abcdesign.app (draft)
-- `itd-2610090831227812` — A person's /abcd: list shows only the commands people use (draft)
+- `itd-2610091918433290` — Agents keep memory notes with /abcd:memory, recalled when they matter (draft)
+- `itd-2610100627454580` — An agent's text comes back from abcd's rewriter written for its reader and within its limits (draft; grows the question drafter)
+- `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on (draft; builds on itd-2609201925079472)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
