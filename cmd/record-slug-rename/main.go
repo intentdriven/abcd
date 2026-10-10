@@ -39,9 +39,11 @@
 //     rewrote in how many files, and every place an old slug still appears
 //     anywhere in the tracked tree afterwards, with the reason it was left.
 //
-// A second run over the committed result finds nothing to do. Exit codes: 0 done
-// (or a clean dry run); 1 a fault, or a refusal (a dirty tree, a name collision);
-// 3 done, with leftovers to read.
+// A second run over the committed result finds nothing to do. Exit codes: 0 done,
+// or a dry run (leftovers are a report to read, not a failure: most are prose
+// quoting an old slug, which names no file); 1 a fault, or a refusal (a dirty
+// tree, a name collision, a slug field that disagrees with its filename), with
+// nothing changed.
 package main
 
 import (
@@ -142,9 +144,6 @@ func main() {
 		os.Exit(1)
 	}
 	printReport(os.Stdout, rep, *apply)
-	if *apply && len(rep.Leftovers) > 0 {
-		os.Exit(3)
-	}
 }
 
 // run plans the rename and, with apply, carries it out.
@@ -236,6 +235,15 @@ func buildPlan(root string) ([]rename, error) {
 			if !ok || len(slug) <= recordid.MaxSlugLen {
 				continue
 			}
+			// A slug field that disagrees with the filename is refused here,
+			// before anything moves, so the rename is never left part way.
+			data, _, err := readText(root, rel)
+			if err != nil {
+				return nil, err
+			}
+			if _, field, ok := slugLine(data); ok && field != slug {
+				return nil, fmt.Errorf("%s: its slug field reads %q, not the filename's %q; record-lint refuses that record already, so fix it before renaming (nothing was changed)", rel, field, slug)
+			}
 			newSlug := recordid.CapSlug(slug, recordid.MaxSlugLen)
 			idPart := strings.TrimSuffix(base, slug+".md")
 			plan = append(plan, rename{
@@ -289,33 +297,37 @@ func gitStage(root string) error {
 // rewriteSlugField sets the `slug:` line of the record's leading frontmatter
 // block to the new slug, keeping the line's quoting. A record with no such line
 // is left as it is: the field is optional for some families, and absence is
-// not disagreement.
+// not disagreement. buildPlan has already held the field to the filename.
 func rewriteSlugField(root string, r rename) error {
 	data, _, err := readText(root, r.NewRel)
 	if err != nil {
 		return err
 	}
-	lines := strings.SplitAfter(string(data), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	i, _, ok := slugLine(data)
+	if !ok {
 		return nil
 	}
-	for i := 1; i < len(lines); i++ {
-		line := lines[i]
-		if strings.TrimSpace(line) == "---" {
-			return nil
-		}
-		rest, ok := strings.CutPrefix(line, "slug:")
-		if !ok {
-			continue
-		}
-		val := strings.TrimSpace(rest)
-		if strings.Trim(val, `"'`) != r.OldSlug {
-			return fmt.Errorf("%s: its slug field reads %q, not the filename's %q; fix the record before renaming it (the rename stopped part way: reset the tree)", r.NewRel, val, r.OldSlug)
-		}
-		lines[i] = strings.Replace(line, r.OldSlug, r.NewSlug, 1)
-		return writeKeepingMode(root, r.NewRel, []byte(strings.Join(lines, "")))
+	lines := strings.SplitAfter(string(data), "\n")
+	lines[i] = strings.Replace(lines[i], r.OldSlug, r.NewSlug, 1)
+	return writeKeepingMode(root, r.NewRel, []byte(strings.Join(lines, "")))
+}
+
+// slugLine finds the `slug:` line of a record's leading frontmatter block and
+// returns its index among the record's lines and its value, unquoted.
+func slugLine(data []byte) (int, string, bool) {
+	lines := strings.SplitAfter(string(data), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0, "", false
 	}
-	return nil
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return 0, "", false
+		}
+		if rest, ok := strings.CutPrefix(lines[i], "slug:"); ok {
+			return i, strings.Trim(strings.TrimSpace(rest), `"'`), true
+		}
+	}
+	return 0, "", false
 }
 
 // idPartRe finds a candidate record-name prefix: a family tag and number, or an

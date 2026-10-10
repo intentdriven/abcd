@@ -197,3 +197,21 @@ func TestApplyRefusesADirtyTree(t *testing.T) {
 		t.Fatalf("a refused run moved a record: %v", err)
 	}
 }
+
+// TestPlanRefusesASlugFieldThatDisagrees: a record whose slug field is not its
+// filename's slug is refused before anything moves, so the rename is never
+// left part way.
+func TestPlanRefusesASlugFieldThatDisagrees(t *testing.T) {
+	root := fixture(t)
+	rel := ".abcd/development/decisions/adrs/0058-" + longADR + ".md"
+	if err := os.WriteFile(filepath.Join(root, rel), []byte("---\nid: adr-58\nslug: something-else\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-am", "drift")
+	if _, err := run(root, true); err == nil || !strings.Contains(err.Error(), "something-else") {
+		t.Fatalf("run = %v, want a refusal naming the disagreeing field", err)
+	}
+	if s := git(t, root, "status", "--porcelain"); s != "" {
+		t.Fatalf("a refused run changed the tree:\n%s", s)
+	}
+}
