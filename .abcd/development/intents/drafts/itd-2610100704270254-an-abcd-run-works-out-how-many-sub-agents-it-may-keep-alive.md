@@ -38,6 +38,7 @@ production_mode: hand-written
 - How does a run know an agent's class? The routing table names a tier per agent (itd-2609201916056194); an agent left at `host-decides` has no class until the host says which model it ran, so the draft must say what it counts as.
 - Does the budget replace the pacing intent's `pace.sub_agents` ceiling (itd-2609201925079472, two by default), or sit beside it with the lower of the two winning?
 - Does the machine's own config (`~/.abcd.noindex/config.json`), which the pace settings already read between the repository's and the bundled layer, apply here too, or only the repository's config over abcd's default?
+- What is this called? The rebuilt pacing lane adds a budget check that compares an estimate of agent runs with a runner's reported quota (abcd-a5, 2026-10-10), so calling this a sub-agent "budget" would give one word two meanings; the glossary entry is settled at planning.
 
 ## Decisions
 
