@@ -195,3 +195,14 @@ func TestBlockValueKeepsATripleBacktickSpanAProseLine(t *testing.T) {
 		}
 	}
 }
+
+func TestBriefSectionDocCleansItsPartialReason(t *testing.T) {
+	md := string(briefSectionDoc(SectionCoverage{
+		Name: "product/context", Status: StatusPartial,
+		Reason: "Found docs/<script>x.md and [a](http://example.com) <!--c",
+	}))
+	assertNoLiveHazard(t, "brief section doc reason", md)
+	if !strings.Contains(md, "Why partial: ") {
+		t.Errorf("partial brief section doc states no reason:\n%s", md)
+	}
+}
