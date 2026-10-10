@@ -5,7 +5,7 @@ slug: "scanner-tar-long-name-body-unscanned"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-jx54-228j-mf98, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/adapter/scanner/container.go"
@@ -16,6 +16,8 @@ impact: fix
 
 The secret scanner reports a tar archive as content-decoded while the bytes after the first NUL of a GNU long-name (`././@LongLink`, type L) body are consumed by the tar reader and never scanned, so a gzip member there ships.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-jx54-228j-mf98 (draft, severity high). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
-Evidence (lines at main 7549ca2d5): `decodeTar` scans only what `archive/tar.Reader.Next` returns (internal/adapter/scanner/container.go:787); `Next` consumes the type-L body, keeps the C string before the first NUL as the next name and discards the rest. `coverTarHeader` scans `h.Name` only (internal/adapter/scanner/container.go:848), and the counting reader has already consumed the hidden bytes, so the trailer check misses them. `scanRefusals` treats ContentDecoded as covered and does not refuse ContentUnverified (internal/core/launch/dryrun.go:269), so returning not-decoded is not a fix. Distinct from a private security report.
+Evidence (lines at main 7549ca2d5): `decodeTar` scans only what `archive/tar.Reader.Next` returns (internal/adapter/scanner/container.go:787); `Next` consumes the type-L body, keeps the C string before the first NUL as the next name and discards the rest. `coverTarHeader` scans `h.Name` only (internal/adapter/scanner/container.go:848), and the counting reader has already consumed the hidden bytes, so the trailer check misses them. `scanRefusals` treats ContentDecoded as covered and does not refuse ContentUnverified (internal/core/launch/dryrun.go:269), so returning not-decoded is not a fix. Distinct from GHSA-9wv7-88w3-f77m.
+
+Reproduction: hand-build a ustar archive (Go's tar.Writer refuses a manual type-L header). First header `././@LongLink`, typeflag L, body `readme.txt`, NUL, then a gzip of long filler plus a `ghp_` token (not a literal in the raw archive). Second header a regular `readme.txt` of `harmless`. Two zero blocks. Scan beside README.md: ContentDecoded lists the tar and HardFails is 0; gunzip of the bytes after the NUL returns the token.

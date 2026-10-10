@@ -15,4 +15,4 @@ resolution: "env and sudo now step every '=' operand before the command as an as
 impact: fix
 ---
 
-abcd guard allows a bash -c whose environment carries an exported function (a BASH_FUNC_<name>%% variable, through env): bash imports it at startup, so a function named like the -c command runs a blocker in its body although the -c payload is harmless. Sibling of the BASH_ENV finding iss-2610090821484829, found in the security-drain-2026-10-09 sweep; kept uncommitted until its fix lands.
+abcd guard allows a bash -c whose environment carries an exported function (a BASH_FUNC_<name>%% variable, through env): bash imports it at startup, so a function named like the -c command runs a blocker in its body although the -c payload is harmless. Reproduced at main 016c1510a: `env 'BASH_FUNC_true%%=() { pkill node; }' bash -c true` judges allow while `pkill node` blocks. Sibling of the BASH_ENV finding iss-2610090821484829, found in the security-drain-2026-10-09 sweep; kept uncommitted until its fix lands.

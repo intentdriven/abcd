@@ -5,7 +5,7 @@ slug: "implement-sync-merge-runs-repo-merge-driver"
 severity: "minor"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-486x-8h9p-pq5x, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/sync.go"
@@ -16,6 +16,8 @@ impact: fix
 
 The implement loop's lane sync merge (`git merge --no-ff` through `pickGit`) runs a repository-configured merge driver, which executes as the operator and writes the merge result git keeps, although the loop presents this merge as running no hook code.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-486x-8h9p-pq5x (draft, severity medium). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (lines at main 7549ca2d5): `syncLane` (internal/core/implement/loop/sync.go:66) merges with `pickGit(lane.Worktree, "merge", "--no-ff", "--no-edit", "-m", msg, merged)` (internal/core/implement/loop/sync.go:95). `pickGit` pins hooks, fsmonitor and quotePath and runs under ScrubbedEnv, so repo and global config stay (internal/core/implement/loop/pickcommit.go:71). `landStage` calls `syncLane` only while `lane.Landing` is nil (internal/core/implement/loop/land.go:131, :139). The other side can come from a planted `refs/remotes/origin/<default>`; no network remote is needed.
+
+Reproduction: on git 2.39.5, set `.git/info/attributes` to `* merge=evil` (or a committed `.gitattributes`) and `merge.evil.driver` to a script; point `refs/remotes/origin/<default>` at a commit editing a file the lane also edits; run `abcd implement step` until the lane reaches `syncLane` with no landing. The script runs, git reports success and the worktree file holds the script's output; the post-merge hook does not run. With no overlapping change the driver does not start.
