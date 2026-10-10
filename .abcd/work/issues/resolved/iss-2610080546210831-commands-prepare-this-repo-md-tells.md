@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610080546210831"
-slug: "commands-prepare-this-repo-md-tells-every-prepared"
+slug: "commands-prepare-this-repo-md-tells"
 severity: "minor"
 category: "inconsistency"
 source: "agent-finding"
