@@ -282,24 +282,56 @@ func modeMadeAbcds(st mode.State) string {
 		"; another tool's question asked now is held to abcd's rules."
 }
 
-// writeLimitsRefusal writes the refusal the host's deny carries: one
-// head line counting every part, then, when why is set, the one line saying
-// why a question without abcd's chip is abcd's, then one line per finding naming the tab, the
-// part, the value, the limit and the remedy, at most maxRefusalParts of them,
-// and one closing line counting the parts not named. Every line passes
-// termsafe.Sanitize, so no value the agent wrote reaches the terminal raw.
+// writeLimitsRefusal writes the refusal the host's deny carries: one head line
+// counting the parts that refuse, then, when why is set, the one line saying
+// why a question without abcd's chip is abcd's, then one line per refusing
+// finding naming the tab, the part, the value, the limit and the remedy, at
+// most maxRefusalParts of them, and one closing line counting the parts not
+// named. Every line passes termsafe.Sanitize, so no value the agent wrote
+// reaches the terminal raw.
+//
+// The rows limit alone never refuses (rowsOnly), so a rows finding is never
+// one of the parts to fix and is not counted among them
+// (iss-2610100626327722): listed among them, the agent read it as a cause and
+// cut a question the gate would have shown. It follows the refusing parts
+// instead, after rowsNotRefusingLine, bounded as they are. With no refusing
+// finding at all (a refusal for the mode alone) the head line is left out.
 func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
-	fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(findings))
+	var refusing, rows []question.Finding
+	for _, f := range findings {
+		if f.Rule == question.RuleRows {
+			rows = append(rows, f)
+		} else {
+			refusing = append(refusing, f)
+		}
+	}
+	if len(refusing) > 0 {
+		fmt.Fprintf(w, "Blocked by the abcd guard (question tool): %d part(s) of this question break abcd's asking rules; fix each and ask again.\n", len(refusing))
+	}
 	if why != "" {
 		fmt.Fprintln(w, why)
 	}
-	for _, f := range findings[:min(len(findings), maxRefusalParts)] {
+	for _, f := range refusing[:min(len(refusing), maxRefusalParts)] {
 		fmt.Fprintln(w, termsafe.Sanitize(f.String()))
 	}
-	if more := len(findings) - maxRefusalParts; more > 0 {
+	if more := len(refusing) - maxRefusalParts; more > 0 {
 		fmt.Fprintf(w, "... and %d more part(s); fix these and ask again to see the rest.\n", more)
 	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintln(w, rowsNotRefusingLine)
+	for _, f := range rows[:min(len(rows), maxRefusalParts)] {
+		fmt.Fprintln(w, termsafe.Sanitize(f.String()))
+	}
+	if more := len(rows) - maxRefusalParts; more > 0 {
+		fmt.Fprintf(w, "... and %d more tab(s) over the rows limit.\n", more)
+	}
 }
+
+// rowsNotRefusingLine opens the rows findings a refusal names but does not
+// refuse on.
+const rowsNotRefusingLine = "The rows limit does not refuse on its own: with only the rows finding(s) below, this question would have been shown, and a narrow window might cut it."
 
 // questionFailOpen is the gate's failOpen: exit 1, which lets the question run
 // and keeps the warning in front of a human.

@@ -153,7 +153,12 @@ flow, and never tells the agent to ask again, because the person may already
 have answered. A refusal for that question was a redraft of a question the
 person was ready to answer, and a tab cut at the foot of a short window costs
 less. Beside any other finding, or while the mode gate refuses, the rows
-finding is named in the deny with the rest. A question with no abcd chip,
+finding is named in the deny but is not one of the parts to fix
+(iss-2610100626327722): the head line counts only the findings that refuse,
+and the rows findings follow them, bounded the same way, under one line saying
+the rows limit does not refuse on its own and the question would have been
+shown. Listed among the parts to fix, it read as a cause, and the agent cut a
+question the gate would have shown. A question with no abcd chip,
 abcd's only because the mode names somebody, carries one line under the head
 line saying so, naming the mode's person, so an agent whose question another
 tool wrote does not loop on it. The hook refuses and never

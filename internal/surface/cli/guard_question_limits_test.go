@@ -136,6 +136,11 @@ func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines
 	}
 	more := 0
 	for _, l := range all[1:] {
+		if strings.HasPrefix(l, rowsNotRefusingPrefix) {
+			// The rows findings that follow are named but refuse nothing
+			// (iss-2610100626327722); rowsAfterRefusal reads them.
+			break
+		}
 		if m := moreLineRe.FindStringSubmatch(l); m != nil {
 			more, _ = strconv.Atoi(m[1])
 			continue
@@ -156,6 +161,34 @@ func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines
 		t.Errorf("the head line counts %s part(s), but %d finding line(s) and %d more follow:\n%s", n, len(parts), more, stderr)
 	}
 	return head, parts, lines
+}
+
+// rowsNotRefusingPrefix opens the line a refusal for another fault writes
+// before the rows findings it names but does not refuse on.
+const rowsNotRefusingPrefix = "The rows limit does not refuse on its own"
+
+// rowsAfterRefusal returns the parts a refusal names after its rows line: the
+// rows findings that are not a cause of the refusal. It returns nil when the
+// refusal has no rows line.
+func rowsAfterRefusal(reason string) (line string, parts []namedPart) {
+	all := strings.Split(strings.TrimRight(reason, "\n"), "\n")
+	for i, l := range all {
+		if !strings.HasPrefix(l, rowsNotRefusingPrefix) {
+			continue
+		}
+		line = l
+		for _, r := range all[i+1:] {
+			if m := findingLineRe.FindStringSubmatch(r); m != nil {
+				tab := 0
+				if strings.HasPrefix(m[1], "tab ") {
+					tab, _ = strconv.Atoi(strings.TrimPrefix(m[1], "tab "))
+				}
+				parts = append(parts, namedPart{Tab: tab, Part: m[2], Rule: m[3]})
+			}
+		}
+		break
+	}
+	return line, parts
 }
 
 func rulesNamed(parts []namedPart) []string {

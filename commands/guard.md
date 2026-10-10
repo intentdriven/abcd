@@ -101,7 +101,10 @@ line keeps the full count. The rows limit is the exception: a question whose
 only finding is that a tab runs past the rows limit is shown, and the hook tells
 the agent afterwards which tab ran over, by how much, and to draft the next
 question through the `abcd:question-drafter` agent, which counts rows the way
-the check does. A question with no abcd chip, held to the limits
+the check does. In a question refused for another part, a tab over the rows
+limit is not one of the parts to fix and the head line does not count it: it
+follows them, under a line saying the rows limit does not refuse on its own and
+that the question would have been shown. A question with no abcd chip, held to the limits
 because `/abcd:mode` names somebody, carries one more line under the head line
 saying so: another tool's question asked while the mode names somebody is held
 to abcd's rules. The hook refuses and never rewrites the question.
