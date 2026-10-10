@@ -48,7 +48,9 @@ planned and unbuilt. Until it ships the rule is applied by hand: a session that 
 worktree puts it under `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, the location
 [adr-2610031751065746](../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
 sets, a verifier's
-copy goes to `.abcd/.work.local/scratch/`, and a reviewer who sees a directory
+copy goes outside every working tree (the session's scratchpad or a directory
+under `~/.abcd.noindex/`), never `.abcd/.work.local/scratch/`, and a reviewer
+who sees a directory
 appear beside a checkout names it.
 
 **Promotion.** The intent's verbs promote the store half; a check that counts
