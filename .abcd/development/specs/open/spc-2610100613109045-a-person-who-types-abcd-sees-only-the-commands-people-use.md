@@ -52,7 +52,7 @@ into the named command and its own name goes, with no alias, under adr-40);
 | 3 | `banlist` | agents | agents | agents (P6) | hide | |
 | 4 | `build` | people | people, records | people (P1) | keep | |
 | 5 | `capture` | people | people, records | people (P1) | keep | |
-| 6 | `consult` | none | no verb (host-delegated) | merge into library (P4) | merge; page goes | Step 6. Runs `abcd source` today. |
+| 6 | `consult` | none | no verb (host-delegated) | merge into library (P4); people until then (decision 14) | step 1 writes `block: people`; merge; page goes | Step 1 writes the interim block, step 6 retires the page. Runs `abcd source` today. |
 | 7 | `dashboard` | agents | agents | people (P1, P5) | move to people | Step 1. |
 | 8 | `decide` | people | people, records | people (P1) | keep | |
 | 9 | `disembark` | people | people, portability | people (P1) | keep | |
@@ -65,7 +65,7 @@ into the named command and its own name goes, with no alias, under adr-40);
 | 16 | `identity` | agents | agents | agents (P1) | hide | |
 | 17 | `implement` | agents | agents | agents (P1) | hide | |
 | 18 | `inbox` | agents | agents | agents (P1) | hide | The first 2026-10-09 question named the inbox as typed by people; the placement after the inventory put it with the agents. |
-| 19 | `ingest` | none | no verb (host-delegated) | merge into library (P4) | merge; page goes | Step 6. Runs `abcd source add` today. |
+| 19 | `ingest` | none | no verb (host-delegated) | merge into library (P4); people until then (decision 14) | step 1 writes `block: people`; merge; page goes | Step 1 writes the interim block, step 6 retires the page. Runs `abcd source add` today. |
 | 20 | `intent` | people | people, records | people (P1) | keep | `intent prepass`, `intent audit ingest` and `intent consistency ingest` keep their agents-block lines (the 2026-10-09 ruling on agent-only steps). |
 | 21 | `lab` | agents | agents | people (P1) | move to people | Step 1. |
 | 22 | `launch` | people | people, release | people (P1) | keep; changelog merges in as a preview | Step 3. |
@@ -73,7 +73,7 @@ into the named command and its own name goes, with no alias, under adr-40);
 | 24 | `memory` | people | people, records | merge into library (P4) | merge; page and verb go | Step 5. The name is free afterwards; itd-2610091918433290, a draft, gives it to memory notes. |
 | 25 | `mode` | agents | agents | agents (P3) | hide | |
 | 26 | `peers` | agents | agents | agents (P3) | hide | |
-| 27 | `prepare-this-repo` | none | no verb (host-delegated) | fold into `ahoy install` (P4) | fold; page goes | Step 4. |
+| 27 | `prepare-this-repo` | none | no verb (host-delegated) | fold into `ahoy install` (P4); people until then (decision 14) | step 1 writes `block: people`; fold; page goes | Step 1 writes the interim block, step 4 retires the page. |
 | 28 | `reading` | agents | agents | people (P1) | move to people | Step 1. |
 | 29 | `reflect` | people | people, release | agents (P1) | move to agents; hide | Step 1. |
 | 30 | `report` | agents | agents | agents (P4) | hide | Asking permission before it files (iss-2610091903077581) is separate work. |
@@ -81,7 +81,7 @@ into the named command and its own name goes, with no alias, under adr-40);
 | 32 | `site` | agents | agents | agents (P1) | hide | |
 | 33 | `source` | people | people, records | merge into library (P4, after P1 deferred it) | merge; page and verb go | Step 5. |
 | 34 | `update` | people | people, set-up | people (P1) | keep | |
-| 35 | `version` | none | no verb (the root's `--version`) | retire; the version shows on the board (P4) | retire; page goes | Step 2. `abcd --version` still answers. |
+| 35 | `version` | none | no verb (the root's `--version`) | retire; the version shows on the board (P4); people until then (decision 14) | step 1 writes `block: people`; retire; page goes | Step 1 writes the interim block, which keeps the page visible as it is today; step 2 retires the page. `abcd --version` still answers. |
 | — | `changelog` | no page | agents (names `commands/launch.md`) | merge into launch as a preview (P4) | merge; verb goes | Step 3. |
 | — | `rules` | no page | people, set-up | agents (P4) | move to agents | Step 1. Its agents-block line names `commands/ahoy.md`, which installs the rule loader (decision 2). P4 supersedes itd-146's criterion that kept it on the person's list (decision 3). |
 | — | `spec` | no page | people, records | agents (P4) | move to agents | Step 1. Its agents-block line names `commands/intent.md` (decision 2). P4 supersedes itd-146 here too (decision 3). |
@@ -144,7 +144,7 @@ intent lists them:
 | A6, the table names every page, and only merged pages leave | This section; the steps delete only the six pages above. |
 | A7, before and after captures attached | Step 1 takes the before capture; step 8 the after. |
 | A8, the docs set the library beside memory notes | Waits on open question 12, for the product thinker. Step 7 builds everything else, and the close waits on the answer. |
-| A9, the board shows the version and `/abcd:version` is gone | Step 2. |
+| A9, the board shows the version and the retired `/abcd:version` is gone | Step 2. |
 | A10, launch previews the changelog and `changelog` is gone | Step 3. |
 | A11, `ahoy install` does what prepare-this-repo did | Step 4. |
 | A12, `library` does what the four did, and the four names are gone | Steps 5 and 6. |
@@ -174,7 +174,10 @@ the smoke and the gate read a page's keys the same way.
 Two new tests in `internal/surface/cli`:
 
 - **`TestCommandPagesMatchTheMenu`** walks `commandFileBodies`. Every page
-  declares `block:`, either `people` or `agents`. A `people` page carries no
+  declares `block:`, either `people` or `agents`. The four pages with no
+  `block:` today (consult, ingest, prepare-this-repo and version) get
+  `block: people` in step 1 and keep it until their own step deletes them
+  (decision 14). A `people` page carries no
   `user-invocable` key. An `agents` page carries `user-invocable: false` and
   nothing else in that key. Each failure names the page and the defect. The
   board page `abcd.md` is in the walk with `block: people`. A synthetic page
@@ -231,11 +234,12 @@ the surface diff never reads a placement as a break (04-surfaces/README.md,
 
 ### The version on the board; `/abcd:version` retires
 
-`/abcd:version` runs `abcd --version --json` and relays it. Step 2 deletes the
-page and puts the version on the board, in every place a person reads the
-board: bare `abcd` in a terminal, the markdown form `commands/abcd.md` pastes,
-and `--json`. `abcd --version` is untouched and still answers alone
-(`TestRootVersionFlagPrintsWhatVersionPrinted` passes unchanged). The board
+`/abcd:version`, the page step 2 retires, runs `abcd --version --json` and
+relays it. Step 2 deletes the page and puts the version on the board, in every
+place a person reads the board: bare `abcd` in a terminal, the markdown form
+`commands/abcd.md` pastes, and `--json`. `abcd --version` is untouched and
+still answers alone (`TestRootVersionFlagPrintsWhatVersionPrinted` passes
+unchanged). The board
 reads the version from the same `core.VersionInfo` the flag reports. It
 reads no network and adds no subprocess, under adr-38. The version is the
 board's last line, in both views and both forms (for example `abcd v0.13.4`),
@@ -249,9 +253,9 @@ resolution, and what to do when no binary resolves. The update check stays on
 `commands/update.md`. `version` leaves `pagesWithNoVerb`. Its index entry,
 registry row 12 and chapter `12-version.md` leave the brief, and the root's
 generated appendix in `08-abcd.md` keeps listing `--version`.
-`help_truth_test.go` checks a network sentence in `commands/version.md`, so it
-is repointed at the page that now carries it. `README.md` stops naming
-`/abcd:version`.
+`help_truth_test.go` does not read `commands/version.md`, but its failure
+message names version.md; repoint the message at the page that now carries
+the network sentence. `README.md` stops naming the retired `/abcd:version`.
 
 ### `changelog` merges into launch as a preview
 
@@ -324,9 +328,9 @@ two packages: the store, the redactor and the guard checks are not touched,
 only the front door and the user-facing strings that name a verb. Every
 sub-verb keeps its name (decision 7): any rename beyond the merges is out of
 the intent's scope. The memory store's `ingest` (distil into pages) then sits
-beside the corpus's `add` (register a document), while the retired
-`/abcd:ingest` meant the second. Step 5's agent files a capture recording that
-double meaning, and renames nothing.
+beside the corpus's `add` (register a document), while
+the retired `/abcd:ingest` meant the second. Step 5's agent files a capture
+recording that double meaning, and renames nothing.
 
 Bare `library` renders both halves: the corpus and the checkout's memory
 store. A half that cannot be read is one line saying so and naming what would
@@ -425,14 +429,47 @@ spelling and expects cobra's unknown-command refusal, in the style of
 `staleusage.go` names what replaced each old verb, rather than calling the
 binary stale for not knowing it. That is the existing mechanism for a token
 the binary does not register, and it is not an alias: the command still
-refuses. The five page names (`/abcd:version`, `/abcd:prepare-this-repo`,
-`/abcd:consult`, `/abcd:ingest`, `/abcd:source`) and `/abcd:memory` disappear
-from the plugin with their files. Step 7 adds the retired names nothing
-reuses to record-lint's `banned_tokens`, with an allow context that historical
-records carry: `/abcd:consult`, `/abcd:ingest`, `/abcd:prepare-this-repo`,
-`/abcd:version`, `/abcd:source`, `abcd source` and `abcd changelog`.
-`/abcd:memory` and `abcd memory` are left out, because itd-2610091918433290
-reuses them (decision 11).
+refuses. Five plugin pages retire with their files: version,
+prepare-this-repo, consult, ingest and source. The memory page goes too, and
+itd-2610091918433290 later gives its name to memory notes.
+
+Step 7 adds one entry to record-lint's `banned_tokens` (decision 11). It bans
+only the `/abcd:` spellings of the five retired page names, which nothing
+reuses. Written in a fence, which the ban does not scan:
+
+```json
+{
+  "id": "retired-plugin-pages",
+  "pattern": "/abcd:(consult|ingest|prepare-this-repo|version|source)\\b",
+  "message": "a retired plugin page (itd-2610090831227812): the version shows on the board, prepare-this-repo is ahoy install, and consult, ingest and source are library",
+  "severity": "blocker",
+  "successor": "/abcd:abcd (version), /abcd:ahoy install (prepare-this-repo), /abcd:library (consult, ingest, source)",
+  "allow_context": ["historical", "retire", "^ +evidence: [^ ]+:[0-9]+ — \""]
+}
+```
+
+There is no per-record escape. `allow_context` is a list of regular
+expressions (`BannedToken.AllowContext` in `internal/core/lint/config.go`),
+and `checkBannedTokens` in `internal/core/lint/lint.go` tries them against the
+one line that holds the banned spelling: a match suppresses that line's finding
+and no other. So a record that keeps a retired spelling as history says so on
+the same line, with `historical` or a word on the stem `retire` (retired,
+retires, retirement). That is the inline-word escape the existing bans use:
+`historical` on most entries, and `retired` beside it on
+`retired-promote-back-links`. A quoted audit-evidence line cannot take a word
+without misquoting its source, so the entry carries the evidence-line pattern
+`retired-promote-back-links` already carries. The research tree and superseded
+intents are exempt paths and need nothing. This spec's own lines that name a
+retired slash spelling each carry one of the words, so it passes the ban it
+orders.
+
+The bare command-line spellings `abcd source` and `abcd changelog` are not
+banned. They run through the brief and the records as prose about the command
+line, and 69 lines under `.abcd/development` carry one today with neither
+word on the line; banning them would spend step 7 on records no reader is
+misled by. The unknown-command tests and the stale-usage notes guard those
+spellings instead. `/abcd:memory` and `abcd memory` are left out, because
+itd-2610091918433290 reuses them (decision 11).
 
 ### Pages, docs and the brief that change
 
@@ -499,10 +536,11 @@ it:
 
 1. The menu follows the ruling: agents' pages are hidden, and the eight verbs that change sides move
    - packages: commands (the frontmatter of all thirty-five pages), internal/core/launch (the exported page-frontmatter reader), internal/surface/cli (helpgroups.go, helpgroups_test.go, consolidate_test.go, a new menu test file), .abcd/development/release/surface.json, docs/reference/cli/commands.md, .abcd/development/brief/04-surfaces/README.md (the help table and its paragraph), .abcd/development/brief/02-constraints/04-naming.md where it states the cap
-   - tests: TestCommandPagesMatchTheMenu with its synthetic negative control, and TestPluginPersonListEqualsTheCLIs, each watched fail before the frontmatter and placement edits; TestPersonsListHoldsAtMostFifteenVerbs, TestPersonVerbsCountsEveryListedVerb and TestRulesAndSpecKeepTheirPlaces retired, each with its ruling in the commit; TestCommandPagesDeclareTheirBlock, TestPlacementChangesNoInvocation and TestPeopleBlockIsTheSameUnderBothHelps pass; the snapshot and reference regenerated with go generate ./internal/surface/cli
+   - tests: TestCommandPagesMatchTheMenu with its synthetic negative control, and TestPluginPersonListEqualsTheCLIs, each watched fail before the frontmatter and placement edits; TestPersonsListHoldsAtMostFifteenVerbs, TestPersonVerbsCountsEveryListedVerb and TestRulesAndSpecKeepTheirPlaces retired, each with its ruling in the commit; TestRootHelpListsThePersonsGroups (internal/surface/cli/helpgroups_test.go) rewritten to the new table, since it hardcodes the person's groups (Records with spec, Checks with lint, Release with reflect) and names reading among the agent verbs, so this step breaks it; TestCommandPagesDeclareTheirBlock, TestPlacementChangesNoInvocation and TestPeopleBlockIsTheSameUnderBothHelps pass; the snapshot and reference regenerated with go generate ./internal/surface/cli
    - before the change: take the BEFORE capture in a live host session at the step's base commit (what `/abcd:` lists, and what typing `/abcd:scribe` answers), and add it to this spec under a `## Live captures` heading after the Steps section, in the step's own pull request (A7)
    - placements per decisions 1 to 3: ideate under Records, reading and lab under Checks, dashboard under Set-up; rules names commands/ahoy.md and spec names commands/intent.md; TestRulesAndSpecKeepTheirPlaces retires because P4 supersedes itd-146's criterion
    - drain.md's frontmatter gains the key only; its body belongs to the itd-82 lane, so coordinate the order of the two edits
+   - per decision 14: consult.md, ingest.md, prepare-this-repo.md and version.md, which carry no `block:` today, each gain `block: people` and no `user-invocable` key; steps 2, 4 and 6 delete them
 2. The board shows the installed version, and the version page retires
    - packages: internal/core/board, internal/surface/cli (cli.go board output, staleusage.go, surfaceparity_test.go, help_truth_test.go), commands/abcd.md, commands/version.md (deleted), README.md, .abcd/development/brief/04-surfaces (12-version.md deleted, README.md row 12 and index, 08-abcd.md), .abcd/development/brief/05-internals/08-skills.md (the enumeration), .abcd/development/brief/02-constraints/04-naming.md (the exemption list)
    - tests: TestBoardShowsTheVersion over the text form, the markdown form and --json, watched fail first; TestRootVersionFlagPrintsWhatVersionPrinted passes unchanged; the menu and parity tests pass with version gone from pagesWithNoVerb; the board's golden tests updated, with the first line still the label alone
@@ -510,7 +548,7 @@ it:
    - per decision 4: the version is the last line of both views and both forms, and `--json` gains `version`
 3. Launch previews the cut, and the changelog verb goes
    - packages: internal/surface/cli (ship.go, the launch command in cli.go, launch_preflight.go, helpgroups.go, surfaceparity_test.go, the changelog tests moved), internal/core/surface (sentences.go), internal/core/release (the comment naming the verb), .abcd/rules.json (DOGFOODING), .abcd/development/brief/01-product/04-scope.md (the operator-internal list), commands/launch.md, commands/intent.md, agents/release-changelog-composer.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md, .abcd/development/brief/04-surfaces (04-launch.md, README.md operator-internal row), .abcd/development/brief/05-internals/08-skills.md, .abcd/development/brief/02-constraints/04-naming.md, .abcd/development/principles/pre-existing-is-not-a-defence.md (names the verb)
-   - tests: TestLaunchDryRunRendersTheCut (version, records, guard; a refused cut changes no exit code) and TestChangelogIsAnUnknownCommand, each watched fail first; the changelog tests rehomed onto the preview; rules_dogfooding_recall_test passes with changelog dropped
+   - tests: TestLaunchDryRunRendersTheCut (version, records, guard; a refused cut changes no exit code) and TestChangelogIsAnUnknownCommand, each watched fail first; the changelog tests rehomed onto the preview; rules_dogfooding_recall_test passes with changelog dropped; TestRootHelpListsThePersonsGroups, which hardcodes the person's group table and names changelog among the agent verbs it checks, has changelog dropped from that list (it would still pass, checking the absence of a verb that no longer exists)
    - peer findings folded into 04-launch.md: "The preview always exits 0" (line 15, repeated near line 229) is false, since `--baseline` naming a non-tag exits 2 and an undeclared artefact kind is refused; the README's changelog row says itd-73 and itd-67 are "both in intents/planned/" when both are shipped, which dissolves with the row
    - per decision 5: the preview is `launch --dry-run` rendering the deterministic cut
 4. ahoy install carries what prepare-this-repo did, and the page goes
@@ -519,8 +557,8 @@ it:
    - peer findings folded into 01-ahoy.md: it calls `status` a plugin-page alias for the bare form, but commands/ahoy.md has the binary refuse `status` like any other word, and `abcd ahoy status` is an unknown command; its user-scope tree, declared the one inventory, leaves out oracle-routing.json, interviews/, cache-attestation and statusline.json, all of which the shipped code reads or writes and the 03-configuration.md symlink rule lists
    - per decision 6: a page-only fold; the binary and its refusals do not change
 5. One library verb carries the memory and source sub-trees, and the memory and source pages become the library page
-   - packages: internal/surface/cli (source.go and the memory builder in cli.go become one library front door, helpgroups.go, staleusage.go, the source and memory CLI tests renamed), internal/core/surface (sentences.go, examples.go), internal/core/memory and internal/core/source (user-facing strings only), internal/core/guard (defaults/guard.json, sourceflip_test.go), internal/core/ahoy (defaults/pre-commit, and detection of a committed hook naming the old verb as a gap that install rewrites), .githooks/pre-commit, internal/core/banlist (hook_sources_test.go), .abcd/rules.json (DOGFOODING), commands/library.md (new), commands/memory.md and commands/source.md (deleted), commands/consult.md and commands/ingest.md (repointed), commands/guard.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md, .abcd/development/brief/04-surfaces (07-memory.md and 33-source.md folded into a new library chapter, README.md rows, index and the library-and-memory section), .abcd/development/brief/05-internals (07-memory.md, 08-skills.md), .abcd/development/brief/02-constraints/04-naming.md, .abcd/development/brief/01-product/04-scope.md (the memory line)
-   - tests: TestLibraryCarriesEveryMemoryAndSourceSubVerb and TestMemoryAndSourceAreUnknownCommands, watched fail first; the guard fixtures moved to `abcd library ledger --flip` and watched fail against the old registry entry; hook_sources_test driven through `library sync-banlist`; TestBareLibraryRendersBothHalves (no corpus inside a checkout renders the memory half and a corpus line; refuses only when neither half reads) and TestAhoyReportsAHookNamingTheOldVerb, each watched fail first; the menu, parity, sentence, appendix and dogfooding tests pass after go generate ./internal/surface/cli
+   - packages: internal/surface/cli (source.go and the memory builder in cli.go become one library front door, helpgroups.go, staleusage.go, banlist.go:71 and barerender.go:48, which name `abcd source sync-banlist` and `abcd source init`, the source and memory CLI tests renamed), internal/core/surface (sentences.go, examples.go), internal/core/memory and internal/core/source (user-facing strings only), internal/core/guard (defaults/guard.json, sourceflip_test.go), internal/core/ahoy (defaults/pre-commit, and detection of a committed hook naming the old verb as a gap that install rewrites), .githooks/pre-commit, internal/core/banlist (hook_sources_test.go), .abcd/rules.json (DOGFOODING), commands/library.md (new), commands/memory.md and commands/source.md (deleted), commands/consult.md and commands/ingest.md (repointed), commands/guard.md, commands/banlist.md (line 127 names `abcd source sync-banlist`), .abcd/development/release/surface.json, docs/reference/cli/commands.md, .abcd/development/brief/04-surfaces (07-memory.md and 33-source.md folded into a new library chapter, README.md rows, index and the library-and-memory section), .abcd/development/brief/05-internals (07-memory.md, 08-skills.md), .abcd/development/brief/02-constraints/04-naming.md, .abcd/development/brief/01-product/04-scope.md (the memory line)
+   - tests: TestLibraryCarriesEveryMemoryAndSourceSubVerb and TestMemoryAndSourceAreUnknownCommands, watched fail first; the guard fixtures moved to `abcd library ledger --flip` and watched fail against the old registry entry; hook_sources_test driven through `library sync-banlist`; TestBareLibraryRendersBothHalves (no corpus inside a checkout renders the memory half and a corpus line; refuses only when neither half reads) and TestAhoyReportsAHookNamingTheOldVerb, each watched fail first; TestRootHelpListsThePersonsGroups rewritten, since its Records row names memory and source, which become library, so this step breaks it; the menu, parity, sentence, appendix and dogfooding tests pass after go generate ./internal/surface/cli
    - most of the diff is renames and moves; if the non-move lines pass about 800, split the strings in internal/core, or the ahoy hook gap, out as a step of its own that changes no verb
    - per decisions 7, 8 and 13: every sub-verb keeps its name; bare library renders both halves; ahoy reports and install rewrites a hook naming the old verb
    - the step's agent files a capture recording that `ingest` now means distil, while the retired `/abcd:ingest` meant register
@@ -530,12 +568,13 @@ it:
    - peer findings folded into 08-skills.md, which this step rewrites: "The release payload declares all four kinds" contradicts .abcd/config/launch-payload.json and the chapter's own later paragraph (no skills directory); "Five verbs have a Go verb and no command page" leaves out statusline; "Three command pages carry no Go verb" leaves out version (moot once step 2 lands); "Two of those three call no part of the binary" is false, since consult and ingest both run `abcd source` (moot once this step lands); the enumeration is rewritten from the tree as it stands after this step
    - per decisions 9 and 10: `--private` and `--public`, `--confidential` gone with no alias, stored names unchanged; the two stores stay unconnected
 7. The user-facing and brief sweep, and the library beside memory notes once open question 12 is answered
-   - packages: docs/explanation (the library and memory comparison, A8, only once open question 12 is answered), docs/reference/terminology.md, docs/how-to (an upgrade guide for the breaking release, on the precedent of upgrade-to-v0.13.0.md, naming each retired command and its successor, and the `ahoy install` run that rewrites a pre-commit hook naming the old verb), docs/how-to/README.md, mkdocs.yml, README.md, .abcd/development/brief/01-product/04-scope.md, .abcd/development/brief/02-constraints/04-naming.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/brief/glossary (library and memory-note entries, if they name a retired command), .abcd/record-lint.json (banned_tokens per decision 11, and the allow-context marker on the historical records that name a banned spelling)
-   - tests: docs-lint, record-lint and site-render clean; a docs-currency review of the changed pages; the docs page read against the brief's library-and-memory table so both say the same thing
+   - packages: docs/explanation (the library and memory comparison, A8, only once open question 12 is answered), docs/reference/terminology.md, docs/how-to (an upgrade guide for the breaking release, on the precedent of upgrade-to-v0.13.0.md, naming each retired command and its successor, and the `ahoy install` run that rewrites a pre-commit hook naming the old verb), docs/how-to/README.md, mkdocs.yml, README.md, .abcd/development/brief/01-product/04-scope.md, .abcd/development/brief/02-constraints/04-naming.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/brief/glossary (library and memory-note entries, if they name a retired command), .abcd/record-lint.json (the one `retired-plugin-pages` entry in banned_tokens, per decision 11), and the lines that ban finds: .abcd/development/brief/04-surfaces/16-lint.md, .abcd/development/brief/05-internals/03-configuration.md, .abcd/development/principles/script-first-mvp.md, the planned intent itd-2610090831227812 and the draft itd-2609292108089653
+   - tests: record-lint with the new entry watched fail on the lines below before they are edited, then clean; docs-lint and site-render clean; a docs-currency review of the changed pages; the docs page read against the brief's library-and-memory table so both say the same thing
    - peer findings folded into 02-constraints/04-naming.md: the ahoy row lists install, uninstall and remote apply as the write paths, but connect and credential write too; the exemption list leaves out build, dashboard, drain, implement, inbox, lab, mode, peers, report, scribe, source and statusline, and is rewritten from the post-merge set; the task_classes enum omits intent_consistency, which agents/intent-auditor.md declares; "no cross-check test reads the field" is false, since agentcontract.go checks task_classes is present (not its values); "two verbs refuse instead of rendering" is stale, as launch, decide and build all refuse bare
    - peer findings folded into 04-surfaces/README.md: the four agents said to "serve no verb, and no command page calls on them" are partly called (build.md and the loop's validator roles dispatch ruthless-reviewer and security-reviewer; guard.md and intent.md call question-drafter; only sota-researcher is uncalled); the claim that a registered sub-command must have a row leaves out the exemption of hidden subtrees (launch smoke-pages, dashboard serve; subverbs.go); the agents paragraph cites iss-110, a resolved issue about a different defect, as the tracker of an open gap
    - peer finding folded into 01-product/04-scope.md: it calls `/abcd:reflect` "a design target (itd-24, planned)", but itd-24 is in shipped/, so it reads "(itd-24, shipped)"; the same page's `/abcd:memory` line and its list of operator-internal verbs (which names `changelog`, `rules` and `spec`) are kept true by steps 3 and 5 and checked again here
-   - builds everything except A8, which waits on open question 12; the bans follow decision 11
+   - the ban's line count, measured at 9d990d87f with the entry applied to a scratch copy of the config: 53 lines under .abcd/development, outside the exempt paths, name a retired slash spelling with neither allow word on the line. Eight were this spec's, which now carry the word. Thirty-eight sit in the chapters and paragraphs steps 2 to 6 delete, fold or rewrite (12-version.md 2, 13-consult.md 6, 14-ingest.md 9, 15-prepare-this-repo.md 6, 33-source.md 3, 04-surfaces/README.md 9, 05-internals/08-skills.md 3), and those steps must leave none behind in what they write. That leaves seven lines in six files for step 7, and it edits six of them: 16-lint.md's opening paragraph (one line) and two lines of 03-configuration.md's section "The two `.abcd/` scopes" are forward-looking and name the successor; script-first-mvp.md's live-instance paragraph (one line) names the successor or says the pages retired; the intent's A9 line (77) and the draft's line 84 gain the word. The seventh, itd-147's audit-evidence line 271, is a verbatim quote the evidence-line pattern covers with no edit. A line steps 2 to 6 add or leave is theirs to fix; record-lint names it
+   - builds everything except A8, which waits on open question 12; the ban follows decision 11
 8. The live captures, the doc-fidelity review and the close
    - packages: this spec (the AFTER capture under Live captures), .abcd/development/intents (the intent moves to shipped by the close), .abcd/work/issues (iss-2610090831317531 resolved, if it is still open)
    - tests: the AFTER capture in a live host session at the merged tip: what `/abcd:` lists (the fifteen, A1); typing `/abcd:guard` in full gets the host's refusal (A4); an agent asked in plain words runs `/abcd:guard` and it behaves as before (A2); a docs review recorded for HEAD with go run ./cmd/abcd docs fidelity record; then go run ./cmd/abcd spec close spc-2610100613109045 with a `Delivers: itd-2610090831227812` trailer (the intent already declares `impact: breaking`, so no --impact is passed)
@@ -544,14 +583,15 @@ it:
 
 ## Footprint
 
-- packages: commands, agents/release-changelog-composer.md, internal/core/launch, internal/core/board, internal/core/surface, internal/core/release, internal/core/memory, internal/core/source, internal/core/guard, internal/core/ahoy, internal/core/banlist, internal/core/implement/loop, internal/core/repolint, internal/core/lint, internal/surface/cli, .githooks/pre-commit, .abcd/rules.json, .abcd/record-lint.json, .abcd/development/release/surface.json, docs/reference, docs/explanation, docs/how-to, mkdocs.yml, README.md, .abcd/development/brief/01-product, .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/glossary, .abcd/development/principles/pre-existing-is-not-a-defence.md
+- packages: commands, agents/release-changelog-composer.md, internal/core/launch, internal/core/board, internal/core/surface, internal/core/release, internal/core/memory, internal/core/source, internal/core/guard, internal/core/ahoy, internal/core/banlist, internal/core/implement/loop, internal/core/repolint, internal/core/lint, internal/surface/cli, .githooks/pre-commit, .abcd/rules.json, .abcd/record-lint.json, .abcd/development/release/surface.json, docs/reference, docs/explanation, docs/how-to, mkdocs.yml, README.md, .abcd/development/brief/01-product, .abcd/development/brief/02-constraints, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/glossary, .abcd/development/principles/pre-existing-is-not-a-defence.md, .abcd/development/principles/script-first-mvp.md, .abcd/development/intents (the planned intent's A9 line and draft itd-2609292108089653)
 - tests: TestCommandPagesMatchTheMenu, TestPluginPersonListEqualsTheCLIs, TestBoardShowsTheVersion, TestLaunchDryRunRendersTheCut, TestChangelogIsAnUnknownCommand, TestLibraryCarriesEveryMemoryAndSourceSubVerb, TestMemoryAndSourceAreUnknownCommands, TestBareLibraryRendersBothHalves, TestAhoyReportsAHookNamingTheOldVerb, TestLibraryAddAsksTheClassAtATerminal, TestLibraryAddRefusesWithoutAClassOffATerminal, TestLibraryAddPrivateIsNotAsked, TestLibraryAddPublicIsNotAsked, TestConfidentialFlagIsUnknown, the library page's ask test, the loop-brief hint test, the guard flip fixtures under library, hook_sources_test under library sync-banlist, the onboarding and persona tests on commands/ahoy.md; TestPersonsListHoldsAtMostFifteenVerbs, TestPersonVerbsCountsEveryListedVerb and TestRulesAndSpecKeepTheirPlaces retired; the snapshot, CLI reference, appendix and sentence drift tests after go generate ./internal/surface/cli; record-lint, docs-lint and site-render clean; the before and after live captures
 
 ## Decisions (technical facilitator, 2026-10-10)
 
 The technical facilitator ruled on twelve of the thirteen questions this spec
 first left open (numbered as first written, so 12 is missing), in an autonomous run the person authorised on 2026-10-10.
-Each ruling is folded into the design and the step it affects.
+Decision 14 closes a gap an independent review of this spec found the same
+day. Each ruling is folded into the design and the step it affects.
 
 - **1. The CLI groups.** ideate and library go under Records, reading and lab
   under Checks, and dashboard under Set-up. Grounds: least change, and Checks
@@ -589,13 +629,30 @@ Each ruling is folded into the design and the step it affects.
   "when the person did not say".
 - **10. The two stores.** Two stores under one verb, unconnected. Grounds: least
   change.
-- **11. Banning retired names.** Ban the retired names nothing reuses, with an
-  allow context for historical records; leave `/abcd:memory` and
-  `abcd memory` out. Grounds: itd-2610091918433290 reuses them.
+- **11. Banning retired names.** Ban only the `/abcd:` spellings of the five
+  retired page names nothing reuses (consult, ingest, prepare-this-repo,
+  version and source), as one `banned_tokens` entry whose allow context is
+  the words `historical` and `retire` and the audit-evidence line pattern. The
+  allow context is per line, so each historical line that keeps a retired
+  spelling carries one of the words on that line; there is no per-record
+  escape. The bare `abcd changelog` and `abcd source` CLI spellings are not
+  banned, to keep step 7's line budget sane (69 lines carry them today), and
+  `/abcd:memory` and `abcd memory` are left out. Grounds:
+  itd-2610091918433290 reuses the memory names, and the unknown-command tests
+  and stale-usage notes guard the CLI spellings.
 - **13. Hooks already committed in managed repositories.** `ahoy` reports a hook
   that names the old verb as a gap, and `ahoy install` rewrites it; the
   upgrade guide says so too. The `abcd.sourcesBinary` git setting keeps its
   name. Grounds: renames are out of scope.
+- **14. The four pages that leave, until they leave.** consult, ingest,
+  prepare-this-repo and version carry no `block:` today, and the menu test
+  requires one on every page. Step 1 writes `block: people` on each, and the
+  step that deletes the page retires it (step 2 for version, step 4 for
+  prepare-this-repo, step 6 for consult and ingest). Grounds: the intent's
+  2026-10-09 entry classes consult and ingest by the audit on the same rule
+  as every page, that a command a person needs is a person's; prepare-this-repo
+  folds into `ahoy install`, a person's command; and version keeps its current
+  visibility on the menu until step 2 retires it.
 
 ## Open Questions
 
