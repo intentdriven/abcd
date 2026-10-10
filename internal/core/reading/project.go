@@ -103,14 +103,21 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	}
 
 	// The heading signal, over the fence-aware section scan so a `#` inside a
-	// code block is not mistaken for one.
+	// code block is not mistaken for one. A title is matched through
+	// namesExcludedHeading, the one equality the verifier also uses: an exact
+	// lookup here left `## Open questions` in place for the verifier, which
+	// folds case, to refuse, failing the whole assembly over one record's
+	// spelling (iss-2610101819067941).
 	body, offset := site.StripFrontmatter(doc)
 	sections, err := site.Sections(rel, body, offset)
 	if err != nil {
 		return "", fmt.Errorf("reading: reading the sections of %s: %w", rel, err)
 	}
 	for i, sec := range sections {
-		if sec.Level == 0 || !headings[normaliseHeadingTitle(sec.Title)] {
+		if sec.Level == 0 {
+			continue
+		}
+		if _, ok := namesExcludedHeading(normaliseHeadingTitle(sec.Title), headings); !ok {
 			continue
 		}
 		start, end := sectionSpan(sections, i, len(lines))
@@ -269,10 +276,12 @@ var (
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
 // ones, under the ONE equality this floor uses: a case fold, or the same
-// rendering. It exists so the three refusal paths — the section scan, the
-// indented ATX line, the setext underline — cannot drift apart on what "the same
-// heading" means. They did: the render comparison was added on the first path
-// only, which closed the class on one of three.
+// rendering. It exists so the redactor and every refusal path — the section
+// scan, the indented ATX line, the setext underline — cannot drift apart on what
+// "the same heading" means. They did: the render comparison was added on the
+// first refusal path only, which closed the class on one of three, and the
+// redactor kept an exact lookup, so a heading differing only in case was
+// refused rather than redacted (iss-2610101819067941).
 func namesExcludedHeading(title string, headings map[string]bool) (string, bool) {
 	for want := range headings {
 		if strings.EqualFold(title, want) || sameRendering(title, want) {

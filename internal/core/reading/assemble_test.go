@@ -730,20 +730,38 @@ func TestExcludedKeySurvivingRedactionRefusesTheFile(t *testing.T) {
 	}
 }
 
-// TestCaseVariantExcludedHeadingRefusesTheFile: the heading redaction matches a
-// title exactly, so another spelling of the same heading travels whole.
-func TestCaseVariantExcludedHeadingRefusesTheFile(t *testing.T) {
-	root := fixtureRepo(t)
-	writeFile(t, root, ".abcd/development/specs/open/spc-4-case-variant.md",
-		"---\nid: spc-4\n---\n\n# A spec\n\n## audit notes\n\n"+sentinelAuditNotes+"\n")
-	gitCommitAll(t, root)
-
-	_, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
-	if err == nil {
-		t.Fatal("a case-variant excluded heading was passed whole")
+// TestCaseVariantExcludedHeadingIsRedacted: the redactor and the verifier must
+// agree on what "the same heading" means. The redactor once looked a title up
+// exactly while the verifier folded case, so `## Open questions` was left in
+// place and then refused, and one record's lower-case heading failed the
+// assembly for the whole repository (iss-2610101819067941). A heading that
+// differs only in case is the excluded heading, so it is redacted: its section
+// stays behind and the rest of the file travels.
+func TestCaseVariantExcludedHeadingIsRedacted(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-EXCLUDED-SECTION"
+	cases := map[string]string{
+		"lower case":    "## audit notes\n\n" + sentinelAuditNotes + "\n",
+		"sentence case": "## Open questions\n\n" + sentinelAuditNotes + "\n",
+		"upper case":    "## WHY THIS MATTERS\n\n" + sentinelAuditNotes + "\n",
 	}
-	if !strings.Contains(strings.ToLower(err.Error()), "audit notes") {
-		t.Errorf("the refusal does not name the surviving heading: %v", err)
+	for what, section := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-case-variant.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\n"+kept+"\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: an excluded heading differing only in case was refused, not redacted: %v", what, err)
+			continue
+		}
+		text := bundleText(res.Bundle)
+		if strings.Contains(text, sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading differing only in case let its section travel", what)
+		}
+		if !strings.Contains(text, kept) {
+			t.Errorf("%s: the redaction took more than the excluded section; the text after it is missing", what)
+		}
 	}
 }
 
