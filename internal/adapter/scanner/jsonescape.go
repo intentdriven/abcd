@@ -42,13 +42,15 @@ import (
 // percent passes, and a layer that decodes nothing ends the walk.
 //
 // The percent spelling is the percent pre-pass's business (percent.go), and
-// the two do not compose: a JSON escape never carries a '%' sequence that a
-// percent decode would need unescaped first, and a percent-encoded JSON escape
-// is not a spelling any encoder that feeds the scanner writes.
+// lineViews alternates the two to a fixed point within four passes: a JSON
+// escape can spell the '%' of a percent escape, and a percent escape can spell
+// the backslash of a JSON one, so each decoder also reads the other's output
+// (iss-2610090821491948).
 
 // maxJSONDecodeLayers bounds the JSON-unescape walk: one layer for a
 // transcript line, a second for JSON quoted inside it (a tool result), a third
-// for slack. Each layer strictly shrinks the line, so the walk ends early on
+// for slack; the alternating chain (alternatingLayers) may reach a fourth when it
+// spends its passes on this decoder. Each layer strictly shrinks the line, so the walk ends early on
 // ordinary input. The pre-commit name guard, which is shell and cannot import
 // this, reads the same number of layers as its decode_layers, and
 // TestNameGuardHooksReadTheScannersJSONLayers holds the two equal.

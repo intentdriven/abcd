@@ -413,7 +413,19 @@ func NewRootCommand() *cobra.Command {
 	var launchDryRun, launchDeepSmoke, launchFetchBaseline bool
 	var launchBaseline string
 	launchCmd := &cobra.Command{
-		Use:  "launch",
+		Use: "launch",
+		Long: "Preview the release bundle and run the release gates with --dry-run; nothing is\n" +
+			"published.\n\n" +
+			"The dirty-tree gate compares the working tree with HEAD byte for byte. The repository's\n" +
+			"content filters (filter.<name>.clean, .smudge and .process) are switched off for that\n" +
+			"comparison, so no program a filter names runs. A filter the repository marks required\n" +
+			"(filter.<name>.required, which `git lfs install --local` sets) makes git refuse the\n" +
+			"comparison instead wherever the file timestamps git saved do not match the working\n" +
+			"tree (a copied or restored checkout, say): the gate then reports the tree unreadable,\n" +
+			"never clean.\n\n" +
+			"The comparison does not look inside a checked-out submodule, so uncommitted content\n" +
+			"inside one does not make the tree dirty and no program the submodule's own\n" +
+			"configuration names runs; a submodule moved to a different commit still does.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -3745,6 +3757,10 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						// home-relative, and the one repair for it
 						// (iss-2610050728100598).
 						fmt.Fprintf(w, "  worktree:    unlinked — %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
+					case ahoy.FilterRootsIgnoredGapID:
+						// Report-only too: the check the file failed and its
+						// repair (iss-2610091920437492).
+						fmt.Fprintf(w, "  filters:     %s %s\n", termsafe.Sanitize(g.Detail), termsafe.Sanitize(g.FixHint))
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {

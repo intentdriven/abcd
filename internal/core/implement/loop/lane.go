@@ -128,6 +128,36 @@ func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
 	}, nil
 }
 
+// loopWorktree refuses a lane whose recorded worktree is not the path
+// laneWorktree derives for the run and lane. The run's state file sits in the
+// gitignored local tier, where an archive of the checkout can carry a
+// hand-written one, so a stage that makes, runs or removes anything in the
+// lane's worktree, or hands it to an agent, takes the path from the
+// derivation and never from the state alone: the land stage trusted any
+// non-empty string and laid the close's local tier in a directory the state
+// named (iss-2610090821552801). stage labels the refusal.
+func loopWorktree(c Context, lane Lane, stage string) error {
+	_, err := derivedLaneWorktree(c.RepoRoot, c.State.RunID, lane, stage)
+	return err
+}
+
+// derivedLaneWorktree is the worktree the loop derives for lane, refusing a
+// lane whose state names any other path: the one answer to where a lane's
+// worktree is, which every stage that hands the path on, and the restart,
+// asks (loopWorktree, restartWorktree).
+func derivedLaneWorktree(repoRoot, runID string, lane Lane, stage string) (LaneWorktree, error) {
+	lw, err := laneWorktree(repoRoot, runID, lane.ID)
+	if err != nil {
+		return LaneWorktree{}, relabel(err, Stage(stage))
+	}
+	if lane.Worktree == "" || filepath.Clean(lane.Worktree) != filepath.Clean(lw.Path) {
+		return LaneWorktree{}, refuse(stage, "", lane.ID,
+			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
+			"the worktree stage makes it; restore the run's state file")
+	}
+	return lw, nil
+}
+
 // worktreeStage is the worktree stage's body. It finds what it made last time
 // before making anything: a worktree git already lists at the lane's path on
 // the lane's branch is the lane's, and is adopted; one on another branch, or

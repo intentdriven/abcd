@@ -108,7 +108,7 @@ type speculationBudget struct {
 var reservedEntryIDs = []string{
 	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
 	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
-	unknownProgramEntryID, ifsSplitEntryID,
+	unknownProgramEntryID, ifsSplitEntryID, scriptHazardEntryID, scriptWrittenEntryID, scriptUnreadEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at
@@ -200,7 +200,7 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 		expanded, sigs := []segment{cand}, []payloadSignal(nil)
 		if size := segmentBytes(cand); size <= budget.bytes {
 			budget.bytes -= size
-			expanded, sigs = expandPayloads([]segment{cand})
+			expanded, sigs = expandPayloads([]segment{cand}, 0)
 		} else {
 			truncated = true
 		}

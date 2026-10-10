@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/decide"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The store a `decide` mint writes into is the CHECKOUT's decision store,
@@ -241,5 +242,38 @@ func TestDecideNeverMintsFromTheRawWorkingDirectory(t *testing.T) {
 		t.Fatalf("%d decide mint(s) take a repo root that is not the resolved checkout root (%q):\n  %s\n"+
 			"every front door onto a repository-scoped record store resolves the checkout root first — see decideStoreRoot",
 			len(offenders), resolved, strings.Join(offenders, "\n  "))
+	}
+}
+
+// TestDecideRefusesACheckoutWhoseWorktreeSettingNamesAnAncestor is
+// iss-2610090821543020 at the front door: a copied checkout carrying
+// `core.worktree=../..` makes git name the checkout's PARENT as the toplevel,
+// and the mint laid the ADR store there, outside the checkout. The mint refuses
+// and writes nothing in the parent.
+func TestDecideRefusesACheckoutWhoseWorktreeSettingNamesAnAncestor(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	parent := realPath(t, t.TempDir())
+	co := filepath.Join(parent, "co")
+	if err := os.Mkdir(co, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitInitAt(t, co)
+	if out, err := gitutil.Run(co, "config", "core.worktree", "../.."); err != nil {
+		t.Fatalf("git config: %v: %s", err, out)
+	}
+	t.Chdir(co)
+
+	out, err := runCLIErr(t, "decide", "a decision minted under a widened worktree")
+	if err == nil {
+		t.Fatalf("`abcd decide` accepted the checkout's parent as the store root:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "git could not name the repository root") {
+		t.Errorf("the refusal does not say that git could not answer: %v", err)
+	}
+	if _, serr := os.Stat(filepath.Join(parent, ".abcd")); serr == nil {
+		t.Errorf("the mint laid a decision store in the checkout's parent %s", parent)
+	}
+	if _, serr := os.Stat(filepath.Join(co, ".abcd")); serr == nil {
+		t.Errorf("a refused mint still laid a decision store in the checkout")
 	}
 }

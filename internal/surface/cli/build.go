@@ -232,7 +232,10 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the\n" +
 			"falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and\n" +
 			"commits it there as the lane branch's first commit, record-only, before the brief; the\n" +
-			"receipt verifier does not count that commit as the implementer's. The checkout you run this\n" +
+			"receipt verifier does not count that commit as the implementer's. That commit runs no hook\n" +
+			"and is unsigned, even where your git configuration signs every commit. It does run the\n" +
+			"repository's content filters: staging the entry passes it through its clean filter, as\n" +
+			"Git LFS needs. The checkout you run this\n" +
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
 			"One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace\n" +
@@ -644,7 +647,13 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"time; a lane whose sibling landed\n" +
 			"since its base is synced first (the default branch merged in with a merge commit, never a\n" +
 			"rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;\n" +
-			"a sync counts no fix round.\n\n" +
+			"a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where\n" +
+			"your git configuration signs every commit, and the merge does not verify the signature of the\n" +
+			"commit it merges in. The merge is git's built-in merge on every path, whatever merge driver\n" +
+			"the repository configures or merge.default names, so a driver's program never runs. The\n" +
+			"merge does run the repository's content filters: each file it writes passes through its\n" +
+			"smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs\n" +
+			"the repository's own code.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, " + abcdhome.Display("worktrees/<root-sha>/<run-id>-<lane-id>") + ", on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
@@ -688,7 +697,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"declared fixed it runs `capture resolve` with the lane's commit, committing them on the\n" +
 			"lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model\n" +
 			"the lane's receipts reported (refused when one reported none), the repository's hooks\n" +
-			"running; it pushes the branch only once the\n" +
+			"running and the commit signed as your git configuration says; it pushes the branch only once the\n" +
 			"repository's preflight receipt names its head (the pre-push hook runs; nothing is\n" +
 			"skipped or forced); it opens the pull request through gh, with a body built from the\n" +
 			"records and passed through the outbound scrub, then re-reads the body the forge holds and\n" +

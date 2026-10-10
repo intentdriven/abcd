@@ -195,7 +195,18 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 		})
 	}
 
-	status, err := gitutil.Run(root, "status", "--porcelain", "--untracked-files=all", "--", reviewsSubdir)
+	// The repository's content filters are blanked: over receipts whose index
+	// stat no longer matches, git status re-hashes each one through
+	// filter.<name>.clean, a program the repository names
+	// (iss-2610090821548169). A filter git still insists on fails the check.
+	// --ignore-submodules=dirty keeps the status out of a checked-out
+	// submodule, whose own config the overrides cannot name
+	// (iss-2610091935327982).
+	filters, err := gitutil.FilterOverrides(root)
+	if err != nil {
+		return ReceiptCheck{}, err
+	}
+	status, err := gitutil.Run(root, append(filters, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty", "--", reviewsSubdir)...)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}

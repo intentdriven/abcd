@@ -92,7 +92,7 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 		}
 	} else {
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
-		if _, err := pickGit(lane.Worktree, "merge", "--no-ff", "--no-edit", "-m", msg, merged); err != nil {
+		if err := syncMerge(lane.Worktree, msg, merged); err != nil {
 			conflicted, _ := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
 			if _, aerr := pickGit(lane.Worktree, "merge", "--abort"); aerr != nil {
 				return Outcome{}, false, fmt.Errorf("aborting the sync's merge in the lane's worktree: %w", aerr)
@@ -119,6 +119,22 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
 	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s after %s landed: merge commit %s; a fresh round judges it, and counts no fix round",
 		lane.ID, def, shortSHA(merged), strings.Join(siblings, ", "), shortSHA(tip))}, true, nil
+}
+
+// syncMerge merges merged into the lane's worktree with a merge commit, with
+// git's built-in merge on every path: each merge driver the repository
+// configures, whether an attribute or merge.default selects it, is replaced
+// by the built-in text merge (gitutil.MergeDriverOverrides), so the merge
+// starts no program the repository names and its result is git's own
+// (iss-2610090821510097). A driver name the override cannot carry refuses the
+// merge before it starts.
+func syncMerge(dir, msg, merged string) error {
+	drivers, err := gitutil.MergeDriverOverrides(dir)
+	if err != nil {
+		return fmt.Errorf("switching the lane's merge drivers to git's built-in merge: %w", err)
+	}
+	_, err = pickGit(dir, append(drivers, "merge", "--no-ff", "--no-edit", "-m", msg, merged)...)
+	return err
 }
 
 // writeSyncBrief renders the brief of the fresh implementer a conflicting sync

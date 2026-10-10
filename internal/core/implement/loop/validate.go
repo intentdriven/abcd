@@ -130,6 +130,9 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageValidate), "", lane.ID, "the lane records no branch, worktree, base and head for its validators to read",
 			"the implement stage's verified receipt records them; restore the run's state file")
 	}
+	if err := loopWorktree(c, *lane, string(StageValidate)); err != nil {
+		return Outcome{}, err
+	}
 	if s := lane.pendingSync(); s != nil {
 		return Outcome{Await: &Await{Role: RoleImplementer, Brief: s.Brief, Receipt: s.Receipt},
 			Note: fmt.Sprintf("the sync of %s with the default branch conflicted; a fresh implementer resolves it from the brief %s", lane.ID, s.Brief)}, nil

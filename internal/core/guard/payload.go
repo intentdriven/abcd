@@ -64,6 +64,13 @@ type payloadSignal struct {
 	family    string
 	reason    string
 	successor string
+	// also names the entries a verdict carried out of a script tripped there
+	// (script.go), listed in Matches beside the signal's own id.
+	also []string
+	// fromRead marks a verdict of the script reading itself — a write the
+	// guard cannot place, a file it cannot read, a spent budget — which a
+	// script's reading carries out whatever its tier (script.go).
+	fromRead bool
 }
 
 // entryID is the id this signal is reported under.
@@ -76,8 +83,17 @@ func (s payloadSignal) entryID() string {
 
 // expandPayloads expands every execute-a-string payload in segs once, appending
 // each inspectable payload's segments in a disjoint chain range, and collecting a
-// synthetic signal for each uninspectable or fail-closed payload.
-func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
+// synthetic signal for each uninspectable or fail-closed payload. depth is the
+// layer segs themselves sit at: 0 for a command line, more for a script the
+// line runs (script.go), which shares the one depth budget.
+//
+// Each appended segment records the command that carried it (segment.carrier)
+// and its depth, and takes its carrier's end, so a reading of the text names
+// the line the carrier stands on.
+func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
+	for i := range segs {
+		segs[i].depth = depth
+	}
 	out := append([]segment(nil), segs...)
 	var signals []payloadSignal
 
@@ -96,6 +112,8 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 	type work struct {
 		segs  []segment
 		depth int
+		// base is the index in out of segs[0].
+		base int
 	}
 	// A line that names IFS reads every word whose fields rest on the
 	// default IFS as past its bound (capIFSSplits), before any string is
@@ -105,19 +123,20 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 	if ifsNamed {
 		capIFSSplits(segs)
 	}
-	queue := []work{{segs: segs, depth: 0}}
+	queue := []work{{segs: segs, depth: depth}}
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:]
-		for _, s := range item.segs {
+		for k, s := range item.segs {
 			// A word that is an unquoted `$(cat <<'EOF' … EOF)` runs the
 			// words its document splits into. That command is read at this
 			// layer, in this chain, as the segment it makes, and any payload
 			// it carries is followed from there; the words hold no literal of
 			// their own, so the reading does not repeat.
 			if fs, ok := fixedOutputSegment(s); ok {
+				fs.carrier, fs.depth, fs.end = item.base+k+1, item.depth, s.end
 				out = append(out, fs)
-				queue = append(queue, work{segs: []segment{fs}, depth: item.depth})
+				queue = append(queue, work{segs: []segment{fs}, depth: item.depth, base: len(out) - 1})
 			}
 			// What reaches the commands of a string s runs is read once per
 			// segment, however many strings it carries (payloadInput).
@@ -197,10 +216,12 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 						psegs[i].stdinIn = append(append([]feed(nil), psegs[i].stdinIn...), stdin...)
 					}
 					psegs[i].argsIn = args
+					psegs[i].carrier, psegs[i].depth, psegs[i].end = item.base+k+1, item.depth+1, s.end
 				}
 				if s.home != nil {
 					s.home.addPayload(s.at, psegs)
 				}
+				base := len(out)
 				out = append(out, psegs...)
 				switch {
 				case ifsNamed:
@@ -209,7 +230,7 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 					ifsNamed = true
 					capIFSSplits(out)
 				}
-				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
+				queue = append(queue, work{segs: psegs, depth: item.depth + 1, base: base})
 			}
 		}
 	}
@@ -1237,6 +1258,22 @@ func payloadsOf(s segment) []payloadRef {
 		add(kindEnvS, familyEnvS, v.value, v.trailing, true)
 	}
 	out = append(out, execStringPayloads(s.tokens, arrivals)...)
+	for _, p := range promptPayloads(s.tokens) {
+		add(kindShell, familyShell, p, nil, false)
+	}
+	for _, w := range []string{"env", "sudo"} {
+		known, guessed := starts(arrivals, w)
+		for _, group := range []struct {
+			at      []int
+			guessed bool
+		}{{known, false}, {guessed, true}} {
+			for _, i := range group.at {
+				for _, body := range exportedFunctionBodies(s.tokens[i:], w) {
+					add(kindShell, familyShell, body, nil, group.guessed)
+				}
+			}
+		}
+	}
 
 	sites := commandSites(s)
 	// A shell's `-c`: literal names, globbed names that can expand to one, and
@@ -1257,6 +1294,14 @@ func payloadsOf(s segment) []payloadRef {
 			shellKnown = append(shellKnown, a.idx)
 		case cmd == "eval":
 			evalKnown = append(evalKnown, a.idx)
+		case cmd == "trap":
+			if p, ok := trapAction(s.tokens[a.idx+1:]); ok {
+				add(kindShell, familyShell, p, nil, false)
+			}
+		case cmd == "mapfile" || cmd == "readarray":
+			for _, p := range mapfileCallbacks(s.tokens[a.idx+1:]) {
+				add(kindShell, familyShell, p, nil, false)
+			}
 		case !a.noglob && s.globAt(a.idx):
 			if name, ok := shellFamilyGlob(cmd); ok {
 				if name == "eval" {
@@ -1583,6 +1628,164 @@ func evalPayload(args []string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(args, " "), true
+}
+
+// promptVars are the prompt strings bash decodes and then expands, command
+// substitutions included: PS4 before each traced command, PS0/PS1/PS2 at an
+// interactive prompt.
+var promptVars = map[string]bool{"PS0": true, "PS1": true, "PS2": true, "PS4": true}
+
+// promptPayloads returns the text a line hands bash to run through a prompt
+// variable (iss-2610090925390900): the decoded value of every PS0/PS1/PS2/PS4
+// assignment, whose substitutions the judge then reads, and the value of every
+// PROMPT_COMMAND assignment, which bash runs as a command line. Any known word
+// spelling the assignment counts, so a prefix, an env operand and a
+// declaration builtin's argument (`export PS4=…`) are all read; whether
+// tracing or an interactive shell then reaches the value is not decided here,
+// because `bash -x`, SHELLOPTS, BASHOPTS and `-i` each do.
+func promptPayloads(tokens []string) []string {
+	var out []string
+	for _, t := range tokens {
+		if isUnknown(t) {
+			continue
+		}
+		eq := strings.IndexByte(t, '=')
+		if eq <= 0 {
+			continue
+		}
+		name, value := t[:eq], t[eq+1:]
+		switch {
+		case promptVars[name]:
+			// The expanded prompt is printed, not run, so the value is judged
+			// as echo's argument: its substitutions run, their output does not.
+			if v := decodePromptOctal(value); strings.Contains(v, "$(") || strings.Contains(v, "`") {
+				out = append(out, "echo "+v)
+			}
+		case name == "PROMPT_COMMAND" && strings.TrimSpace(value) != "":
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// decodePromptOctal decodes the `\nnn` octal escapes bash decodes in a prompt
+// string before expanding it, so `\044(…)` is read as the `$(…)` it becomes.
+func decodePromptOctal(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && isOctal3(s[i+1:]) {
+			b.WriteByte((s[i+1]-'0')<<6 | (s[i+2]-'0')<<3 | (s[i+3] - '0'))
+			i += 3
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// isOctal3 reports whether s starts with three octal digits.
+func isOctal3(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		if s[i] < '0' || s[i] > '7' {
+			return false
+		}
+	}
+	return true
+}
+
+// exportedFunctionBodies returns the body of every exported function an env
+// or sudo (w) puts in the command's environment: an operand before the command
+// named BASH_FUNC_<name>%% whose value starts `()`, which bash imports as a
+// function at startup, so a command named <name> runs the body
+// (iss-2610090925399967). The scan steps w's own options, with the value a
+// value flag takes (wrapperValueFlags), and the `=` operands envAssigns admits;
+// it stops at the first other word, which is the command.
+func exportedFunctionBodies(args []string, w string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			continue
+		case strings.HasPrefix(a, "-"):
+			for _, f := range wrapperValueFlags[w] {
+				if a == f {
+					i++
+					break
+				}
+			}
+			continue
+		case !isWrapperAssignment(a):
+			return out
+		}
+		eq := strings.IndexByte(a, '=')
+		name, value := a[:eq], strings.TrimLeft(a[eq+1:], " \t\n")
+		if strings.HasPrefix(name, "BASH_FUNC_") && strings.HasSuffix(name, "%%") && strings.HasPrefix(value, "()") {
+			out = append(out, value[2:])
+		}
+	}
+	return out
+}
+
+// trapAction returns the command line `trap ACTION SIGNAL…` stores, which the
+// shell runs when a listed signal arrives, EXIT included
+// (iss-2610090821476887). The forms that carry no command return false:
+// `-p`/`-l` list, `-` resets, a single operand resets that signal, and a first
+// operand that is a signal number makes every operand a signal to reset
+// (POSIX). An empty ACTION ignores the signal and runs nothing.
+func trapAction(args []string) (string, bool) {
+	if len(args) > 0 && (args[0] == "-p" || args[0] == "-l") {
+		return "", false
+	}
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	if len(args) < 2 || args[0] == "-" || args[0] == "" || allDigits(args[0]) {
+		return "", false
+	}
+	return args[0], true
+}
+
+// mapfileCallbacks returns the CALLBACK of `mapfile -C CALLBACK` (or
+// `readarray`), which bash evaluates as a command line every quantum of lines
+// read. The option is read separate (`-C cb`) or glued (`-Ccb`); the scan
+// stops at `--` or the first operand. An unknown dash-word that can carry C
+// (clusterCouldCarry) may glue the callback on or take the next word, so both
+// are returned to be judged: the unknown word itself keeps the verdict text
+// the guard cannot read always gets, and the next word is read as a command.
+func mapfileCallbacks(args []string) []string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" || a == "-" || (!isUnknown(a) && !strings.HasPrefix(a, "-")) {
+			return nil
+		}
+		switch {
+		case a == "-C":
+			if i+1 < len(args) {
+				return []string{args[i+1]}
+			}
+			return nil
+		case !isUnknown(a) && strings.HasPrefix(a, "-C"):
+			return []string{a[2:]}
+		case isUnknown(a) && clusterCouldCarry(a, 'C'):
+			out := []string{a}
+			if i+1 < len(args) {
+				out = append(out, args[i+1])
+			}
+			return out
+		case isUnknown(a):
+			return nil // an operand a substitution prints ends the options
+		case a == "-c" || a == "-d" || a == "-n" || a == "-O" || a == "-s" || a == "-u":
+			i++ // a value-taking option's separate value
+		}
+	}
+	return nil
 }
 
 // guessedEvalPayload is evalPayload for a name a substitution prints, which
@@ -1967,8 +2170,8 @@ func interpreterStreamSignal() payloadSignal {
 		family:  familyInterpreterStream,
 		reason: "This command hands a shell its script as a stream — through a pipe, a here-document, a here-string, " +
 			"the stdin device or a process substitution — so the commands that shell runs are text the guard read as data and has not checked.",
-		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them; " +
-			"to run a script, save it and run it as a file after reading it.",
+		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them. " +
+			"A script file is read and judged when it is run, so write it in one command and run it in the next.",
 	}
 }
 

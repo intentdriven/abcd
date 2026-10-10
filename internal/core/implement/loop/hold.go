@@ -192,6 +192,15 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 			return false, g.networkWait(string(StageHeld), lane.ID, fmt.Sprintf("the discard of %s (closing pull request #%d)", lane.ID, lane.PR))
 		}
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
+		// The branch comes from the run's state file, which an archive of the
+		// checkout can carry hand-written, so a branch outside the loop's
+		// prefix is refused before anything is removed, as discardLane refuses
+		// it: a state naming `main` would otherwise delete the default branch
+		// (iss-2610090821552801).
+		if lane.Branch != "" && !strings.HasPrefix(lane.Branch, BranchPrefix) {
+			return false, refuse(string(StageHeld), "", lane.ID, "the lane's branch is not one the loop made, so its work is not the loop's to discard",
+				"restore the run's state file")
+		}
 		did := []string{}
 		if lane.Worktree != "" {
 			if err := removeLaneWorktree(c, lane); err != nil {

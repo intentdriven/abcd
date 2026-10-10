@@ -15,9 +15,11 @@ package loop
 // isolated one less the global-config neutralisers (gitutil.ScrubbedEnv): the
 // commit is authored by the person whose identity git is configured with, as
 // every commit of the repository is, and no inherited GIT_DIR, GIT_WORK_TREE
-// or injected configuration can redirect it. Hooks and the fsmonitor are off:
-// the message and the entry are computed, the lane's pull request runs every
-// gate over the commit, and a hook dispatcher is code the loop does not run.
+// or injected configuration can redirect it. Hooks, the fsmonitor and commit
+// signing are off (gitutil.ExecPins): the message and the entry are computed,
+// the lane's pull request runs every gate over the commit, and a hook
+// dispatcher or a signing program the repository names is code the loop does
+// not run (iss-2610090821520843).
 // Every argument is derived: the paths come from the intent store's validated
 // ids, after `--`, and the message from the run and intent ids.
 //
@@ -68,21 +70,39 @@ func pickMessage(st State) string {
 // returns its stdout verbatim: a porcelain status line opens with a space when
 // the change is unstaged, and the comparison below is made against the line as
 // git wrote it.
+//
+// Automatic maintenance is off (gc.auto=0, maintenance.auto=false, on the
+// command line where they outrank the repository's config): the isolated
+// environment pins them, ScrubbedEnv does not, and a commit or merge would
+// otherwise start `maintenance run --auto` and `gc --auto`, which can run
+// gc.recentObjectsHook, a program the repository names. GIT_NO_LAZY_FETCH=1
+// keeps a merge in a partial clone from fetching a missing object through the
+// repository's promisor remote (iss-2610091935334207).
 func pickGit(dir string, args ...string) (string, error) {
-	full := append([]string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", dir}, args...)
+	full := append(append(gitutil.ExecPins(),
+		"-c", "core.quotePath=false",
+		"-c", "gc.auto=0",
+		"-c", "maintenance.auto=false",
+		"-C", dir), args...)
 	cmd := exec.Command("git", full...)
-	cmd.Env = gitutil.ScrubbedEnv()
+	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// The subcommand an error names follows any `-c` overrides the caller put
+	// before it.
+	sub := args
+	for len(sub) > 2 && sub[0] == "-c" {
+		sub = sub[2:]
+	}
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if len(msg) > 2048 {
 			msg = msg[:2048]
 		}
-		return "", fmt.Errorf("git %s: %v (%s)", args[0], err, msg)
+		return "", fmt.Errorf("git %s: %v (%s)", sub[0], err, msg)
 	}
 	if stdout.Len() > maxGitOutput {
-		return "", fmt.Errorf("git %s wrote more than %d bytes", args[0], maxGitOutput)
+		return "", fmt.Errorf("git %s wrote more than %d bytes", sub[0], maxGitOutput)
 	}
 	return stdout.String(), nil
 }

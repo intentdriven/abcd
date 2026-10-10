@@ -10,6 +10,7 @@
 package gitutil
 
 import (
+	"errors"
 	"sort"
 	"strings"
 )
@@ -82,14 +83,22 @@ func IsIgnored(root, path string) bool {
 //
 // Like CheckIgnored it neutralises core.excludesFile, so a developer's personal
 // ignore file cannot change what abcd reads, and it fails open: when git is
-// unavailable or root is not a repository the result is empty.
-func IgnoredUnder(root, rel string) []string {
+// unavailable or root is not a repository the result is empty and the error
+// nil. The one exception is the lazy-fetch floor: below git 2.44 a partial
+// clone refuses the listing (reading the ignore rules can fetch a
+// skip-worktree .gitignore), and that refusal is RETURNED, wrapping
+// ErrLazyFetchFloor, so a caller that prunes by this list can say it did not
+// rather than read the ignored tree as unpruned (iss-2610091935324732).
+func IgnoredUnder(root, rel string) ([]string, error) {
 	cmd := isolatedGit(root, "-c", "core.excludesFile=",
 		"ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory",
 		"--", rel)
 	data, err := cmd.Output()
 	if err != nil {
-		return nil
+		if errors.Is(err, ErrLazyFetchFloor) {
+			return nil, err
+		}
+		return nil, nil
 	}
 	var out []string
 	for _, p := range strings.Split(string(data), "\x00") {
@@ -98,5 +107,5 @@ func IgnoredUnder(root, rel string) []string {
 		}
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }

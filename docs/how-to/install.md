@@ -190,8 +190,8 @@ a release it did not come from.
 
 abcd keeps what belongs to your account rather than to one repository in one
 folder in your home directory, `~/.abcd.noindex`: the `path-entry` and
-`cache-attestation` records, the `trusted-roots` and `rules.json`
-declarations, the transcript, worktree and sources stores, and the run logs.
+`cache-attestation` records, the `trusted-roots`, `filter-roots` and
+`rules.json` declarations, the transcript, worktree and sources stores, and the run logs.
 The `.noindex` ending is a name the Mac's search indexer passes over, so a new
 worktree or transcript there sets off no indexing; abcd changes only the name
 of its own folder and never the computer's search settings. On Linux the
@@ -306,6 +306,40 @@ never decide where your session record is kept.
 If you have transcripts from an earlier abcd under `~/.abcd.noindex/history/`, they
 are moved into the store the first time abcd looks at it, with a line saying
 how many moved and a `transcripts.moved` note left at the old path.
+
+## Content filters in abcd's everyday reads
+
+Several abcd reads ask git which files in a checkout differ from the last
+commit: `abcd peers` checking a sibling worktree's records, a capture marking a
+record not yet committed, the cold-reading assembler refusing an uncommitted
+input, and an interview watching the working tree. Where the timestamps git
+saved for a file do not match it, git reads it again through any content filter the
+repository configures (`filter.<name>.clean`, which Git LFS sets, for example),
+and that filter is a program the repository names. abcd switches the
+repository's filters off for these reads, so no such program runs. The cost is
+that a file a filter would have rewritten can show as changed, and a filter the
+repository marks required makes the read fail rather than pass.
+
+These reads do not look inside a checked-out submodule either, because there git
+would read the submodule's own configuration and run the filters it names. A
+submodule moved to a different commit still shows as changed; uncommitted
+content inside a submodule does not.
+
+If you trust a checkout's filters and want them on for these reads, list it
+once, from your own home directory:
+
+```sh
+mkdir -p ~/.abcd.noindex && printf '%s\n' '/path/to/checkout' >> ~/.abcd.noindex/filter-roots
+```
+
+One absolute path per line; `#` starts a comment. A linked worktree is a
+checkout of its own, listed by its own path. As with `trusted-roots` above, the
+declaration is read only from your home directory, only while that file is
+yours and not writable by others, and never through a symbolic link: a
+repository cannot switch its own filters on. A file abcd ignores for one of
+those reasons is named, with the check it failed, by `abcd ahoy` as a
+`filter_roots.ignored` note, whichever folder you run it from. The release gates of
+`abcd launch` keep the filters off whatever the file lists.
 
 ## CLI
 

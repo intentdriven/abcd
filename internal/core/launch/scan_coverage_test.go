@@ -203,3 +203,105 @@ func TestUnscannedRefusalCarriesWhy(t *testing.T) {
 		t.Fatalf("refusal must carry the why, got %v", reasons)
 	}
 }
+
+// iss-2610090821506490, launch side: a payload file a skip fragment alone
+// matches is a coverage gap the launch refuses, naming the file; the same file
+// left out by a declared exclusion is reported excluded by choice, with its
+// reason, and the launch proceeds.
+func TestSkipFragmentRefusesAndDeclaredExclusionProceeds(t *testing.T) {
+	cases := []struct {
+		name, cfg string
+		refuses   bool
+	}{
+		{"skip fragment", `{"skip_path_fragments": ["generated/"]}`, true},
+		{"declared exclusion", `{"exclude_path_fragments": [{"fragment": "generated/", "reason": "rebuilt by the release"}]}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
+			writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
+			writeFile(t, root, "commands/a.md", "clean content\n")
+			writeFile(t, root, "commands/generated/b.md", "clean generated content\n")
+			writeFile(t, root, ".abcd/config/pii.json", tc.cfg)
+			writeLockstepTree(t, root, "", "", "")
+			report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+			if err != nil {
+				t.Fatalf("dry-run preflight must succeed: %v", err)
+			}
+			var named bool
+			for _, r := range report.WouldRefuseOn {
+				if strings.Contains(r, "commands/generated/b.md") {
+					named = true
+				}
+			}
+			if named != tc.refuses {
+				t.Fatalf("refusal naming the file = %v, want %v: %v", named, tc.refuses, report.WouldRefuseOn)
+			}
+			if tc.refuses {
+				return
+			}
+			if report.Scan.ExcludedWhy["commands/generated/b.md"] != "rebuilt by the release" {
+				t.Errorf("the exclusion and its reason must be in the scan result: %+v", report.Scan)
+			}
+			if r := scanRefusals(report.Scan); len(r) != 0 {
+				t.Errorf("a declared exclusion must not make the scan refuse: %v", r)
+			}
+		})
+	}
+}
+
+// The gate row counts the excluded files apart from every scanned tier.
+func TestScanDetailCountsExclusions(t *testing.T) {
+	detail := scanDetail(scanner.ScanResult{FilesScanned: 2, Excluded: []string{"generated/b.md"}})
+	if !strings.Contains(detail, "1 excluded by choice") {
+		t.Fatalf("scanDetail = %q, want the excluded count", detail)
+	}
+}
+
+// Only abcd's bundled binary list counts as reviewed: a payload markdown file
+// a repo-added skip extension matches is a coverage gap the launch refuses,
+// naming the file, and the same file under a declared exclusion is reported
+// excluded by choice and the launch proceeds (iss-2610090821506490).
+func TestRepoAddedSkipExtensionRefusesAndExclusionProceeds(t *testing.T) {
+	cases := []struct {
+		name, cfg string
+		refuses   bool
+	}{
+		{"repo-added skip extension", `{"skip_extensions": [".md"]}`, true},
+		{"declared exclusion", `{"skip_extensions": [".md"], "exclude_path_fragments": [{"fragment": "commands/notes.md", "reason": "rendered from the record"}]}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
+			writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
+			writeFile(t, root, "commands/run.sh", "echo clean\n")
+			writeFile(t, root, "commands/notes.md", "clean notes\n")
+			writeFile(t, root, ".abcd/config/pii.json", tc.cfg)
+			writeLockstepTree(t, root, "", "", "")
+			report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+			if err != nil {
+				t.Fatalf("dry-run preflight must succeed: %v", err)
+			}
+			var named bool
+			for _, r := range report.WouldRefuseOn {
+				if strings.Contains(r, "commands/notes.md") {
+					named = true
+				}
+			}
+			if named != tc.refuses {
+				t.Fatalf("refusal naming the file = %v, want %v: %v", named, tc.refuses, report.WouldRefuseOn)
+			}
+			if tc.refuses {
+				return
+			}
+			if report.Scan.ExcludedWhy["commands/notes.md"] != "rendered from the record" {
+				t.Errorf("the exclusion and its reason must be in the scan result: %+v", report.Scan)
+			}
+			if r := scanRefusals(report.Scan); len(r) != 0 {
+				t.Errorf("a declared exclusion must not make the scan refuse: %v", r)
+			}
+		})
+	}
+}

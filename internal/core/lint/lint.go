@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -264,7 +265,10 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		if err := markdownRoot(root, st); err != nil {
 			return nil, err
 		}
-		ignored := ignoredUnderRoot(repoRoot, root)
+		ignored, err := ignoredUnderRoot(repoRoot, root)
+		if err != nil {
+			return nil, err
+		}
 		mdFiles, err := markdownFilesPruned(rootAbs, &ignored)
 		if err != nil {
 			return nil, err
@@ -3080,7 +3084,10 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 		if err := markdownRoot(root, st); err != nil {
 			return 0, err
 		}
-		ignored := ignoredUnderRoot(repoRoot, root)
+		ignored, err := ignoredUnderRoot(repoRoot, root)
+		if err != nil {
+			return 0, err
+		}
 		files, err := markdownFilesPruned(rootAbs, &ignored)
 		if err != nil {
 			return 0, err
@@ -3120,12 +3127,20 @@ type ignoredSet struct {
 
 // ignoredUnderRoot asks git once for what it ignores under root. Outside a
 // repository, or with git unavailable, the set is empty: nothing is pruned.
-func ignoredUnderRoot(repoRoot, root string) ignoredSet {
+// A partial clone on git below the lazy-fetch floor refuses the listing, and
+// that refusal is returned, naming the root: a walk that cannot prune would
+// lint the ignored tree as documentation, so the lint reports it could not
+// run rather than silently not pruning (iss-2610091935324732).
+func ignoredUnderRoot(repoRoot, root string) (ignoredSet, error) {
 	set := ignoredSet{repoRoot: repoRoot, paths: map[string]bool{}}
-	for _, p := range gitutil.IgnoredUnder(repoRoot, filepath.ToSlash(root)) {
+	paths, err := gitutil.IgnoredUnder(repoRoot, filepath.ToSlash(root))
+	if err != nil {
+		return set, fmt.Errorf("listing what git ignores under roots entry %s, so the walk can prune it: %w", quote(root), err)
+	}
+	for _, p := range paths {
 		set.paths[p] = true
 	}
-	return set
+	return set, nil
 }
 
 // prunes reports whether the walk skips path: an ignored directory (and so
@@ -3205,7 +3220,11 @@ func PrunedInRoots(cfg Config, repoRoot string) ([]string, error) {
 			return nil, &configError{"roots entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
-		out = append(out, ignoredUnderRoot(repoRoot, root).sorted()...)
+		ignored, err := ignoredUnderRoot(repoRoot, root)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ignored.sorted()...)
 	}
 	sort.Strings(out)
 	return out, nil
@@ -3319,7 +3338,10 @@ func lintTokensOver(cfg Config, repoRoot string, walked map[string]bool, tokens 
 			}
 			return nil, err
 		}
-		ignored := ignoredUnderRoot(repoRoot, root)
+		ignored, err := ignoredUnderRoot(repoRoot, root)
+		if err != nil {
+			return nil, err
+		}
 		files, err := filesPruned(rootAbs, &ignored, func(string) bool { return true })
 		if err != nil {
 			return nil, err

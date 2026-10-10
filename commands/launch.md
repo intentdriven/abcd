@@ -249,6 +249,34 @@ Then summarise the JSON for the user:
   lists the gap in `scan.unscanned` (as `(configured scanner augmenter)`, the
   reason in `scan.unscanned_why`) and counts it as a hard fail, so the release
   refuses until gitleaks is installed or the config sets `enabled` to `false`.
+- `scan.unscanned` — payload files the scan could not cover, each with its
+  reason in `scan.unscanned_why`, and the release refuses on every one. Only
+  abcd's bundled list of binary extensions and filenames counts as reviewed.
+  A file an entry in `.abcd/config/pii.json` sends to byte-only scanning is one
+  of the unscanned unless its extension or name is on that bundled list: a skip
+  fragment (`skip_path_fragments`) matches a path, not a kind of content, an
+  extension or filename the repository adds (`skip_extensions`,
+  `skip_filenames`) is the repository's own say-so, and byte-only scanning does
+  not count as scanned.
+- `scan.excluded` — payload files left out of the scan by choice, each with the
+  reason its exclusion gives in `scan.excluded_why`. They are not read, never
+  count as scanned, and do not refuse on their own; a payload the exclusions
+  leave with no file scanned in full still refuses. An exclusion is declared
+  in `.abcd/config/pii.json`, one entry per path fragment, and each entry needs
+  a fragment and a reason:
+
+  ```json
+  {"exclude_path_fragments": [{"fragment": "testdata/vectors/", "reason": "published third-party test vectors"}]}
+  ```
+
+  A fragment matches anywhere in the path, so an extension-shaped fragment
+  such as `.jar` excludes every file of that kind, and also any path that
+  carries `.jar` elsewhere (`lib.jar.d/notes.md`); `scan.excluded` names every
+  file it matched. An exclusion takes precedence over every skip entry, so it
+  is the way to leave out a file a repository-added skip extension or filename
+  matches. An entry with no reason, a blank fragment, a fragment of slashes
+  alone, or a fragment of punctuation alone (`.`) makes the scanner
+  unavailable, and the release refuses.
 - `smoke.ok` — whether the payload would install (a plugin only; for another
   kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
   the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,

@@ -173,6 +173,11 @@ type Registry struct {
 	// worktrees counts the working trees of the repository this registry was
 	// loaded for (stash.go); nil for a registry with no repository behind it.
 	worktrees func() int
+
+	// files is the directory a command runs in and the files the guard has
+	// read for it (script.go); nil for a registry that reads no file, which
+	// is what Defaults returns until a front door names the directory.
+	files *Files
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -201,6 +206,10 @@ type Decision struct {
 	// nothing reads it yet.
 	Family string `json:"family,omitempty"`
 	Reason string `json:"reason,omitempty"`
+	// Diagnostics are notes about the check that change no verdict: a script
+	// the command runs that does not exist, so there was nothing to read
+	// (script.go). They ride on any verdict, an allow included.
+	Diagnostics []string `json:"diagnostics,omitempty"`
 }
 
 //go:embed defaults/guard.json
@@ -471,13 +480,48 @@ func (r Registry) Check(command string) (Decision, error) {
 // measure it directly (work_test.go), because the class of the work is a
 // property of the reading, whatever the cap in front of it.
 func (r Registry) check(command string) (Decision, error) {
+	var rc *readCtx
+	if r.files != nil {
+		rc = newReadCtx(r.files)
+	}
+	v, err := r.judge(command, rc, nil)
+	if err != nil {
+		return Decision{}, err
+	}
+	d := r.decide(v)
+	if rc != nil {
+		d.Diagnostics = rc.notes
+	}
+	return d, nil
+}
+
+// verdicts is what one reading of a text found, before the merge into one
+// decision: the entries matched at command position, split by tier and by
+// whether the line names their program, the segment each entry first fired
+// on, and the entry-less signals.
+type verdicts struct {
+	segs                                           []segment
+	blockers, unnamedBlockers, warns, unnamedWarns []string
+	hitSeg                                         map[string]int
+	signals                                        []payloadSignal
+}
+
+// judge reads one text: the command line itself (run nil), or a script the
+// line runs (script.go), which starts at run's depth and shell state and is
+// judged without Tier 2. rc is the check's file reading, nil when the
+// registry reads no file.
+func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, error) {
 	// No argv word can hold a NUL, and bash drops one from its input; the byte
 	// is the tokenizer's mark for a substitution's output (unknown.go), so the
 	// line's own are removed before a word is read.
 	command = strings.ReplaceAll(command, unknownText, "")
 	segs, err := tokenize(command)
 	if err != nil {
-		return Decision{}, err
+		return verdicts{}, err
+	}
+	depth := 0
+	if run != nil {
+		depth = run.depth
 	}
 	// Each segment's walk to command position is read by every pass below;
 	// it is taken once per segment (walkSegments), here and again after each
@@ -487,8 +531,15 @@ func (r Registry) check(command string) (Decision, error) {
 	// never inside a per-entry callee (that path went quadratic). Every entry then
 	// sees the payload segments for free, and any payload the guard cannot read
 	// raises a synthetic (entry-less) signal folded in by severity below.
-	segs, signals := expandPayloads(segs)
+	segs, signals := expandPayloads(segs, depth)
 	walkSegments(segs)
+
+	// A script the line points a shell at is read and judged now, while each
+	// segment still stands where the payload expansion put it: the reading
+	// follows each command to the one that carried it (adr-2610091150447054).
+	if rc != nil {
+		signals = append(signals, r.readScripts(segs, rc, run)...)
+	}
 
 	// git rewrites its own subcommand from configuration carried IN the command
 	// line, and the operand walk was built to step exactly those values over
@@ -578,6 +629,7 @@ func (r Registry) check(command string) (Decision, error) {
 	// speaks for the substitution unless an entry fired on a name the line
 	// spells.
 	var blockers, warns, unnamedBlockers, unnamedWarns []string
+	hitSeg := map[string]int{}
 	matchedSeg := make([]bool, len(segs))
 	for _, id := range ids {
 		p := r.Entries[id].Pattern
@@ -591,6 +643,9 @@ func (r Registry) check(command string) (Decision, error) {
 				continue
 			}
 			matchedSeg[i] = true
+			if !hit {
+				hitSeg[id] = i
+			}
 			hit = true
 			named = named || segNamed
 		}
@@ -610,8 +665,21 @@ func (r Registry) check(command string) (Decision, error) {
 	}
 
 	// Tier 2: the position-agnostic fail-safe over the segments Tier 1 left
-	// unmatched. Warns only, and folded into the same severity pools below.
-	signals = append(signals, r.speculate(segs, matchedSeg, ids)...)
+	// unmatched. Warns only, and folded into the same severity pools below. A
+	// script is a reviewed artefact rather than a line being typed, and no
+	// speculative hit propagates out of one (adr-2610091150447054 decision 5),
+	// so a script's reading does not speculate.
+	if run == nil {
+		signals = append(signals, r.speculate(segs, matchedSeg, ids)...)
+	}
+	return verdicts{segs: segs, blockers: blockers, unnamedBlockers: unnamedBlockers,
+		warns: warns, unnamedWarns: unnamedWarns, hitSeg: hitSeg, signals: signals}, nil
+}
+
+// decide merges what a reading found into the one decision a front door
+// renders.
+func (r Registry) decide(v verdicts) Decision {
+	blockers, unnamedBlockers, warns, unnamedWarns, signals := v.blockers, v.unnamedBlockers, v.warns, v.unnamedWarns, v.signals
 
 	// The first synthetic block and warn (id order is not meaningful for the
 	// entry-less verdicts, so the first encountered wins its pool).
@@ -631,7 +699,7 @@ func (r Registry) check(command string) (Decision, error) {
 	blockPool := len(blockers) > 0 || len(unnamedBlockers) > 0 || synBlock != nil
 	warnPool := len(warns) > 0 || len(unnamedWarns) > 0 || synWarn != nil
 	if !blockPool && !warnPool {
-		return Decision{Verdict: VerdictAllow}, nil
+		return Decision{Verdict: VerdictAllow}
 	}
 	// Every entry-less id that CONTRIBUTED is listed, not just the two that won
 	// their pools. The merge keeps one signal per pool for the message, which is
@@ -644,6 +712,13 @@ func (r Registry) check(command string) (Decision, error) {
 	for i := range signals {
 		if id := signals[i].entryID(); !containsString(matches, id) {
 			matches = append(matches, id)
+		}
+		// A verdict carried out of a script names the entry it tripped there
+		// as well as its own id.
+		for _, id := range signals[i].also {
+			if !containsString(matches, id) {
+				matches = append(matches, id)
+			}
 		}
 	}
 
@@ -662,19 +737,19 @@ func (r Registry) check(command string) (Decision, error) {
 	if blockPool {
 		switch {
 		case len(blockers) > 0:
-			return decisionFromEntry(VerdictBlock, r.Entries[blockers[0]], matches), nil
+			return decisionFromEntry(VerdictBlock, r.Entries[blockers[0]], matches)
 		case len(unnamedBlockers) > 0:
-			return unknownProgramDecision(VerdictBlock, unnamedBlockers[0], matches), nil
+			return unknownProgramDecision(VerdictBlock, unnamedBlockers[0], matches)
 		}
-		return syntheticDecision(VerdictBlock, *synBlock, matches), nil
+		return syntheticDecision(VerdictBlock, *synBlock, matches)
 	}
 	switch {
 	case len(warns) > 0:
-		return decisionFromEntry(VerdictWarn, r.Entries[warns[0]], matches), nil
+		return decisionFromEntry(VerdictWarn, r.Entries[warns[0]], matches)
 	case len(unnamedWarns) > 0:
-		return unknownProgramDecision(VerdictWarn, unnamedWarns[0], matches), nil
+		return unknownProgramDecision(VerdictWarn, unnamedWarns[0], matches)
 	}
-	return syntheticDecision(VerdictWarn, *synWarn, matches), nil
+	return syntheticDecision(VerdictWarn, *synWarn, matches)
 }
 
 // unknownProgramDecision is the verdict for a command whose program name a
@@ -749,7 +824,7 @@ func commandTooLongSignal() payloadSignal {
 		family:  familyCommandLength,
 		reason: fmt.Sprintf("This command line is longer than the %d bytes the guard reads, so it has not been checked.",
 			maxCommandBytes),
-		successor: "Split it into shorter commands, or put the long text in a file and pass the file, " +
+		successor: "Split the command, or put the text in a script under 256 KiB and run it in a separate command, " +
 			"so the guard checks the command that actually runs.",
 	}
 }
@@ -811,7 +886,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {

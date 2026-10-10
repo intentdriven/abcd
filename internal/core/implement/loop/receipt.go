@@ -276,6 +276,9 @@ func discardLane(c Context, lane Lane) (string, error) {
 		tip = ""
 	}
 	if lane.Worktree != "" {
+		if err := loopWorktree(c, lane, "receipt"); err != nil {
+			return "", err
+		}
 		wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
 		if err != nil {
 			return "", fmt.Errorf("listing the repository's worktrees: %w", err)
@@ -319,6 +322,9 @@ func implementStage(c Context, lane *Lane) (Outcome, error) {
 	if lane.Brief == "" || lane.Worktree == "" {
 		return Outcome{}, refuse(string(StageImplement), "", lane.ID, "the lane has no brief or no worktree to hand an implementer",
 			"the worktree and brief stages make them; restore the run's state file")
+	}
+	if err := loopWorktree(c, *lane, string(StageImplement)); err != nil {
+		return Outcome{}, err
 	}
 	rel, err := laneFile(c.State.RunID, lane.ID, StageImplement, ReceiptFileName)
 	if err != nil {

@@ -1,4 +1,4 @@
-package abcdhome
+package abcdhome_test
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -31,26 +32,26 @@ func TestPrintedRepairReconnectsMovedWorktrees(t *testing.T) {
 
 	// A lane worktree in the store under the OLD folder, made with plain git as
 	// a session makes one today.
-	oldLane := filepath.Join(home, oldName, "worktrees", sha, "lane-one")
+	oldLane := filepath.Join(home, abcdhome.OldName, "worktrees", sha, "lane-one")
 	if err := os.MkdirAll(filepath.Dir(oldLane), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	repo.Git("worktree", "add", "-b", "lane-one", oldLane)
 
 	// The person's rename: the whole home, as `mv ~/.abcd ~/.abcd.noindex` does.
-	if err := os.Rename(filepath.Join(home, oldName), Path(home)); err != nil {
+	if err := os.Rename(filepath.Join(home, abcdhome.OldName), abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
-	newLane := Path(home, "worktrees", sha, "lane-one")
+	newLane := abcdhome.Path(home, "worktrees", sha, "lane-one")
 	if list := repo.Git("worktree", "list", "--porcelain"); !strings.Contains(list, "prunable") {
 		t.Fatalf("precondition: the moved worktree is not listed as prunable, so the fixture did not stage iss-2610040147016103:\n%s", list)
 	}
 
-	cmd := exec.Command("sh", "-c", RepairCommand)
+	cmd := exec.Command("sh", "-c", abcdhome.RepairCommand)
 	cmd.Dir = home
 	cmd.Env = repo.Env()
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("the printed repair %q failed: %v\n%s", RepairCommand, err, out)
+		t.Fatalf("the printed repair %q failed: %v\n%s", abcdhome.RepairCommand, err, out)
 	}
 
 	list := repo.Git("worktree", "list", "--porcelain")

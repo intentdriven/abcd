@@ -1,8 +1,13 @@
 package scanner
 
+import "strings"
+
 // maxPercentDecodePasses bounds the percent-decode pre-pass. One pass reverses a
 // single layer of URL encoding (%3D -> '='); a second reaches a double-encoded
-// delimiter (%253D -> %3D -> '='); the third is slack. The bound is deliberate:
+// delimiter (%253D -> %3D -> '='); the third is slack. The alternating chain
+// (alternatingLayers) is bounded separately at four passes and may spend all of
+// them on one decoder, so it reads one percent layer deeper than this pre-pass.
+// The bound is deliberate:
 // each pass strictly shrinks the string (three bytes collapse to one) so a fixed
 // point is reached quickly, and capping the passes keeps a crafted deeply-nested
 // input from turning one line into unbounded work. A token buried under more
@@ -58,12 +63,93 @@ func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctio
 // bytes is found where it sits on disk (iss-2609261647358395,
 // iss-2609251639263391). The literal-home backstop (residual.go) and, through
 // DecodedViews, the committed-text lint rules read the same list.
+//
+// The two decoders also run over each other's output, alternating to a fixed
+// point, so a value spelled with both stacked is read: a JSON escape of the
+// percent sign (\u0025 before two hex digits) becomes a percent escape only
+// once the JSON layer is decoded, and a percent encoding of the backslash
+// (%5C before u0067) becomes a JSON escape only once the percent view is,
+// and either can be stacked on the other again (iss-2610090821491948). Two
+// chains run, one opening with each decoder; each chain decodes one pass at a
+// time, turning to the other decoder after every pass and staying with the
+// same one only when the other decodes nothing, and stops at a pass that
+// changes nothing or at maxAlternatingLayers. Every pass of each chain is a
+// view, mapped back to the raw line, and a view whose text an earlier one
+// already holds is dropped. A spelling that needs more than four passes in
+// all stays raw: the bounded-work residual, the same trade the layer caps
+// make, and the work per line stays a constant number of linear passes.
 func lineViews(line string) []decodedView {
 	var views []decodedView
 	if decoded, posMap := percentDecodeBounded(line); posMap != nil {
 		views = append(views, decodedView{decoded, posMap})
 	}
-	return append(views, jsonEscapeLayers(line)...)
+	views = append(views, jsonEscapeLayers(line)...)
+	seen := make(map[string]bool, len(views))
+	for _, v := range views {
+		seen[v.text] = true
+	}
+	for _, percentFirst := range []bool{true, false} {
+		for _, v := range alternatingLayers(line, percentFirst) {
+			if !seen[v.text] {
+				seen[v.text] = true
+				views = append(views, v)
+			}
+		}
+	}
+	return views
+}
+
+// maxAlternatingLayers bounds one alternating chain: four passes in all, each
+// one percent pass or one JSON layer, enough for a value stacked three or four
+// decodes deep in either order.
+const maxAlternatingLayers = 4
+
+// alternatingLayers is one chain of lineViews' alternation, opening with the
+// percent decoder or the JSON one. A chain whose opening decoder changes
+// nothing is empty, because the other chain is the one that opens there.
+func alternatingLayers(s string, percentFirst bool) []decodedView {
+	var out []decodedView
+	cur := s
+	var m []int // offsets in cur -> offsets in s; nil means identity
+	percent := percentFirst
+	for layer := 0; layer < maxAlternatingLayers; layer++ {
+		next, step, ok := decodeLayerOnce(cur, percent)
+		if !ok && layer > 0 {
+			percent = !percent
+			next, step, ok = decodeLayerOnce(cur, percent)
+		}
+		if !ok {
+			break
+		}
+		composed := make([]int, len(next)+1)
+		for i := range composed {
+			if m == nil {
+				composed[i] = step[i]
+			} else {
+				composed[i] = m[step[i]]
+			}
+		}
+		out = append(out, decodedView{text: next, posMap: composed})
+		cur, m = next, composed
+		percent = !percent
+	}
+	return out
+}
+
+// decodeLayerOnce runs one pass of the percent decoder or one layer of the
+// JSON one over s, reporting whether it changed anything.
+func decodeLayerOnce(s string, percent bool) (string, []int, bool) {
+	if percent {
+		if strings.IndexByte(s, '%') < 0 {
+			return s, nil, false
+		}
+		next, step := percentDecodeOnce(s)
+		return next, step, next != s
+	}
+	if strings.IndexByte(s, '\\') < 0 {
+		return s, nil, false
+	}
+	return jsonUnescapeOnce(s)
 }
 
 // DecodedViews returns the decoded spellings of one line that the scan reads

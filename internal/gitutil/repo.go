@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,18 +17,33 @@ import (
 
 // isolatedGit builds a git command under root with global and system config
 // neutralised, so a developer's environment cannot change what abcd observes —
-// and with the two repo-local config knobs that can execute code on an
+// and with the repo-local config knobs that can execute code on an
 // otherwise read-only command forced off. The probe points git at arbitrary,
 // possibly-hostile repositories, and a repo's own .git/config is fully trusted
-// by git and cannot be disabled by env; core.hooksPath=/dev/null stops any hook
-// firing and core.fsmonitor=false stops an fsmonitor daemon being spawned. These
+// by git and cannot be disabled by env; ExecPins forces off the knobs that would
+// start a program — a hook, an fsmonitor daemon, a signature verifier. These
 // are the defence for read-only commands (log/tag/rev-list/rev-parse); a command
 // that honours external-diff/textconv/pager config must not be added to the
 // probe without further hardening.
+//
+// Every isolated command passes lazyFetchGuard first: a refusal is set as the
+// command's Err, so Run, Output and Start return it and git never starts.
 func isolatedGit(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
+	guardObjectRead(cmd, root, args)
 	return cmd
+}
+
+// guardObjectRead applies lazyFetchGuard to an isolated command, setting a
+// refusal as cmd.Err (which exec returns from Start before anything runs).
+func guardObjectRead(cmd *exec.Cmd, root string, args []string) {
+	if cmd.Err != nil {
+		return
+	}
+	if err := lazyFetchGuard(root, args); err != nil {
+		cmd.Err = err
+	}
 }
 
 // contextWaitDelay is how long a context-bound git's Wait waits, once the
@@ -44,22 +60,22 @@ func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
 	cmd.WaitDelay = contextWaitDelay
+	guardObjectRead(cmd, root, args)
 	return cmd
 }
 
 // isolatedArgs is the isolated command line: the config knobs that can run
-// code forced off, verbatim paths, then -C root and the caller's arguments.
+// code forced off (ExecPins), verbatim paths, then -C root and the caller's
+// arguments.
 func isolatedArgs(root string, args []string) []string {
-	return append([]string{
-		"-c", "core.hooksPath=/dev/null",
-		"-c", "core.fsmonitor=false",
+	return append(append(ExecPins(),
 		// Emit paths verbatim (UTF-8), not the default C-quoted, double-quoted
 		// form for non-ASCII bytes: a caller that matches a git-reported path
 		// against a filesystem-derived one (site date history) would never match
 		// the quoted key and lose the record's dates.
 		"-c", "core.quotePath=false",
 		"-C", root,
-	}, args...)
+	), args...)
 }
 
 // gitEnv builds the child environment for an isolated git command: the parent
@@ -73,7 +89,7 @@ func isolatedArgs(root string, args []string) []string {
 // dropped (deliberate pass-throughs such as GIT_EXEC_PATH are kept).
 func gitEnv() []string {
 	base := os.Environ()
-	env := make([]string, 0, len(base)+5)
+	env := make([]string, 0, len(base)+16)
 	for _, kv := range base {
 		if scrubGitVar(kv) {
 			continue
@@ -96,10 +112,20 @@ func gitEnv() []string {
 	// inits its own repository — inherits them too. The parent's own
 	// GIT_CONFIG_COUNT injection was scrubbed above, so this is the only
 	// environment config in effect.
+	// GIT_NO_LAZY_FETCH=1: in a partial clone git answers a read of a MISSING
+	// object by fetching it, and the fetch runs the transport the repository's
+	// own config names (remote.<name>.uploadpack for a local URL,
+	// core.sshCommand for ssh://), so an object read abcd made in a copied
+	// checkout ran a program that checkout chose (iss-2610090821527948). A
+	// missing object is an error instead; a present one still reads. It is
+	// appended after the parent's environment, so it wins over an inherited
+	// value. git honours it from 2.44; below that floor lazyFetchGuard refuses
+	// an object read in a repository that declares a promisor remote.
 	return append(env,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_NO_LAZY_FETCH=1",
 		"GIT_CONFIG_COUNT=4",
 		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
 		"GIT_CONFIG_KEY_1=gc.autodetach", "GIT_CONFIG_VALUE_1=false",
@@ -353,7 +379,8 @@ var ErrNoCheckoutRoot = errors.New("no checkout root")
 //   - git will not answer for a repo-SHAPED tree (git absent from PATH, a
 //     corrupt .git, an ownership refusal under the isolated env, or an answer
 //     Toplevel refuses for its shape, which a core.worktree setting naming a
-//     tree that does not contain cwd produces): REFUSED,
+//     tree that does not contain cwd, or an ancestor of the checkout that does
+//     not hold its .git (iss-2610090821543020), produces): REFUSED,
 //     naming that git could not answer. RepoShapedRoot is read here as a
 //     CLASSIFIER and never as a root: it is a marker walk, which accepts any
 //     directory merely carrying the name and has neither the shape check nor
@@ -374,7 +401,7 @@ func CheckoutRoot(cwd, store string) (string, error) {
 	// leaks an absolute local path (iss-76), and the caller already knows where
 	// they are standing.
 	if RepoShapedRoot(cwd) != "" {
-		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, its ownership refused, or a core.worktree setting naming a working tree that does not contain this directory), and %s is never guessed at",
+		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, its ownership refused, or a core.worktree setting naming a working tree other than this checkout), and %s is never guessed at",
 			ErrNoCheckoutRoot, store)
 	}
 	return "", fmt.Errorf("%w: the working directory is not inside a git repository, and %s is per-repository: run this from a checkout",
@@ -534,7 +561,7 @@ func runBoundedCmd(cmd *exec.Cmd, maxBytes int) ([]byte, bool, error) {
 }
 
 // ErrToplevelShape is Toplevel's refusal of an answer git would never give.
-var ErrToplevelShape = errors.New("git's toplevel answer is not one absolute path containing the directory asked about")
+var ErrToplevelShape = errors.New("git's toplevel answer is not one absolute path containing the directory asked about and holding the git directory git found")
 
 // Toplevel asks git for the working-tree root that contains dir, and holds the
 // answer to the one shape git ever gives: a single absolute line naming a
@@ -562,15 +589,78 @@ const toplevelCap = 64 << 10
 // status verb): the same question and the same shape check, with git killed
 // when ctx ends and the context's own error returned (RunLimitedContext), so
 // the caller can tell a slow git from "not a repository".
+//
+// Containment is not enough on its own: a repo-local core.worktree is resolved
+// by git relative to the .git directory, so `core.worktree=../..` in a copied
+// checkout names the checkout's PARENT, which contains dir and passed the shape
+// check, widening every record store to the parent (iss-2610090821543020). So
+// git is asked, in the same invocation, for the git directory it discovered,
+// and the toplevel is accepted only when it holds that directory: its .git is
+// the directory itself, or a gitfile naming it (a linked worktree, a
+// submodule, a --separate-git-dir checkout). An ancestor that core.worktree
+// alone selected holds no such entry and is refused with ErrToplevelShape.
 func ToplevelContext(ctx context.Context, dir string) (string, error) {
-	top, err := RunLimitedContext(ctx, dir, toplevelCap, "rev-parse", "--show-toplevel")
+	out, err := RunLimitedContext(ctx, dir, toplevelCap, "rev-parse", "--show-toplevel", "--absolute-git-dir")
 	if err != nil {
 		return "", err
 	}
-	if !ToplevelShaped(dir, top) {
+	top, gitDir, ok := strings.Cut(out, "\n")
+	if !ok || !ToplevelShaped(dir, top) || !holdsGitDir(top, gitDir) {
 		return "", ErrToplevelShape
 	}
 	return top, nil
+}
+
+// gitfileCap bounds the gitfile holdsGitDir reads: one "gitdir: <path>" line.
+const gitfileCap = 4 << 10
+
+// holdsGitDir reports whether top's own .git entry is gitDir: the directory
+// itself, a symlink to it, or a regular file whose "gitdir: " line names it (relative to top
+// when the path is relative). Identity is compared by file, never by spelling,
+// so a symlinked temp root or a case variant on a case-insensitive volume does
+// not refuse a real checkout. A gitDir that is not one absolute line is no
+// answer.
+func holdsGitDir(top, gitDir string) bool {
+	if gitDir == "" || !filepath.IsAbs(gitDir) || strings.ContainsAny(gitDir, "\n\r") {
+		return false
+	}
+	want, err := os.Stat(gitDir)
+	if err != nil || !want.IsDir() {
+		return false
+	}
+	entry := filepath.Join(top, ".git")
+	fi, err := os.Lstat(entry)
+	if err != nil {
+		return false
+	}
+	switch {
+	case fi.IsDir():
+		return os.SameFile(fi, want)
+	case fi.Mode()&os.ModeSymlink != 0:
+		// git follows a symlinked .git to the directory it names; the
+		// toplevel holds that directory as it holds one a gitfile names.
+		got, err := os.Stat(entry)
+		return err == nil && got.IsDir() && os.SameFile(got, want)
+	case fi.Mode().IsRegular():
+		f, err := os.Open(entry)
+		if err != nil {
+			return false
+		}
+		defer f.Close()
+		buf := make([]byte, gitfileCap)
+		n, _ := io.ReadFull(f, buf)
+		line, _, _ := strings.Cut(string(buf[:n]), "\n")
+		target, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "gitdir: ")
+		if !ok || target == "" {
+			return false
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(top, target)
+		}
+		got, err := os.Stat(target)
+		return err == nil && os.SameFile(got, want)
+	}
+	return false
 }
 
 // RevParseAbsPath asks `git rev-parse --path-format=absolute <flag>` for one

@@ -102,14 +102,8 @@ type citedADR struct {
 // briefStage is the brief stage's body: it renders the brief from the lane's
 // base into the lane's directory, replacing what an interrupted call wrote.
 func briefStage(c Context, lane *Lane) (Outcome, error) {
-	lw, err := laneWorktree(c.RepoRoot, c.State.RunID, lane.ID)
-	if err != nil {
-		return Outcome{}, relabel(err, StageBrief)
-	}
-	if lane.Worktree == "" || lane.Worktree != lw.Path {
-		return Outcome{}, refuse(string(StageBrief), "", lane.ID,
-			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
-			"the worktree stage makes it; restore the run's state file")
+	if err := loopWorktree(c, *lane, string(StageBrief)); err != nil {
+		return Outcome{}, err
 	}
 	dirRel, err := laneRel(c.State.RunID, lane.ID, StageBrief)
 	if err != nil {

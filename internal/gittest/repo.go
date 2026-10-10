@@ -123,3 +123,18 @@ func (r *Repo) Record(rel, id, impact string) {
 	r.t.Helper()
 	r.Write(rel, "---\nid: "+id+"\nimpact: "+impact+"\n---\n# "+id+"\n")
 }
+
+// AddSubmodule commits a checked-out submodule at rel: a second fixture
+// repository holding one committed file, s.txt, added by path and committed in
+// this one. It returns the submodule's own git directory
+// (.git/modules/<rel>), whose config is the submodule's config, for a test
+// that plants something a superproject command must not reach into.
+func (r *Repo) AddSubmodule(rel string) (gitDir string) {
+	r.t.Helper()
+	sub := NewRepo(r.t)
+	sub.Write("s.txt", "s\n")
+	sub.Commit("sub seed")
+	r.Git("-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub.Root(), rel)
+	r.Git("commit", "-q", "-m", "add submodule "+rel)
+	return filepath.Join(r.root, ".git", "modules", filepath.FromSlash(rel))
+}

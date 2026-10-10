@@ -1,6 +1,59 @@
 package gitutil
 
-import "strings"
+import (
+	"os"
+	"strings"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/fsutil"
+)
+
+// FilterRootsRelPath is the home-scoped declaration that switches the
+// repository's content filters back on for Status in the checkouts it lists:
+// ~/.abcd.noindex/filter-roots, one absolute checkout path per line, "#"
+// starting a comment. It lives in the person's home, never in the repository,
+// because a repository could otherwise switch its own filters on.
+var FilterRootsRelPath = abcdhome.Rel("filter-roots")
+
+// maxFilterRootsBytes caps the declaration read; a hand-kept list of
+// checkouts is a few hundred bytes.
+const maxFilterRootsBytes = 64 << 10
+
+// FiltersSwitchedOn reports whether the person has listed root in
+// ~/.abcd.noindex/filter-roots, switching the repository's content filters
+// back on for Status there. The declaration is read through
+// fsutil.HomeDeclarationNames, the reader every "declare this checkout"
+// opt-in shares, so it is honoured only while it is a regular file this
+// account owns that no one else can write, reached through no symlinked
+// folder; ignored is the one-line note saying why a present declaration was
+// not honoured, naming the file in tilde form, and is empty when there is none
+// or it was read. Status has no output channel and drops it; FilterRootsIgnored
+// is the reading a front door reports (iss-2610091920437492).
+func FiltersSwitchedOn(root string) (on bool, ignored string) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false, ""
+	}
+	on, why := fsutil.HomeDeclarationNames(home, FilterRootsRelPath, maxFilterRootsBytes, root, fsutil.CaseFoldingFS())
+	if why != "" {
+		return false, "IGNORED " + FilterRootsDisplay + " — " + why + "; content filters stay off in every checkout it lists"
+	}
+	return on, ""
+}
+
+// FilterRootsDisplay is the filter-roots declaration's path in tilde form, so a
+// message naming it carries no home path.
+var FilterRootsDisplay = abcdhome.Display("filter-roots")
+
+// FilterRootsIgnored is the note FiltersSwitchedOn gives when a present
+// ~/.abcd.noindex/filter-roots file fails its ownership, mode or symlink
+// checks, naming the file and the check it failed; empty when the file is
+// absent or was read. Which checkout is asked about does not change it: the
+// checks are the file's, not an entry's.
+func FilterRootsIgnored() string {
+	_, note := FiltersSwitchedOn("")
+	return note
+}
 
 // StatusEntry is one entry of git's NUL-separated status listing
 // (`git status --porcelain=v1 -z`).
@@ -40,8 +93,31 @@ type StatusOptions struct {
 // --no-optional-locks keeps the read from refreshing the index, which the
 // isolated environment's GIT_OPTIONAL_LOCKS=0 already does; it is stated on
 // the command so the read stays read-only whatever environment runs it.
+//
+// The repository's content filters are off (FilterOverrides): over a file
+// whose saved stat no longer matches, git status re-reads it through
+// filter.<name>.clean, a program the repository names, and these are everyday
+// reads (iss-2610090821548169). The person switches them back on for a
+// checkout by listing it in ~/.abcd.noindex/filter-roots (FiltersSwitchedOn).
+// With them off, a file a filter would have rewritten can read as modified,
+// and a filter the repository marks required fails the read.
+//
+// --ignore-submodules=dirty keeps git from starting a status inside each
+// checked-out submodule, which reads the submodule's own config and so runs a
+// clean filter FilterOverrides cannot see (iss-2610091935327982). The flag,
+// not diff.ignoreSubmodules: a repository's submodule.<name>.ignore=none beats
+// that config and loses to the flag. A moved submodule pointer is still
+// listed; uncommitted content inside a submodule is not.
 func Status(root string, maxBytes int, opt StatusOptions) ([]StatusEntry, error) {
-	args := []string{"--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"}
+	var args []string
+	if on, _ := FiltersSwitchedOn(root); !on {
+		filters, err := FilterOverrides(root)
+		if err != nil {
+			return nil, err
+		}
+		args = filters
+	}
+	args = append(args, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty")
 	if opt.Ignored {
 		args = append(args, "--ignored=matching")
 	}

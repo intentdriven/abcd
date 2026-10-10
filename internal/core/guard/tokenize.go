@@ -139,6 +139,96 @@ type segment struct {
 	// what a command's own string is filed under (segList.payloads).
 	home *segList
 	at   int
+	// redirects records the command's redirections in the order written,
+	// each with its target as the shell reads the word (redirectWord). The
+	// matchers never read them: the operator and the target are dropped from
+	// tokens, as before. The script reading (script.go) reads them for the
+	// file a shell's standard input comes from and for the files a command
+	// writes. A command of redirections alone (`> f`) is a segment with no
+	// tokens.
+	redirects []redirect
+	// afterAnd records that `&&` joined this command to the one before it in
+	// its chain, so it runs only when that one succeeded (script.go follows a
+	// `cd` only that far).
+	afterAnd bool
+	// end is the byte offset, in the text the outermost tokenize call read,
+	// where the command ended; the script reading names a script's line by it.
+	end int
+	// carrier is 1 + the index, in the segments Check reads, of the command
+	// whose string this command came from (expandPayloads), and 0 for a
+	// command of the text itself. depth is how many execute-a-string layers
+	// deep it sits, counted from the text the reading began at.
+	carrier int
+	depth   int
+}
+
+// redirect is one redirection of a command: the descriptor it names (-1 for
+// the operator's default), the operator as written (`<`, `>`, `>>`, `>|`,
+// `<>`, `<&`, `>&`, `&>`, `&>>`), and its target word.
+type redirect struct {
+	fd     int
+	op     string
+	target pathWord
+}
+
+// pathWord is a word read as a path the shell will open: its text after quote
+// removal, whether a leading unquoted `~` asks for tilde expansion, and ok,
+// which is false where the word holds an expansion, a substitution or a glob
+// whose value the line does not fix.
+type pathWord struct {
+	text  string
+	tilde bool
+	ok    bool
+}
+
+// redirectWord reads a redirection's raw target the way the shell reads it:
+// quotes removed, backslashes taken, a leading unquoted `~` marked for tilde
+// expansion. A `$`, a backtick or an unquoted glob character leaves a word
+// the line does not fix, and ok is false.
+func redirectWord(raw string) pathWord {
+	var b strings.Builder
+	w := pathWord{ok: true}
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c == '\\' && i+1 < len(raw):
+			i++
+			b.WriteByte(raw[i])
+		case c == '\'':
+			j := strings.IndexByte(raw[i+1:], '\'')
+			if j < 0 {
+				return pathWord{}
+			}
+			b.WriteString(raw[i+1 : i+1+j])
+			i += 1 + j
+		case c == '"':
+			j := i + 1
+			for ; j < len(raw) && raw[j] != '"'; j++ {
+				switch raw[j] {
+				case '$', '`':
+					return pathWord{}
+				case '\\':
+					if j+1 < len(raw) && strings.IndexByte("$`\"\\", raw[j+1]) >= 0 {
+						j++
+					}
+				}
+				b.WriteByte(raw[j])
+			}
+			if j >= len(raw) {
+				return pathWord{}
+			}
+			i = j
+		case c == '$' || c == '`' || c == '*' || c == '?' || c == '[':
+			return pathWord{}
+		case c == '~' && i == 0:
+			w.tilde = true
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	w.text = b.String()
+	return w
 }
 
 // feed is a run of segments one tokenize call emitted, list.segs[lo:hi]: the
@@ -479,6 +569,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		groupIn []feed
 		// list is this call's output as the feeds it records name it.
 		list = &segList{}
+		// curRedirs rides with the segment (segment.redirects); andNext
+		// records that the last list operator read was `&&`, and lands on
+		// the next segment emitted (segment.afterAnd); pos is where the loop
+		// stands, which a segment emitted records as its end.
+		curRedirs []redirect
+		andNext   bool
+		pos       int
 	)
 	defer func() { list.segs = segs }()
 	// stdinHere is what a group or a substitution opening here reads on its
@@ -509,6 +606,16 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		saved = groupIn
 		groupIn = stdinHere()
 		return saved
+	}
+	// addRedirect records one redirection of the command being built, its
+	// target read as the shell reads the word. An empty target is the `<` of
+	// `< <(…)`, whose process substitution the loop reads next as an operand.
+	addRedirect := func(fd int, op, raw string) {
+		raw = strings.TrimLeft(raw, " \t")
+		if raw == "" {
+			return
+		}
+		curRedirs = append(curRedirs, redirect{fd: fd, op: op, target: redirectWord(raw)})
 	}
 	// feedFrom records, for the word being built, that it holds the output of
 	// the commands emitted since start: a substitution's own command and every
@@ -790,8 +897,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits,
+				ifsSplit: splits, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
+			curRedirs, andNext = nil, false
 			toks = nil
 			globs = nil
 			lits = nil
@@ -801,6 +909,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			feeds = nil
 			braceGroup = false
 			pipeNext = false
+		} else if len(curRedirs) > 0 {
+			// A command of redirections alone still opens its files: `> f`
+			// truncates f. It is kept, with no words, for the files it writes.
+			segs = append(segs, segment{chain: chain, home: list, at: len(segs),
+				redirects: curRedirs, afterAnd: andNext, end: pos})
+			curRedirs, andNext = nil, false
 		}
 		curStdin, curDocs = false, nil
 	}
@@ -825,6 +939,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		for _, is := range isegs {
 			is.chain = chain
+			is.end = pos
 			if len(in) > 0 {
 				is.stdinIn = append(append([]feed(nil), is.stdinIn...), in...)
 				is.stdinStream = true
@@ -942,9 +1057,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
-			groupIn: groupIn, docFloor: docFloor,
+			groupIn: groupIn, docFloor: docFloor, redirs: curRedirs, andNext: andNext,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
+		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
 		spells, curVarAt, splits = nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
@@ -1019,6 +1135,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		spells, curVarAt, splits = e.spells, e.curVarAt, e.splits
+		curRedirs, andNext = e.redirs, e.andNext
 		resumeDocs(e)
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
@@ -1043,6 +1160,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		spells, curVarAt, splits = e.spells, e.curVarAt, e.splits
+		curRedirs, andNext = e.redirs, e.andNext
 		feedFrom(e.segStart)
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
@@ -1079,6 +1197,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 
 	for i := 0; i < len(line); {
 		c := line[i]
+		pos = i
 		// Inside an arithmetic expansion only a command substitution is read:
 		// every other byte is expression, stepped over up to the final `)`,
 		// which resumes the enclosing command with the number in its word.
@@ -1339,6 +1458,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// list operator does not end the list, and every token-producing
 			// branch clears the flag as soon as real content arrives.
 			if !lastList {
+				andNext = false
 				chainSeq++
 				chain = chainSeq
 				pipeNext = false
@@ -1440,7 +1560,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A pure-digit cur immediately before the operator is the fd prefix
 			// (`2>`, `1>&2`), part of the redirection rather than a token; drop
 			// it. Otherwise flush the real word the operator terminates.
+			fd := -1
 			if hasCur && isAllDigits(cur) {
+				if n, err := strconv.Atoi(string(cur)); err == nil {
+					fd = n
+				}
 				cur, curMask = nil, nil
 				hasCur = false
 				curGlob = false
@@ -1448,6 +1572,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				flushToken()
 			}
 			i = skipRedirectTarget(line, opEnd)
+			addRedirect(fd, line[pos:opEnd], line[opEnd:i])
 			lastList = false
 		case c == '&' && i+1 < len(line) && line[i+1] == '>':
 			// bash's `&>` / `&>>`: redirect both stdout and stderr. It has to be
@@ -1466,6 +1591,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			flushToken()
 			i = skipRedirectTarget(line, opEnd)
+			addRedirect(-1, line[pos:opEnd], line[opEnd:i])
 			lastList = false
 		case c == '$' && i+1 < len(line) && line[i+1] == '\'':
 			// bash ANSI-C quoting: $'...' contributes its escape-decoded body to
@@ -1656,6 +1782,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					}
 				}
 			}
+			if c == '&' || c == '|' || c == ';' {
+				andNext = c == '&' && i+1 < len(line) && line[i+1] == '&'
+			}
 			if c == '|' && i+1 < len(line) && line[i+1] == '&' {
 				// `|&` pipes stdout and stderr both: a pipe.
 				pipeNext = true
@@ -1731,6 +1860,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			i++
 		}
 	}
+	pos = len(line)
 	flushSegment()
 	// A substitution still open when the input ends is a syntax error bash
 	// refuses to run, but the guard reads it fail-safe all the same: every
@@ -2282,6 +2412,10 @@ type enclosing struct {
 	// documents pending where the substitution opened stand before the one
 	// the substitution sets, and wait for the line after it closes.
 	docFloor int
+	// redirs and andNext are the enclosing command's redirections so far and
+	// the list operator before it (tokenizeAt).
+	redirs  []redirect
+	andNext bool
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing

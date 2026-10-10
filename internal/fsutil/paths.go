@@ -565,3 +565,40 @@ func OwnerUID(path string) (uint32, error) {
 	}
 	return uint32(st.Uid), nil
 }
+
+// ExpandTilde resolves a leading `~` the way a shell's tilde expansion does
+// for the account's own home: `~` alone is home, and `~/rest` is rest under
+// home. Any other p — `~user`, a `~` later in the word, no `~` at all — is
+// returned as written, and so is every p when home is empty.
+//
+// It is the one tilde expander: the shell guard resolving a script a command
+// names (internal/core/guard) and the harness trust check resolving a binary's
+// path (ExpandHome) both route through it rather than keeping copies.
+func ExpandTilde(p, home string) string {
+	if home == "" {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		return filepath.Join(home, rest)
+	}
+	return p
+}
+
+// ExpandHome is ExpandTilde, and also the parameter spellings of the home
+// directory a command line may carry unexpanded (`$HOME/`, `${HOME}/`). It is
+// for text no shell has expanded yet; a word a shell has already expanded
+// takes ExpandTilde alone, because a `$HOME` left in it was quoted.
+func ExpandHome(p, home string) string {
+	if home == "" {
+		return p
+	}
+	for _, prefix := range []string{"$HOME/", "${HOME}/"} {
+		if rest, ok := strings.CutPrefix(p, prefix); ok {
+			return filepath.Join(home, rest)
+		}
+	}
+	return ExpandTilde(p, home)
+}

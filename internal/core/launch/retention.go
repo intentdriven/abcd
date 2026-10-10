@@ -1,7 +1,6 @@
 package launch
 
 import (
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -106,17 +105,18 @@ func removeTag(tags []string, tag string) []string {
 // plan and collapse it against the real "v1.2.3". It is best-effort — an error
 // yields no tags.
 func GitExistingTags(repoRoot string) ([]Semver, error) {
-	cmd := exec.Command("git", "-C", repoRoot, "tag", "--list", "v*")
-	// Isolate: an inherited GIT_DIR/GIT_WORK_TREE would override `-C repoRoot` and
-	// list a different repository's tags, skewing the existing-release set that
-	// version-collision and retention decisions depend on.
-	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
+	// Isolated through gitutil.Run: an inherited GIT_DIR/GIT_WORK_TREE would
+	// override the root and list a different repository's tags, skewing the
+	// existing-release set that version-collision and retention decisions
+	// depend on; and a repository's tag.sort can make the listing read the
+	// tagged objects, so in a partial clone on a git below the lazy-fetch
+	// floor the listing is refused rather than fetched (iss-2610090821527948).
+	out, err := gitutil.Run(repoRoot, "tag", "--list", "v*")
 	if err != nil {
 		return nil, err
 	}
 	var vers []Semver
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

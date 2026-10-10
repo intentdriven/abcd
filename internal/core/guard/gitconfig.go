@@ -140,7 +140,7 @@ func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth 
 					// it here gives that its own depth budget, which is right — the
 					// body is a fresh command string, not a deeper wrapping of this
 					// one.
-					psegs, psigs := expandPayloads(psegs)
+					psegs, psigs := expandPayloads(psegs, 0)
 					signals = append(signals, psigs...)
 					// Each body gets its OWN disjoint chain range, the way
 					// expandPayloads gives each payload one: a body is a separate
