@@ -143,7 +143,7 @@ are written to PRD frontmatter. After freeze:
 
 ## Acknowledgements
 
-- PRD template adapted from [mattpocock/skills `to-prd`](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-prd/SKILL.md) (MIT). Seven sections: Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes.
+- PRD template adapted from [mattpocock/skills `to-prd`](https://github.com/mattpocock/skills/blob/c5a4a8c2e966e28628f56d1bfef07f401d399df0/skills/engineering/to-prd/SKILL.md) (MIT; linked at the last upstream commit that held it, before it was merged into `to-spec` and `to-tickets` on 2026-07-08). Seven sections: Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes.
 - Capture-while-grilling pattern adapted from [mattpocock/skills `/grill-with-docs`](https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md) (MIT).
 - Verb name `grill` borrowed from [mattpocock/skills `/grill-me`](https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md) (MIT).
 - Bounded-context glossary structure: Evans, E. (2003). *Domain-Driven Design*. Fowler, M. [BoundedContext](https://martinfowler.com/bliki/BoundedContext.html).
