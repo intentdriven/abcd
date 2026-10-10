@@ -1023,16 +1023,17 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus six build-time binaries
+├── cmd/                                # the shipped entrypoint plus seven build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
 │   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
-│   └── abcd-gen-cli-ref/               #   writes the generated CLI reference page
-│                                       #   The six are developer tooling, not user surface: they run
-│                                       #   from the Makefile, `go generate` or CI, and ship in no release
+│   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
+│   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
+│                                       #   The seven are developer tooling, not user surface: they run
+│                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
 │   │                                   #   (adr-23); each returns structured results
