@@ -9,7 +9,9 @@ found_during: "abcd inbox report rpt-2610071636214174 from a managed repository 
 origin: researcher-authored
 production_mode: hand-written
 found_at: "abcd lint, abcd lint docs, docs-lint roots, ahoy conventions-file retire"
-remedy: "none (filed automatically)"
+remedy: "Make bare abcd lint surface a target's refusal as an error finding that names the target and its refusal, so the aggregate exits 2 instead of reading clean; in particular the docs target runs whenever .abcd/docs-lint.json exists, not only when docs/ does. Have ahoy and ahoy doctor report a docs-lint root that does not resolve as a gap naming the file to edit, which covers CLAUDE.md retired by ahoy or by hand. Dropping CLAUDE.md from the roots when ahoy retires it is a separate decision, since ahoy has never edited an existing .abcd/docs-lint.json."
+resolution: "Bare abcd lint now raises a target's refusal as an error finding naming the target and quoting the refusal, and exits 2; the docs rule runs wherever .abcd/docs-lint.json exists, so a roots entry naming a retired CLAUDE.md fails bare lint instead of being skipped. ahoy and ahoy doctor report each docs-lint roots entry that does not exist as the report-only gap docs_lint.root_missing, naming the file to edit and the entry to remove, however the file went. Retiring CLAUDE.md through ahoy still does not edit .abcd/docs-lint.json: that would be a new write to a file ahoy never edits once it exists, left for a person to decide."
+impact: fix
 ---
 
 The public name check was silently disarmed: its roots still named a retired CLAUDE.md, and bare abcd lint reported no findings

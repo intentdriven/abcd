@@ -126,6 +126,9 @@ func Detect(cwd string) (DetectionResult, error) {
 		// A tool's own conventions file read in place of AGENTS.md
 		// (itd-2610030814013772): the owner's is named, a repeat is offered.
 		gaps = append(gaps, detectToolConventionsFiles(abs)...)
+		// A docs-lint root that does not resolve, such as a retired CLAUDE.md
+		// (iss-2610100649479892): the documentation check refuses to run.
+		gaps = append(gaps, detectDocsLintRoots(abs)...)
 		gaps = append(gaps, detectProviderAdapter(abs)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
