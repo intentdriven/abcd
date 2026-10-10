@@ -757,9 +757,9 @@ surprises").
 docs-lint config lists `docs` in `roots` only when that folder exists and
 `README.md` only when that path exists, each looked up inside the project at
 install time. A seed naming a root that is not there armed a check that refused
-from the moment it was written (`abcd lint docs` exiting 2, and with
-`docs_lint.root_missing` and bare `abcd lint` reporting it, noise on every
-fresh install). With neither, `roots` is `[]`: the check runs, reads no
+from the moment it was written, and with `docs_lint.root_missing` and the
+bare lint reporting that refusal, every such fresh install would open on an
+error. With neither, `roots` is `[]`: the check runs, reads no
 document and warns that nothing was checked, at exit 0, the honest report for a
 repository with no documentation yet, which a refusal would overstate and a
 silent pass would hide. Only the seed of a new config is shaped this way; an
