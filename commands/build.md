@@ -177,6 +177,17 @@ stage with exit 2, naming the value and the accepted form, and nothing is
 written. Starting again keeps the run's pace: a flag naming another pace is
 refused, and one naming the same pace resumes.
 
+Last, once every other check passes, the budget check asks each runner a role
+of the run is routed to (below) for its remaining quota, in agent runs, and
+compares the run's estimate on it: per step to build, one implementer and one
+round of the two reviewers, and the fidelity audit once for an intent. An
+estimate over a runner's quota is refused with exit 2 at the check `budget`,
+naming both numbers, and nothing is written. A runner that reports no quota,
+the host included, is named and the check is skipped out loud; neither shipped
+runner reports one. The payload's `checks` carries the `budget` row, the text
+output its `budget:` line, and the run record its `budget` line: tell the user
+which runners were compared and which were skipped.
+
 The window and the pause bind through `implement step` (below), and so does the
 ceiling: a run hands work to several agents at once, up to `sub_agents`, the
 validators of one round side by side and the lanes of steps that do not need
@@ -240,6 +251,18 @@ adds `fallback` (the `role`, the runner `asked` for, the `reason` and the route
 that runs it): start the agent yourself as above. Every fallback is recorded;
 `implement status` and `implement record` count them per runner and per role.
 Tell the user each fallback's reason.
+
+A runner that answers with a rate-limit response is the one failure not handed
+to you: every lane spends the same budget, so the run's window ends early. The
+step exits 0 with `next_eligible_at` (now plus the run's pause) and
+`rate_limit`, naming the `lane`, the `role`, the `runner`, the `response` and
+the `checkpoints`. The lane it came from is checkpointed to its branch: its
+agent's uncommitted work and partial receipt are saved aside for review
+(`aside`), never built on, and its worktree is reset to its last commit; the
+first step after the pause hands the same work to a fresh agent. Every other
+lane with work in flight is checkpointed at its branch's `head` and left
+running: hand back the receipts of the agents still `out` as they return. Tell
+the user the response, the lane and the time the run resumes.
 
 The run's window opens when the run starts. Once its working minutes have
 elapsed, `implement step` starts nothing: it writes `next_eligible_at` (now plus

@@ -141,6 +141,14 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"a runner is skipped with a warning on stderr, and the role runs on the host as if unrouted.\n" +
 			"One it sets to host keeps the role on the host over a runner route in " + abcdhome.Display("config.json") + ",\n" +
 			"since that spends nothing of the person's, with a warning naming both routes.\n\n" +
+			"The budget check runs last, once every other check passes: each runner a role of the\n" +
+			"run is routed to is asked for its remaining quota, in agent runs, and compared with the\n" +
+			"run's estimate on it (per step to build, one implementer and one round of the two\n" +
+			"reviewers, and the fidelity audit once for an intent). An estimate over a runner's\n" +
+			"quota is refused at the check budget, naming both numbers, and nothing is written. A\n" +
+			"runner that reports no quota, the host included, is named and the check is skipped out\n" +
+			"loud; neither shipped runner reports one. The result's budget line and the run record\n" +
+			"say which.\n\n" +
 			"An issue id (iss-N, validated by shape) is built as one lane. Its checks are the\n" +
 			"repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing\n" +
 			"open blocks it, its category and severity are ones the rule takes, it carries a remedy a\n" +
@@ -164,10 +172,11 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			for _, n := range notes {
 				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
 			}
-			if _, err := loadRunners(cmd, roots); err != nil {
+			cfg, err := loadRunners(cmd, roots)
+			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			o := loop.Options{Session: session, Roots: &roots}
+			o := loop.Options{Session: session, Roots: &roots, Runners: cfg}
 			if cmd.Flags().Changed("pace") {
 				o.Pace = &pace
 			}
@@ -189,6 +198,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
 				fmt.Fprintf(w, "  state:   %s\n", res.State)
 				renderPace(w, res.Pace)
+				renderBudget(w, res.Checks)
 				renderLaneLine(w, res.Lane)
 				renderPending(w, res.Pending)
 				switch {
@@ -256,10 +266,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			for _, n := range notes {
 				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
 			}
-			if _, err := loadRunners(cmd, roots); err != nil {
+			cfg, err := loadRunners(cmd, roots)
+			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			o := loop.Options{Session: session, Roots: &roots}
+			o := loop.Options{Session: session, Roots: &roots, Runners: cfg}
 			if cmd.Flags().Changed("pace") {
 				o.Pace = &pace
 			}
@@ -322,6 +333,7 @@ func renderNext(w io.Writer, res loop.NextResult) {
 	fmt.Fprintf(w, "           (the lane's worktree stage commits it as %s's first commit)\n", res.Start.Lane.ID)
 	fmt.Fprintf(w, "  state:   %s\n", res.Start.State)
 	renderPace(w, res.Start.Pace)
+	renderBudget(w, res.Start.Checks)
 	renderLaneLine(w, res.Start.Lane)
 	renderPending(w, res.Start.Pending)
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Start.Next)))
@@ -583,12 +595,50 @@ func renderSlots(w io.Writer, st loop.State) {
 	}
 }
 
+// renderBudget renders a new run's budget check (itd-2609201925079472
+// criterion 7): each runner's quota against the run's estimate, or the skip
+// with the runners that report none. A resumed start runs no check and
+// renders none.
+func renderBudget(w io.Writer, checks []loop.CheckRow) {
+	for _, c := range checks {
+		if c.Name == loop.CheckBudget {
+			fmt.Fprintf(w, "  budget:  %s\n", termsafe.Sanitize(c.Detail))
+		}
+	}
+}
+
+// shortOrNone is a commit's short form, or "an unnamed head".
+func shortOrNone(sha string) string {
+	if len(sha) < 12 {
+		return "an unnamed head"
+	}
+	return sha[:12]
+}
+
 // renderStepResult is the text form of an `implement step` or `implement receipt` result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
 	case res.HandBack != nil:
 		fmt.Fprintf(w, "%s: HANDED BACK: %s's %s stopped as %s after %d fix round(s); the run starts nothing further for it\n",
 			verb, res.RunID, res.Lane, res.HandBack.Verdict, res.HandBack.FixRounds)
+	case res.RateLimit != nil:
+		rl := res.RateLimit
+		fmt.Fprintf(w, "%s: the %s runner's rate limit on %s's %s ended %s's window early; paused until %s\n", verb,
+			termsafe.Sanitize(rl.Runner), rl.Lane, termsafe.Sanitize(rl.Role), res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
+		fmt.Fprintf(w, "  response: %s\n", termsafe.Sanitize(rl.Response))
+		for _, cp := range rl.Checkpoints {
+			line := fmt.Sprintf("  checkpoint: %s at %s on %s", cp.Lane, shortOrNone(cp.Head), termsafe.Sanitize(cp.Branch))
+			if cp.Aside != "" {
+				line += "; the limited agent's work saved aside at " + termsafe.Sanitize(cp.Aside)
+			}
+			if cp.Kept != "" {
+				line += "; its await kept: " + termsafe.Sanitize(fsutil.RedactHome(cp.Kept))
+			}
+			if len(cp.Out) > 0 {
+				line += "; still out: " + termsafe.Sanitize(strings.Join(cp.Out, ", "))
+			}
+			fmt.Fprintln(w, line)
+		}
 	case res.NextEligibleAt != nil:
 		fmt.Fprintf(w, "%s: %s's window has elapsed; paused until %s\n", verb, res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
 	case res.CeilingReached:
@@ -734,6 +784,15 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
 			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
 			"is refused as a pause and nothing changes; at or after it, a new window opens.\n\n" +
+			"A runner that answers with a rate-limit response is not fallen back on, since every\n" +
+			"lane spends the same budget: the run's window ends early, next_eligible_at is written\n" +
+			"(now plus the run's pause; a pause already running is kept), and the call exits 0\n" +
+			"naming the response and the lane it came from. That lane is checkpointed to its branch:\n" +
+			"its agent's uncommitted work and partial receipt are saved aside for review, never built\n" +
+			"on, its worktree is reset to its last commit, and the first call after the pause hands\n" +
+			"the same work to a fresh agent. Every other lane with work in flight is checkpointed at\n" +
+			"its branch's head and left running; its agents may hand back their receipts inside the\n" +
+			"pause. The run record names each checkpoint.\n\n" +
 			"The run's lost connection (`abcd implement outage`) is read before every move. While\n" +
 			"the network is down, a lane whose move reaches the remote or the forge (a landing's\n" +
 			"push, pull request, arming or merged check; a hold's disarm) waits on the shared probe,\n" +

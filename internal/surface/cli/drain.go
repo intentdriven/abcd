@@ -129,7 +129,11 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	for _, n := range notes {
 		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
 	}
-	o := loop.Options{Roots: &roots}
+	cfg, err := loadRunners(cmd, roots)
+	if err != nil {
+		return loopFail(cmd.OutOrStdout(), asJSON, prefix, err)
+	}
+	o := loop.Options{Roots: &roots, Runners: cfg}
 	if cmd.Flags().Changed("pace") {
 		o.Pace = &pace
 	}
@@ -178,6 +182,9 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		fmt.Fprintf(w, "  cap:   --max %d lane(s); %d opened\n", res.Max, len(res.Lanes))
 	}
 	renderPace(w, res.Pace)
+	if res.Start != nil {
+		renderBudget(w, res.Start.Checks)
+	}
 	fmt.Fprintf(w, "  lanes: %d opened, one at a time\n", len(res.Lanes))
 	for _, l := range res.Lanes {
 		line := fmt.Sprintf("    %s  %s  %s", l.Issue, l.RunID, l.Outcome)
