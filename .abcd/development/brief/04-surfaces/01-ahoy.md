@@ -753,6 +753,18 @@ decline drops it, saves nothing and names it (the product thinker's ruling on
 iss-2610071538032843, "do what the user tells you in their response, no
 surprises").
 
+**The seeded roots are what exists** (iss-2610040758095861). The seeded
+docs-lint config lists `docs` in `roots` only when that folder exists and
+`README.md` only when that path exists, each looked up inside the project at
+install time. A seed naming a root that is not there armed a check that refused
+from the moment it was written (`abcd lint docs` exiting 2, and with
+`docs_lint.root_missing` and bare `abcd lint` reporting it, noise on every
+fresh install). With neither, `roots` is `[]`: the check runs, reads no
+document and warns that nothing was checked, at exit 0, the honest report for a
+repository with no documentation yet, which a refusal would overstate and a
+silent pass would hide. Only the seed of a new config is shaped this way; an
+existing config is never changed.
+
 **The house-style question.** When the install seeds the docs-lint config, it
 asks one more question: whether the em-dash-in-list-item rule, abcd's own house
 style rather than a currency rule, blocks or warns in this repository (the

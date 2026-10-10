@@ -431,6 +431,14 @@ but setup stops before changing anything and names the one setting to change:
 `--docs-target agents_md` moves the block out of `CLAUDE.md` and into
 `AGENTS.md`, and `--docs-target skip` takes it out of both.
 
+A repository with no `.abcd/docs-lint.json` gets one, the documentation
+check's settings. Its `roots`, the documents the check reads, list `docs` when
+that folder exists and `README.md` when that file exists, as they are at
+install time, so the check runs from the start rather than refusing over a
+document that is not there. With neither, `roots` is empty: `abcd lint docs`
+then reads nothing and says so in a warning, until you add your documentation
+to that list. A repository that already has the file keeps it as it is.
+
 Some agent tools read a conventions file of their own, such as `CLAUDE.md`,
 in place of `AGENTS.md` whenever it exists, so `AGENTS.md` stays hidden from
 that tool. Setup looks for each such file at the repository root and never

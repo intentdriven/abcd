@@ -348,6 +348,14 @@ left one behind as failed. `--yes` never installs a tool, and a run with `CI` se
 to any value, or with `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool `ahoy install` checks
 for is refused, naming the ones it does.
 
+**The seeded documentation check.** A repository with no
+`.abcd/docs-lint.json` gets one. Its `roots` list `docs` when that folder
+exists and `README.md` when that file exists, at install time, so the check it
+arms runs rather than refusing over a root that is not there; with neither,
+`roots` is empty, and `abcd lint docs` reads nothing and says so in a warning at
+exit 0 until the user lists their documentation there. An existing config is
+never changed.
+
 **The house-style question.** When the install seeds `.abcd/docs-lint.json`,
 it asks `docs_lint.em_dash_in_list_item (blocking/warning) [warning]`: whether an
 em dash inside a list item, abcd's own house style rather than a currency rule,

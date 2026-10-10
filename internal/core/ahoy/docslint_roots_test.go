@@ -1,10 +1,16 @@
 package ahoy
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // writeDocsLintRoots writes repo's .abcd/docs-lint.json with roots and one
@@ -82,5 +88,72 @@ func TestDetectQuietWhenDocsLintRootsResolve(t *testing.T) {
 	}
 	if hasGap(det.Gaps, DocsLintRootMissingGapID) {
 		t.Fatalf("every root resolves, yet %s was raised: %+v", DocsLintRootMissingGapID, det.Gaps)
+	}
+}
+
+// TestSeedRootsAreWhatExistsAtInstall (iss-2610040758095861): the seeded
+// docs-lint config lists docs only when that folder exists and README.md only
+// when that file does, so the documentation check setup has just armed runs
+// rather than refusing over a root it named itself. With neither, roots is
+// empty: the check runs, finds no document and says loudly that nothing was
+// checked, at exit 0, which is the honest report for a repository with no
+// documentation yet. In every case the check runs to completion (no refusal,
+// the exit-2 case) and ahoy raises no dangling-root gap.
+func TestSeedRootsAreWhatExistsAtInstall(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		docs      bool
+		readme    bool
+		wantRoots []string
+	}{
+		{name: "neither", wantRoots: []string{}},
+		{name: "readme only", readme: true, wantRoots: []string{"README.md"}},
+		{name: "docs only", docs: true, wantRoots: []string{"docs"}},
+		{name: "both", docs: true, readme: true, wantRoots: []string{"docs", "README.md"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupHermetic(t)
+			repo := gittest.NewRepo(t).Root()
+			if tc.docs {
+				if err := os.MkdirAll(filepath.Join(repo, "docs"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(repo, "docs", "guide.md"), []byte("# Guide\n\nRun the check.\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.readme {
+				if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# Example\n\nThe tool reports what it finds.\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(repo, filepath.FromSlash(banlist.PublicConfigRelPath))
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("no seeded docs-lint config: %v", err)
+			}
+			var seeded struct {
+				Roots []string `json:"roots"`
+			}
+			if err := json.Unmarshal(raw, &seeded); err != nil {
+				t.Fatalf("seeded config is not JSON: %v\n%s", err, raw)
+			}
+			if seeded.Roots == nil || !slices.Equal(seeded.Roots, tc.wantRoots) {
+				t.Errorf("seeded roots = %#v, want %#v", seeded.Roots, tc.wantRoots)
+			}
+			cfg, err := lint.LoadConfig(path)
+			if err != nil {
+				t.Fatalf("seeded config does not load: %v", err)
+			}
+			if _, err := lint.Lint(cfg, repo); err != nil {
+				t.Errorf("the seeded check refuses to run (abcd lint docs would exit 2): %v", err)
+			}
+			if gaps := detectDocsLintRoots(repo); len(gaps) != 0 {
+				t.Errorf("a fresh install leaves a dangling docs-lint root: %+v", gaps)
+			}
+		})
 	}
 }
