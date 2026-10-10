@@ -2386,3 +2386,12 @@ Verdict: SPLIT, as proposed ("yes, file it as A"). The storage file was raised b
 | which model is the default | research | the lab already planned in iss-2610090816296964 |
 
 Verdict: SPLIT. The proposal entered as one agent for every writing task; the review routed the counts to code and the register work to the drafter, and the product thinker confirmed the order ("C first, then A").
+
+## 2026-10-10: a model-weighted sub-agent budget (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a run's sub-agent budget, eight of the middle class by default, each class double or half the next, set in the repository's config | capability | intent itd-2610100704270254 (draft); builds on itd-2609201925079472 |
+| vendor-neutral class names with each vendor's models mapped onto them | design choice | the same intent, with the routing table's tiers as the neighbour |
+
+Verdict: FILE-AS-IS, confirmed ("File as proposed"). The product thinker's rough exchange rule did not survive: "Double per class" replaced "times 2 minus 1" once the facilitator showed the latter's inverse gives 4.5, not 3; the scope narrowed from the machine to each abcd run.
