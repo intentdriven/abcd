@@ -85,14 +85,13 @@ Builds on and reuses:
   forced by `TERM=dumb`, and `term.RawSession`, whose restore runs on every
   exit. The menu asks through it and holds no keyboard code of its own.
 - The mode store and its question marker: `mode.ReadAt` and `mode.SetAt`
-  (`store.go`, lines 70 and 109), `mode.MarkQuestionOpen`,
-  `mode.ResetOnAnswer` and `mode.CanSet` (`question.go`, lines 57, 114
-  and 165).
-- The session's status rules, unchanged: the guard refuses a chip-headed
-  question while the mode reads managed (`questionGate`,
-  `guard_question.go`, line 82, naming `abcd mode` in `questionRefusal`,
-  line 52), marks it open when it admits one (line 137), and the prompt hook
-  resets it on the answer (`resetModeOnAnswer`, line 275).
+  (`store.go`), `mode.MarkQuestionOpen` and `mode.ResetOnAnswer`
+  (`question.go`).
+- The session's status rules, unchanged: when the guard admits a
+  chip-headed question it marks it open and sets the mode from the chip's
+  role (`questionGate`, `guard_question.go`), and the question tool's
+  PostToolUse hook resets it when the answer returns, with the prompt hook's
+  reset as the fallback (iss-2610100626211810).
 - The build's start: `loop.Start` (`loop.go`, line 263), its runner read
   (`loadRunners`, `build.go`, line 927), and its refusal, `loop.Refusal`
   (`refusal.go`, line 15), whose `Check` names the pre-start check
@@ -202,8 +201,9 @@ alone, writes nothing, and emits no escape byte (B3; decision 10):
   drawn on stderr, as the answer loop draws every question;
 - neither `--json` nor `--format markdown` nor `--no-menu` is passed;
 - the off setting does not say off;
-- the repository is managed (`ahoy.Managed`) and its local tier can take the
-  write (`mode.CanSet`).
+- the repository is managed (`ahoy.Managed`) and has its local tier
+  (`mode.HasTier`); a write the tier then refuses is reported, never a
+  refusal of the board.
 
 A new call in `internal/core/mode` holds the status for a question abcd asks
 itself:

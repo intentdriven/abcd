@@ -246,8 +246,8 @@ reconstructed. The refusal covers both, deliberately, because nothing in the
 enforcement can tell relocated text from invented text — which is why the state
 those three records are in is not reachable through this verb.
 
-**Ask the product thinker for the expectation and its falsifier** (set `abcd
-mode product-thinker` first). "Planned it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (asked under a
+`Product` chip). "Planned it because it is next"
 restates the decision and records nothing; "planned it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
@@ -778,8 +778,8 @@ a lift that did not happen.
 A planned intent may name the release it must land by: `target` writes
 `target_release: <value>` onto a record in `planned/`, where the value is a
 release tag `vX.Y.Z` or `next` (the next release, whatever version it
-derives). The target is the product thinker's to name: set `abcd mode
-product-thinker` before asking for it, and never infer one. A second
+derives). The target is the product thinker's to name: ask them under a
+`Product` chip, and never infer one. A second
 target replaces the first and the JSON names it under `previous`; the same
 target again writes nothing and reports `written: false`. A draft takes its
 target as it is planned, with `intent plan <itd-N> --target <value>` (one

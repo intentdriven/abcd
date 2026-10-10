@@ -357,8 +357,8 @@ The refusal names the construct and its body line. The repair is a hand edit:
 close or remove the opener in a text editor, then re-run. Promote and resolve
 given no `--grounds` append nothing and act.
 
-**Ask the product thinker for the expectation and its falsifier** (set `abcd
-mode product-thinker` first). "Promoted it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (asked under a
+`Product` chip). "Promoted it because it is next"
 restates the decision and records nothing; "promoted it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
