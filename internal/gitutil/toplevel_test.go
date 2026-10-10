@@ -161,7 +161,7 @@ func TestToplevelRefusesAnAncestorNamedByCoreWorktree(t *testing.T) {
 	if out, err := runGit(t, parent, "init", "-q", "co"); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
-	if out, err := runGit(t, co, "commit", "-q", "--allow-empty", "-m", "c0"); err != nil {
+	if out, err := runGit(t, co, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "c0"); err != nil {
 		t.Fatalf("git commit: %v: %s", err, out)
 	}
 	sub := filepath.Join(co, "sub")
