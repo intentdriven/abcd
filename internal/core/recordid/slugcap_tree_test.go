@@ -1,11 +1,10 @@
 //go:build slugcap
-
-// This test is held out of the default run by the slugcap build tag until the
-// rename of iss-2610100626320367 lands: today's tree holds some two thousand
-// record files minted under the former 60-character cap, and the test fails on
-// every one of them. The rename commit (cmd/record-slug-rename) deletes the
-// build-tag line above, and from then on the test runs in every `go test ./...`.
-// Run it before then with `go test -tags slugcap ./internal/core/recordid/`.
+// The build tag above holds this file out of the default run until the rename
+// of iss-2610100626320367 lands, because the records minted under the former
+// 60-character cap fail it; until then it runs with
+// `go test -tags slugcap ./internal/core/recordid/`. The rename commit deletes
+// this block, from the tag to the blank line below, and from then on the test
+// runs in every `go test ./...`.
 
 package recordid
 
