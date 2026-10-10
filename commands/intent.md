@@ -12,7 +12,8 @@ ingest`, which applies a host-produced audit verdict, `intent consistency
 ingest`, which files host-produced consistency findings, and `intent prepass`,
 which the planning interview runs either side of the host's own judgement, are
 in the agents-and-hosts block of `abcd --help --agent`, and their lines there
-name this page.
+name this page. So does `spec`, the store of the specs an intent is planned
+into, whose lifecycle this page carries for a person.
 
 The write side of the intent record store under `.abcd/development/intents/`.
 Every intent gets a stable `itd-N` id and directory-as-truth lifecycle state

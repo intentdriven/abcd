@@ -3,6 +3,7 @@ name: site
 description: "Report what the website declares and what was built: Writes nothing; refuses any argument."
 argument-hint: "[build|setup]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:site` the website as a surface of the record
