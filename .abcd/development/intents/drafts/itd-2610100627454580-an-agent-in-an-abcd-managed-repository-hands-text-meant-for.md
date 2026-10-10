@@ -47,9 +47,6 @@ _Proposed by the facilitator's review of 2026-10-10; not yet confirmed by the pr
 ## Open Questions
 
 - Which model is the default? The lab iss-2610090816296964 already plans compares the quick tier (Haiku 4.5) with the default tier on the drafter's material for fit, lost meaning and cost; its result sets the default, and the routing table (itd-2609201916056194) lets a team choose another.
-- Which targets does it serve first? The review proposed the texts with a hard limit or a reader's register (questions, product-thinker summaries, facilitator text, docs entries, record titles), not chat replies or commit messages, since every call costs a sub-agent's start-up and the machine's sub-agent cap is shared.
-- Who checks that a rewrite kept the meaning? Under evaluator-outside-the-loop the rewriter cannot; a quoted person's words (answers, grounds) are passed through untouched and never offered for rewriting.
-- How is its use enforced, given the drafter is skipped today? A gate can count a limit but cannot tell whether a text came from the rewriter.
 
 ## Prior Art
 
@@ -62,7 +59,7 @@ _Proposed by the facilitator's review of 2026-10-10; not yet confirmed by the pr
 ## Decisions
 
 - 2026-10-10: the product thinker proposed a dedicated rewrite agent (Haiku by default, the model configurable) that rewrites any text for the product thinker, the facilitator or the user-facing docs until it meets given limits, run automatically by agents for every writing task, and asked for an adversarial review: "Critically review my proposal, I'm not invested in it", adding that it "becomes a general rewrite agent for abcd-managed repos". The review found most limits are counts that abcd's code measures and the rewriter can only be asked to meet; that abcd cannot start an agent itself, so "automatically" means a rule and a gate, as the drafter has today; that running it for every text costs a sub-agent call each time; that meaning drift is the main risk; and that the drafter and the routing table already exist. Offered (A) growing the drafter into the general rewriter, (B) a new agent for every writing task, or (C) code fixes only, the product thinker chose "C first, then A": the code fixes are iss-2610100626211810 (the mode set from the question's chip), iss-2610100626327722 (the rows line in a refusal) and iss-2610100626320367 (the filename cap), and this draft is A.
-
+- 2026-10-10: the product thinker settled three of the draft's open questions. Which texts first: "All person-facing", so questions, record titles, product-thinker summaries and docs entries go through the rewriter, and chat replies and commit messages do not. Who checks that a rewrite kept the meaning: "A separate checker", a second agent independent of the rewriter, at the cost of a second call per text. How its use is made to stick: "Stamped output", so the rewriter stamps what it returns and a gate checks the stamp on the texts in scope, accepting that a stamp can be forged by an agent that means to skip it. The default model stays with the lab.
 
 ## Audit Notes
 
