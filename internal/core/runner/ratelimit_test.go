@@ -94,13 +94,13 @@ func TestQuotaIsAskedOfTheRunnerThatReportsIt(t *testing.T) {
 			t.Fatalf("%s reports %+v %v %v, want none", name, q, ok, err)
 		}
 	}
-	if q, ok, err := QuotaOf(context.Background(), fakeQuota{q: Quota{Remaining: 7}}); !ok || err != nil || q.Remaining != 7 {
+	if q, ok, err := quotaOf(context.Background(), fakeQuota{q: Quota{Remaining: 7}}); !ok || err != nil || q.Remaining != 7 {
 		t.Fatalf("a reporting runner's quota = %+v %v %v", q, ok, err)
 	}
-	if _, ok, err := QuotaOf(context.Background(), fakeQuota{err: errors.New("down")}); !ok || err == nil {
+	if _, ok, err := quotaOf(context.Background(), fakeQuota{err: errors.New("down")}); !ok || err == nil {
 		t.Fatalf("a reporting runner's failure is returned: %v %v", ok, err)
 	}
-	if _, ok, err := QuotaOf(context.Background(), newClaude("")); ok || err != nil {
+	if _, ok, err := quotaOf(context.Background(), newClaude("")); ok || err != nil {
 		t.Fatalf("the claude CLI reports no quota: %v %v", ok, err)
 	}
 }

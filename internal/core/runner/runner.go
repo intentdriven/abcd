@@ -140,9 +140,9 @@ type QuotaReporter interface {
 	Quota(ctx context.Context) (Quota, error)
 }
 
-// QuotaOf asks r for its remaining quota. reported is false when r reports
+// quotaOf asks r for its remaining quota. reported is false when r reports
 // none; an error is r's failure to report the one it keeps.
-func QuotaOf(ctx context.Context, r Runner) (q Quota, reported bool, err error) {
+func quotaOf(ctx context.Context, r Runner) (q Quota, reported bool, err error) {
 	qr, ok := r.(QuotaReporter)
 	if !ok {
 		return Quota{}, false, nil

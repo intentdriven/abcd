@@ -322,7 +322,7 @@ func (c *Config) Quota(ctx context.Context, name string) (Quota, bool, error) {
 	if !ok {
 		return Quota{}, false, nil
 	}
-	return QuotaOf(ctx, c.adapter(rc))
+	return quotaOf(ctx, c.adapter(rc))
 }
 
 // adapter builds the enabled runner's adapter.
