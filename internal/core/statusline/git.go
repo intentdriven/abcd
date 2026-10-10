@@ -49,11 +49,17 @@ var ErrNoCheckout = errors.New("statusline: no checkout git will answer for")
 // only in being bounded: a context that ends first is returned as its own
 // error (context.DeadlineExceeded, wrapped), never as ErrNoCheckout, so the
 // verb does not mistake a slow git for "not a repository" and run the person's
-// previous command over a checkout abcd manages.
+// previous command over a checkout abcd manages. A git whose output missed
+// the runner's WaitDelay on its retry too (gitutil.ErrGitTimedOut, a loaded
+// machine) is git not answering in time as well, and is returned as itself
+// for the same reason (iss-2610100846469473).
 func CheckoutRoot(ctx context.Context, cwd string) (string, error) {
 	top, err := gitutil.ToplevelContext(ctx, cwd)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
+	}
+	if errors.Is(err, gitutil.ErrGitTimedOut) {
+		return "", err
 	}
 	if err != nil {
 		return "", ErrNoCheckout
