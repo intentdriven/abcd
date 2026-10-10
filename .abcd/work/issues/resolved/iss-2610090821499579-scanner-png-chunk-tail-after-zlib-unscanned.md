@@ -5,7 +5,7 @@ slug: "scanner-png-chunk-tail-after-zlib-unscanned"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-83x2-mf5v-j796, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/adapter/scanner/container.go"
@@ -16,6 +16,8 @@ impact: fix
 
 The secret scanner reports a PNG as content-decoded while bytes inside a compressed chunk after the zlib checksum are never inflated or scanned, so a gzip member there ships through the launch gate.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-83x2-mf5v-j796 (draft, severity high). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
-Evidence (lines at main 7549ca2d5): `decodeBudget.inflate` uses `zlib.NewReader`, which stops at the Adler-32, and returns only the inflated bytes (internal/adapter/scanner/container.go:236). The `zTXt` arm covers only that output (internal/adapter/scanner/container.go:970) and `decodePNG` returns decoded after IEND (internal/adapter/scanner/container.go:951). `decodeStream`, the top-level zlib path, does cover the unread tail (internal/adapter/scanner/container.go:329). The same unread tail exists for compressed `iTXt`, `iCCP` and `IDAT`. Distinct from a private security report (the skip that never opened the PNG). A PNG-only bundle is refused by the zero-coverage sentinel; the bypass needs one other full-text file, which the include list already has.
+Evidence (lines at main 7549ca2d5): `decodeBudget.inflate` uses `zlib.NewReader`, which stops at the Adler-32, and returns only the inflated bytes (internal/adapter/scanner/container.go:236). The `zTXt` arm covers only that output (internal/adapter/scanner/container.go:970) and `decodePNG` returns decoded after IEND (internal/adapter/scanner/container.go:951). `decodeStream`, the top-level zlib path, does cover the unread tail (internal/adapter/scanner/container.go:329). The same unread tail exists for compressed `iTXt`, `iCCP` and `IDAT`. Distinct from GHSA-9wv7-88w3-f77m (the skip that never opened the PNG). A PNG-only bundle is refused by the zero-coverage sentinel; the bypass needs one other full-text file, which the include list already has.
+
+Reproduction: build a small valid PNG and insert a CRC'd `zTXt` chunk before IEND: keyword `Comment`, NUL, compression method 0, a zlib member of `harmless` plus a newline, then a Huffman-coded gzip member of a `ghp_` token. Scan it beside README.md: `ContentDecoded` lists the PNG and `HardFails` is 0; gunzip of the tail returns the token.

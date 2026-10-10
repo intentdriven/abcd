@@ -5,7 +5,7 @@ slug: "missing-promisor-object-triggers-configured-fetch"
 severity: "minor"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-4jpc-8vpr-5x2j, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gitutil/repo.go"
@@ -16,6 +16,8 @@ impact: fix
 
 abcd's git environment does not set `GIT_NO_LAZY_FETCH`, so an object read (`show`, `cat-file`, `ls-tree`, or `tag --list` with an object-reading `tag.sort`) of a missing object in a promisor checkout lazy-fetches and runs the repository's transport program (`remote.origin.uploadpack` on a local or file:// URL, `core.sshCommand` on ssh://).
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-4jpc-8vpr-5x2j (draft, severity medium). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (lines at main 7549ca2d5): `gitEnv` (internal/gitutil/repo.go:74) ends its config keys at core.fsmonitor (internal/gitutil/repo.go:107) and sets no GIT_NO_LAZY_FETCH; `Run`, `RunLimited` and `IsolatedEnv` (internal/gitutil/repo.go:122) share it. Sinks: `lifeboat.Plan` (internal/core/lifeboat/plan.go:187) calls `buildArchaeology` (:305), where `gvRemovedDependencies` shows a historical manifest and ignores the error (internal/core/lifeboat/graveyard_archaeology.go:242), so `abcd disembark plan` and `pack` succeed after the program ran; `committedRegistry` cat-files `HEAD:.abcd/guard.json` and falls back to defaults (internal/core/guard/config.go:99); `GitExistingTags` (internal/core/launch/retention.go:108) is reached by `abcd launch --dry-run` twice (internal/surface/cli/launch_deep.go:77 via `changelog.LatestReleaseTag`, internal/core/changelog/anchor.go:58, and internal/core/launch/dryrun.go:229), by changelog derive and guard, capture's deferral path, `reflect` `previousTag` (internal/core/reflect/seed.go:212) and the receipt gate's `releaseImpact` (internal/core/lint/lint.go:1437). `disembark probe` does not take this path.
+
+Reproduction: on git 2.39.5, delete the loose blob of a historical manifest the plan shows; set `extensions.partialClone=origin`, `remote.origin.promisor=true`, a partial-clone filter, `remote.origin.url` a local path and `remote.origin.uploadpack` a mode-0755 script; run `abcd disembark plan`. The script runs and Plan returns a lifeboat with a nil error. For the tag sink, point `refs/tags/v1.1.0` at a deleted commit, set `tag.sort=taggerdate` and call `GitExistingTags`: the script runs and the call returns exit 128. `--sort=refname` and `-c tag.sort=refname` do not stop it; `GIT_NO_LAZY_FETCH=1` does.

@@ -5,7 +5,7 @@ slug: "guard-allows-bash-env-sourced-file"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-r2w5-wf2r-jmf8, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/payload.go"
@@ -16,6 +16,8 @@ impact: fix
 
 `abcd guard` allows `BASH_ENV=<file> bash -c true`, and non-interactive bash sources that file before `-c`, so a blocker written to the file in the same command runs.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-r2w5-wf2r-jmf8 (draft, severity high). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (lines at main 7549ca2d5): `shellReadsStream` treats a `-c` string as the payload and does not look at an assignment prefix for `BASH_ENV` (internal/core/guard/payload.go:1860). The stream block's own successor tells the caller "to run a script, save it and run it as a file after reading it" (internal/core/guard/payload.go:1971), and the file form it recommends is also an allow that bash runs, so closing `BASH_ENV` alone leaves the file channel open.
+
+Reproduction: `printf '%s\n' 'git push --force origin main' > /tmp/e; BASH_ENV=/tmp/e bash -c true` is allow, and /bin/bash 3.2.57 runs the file (a `touch` stand-in creates the mark). The same allow and execution for `bash /tmp/s.sh` and `source /tmp/s.sh` after the same printf.

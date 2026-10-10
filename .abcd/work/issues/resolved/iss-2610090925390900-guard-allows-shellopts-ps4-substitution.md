@@ -14,4 +14,4 @@ resolution: "the guard judges the text a line hands bash through a prompt variab
 impact: fix
 ---
 
-abcd guard allows a bash -c whose environment prefix sets SHELLOPTS=xtrace and a PS4 holding a command substitution: bash expands PS4 before tracing the first command, so a blocker in PS4 runs although the -c payload is harmless. Sibling of the BASH_ENV finding iss-2610090821484829, found in the security-drain-2026-10-09 sweep; kept uncommitted until its fix lands.
+abcd guard allows a bash -c whose environment prefix sets SHELLOPTS=xtrace and a PS4 holding a command substitution: bash expands PS4 before tracing the first command, so a blocker in PS4 runs although the -c payload is harmless. Reproduced at main 016c1510a: `SHELLOPTS=xtrace PS4='$(pkill node)' bash -c true` (and the `env` form) judges allow while `pkill node` blocks. Sibling of the BASH_ENV finding iss-2610090821484829, found in the security-drain-2026-10-09 sweep; kept uncommitted until its fix lands.

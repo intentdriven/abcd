@@ -5,7 +5,7 @@ slug: "record-lint-agent-diff-runs-repo-diff-drivers"
 severity: "minor"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-q333-3p8r-xc2f, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/lint/agentcontract.go"
@@ -16,6 +16,8 @@ impact: fix
 
 record-lint's armed agent-diff check runs `git diff --unified=0` without `--no-ext-diff --no-textconv`, so a repository `diff.external`, `diff.<driver>.textconv` or `diff.<driver>.command` runs as the operator and its stdout can forge the `prompt_version` bump the check looks for.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-q333-3p8r-xc2f (draft, severity medium). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (lines at main 7549ca2d5): `promptVersionChanged` runs `gitutil.Run(repoRoot, "diff", "--unified=0", rangeSpec, "--", rel)` (internal/core/lint/agentcontract.go:388-389) and returns true on any added line prefixed `+prompt_version:`. The range is armed only by `record-lint -agent-diff` (cmd/record-lint/main.go:124, `lint.ArmAgentDiff`) or the Makefile record-lint target (`origin/main...HEAD`); default `abcd lint` does not arm it. The neighbouring decisions-append diff already passes `--no-ext-diff` and `--no-textconv` (internal/core/lint/decisionsappend.go:396, rationale at :378). A CI checkout of a pull request does not install the author's `.git/config`; a local run does.
+
+Reproduction: on git 2.39.5, in a local checkout, plant `refs/remotes/origin/main`, change a prompt path, set `diff.external` to a mode-0755 script, and run `go run ./cmd/record-lint -agent-diff origin/main...HEAD`. The script runs; if it prints `+prompt_version: 9.9.9` the unbumped-prompt finding is absent and `lint.Lint` returns nil. `* diff=evil` with `diff.evil.textconv` or `diff.evil.command` runs too.

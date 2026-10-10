@@ -5,7 +5,7 @@ slug: "guard-allows-trap-command-string"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-05"
+found_during: "private security advisory GHSA-f789-v342-57jr, filed 2026-10-05"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/payload.go"
@@ -16,6 +16,8 @@ impact: fix
 
 `abcd guard` allows a blocker written as the command string of `trap`, and bash runs it, an EXIT trap needing no further command.
 
-A private security report, fixed in this release; its advisory, with the full text and reproduction, is published with the release.
+Private security advisory GHSA-f789-v342-57jr (draft, severity high). Full text, evidence and reproduction: the security-drain-2026-10-09 run directory in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (lines at main 7549ca2d5): `evalPayload` joins `eval`'s operands and the guard re-reads that string, which is why `eval -- 'git push --force origin main'` is a block (internal/core/guard/payload.go:1578). Nothing walks the command operand of `trap`. The hook maps an allow to exit 0 and only a block to exit 2 (internal/surface/cli/guard.go:455-470).
+
+Reproduction: `Defaults().Check` returns allow for `trap 'git push --force origin main' EXIT`, the same with `; true` appended, `trap -- '...' EXIT; true`, `trap '...' 0; true` and `trap '...' DEBUG; true`. On /bin/bash 3.2.57, `/bin/bash -c "trap 'touch $MARK' EXIT"` creates the mark; the DEBUG form runs when a later command is present. The same text under `eval` is block / git-push-force.
