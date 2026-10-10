@@ -21,7 +21,11 @@ package loop
 //     receipt the verifier refuses leaves the lane awaiting, writes one
 //     fallback receipt into the run's state (Fallbacks) and the record, and
 //     hands the role to the host with the reason (criterion 3), which the run
-//     record counts per runner and per role (criterion 4).
+//     record counts per runner and per role (criterion 4);
+//   - a runner that answers with a rate-limit response is the one failure not
+//     handed to the host: every route spends the same budget, so the run's
+//     window ends early and every lane with work in flight is checkpointed to
+//     its branch (ratelimit.go; itd-2609201925079472 criterion 8).
 //
 // The runner is started outside the run's lock, which is held only for the
 // advance before it and the Receipt or the fallback write after it, so a
@@ -34,6 +38,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -146,6 +151,12 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	}
 	out, err := d.Dispatch(ctx, req)
 	if err != nil {
+		var fl *runner.Failure
+		if errors.As(err, &fl) && fl.Reason == runner.ReasonRateLimited {
+			// Not a fallback and not a refusal: the run's window ends
+			// early and every lane in flight is checkpointed.
+			return rateLimitWindow(repoRoot, runID, res.Lane, aw, fl, o)
+		}
 		return res, refuse(StageRunner, "", res.Lane, err.Error(),
 			"the lane still awaits its receipt: correct what the reason names and step again, or start the agent the step names by hand")
 	}

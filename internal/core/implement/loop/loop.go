@@ -48,6 +48,13 @@ type Options struct {
 	// NetworkProbe proves the network back for the shared outage probe a
 	// step runs when it is due; nil is implement.RemoteProbe at the checkout.
 	NetworkProbe func() (bool, string)
+	// Runners is the runner configuration read before a run is created
+	// (LoadRunners). A new run's budget check (budget.go) asks each runner a
+	// role of the run is routed to for its remaining quota; nil leaves every
+	// role on the host, which reports none.
+	Runners *runner.Config
+	// Quota asks the named runner for its remaining quota; nil asks Runners.
+	Quota func(name string) (runner.Quota, bool, error)
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -238,7 +245,11 @@ type StepResult struct {
 	// reach the network or an agent wait on its shared probe (Blocked names
 	// them) while the others move.
 	Outage *OutageInfo `json:"outage,omitempty"`
-	Next   string      `json:"next"`
+	// RateLimit is the runner's rate-limit response that ended the run's
+	// window early in this call, with the lanes it checkpointed
+	// (ratelimit.go); NextEligibleAt is then the pause's end.
+	RateLimit *RateLimit `json:"rate_limit,omitempty"`
+	Next      string     `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
@@ -246,7 +257,8 @@ type StepResult struct {
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
-// passes, creates the run: the state file with one lane at the sequence's first
+// passes and the budget check (budget.go) finds no runner's quota under the
+// run's estimate, creates the run: the state file with one lane at the sequence's first
 // stage, the spec's other unlanded steps pending, and the record's first line. A
 // refused check writes nothing.
 //
@@ -315,6 +327,14 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if !chk.OK {
 		return StartResult{}, chk.refusal()
 	}
+	// The budget check runs once the record may start, and writes nothing:
+	// a run its estimate exceeds is refused before the run directory exists.
+	budget := budgetCheck(chk, o)
+	chk.Checks = append(chk.Checks, budget)
+	if !budget.OK {
+		chk.OK = false
+		return StartResult{}, chk.refusal()
+	}
 	if err := fsutil.EnsureRealDirAll(repoRoot, RunRelDir, dirPerm); err != nil {
 		return StartResult{}, fmt.Errorf("creating %s: %w", RunRelDir, err)
 	}
@@ -374,6 +394,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
+		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
 		if pick != nil {
 			rp := *pick
 			rp.Lane = st.Lanes[0].ID

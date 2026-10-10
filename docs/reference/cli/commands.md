@@ -290,6 +290,15 @@ a runner is skipped with a warning on stderr, and the role runs on the host as i
 One it sets to host keeps the role on the host over a runner route in ~/.abcd.noindex/config.json,
 since that spends nothing of the person's, with a warning naming both routes.
 
+The budget check runs last, once every other check passes: each runner a role of the
+run is routed to is asked for its remaining quota, in agent runs, and compared with the
+run's estimate on it (per step to build, one implementer and one round of the two
+reviewers, and the fidelity audit once for an intent). An estimate over a runner's
+quota is refused at the check budget, naming both numbers, and nothing is written. A
+runner that reports no quota, the host included, is named and the check is skipped out
+loud; neither shipped runner reports one. The result's budget line and the run record
+say which.
+
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
 repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
 open blocks it, its category and severity are ones the rule takes, it carries a remedy a
@@ -2225,6 +2234,16 @@ The run's window clock: once the run's working window has elapsed, the call star
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
 agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
+
+A runner that answers with a rate-limit response is not fallen back on, since every
+lane spends the same budget: the run's window ends early, next_eligible_at is written
+(now plus the run's pause; a pause already running is kept), and the call exits 0
+naming the response and the lane it came from. That lane is checkpointed to its branch:
+its agent's uncommitted work and partial receipt are saved aside for review, never built
+on, its worktree is reset to its last commit, and the first call after the pause hands
+the same work to a fresh agent. Every other lane with work in flight is checkpointed at
+its branch's head and left running; its agents may hand back their receipts inside the
+pause. The run record names each checkpoint.
 
 The run's lost connection (`abcd implement outage`) is read before every move. While
 the network is down, a lane whose move reaches the remote or the forge (a landing's
