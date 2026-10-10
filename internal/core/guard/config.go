@@ -273,6 +273,9 @@ func mergePattern(base, over Pattern) Pattern {
 	if over.ArgValues != nil {
 		r.ArgValues = append([]string(nil), over.ArgValues...)
 	}
+	if over.ArgShapes != nil {
+		r.ArgShapes = append([]string(nil), over.ArgShapes...)
+	}
 	if over.FlagValues != nil {
 		r.FlagValues = cloneFlagValues(over.FlagValues)
 	}
