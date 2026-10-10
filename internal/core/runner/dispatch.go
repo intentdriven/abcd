@@ -6,7 +6,9 @@ package runner
 // contract's validator, the role goes to the host session, or with no host
 // session to the host the operator configured, and exactly one receipt is
 // written for the event. Because the branch and the receipt writer are one,
-// the count the run's summary reports is every fallback there was.
+// the count the run's summary reports is every fallback there was. A runner
+// that reports a rate limit is the one failure not fallen back on: it reaches
+// the caller as itself, with no receipt.
 
 import (
 	"context"
@@ -108,6 +110,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	}
 	var fl *Failure
 	if !errors.As(err, &fl) {
+		return Outcome{}, err
+	}
+	if fl.Reason == ReasonRateLimited {
+		// Not a fallback: every route spends the budget the run's window
+		// paces, so the role is handed to no one and the caller ends the
+		// window (itd-2609201925079472 criterion 8). No receipt is written,
+		// since nothing fell back.
 		return Outcome{}, err
 	}
 	fb := FallbackReceipt{At: d.now(), Role: req.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Ran: landing}

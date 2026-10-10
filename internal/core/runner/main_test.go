@@ -92,6 +92,30 @@ func fakeHarness(mode string) int {
 			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"refused","session_id":"fake-session-1"}`)
 		}
 		return 0
+	case "ratelimit-exit", "ratelimit-result", "ratelimit-assistant", "ratelimit-warning":
+		// A claude run that meets a rate limit, in the shapes its event
+		// stream carries one (the claude CLI 2.1's rate_limit_event, whose
+		// rate_limit_info.status is allowed, allowed_warning or rejected, and
+		// an assistant message whose error is rate_limit): rejected and the
+		// process exits non-zero; rejected and the result reports the error
+		// with a zero exit; the assistant's error alone; and a warning the
+		// run finishes past, which is no limit at all.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		switch mode {
+		case "ratelimit-warning":
+			fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1791000000,"rateLimitType":"five_hour","utilization":0.91},"session_id":"fake-session-1"}`)
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-1"}`)
+			return 0
+		case "ratelimit-assistant":
+			fmt.Fprintln(os.Stdout, `{"type":"assistant","message":{"content":[{"type":"text","text":"limited"}]},"error":"rate_limit","session_id":"fake-session-1"}`)
+		default:
+			fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		}
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-1"}`)
+		if mode == "ratelimit-result" {
+			return 0
+		}
+		return 1
 	case "hugemodel", "ctrlmodel", "suffixmodel":
 		// A harness whose init event reports a model: one past any bound,
 		// one carrying control bytes, and a real id's bracketed suffix.

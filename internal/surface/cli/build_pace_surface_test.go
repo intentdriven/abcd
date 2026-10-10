@@ -182,3 +182,25 @@ func TestBuildHelpSaysTheCeilingBinds(t *testing.T) {
 		t.Errorf("build --help still says the ceiling is not counted against")
 	}
 }
+
+// TestBuildNamesTheBudgetCheckAndTheRunnersItSkipped is criterion 7 at the
+// surface: the runner configuration the build reads reaches the budget check,
+// whose line names the runner a role is routed to as reporting no quota, and
+// the host for the rest, with the check skipped out loud.
+func TestBuildNamesTheBudgetCheckAndTheRunnersItSkipped(t *testing.T) {
+	buildRepo(t)
+	home := os.Getenv("HOME")
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"),
+		[]byte(`{"roles": {"implementer": {"runner": "claude"}}, "runner": {"claude": {}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := mustImplement(t, "build", "itd-10")
+	for _, want := range []string{"  budget:  skipped", "the claude runner reports no quota (implementer", "the host reports no quota (ruthless-reviewer"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the build's budget line names %q:\n%s", want, out)
+		}
+	}
+}
