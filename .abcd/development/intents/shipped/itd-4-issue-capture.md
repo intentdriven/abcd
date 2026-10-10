@@ -127,7 +127,7 @@ Per-criterion verdicts:
   evidence: commands/capture.md:406 — "and appends the minted `itd-N` to the issue's `related_intents`"
   evidence: commands/intent.md:534 — "intent audit --issue-drift # warnings on stderr, exit 0"
   evidence: internal/core/capture/promote.go:216 — "seed := "Graduated from `" + req.ID + "`: " + title +"
-  evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent-without-retyping-abcd-capt.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
+  evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
   evidence: internal/surface/cli/cli.go:1996 — "WARNING: `abcd intent new` is deprecated; use `abcd intent "<text>"`"
 - ac-4 — NOT_MET: promised: the plugin's sync step promotes every entry of the local-tier issues file into open/ with provenance 'migrated from' that file; delivered: no verb or sync step reads that file (its only mention is a package comment), no ledger record carries that provenance (grep over .abcd/work/issues/ finds none), and the source file is absent; the ruling of 2026-07-17 declares it satisfied-by-history, which records the omission rather than realising the outcome
   evidence: internal/core/capture/capture.go:2 — "a per-repo issue ledger that replaces the free-form"
@@ -138,7 +138,7 @@ Per-criterion verdicts:
   evidence: internal/surface/cli/capture_surface_test.go:182 — "func TestCaptureListOpenRendersIssueFields"
   evidence: internal/surface/cli/capture_surface_test.go:220 — "if iss.ID == "" || iss.Slug == "" || iss.Severity == "" || iss.Body == """
   evidence: internal/surface/cli/cli.go:3447 — "fmt.Fprintf(w, "%s %s %s %s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss))"
-  evidence: .abcd/work/issues/open/iss-2609240307549105-itd-4-ac5-says-capture-list-open-lists-every-open-issue-with.md:1 — "id: "iss-2609240307549105""
+  evidence: .abcd/work/issues/open/iss-2609240307549105-itd-4-ac5-says-capture-list-open-lists.md:1 — "id: "iss-2609240307549105""
 
 Gap audit:
 - honoured:
@@ -171,7 +171,7 @@ Gap audit:
     evidence: .abcd/work/DECISIONS.md:579 — "recorded as intentional design evolution, not a gap"
   - promote seeds the draft with the entry's content — delivered as a by-id pointer to the issue, never a copy (spc-24 SSOT design)
     evidence: internal/core/capture/promote.go:216 — "seed := "Graduated from `" + req.ID + "`: " + title +"
-    evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent-without-retyping-abcd-capt.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
+    evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
   - `/abcd:intent new` is invoked — delivered as a direct call of intent.CreateDraft, the primitive the quoted-text create shares; the `intent new` alias is deprecated
     evidence: internal/core/intent/create.go:303 — "created.RelatedIssues = []string{opts.RelatedIssue}"
     evidence: internal/surface/cli/cli.go:1996 — "`abcd intent new` is deprecated"

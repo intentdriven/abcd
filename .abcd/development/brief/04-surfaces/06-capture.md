@@ -129,7 +129,7 @@ filed. The reading ingest runs it on every stored finding
 matches the draft it mints on the item's pattern and body, since the pattern
 alone is too short to compare, and links the draft as a quoted-text create is
 linked (ruling DQ2b,
-[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)).
+[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the.md)).
 
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
@@ -217,7 +217,7 @@ researcher recognises as one that has come round before says so as a recurrence,
 naming the earlier items it recurs from; that is the researcher's confirmed
 recognition. The machine's proposal of the same thing is the `duplicates:` or
 `refines:` link the reading ingest writes onto the item
-([adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)). Two hold-shaping flags are reserved and dormant, and a
+([adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the.md)). Two hold-shaping flags are reserved and dormant, and a
 populated value is refused until activation is ruled.
 
 **At the widening position the order is fixed: characterise first, admit

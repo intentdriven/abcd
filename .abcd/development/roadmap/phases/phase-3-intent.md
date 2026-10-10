@@ -16,7 +16,7 @@ and their output lands as durable, spec-tied review artefacts in the native
 store. The **MCP front door** opens here (per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)), so the same core
 that backs the CLI is reachable by an MCP client — and by the companion harness as a peer
-(per [adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions-and-mcp.md)).
+(per [adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions.md)).
 This is the phase where an idea stops being a sentence and becomes something the
 native spec engine (Phase 4) can turn into a spec.
 
