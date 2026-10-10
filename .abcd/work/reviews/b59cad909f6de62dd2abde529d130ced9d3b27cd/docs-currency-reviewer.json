@@ -1,0 +1,44 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "b59cad909f6de62dd2abde529d130ced9d3b27cd"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-10T05:39:04Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:a813a6101cd62f2d1f4f2d9347b5e2c1a6823b0ec6d77a9169c1545dc762eabe",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.13.4"
+  },
+  "categories": {
+    "changelog-understates-behaviour": 1,
+    "lint-pre-existing": 1
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "changelog-understates-behaviour",
+      "severity": "nitpick",
+      "summary": "CHANGELOG.md:37: The lazy-fetch line says the below-floor refusal covers 'most `ls-files` forms'. internal/gitutil/lazyfetch.go refuses EVERY ls-files in a partial clone below git 2.44 (lazyFetchGuard: `listing := subcommand(args) == \"ls-files\"` is refused whenever a promisor remote is declared, with the sparse-index reason; the comment states 'EVERY ls-files is refused'). Understatement only; no reader is led to a wrong action. The changelog is derived from the record, so the correction belongs in iss-2610091935324732's wording, not a hand edit.",
+      "disposition": "deferred",
+      "note": "A nitpick that misleads no action; corrected in the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-2",
+      "category": "lint-pre-existing",
+      "severity": "nitpick",
+      "summary": "RELEASE.md:1: docs-currency-lint reports RELEASE.md as stray root markdown. The file exists at v0.13.3 too, so it is not a regression of this release; noted so the finding is on record rather than silently passed.",
+      "disposition": "deferred",
+      "note": "A nitpick that misleads no action; corrected in the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1, full tier for an additive release) over an exact export of content commit b59cad909f6de62dd2abde529d130ced9d3b27cd with the binary built from it: every line of the 0.13.4 CHANGELOG section; every claim on the user-facing pages changed since v0.13.3 (README.md, commands/ahoy.md, build.md, dashboard.md, drain.md, guard.md, implement.md, launch.md, prepare-this-repo.md, docs/how-to/install.md, docs/reference/cli/commands.md), including 47 live guard check probes; and a sweep of the remaining commands/ and docs/ pages for claims the release's changes touch, each checked against the code and the binary. Verdict PROMOTE, 2 findings (minor or nitpick, none misleading an action), deferred."
+}
