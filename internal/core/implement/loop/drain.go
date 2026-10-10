@@ -321,7 +321,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		if now.Before(*st.NextEligibleAt) {
 			at := st.NextEligibleAt.UTC().Format(time.RFC3339)
 			res.Next = "nothing before " + at + ": the drain's window has elapsed; run `abcd drain` again at or after " + at
-			return finish(false)
+			// A judgement taken this move was applied above (a yes already
+			// routed), so it is recorded even though nothing else moves.
+			return finish(res.Judged != nil)
 		}
 		st.NextEligibleAt, st.WindowStartedAt = nil, &now
 	}

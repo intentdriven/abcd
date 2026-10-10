@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -322,5 +323,53 @@ func TestARemedyRewrittenWhileJudgedIsJudgedAgain(t *testing.T) {
 	req, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(again.Judging.Request)))
 	if !strings.Contains(string(req), "a dash users see") {
 		t.Fatalf("the new request carries the new remedy:\n%s", req)
+	}
+}
+
+// TestAJudgementAnsweredDuringAPauseIsRecorded: a judgement asked inside a
+// window and answered while the drain is paused is applied and recorded in
+// the drain's state, so the move after the pause does not ask it again.
+func TestAJudgementAnsweredDuringAPauseIsRecorded(t *testing.T) {
+	repo := drainRepo(t)
+	c := &clock{t: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)}
+	pace := "1/5"
+	first, err := Drain(repo.Root(), Options{Now: c.now, Pace: &pace}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Judging == nil || first.Judging.Issue != secondIssue {
+		t.Fatalf("the drain asks the judgement inside its window: %+v", first.Judging)
+	}
+
+	c.t = c.t.Add(2 * time.Minute)
+	paused, err := Drain(repo.Root(), Options{Now: c.now}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paused.NextEligibleAt == nil || paused.Judging == nil || paused.Judging.Issue != secondIssue {
+		t.Fatalf("the window elapses with the judgement still awaited: %+v", paused)
+	}
+
+	c.t = c.t.Add(time.Minute)
+	res := judge(t, repo, Options{Now: c.now}, paused, JudgementYes, HandBackUserVisible, "the page gains a flag users read")
+	if res.NextEligibleAt == nil || res.Start != nil || len(res.Routed) != 1 {
+		t.Fatalf("the answer is applied during the pause and opens nothing: %+v", res)
+	}
+	st, _, err := readDrain(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Judging != nil || len(st.Judgements) != 1 || st.Judgements[0].Issue != secondIssue || len(st.HandBacks) != 1 || st.HandBacks[0].Issue != secondIssue {
+		t.Fatalf("the drain's state records the judgement answered during the pause: judging %+v, judgements %+v, hand-backs %+v",
+			st.Judging, st.Judgements, st.HandBacks)
+	}
+
+	c.t = paused.NextEligibleAt.Add(time.Second)
+	after, err := Drain(repo.Root(), Options{Now: c.now}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Judging == nil || after.Judging.Issue != eligibleIssue {
+		t.Fatalf("after the pause the drain asks the next issue, not the one already judged: %+v", after.Judging)
 	}
 }
