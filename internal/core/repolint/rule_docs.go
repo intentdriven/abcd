@@ -11,15 +11,24 @@ import (
 
 // docsCurrency reuses the docs-lint engine to surface documentation drift —
 // change-narration tense, broken relative links, stray root markdown. It is
-// Where-gated on docs/ existing (a repo with no user-facing docs cannot drift),
-// so an absent docs/ skips the rule rather than failing it.
+// Where-gated on docs/ or a committed .abcd/docs-lint.json existing: a repo
+// with neither has no docs target, so the rule is skipped rather than failed.
+// A config alone is enough, because its roots need not include docs/ (a
+// README, a brief, a conventions file), and skipping it there hid the docs
+// target's refusal from bare `abcd lint` (iss-2610100649479892).
 //
 // Every finding is emitted at warn severity regardless of the underlying
 // docs-lint severity: audit is an advisory conformance surface, and the
 // authoritative docs gate is `abcd lint docs` itself (which still exits 2 on a
 // blocker). Re-raising a docs blocker as an audit error would double-gate the
-// same check. (Recorded in DECISIONS.md.)
+// same check. (Recorded in DECISIONS.md.) A REFUSAL is not a finding: a config
+// the target cannot load, or one it refuses to lint (a roots entry that does
+// not resolve), checked nothing, so it is an error (targetRefusal).
 type docsCurrency struct{}
+
+// docsRefusalFix is where the docs target's refusal is fixed.
+const docsRefusalFix = "correct .abcd/docs-lint.json where the refusal says (a roots entry that does not exist is " +
+	"removed from roots, or the file it names created), then run `abcd lint docs`"
 
 func (docsCurrency) Meta() RuleMeta {
 	return RuleMeta{
@@ -30,10 +39,13 @@ func (docsCurrency) Meta() RuleMeta {
 	}
 }
 
-// Where: only when docs/ exists.
+// Where: only when docs/ exists or a docs-lint config is present.
 func (docsCurrency) Where(ctx Context) bool {
-	isDir, err := fsutil.IsDir(filepath.Join(ctx.RepoRoot, "docs"))
-	return err == nil && isDir
+	if isDir, err := fsutil.IsDir(filepath.Join(ctx.RepoRoot, "docs")); err == nil && isDir {
+		return true
+	}
+	present, err := fsutil.Exists(filepath.Join(ctx.RepoRoot, ".abcd", "docs-lint.json"))
+	return err == nil && present
 }
 
 func (docsCurrency) Eval(ctx Context) ([]Finding, error) {
@@ -55,20 +67,19 @@ func (docsCurrency) Eval(ctx Context) ([]Finding, error) {
 
 	cfg, err := lint.LoadConfig(cfgPath)
 	if err != nil {
-		// A malformed config is a real problem, but it is the docs-lint surface's
-		// to report, not audit's — surface it as a single warn pointer without
-		// leaking the underlying path error.
-		return []Finding{{
-			RuleID:   "docs-currency",
-			Severity: SeverityWarn,
-			File:     ".abcd/docs-lint.json",
-			Message:  "docs-lint config could not be loaded: " + cleanErr(err),
-		}}, nil
+		// A config the docs target cannot load is its refusal: one error
+		// pointer, without leaking the underlying path error.
+		return []Finding{targetRefusal("docs-currency", "docs", ".abcd/docs-lint.json",
+			"docs-lint config could not be loaded: "+cleanErr(err), docsRefusalFix)}, nil
 	}
 
 	findings, err := lint.Lint(cfg, ctx.RepoRoot)
 	if err != nil {
-		return nil, err
+		// The engine refused the tree (a roots entry that does not resolve, a
+		// path outside the repository) or could not read it: the same refusal
+		// `abcd lint docs` exits 2 on, reported beside the other rules' results
+		// rather than taking them down with an aborted lint.
+		return []Finding{targetRefusal("docs-currency", "docs", ".abcd/docs-lint.json", cleanErr(err), docsRefusalFix)}, nil
 	}
 	out := make([]Finding, 0, len(findings))
 	for _, f := range findings {
