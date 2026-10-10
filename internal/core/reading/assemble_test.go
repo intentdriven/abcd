@@ -735,14 +735,17 @@ func TestExcludedKeySurvivingRedactionRefusesTheFile(t *testing.T) {
 // exactly while the verifier folded case, so `## Open questions` was left in
 // place and then refused, and one record's lower-case heading failed the
 // assembly for the whole repository (iss-2610101819067941). A heading that
-// differs only in case is the excluded heading, so it is redacted: its section
-// stays behind and the rest of the file travels.
+// differs only in case, or renders the same, is the excluded heading, so it is
+// redacted: its section stays behind and the rest of the file travels.
 func TestCaseVariantExcludedHeadingIsRedacted(t *testing.T) {
 	const kept = "KEPT-AFTER-THE-EXCLUDED-SECTION"
 	cases := map[string]string{
 		"lower case":    "## audit notes\n\n" + sentinelAuditNotes + "\n",
 		"sentence case": "## Open questions\n\n" + sentinelAuditNotes + "\n",
 		"upper case":    "## WHY THIS MATTERS\n\n" + sentinelAuditNotes + "\n",
+		// The rendering half of the same equality: emphasis changes the bytes and
+		// not the heading, and it was once refused rather than redacted the same way.
+		"emphasis": "## **Audit Notes**\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, section := range cases {
 		root := fixtureRepo(t)
@@ -752,12 +755,12 @@ func TestCaseVariantExcludedHeadingIsRedacted(t *testing.T) {
 
 		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
 		if err != nil {
-			t.Errorf("%s: an excluded heading differing only in case was refused, not redacted: %v", what, err)
+			t.Errorf("%s: an excluded heading differing only in spelling was refused, not redacted: %v", what, err)
 			continue
 		}
 		text := bundleText(res.Bundle)
 		if strings.Contains(text, sentinelAuditNotes) {
-			t.Errorf("%s: an excluded heading differing only in case let its section travel", what)
+			t.Errorf("%s: an excluded heading differing only in spelling let its section travel", what)
 		}
 		if !strings.Contains(text, kept) {
 			t.Errorf("%s: the redaction took more than the excluded section; the text after it is missing", what)
