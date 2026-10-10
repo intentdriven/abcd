@@ -41,7 +41,14 @@ Then summarise the JSON for the user. Its shape is `{ "findings": [ … ],
   (advisory). For each, give the `file` (with `:line` when present), the
   `message`, and the `fix`.
 - `skipped` — rule ids that did not apply to this repo (e.g. `docs-currency`
-  when there is no `docs/`). Mention them as "not applicable", not as failures.
+  when there is neither a `docs/` nor a `.abcd/docs-lint.json`). Mention them
+  as "not applicable", not as failures.
+- A target that refuses rather than reports checked nothing, and appears as one
+  `error` finding of its rule whose `message` begins ``abcd lint <target>`
+  refuses`` and quotes the refusal: a `.abcd/docs-lint.json` `roots` entry that
+  does not exist, a configuration or registry that will not load, a site that
+  will not render. Tell the user that target checked nothing until the refusal
+  is fixed; never call the repo clean over it.
 
 State the outcome plainly: if there are no findings the repo conforms; otherwise
 lead with how many errors and warnings there are. The process exit code is the

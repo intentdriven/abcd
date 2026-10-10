@@ -115,7 +115,7 @@ func TestWorkingDirectoryParentThroughPWD(t *testing.T) {
 	}
 	allows := []string{
 		`rm -rf $PWD/../x`, `rm -rf x/../*`, `rm -rf x/..`, `rm -rf x/../y`,
-		`rm -rf ../x`, `rm -rf $X/../../*`, `rm -rf ~user/../../*`, `rm -f $PWD/../*`,
+		`rm -rf ../x`, `rm -rf ~user/../../*`, `rm -f $PWD/../*`,
 	}
 	for _, c := range allows {
 		for n, cmd := range globSegmentSpellings(c) {
@@ -123,6 +123,14 @@ func TestWorkingDirectoryParentThroughPWD(t *testing.T) {
 			if d.EntryID == cwd || d.EntryID == "rm-rf-root-or-home" || (n == 0 && d.Verdict != VerdictAllow) {
 				t.Errorf("Check(%q) = %q via %q, want no delete verdict", cmd, d.Verdict, d.EntryID)
 			}
+		}
+	}
+	// `$X/../../*` climbs from a directory the line does not name, so it is
+	// neither the working directory nor its parent; it is a path from the
+	// root when X is empty, which its own entry refuses (iss-2610091942156774).
+	for _, cmd := range globSegmentSpellings(`rm -rf $X/../../*`) {
+		if d := verdictOf(t, cmd); d.Verdict != VerdictBlock || d.EntryID != "rm-unguarded-variable-path" {
+			t.Errorf("Check(%q) = %q via %q, want block via rm-unguarded-variable-path", cmd, d.Verdict, d.EntryID)
 		}
 	}
 }

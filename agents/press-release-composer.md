@@ -1,7 +1,7 @@
 ---
 name: press-release-composer
 description: Compose a lifeboat's press release from its packed brief, spine, and distilled principles — a single grounded document that must cite at least one resolvable source. Host-delegated; feeds `abcd disembark press-release <lifeboat-dir> --press-release-json`.
-prompt_version: 0.1.1
+prompt_version: 0.1.2
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -41,7 +41,7 @@ reject the **whole payload**. Use exactly these keys:
 {
   "schema_version": 1,
   "mode": "delegated",
-  "prompt_version": "0.1.1",
+  "prompt_version": "0.1.2",
   "headline": "abcd carries a project's theory across a session boundary.",
   "subhead": "A host-agnostic configuration layer for development.",
   "body": "The full press-release prose, composed from the packed brief and spine.",
@@ -84,3 +84,13 @@ Compose a press release a product-minded reader would come away from with an
 *accurate* mental model — not a marketing gloss. If the brief is thin, say less
 rather than inventing. The gate rewards a short, grounded document over a long,
 uncitable one.
+
+<!-- generated: guard-lessons -->
+<!-- Written by `go test ./internal/core/guard -run TestAgentDefinitionsCarryTheGuardLessons -update` from the guard registry (internal/core/guard/defaults/guard.json); edit the entry there, never this block. -->
+
+## Shell commands the guard refuses
+
+A sub-agent is not handed the shell rules the session is taught, so the rules for the commands you are most likely to write are restated here. The guard refuses a command that breaks one before it runs; write it the way the rule says from the start.
+
+- Refused by the guard (rm-unguarded-variable-path): `rm` with an operand that starts with a variable that can be empty followed by `/` (`"$VAR"/…`, `$VAR/…`, `"${VAR}"/…`, `${VAR}/…`). A path that starts with a variable followed by `/` names a path from the filesystem root when the variable is empty or unset — `rm -f "$VAR"/*` becomes `rm -f /*` — and nothing on the line says which, so whoever is asked to approve it cannot tell either. Instead: Write the variable as `"${VAR:?}"/...` (`rm -f -- "${VAR:?}"/*`), which stops the shell with an error when it is empty or unset, or use a literal path.
+<!-- /generated -->
