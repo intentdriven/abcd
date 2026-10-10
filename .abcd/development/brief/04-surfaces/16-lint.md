@@ -8,7 +8,7 @@ order.
 
 It is **read-only** but for one target: bare and every other target perform
 zero writes, and the site target renders the site into its output directory when
-that directory holds no `index.html`, as the site verb's check does
+that directory holds no `index.html`, and gates what it rendered
 ([`22-site.md`](22-site.md)). Remediation stays with `/abcd:prepare-this-repo`
 and the technical facilitator. It answers a different
 question from `/abcd:ahoy`: `ahoy` reports whether the *tool* is installed and

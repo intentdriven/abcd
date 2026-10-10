@@ -309,7 +309,8 @@ commit. Exit 1 is left to a fault: a ledger that could not be read or moved, a
 record that contradicts itself (a tangled or contested set of answers only a
 hand edit repairs), or a found-at path the checkout would not let the write
 check for a reason other than its absence. Migration takes no input to refuse,
-so each of its failures is a fault.
+so past the refusal outside a git checkout every verb shares (§ 2), each of its
+failures is a fault.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with

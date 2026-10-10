@@ -23,7 +23,7 @@ whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 
 > **Recovery humility.** The lifeboat is the highest-fidelity floor the originating session could leave behind; it is not the activity that produced it. **When something here does not make sense, hunt the originating session before trusting the lifeboat blindly**: ask the prior author, surface the conversation where the decision happened, look at the rejected alternatives. See [`01-product/03-mental-model.md § The Naurian gap`](../01-product/03-mental-model.md#the-naurian-gap--modification-axis).
 
-> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the lifeboat round-trip belongs to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md) is the model of record, and it settled four things against this chapter's earlier design: the voyage log is operator-level rather than in-tree, there is no in-tree lifeboat home and no shorthand for one, writes go through `os.Root` containment plus independent path validation rather than ordinary file writes, and a refusal path never writes (the core returns the conflicts and the surface renders them). One more, and it is the load-bearing one: **lifeboat text is never injected verbatim into the target's conventions file.** The current marker block is re-injected instead. That is the difference between a data leak and a persistent instruction implant.
+> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the lifeboat round-trip belongs to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md) is the model of record, and it settled four things against this chapter's earlier design: the voyage log is operator-level rather than in-tree, there is no in-tree lifeboat home and no shorthand for one, writes go through `os.Root` containment plus independent path validation rather than ordinary file writes, and a refusal path never writes (the core returns the conflicts and a string render of them, and the surface prints it). One more, and it is the load-bearing one: **lifeboat text is never injected verbatim into the target's conventions file.** The current marker block is re-injected instead. That is the difference between a data leak and a persistent instruction implant.
 
 ## Sub-verbs
 
@@ -79,14 +79,16 @@ There is no emptiness gate. A target that merely carries unrelated files is not
 a conflict. Embark refuses only when a planned target path already holds
 differing bytes, is a non-regular target, is a duplicate target, or sits under a
 non-directory parent. On any such conflict the core **writes nothing**: it
-returns the conflict set it found, and the surface renders it. A refusal that
+returns the conflict set it found with a string render of it, and the surface
+prints that render or emits the set as JSON. A refusal that
 writes a file would be a transport-agnostic-core violation.
 
-The write runs under the target's issue-ledger lock (when it writes an issue)
-and then its intent store's lock, the order every writer holding both takes,
-and every planned write is judged again under them. A record created at a
-planned target between the plan and the write — a capture, an intent minted in
-the target meanwhile — is a conflict like any other, so it refuses the whole
+The write runs under the target's issue-ledger lock (when it writes an issue),
+then its intent store's lock, then its spec store's lock (each only when that
+store exists), the order every writer holding more than one takes, and every
+planned write is judged again under them. A record created at a planned target
+between the plan and the write — a capture, an intent or a spec minted in the
+target meanwhile — is a conflict like any other, so it refuses the whole
 write rather than being replaced. A retrospective the reflect verb writes
 takes the intent store's lock too, so it cannot land inside that window, and
 every planned write is an exclusive create: a file that lands at its target
@@ -144,9 +146,10 @@ scaffolder and no model sit in the write path.
 
 ## 4. Conflict UX
 
-The core returns the conflict set and the surface renders it as a **single bulk
-report**: one line per conflicting target path with its conflict kind, never a
-per-file barrage and never a file written by the core. The shipped unpack writes
+The core returns the conflict set and renders it, as a string it never prints,
+into a **single bulk report**: one line per conflicting target path with its
+conflict kind, never a per-file barrage and never a file written by the core.
+The surface prints that report, or emits the set as JSON. The shipped unpack writes
 nothing on any conflict and exits non-zero.
 
 ```
@@ -205,8 +208,8 @@ there is nothing to answer.
   no special case: the destination is an ordinary explicit path.
 - **Given** a target holding a file that conflicts with a planned write,
   **when** the unpack runs, **then** the command refuses, the core returns
-  the conflict list **without writing any file**, and the surface renders it as
-  one bulk report. A target that merely holds unrelated files is not a conflict.
+  the conflict list **without writing any file**, and the surface prints the
+  core's render of it as one bulk report. A target that merely holds unrelated files is not a conflict.
 - **Given** the user runs the probe, **when** it completes, **then** the
   lifeboat is inspected against the target (file tree, schema validation,
   would-be writes), no target mutation occurs, and the user sees a report ready
