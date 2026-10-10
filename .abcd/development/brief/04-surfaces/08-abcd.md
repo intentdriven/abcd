@@ -291,7 +291,12 @@ intent that has one), `lane` (`run`, `lane`, `stage`, `awaiting`, and
 `branch` and `in_flight` once the lane's branch is cut: in flight while that
 branch exists and the intent's spec is open), `failing_checks` or
 `target_release` (a planned intent's target, `next` or `vX.Y.Z`) when they
-apply, and `order`. The block is present in a repository abcd manages and
+apply, and `order`. A Now row of a run started for an issue carries `kind`
+`issue`, the issue's ledger folder as `bucket`, and the issue's one-line
+summary prefixed `issue: ` as `title`, read from the issue ledger; a lane
+whose pull request has merged (at its land stage, its branch's tip on the
+default branch as last fetched) or whose branch is gone leaves Now
+(iss-2610090824041378). The block is present in a repository abcd manages and
 absent elsewhere, and a record that cannot be read omits it with the reason on
 stderr. The read is `internal/core/statusblock`, the one the site's Status
 page renders too ([`22-site.md`](22-site.md#the-page-set)); the state file and
