@@ -104,7 +104,12 @@ Then summarise the JSON for the user:
   folder, names a `~/.abcd.noindex/filter-roots` file abcd ignores and the
   check it failed (writable by others, not owned by you, a symbolic link, or
   behind a linked folder): every checkout it lists reads with its content
-  filters off until the person fixes or removes it. Never tell the user `/abcd:ahoy install` closes
+  filters off until the person fixes or removes it. A `docs_lint.root_missing`
+  gap names a `roots` entry in `.abcd/docs-lint.json` that does not exist,
+  often a `CLAUDE.md` retired after it was listed: the documentation check
+  refuses to run while it is there, so none of its rules, the banned names
+  included, checks anything. Its `fix_hint` names the entry to take out of
+  that file (or the file to create). Never tell the user `/abcd:ahoy install` closes
   a report-only gap.
 
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply
@@ -480,7 +485,9 @@ install asks, one question per file, `retire`, `keep` or `later` (the default).
 Relay each question as it stands and never answer it for the user. On `retire`
 the file is checked again and removed from the working tree only if it still
 only repeats `AGENTS.md`, for the user to commit; a file that changed while the
-question was open is left and named in the notes. `keep` and `later` write and
+question was open is left and named in the notes. The install does not edit
+`.abcd/docs-lint.json`: a retired file still listed in its `roots` is reported
+by the next `ahoy` as `docs_lint.root_missing`, for the user to remove. `keep` and `later` write and
 record nothing, so the next install asks again. Like the drain rule offer it is
 asked only at a terminal; a piped run and a `--yes` run report
 `conventions.retire_offered` under `optional_skipped`.

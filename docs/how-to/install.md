@@ -444,7 +444,11 @@ per file, with the answers `retire`, `keep` and `later`. The question is asked
 only at a terminal: `--yes` and a piped install never ask it, and list
 `conventions.retire_offered` under `optional_skipped` instead. A removal
 happens only on `retire`, only if the file still only repeats `AGENTS.md` at
-that moment, and only in your working tree, for you to commit.
+that moment, and only in your working tree, for you to commit. Setup does not
+edit `.abcd/docs-lint.json`: if the removed file is listed in its `roots`, the
+documentation check refuses to run until you take the entry out, and `abcd ahoy`
+names it as a `docs_lint.root_missing` note, as it does for any `roots` entry
+that does not exist, however the file went.
 
 Setup also warns about what hides `AGENTS.md` from outside the repository's own
 files, and changes nothing for it: a personal conventions file at the
