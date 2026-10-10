@@ -533,7 +533,7 @@ than a design target.
   severity. The gate reads the ledger at `HEAD`, so an issue record under
   `open/` that differs from `HEAD` (an uncommitted edit, waiver or regrade, a
   capture, a removal) is a finding it cannot judge; the refusal names every
-  such path, and `--allow-dirty` does not waive it. When an unfixed or deleted
+  such path, and no override waives it. When an unfixed or deleted
   finding is present too, the findings line names the uncommitted paths beside
   their counts, so one run names every reason.
 - **The waiver** is the frontmatter pair `deferred_after` plus
