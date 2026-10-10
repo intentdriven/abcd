@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestCheckoutRootAnswersAsGitutilDoes: inside a checkout the bounded
@@ -33,6 +37,24 @@ func TestCheckoutRootReportsAnEndedContextAsItself(t *testing.T) {
 	_, err := CheckoutRoot(ctx, root)
 	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrNoCheckout) {
 		t.Errorf("err = %v, want context.Canceled and not ErrNoCheckout", err)
+	}
+}
+
+// TestCheckoutRootReportsARepeatedWaitDelayMissAsATimeout: a git whose
+// output misses the runner's WaitDelay on its retry too (a loaded machine;
+// here, a process holding git's pipe) is git not answering in time, returned
+// as gitutil.ErrGitTimedOut and never as ErrNoCheckout, so the verb blanks
+// the row rather than running the person's previous command over a checkout
+// abcd manages (iss-2610100846469473).
+func TestCheckoutRootReportsARepeatedWaitDelayMissAsATimeout(t *testing.T) {
+	root := composeRepo(t)
+	gittest.SlowPipeGit(t, "--show-toplevel", -1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	_, err := CheckoutRoot(ctx, root)
+	if !errors.Is(err, gitutil.ErrGitTimedOut) || errors.Is(err, ErrNoCheckout) {
+		t.Errorf("err = %v, want gitutil.ErrGitTimedOut and not ErrNoCheckout", err)
 	}
 }
 
