@@ -1,9 +1,10 @@
 //go:build slugcap
+
 // The build tag above holds this file out of the default run until the rename
 // of iss-2610100626320367 lands, because the records minted under the former
 // 60-character cap fail it; until then it runs with
 // `go test -tags slugcap ./internal/core/recordid/`. The rename commit deletes
-// this block, from the tag to the blank line below, and from then on the test
+// every line from the tag down to the package clause, and from then on the test
 // runs in every `go test ./...`.
 
 package recordid
