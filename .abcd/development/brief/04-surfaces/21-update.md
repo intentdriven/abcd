@@ -153,8 +153,8 @@ the refusal whole rather than a receipt followed by a second envelope.
 
 An old version number is only derivable when a release manifest dated the file it
 replaced. A file swapped under either local proof has no published release naming
-those bytes, so the receipt reports the old digest instead and reads `updated
-<path>: an unpublished build -> <tag>`. An absent old version is therefore the
+those bytes, so the receipt opens `abcd updated from an unpublished build to
+<tag>` and reports the old digest on its `replaced:` line instead. An absent old version is therefore the
 documented shape, never a broken receipt.
 
 ## References

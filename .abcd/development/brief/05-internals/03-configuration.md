@@ -1,9 +1,13 @@
 # Configuration Model
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
-questions, records the answers, and gets on with it; four further keys can be
-hand-set and are read but never written. That is the whole of the configuration
-surface the shipped binary consults. Everything else on this page is either a
+questions, records the answers, and gets on with it; `ahoy install
+--attribution` writes one more key, and four further keys can be hand-set and
+are read but never written. Beyond those nine, the binary reads only keys a
+person opts into: the provider adapter's `oracle` keys and the interview's list
+style, both below, the implement loop's `pace`
+(`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
+and `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
 
@@ -290,10 +294,10 @@ belong in a drainer layer that does not exist.
 Schema versioning and cross-version migration come in a later phase: a
 configuration record carries `schema_version: 1`, and migrators are added if a
 later phase changes the shape (itd-9). The stamp is a convention rather than a
-held rule, and the tree is not uniform — eight of the thirteen committed records
-carry it, and five do not, the record-lint and docs-lint configuration among
+held rule, and the tree is not uniform — eight of the fourteen committed records
+carry it, and six do not, the record-lint and docs-lint configuration among
 them. Nothing refuses an unstamped record, so a migration that arrives before the
-stamps do has no version to read on those five.
+stamps do has no version to read on those six.
 
 ## The history store
 
@@ -978,7 +982,7 @@ not tied to a spec into `.abcd/work/reviews/`, where the reviews charter already
 governs the shape any sweep would have to meet; the local tier's notes into a
 curated notes target; and an external tool's workspace state into its own
 namespace (itd-7). Only the memory package exists today, and its shipped front
-door takes a URL rather than a harvested directory.
+door takes a local file or an https URL rather than a harvested directory.
 
 Two triggers are drawn: an implicit one at disembark's first phase, and a manual
 CLI refresh. Per-source enable flags would default to on for a private repo and off
@@ -1033,13 +1037,17 @@ abcd/
 │   ├── core/                           # transport-agnostic core, one package per capability
 │   │                                   #   (adr-23); each returns structured results
 │   ├── adapter/                        # the seam packages (adr-22): interface + native default
-│   │   ├── scanner/                    #   + optional plug-in. The scanner is the one seam with a
-│   │   └── gitleaks/                   #   package today; 02-adapters.md is the catalogue
-│   └── surface/cli/                    # the only front door that ships (an mcp/ door is adr-23's third)
+│   │   ├── scanner/                    #   + optional plug-in. The scanner is the one capability
+│   │   ├── gitleaks/                   #   seam with a package today; gitleaks is its plug-in, and
+│   │   ├── hosting/                    #   hosting, openaiapi and tailscale are adapters outside
+│   │   ├── openaiapi/                  #   the capability seams; 02-adapters.md is the catalogue
+│   │   └── tailscale/
+│   └── surface/                        # front doors: cli/, and dashboard/, the one network
+│                                       #   listener (an mcp/ door is adr-23's third)
 ├── commands/<verb>.md                  # markdown command surfaces, flat; the gated list lives in
 │                                       #   ../04-surfaces/README.md (abcd.md is the bare /abcd board)
-├── agents/<name>.md                    # host-delegated agent prompts, plus per-agent fixtures/,
-│                                       #   README.md and CHANGELOG.md — see 01-agents.md
+├── agents/<name>.md                    # host-delegated agent prompts, plus per-agent fixtures/
+│                                       #   and nothing else — see 01-agents.md
 └── hooks/                              # host event hooks; every event command runs through a
     ├── bootstrap.sh                    #   resolving shim. bootstrap.sh PROVISIONS the plugin-root
     ├── <event>.sh                      #   binary and never builds one. Each event's shim is its own
