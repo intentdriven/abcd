@@ -36,6 +36,18 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "abcd: checking the plugin binary; a first run downloads it, so this can take a while",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use.sh\""
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [

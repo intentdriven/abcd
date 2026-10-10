@@ -36,8 +36,8 @@ and an intent id exit 2.
 
 ## 2. Before the interview
 
-Set `abcd mode product-thinker` before the first question: the retrospective
-is the product thinker's to answer, and the mode says whose answer the loop
+The retrospective is the product thinker's to answer, so every question is
+headed with a `Product` chip, which sets the mode to say whose answer the loop
 waits on.
 
 - **Intents without audit notes** (`unaudited[]`): name each one to the product thinker
@@ -51,7 +51,7 @@ waits on.
 
 ## 3. The interview
 
-With `abcd mode product-thinker` set, dispatch the `reflection-composer` agent with the seed. It asks the four asked
+Dispatch the `reflection-composer` agent with the seed. It asks the four asked
 sections (what went well, what could improve, lessons learned, decisions made)
 **one question at a time**, through the host's interactive question tool, the
 next question only after the last answer. Every question it asks follows the
@@ -95,9 +95,8 @@ notes. It refuses, exiting 1 and writing nothing, with a structured refusal:
 - `refused: "thin_answers"` — `thin[]` names each thin section and the
   follow-up question to ask. Ask it, add the reply as that section's
   `follow_up`, and write again.
-- `refused: "unshipped_targets"` — the product thinker has not confirmed; with
-  `abcd mode product-thinker` set, ask, and write
-  again with `--proceed` on a yes.
+- `refused: "unshipped_targets"` — the product thinker has not confirmed; ask
+  them under a `Product` chip, and write again with `--proceed` on a yes.
 - `refused: "exists"` / `"nothing_shipped"` — relay and stop.
 
 A malformed answers file (an unknown or repeated key) exits 2.

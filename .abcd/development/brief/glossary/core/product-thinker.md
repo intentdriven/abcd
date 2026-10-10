@@ -19,8 +19,9 @@ The **product thinker** decides *what*: which intents are pursued, what their ac
 criteria promise, which proposal is adopted, and every ruling the record carries. `abcd intent
 plan <itd-N>` is their sign-off act ([plan](plan.md)), and the planning interview's questions
 are theirs. They answer on a surface of their own, so a stop that waits on them is announced:
-`abcd mode product-thinker` parks the loop on them, and the status line reads `waiting on the
-product thinker` until they answer.
+a question's `Product` chip, or `abcd mode product-thinker` at a stop that is not a question,
+parks the loop on them, and the status line reads `waiting on the product thinker` until they
+answer.
 
 The product thinker owns two things in the record: the brief, which says what the product
 is, and the intents, which say what is to be built and in what order. Specs and the issue
@@ -48,7 +49,7 @@ Where a sentence genuinely means either person, it says "the person" or names bo
 ## Examples
 
 - "Adopting a proposal is the product thinker's move."
-- "Set `abcd mode product-thinker`, then ask the product thinker once, in their own words."
+- "Ask the product thinker once, under a `Product` chip, in their own words."
 
 ## Related terms
 

@@ -1,7 +1,7 @@
 ---
 name: question-drafter
 description: Draft one of abcd's questions so it follows every asking rule and fits the rows limit — given the material to quote, the addressee, the decision and the defensible answers, return the host question tool's input and the rows each tab takes. Never puts anything to the person itself.
-prompt_version: 0.1.0
+prompt_version: 0.1.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -101,8 +101,8 @@ The question you return follows every one of these rules, the rules abcd's quest
 - In abcd's own interviews, address the person in their register: The product thinker gets outcomes and choices in product terms, with no record ids, no code, and no internals; the technical facilitator gets the mechanism, the ids, and the trade-offs.
 - In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.
 - What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at .abcd/development/brief/glossary/interview/knowledge-floor.md under abcd's plugin root (in abcd's own repository, at that path from its root).
-- In abcd's own interviews, before stopping for an answer, record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
-- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator); when it differs from the current mode, set the mode, then ask, and the chip names that role. The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.
+- In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.
+- In abcd's own interviews, classify each question's addressee first (the product thinker or the technical facilitator), and head the question with the chip naming that role: the chip sets the mode when the question is asked, and the answer sets it back to managed, so a question needs no `abcd mode` before it. The status line names the person the question on screen is for, so a mixed interview re-sets the mode per question, never once at the start.
 
 ## Counting rows
 

@@ -63,8 +63,8 @@ most valuable thing left. Reach that with an explicit flag on any of the three:
 **Offer it; never assume it.** Widening the scan is the technical facilitator's
 choice to make, not a default to infer from a repo looking abandoned. When a
 probe comes back thin over a repo that plainly had work in it, say the scan
-honoured `.gitignore`, set `abcd mode facilitator`, and ask the technical
-facilitator whether to widen — do not re-run wide on your own judgement.
+honoured `.gitignore`, and ask the technical facilitator, under a `Tech` chip,
+whether to widen — do not re-run wide on your own judgement.
 
 The wide scan declares itself: the report carries `included_ignored: true`
 (`scope: WIDE` in the text rendering), and the marker scan's `searched` line says

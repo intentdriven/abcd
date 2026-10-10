@@ -41,9 +41,9 @@ there is no corpus: say so, and stop. Only the user decides to create one, with
   [--permission <status>] [--ban-authors] [--text <extracted.md>] --json
 ```
 
-- The class is required and never defaulted. When in doubt, set `abcd mode
-  product-thinker` or `abcd mode facilitator` for whichever of the product
-  thinker or the technical facilitator is adding the source, then ask them.
+- The class is required and never defaulted. When in doubt, ask whichever of the
+  product thinker or the technical facilitator is adding the source, under the
+  chip naming their role.
 - For a confidential source, put the title, aliases and authors in a `--meta`
   JSON file (`{"title": …, "aliases": […], "author": [{"family": …, "given": …}],
   "keywords": […]}`) so they stay out of argv, and choose an **opaque** key

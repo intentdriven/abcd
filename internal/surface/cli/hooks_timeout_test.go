@@ -31,6 +31,7 @@ var wantHookTimeouts = map[string]int{
 	"SessionStart":     240,
 	"UserPromptSubmit": 120,
 	"PreToolUse":       0,
+	"PostToolUse":      0,
 	"PreCompact":       0,
 	"SessionEnd":       0,
 	"SubagentStop":     0,
@@ -109,7 +110,7 @@ func TestEverySalvageEntryShowsItsWait(t *testing.T) {
 		}
 	}
 	slices.Sort(provisioning)
-	if want := []string{"PreCompact", "PreToolUse", "SessionStart", "UserPromptSubmit"}; !slices.Equal(provisioning, want) {
+	if want := []string{"PostToolUse", "PreCompact", "PreToolUse", "SessionStart", "UserPromptSubmit"}; !slices.Equal(provisioning, want) {
 		t.Errorf("the entries that run hooks/bootstrap.sh are %v, want %v — a hook that starts or stops provisioning updates the timeout table too", provisioning, want)
 	}
 }

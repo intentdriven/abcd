@@ -136,6 +136,11 @@ func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines
 	}
 	more := 0
 	for _, l := range all[1:] {
+		if strings.HasPrefix(l, rowsNotRefusingPrefix) {
+			// The rows findings that follow are named but refuse nothing
+			// (iss-2610100626327722); rowsAfterRefusal reads them.
+			break
+		}
 		if m := moreLineRe.FindStringSubmatch(l); m != nil {
 			more, _ = strconv.Atoi(m[1])
 			continue
@@ -156,6 +161,34 @@ func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines
 		t.Errorf("the head line counts %s part(s), but %d finding line(s) and %d more follow:\n%s", n, len(parts), more, stderr)
 	}
 	return head, parts, lines
+}
+
+// rowsNotRefusingPrefix opens the line a refusal for another fault writes
+// before the rows findings it names but does not refuse on.
+const rowsNotRefusingPrefix = "The rows limit does not refuse on its own"
+
+// rowsAfterRefusal returns the parts a refusal names after its rows line: the
+// rows findings that are not a cause of the refusal. It returns nil when the
+// refusal has no rows line.
+func rowsAfterRefusal(reason string) (line string, parts []namedPart) {
+	all := strings.Split(strings.TrimRight(reason, "\n"), "\n")
+	for i, l := range all {
+		if !strings.HasPrefix(l, rowsNotRefusingPrefix) {
+			continue
+		}
+		line = l
+		for _, r := range all[i+1:] {
+			if m := findingLineRe.FindStringSubmatch(r); m != nil {
+				tab := 0
+				if strings.HasPrefix(m[1], "tab ") {
+					tab, _ = strconv.Atoi(strings.TrimPrefix(m[1], "tab "))
+				}
+				parts = append(parts, namedPart{Tab: tab, Part: m[2], Rule: m[3]})
+			}
+		}
+		break
+	}
+	return line, parts
 }
 
 func rulesNamed(parts []namedPart) []string {
@@ -267,7 +300,7 @@ func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 // TestProductThinkerQuestionNamesNoRecordOrCommand is criterion R4 at the
 // hook. With the mode at product-thinker a record number, a command named by
 // one of the binary's verbs, and a label in backticks are each refused; the
-// same questions under the facilitator mode are admitted. With no mode store,
+// same questions chipped for the facilitator are admitted. With no mode store,
 // the "Product" chip stands in for the mode and refuses the same way.
 func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 	cases := []struct {
@@ -295,8 +328,12 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 				t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 			}
 
+			// The chip names the addressee (iss-2610100626211810): the same
+			// question chipped for the facilitator is theirs to read.
 			setMode(t, root, mode.Facilitator)
-			if stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
+			tech := q
+			tech.Header = "Tech Q2"
+			if stdout, stderr, code := runGuard(askPayload(t, root, tech), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
 				t.Errorf("facilitator: the mechanism and the ids are theirs; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 			}
 
@@ -356,33 +393,39 @@ func TestForeignQuestionIsNotRefused(t *testing.T) {
 	}
 }
 
-// TestAbcdChipWhileManagedIsRefused is the other half of the mode gate's
-// scope: an abcd chip while the mode reads managed is refused with the
-// existing one-line refusal and its `abcd mode` remedy, and nothing is marked
-// open. With a field finding as well, both are named: the finding lines first,
-// then the mode's line.
-func TestAbcdChipWhileManagedIsRefused(t *testing.T) {
+// TestAbcdChipWhileManagedIsNeverRefusedOnTheMode is the other half of the
+// mode gate's scope (iss-2610100626211810): an abcd chip names whom the
+// question is for, so while the mode reads managed it is admitted and sets the
+// mode from the chip. With a field finding it is refused on that finding
+// alone: no line about the mode, the mode left managed, nothing marked open.
+func TestAbcdChipWhileManagedIsNeverRefusedOnTheMode(t *testing.T) {
 	root := managedCheckout(t)
 	q := wellBuilt()
 	q.Header = "Product Q1"
+	q.Options[0].Label = "Keep it (Recommended)"
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	if reason != questionRefusal {
-		t.Errorf("want the existing one-line refusal alone; reason = %q", reason)
+	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
+		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), reason)
+	}
+	for _, not := range []string{"mode reads managed", "abcd mode"} {
+		if strings.Contains(reason, not) {
+			t.Errorf("a chipped question is never refused on the mode, yet the refusal says %q:\n%s", not, reason)
+		}
+	}
+	if got, _ := mode.ReadAt(root); got != mode.Managed {
+		t.Errorf("a refused question set the mode to %q", got)
 	}
 	if markedOpen(t, root) {
 		t.Error("a refused question was marked open")
 	}
 
-	q.Options[0].Label = "Keep it (Recommended)"
-	stdout, stderr, code = runGuard(askPayload(t, root, q), "guard", "hook")
-	reason = mustDeny(t, stdout, stderr, code)
-	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
-		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), reason)
+	q.Options[0].Label = "Keep it"
+	if stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook"); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("the fixed question must be admitted silently; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-	all := strings.Split(strings.TrimRight(reason, "\n"), "\n")
-	if all[len(all)-1] != questionRefusal {
-		t.Errorf("the mode's refusal must close the lines; reason:\n%s", reason)
+	if got, _ := mode.ReadAt(root); got != mode.ProductThinker {
+		t.Errorf("mode = %q, want the chip's product-thinker", got)
 	}
 }
 

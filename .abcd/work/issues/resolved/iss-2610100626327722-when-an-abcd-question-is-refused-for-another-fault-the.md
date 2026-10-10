@@ -10,6 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/guard_question.go"
 remedy: "In a refusal for another fault, list a rows overrun after the refusing parts, on a line saying it does not refuse on its own and the question would be shown, with a test that a mode or layout refusal carrying a rows overrun says so."
+resolution: "A refusal for another fault now counts and lists only the refusing parts; a rows overrun follows them under a line saying the rows limit does not refuse on its own and the question would have been shown."
+impact: fix
 ---
 
 When an abcd question is refused for another fault, the refusal lists the question's rows overrun among the parts to fix ('fix each and ask again'), although the rows limit alone never refuses (the question gate's rowsOnly, iss-2610070637562567). The person and the agent read it as a cause of the refusal, and the agent cuts a question the gate would have shown; seen twice in one interview on 2026-10-10.
+
+## Grounds
+
+- pursued: the agent stops cutting a question for its height when another part refused it; a refusal that still lists a rows finding among the parts to fix would show it wrong

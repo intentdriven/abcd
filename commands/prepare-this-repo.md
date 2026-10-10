@@ -162,8 +162,8 @@ target's `.abcd/.work.local/scratch/` (create the directory via
    Re-interviewing over an answer the repo already gives is how a project ends
    up with two canons.
 
-   **Only if there is no block**, set `abcd mode product-thinker`, then ask the
-   product thinker once, in their own words:
+   **Only if there is no block**, ask the product thinker once, under a
+   `Product` chip, in their own words:
 
    - **Title** (required) — what the project is called, as it should read in a
      heading.
