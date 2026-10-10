@@ -78,8 +78,9 @@ uses: a verdict, and with it the entry that fired, its tier, why the command is
 dangerous, and the safe successor. A `matches` list names every entry the same
 line tripped, the one that fired included, so a command hazardous in two ways
 reports both rather than only the first; the rendered form says the same thing
-on an `also matched:` line. The hook answers the host by its exit code and its
-message on stderr alone, and writes nothing on stdout in either output form.
+on an `also matched:` line. In either output form the hook answers the host
+by its exit code, its message on stderr, and on stdout only the host's deny
+above or the question's context object below.
 
 ## Taught before it is refused
 
