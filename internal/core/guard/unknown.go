@@ -122,6 +122,13 @@ type varSite struct {
 	bare  bool
 	split bool
 	width int
+	// guarded is the text of the variable's own value (`${X}`) where the
+	// expansion never prints that value empty — `${X:?}`, `${X:-w}`,
+	// `${X:=w}` — and "" otherwise (guardedValue in varpath.go).
+	guarded string
+	// transform records a trim, a replacement, a substring or a case
+	// change (transformsValue in varpath.go).
+	transform bool
 }
 
 // emptyable reports whether the parameter named name — the text after its
@@ -1702,14 +1709,16 @@ func sitesNamed(s segment, name string) []arrival {
 }
 
 // operandWant is what an entry asks of a command's operands: operand 0 and 1
-// by name, a count, an argument prefix and a resource path carried by some
-// operand, and one of a set of exact words standing as some operand.
+// by name, a count, an argument prefix, a resource path and a written shape
+// carried by some operand, and one of a set of exact words standing as some
+// operand.
 type operandWant struct {
 	sub, sub2 string
 	min       int
 	prefixes  []string
 	paths     []PathArg
 	values    []string
+	shapes    []string
 }
 
 // operandAcceptance returns, for each index i of tokens, whether some reading
@@ -1721,14 +1730,15 @@ type operandWant struct {
 // the table's state is (word, operands so far, clauses met), filled from the
 // end once: linear in the words, whatever the number of places a command can
 // sit. spelled is the segment's segment.spelled, read by the arg_values
-// clause alone (writtenMatches).
-func operandAcceptance(tokens []string, spelled map[int][]string, valueFlags []string, want operandWant, glob func(int) bool) []bool {
+// clause alone (writtenMatches), and varLead its segment.varLead, read by
+// the arg_shapes clause alone.
+func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[int]bool, valueFlags []string, want operandWant, glob func(int) bool) []bool {
 	need := want.need()
 	nv := 0
 	if len(want.values) > 0 {
 		nv = 1 // the values are one clause: any one of them meets it
 	}
-	nb := uint(len(want.prefixes) + len(want.paths) + nv)
+	nb := uint(len(want.prefixes) + len(want.paths) + nv + len(want.shapes))
 	full := 1<<nb - 1
 	width := (need + 1) << nb
 	n := len(tokens)
@@ -1760,6 +1770,11 @@ func operandAcceptance(tokens []string, spelled map[int][]string, valueFlags []s
 			}
 			if nv > 0 && writtenMatches(want.values, tokens, spelled, i) {
 				hits |= 1 << (len(want.prefixes) + len(want.paths))
+			}
+			for j, shape := range want.shapes {
+				if shape == ShapeUnguardedVariablePath && varLead[i] {
+					hits |= 1 << (len(want.prefixes) + len(want.paths) + nv + j)
+				}
 			}
 		}
 		for k := 0; k <= need; k++ {

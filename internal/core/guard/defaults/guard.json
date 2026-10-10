@@ -123,6 +123,44 @@
         ]
       }
     },
+    "rm-unguarded-variable-path": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "rm",
+        "arg_shapes": ["unguarded-variable-path"]
+      },
+      "why": "A path that starts with a variable followed by `/` names a path from the filesystem root when the variable is empty or unset — `rm -f \"$VAR\"/*` becomes `rm -f /*` — and nothing on the line says which, so whoever is asked to approve it cannot tell either.",
+      "successor": "Write the variable as `\"${VAR:?}\"/...` (`rm -f -- \"${VAR:?}\"/*`), which stops the shell with an error when it is empty or unset, or use a literal path.",
+      "fixtures": {
+        "known_bad": [
+          "rm -f \"$VAR\"/*",
+          "rm -rf $VAR/build",
+          "rm -rf \"${VAR}\"/build",
+          "rm -rf ${VAR}/build",
+          "rm -rf \"$TMPDIR/abcd-x\"",
+          "rm -rf -- \"$VAR\"/*",
+          "sudo rm -rf \"$VAR\"/*",
+          "make clean && rm -rf \"$OUT\"/*",
+          "sh -c 'rm -rf \"$VAR\"/*'",
+          "rm -rf \"$1\"/build",
+          "rm -rf ${VAR:-}/build"
+        ],
+        "known_good": [
+          "rm -rf \"${VAR:?}\"/build",
+          "rm -f -- \"${VAR:?}\"/*",
+          "rm -rf ${VAR:?VAR is unset}/build",
+          "rm -rf \"${TMPDIR:-/tmp}/abcd-x\"",
+          "rm -rf /tmp/build",
+          "rm -rf ./build/$name",
+          "rm -rf \"$tmp\"",
+          "rm -rf \"$HOME/.cache/abcd-test\"",
+          "cat > NOTES.md <<'EOF'\nrm -rf \"$VAR\"/*\nEOF",
+          "git commit -m 'never run rm -rf \"$VAR\"/* again'",
+          "abcd capture \"an agent ran rm -f \\\"$VAR\\\"/* and the host asked to approve it blind\"",
+          "ls \"$VAR\"/"
+        ]
+      }
+    },
     "git-push-force": {
       "tier": "blocker",
       "pattern": {
