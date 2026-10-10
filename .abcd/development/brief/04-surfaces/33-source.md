@@ -85,8 +85,9 @@ the process list and the shell history.
 ## Recording influence, and citing
 
 Recording an influence appends `{ts, repo, decision_ref, claim, source_key,
-locator, influence, cited_publicly}` with `cited_publicly` false, and commits it. There is no edit
-path: a correction is a new line naming the line it corrects.
+locator, influence, cited_publicly}` with `cited_publicly` false, plus `used_in`,
+the repository paths the influence landed in, when the caller names them, and commits it. There is no edit
+path: a correction is a new line naming, in `corrects`, the line it corrects.
 
 A public citation needs both gates of
 [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md). The source grants

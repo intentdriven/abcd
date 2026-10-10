@@ -479,7 +479,10 @@ every path it names held inside the lane's directory. Its fields are
 `definition_of_done` (`command`, `exit_code`, `output`), `report`, an
 optional `model`, the model the implementer's harness reported, and an optional
 `resolves`: each capture the lane fixed, with the `commit` that fixed it, the
-`note`, the `impact` and the `grounds` its resolution records. It verifies
+`note`, the `impact` and the `grounds` its resolution records. On an
+issue-keyed lane an optional `handback` (`kind`, `reason`, `home`) stands in
+for `resolves`: it ends the lane, discards its worktree and branch and hands the
+issue back by kind ([`35-drain.md`](35-drain.md)). It verifies
 only when every commit it names is on the lane's branch and not already on the
 default branch at the lane's base, the definition of done's output exists
 non-empty with exit code 0, the report exists non-empty, and each fixed capture
