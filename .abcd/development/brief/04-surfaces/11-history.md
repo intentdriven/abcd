@@ -95,7 +95,7 @@ owns is refused and left untouched (iss-2609291610432030).
   the scribe stamp of one run and exits non-zero; otherwise it says the property
   held for the runs it saw, or that it is unobserved when no retained transcript
   carries a stamp, and never that it is clean
-  ([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the-ledger-and-a-per-run.md)).
+  ([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the.md)).
   The listing's text render ends with the same one line.
 
 - **Ingesting** — redact and store transcripts that are already on disk, at the

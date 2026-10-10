@@ -9,7 +9,7 @@ shipped tree. `/abcd:scribe` is the verb that holds that rule by construction,
 on the idiom [`/abcd:reading`](23-reading.md) holds the read block by: an
 assembler with an allow list, a manifest that makes the exclusion checkable, and
 an ingest that validates the returned output before anything is written
-([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the-ledger-and-a-per-run.md);
+([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the.md);
 itd-2609020625402599).
 
 It is a verb of its own and never a sub-verb of `/abcd:reading`, because the two
@@ -197,7 +197,7 @@ renders what landed first.
 
 - The definition: [`agents/scribe.md`](../../../../agents/scribe.md), and its
   protocol in [`05-internals/01-agents.md`](../05-internals/01-agents.md).
-- The decision: [adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the-ledger-and-a-per-run.md).
+- The decision: [adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the.md).
 - The plugin surface: `commands/scribe.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

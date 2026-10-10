@@ -38,7 +38,7 @@ repository, which has no archive gate, relies on (iss-2609251945586202).
 Gate 10 runs on a real release only (a rehearsal has no release tag to bind). It
 re-renders the release's plugin archive from the tagged commit and refuses unless
 its SHA-256 is the one the ship pinned in `.claude-plugin/marketplace.json`
-([adr-2609231048308186](../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md)).
+([adr-2609231048308186](../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s.md)).
 The gate also checks that the pinned address is this repository's own release
 (`plugin.json`'s `repository`, from which the address derives, can name another
 repository after a rename, a transfer or a fork). On the normal path it runs

@@ -328,9 +328,9 @@ file.
 The transcript corpus is a **sibling** user-scope store rather than a sub-tree of
 the registry, at `~/.abcd.noindex/transcripts/<root-sha>/`, holding redacted records and a
 staging area for raw transcripts awaiting redaction
-([adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md),
+([adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store.md),
 spelled under the renamed home by
-[adr-2610031751066232](../../decisions/adrs/2610031751066232-the-transcript-store-is-spelled-under-the-renamed-home-abcd.md)).
+[adr-2610031751066232](../../decisions/adrs/2610031751066232-the-transcript-store-is-spelled-under.md)).
 Every machine-scoped store keyed on the root commit takes the full object name
 as its `<root-sha>`: Forty hex digits under SHA-1, sixty-four under SHA-256, the
 form `gitutil.RootCommit` returns and `gitutil.IsFullSHA` admits as a path
@@ -424,9 +424,9 @@ apart. Three properties are load-bearing:
 today: each lane's worktree is created at `<root-sha>/<run>-<lane>/` in this store
 (`implement/loop`, `WorktreeStoreRel`), and nothing lists or reclaims what it
 leaves. What follows is the layout the intent commits to, at the location
-[adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)
+[adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)
 sets, on the rule
-[adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
+[adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md)
 records and that record carries forward unchanged: a tool never creates directories in user-owned project space, so a
 session's or an agent's worktree is machine-scoped rather than a sibling of the
 checkout. It would be user-scope and keyed on the repository's root-commit SHA,
@@ -472,7 +472,7 @@ directory leaves the lane only when git lists it as a worktree of this
 repository, its real path lies inside this repository's lane, and its own common
 directory is this checkout's; anything else is reported and left in place, and no
 removal is forced. It is the reclaim half of
-[adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md):
+[adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md):
 a tool that must not create in the user's space must not delete there either.
 
 ## The two `.abcd/` scopes
@@ -517,7 +517,7 @@ stops abcd.** The `.noindex` suffix is what the macOS indexer honours at scan
 time, for the folder and everything beneath it, so a worktree, a run log or a
 transcript created there sets off no indexing burst (itd-2610030720038073). abcd
 changes only its own folder's name and never the computer's search settings
-([adr-2610030720195401](../../decisions/adrs/2610030720195401-abcd-keeps-its-own-folders-out-of-desktop-indexing-only-by.md)),
+([adr-2610030720195401](../../decisions/adrs/2610030720195401-abcd-keeps-its-own-folders-out-of.md)),
 and on Linux the suffix is inert. One leaf package, `internal/abcdhome`, spells
 the name, and `TestOnlyTheHomeResolverNamesTheHome` holds every other Go
 package to it. The folder's earlier name, `~/.abcd`, is read by
@@ -882,7 +882,7 @@ can ship the shell or task-runner configuration that sets it, and an operator wh
 shell auto-loads that has the tree declaring itself trusted one indirection out.
 abcd has ruled on this shape once already, in refusing an env-supplied data
 directory, and
-[adr-46](../../decisions/adrs/0046-persistence-never-weakens-the-verification-posture.md)
+[adr-46](../../decisions/adrs/0046-persistence-never-weakens-the.md)
 treats home write as the ownership root.
 
 **The home directory is never a repo root.** Its `.abcd/` is the user layer, and
@@ -1023,16 +1023,17 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus six build-time binaries
+├── cmd/                                # the shipped entrypoint plus seven build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
 │   ├── scaffold-render/                #   writes every scaffolded workflow profile for CI's workflow audit
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
-│   └── abcd-gen-cli-ref/               #   writes the generated CLI reference page
-│                                       #   The six are developer tooling, not user surface: they run
-│                                       #   from the Makefile, `go generate` or CI, and ship in no release
+│   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
+│   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
+│                                       #   The seven are developer tooling, not user surface: they run
+│                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
 │   │                                   #   (adr-23); each returns structured results

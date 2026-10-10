@@ -34,7 +34,7 @@ subprocess/environment handling.
 
 ## Workstream A — verification milestone
 
-- **Promote [itd-109](../intents/drafts/itd-109-a-two-part-verification-suite-for-abcd-managed-repos-a-an-au.md)
+- **Promote [itd-109](../intents/drafts/itd-109-a-two-part-verification-suite-for-abcd.md)
   via `/abcd:intent plan`** (human-paired: the planning interview runs the
   adversarial fit-challenge and the itd-84 decomposition). The intent is
   grill-complete — criteria as the single source, inline assertions,
@@ -58,12 +58,12 @@ subprocess/environment handling.
    from this machine needs a PATH-stripping workaround. Isolating PATH in
    those tests retires a standing tax on every single push.
    Autonomous-eligible.
-2. **[iss-209](../../work/issues/open/iss-209-every-dependabot-pr-that-bumps-a-pinned-action-in-github-wor.md)**
+2. **[iss-209](../../work/issues/open/iss-209-every-dependabot-pr-that-bumps-a-pinned.md)**
    (process) — every dependabot action-bump PR fails `TestSelfScaffoldParity`
    and can never go green alone. Scope is exactly the issue body's recorded
    stopping point (the manual `make scaffold-sync` half); the `workflow_run`
    automation is a reviewed **dead end** — re-attempting it is a STOP.
-3. **[iss-213](../../work/issues/open/iss-213-several-agents-sharing-one-git-worktree-silently-invalidated.md)**
+3. **[iss-213](../../work/issues/open/iss-213-several-agents-sharing-one-git-worktree.md)**
    (process) — several agents sharing one worktree invalidated a verification
    result and nearly lost committed work. The deliverable is a protocol/guard
    change (worktree isolation as the default for parallel agents), recorded
@@ -87,14 +87,14 @@ subprocess/environment handling.
    [itd-85](../intents/drafts/itd-85-audit-verb.md) shipped whole but still
    sits in `drafts/`; the lifecycle move is the fix, and whatever let a
    shipped intent sit unmoved is the finding to record.
-7. **[iss-218](../../work/issues/open/iss-218-record-tier-tool-naming-convention-unenforced.md)**
+7. **[iss-218](../../work/issues/open/iss-218-record-tier-tool-naming-convention.md)**
    (minor) — the record-tier tool-naming convention is prose, not a detector;
    give it one (lint-family rule), fixture-first.
-8. **[iss-96](../../work/issues/open/iss-96-now-that-transcripts-are-captured-automatically-on-every-ses.md)**
+8. **[iss-96](../../work/issues/open/iss-96-now-that-transcripts-are-captured.md)**
    (minor, verification milestone) — carried from the v0.5.0 plan unchanged:
    re-check the transcript-scanner coverage gaps against the landed pattern
    set; close or re-scope, never close on assumption.
-9. **[itd-106](../intents/drafts/itd-106-abcd-sets-up-the-ci-a-repo-requires-and-reports-what-it-did.md)**
+9. **[itd-106](../intents/drafts/itd-106-abcd-sets-up-the-ci-a-repo-requires-and.md)**
    — abcd sets up the CI a repo requires and reports what it did: the
    cross-repo consistency intent. A later promotion (its own grill first);
    listed so the plan names where "managed repos behave alike" is headed.
