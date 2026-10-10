@@ -47,21 +47,21 @@ func buildPace(t *testing.T, args ...string) paceJSON {
 }
 
 // TestBuildRunsOnTheBundledPaceAndNamesIt is criterion 1 at the surface: with
-// no flag and no configuration the run is paced 120/300 with two lanes, and
+// no flag and no configuration the run is paced 120/0 (no pause) with two lanes, and
 // the build and the status name the bundled layer.
 func TestBuildRunsOnTheBundledPaceAndNamesIt(t *testing.T) {
 	buildRepo(t)
 	res := buildPace(t)
 	p := res.Pace
-	if p.WorkMinutes.Value != 120 || p.PauseMinutes.Value != 300 || p.SubAgents.Value != 2 ||
+	if p.WorkMinutes.Value != 120 || p.PauseMinutes.Value != 0 || p.SubAgents.Value != 2 ||
 		p.WorkMinutes.Layer != "bundled" || p.SubAgents.Layer != "bundled" {
 		t.Fatalf("pace = %+v", *p)
 	}
 	status := mustImplement(t, "implement", "status")
-	if !strings.Contains(status, "pace:    120/300 minutes, 2 sub-agents (bundled)") {
+	if !strings.Contains(status, "pace:    120/0 minutes, 2 sub-agents (bundled)") {
 		t.Fatalf("the status names the pace and its layer:\n%s", status)
 	}
-	if !strings.Contains(status, "pace 120/300 minutes, 2 sub-agents (bundled)") {
+	if !strings.Contains(status, "pace 120/0 minutes, 2 sub-agents (bundled)") {
 		t.Fatalf("the run record names the pace and its layer:\n%s", status)
 	}
 }

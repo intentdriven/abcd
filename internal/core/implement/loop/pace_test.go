@@ -64,7 +64,7 @@ func wantPace(t *testing.T, p *Pace, work, pause, subs int, layer string) {
 }
 
 // TestARunWithNoConfigurationRunsOnTheBundledPace is criterion 1: with no flag
-// and no configuration the run is paced 120/300 with two lanes, the run record
+// and no configuration the run is paced 120/0 (no pause) with two lanes, the run record
 // names the bundled layer, and the run's first window opens at its start.
 func TestARunWithNoConfigurationRunsOnTheBundledPace(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
@@ -73,13 +73,13 @@ func TestARunWithNoConfigurationRunsOnTheBundledPace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPace(t, res.Pace, 120, 300, 2, "bundled")
+	wantPace(t, res.Pace, 120, 0, 2, "bundled")
 	st, err := ReadState(repo.Root(), res.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPace(t, st.Pace, 120, 300, 2, "bundled")
-	if note := paceRecord(t, st); !strings.Contains(note, "120/300") || !strings.Contains(note, "2 sub-agents") || !strings.Contains(note, "bundled") {
+	wantPace(t, st.Pace, 120, 0, 2, "bundled")
+	if note := paceRecord(t, st); !strings.Contains(note, "120/0") || !strings.Contains(note, "2 sub-agents") || !strings.Contains(note, "bundled") {
 		t.Fatalf("the record names the pace and the bundled layer: %q", note)
 	}
 	if st.WindowStartedAt == nil || !st.WindowStartedAt.Equal(now) || st.NextEligibleAt != nil {

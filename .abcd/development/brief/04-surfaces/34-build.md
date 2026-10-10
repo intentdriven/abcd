@@ -165,8 +165,8 @@ the build's own pace, sub-agent and fix-round flags, the pace written as
 `<work-minutes>/<pause-minutes>`; `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
 `pace.fix_rounds` in the
 repository's `.abcd/config.json`; the same keys in `~/.abcd.noindex/config.json`; and
-the bundled default, 120 minutes of work, 300 of pause, 2 sub-agents and 3 fix
-rounds (decision 5 and ruling DR1), held in one set of constants. The files are read through the
+the bundled default, 120 minutes of work, no pause, 2 sub-agents and 3 fix
+rounds (decision 5, the pause removed by the ruling of 2026-10-10, and ruling DR1), held in one set of constants. The files are read through the
 reader's guards (a regular file inside the checkout; on the machine, one the
 caller owns and nobody else can write), and the reader claims the `pace`
 namespace, so a key under it the loop does not read is refused rather than
