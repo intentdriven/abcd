@@ -2374,3 +2374,15 @@ Verdict: SPLIT. The facilitator offered rewriting the existing draft, a new inte
 | where notes are stored (memory.json beside rules.json, or inside rules.json) | design choice | the intent's Open Questions, with the facilitator's lean |
 
 Verdict: SPLIT, as proposed ("yes, file it as A"). The storage file was raised by the product thinker and is carried as an open question.
+
+## 2026-10-10: a general rewriter for abcd-managed repositories (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| an agent hands text with a reader and limits to the rewriter and gets back text that fits, judged by abcd's counters | capability | intent itd-2610100627454580 (draft); grows the question drafter |
+| the question gate refuses on the mode though the chip names the addressee | fix | iss-2610100626211810 |
+| a refusal lists the rows overrun as a part to fix | fix | iss-2610100626327722 |
+| a record's path can pass the Windows limit | fix | iss-2610100626320367 |
+| which model is the default | research | the lab already planned in iss-2610090816296964 |
+
+Verdict: SPLIT. The proposal entered as one agent for every writing task; the review routed the counts to code and the register work to the drafter, and the product thinker confirmed the order ("C first, then A").
