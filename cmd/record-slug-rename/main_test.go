@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const (
@@ -56,7 +56,7 @@ func fixture(t *testing.T) string {
 func git(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
-	cmd.Env = gitutil.IsolatedEnv()
+	cmd.Env = gittest.Env(t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)

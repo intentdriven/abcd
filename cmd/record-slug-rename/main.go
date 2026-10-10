@@ -60,6 +60,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -316,13 +317,8 @@ func rewriteSlugField(root string, r rename) error {
 // returns its index among the record's lines and its value, unquoted.
 func slugLine(data []byte) (int, string, bool) {
 	lines := strings.SplitAfter(string(data), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return 0, "", false
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return 0, "", false
-		}
+	end := frontmatter.Close(lines)
+	for i := 1; i < end; i++ {
 		if rest, ok := strings.CutPrefix(lines[i], "slug:"); ok {
 			return i, strings.Trim(strings.TrimSpace(rest), `"'`), true
 		}
