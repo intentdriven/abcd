@@ -529,6 +529,13 @@ than a design target.
 - **What blocks** is a severity of `major` or `critical`, and also a severity
   that is absent, misspelled, or outside the ledger's enum. An unreadable grade
   has not been judged, and "not judged" must not read as "not serious".
+- **An uncommitted open record** refuses under `unfixed-finding` too, at any
+  severity. The gate reads the ledger at `HEAD`, so an issue record under
+  `open/` that differs from `HEAD` (an uncommitted edit, waiver or regrade, a
+  capture, a removal) is a finding it cannot judge; the refusal names every
+  such path, and `--allow-dirty` does not waive it. When an unfixed or deleted
+  finding is present too, the findings line names the uncommitted paths beside
+  their counts, so one run names every reason.
 - **The waiver** is the frontmatter pair `deferred_after` plus
   `deferral_reason`, both schema-accepted keys, written by the ledger's deferral
   verb ([`06-capture.md`](06-capture.md)). `deferred_after` names the cut's
