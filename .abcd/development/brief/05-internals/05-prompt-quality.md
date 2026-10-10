@@ -70,9 +70,14 @@ The design target: each agent ships two or three fixture inputs with an expected
 output structure, validated by schema and judged by an oracle for whether the
 output is good enough, run in CI by a generic harness.
 
-Neither half exists. There is no `internal/core/prompttest` package, and every
-shipped agent's `fixtures/` directory holds exactly one file, the injection canary,
-which is layer C's presence check rather than a golden test. The harness lands with
+Neither half exists as a generic layer. There is no `internal/core/prompttest`
+package, and sixteen of the eighteen shipped agents' `fixtures/` directories hold
+exactly one file, the injection canary, which is layer C's presence check rather
+than a golden test. The other two add fixtures for a second output: the intent
+auditor a canary for its consistency role, and the release changelog composer a
+canary for its release page and a no-forecast fixture. The composer's three carry
+expected payloads that `internal/core/release/fixtures_test.go` runs through the
+real ingest, with no model in the loop. The harness lands with
 the first Pass-A agent's spec (the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds),
 the point at which a second agent exists to generalise the runner over.
 
