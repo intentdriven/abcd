@@ -115,8 +115,8 @@ func TestIsRaceTestReadsTheGoCommandLine(t *testing.T) {
 		{[]string{"vet", "./..."}, false},
 		{nil, false},
 	} {
-		if got := IsRaceTest(c.args); got != c.want {
-			t.Errorf("IsRaceTest(%q) = %v, want %v", c.args, got, c.want)
+		if got := isRaceTest(c.args); got != c.want {
+			t.Errorf("isRaceTest(%q) = %v, want %v", c.args, got, c.want)
 		}
 	}
 }
@@ -138,8 +138,8 @@ func TestDescends(t *testing.T) {
 			t.Errorf("Descends(%d, %d) = %v, want %v", c.pid, c.anc, got, c.want)
 		}
 	}
-	if a := Ancestry(procs, 12); !a[12] || !a[11] || !a[10] || !a[1] || a[20] {
-		t.Errorf("Ancestry(12) = %v", a)
+	if a := lineage(procs, 12); !a[12] || !a[11] || !a[10] || !a[1] || a[20] {
+		t.Errorf("lineage(12) = %v", a)
 	}
 }
 

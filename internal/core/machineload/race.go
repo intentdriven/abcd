@@ -24,14 +24,14 @@ const GoProgram = "go"
 // parent links form a cycle ends.
 const maxLineage = 4096
 
-// IsRaceTest reports whether args, a go command's arguments after the program
+// isRaceTest reports whether args, a go command's arguments after the program
 // name, start a test run with the race detector: the go command's own leading
 // `-C dir` is skipped, the first argument that is not a flag must be `test`,
 // and -race (or --race, or -race=<true>) must be among the arguments after it
 // and before `-args`, which hands everything after it to the test binary.
 // `go run ./cmd/abcd implement load --wait -- go test -race` is therefore not a
 // race run: its subcommand is `run`, and `test -race` are its program's words.
-func IsRaceTest(args []string) bool {
+func isRaceTest(args []string) bool {
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -68,8 +68,8 @@ func IsRaceTest(args []string) bool {
 	return false
 }
 
-// Ancestry returns pid and every ancestor of it the process table holds.
-func Ancestry(procs []Proc, pid int) map[int]bool {
+// ancestry returns pid and every ancestor of it the process table holds.
+func lineage(procs []Proc, pid int) map[int]bool {
 	byPID := make(map[int]Proc, len(procs))
 	for _, p := range procs {
 		byPID[p.PID] = p
@@ -92,14 +92,14 @@ func Descends(procs []Proc, pid, ancestor int) bool {
 	if pid == ancestor {
 		return false
 	}
-	return Ancestry(procs, pid)[ancestor]
+	return lineage(procs, pid)[ancestor]
 }
 
 // RaceCandidates returns, in pid order, the processes a race run could be: those
 // executing go, outside self's process and its ancestors. Only these are asked
 // for their arguments.
 func RaceCandidates(snap Snapshot, self Self) []int {
-	chain := Ancestry(snap.Procs, self.PID)
+	chain := lineage(snap.Procs, self.PID)
 	var out []int
 	for _, p := range snap.Procs {
 		if p.Name == GoProgram && !chain[p.PID] {
@@ -116,7 +116,7 @@ func RaceCandidates(snap Snapshot, self Self) []int {
 func RaceRuns(snap Snapshot, self Self, args map[int][]string) []int {
 	var out []int
 	for _, pid := range RaceCandidates(snap, self) {
-		if a, ok := args[pid]; ok && IsRaceTest(a) {
+		if a, ok := args[pid]; ok && isRaceTest(a) {
 			out = append(out, pid)
 		}
 	}
