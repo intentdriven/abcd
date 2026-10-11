@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101930333607"
-slug: "a-heading-spelled-with-a-cyrillic-confusable-udit-notes-with"
+slug: "a-heading-spelled-with-a-cyrillic"
 severity: "minor"
 category: "bug"
 source: "user-observation"

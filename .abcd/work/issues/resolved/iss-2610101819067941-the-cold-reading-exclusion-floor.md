@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101819067941"
-slug: "the-cold-reading-exclusion-floor-disagrees-with-itself-about"
+slug: "the-cold-reading-exclusion-floor"
 severity: "minor"
 category: "bug"
 source: "user-observation"

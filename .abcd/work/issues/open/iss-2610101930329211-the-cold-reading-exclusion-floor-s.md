@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101930329211"
-slug: "the-cold-reading-exclusion-floor-s-samerendering-internal"
+slug: "the-cold-reading-exclusion-floor-s"
 severity: "minor"
 category: "bug"
 source: "user-observation"

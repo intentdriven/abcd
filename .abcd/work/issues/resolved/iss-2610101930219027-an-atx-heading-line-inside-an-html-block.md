@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101930219027"
-slug: "an-atx-heading-line-inside-an-html-block-ends-the"
+slug: "an-atx-heading-line-inside-an-html-block"
 severity: "minor"
 category: "bug"
 source: "user-observation"
