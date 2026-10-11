@@ -130,9 +130,10 @@ the detection pass finds, and
 run it and relay it. The binary checks no ownership, so Phase 0 is the step
 that does.
 
-A repository the preparation has already brought up to the conventions (the
-three tiers in place and `AGENTS.md` carrying the working-conventions markers)
-needs only the binary's half: go straight to it.
+Which half to start with comes from the detection pass above. A
+`managed-repo` needs only the binary's half: go straight to it, unless the user
+asked to prepare the repository or adopt the conventions. An `unmanaged-repo`
+starts at Phase 0.
 
 The preparation is an interim bridge: abcd cannot yet manage repositories
 directly, so it reads the abcd record and brings the current repository up to

@@ -303,7 +303,9 @@ binary would break installs that work now.
 Code that names the page or its verb changes in the same step. The loop's
 conventions-file hint in `internal/core/implement/loop/brief.go` and
 `issuebrief.go` tells the reader to run `abcd prepare-this-repo`, which was
-never a verb, so it becomes `abcd ahoy install`. Also:
+never a verb, so it becomes `/abcd:ahoy install`: the page's preparation is what
+writes the conventions file, and a default binary `abcd ahoy install` writes no
+`AGENTS.md` (iss-2610101707453618). Also:
 `internal/core/repolint/rule_docs.go`'s message; `commands/lint.md`'s pointer;
 `pagesWithNoVerb`; `host_delegated` in `.abcd/record-lint.json` and the comment
 in `internal/core/lint/config.go`. `onboarding_test.go` and
