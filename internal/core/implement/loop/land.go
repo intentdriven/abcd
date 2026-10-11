@@ -29,10 +29,14 @@ package loop
 //     (.abcd/work/rulesets/): auto-merge armed with the queue's method where a
 //     merge queue gates the default branch and a ruleset requires a person's
 //     approval, the pull request left open for a person where either is absent
-//     (decision 3; ruling AM1). Nothing is pushed to the lane after this step.
+//     (decision 3; ruling AM1). A pull request the forge reports CONFLICTING
+//     is refused instead of armed (conflict.go). Nothing is pushed to the lane
+//     after this step.
 //  6. merged: the lane's pushed head must be an ancestor of the default
 //     branch as the remote holds it; until it is the step waits, and only then
 //     is the lane's worktree removed and its branch deleted, and the lane done.
+//     An open pull request the forge reports CONFLICTING never merges on its
+//     own, so it is refused for a person rather than waited on.
 //
 // Every git and forge argument is derived from the state and the record: the
 // branch from the run and lane ids, the pull request from the forge's own
@@ -949,7 +953,8 @@ func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
 // landArm arms the merge by the ruleset's rule, or leaves the pull request
 // open where no merge queue gates the default branch, or where no ruleset
 // requires a person's approval (ruling AM1): a merge the loop arms is one a
-// person must still approve.
+// person must still approve. A pull request the forge reports conflicting is
+// refused, unarmed.
 func landArm(c Context, lane *Lane) (Outcome, error) {
 	ld := lane.Landing
 	def, err := defaultBranch(c, *lane)
@@ -969,6 +974,21 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		ld.Merge = "left open for a person to merge: the ruleset requires no approval on " + def
 		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + ", so the loop does not arm auto-merge; it lands when a person merges it"}, nil
 	}
+	// A pull request the forge already reports conflicting never enters the
+	// queue, and nothing is pushed to a lane after arming: it is refused here,
+	// unarmed, naming what conflicts (iss-2610110908443341). A verdict the
+	// forge has not computed yet arms as before; the merged check reads it.
+	m, err := prMergeability(c, *lane)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if m.conflicting() {
+		tracking, err := fetchDefault(c, *lane, def)
+		if err != nil {
+			return Outcome{}, err
+		}
+		return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
+	}
 	if _, err := forge(c, *lane, "pr", "merge", n, "--auto", mergeMethods[method]); err != nil {
 		return Outcome{}, err
 	}
@@ -978,20 +998,17 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 }
 
 // landMerged waits for the pushed head to be an ancestor of the default branch
-// as the remote holds it, then removes the lane's worktree and branch.
+// as the remote holds it, then removes the lane's worktree and branch. An open
+// pull request the forge reports conflicting is refused, not waited on.
 func landMerged(c Context, lane *Lane) (Outcome, error) {
 	ld := lane.Landing
 	def, err := defaultBranch(c, *lane)
 	if err != nil {
 		return Outcome{}, err
 	}
-	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := netGit(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
-		if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
-			return Outcome{}, r
-		}
-		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+fsutil.RedactHome(err.Error()),
-			"settle what git reports, then run `abcd implement step` again")
+	tracking, err := fetchDefault(c, *lane, def)
+	if err != nil {
+		return Outcome{}, err
 	}
 	on, err := gitutil.IsAncestor(c.RepoRoot, ld.Pushed, tracking)
 	if err != nil {
@@ -1012,8 +1029,19 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+n+" was closed without merging",
 				"reopen it, or hand the lane back; the loop cleans up nothing that did not land")
 		}
+		// An open pull request the forge reports conflicting never merges on
+		// its own: it is refused for a person, not waited on
+		// (iss-2610110908443341). Any other verdict, UNKNOWN included (the
+		// forge computes it lazily), is the merge's ordinary wait.
+		m, err := prMergeability(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if m.conflicting() {
+			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
+		}
 		return Outcome{}, contend(string(StageLand), "", lane.ID,
-			"pull request #"+n+" is not merged yet: "+shortSHA(ld.Pushed)+" is not on "+Remote+"/"+def,
+			"pull request #"+n+" is not merged yet: "+shortSHA(ld.Pushed)+" is not on "+Remote+"/"+def+" ("+m.note()+")",
 			"run `abcd implement step` again once it has merged; "+ld.Merge)
 	}
 	merged, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
@@ -1042,6 +1070,20 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 	ld.Merged = merged
 	return Outcome{Note: fmt.Sprintf("pull request #%s landed: %s is on %s/%s at %s; removed the lane's worktree and branch %s",
 		n, shortSHA(ld.Pushed), Remote, def, shortSHA(merged), lane.Branch)}, nil
+}
+
+// fetchDefault fetches the default branch def from the remote into its
+// remote-tracking ref, and returns the ref.
+func fetchDefault(c Context, lane Lane, def string) (string, error) {
+	tracking := "refs/remotes/" + Remote + "/" + def
+	if _, err := netGit(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+		if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
+			return "", r
+		}
+		return "", refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+fsutil.RedactHome(err.Error()),
+			"settle what git reports, then run `abcd implement step` again")
+	}
+	return tracking, nil
 }
 
 // removeLaneWorktree removes the lane's worktree when git lists it at the lane's
