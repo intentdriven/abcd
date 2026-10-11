@@ -1078,10 +1078,10 @@ type cdReadings struct {
 
 // cdOperand reads the options and operands of the `cd`/`pushd` at site the
 // way each shell does. bash takes -L, -P (the last of the two deciding), -e
-// and -@, pushd -n too, refuses any other option and a third operand, and
-// enters its operand, or stays put for pushd -n; with two operands an older
-// bash enters the first and a newer one refuses the cd, so the first is
-// taken as entered. zsh takes -L, -P, -q and -s;
+// and -@, pushd -n too, refuses any other option, and enters its operand, or
+// stays put for pushd -n; with two or more operands an older bash (3.2)
+// enters the first and a newer one refuses the cd, so the first is taken as
+// entered whatever follows it. zsh takes -L, -P, -q and -s;
 // at the first word it does not take as an option its operands start, and
 // two operands are the substitution form, one is the directory entered, and
 // more are refused. A word starting with `-` with a letter neither shell
@@ -1134,7 +1134,7 @@ func cdOperand(s segment, site int) cdReadings {
 		}
 	}
 	var r cdReadings
-	if bashOK && len(s.tokens)-i <= 2 {
+	if bashOK {
 		if stays {
 			r.stays = true
 		} else {

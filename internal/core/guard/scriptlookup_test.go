@@ -383,6 +383,38 @@ func TestCdTwoOperandsBashEntersTheFirst(t *testing.T) {
 	}
 }
 
+// TestCdManyOperandsBashEntersTheFirst: bash 3.2 enters the first operand
+// of a cd with three or more operands and succeeds, as it does with two, so
+// the first operand is bash's candidate whatever follows it and the scripts
+// after it are read there (iss-2610111855583968).
+func TestCdManyOperandsBashEntersTheFirst(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"s.sh":        "echo benign",
+		"a/s.sh":      hazardLine,
+		"base/s.sh":   "echo benign",
+		"base/a/keep": "",
+	})
+	runScriptCases(t, dir, []scriptCase{
+		{`cd {d} && cd a b c && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd a b c d && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -- a b c && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -P a b c && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && pushd a b c && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		// The control: the first operand holds no hazard.
+		{`cd {d}/base && cd a b c && bash s.sh`, VerdictAllow, ""},
+	})
+	for line, want := range map[string]string{
+		`cd {d} && cd a b c && bash s.sh`:       "a",
+		`cd {d} && cd -- a b c && bash s.sh`:    "a",
+		`cd {d} && cd nowhere b c && bash s.sh`: "",
+	} {
+		cmd := strings.ReplaceAll(line, "{d}", dir)
+		if got := strings.Join(dirsAfter(t, dir, cmd), " "); got != want {
+			t.Errorf("%s\n  runs its last command in %q; want %q", line, got, want)
+		}
+	}
+}
+
 // TestCdUnknownOptionWordSubstitutes: an option word with a letter neither
 // shell takes is refused by bash and is the first operand to zsh, so with one
 // operand after it zsh reads the cd as its substitution form, and the

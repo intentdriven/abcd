@@ -366,8 +366,8 @@ is. bash and zsh read some `cd` and `pushd` forms differently, and the reader
 does not know which shell runs the line, so it reads the scripts after such a
 `cd` in the directory each reading enters, and blocks on a hazard in any of
 them. With bash's `-e` or `-@`, bash enters the operand; with `pushd -n`, bash
-stays put; with a second operand, an older bash enters the first and a newer
-one refuses the `cd`, so the first is read as entered. zsh reads a second
+stays put; with a second operand or more, an older bash enters the first and
+a newer one refuses the `cd`, so the first is read as entered. zsh reads a second
 operand, or an option word it does not take (`-e`, `-@`, `-n`, or any word
 with a letter other than `L`, `P`, `q` and `s`, which bash refuses), as its
 substitution form: it replaces the first occurrence of the first word in the
