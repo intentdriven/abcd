@@ -296,23 +296,34 @@ func namesExcludedHeading(title string, headings map[string]bool) (string, bool)
 // non-breaking space differ in bytes and are the same heading to every reader,
 // so a byte comparison is the wrong test for what the floor is trying to name.
 //
-// The site's own anchor slug is the comparison: it drops emphasis and code
-// marks, lower-cases, and collapses every other run of non-alphanumerics to a
-// hyphen — which is exactly the equivalence "renders as the same heading" needs,
-// and it is one function rather than a table of markup shapes to keep current.
+// The comparison is the rendered text itself (renderedKey), under a case fold.
+// It was once the site's anchor slug, which is COARSER than "renders the same":
+// the slug collapses every run of non-alphanumerics to a hyphen, so
+// `## Open/Questions` and `## Audit & Notes` slugged onto excluded headings they
+// do not read as, and because the redactor shares this equality their sections
+// were silently dropped from the bundle (iss-2610101930329211).
 func sameRendering(a, b string) bool {
 	for _, x := range renderedTexts(a) {
-		slug := site.Slug(x)
-		if slug == "" {
+		key := renderedKey(x)
+		if key == "" {
 			continue
 		}
 		for _, y := range renderedTexts(b) {
-			if slug == site.Slug(y) {
+			if strings.EqualFold(key, renderedKey(y)) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// renderedKey is a rendered title as a reader sees it: the emphasis and code
+// marks the anchor also ignores dropped (site.StripMarks), and every run of
+// white space — a non-breaking space among it, which renders as a plain one —
+// read as a single space. Punctuation stays: a slash or an ampersand is on the
+// page, and a heading carrying one is a different heading.
+func renderedKey(text string) string {
+	return strings.Join(strings.Fields(site.StripMarks(text)), " ")
 }
 
 // renderedTexts reduces a heading title to the text a reader sees — HTML

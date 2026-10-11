@@ -768,6 +768,51 @@ func TestCaseVariantExcludedHeadingIsRedacted(t *testing.T) {
 	}
 }
 
+// TestASlugAlikeHeadingIsNotTheExcludedOne: the anchor slug collapses every run
+// of non-alphanumerics to a hyphen, so `## Open/Questions` slugs exactly like
+// `## Open Questions` while rendering as a different heading. Comparing through
+// the slug made it the excluded heading, and since the redactor shares the
+// verifier's equality its section was silently dropped from the bundle
+// (iss-2610101930329211). Only a heading that renders alike is the excluded one:
+// the slug-alike travels whole, the emphasised spelling is still redacted.
+func TestASlugAlikeHeadingIsNotTheExcludedOne(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-SECTION"
+	travels := map[string]string{
+		"a slash for the space": "## Open/Questions\n\n" + sentinelAuditNotes + "\n",
+		// One pass decodes this to `Audit & Notes`, which is not the title a
+		// reader sees under the excluded name; it slugged onto it all the same.
+		"an ampersand between the words": "## Audit &amp; Notes\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range travels {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-slug-alike.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\n"+kept+"\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: a heading that only slugs like an excluded one was refused: %v", what, err)
+			continue
+		}
+		if !strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: a heading that only slugs like an excluded one was silently redacted", what)
+		}
+	}
+
+	root := fixtureRepo(t)
+	writeFile(t, root, ".abcd/development/specs/open/spc-4-slug-alike.md",
+		"---\nid: spc-4\n---\n\n# A spec\n\n## **Open Questions**\n\n"+sentinelAuditNotes+"\n\n## Next\n\n"+kept+"\n")
+	gitCommitAll(t, root)
+	res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+	if err != nil {
+		t.Fatalf("an emphasised excluded heading was refused rather than redacted: %v", err)
+	}
+	text := bundleText(res.Bundle)
+	if strings.Contains(text, sentinelAuditNotes) || !strings.Contains(text, kept) {
+		t.Error("an emphasised excluded heading was not redacted to its own section")
+	}
+}
+
 // TestAHeadingInsideAnHTMLBlockRefuses: the section walk reads a column-0
 // `## Next` as a heading even inside a `<div>` block, which a renderer reads as
 // raw HTML, so the redactor's span for the excluded section above it ended
@@ -1273,10 +1318,11 @@ func TestRenderEquivalenceCoversWrappersAndEntities(t *testing.T) {
 		"a span wrapper":   "## <span>Audit Notes</span>\n\n" + sentinelAuditNotes + "\n",
 		"a link wrapper":   "## [Audit Notes](#audit-notes)\n\n" + sentinelAuditNotes + "\n",
 		"an entity":        "## Audit&nbsp;Notes\n\n" + sentinelAuditNotes + "\n",
-		// One pass decodes this to "Audit & Notes", which slugs onto the excluded
-		// title. Skipping the assertion when the run refuses would have made this
-		// probe check nothing at all, which is how it sat for a round.
-		"an amp entity": "## Audit &amp; Notes\n\n" + sentinelAuditNotes + "\n",
+		// One pass decodes this to "Audit Notes". It stood as `Audit &amp; Notes`,
+		// which decodes to a title that only SLUGS like the excluded one and now
+		// travels (TestASlugAlikeHeadingIsNotTheExcludedOne); the decoding it
+		// exercised is exercised by a reference that renders as the space.
+		"a numeric space reference": "## Audit&#32;Notes\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, body := range cases {
 		root := fixtureRepo(t)

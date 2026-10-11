@@ -187,6 +187,14 @@ func trimBlankLines(body []string, start int) (string, int) {
 // Slug renders a heading as its anchor: emphasis and code marks dropped,
 // lower-cased, every other run of non-alphanumerics collapsed to a hyphen.
 func Slug(t string) string {
-	t = strings.ToLower(slugStripRe.ReplaceAllString(t, ""))
+	t = strings.ToLower(StripMarks(t))
 	return strings.Trim(nonSlugRe.ReplaceAllString(t, "-"), "-")
+}
+
+// StripMarks drops the emphasis and code marks a heading's anchor ignores, the
+// first step of Slug and nothing more: punctuation and spacing are left as they
+// render. It is exported for a caller asking whether two headings READ the
+// same, a finer question than whether they share an anchor.
+func StripMarks(t string) string {
+	return slugStripRe.ReplaceAllString(t, "")
 }
