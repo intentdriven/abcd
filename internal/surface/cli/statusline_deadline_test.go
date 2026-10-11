@@ -143,11 +143,22 @@ func statuslineWithin(t *testing.T, stdin io.Reader) (stdout, stderr string, cod
 // fakeGit puts a `git` first on PATH that runs script (a POSIX sh body, with
 // $REAL_GIT naming the real git) and returns nothing. The fixture's own git
 // calls are made before it is installed.
+//
+// So is the process's one `git version` probe: gitutil asks it once, before
+// the first git it runs, outside any deadline and under a lock, and caches
+// the answer. Left to the verb, the probe would run the fake, and a fake that
+// hangs would hold every git in the process for slowWork, so the test that
+// happened to run first in the process (go test -run TestStatusline) failed
+// at abcd's overall ceiling instead of git's budget, and so did each one
+// after it (iss-2610090642407850).
 func fakeGit(t *testing.T, script string) {
 	t.Helper()
 	real, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH")
+	}
+	if _, err := gitutil.Run(t.TempDir(), "version"); err != nil {
+		t.Fatalf("priming the git version probe with the real git: %v", err)
 	}
 	dir := t.TempDir()
 	body := "#!/bin/sh\nREAL_GIT='" + real + "'\n" + script + "\n"
@@ -201,14 +212,18 @@ func TestStatuslineHungGitDoesNotFreezeTheLine(t *testing.T) {
 // TestStatuslineSlowBranchStillRendersThePartialRow: git answers for the
 // checkout, as slowly as a loaded machine's git, but hangs on the branch. The
 // row renders without the branch, badge first, once git's budget stops the
-// branch — the best partial row.
+// branch — the best partial row — and the branch git is gone: killed at the
+// budget, not abandoned to run on after the refresh. Like its siblings it
+// proves the bound stops the work under the widened budgets and stopCeiling,
+// never how soon (iss-2610090642407850).
 func TestStatuslineSlowBranchStillRendersThePartialRow(t *testing.T) {
 	root := managedCheckout(t)
 	widenBudgets(t)
-	fakeGit(t, `for a in "$@"; do case "$a" in symbolic-ref|--short) exec `+slowSleep+`;; esac; done
+	pidFile := filepath.Join(t.TempDir(), "pids")
+	fakeGit(t, `for a in "$@"; do case "$a" in symbolic-ref|--short) echo $$ >> '`+pidFile+`'; exec `+slowSleep+`;; esac; done
 `+loadedGitLatency+`; exec "$REAL_GIT" "$@"`)
 
-	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(root)))
+	stdout, stderr, code, took := statuslineWithin(t, strings.NewReader(payloadFor(root)))
 	if code != 0 {
 		t.Fatalf("exit %d (stderr %q), want 0", code, stderr)
 	}
@@ -217,6 +232,27 @@ func TestStatuslineSlowBranchStillRendersThePartialRow(t *testing.T) {
 	}
 	if strings.Contains(stdout, "main") {
 		t.Errorf("stdout = %q carries a branch git never gave", stdout)
+	}
+	t.Logf("returned in %s (git budget %s)", took, statuslineGitBudget)
+
+	// Every branch git that started must be gone. One stopped before its
+	// first line ran (a loaded machine) wrote no pid and left nothing behind.
+	raw, err := os.ReadFile(pidFile)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range strings.Fields(string(raw)) {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			t.Fatalf("pid file %q: %v", raw, err)
+		}
+		if !goneWithin(pid) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Errorf("the branch git (pid %d) outlived the verb", pid)
+		}
 	}
 }
 
