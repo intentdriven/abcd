@@ -35,8 +35,9 @@ import (
 // other's blocks.
 //
 // Staged: nothing outside the tests calls syncReadmeParts or removeReadmeParts
-// yet. The spec's step 2 derives each part's body, and its step 3 wires setup
-// (`abcd ahoy install`, from the stored `readme.parts`) and uninstall to them.
+// yet. The spec's step 2 derives each part's body (readme_derive.go, checked
+// by readme_check.go), and its step 3 wires setup (`abcd ahoy install`, from
+// the stored `readme.parts`) and uninstall to them.
 
 // readmePartOrder is the parts' fixed order. It places an absent part beside
 // the nearest present one, and only these names may be written.
