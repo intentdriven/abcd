@@ -301,3 +301,60 @@ func TestPublicVisibilityBlockKeepsDeclaredWhenGitUnaskable(t *testing.T) {
 		t.Fatalf("entries = %v, want the declared public set", entries)
 	}
 }
+
+// legacyGitignoreHeader is the comment line installs wrote before
+// iss-2610020704163406: it carries an em dash, a non-ASCII byte a repository
+// whose writing rules ban one cannot edit out of a managed block.
+const legacyGitignoreHeader = "# abcd-managed block — do not hand-edit. Run /abcd:ahoy to refresh."
+
+// TestGitignoreBlockIsASCII is iss-2610020704163406: every byte the install
+// writes into .gitignore is ASCII, both into a fresh file and over a block an
+// earlier install wrote, and a block carrying the old em-dash comment with the
+// right entries reads as the same block, not drift, so existing installs are
+// not flagged for a comment change alone.
+func TestGitignoreBlockIsASCII(t *testing.T) {
+	assertASCII := func(t *testing.T, label string, raw []byte) {
+		t.Helper()
+		for i, b := range raw {
+			if b > 0x7f {
+				t.Errorf("%s: byte %d of .gitignore is 0x%02x, not ASCII; file:\n%s", label, i, b, raw)
+				return
+			}
+		}
+	}
+	for vis := range visibilityEntries {
+		t.Run(vis, func(t *testing.T) {
+			fresh := t.TempDir()
+			if _, err := applyVisibilityBlock(fresh, vis); err != nil {
+				t.Fatalf("applyVisibilityBlock fresh: %v", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(fresh, ".gitignore"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertASCII(t, "fresh install", raw)
+
+			old := t.TempDir()
+			path := filepath.Join(old, ".gitignore")
+			legacy := "node_modules/\n\n" + gitignoreBegin + "\n" + legacyGitignoreHeader + "\n" +
+				strings.Join(visibilityEntries[vis], "\n") + "\n" + gitignoreEnd + "\n"
+			if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if gitignoreBlockDrifts(old, vis) {
+				t.Errorf("a block with the old em-dash comment and the canonical entries reads as drift; want the same block")
+			}
+			if _, err := applyVisibilityBlock(old, vis); err != nil {
+				t.Fatalf("applyVisibilityBlock over the old block: %v", err)
+			}
+			raw, err = os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertASCII(t, "refresh over the old block", raw)
+			if _, count := extractGitignoreBlock(raw); count != 1 {
+				t.Errorf("%d abcd blocks after refreshing the old block; want exactly 1", count)
+			}
+		})
+	}
+}
