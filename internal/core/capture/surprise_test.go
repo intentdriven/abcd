@@ -1,13 +1,16 @@
 package capture
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 const surpriseText = "the comparative reading ranked the proposal nobody expected to survive first"
@@ -155,5 +158,64 @@ func TestSurpriseMintsUnderTheLock(t *testing.T) {
 	}
 	if len(*held) != 1 || !(*held)[0] {
 		t.Fatalf("mint lock probe = %v, want one mint under the lock", *held)
+	}
+}
+
+// iss-2610092011131598: three surprises minted in one second drew the same id
+// twice, and the second write was refused as a collision with a committed
+// record. A clash with a record this process itself just wrote is the
+// allocator's own tie, not a peer's record: the mint draws again. The shared
+// entropy stream forces the clash on the second surprise's first draw.
+func TestSurpriseRedrawsAnIDThisProcessAlreadyWrote(t *testing.T) {
+	repo, ir, item := readingFixture(t, "detection")
+	instant := time.Date(2026, 10, 9, 20, 0, 6, 0, time.UTC)
+	// draw1=0x002A (42), draw2=0x002A (clash -> redraw), draw3=0x0007 (7).
+	setMinter(t, recordid.Minter{
+		Now:     func() time.Time { return instant },
+		Entropy: bytes.NewReader([]byte{0x00, 0x2A, 0x00, 0x2A, 0x00, 0x07}),
+	})
+	first, err := Surprise(SurpriseRequest{RepoRoot: repo, IssuesRoot: ir, OccasionedBy: item, Text: surpriseText})
+	if err != nil {
+		t.Fatalf("first Surprise: %v", err)
+	}
+	second, err := Surprise(SurpriseRequest{RepoRoot: repo, IssuesRoot: ir, OccasionedBy: item, Text: surpriseText})
+	if err != nil {
+		t.Fatalf("second Surprise, whose first draw clashed with the first's id: %v", err)
+	}
+	if first.ID != "srp-2610092000060042" {
+		t.Fatalf("first mint = %q, want srp-2610092000060042", first.ID)
+	}
+	if second.ID != "srp-2610092000060007" {
+		t.Fatalf("second mint = %q, want the redrawn srp-2610092000060007", second.ID)
+	}
+	if got := surpriseFiles(t, ir); len(got) != 2 {
+		t.Fatalf("surprise records = %v, want two", got)
+	}
+}
+
+// The redraw is confined to the process's own writes: a record already in the
+// ledger that this process did not write is a peer's, and a mint that lands on
+// it is still refused, writing nothing.
+func TestSurpriseRefusesACollisionWithAPeersRecord(t *testing.T) {
+	repo, ir, item := readingFixture(t, "detection")
+	dir := filepath.Join(ir, issueschema.SurprisesDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	peer := filepath.Join(dir, "srp-2610092000060042.md")
+	if err := os.WriteFile(peer, []byte("a peer's record\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setMinter(t, recordid.Minter{
+		Now:     func() time.Time { return time.Date(2026, 10, 9, 20, 0, 6, 0, time.UTC) },
+		Entropy: bytes.NewReader([]byte{0x00, 0x2A, 0x00, 0x07}),
+	})
+	before := ledgerDigest(t, ir)
+	_, err := Surprise(SurpriseRequest{RepoRoot: repo, IssuesRoot: ir, OccasionedBy: item, Text: surpriseText})
+	if !errors.Is(err, ErrDuplicateIssueID) {
+		t.Fatalf("a mint on a peer's record: err = %v, want ErrDuplicateIssueID", err)
+	}
+	if ledgerDigest(t, ir) != before {
+		t.Fatal("a refused surprise changed the ledger")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -256,6 +257,49 @@ func init() { intent.SetLedgerLock(WithLedgerLock) }
 // zero value is the production configuration — real clock, crypto entropy;
 // tests inject both so same-instant and race cases are deterministic.
 var minter recordid.Minter
+
+// mintedPaths holds the record paths this process has minted through
+// mintRecordID, so a later mint can tell its own earlier record from a peer's.
+var (
+	mintedMu    sync.Mutex
+	mintedPaths = map[string]bool{}
+)
+
+// mintRecordID mints an id of family whose record would live at pathFor(id),
+// drawing again — at most placeholderRetryBudget times — while the drawn id
+// lands on a record this same process already minted and wrote
+// (iss-2610092011131598). Two mints in one UTC second share all but four
+// random digits, so a process writing several records in a burst can draw its
+// own id twice; that clash is the allocator's own tie and a redraw settles it.
+// A clash with a record this process did not write is a peer's committed
+// record, and is left to refuseExistingRecord at the write: the redraw never
+// reaches a record the process cannot vouch for.
+//
+// It must be called under the ledger lock, like the write it feeds.
+func mintRecordID(family string, pathFor func(id string) string) (string, error) {
+	for attempt := 0; attempt < placeholderRetryBudget; attempt++ {
+		id, err := minter.Mint(family)
+		if err != nil {
+			return "", err
+		}
+		path := filepath.Clean(pathFor(id))
+		mintedMu.Lock()
+		own := mintedPaths[path]
+		mintedMu.Unlock()
+		if own {
+			if _, err := os.Lstat(path); err == nil {
+				continue
+			} else if !os.IsNotExist(err) {
+				return "", err
+			}
+		}
+		mintedMu.Lock()
+		mintedPaths[path] = true
+		mintedMu.Unlock()
+		return id, nil
+	}
+	return "", fmt.Errorf("%w: could not mint a free %s id after %d draws", ErrAllocatorContention, family, placeholderRetryBudget)
+}
 
 // reservePath reserves a native timestamp-numeric iss id and creates a
 // zero-byte placeholder under open/: flock -> mint -> presence check -> O_EXCL
