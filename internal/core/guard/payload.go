@@ -2,6 +2,7 @@ package guard
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -143,7 +144,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 			var stdin, args []feed
 			inputRead := false
 			refs := payloadRefsOf(payloadView(s))
-			named, leadNamed := namedPayloads(s, refs)
+			named, leadNamed, leadAdds := namedPayloads(s, refs)
 			for r, ref := range refs {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
@@ -171,7 +172,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 						continue
 					}
 					psegs = pseg
-					spellPayload(psegs, named[r], leadNamed(r))
+					spellPayload(psegs, named[r], leadNamed(r), leadAdds)
 				case kindShellWarn:
 					signals = append(signals, shellUnresolvedSignal())
 					continue
@@ -187,7 +188,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 						continue
 					}
 					psegs = pseg
-					spellPayload(psegs, named[r], leadNamed(r))
+					spellPayload(psegs, named[r], leadNamed(r), leadAdds)
 				case kindExecStringWarn:
 					signals = append(signals, execStringWarnSignal(fam))
 					continue
@@ -295,15 +296,20 @@ func payloadView(s segment) segment {
 // lead is the same, written with segment.leadFrom's words spelled by
 // leadSpelling, for the varLead spellPayload takes alone, and nil where no
 // word has one. It is a function, asked only for a string whose reading
-// leads, so a string no reading leads in is not written out again.
-func namedPayloads(s segment, refs []payloadRef) (named [][]string, lead func(r int) func() []string) {
+// leads, so a string no reading leads in is not written out again, unless
+// adds: a word of s holds a site that can print the empty text, which only
+// lead's readings can lead with.
+func namedPayloads(s segment, refs []payloadRef) (named [][]string, lead func(r int) func() []string, adds bool) {
 	none := func(int) func() []string { return nil }
 	if len(refs) == 0 {
-		return nil, none
+		return nil, none, false
 	}
 	named = writtenPayloads(spelledViews(s), refs)
 	if len(s.leadFrom) == 0 {
-		return named, none
+		return named, none, false
+	}
+	for _, src := range s.leadFrom {
+		adds = adds || emptyOpensPath(src.word, src.sites)
 	}
 	var leads [][]string
 	asked := false
@@ -325,7 +331,7 @@ func namedPayloads(s segment, refs []payloadRef) (named [][]string, lead func(r 
 	}
 	return named, func(r int) func() []string {
 		return func() []string { return all()[r] }
-	}
+	}, adds
 }
 
 // writtenPayloads is namedPayloads for the views given.
@@ -411,9 +417,10 @@ func spelledViews(s segment) []segment {
 // leads and lead, when not nil, has readings — the string written with each
 // guarded value as its guard (leadSpelling) — the leads are taken from those
 // instead: they differ only where a guard keeps a value from being empty,
-// so they can take a lead away, never add one. Nothing else of psegs is
-// changed.
-func spellPayload(psegs []segment, named []string, lead func() []string) {
+// which can take a lead away, and, where adds is set, where a site prints
+// the empty text, which can add one (emptyLead), so lead is asked even when
+// no named reading leads. Nothing else of psegs is changed.
+func spellPayload(psegs []segment, named []string, lead func() []string, adds bool) {
 	paired := make([]map[int][]string, len(psegs))
 	leads := make([]map[int]bool, len(psegs))
 	// pair calls fn for each word of psegs the string nm's reading pairs,
@@ -441,7 +448,12 @@ func spellPayload(psegs []segment, named []string, lead func() []string) {
 					}
 					ws = []string{n.tokens[j]}
 				}
-				if !fitsWritten(m.tokens[j], n.tokens[j]) {
+				// A text can run across a brace the string holds as text:
+				// `${X:-\${Y}}` prints `${Y` before the word's own `}`, so the
+				// reading's `${Y}/y` marks the brace as the variable's, and
+				// only its written text fits the string's word.
+				if !fitsWritten(m.tokens[j], n.tokens[j]) &&
+					!slices.ContainsFunc(ws, func(w string) bool { return fitsWritten(m.tokens[j], w) }) {
 					continue
 				}
 				fn(i, j, n, ws)
@@ -467,7 +479,7 @@ func spellPayload(psegs []segment, named []string, lead func() []string) {
 			}
 		})
 	}
-	if lead != nil && anyLead(leads) {
+	if lead != nil && (adds || anyLead(leads)) {
 		if ls := lead(); len(ls) > 0 {
 			// A word no guarded reading pairs keeps the lead named gave it.
 			named := leads
