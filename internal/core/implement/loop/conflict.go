@@ -114,15 +114,23 @@ type conflictFinding struct {
 // a worktree (`merge-tree --write-tree`), with every merge driver git's
 // built-in text merge: those the repository configures
 // (gitutil.MergeDriverOverrides) and the built-in union driver, which a
-// configured driver of the same name outranks. That is the merge the forge
-// computes. The merge driver each conflicted path carries at head is read with
-// check-attr; where that cannot be read the paths are still named.
+// configured driver of the same name outranks. The merge does not
+// renormalise either (merge.renormalize=false), whatever the checkout sets:
+// renormalising runs each side of a conflicted path through the content
+// filters an attribute in either tree names, and the forge's merge does
+// neither. That is the merge the forge computes. The probe is a read-only
+// prediction of it, writing nothing and changing nothing about how the
+// repository's own merges behave, so the pin is fidelity to the forge rather
+// than a setting switched off; syncMerge, a real merge in the lane's worktree,
+// keeps the repository's renormalisation. The merge driver each conflicted
+// path carries at head is read with check-attr; where that cannot be read the
+// paths are still named.
 func localConflict(root, tracking, head string) conflictFinding {
 	overrides, err := gitutil.MergeDriverOverrides(root)
 	if err != nil {
 		return conflictFinding{err: err}
 	}
-	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver,
+	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver, "-c", "merge.renormalize=false",
 		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", tracking, head)
 	out, conflicted, err := gitutil.RunCappedExitOne(root, maxGitOutput, args...)
 	if err != nil {
