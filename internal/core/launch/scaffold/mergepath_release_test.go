@@ -286,11 +286,7 @@ func newFakeForge(t *testing.T, goEnv []string) *fakeForge {
 	t.Helper()
 	r := gittest.NewRepo(t)
 	f := &fakeForge{t: t, work: r, origin: t.TempDir(), state: t.TempDir(), bin: t.TempDir()}
-	bare := exec.Command("git", "init", "-q", "--bare", "--initial-branch=main", f.origin)
-	bare.Env = r.Env()
-	if out, err := bare.CombinedOutput(); err != nil {
-		t.Fatalf("git init --bare: %v\n%s", err, out)
-	}
+	gittest.InitBare(t, f.origin)
 	r.Git("remote", "add", "origin", f.origin)
 	mustWrite(t, filepath.Join(f.bin, "gh"), fakeGH)
 	if err := os.Chmod(filepath.Join(f.bin, "gh"), 0o755); err != nil {

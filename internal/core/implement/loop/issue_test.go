@@ -245,7 +245,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 	repo.Write(".abcd/work/rulesets/main-protection.json", queueRuleset("SQUASH"))
 	repo.Commit("the ruleset mirror")
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	repo.Git("init", "-q", "--bare", "--initial-branch=main", bare)
+	gittest.InitBare(t, bare)
 	repo.Git("remote", "add", "origin", bare)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")

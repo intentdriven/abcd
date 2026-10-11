@@ -39,25 +39,35 @@ func NewRepo(t *testing.T) *Repo {
 	if out, err := init.CombinedOutput(); err != nil {
 		t.Skipf("git init unavailable: %v (%s)", err, out)
 	}
-	// Background maintenance is disabled in the REPO config, not per command,
-	// because the code under test runs its own git against this repository: an
-	// auto-gc or fsmonitor child spawned by any of those commands can outlive
-	// the test and race t.TempDir cleanup on .git/objects (iss-252 — a release
-	// verify run lost to exactly that). Repo-level config covers every git
-	// invocation here, whoever makes it.
-	for key, value := range map[string]string{
-		"gc.auto":          "0",
-		"gc.autodetach":    "false",
-		"maintenance.auto": "false",
-		"core.fsmonitor":   "false",
-	} {
-		cfg := exec.Command("git", "-C", r.root, "config", "--local", key, value)
-		cfg.Env = r.env
+	disableMaintenance(t, r.env, r.root)
+	return r
+}
+
+// maintenanceOff is the repository config every fixture repository carries.
+// Background maintenance is disabled in the REPO config, not per command,
+// because the code under test runs its own git against the repository: an
+// auto-gc or fsmonitor child spawned by any of those commands can outlive the
+// test and race t.TempDir cleanup on its objects (iss-252 — a release verify
+// run lost to exactly that; iss-2610112202081803 — a bare origin's gc after a
+// push). Repo-level config covers every git invocation there, whoever makes it.
+var maintenanceOff = [][2]string{
+	{"gc.auto", "0"},
+	{"gc.autodetach", "false"},
+	{"maintenance.auto", "false"},
+	{"core.fsmonitor", "false"},
+}
+
+// disableMaintenance writes maintenanceOff into the local config of the
+// repository at dir, a working tree or a bare git directory.
+func disableMaintenance(t *testing.T, env []string, dir string) {
+	t.Helper()
+	for _, kv := range maintenanceOff {
+		cfg := exec.Command("git", "-C", dir, "config", "--local", kv[0], kv[1])
+		cfg.Env = env
 		if out, err := cfg.CombinedOutput(); err != nil {
-			t.Fatalf("git config %s: %v (%s)", key, err, out)
+			t.Fatalf("git config %s: %v (%s)", kv[0], err, out)
 		}
 	}
-	return r
 }
 
 // Root is the repository's absolute path — what the code under test is handed.
@@ -137,4 +147,33 @@ func (r *Repo) AddSubmodule(rel string) (gitDir string) {
 	r.Git("-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub.Root(), rel)
 	r.Git("commit", "-q", "-m", "add submodule "+rel)
 	return filepath.Join(r.root, ".git", "modules", filepath.FromSlash(rel))
+}
+
+// InitBare creates an empty bare repository at path on branch main, with the
+// same maintenance config NewRepo writes: a bare fixture is usually an origin
+// the test pushes into, and a push spawns the origin's auto-gc. Every test
+// makes its bare repositories here or through CloneBare, never with its own
+// git init --bare.
+func InitBare(t *testing.T, path string) {
+	t.Helper()
+	env := Env(t)
+	cmd := exec.Command("git", "init", "-q", "--bare", "--initial-branch=main", path)
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v (%s)", err, out)
+	}
+	disableMaintenance(t, env, path)
+}
+
+// CloneBare clones src into a new bare repository at path, with the same
+// maintenance config as InitBare.
+func CloneBare(t *testing.T, src, path string) {
+	t.Helper()
+	env := Env(t)
+	cmd := exec.Command("git", "clone", "-q", "--bare", src, path)
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone --bare: %v (%s)", err, out)
+	}
+	disableMaintenance(t, env, path)
 }

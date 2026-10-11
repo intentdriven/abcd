@@ -1078,9 +1078,7 @@ func TestPreCommitHook_BareRepoWorktreeDoesNotInheritASiblingStore(t *testing.T)
 	src.git("add", "seed.md")
 	src.git("-c", "core.hooksPath=/dev/null", "commit", "-m", "seed")
 	bare := filepath.Join(parent, "repo.git")
-	if out, err := git(parent, "clone", "--bare", src.dir, bare); err != nil {
-		t.Skipf("bare clone unavailable: %v\n%s", err, out)
-	}
+	gittest.CloneBare(t, src.dir, bare)
 	linkedDir := filepath.Join(t.TempDir(), "linked")
 	if out, err := git(bare, "worktree", "add", linkedDir, "HEAD"); err != nil {
 		t.Skipf("git worktree add unavailable: %v\n%s", err, out)
@@ -1246,9 +1244,7 @@ func mirrorAttackCase(t *testing.T, shape string) (victim string, linked *hookRe
 		src := filepath.Join(root, "src")
 		seed(src)
 		commonDir = filepath.Join(victim, "mirror.git")
-		if out, err := git(root, "clone", "--bare", src, commonDir); err != nil {
-			t.Skipf("bare clone unavailable: %v\n%s", err, out)
-		}
+		gittest.CloneBare(t, src, commonDir)
 	case "separate-git-dir":
 		work := filepath.Join(root, "work")
 		if err := os.MkdirAll(work, 0o755); err != nil {
