@@ -255,3 +255,80 @@ func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 		}
 	}
 }
+
+// worktreeStoreIntent is the intent that carries the worktree store's own verbs
+// (add, list, reclaim), which the CONCURRENCY rule names as the reason the
+// store has none yet.
+const worktreeStoreIntent = "itd-2609091014076309"
+
+// TestWorktreeStoreRuleNamesTheIntentsActualState holds every present-state
+// sentence that says why the worktree store has no verbs to the lifecycle folder
+// its intent actually sits in (iss-2610090744073409). The CONCURRENCY rule of
+// .abcd/rules.json said the intent was in drafts/ while its own link pointed at
+// planned/, so the prose contradicted the link beside it; the build surface page
+// and the lane's worktree code repeated the claim as "a draft". The rule must
+// name the folder the record is in and say the store has no verbs because that
+// intent has not shipped; no site may call a planned intent a draft. Dated
+// records (ADRs, the decision log, research notes) say what was true when they
+// were written and are not held here.
+func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	matches, err := filepath.Glob(filepath.Join(root, ".abcd", "development", "intents", "*", worktreeStoreIntent+"-*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("want exactly one record of %s in the intent store, got %v (err=%v)", worktreeStoreIntent, matches, err)
+	}
+	bucket := filepath.Base(filepath.Dir(matches[0]))
+	if bucket == "shipped" {
+		t.Fatalf("%s has shipped: the store has verbs now, so the CONCURRENCY rule's \"no verbs yet\" is stale "+
+			"and this test's premise with it", worktreeStoreIntent)
+	}
+
+	var repo rules.RuleSet
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/rules.json")), &repo); err != nil {
+		t.Fatalf("parse .abcd/rules.json: %v", err)
+	}
+	rule := ""
+	for _, r := range repo.Domains["CONCURRENCY"].Rules {
+		if strings.Contains(r, worktreeStoreIntent) {
+			rule = strings.Join(strings.Fields(r), " ")
+		}
+	}
+	if rule == "" {
+		t.Fatalf("the CONCURRENCY domain of .abcd/rules.json has no rule naming %s", worktreeStoreIntent)
+	}
+	for _, want := range []string{"/intents/" + bucket + "/" + worktreeStoreIntent + "-", bucket, "has not shipped"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("the CONCURRENCY rule naming %s does not say %q; the intent is in %s/ and has not shipped, "+
+				"which is why the store has no verbs yet", worktreeStoreIntent, want, bucket)
+		}
+	}
+
+	// Every present-state passage naming the intent, split into paragraphs.
+	sites := map[string][]string{"the CONCURRENCY rule": {rule}}
+	for _, rel := range []string{
+		".abcd/development/brief/04-surfaces/34-build.md",
+		"internal/core/implement/loop/lane.go",
+	} {
+		for _, p := range strings.Split(readRepoFile(t, root, rel), "\n\n") {
+			if strings.Contains(p, worktreeStoreIntent) {
+				flat := strings.Join(strings.Fields(strings.ReplaceAll(p, "//", " ")), " ")
+				sites[rel] = append(sites[rel], flat)
+			}
+		}
+		if len(sites[rel]) == 0 {
+			t.Errorf("%s no longer names %s; update this test's list of sites", rel, worktreeStoreIntent)
+		}
+	}
+	if bucket == "drafts" {
+		return
+	}
+	for name, paras := range sites {
+		for _, p := range paras {
+			for _, stale := range []string{"drafts/", "a draft", "drafted", "in drafts"} {
+				if strings.Contains(p, stale) {
+					t.Errorf("%s calls %s %q, but the intent is in %s/:\n%s", name, worktreeStoreIntent, stale, bucket, p)
+				}
+			}
+		}
+	}
+}

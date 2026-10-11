@@ -422,9 +422,9 @@ keyed on the repository's root commit in the full form the sibling stores use,
 on a branch `build/<run-id>-<lane-id>` cut from the default branch (origin's
 `HEAD` as last fetched, else the first of `main`, `master`, `trunk` and
 `develop`), never from whatever the checkout has checked out. The store's own
-verbs are a draft (itd-2609091014076309), so the lane is a plain
-`git worktree add` into the store's path. The path is derived, never taken: the
-run id and the lane id are each held to their own shape, and the name they
+verbs are planned and not yet shipped (itd-2609091014076309), so the lane is a
+plain `git worktree add` into the store's path. The path is derived, never
+taken: the run id and the lane id are each held to their own shape, and the name they
 compose must be one path segment of letters, digits, `.`, `_` and `-`, not led
 by `-` or `.` and holding no `..`, so no component can leave the store. Every
 level of the store is made one at a time and proved a real directory that is
@@ -658,9 +658,9 @@ the remedy as fields.
 - The pace and the window clock: itd-2609201925079472 and its design record,
   spc-2609202134341288; the layered reader it resolves through is the model
   tier's (itd-2609170822093401).
-- The worktree store the lane's checkout lives in: itd-2609091014076309 (a
-  draft), the rule it enacts, adr-2609091248200336, and the location that
-  rule's successor sets, adr-2610031751065746.
+- The worktree store the lane's checkout lives in: itd-2609091014076309
+  (planned, not yet shipped), the rule it enacts, adr-2609091248200336, and the
+  location that rule's successor sets, adr-2610031751065746.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
 - The pick: itd-2609211116005482 and its design record, spc-2609212015048113.
