@@ -1258,6 +1258,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the latest reviewed default branch (`origin`'s, as last
+fetched) once it is ready: run that path in place of the plugin-root binary,
+and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

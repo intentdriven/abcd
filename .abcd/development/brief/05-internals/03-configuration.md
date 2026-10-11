@@ -609,6 +609,76 @@ removal is forced. It is the reclaim half of
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md):
 a tool that must not create in the user's space must not delete there either.
 
+## The dogfood store
+
+In abcd's own source checkout the installed release guards the session, so a
+hazard rule that has landed on the default branch since the last release is not
+enforced there until the next release ships. A checkout the person opts in to
+**dogfooding** runs a build of the latest reviewed default branch in its hooks
+instead (iss-2610070547057816). The opt-in is one absolute checkout path per
+line in `~/.abcd.noindex/dogfood-roots`, `#` starting a comment:
+
+```
+mkdir -p ~/.abcd.noindex && printf '%s\n' '/path/to/abcd' >> ~/.abcd.noindex/dogfood-roots
+```
+
+The list is read through `fsutil.HomeDeclarationNames`, the reader
+`trusted-roots`, `local-transcript-roots` and `filter-roots` share, and holds
+the same shape: honoured only as a regular file this uid owns that no one else
+can write, within 64 KiB, reached through no symlinked folder. A list failing
+any of that is IGNORED in every checkout, with one stderr line naming the check
+it failed. Nothing recognises abcd's source by itself: a repository carrying
+abcd's module path and `cmd/abcd` is built and run only when the person listed
+it, because recognising it would hand a repository posing as abcd a way to have
+its own code run by the hooks.
+
+**What a listed path covers.** The session's working tree is covered when it is
+listed itself, or when the main working tree of its repository is listed and
+that main working tree records the session's tree among its own worktrees
+(`git worktree list`, read in the listed checkout and compared by file
+identity). So listing the main checkout covers the worktrees under
+`~/.abcd.noindex/worktrees/<root-sha>/` that concurrent sessions work in. The
+record is read from the listed checkout, never from the session's tree: a
+directory whose `.git` file merely points into a listed repository's worktree
+records is refused out loud, and an unlisted repository is never covered by a
+listed one.
+
+**What is built.** The tip of `origin`'s default branch, resolved as the
+implement loop's landing resolves it (`gitutil.DefaultRef`, held to
+`refs/remotes/origin/`), never the checkout's HEAD, a local branch or its
+working tree. That tip moves only through review and the merge queue, so no
+agent commit in any checkout changes the guard that judges that agent's next
+command. Nothing is fetched on a hook: the tip is whatever the checkout last
+fetched, and a `git fetch origin` moves it. One function in
+`internal/core/dogfood`, `sourceCommit`, makes this choice.
+
+```
+~/.abcd.noindex/dogfood/
+  <root-sha>/
+    <commit>/abcd             the build of that commit
+    <commit>.log              its export and build output
+    <commit>.failed           present after a failed build
+    .build.lock               held for the whole of one build
+```
+
+A build is a clean export of the commit (`git archive` into a fresh directory
+under the store) built by `go build -trimpath ./cmd/abcd` on the toolchain the
+commit's `go.mod` declares, moved into place by one rename. The store keeps
+the three most recent builds of a repository.
+
+**A hook never waits for a build, and never runs weaker than the release.** Each
+hook shim resolves the installed binary as before; when the list exists it asks
+that binary, through `hook dogfood-binary`, for a finished build of the current
+tip, and runs it in the installed binary's place. With no build yet the
+installed binary starts one in the background, under the store's lock, so two
+hooks firing at once start one build, and the installed release runs until it
+is ready. A build that is running, failed or missing, a tip that cannot be
+resolved, and a list that is refused all leave the installed release running,
+each said on stderr; a failed build is retried after 30 minutes or when the tip
+moves, and `hook dogfood-build` retries it at once. A dogfood guard that dies
+rather than give a verdict hands the same command to the installed release,
+with a line saying so. A machine with no list pays one file test per hook.
+
 ## The two `.abcd/` scopes
 
 abcd keeps **one namespace pattern instantiated at two scopes**, under two names:
@@ -741,7 +811,7 @@ stays refused inside any git working tree, the account's own included, whatever
 
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
+`local-transcript-roots`, `dogfood-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
 `credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check

@@ -197,6 +197,21 @@ this case is never reached by following the ladder literally
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
 
+**The hooks run the latest reviewed default branch where the person opts in.**
+The `go run` rule reaches an agent; it cannot reach the plugin's hooks, which
+run the installed release, so in a source checkout the shell guard and the rules
+loader lag `main` by up to a release. A checkout listed in
+`~/.abcd.noindex/dogfood-roots` (one absolute path per line, `#` starting a
+comment, a regular file you own that no one else can write: the `trusted-roots`
+shape) runs, in every hook, a build of `origin`'s default branch as last
+fetched. It is never HEAD, so no agent commit changes the guard that judges the
+agent's next command. The build is made in the background into
+`~/.abcd.noindex/dogfood/<root-sha>/<commit>/` and made again when a
+`git fetch` moves the tip; until it is ready, or when it fails, the installed
+release runs and says so on stderr. Listing the main checkout covers the
+worktrees it records. The opt-in is the person's own act, never an agent's:
+`mkdir -p ~/.abcd.noindex && printf '%s\n' '<checkout>' >> ~/.abcd.noindex/dogfood-roots`.
+
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
