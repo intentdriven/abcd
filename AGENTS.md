@@ -248,7 +248,7 @@ with `*CONCURRENCY` to force it).
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory
   the user keeps their projects in, or inside the working tree
-  ([adr-2610031751065746](.abcd/development/decisions/adrs/2610031751065746-the-worktree-store-lives-under-the-renamed-home-abcd-noindex.md)).
+  ([adr-2610031751065746](.abcd/development/decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)).
   The store has no verbs yet: aim a plain `git worktree add` at the path, and
   retire it with `git worktree remove`.
 - **Scan before mutating anything a peer reads or runs.** Check the harness's
@@ -387,7 +387,7 @@ gate.
   `noreply@` mailbox. So a dependabot pull request is not mergeable as
   authored: `.github/workflows/dependency-reauthor.yml` re-authors a bump
   inside the declared bound, and a human lands every other bot change
-  ([adr-2609292116133348](.abcd/development/decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re-authored-as-the.md)).
+  ([adr-2609292116133348](.abcd/development/decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re.md)).
 - **A revert or cherry-pick takes its trailer from one command:**
   `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`.
   Never set the key as a standing `git config abcd.assistedBy`.

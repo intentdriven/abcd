@@ -95,7 +95,7 @@ of it seeds the `## Press Release` section as prose, so write it as the user
 moment — the paragraph a shipped intent opens with. The H1 title is the text's
 first sentence: the split is at the first `.`, `!` or `?` followed by
 whitespace or the end of the text, the terminator is dropped from the title,
-and a sentence longer than the slug cap is cut on a word boundary.
+and a sentence longer than 60 characters is cut on a word boundary.
 `--title "<title>"` replaces it with a heading of your own — one line,
 non-empty, redacted like the text. The slug is derived from the text either
 way. `## Why This Matters` is seeded with a prompt, not with the text again.

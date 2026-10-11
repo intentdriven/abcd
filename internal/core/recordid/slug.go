@@ -5,6 +5,15 @@ import (
 	"strings"
 )
 
+// MaxSlugLen is the one cap on a minted record slug, shared by every verb that
+// mints a record filename: capture, intent, spec and decide alike. A record's
+// path is `<store>/<family>-<id>-<slug>.md`, and a checkout on Windows refuses a
+// path past 260 characters unless core.longpaths is set; the checkout's own
+// location and a worktree store's prefix come on top of the path inside the
+// repository, so the slug is the part held short. Ruled by the product thinker
+// on 2026-10-10 (iss-2610100626320367), down from the 60 the stores used.
+const MaxSlugLen = 40
+
 // slugWordSepRe matches every run that separates words in a slug: anything
 // but a lowercase letter, a digit or a hyphen. A hyphen inside a word (ac-10,
 // spec-kit) is part of the word, so the cap below never splits it.
@@ -47,4 +56,25 @@ func Slug(text string, max int) string {
 		out += "-" + w
 	}
 	return out
+}
+
+// CapSlug cuts a slug that is already kebab-case to at most max characters, for
+// a slug that arrives whole rather than as free text: one given explicitly, one
+// carried from another record (an intent's slug into its spec), and an existing
+// record's slug being renamed to the cap. Text has words; a slug has only its
+// hyphens, so the cut lands on the last hyphen that keeps the slug within the
+// cap and drops it, and never leaves a trailing hyphen. A first segment that
+// alone exceeds the cap is cut inside, as Slug does, so the result is never
+// empty for a non-empty slug. A slug within the cap, or a max of zero or less,
+// is returned unchanged, so the cut is idempotent and a slug Slug derived at the
+// same cap passes through it untouched.
+func CapSlug(slug string, max int) string {
+	if max <= 0 || len(slug) <= max {
+		return slug
+	}
+	cut := slug[:max+1]
+	if i := strings.LastIndexByte(cut, '-'); i > 0 {
+		return strings.TrimRight(slug[:i], "-")
+	}
+	return strings.Trim(slug[:max], "-")
 }

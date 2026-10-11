@@ -5,7 +5,7 @@
 > lint site` gates it, and the deploy workflow rides the release chain — but
 > abcdev.app still serves the MkDocs rendering of `docs/` at its root, and
 > the first production deploy from a tag is what moves it. Both halves rest on
-> [adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md)
+> [adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository.md)
 > and [adr-48](../../decisions/adrs/0048-website-deploys-on-release-not-on-merge.md),
 > with the [investigation cluster](../../research/abcdev-site/plan.md) and the
 > composition rules' executable spec beside them. A shipping change removes

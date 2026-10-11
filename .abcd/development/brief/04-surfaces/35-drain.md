@@ -44,7 +44,7 @@ drain_remedy: required
 Those values are abcd's strict baseline, bundled in the binary as the measure a
 repository's record is judged against. abcd's own repository states exactly the
 baseline in
-[adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when-its-fields-say-it.md),
+[adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md),
 held there by invariant 19 in
 [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md) and a test.
 The setup verb offers the baseline to a repository without a record and

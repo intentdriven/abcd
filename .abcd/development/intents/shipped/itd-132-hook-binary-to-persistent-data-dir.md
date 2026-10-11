@@ -207,7 +207,7 @@ Per-criterion verdicts:
   evidence: hooks/bootstrap.sh:250 — "[ \"$got\" = \"$want\" ] || exit 0"
   evidence: internal/surface/cli/bootstrap_cache_test.go:546 — "func TestBootstrapMigrationIgnoresMismatchedRootBinary"
   evidence: internal/surface/cli/bootstrap_cache_test.go:400 — "func TestBootstrapAuthenticatesCacheAgainstPublishedManifest"
-  evidence: .abcd/development/decisions/adrs/0046-persistence-never-weakens-the-verification-posture.md:47 — "Every promotion of a persisted artefact re-verifies against its recorded"
+  evidence: .abcd/development/decisions/adrs/0046-persistence-never-weakens-the.md:47 — "Every promotion of a persisted artefact re-verifies against its recorded"
 - ac-6 — MET: binarySkewNotice takes the surface commit from livePluginSHA — the live CLAUDE_PLUGIN_ROOT basename read at render time — and the cache meta no longer carries plugin_sha (asserted absent in the cache-provisioning test); TestHookSessionStartSkewComparesTheLiveRoot seeds a meta whose recorded plugin_sha equals the release commit while the live root differs and requires the notice to name the live root's commit.
   evidence: internal/surface/cli/skew.go:47 — "pluginSHA, releaseSHA := livePluginSHA(root), meta[\"release_sha\"]"
   evidence: internal/surface/cli/skew.go:99 — "func livePluginSHA(root string) string {"

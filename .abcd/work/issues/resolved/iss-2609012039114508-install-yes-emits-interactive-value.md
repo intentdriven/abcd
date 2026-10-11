@@ -1,0 +1,22 @@
+---
+schema_version: 1
+id: "iss-2609012039114508"
+slug: "install-yes-emits-interactive-value"
+severity: "minor"
+category: "observation"
+source: "agent-observation"
+found_during: "autonomous-run-2026-09-01"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "internal/core/ahoy/apply.go"
+resolution: "Does not reproduce: the stdin prompter has written every question to stderr since 1894ab71, so an --yes run's unanswered value prompt never reaches stdout; the report was most likely read off merged streams. TestAhoyInstallYesKeepsValuePromptsOffStdout now pins it for the text render."
+impact: internal
+resolved_by:
+  commit: "b53dd22d"
+---
+
+Observation from the lane LA assessment (GHSA-4q78 reproduction): `ahoy install --yes` with missing config values still emitted an interactive value prompt ("visibility (private/public) []:") on stdout, then proceeded as partial when stdin was empty. `--yes` approves categories, not values, so the partial outcome may be by design, but a prompt landing on stdout under a non-interactive flag with no TTY is worth a look: a scripted install reads it as output, and the prompt is the one line in the run that is not a receipt. Not fixed in this run.
+
+## Grounds
+
+- pursued: an install --yes without a terminal asks its value questions on stderr only; shown wrong if the pinned test sees a value prompt on stdout

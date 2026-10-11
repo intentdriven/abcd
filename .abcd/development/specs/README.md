@@ -35,7 +35,7 @@ README included — is not a spec to either.
 **The mint.** `Create` validates the intent id and the slug *before* any path is
 built (the slug becomes a filename), then mints the id through the shared
 record-id seam (`recordid.Minter`, per
-[adr-45](../decisions/adrs/0045-record-ids-are-timestamp-numeric-and-capture-stable.md)):
+[adr-45](../decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md)):
 `spc-<yymmddHHMMSS><rrrr>`, a UTC second stamp and four uniform random digits.
 The mint consults no maximum — not the store's, not the intents' `spec_id`
 reservations, not the refs' — so two checkouts minting in the same window

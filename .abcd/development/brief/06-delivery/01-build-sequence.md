@@ -6,7 +6,7 @@ with parallelism where dependencies allow. The canonical intent set lives on the
 lifecycle shelves and in the intent index
 ([`intents/README.md`](../../intents/README.md)); the product phases that once
 bundled it are retired
-([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)),
+([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md)),
 and their documents under
 [`roadmap/phases/`](../../roadmap/phases/README.md) are history. This file is the
 **build-milestone** detail: what each milestone stands up in the Go core, the
@@ -123,7 +123,7 @@ core and the packaging boundary holds.
   per-intent, through `abcd intent ready`.
 - **A companion-harness backend** *(design target)*: read and written at the
   **convention level**
-  ([adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions-and-mcp.md)),
+  ([adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions.md)),
   a peer over conventions and MCP, never a code dependency.
 
 ## 5. Autonomous run seam *(design target)*

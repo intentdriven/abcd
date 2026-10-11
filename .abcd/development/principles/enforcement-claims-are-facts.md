@@ -32,7 +32,7 @@ costs most, guarded by a test that could not fail). The class is gates and the
 claims made about them: a sample that happens to omit its own counterexamples,
 where nobody asserted a check, is outside it (product thinker, 2026-09-23).
 
-**Instance of a general rule.** This is a special case of [itd-195](../intents/disciplines/itd-195-a-claim-about-how-the-code-behaves-is-executable-or-it-is-no.md), adopted 2026-08-31: a claim about how the code behaves is executable, or it is not made. Stub pointer only — the relationship is recorded, not yet worked through.
+**Instance of a general rule.** This is a special case of [itd-195](../intents/disciplines/itd-195-a-claim-about-how-the-code-behaves-is.md), adopted 2026-08-31: a claim about how the code behaves is executable, or it is not made. Stub pointer only — the relationship is recorded, not yet worked through.
 
 **Bounds.**
 

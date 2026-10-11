@@ -229,7 +229,7 @@ def feature_block(spec):
     crit = blocks(ac['body'])[0].lstrip('- ').strip()
     crit_html = MD(crit)
     rel = 'v0.4.1'                              # from CHANGELOG.md: "(itd-100)" under ## [0.4.1] - 2026-07-28
-    src = '.abcd/development/intents/shipped/itd-100-alice-reads-one-page-and-knows-exactly-where-abcd-stands-in.md'
+    src = '.abcd/development/intents/shipped/itd-100-alice-reads-one-page-and-knows-exactly.md'
     return f'''<div class="quote"{src_attr(src, "press-release")}>
         <div class="pr"><span><a href="https://github.com/Partnermedia/abcd/blob/main/{src}">itd-100</a> · shipped · {rel}</span><span>{UI["from_the_record"]}</span></div>
         {quote}
