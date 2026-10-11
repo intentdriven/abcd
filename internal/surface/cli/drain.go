@@ -30,9 +30,9 @@ type drainOutput struct {
 func newDrainCommand(asJSON *bool) *cobra.Command {
 	var dryRun bool
 	var maxLanes int
-	var pace, subAgents, fixRounds string
+	var pace, subAgents, fixRounds, judgement string
 	cmd := &cobra.Command{
-		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]",
+		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -50,8 +50,17 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"order a drain takes them (by category, then severity, then oldest first), and\n" +
 			"writes nothing. The host judgement over each eligible remedy does not run; it can\n" +
 			"only ever hand an issue back.\n\n" +
-			"Without --dry-run, each invocation performs one move of the drain and exits. It\n" +
-			"hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +
+			"Without --dry-run, each invocation performs one move of the drain and exits. Before\n" +
+			"the next eligible issue's lane opens, the host judges its remedy: the drain writes\n" +
+			"a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the\n" +
+			"remedy changes what a user sees or a trust boundary, and opens nothing. The host\n" +
+			"writes its answer where the request says and hands it back with --judgement <file>,\n" +
+			"which is validated strictly; a refused answer changes nothing. A yes hands the\n" +
+			"issue back before any lane opens, routed as a lane's hand-back of the same kind\n" +
+			"(below); a no lets the lane open. The judgement can never make an issue eligible:\n" +
+			"an answer over an issue that has left the eligible set decides nothing, and one over\n" +
+			"a remedy rewritten since the request is refused and asked again. Once judged, the\n" +
+			"drain hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +
 			"lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to\n" +
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
 			"pull request is open, and it routes the lane's outcome and opens the next. A lane\n" +
@@ -77,7 +86,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or\n" +
 			"merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another\n" +
 			"drain or run holds the state lock.",
-		Example: "  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json",
+		Example: "  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := ledgerRootFor(cmd, "abcd drain")
@@ -85,10 +94,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if !dryRun {
-				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds)
+				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement)
 			}
-			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") {
-				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents or --fix-rounds: it opens no lane (nothing written)"}
+			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") {
+				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds or --judgement: it opens no lane and asks no judgement (nothing written)"}
 			}
 			plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
 			// Every refusal of the rule exits 2, as the bare verb's does: a rule
@@ -110,6 +119,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the ceiling on lanes and validators alive at once; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane may take before it is handed back; wins over every configured layer")
+	cmd.Flags().StringVar(&judgement, "judgement", "", "the host's answer to the judgement the drain awaits, at the path its request names")
 	return cmd
 }
 
@@ -123,7 +133,7 @@ func warnLoosened(cmd *cobra.Command, record string, loosened []string) {
 }
 
 // runDrain is the bare verb: one move of the drain run.
-func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds string) error {
+func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string) error {
 	const prefix = "abcd drain"
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
@@ -143,7 +153,10 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if cmd.Flags().Changed("fix-rounds") {
 		o.FixRounds = &fixRounds
 	}
-	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes})
+	if cmd.Flags().Changed("judgement") && strings.TrimSpace(judgement) == "" {
+		return &exitError{Code: 2, Msg: "abcd drain: --judgement names no file; give the answer's path the judgement request names (nothing written)"}
+	}
+	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement})
 	if isDrainRuleRefusal(err) {
 		return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 	}
@@ -193,8 +206,18 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		}
 		fmt.Fprintln(w, line)
 	}
+	if res.Judged != nil {
+		fmt.Fprintf(w, "  judged: %s\n", termsafe.Sanitize(loop.JudgementSummary(*res.Judged)))
+	}
+	if len(res.Judgements) > 0 {
+		fmt.Fprintf(w, "  host judgements: %d taken, each over the remedy as it stood\n", len(res.Judgements))
+	}
+	if res.Judging != nil {
+		fmt.Fprintf(w, "  awaiting the host judgement on %s: request %s, answer %s\n",
+			termsafe.Sanitize(res.Judging.Issue), termsafe.Sanitize(res.Judging.Request), termsafe.Sanitize(res.Judging.Answer))
+	}
 	if len(res.HandBacks) > 0 {
-		fmt.Fprintln(w, "  handed back by their lanes:")
+		fmt.Fprintln(w, "  handed back by their lanes or the host judgement:")
 		for _, r := range res.HandBacks {
 			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(loop.DrainSummaryLine(r)))
 		}
@@ -228,7 +251,6 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	case loop.DrainStoppedOutage:
 		fmt.Fprintln(w, "  ended: the run gave up on a lost connection")
 	}
-	fmt.Fprintln(w, "  the host judgement over each remedy is not built; a lane may still hand its issue back")
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(res.Next))
 }
 

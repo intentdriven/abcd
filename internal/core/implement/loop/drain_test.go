@@ -74,11 +74,15 @@ func routeOf(t *testing.T, rs []DrainRoute, issue string) DrainRoute {
 // the run to drive, and every field hand-back is flagged naming its rule.
 func TestADrainOpensOneIssueLaneAtATimeInTheDrainOrder(t *testing.T) {
 	repo := drainRepo(t)
-	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Started || res.Start == nil || res.Lane == nil || res.Lane.Issue != secondIssue {
+	if !first.Started || first.Judging == nil || first.Judging.Issue != secondIssue {
+		t.Fatalf("a new drain asks the host judgement over the first issue in the drain order (documentation before bug): %+v", first)
+	}
+	res := judge(t, repo, Options{}, first, JudgementNo, "", "internal")
+	if res.Start == nil || res.Lane == nil || res.Lane.Issue != secondIssue {
 		t.Fatalf("a new drain opens a lane for the first issue in the drain order (documentation before bug): %+v", res)
 	}
 	st, err := ReadState(repo.Root(), res.Start.RunID)
@@ -109,10 +113,7 @@ func TestADrainOpensOneIssueLaneAtATimeInTheDrainOrder(t *testing.T) {
 // in the summary, and the drain opens the next issue's lane.
 func TestALaneHandedBackIsRoutedByKindAndTheDrainMovesOn(t *testing.T) {
 	repo := drainRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := drainToLane(t, repo, Options{}, DrainOptions{})
 	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackUserVisible, Reason: "the page gains a flag users see"})
 	recordPath, _ := filepath.Glob(filepath.Join(repo.Root(), ".abcd", "work", "issues", "open", secondIssue+"-*.md"))
 	if len(recordPath) != 1 {
@@ -158,6 +159,10 @@ func TestALaneHandedBackIsRoutedByKindAndTheDrainMovesOn(t *testing.T) {
 	if len(removed) != 0 || len(added) != 1 || !strings.HasPrefix(added[0], "related_intents:") {
 		t.Fatalf("the issue gains the intent in related_intents and nothing else: added %q, removed %q", added, removed)
 	}
+	if second.Start != nil || second.Judging == nil || second.Judging.Issue != eligibleIssue {
+		t.Fatalf("the drain moves on to judge the next eligible issue: %+v", second)
+	}
+	second = judge(t, repo, Options{}, second, JudgementNo, "", "internal")
 	if second.Start == nil || second.Lane.Issue != eligibleIssue {
 		t.Fatalf("the drain moves on to the next eligible issue: %+v", second)
 	}
@@ -188,10 +193,7 @@ func TestALaneHandedBackIsRoutedByKindAndTheDrainMovesOn(t *testing.T) {
 // lanes a drain opens, and at the cap the run reports and exits.
 func TestADrainStopsAtItsMaxAndNamesTheCap(t *testing.T) {
 	repo := drainRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{Max: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := drainToLane(t, repo, Options{}, DrainOptions{Max: 1})
 	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the flag's name is a design choice", Home: "an intent for the flags page"})
 	capped, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
@@ -219,10 +221,7 @@ func TestADrainPausesAtItsWindowsEnd(t *testing.T) {
 	c := &clock{t: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)}
 	pace := "1/5"
 	o := Options{Now: c.now, Pace: &pace}
-	first, err := Drain(repo.Root(), o, DrainOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := drainToLane(t, repo, o, DrainOptions{})
 	handBackLaneOf(t, repo, first.Start.RunID, Options{Now: c.now}, LaneHandBack{Kind: HandBackSecondPackage, Reason: "it reaches the site", Home: "the brief"})
 
 	c.t = c.t.Add(2 * time.Minute)
@@ -245,10 +244,7 @@ func TestADrainPausesAtItsWindowsEnd(t *testing.T) {
 	}
 
 	c.t = want.Add(time.Second)
-	resumed, err := Drain(repo.Root(), Options{Now: c.now}, DrainOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	resumed := drainToLane(t, repo, Options{Now: c.now}, DrainOptions{})
 	if resumed.Start == nil || resumed.Lane.Issue != eligibleIssue {
 		t.Fatalf("after next_eligible_at the next invocation continues: %+v", resumed)
 	}
