@@ -331,6 +331,28 @@ func TestWaitDistrustsAReusedPid(t *testing.T) {
 	}
 }
 
+// TestWaitCommandHoldOutlastsASlowPreflight: on a loaded machine a preflight
+// takes longer than twenty minutes to reach its race step, so a command hold
+// whose holder is alive 21 minutes after opening still holds the gate, and a
+// second preflight is not admitted beside the first.
+func TestWaitCommandHoldOutlastsASlowPreflight(t *testing.T) {
+	home := t.TempDir()
+	opened := waitT0.Add(-21 * time.Minute)
+	started := opened.Add(-time.Second)
+	writeHold(t, home, WaitHolder{PID: 777, StartUnix: started.Unix(), Opened: opened,
+		Until: opened.Add(WaitCommandCap), Form: HoldCommand})
+	holder := machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: 21*time.Minute + time.Second, Name: "abcd"}
+	makeProc := machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: 21 * time.Minute, Name: "make"}
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 60000, clock, poll{load: 3, procs: []machineload.Proc{holder, makeProc}})
+	req.Timeout = 0
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnLock}) ||
+		res.Holder == nil || res.Holder.PID != 777 {
+		t.Fatalf("result %+v, err %v, want a live holder's hold honoured 21 minutes after it opened", res, err)
+	}
+}
+
 // TestWaitCommandHoldEndsWhenItsRaceRunStarts: a command hold is retired once
 // the work it gates has started its own race run, so when that run exits the
 // next waiter opens without waiting out the cap.

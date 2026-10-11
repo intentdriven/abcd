@@ -81,8 +81,13 @@ var (
 	WaitPollInterval = 15 * time.Second
 	// WaitSettle is how long the plain form's hold lasts.
 	WaitSettle = 2 * time.Minute
-	// WaitCommandCap is the longest the command form's hold lasts.
-	WaitCommandCap = 20 * time.Minute
+	// WaitCommandCap is the longest the command form's hold lasts. It only
+	// bounds a hold nothing else releases: the command starting its own race
+	// run, the command exiting, or its holder dying or its pid being reused
+	// each end the hold first. Twenty minutes was too short: a preflight on a
+	// loaded machine takes longer than that to reach its race step, so the hold
+	// lapsed while its holder was alive and a second preflight was admitted.
+	WaitCommandCap = 60 * time.Minute
 )
 
 // WaitHoldFileName is the hold record under ~/.abcd.noindex/.
