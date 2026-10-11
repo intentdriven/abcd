@@ -329,3 +329,31 @@ func TestMemoryAddPrintsTheOwnershipRefusalBeforeItsOwn(t *testing.T) {
 		t.Error("a refused add wrote the machine layer")
 	}
 }
+
+// A machine file the read refuses is exit 1, as a malformed rules.json layer
+// is for `abcd rules`, whether it fails a trust check or does not parse; the
+// write leaves it as it was.
+func TestMemoryAddOverARefusedMachineFileExits1(t *testing.T) {
+	home, _ := memoryFixture(t)
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, mode := range map[string]os.FileMode{"malformed": 0o600, "writable by others": 0o666} {
+		t.Run(name, func(t *testing.T) {
+			p := abcdhome.Path(home, "memory.json")
+			if err := os.WriteFile(p, []byte("{ not json"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(p, mode); err != nil {
+				t.Fatal(err)
+			}
+			out, err := memoryAdd(t, raceBody)
+			if exitCodeOf(err) != 1 {
+				t.Errorf("exit = %d, want 1:\n%s", exitCodeOf(err), out)
+			}
+			if data, _ := os.ReadFile(p); string(data) != "{ not json" {
+				t.Errorf("the refused file was changed: %q", data)
+			}
+		})
+	}
+}

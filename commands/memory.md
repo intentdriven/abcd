@@ -92,8 +92,9 @@ is refused: it is removed by editing `.abcd/memory.json` in a reviewed change.
 Until the project's review on the dashboard ships, `list` and `remove` are how
 a person reviews the notes.
 
-Every refusal exits 2 and writes nothing. The command makes no network
-request.
+Every refusal exits 2 and writes nothing. A machine file the read refuses,
+one that fails a trust check or does not parse, exits 1 and is left as it was.
+The command makes no network request.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

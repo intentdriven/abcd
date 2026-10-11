@@ -154,14 +154,16 @@ func memoryWhere(w io.Writer) (home, repoRoot string, err error) {
 }
 
 // memoryRefusal maps the core's refusals: a malformed field, the gate, no
-// root commit, no home, an absent note or a malformed file is exit 2 with
-// nothing written; anything else is exit 1.
+// root commit, no home or an absent note is exit 2 with nothing written;
+// anything else is exit 1, a machine file the read refuses among them, whether
+// it fails a trust check or does not parse — as `abcd rules` exits 1 on a
+// rules.json layer that fails to load.
 func memoryRefusal(verb string, err error) error {
 	var fe *memnote.FieldError
 	var ge *memnote.GateError
 	msg := "abcd memory " + verb + ": " + strings.TrimPrefix(memoryReason(err), "memory: ")
 	if errors.As(err, &fe) || errors.As(err, &ge) || errors.Is(err, memnote.ErrNoRoot) ||
-		errors.Is(err, memnote.ErrNoHome) || errors.Is(err, memnote.ErrNotFound) || errors.Is(err, memnote.ErrMalformed) {
+		errors.Is(err, memnote.ErrNoHome) || errors.Is(err, memnote.ErrNotFound) {
 		return &exitError{Code: 2, Msg: msg + " (nothing written)"}
 	}
 	return errors.New(msg)
