@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/textwidth"
@@ -59,6 +60,9 @@ func fullRows() []Row {
 	}
 }
 
+// ver is the version the front door reads from core.NewVersion.
+var ver = core.VersionInfo{Name: "abcd", Version: "v0.13.4"}
+
 func check(t *testing.T, name string, got []string, want string) {
 	t.Helper()
 	if g := strings.Join(got, "\n") + "\n"; g != want {
@@ -71,28 +75,31 @@ func check(t *testing.T, name string, got []string, want string) {
 // count line, with no record id, lane, target, command word or owed answer.
 func TestProductViewGolden(t *testing.T) {
 	f := Frame{View: Product, Form: Text, Width: 80, Rung: Mono}
-	check(t, "three ready, 40 parked", Render(Input{Status: fixture(2, 40)}, f), `view for the product thinker
+	check(t, "three ready, 40 parked", Render(Input{Status: fixture(2, 40), Version: ver}, f), `view for the product thinker
 ● building: The board shows a product thinker what waits on them and what comes…
 ○ next: A 'what next?' menu under the board offers the next step, in a Terminal…
 ○ next: When abcd sets up a project it asks the owner whether abcd keeps its re…
 ○ next: Connecting a model service works out of the box
 • no more ready, 40 parked
+abcd v0.13.4
 `)
-	check(t, "fourteen ready, 40 parked", Render(Input{Status: fixture(13, 40)}, f), `view for the product thinker
+	check(t, "fourteen ready, 40 parked", Render(Input{Status: fixture(13, 40), Version: ver}, f), `view for the product thinker
 ● building: The board shows a product thinker what waits on them and what comes…
 ○ next: A 'what next?' menu under the board offers the next step, in a Terminal…
 ○ next: When abcd sets up a project it asks the owner whether abcd keeps its re…
 ○ next: Connecting a model service works out of the box
 • 11 more ready, 40 parked
+abcd v0.13.4
 `)
-	check(t, "nothing", Render(Input{Status: &statusblock.Block{}}, f), `view for the product thinker
+	check(t, "nothing", Render(Input{Status: &statusblock.Block{}, Version: ver}, f), `view for the product thinker
 ● building: nothing right now
 ○ next: nothing is ready
 • no more ready, nothing parked
+abcd v0.13.4
 `)
 	handle := regexp.MustCompile(`\b(itd|iss|spc|adr|run|lane)-[0-9]`)
 	command := regexp.MustCompile(`\babcd (build|capture|intent|implement|ahoy|peers|inbox|mode|spec|drain|lint|decide|update)\b`)
-	for _, l := range Render(Input{Status: fixture(13, 40)}, f) {
+	for _, l := range Render(Input{Status: fixture(13, 40), Version: ver}, f) {
 		if handle.MatchString(l) || command.MatchString(l) || strings.Contains(l, "waiting on") || strings.Contains(l, "target") {
 			t.Errorf("the product thinker's view carries a handle, a command or an owed answer: %q", l)
 		}
@@ -104,7 +111,7 @@ func TestProductViewGolden(t *testing.T) {
 // whose branch exists and whose spec is open marked in flight.
 func TestFacilitatorViewGolden(t *testing.T) {
 	f := Frame{View: Facilitator, Form: Text, Width: 80, Rung: Mono}
-	check(t, "facilitator", Render(Input{Dir: "~/code/abcd", Status: fixture(2, 40), Rows: fullRows()}, f), `view for the facilitator
+	check(t, "facilitator", Render(Input{Dir: "~/code/abcd", Status: fixture(2, 40), Rows: fullRows(), Version: ver}, f), `view for the facilitator
 abcd — ~/code/abcd
   git repo:   yes
   record:     yes
@@ -134,13 +141,14 @@ abcd — ~/code/abcd
           abcd keeps its records there
       itd-101  spc-101  Connecting a model service works out of the box
     Later: 40 intents
+abcd v0.13.4
 `)
 }
 
 // TestMarkdownFormGolden is A3's form: a list, never a table, no escape byte,
 // titles whole, in both views.
 func TestMarkdownFormGolden(t *testing.T) {
-	in := Input{Dir: "~/code/abcd", Status: fixture(2, 40), Rows: fullRows()[:2]}
+	in := Input{Dir: "~/code/abcd", Status: fixture(2, 40), Rows: fullRows()[:2], Version: ver}
 	product := Render(in, Frame{View: Product, Form: Markdown, Width: 80, Rung: TrueColor})
 	check(t, "product markdown", product, `view for the product thinker
 
@@ -149,6 +157,7 @@ func TestMarkdownFormGolden(t *testing.T) {
 - ○ next: When abcd sets up a project it asks the owner whether abcd keeps its records there
 - ○ next: Connecting a model service works out of the box
 - • no more ready, 40 parked
+- abcd v0.13.4
 `)
 	facil := Render(in, Frame{View: Facilitator, Form: Markdown, Width: 80, Rung: TrueColor, ASCII: true})
 	check(t, "facilitator markdown", facil, `view for the facilitator
@@ -165,6 +174,7 @@ func TestMarkdownFormGolden(t *testing.T) {
       - itd-100  spc-100  When abcd sets up a project it asks the owner whether abcd keeps its records there
       - itd-101  spc-101  Connecting a model service works out of the box
     - Later: 40 intents
+- abcd v0.13.4
 `)
 	for _, l := range append(product, facil...) {
 		if strings.ContainsRune(l, '\x1b') || strings.HasPrefix(strings.TrimSpace(l), "|") {
@@ -184,7 +194,7 @@ func TestFenceSafeMarkdownTitles(t *testing.T) {
 		rows := []Row{{Label: "git repo", Text: "```"}, {Label: "presence", Text: "x\n```", Items: []string{"y\n~~~ an item"}}}
 		// The lines as a reader sees them: an element carrying a newline is
 		// two lines on the page.
-		lines := strings.Split(strings.Join(Render(Input{Dir: "```", Status: b, Rows: rows}, Frame{View: v, Form: Markdown}), "\n"), "\n")
+		lines := strings.Split(strings.Join(Render(Input{Dir: "```", Status: b, Rows: rows, Version: core.VersionInfo{Name: "abcd", Version: "v1\n```"}}, Frame{View: v, Form: Markdown}), "\n"), "\n")
 		if !strings.Contains(strings.Join(lines, "\n"), "close the fence") {
 			t.Fatalf("view %d drew no title to hold the rule over:\n%s", v, strings.Join(lines, "\n"))
 		}

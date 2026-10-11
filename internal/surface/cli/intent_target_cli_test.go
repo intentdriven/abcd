@@ -105,8 +105,14 @@ func TestLaunchPreviewAndCutListTheTargetedIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run: %v\n%s", err, plain)
 	}
-	if !strings.Contains(string(plain), "targeted:       itd-91 targets v0.4.1, not shipped") {
+	// The plain preview lists it once, in the cut it renders beside the
+	// bundle report, which also says the cut moves it (spc-2610100613109045
+	// step 3); the bundle half does not repeat the line.
+	if !strings.Contains(cutSection(t, plain), "targeted:   itd-91 targets v0.4.1, not shipped") {
 		t.Errorf("the plain preview must list the targeted intent:\n%s", plain)
+	}
+	if n := strings.Count(string(plain), "itd-91 targets v0.4.1"); n != 1 {
+		t.Errorf("the plain preview lists the targeted intent %d times, want once:\n%s", n, plain)
 	}
 
 	// The cut: the emit step lists it and stays ready (exit 0).
@@ -170,7 +176,7 @@ func targetedLines(out []byte) map[string]string {
 
 // TestTheCutsDryRunNamesTheTargetsItMoves is iss-2610020718369838 at the
 // front door: the cut's dry run — the emit step of the ship verb and the
-// read-only changelog preview, which share one render — marks the target the
+// cut `launch --dry-run` previews, which share one render — marks the target the
 // cut passes as moving to next, and leaves the target past the cut unmarked,
 // so a reader no longer compares each target with the derived tag by hand.
 // The JSON carries the same list.
@@ -184,12 +190,15 @@ func TestTheCutsDryRunNamesTheTargetsItMoves(t *testing.T) {
 
 	const moved = "itd-91 targets v0.4.1, not shipped (.abcd/development/intents/planned/itd-91-due.md); the cut moves it to next"
 	const stands = "itd-93 targets v0.5.0, not shipped (.abcd/development/intents/planned/itd-93-later.md)"
-	for _, args := range [][]string{{"launch", "ship"}, {"changelog"}} {
+	for _, args := range [][]string{{"launch", "ship"}, {"launch", "--dry-run"}} {
 		out, err := shipIn(t, r, args...)
 		if code := exitCodeOf(err); code != 0 {
 			t.Fatalf("%v: a target must not refuse the cut: exit = %d\n%s", args, code, out)
 		}
 		lines := targetedLines(out)
+		if args[1] == "--dry-run" {
+			lines = targetedLines([]byte(cutSection(t, out)))
+		}
 		if lines["itd-91"] != moved {
 			t.Errorf("%v: the target the cut reaches must be named as moving:\n got %q\nwant %q", args, lines["itd-91"], moved)
 		}

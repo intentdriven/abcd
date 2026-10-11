@@ -25,6 +25,10 @@ type boardOutput struct {
 	// View names the view asked for (spc-2610031844142274): product-thinker
 	// or facilitator. --json carries every field whichever view it names.
 	View string `json:"view"`
+	// Version is the installed version, the one `abcd --version` reports
+	// (spc-2610100613109045, decision 4): read from core.NewVersion, so it
+	// reads no network and runs no subprocess (adr-38).
+	Version string `json:"version"`
 	// Statusline is present in a managed checkout and omitted — not null —
 	// everywhere else, the collection convention of every --json envelope.
 	Statusline *boardStatusline `json:"statusline,omitempty"`

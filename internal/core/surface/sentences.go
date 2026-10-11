@@ -90,9 +90,6 @@ var sentences = map[string]string{
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
-	"abcd changelog": "Preview the next release cut's version, records, and guardrail verdict: " +
-		"Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.",
-
 	"abcd decide": "Mint an ADR id and lay the record's empty skeleton: " +
 		"Writes one proposed record into the decisions store; refuses a missing or unusable title.",
 
@@ -283,7 +280,7 @@ var sentences = map[string]string{
 	"abcd lab sweep": "Sweep a lab's documents for every retracted pattern: " +
 		"Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
 
-	"abcd launch": "Preview the public launch bundle, its secret scan, and the release gates: " +
+	"abcd launch": "Preview the release cut, the launch bundle, its secret scan and the gates: " +
 		"Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
 	"abcd launch archive": "Render the release's plugin archive: " +
 		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",

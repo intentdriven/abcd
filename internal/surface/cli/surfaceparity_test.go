@@ -37,7 +37,6 @@ const bareCommandFile = "abcd"
 // gap. A verb added here must be a verb a plugin user has no business invoking —
 // never a verb whose command file merely has not been written yet.
 var cliOnlyVerbs = map[string]string{
-	"changelog":  "deterministic release-cut input consumed by `launch ship`; the plugin surface orchestrates the cut through commands/launch.md",
 	"hook":       "operator-internal host adapter set, live-wired from hooks/hooks.json and invoked by the harness, never by a user",
 	"rules":      "operator-internal rule injection driven by the prompt hook; its bare render is read-only diagnostics",
 	"spec":       "internal spec-store tooling for the intent lifecycle; the user-facing half is commands/intent.md",

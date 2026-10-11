@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -82,6 +83,11 @@ type Input struct {
 	Dir    string
 	Status *statusblock.Block
 	Rows   []Row
+	// Version is the installed version, the same core.VersionInfo
+	// `abcd --version` reports; it is drawn as the board's last line in both
+	// views and both forms (spc-2610100613109045, decision 4), and the line is
+	// left out only when no version is handed in.
+	Version core.VersionInfo
 }
 
 // productMeasure caps how wide a title runs in the product thinker's view: the
@@ -116,10 +122,28 @@ func Render(in Input, f Frame) []string {
 	} else {
 		out = append(out, product(in, f)...)
 	}
+	if l := versionLine(in.Version, f); l != "" {
+		out = append(out, l)
+	}
 	if f.Form == Text {
 		out = fitWindow(out, f.Width)
 	}
 	return out
+}
+
+// versionLine is the board's last line, the installed version as `abcd
+// --version` names it (abcd v0.13.4): masked, since it is stamped at build
+// time, and a list item in markdown, so the page's fence rule holds for it as
+// for every other line. The first line stays the view label alone.
+func versionLine(v core.VersionInfo, f Frame) string {
+	if v.Version == "" {
+		return ""
+	}
+	l := termsafe.Sanitize(strings.TrimSpace(v.Name + " " + v.Version))
+	if f.Form == Markdown {
+		return "- " + l
+	}
+	return l
 }
 
 // escape matches one SGR colour sequence, the only escape the board draws.

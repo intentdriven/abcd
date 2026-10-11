@@ -268,10 +268,12 @@ func TestLaunchShipIngestOnARefusedCutExits1(t *testing.T) {
 	}
 }
 
-// TestChangelogPreviewWritesNothing is deliverable 4's contract, asserted the
-// only way that means anything: hash the whole tree before and after.
-func TestChangelogPreviewWritesNothing(t *testing.T) {
-	r := shipFixture(t)
+// TestLaunchDryRunCutWritesNothing is deliverable 4's contract, carried from
+// the retired changelog verb onto the preview that replaced it, and asserted
+// the only way that means anything: hash the whole tree before and after (the
+// local tier, where the dry run keeps its pre-flight report, aside).
+func TestLaunchDryRunCutWritesNothing(t *testing.T) {
+	r := previewFixture(t)
 	r.Write(".abcd/development/intents/shipped/itd-73-x.md", "---\nid: itd-73\nimpact: additive\n---\n# x\n")
 	// A standing release page, so the digest proves the preview neither
 	// rewrites it nor archives it.
@@ -279,27 +281,30 @@ func TestChangelogPreviewWritesNothing(t *testing.T) {
 	r.Commit("ship an intent")
 
 	before := cliTreeDigest(t, r.Root())
-	out, err := shipIn(t, r, "changelog")
+	out, err := shipIn(t, r, "launch", "--dry-run")
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("exit = %d, want 0 (a preview always reports)\n%s", code, out)
+	}
+	if !strings.Contains(cutSection(t, out), "v0.4.1") {
+		t.Errorf("the preview does not render the cut it read:\n%s", out)
 	}
 	if after := cliTreeDigest(t, r.Root()); after != before {
 		t.Errorf("the preview changed the working tree:\nbefore %s\nafter  %s", before, after)
 	}
 }
 
-// TestChangelogPreviewRefusalStillExitsZero separates the preview from the gate:
-// `abcd changelog` REPORTS a refused cut (like `launch --dry-run`), while
-// `launch ship` exits non-zero on the same repository.
-func TestChangelogPreviewRefusalStillExitsZero(t *testing.T) {
-	r := shipFixture(t)
+// TestLaunchDryRunRefusedCutStillExitsZero separates the preview from the
+// gate: `launch --dry-run` REPORTS a refused cut, as the retired changelog verb
+// did, while `launch ship` exits non-zero on the same repository.
+func TestLaunchDryRunRefusedCutStillExitsZero(t *testing.T) {
+	r := previewFixture(t)
 	r.Commit("nothing shipped at all")
 
-	out, err := shipIn(t, r, "changelog")
+	out, err := shipIn(t, r, "launch", "--dry-run")
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
 	}
-	if !strings.Contains(string(out), "empty-cut") {
+	if !strings.Contains(cutSection(t, out), "empty-cut") {
 		t.Errorf("preview does not name the refusal:\n%s", out)
 	}
 
@@ -308,28 +313,36 @@ func TestChangelogPreviewRefusalStillExitsZero(t *testing.T) {
 	}
 }
 
-// TestChangelogPreviewJSON pins the machine surface the next stages read.
-func TestChangelogPreviewJSON(t *testing.T) {
-	r := shipFixture(t)
+// TestLaunchDryRunCutJSON pins the machine surface the next stages read: the
+// cut sits under the dry run's `cut` key, in the shape the retired changelog
+// verb emitted at the top level.
+func TestLaunchDryRunCutJSON(t *testing.T) {
+	r := previewFixture(t)
 	r.Write(".abcd/development/intents/shipped/itd-73-x.md",
 		"---\nid: itd-73\nimpact: additive\n---\n\n# Title\n\nsummary.\n")
 	r.Commit("ship an intent")
 
-	out, err := shipIn(t, r, "changelog", "--json")
+	out, err := shipIn(t, r, "launch", "--dry-run", "--json")
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
 	}
-	var got struct {
-		Ready   bool   `json:"ready"`
-		NextTag string `json:"next_tag"`
-		Added   []struct {
-			ID    string `json:"id"`
-			Title string `json:"title"`
-		} `json:"added"`
+	var preview struct {
+		Cut *struct {
+			Ready   bool   `json:"ready"`
+			NextTag string `json:"next_tag"`
+			Added   []struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+			} `json:"added"`
+		} `json:"cut"`
 	}
-	if err := json.Unmarshal(out, &got); err != nil {
-		t.Fatalf("changelog --json is not JSON: %v\n%s", err, out)
+	if err := json.Unmarshal(out, &preview); err != nil {
+		t.Fatalf("launch --dry-run --json is not JSON: %v\n%s", err, out)
 	}
+	if preview.Cut == nil {
+		t.Fatalf("launch --dry-run --json carries no cut:\n%s", out)
+	}
+	got := *preview.Cut
 	if !got.Ready || got.NextTag != "v0.4.1" {
 		t.Errorf("ready=%v next_tag=%q, want true v0.4.1", got.Ready, got.NextTag)
 	}
@@ -360,7 +373,7 @@ func TestLaunchShipWritesNothingYet(t *testing.T) {
 // refusal — and the diagnostic must be path-scrubbed, because it names files
 // under the caller's working directory.
 func TestShipStructuralFaultExits2(t *testing.T) {
-	for _, args := range [][]string{{"launch", "ship"}, {"changelog"}} {
+	for _, args := range [][]string{{"launch", "ship"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Chdir(t.TempDir())
 			out, err := runCLIErr(t, args...)
@@ -379,14 +392,17 @@ func TestShipStructuralFaultExits2(t *testing.T) {
 // checkout read the same records, baseline and anchor tag as from its root.
 // Handing the working directory over as the root made the preview report an
 // empty cut and a missing baseline there with exit 0 (iss-2609251713073532).
+// The preview is `launch --dry-run` now, whose bundle half read the
+// subdirectory as a repository declaring no artefact kind and refused before
+// any cut was read, so it resolves the checkout root as the cut does.
 func TestCutReadsTheWholeCheckoutFromASubdirectory(t *testing.T) {
-	r := shipFixture(t)
+	r := previewFixture(t)
 	r.Write(".abcd/development/intents/shipped/itd-73-derived-versioning.md",
 		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\nthe version is derived.\n")
 	r.Commit("ship an intent")
 	sub := filepath.Join(r.Root(), ".abcd", "development")
 
-	for _, args := range [][]string{{"changelog"}, {"launch", "ship"}} {
+	for _, args := range [][]string{{"launch", "--dry-run"}, {"launch", "ship"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Chdir(sub)
 			out, err := runCLIErr(t, args...)
@@ -402,10 +418,12 @@ func TestCutReadsTheWholeCheckoutFromASubdirectory(t *testing.T) {
 	}
 }
 
-// TestCutOutsideACheckoutNamesTheCheckout: outside any repository both verbs
-// refuse naming what is missing, not with git's bare exit status.
+// TestCutOutsideACheckoutNamesTheCheckout: outside any repository the cut
+// refuses naming what is missing, not with git's bare exit status. The dry
+// run's bundle half refuses there before the cut is read, as it always has;
+// TestPreviewCutOutsideACheckoutNamesTheCheckout holds the cut's own reason.
 func TestCutOutsideACheckoutNamesTheCheckout(t *testing.T) {
-	for _, args := range [][]string{{"changelog"}, {"launch", "ship"}} {
+	for _, args := range [][]string{{"launch", "ship"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Chdir(t.TempDir())
 			out, err := runCLIErr(t, args...)
@@ -508,21 +526,21 @@ func TestRenderEntriesShowsAnUnreadableShippedIn(t *testing.T) {
 	}
 }
 
-// TestChangelogPreviewListsThePageSet: the read-only preview names the intents
+// TestLaunchDryRunCutListsThePageSet: the read-only preview names the intents
 // the release page will be composed from, and marks them in the entry list.
-func TestChangelogPreviewListsThePageSet(t *testing.T) {
-	r := shipFixture(t)
+func TestLaunchDryRunCutListsThePageSet(t *testing.T) {
+	r := previewFixture(t)
 	r.Write(".abcd/development/intents/shipped/itd-73-x.md",
 		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n")
 	r.Write(".abcd/development/intents/shipped/itd-97-y.md", "---\nid: itd-97\nimpact: internal\n---\n# Plumbing\n")
 	r.Write(".abcd/work/issues/resolved/iss-51-crash.md", "---\nid: iss-51\nimpact: fix\n---\n# x\n")
 	r.Commit("ship a mixed cut")
 
-	out, err := shipIn(t, r, "changelog")
+	out, err := shipIn(t, r, "launch", "--dry-run")
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
 	}
-	got := string(out)
+	got := cutSection(t, out)
 	if !strings.Contains(got, "release page: 1 intent(s)") {
 		t.Errorf("the preview does not count the page set:\n%s", got)
 	}
@@ -534,24 +552,24 @@ func TestChangelogPreviewListsThePageSet(t *testing.T) {
 		t.Errorf("the entry list does not mark the page's intent:\n%s", got)
 	}
 
-	jsonOut, err := shipIn(t, r, "changelog", "--json")
+	jsonOut, err := shipIn(t, r, "launch", "--dry-run", "--json")
 	if exitCodeOf(err) != 0 || !strings.Contains(string(jsonOut), `"in_press_release": true`) {
-		t.Errorf("changelog --json does not carry in_press_release:\n%s", jsonOut)
+		t.Errorf("launch --dry-run --json does not carry in_press_release:\n%s", jsonOut)
 	}
 }
 
-// TestChangelogPreviewSaysNoPageForAFixesOnlyCut: with no user-facing intent the
-// preview says no page will be written, and why.
-func TestChangelogPreviewSaysNoPageForAFixesOnlyCut(t *testing.T) {
-	r := shipFixture(t)
+// TestLaunchDryRunCutSaysNoPageForAFixesOnlyCut: with no user-facing intent
+// the preview says no page will be written, and why.
+func TestLaunchDryRunCutSaysNoPageForAFixesOnlyCut(t *testing.T) {
+	r := previewFixture(t)
 	r.Write(".abcd/work/issues/resolved/iss-51-crash.md", "---\nid: iss-51\nimpact: fix\n---\n# x\n")
 	r.Commit("a fix alone")
 
-	out, err := shipIn(t, r, "changelog")
+	out, err := shipIn(t, r, "launch", "--dry-run")
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("exit = %d, want 0\n%s", code, out)
 	}
-	if !strings.Contains(string(out), "release page: none (no user-facing intent shipped; RELEASE.md stays as it is)") {
+	if !strings.Contains(cutSection(t, out), "release page: none (no user-facing intent shipped; RELEASE.md stays as it is)") {
 		t.Errorf("the preview does not say no page will be written:\n%s", out)
 	}
 }

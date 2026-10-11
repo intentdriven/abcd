@@ -72,7 +72,7 @@ the transport-agnostic core.
 
 The mapping between command pages and binary verbs is one-to-one in neither
 direction, and both exceptions are deliberate. Five verbs have a Go verb and no
-command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. Three
+command page: `completion`, `hook`, `rules`, `spec`, and `statusline`. Three
 command pages carry no Go verb of their own name: the host-delegated three above.
 Two of those three call no part of the binary at all; `/abcd:prepare-this-repo`
 is the exception, running the binary's audit, install and identity verbs as steps
