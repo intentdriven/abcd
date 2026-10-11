@@ -92,6 +92,12 @@ on:
 #     shape as attribution.yml, which falls through to github.run_id for the
 #     same reason. A nightly run and a dispatched one on the default branch
 #     share a ref, and the same key keeps either from cancelling the other.
+#
+# Concurrency therefore never cancels a queue run, and a run whose entry the
+# queue has already dropped runs on to its end unless something else cancels
+# it. queue-sweep.yml does, on every merge_group event: it cancels a run only
+# once its queue ref is proven gone, so a live entry's run is never touched
+# (iss-2610110613372021).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

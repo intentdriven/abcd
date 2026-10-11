@@ -184,7 +184,10 @@ the merge-queue entry runs the macOS suite on exactly the tree that lands.
 The workflow triggers on pull requests, merge-queue entries, a nightly
 schedule and by hand, never on a push to `main`: every commit there is a
 merge result its queue entry already tested, and the nightly run checks the
-default branch and saves its Go build cache for the runs that follow.
+default branch and saves its Go build cache for the runs that follow. On
+every merge-queue event `.github/workflows/queue-sweep.yml` cancels the runs
+of entries the queue has already dropped, and only those whose queue ref is
+gone; it is not a required check.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit

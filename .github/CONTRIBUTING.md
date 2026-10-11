@@ -43,7 +43,8 @@ inbound = outbound statement is the whole of it.
   and smoke lanes down while it is in review; the queue run is not
   a pull-request event, so the full set gates the merge either way. CI does
   not run again on the push the merge makes to `main`; a nightly run checks
-  `main` instead.
+  `main` instead. When the queue drops an entry, a sweep cancels the CI runs
+  still going for it, so they stop holding runners the live entries need.
 - **Publish surface reviews.** Paths listed in
   [`.github/CODEOWNERS`](CODEOWNERS) ship behaviour to installed users
   (plugin hooks and commands, agent prompts, workflows, gates and build
