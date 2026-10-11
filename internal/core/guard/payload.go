@@ -143,7 +143,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 			var stdin, args []feed
 			inputRead := false
 			refs := payloadRefsOf(payloadView(s))
-			named := namedPayloads(s, refs)
+			named, leadNamed := namedPayloads(s, refs)
 			for r, ref := range refs {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
@@ -171,7 +171,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 						continue
 					}
 					psegs = pseg
-					spellPayload(psegs, named[r])
+					spellPayload(psegs, named[r], leadNamed(r))
 				case kindShellWarn:
 					signals = append(signals, shellUnresolvedSignal())
 					continue
@@ -187,7 +187,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 						continue
 					}
 					psegs = pseg
-					spellPayload(psegs, named[r])
+					spellPayload(psegs, named[r], leadNamed(r))
 				case kindExecStringWarn:
 					signals = append(signals, execStringWarnSignal(fam))
 					continue
@@ -291,12 +291,47 @@ func payloadView(s segment) segment {
 // takes from them; every reading of the string reads the marks
 // (iss-2609290321312087). The words are paired by payloadsOf's own order, and
 // a pair whose kind or family differs is not paired.
-func namedPayloads(s segment, refs []payloadRef) [][]string {
+//
+// lead is the same, written with segment.leadFrom's words spelled by
+// leadSpelling, for the varLead spellPayload takes alone, and nil where no
+// word has one. It is a function, asked only for a string whose reading
+// leads, so a string no reading leads in is not written out again.
+func namedPayloads(s segment, refs []payloadRef) (named [][]string, lead func(r int) func() []string) {
+	none := func(int) func() []string { return nil }
 	if len(refs) == 0 {
-		return nil
+		return nil, none
 	}
+	named = writtenPayloads(spelledViews(s), refs)
+	if len(s.leadFrom) == 0 {
+		return named, none
+	}
+	var leads [][]string
+	asked := false
+	all := func() [][]string {
+		if asked {
+			return leads
+		}
+		asked = true
+		ls := s
+		ls.spelled = map[int][]string{}
+		for i, texts := range s.spelled {
+			ls.spelled[i] = texts
+			if src, ok := s.leadFrom[i]; ok && !capped(texts) {
+				ls.spelled[i] = leadSpelling(src)
+			}
+		}
+		leads = writtenPayloads(spelledViews(ls), refs)
+		return leads
+	}
+	return named, func(r int) func() []string {
+		return func() []string { return all()[r] }
+	}
+}
+
+// writtenPayloads is namedPayloads for the views given.
+func writtenPayloads(views []segment, refs []payloadRef) [][]string {
 	named := make([][]string, len(refs))
-	for _, v := range spelledViews(s) {
+	for _, v := range views {
 		nrefs := payloadRefsOf(v)
 		if len(nrefs) != len(refs) {
 			continue
@@ -372,15 +407,21 @@ func spelledViews(s segment) []segment {
 // bound, is spellCapped. A paired word also takes its segment.varLead from
 // the readings it was paired with, any one of which opening a path with a
 // variable that can be empty marks it: the mark-view word holds the value's
-// mark, whose name it no longer has (opensUnguardedPath). Nothing else of
-// psegs is changed.
-func spellPayload(psegs []segment, named []string) {
+// mark, whose name it no longer has (opensUnguardedPath). Where one of named
+// leads and lead, when not nil, has readings — the string written with each
+// guarded value as its guard (leadSpelling) — the leads are taken from those
+// instead: they differ only where a guard keeps a value from being empty,
+// so they can take a lead away, never add one. Nothing else of psegs is
+// changed.
+func spellPayload(psegs []segment, named []string, lead func() []string) {
 	paired := make([]map[int][]string, len(psegs))
 	leads := make([]map[int]bool, len(psegs))
-	for _, nm := range named {
+	// pair calls fn for each word of psegs the string nm's reading pairs,
+	// with that reading's segment and the word's texts in it.
+	pair := func(nm string, fn func(i, j int, n segment, ws []string)) {
 		nsegs, err := tokenize(nm)
 		if err != nil || len(nsegs) != len(psegs) {
-			continue
+			return
 		}
 		for i := range psegs {
 			m, n := psegs[i], nsegs[i]
@@ -403,17 +444,46 @@ func spellPayload(psegs []segment, named []string) {
 				if !fitsWritten(m.tokens[j], n.tokens[j]) {
 					continue
 				}
-				if leads[i] == nil {
-					leads[i] = map[int]bool{}
-				}
-				leads[i][j] = leads[i][j] || n.varLead[j]
-				for _, w := range ws {
-					if fitsWritten(m.tokens[j], w) {
-						if paired[i] == nil {
-							paired[i] = map[int][]string{}
-						}
-						paired[i][j] = appendText(paired[i][j], w)
+				fn(i, j, n, ws)
+			}
+		}
+	}
+	markLead := func(i, j int, n segment, _ []string) {
+		if leads[i] == nil {
+			leads[i] = map[int]bool{}
+		}
+		leads[i][j] = leads[i][j] || n.varLead[j]
+	}
+	for _, nm := range named {
+		pair(nm, func(i, j int, n segment, ws []string) {
+			markLead(i, j, n, ws)
+			for _, w := range ws {
+				if fitsWritten(psegs[i].tokens[j], w) {
+					if paired[i] == nil {
+						paired[i] = map[int][]string{}
 					}
+					paired[i][j] = appendText(paired[i][j], w)
+				}
+			}
+		})
+	}
+	if lead != nil && anyLead(leads) {
+		if ls := lead(); len(ls) > 0 {
+			// A word no guarded reading pairs keeps the lead named gave it.
+			named := leads
+			leads = make([]map[int]bool, len(psegs))
+			for _, nm := range ls {
+				pair(nm, markLead)
+			}
+			for i, words := range named {
+				for j, lead := range words {
+					if _, ok := leads[i][j]; ok {
+						continue
+					}
+					if leads[i] == nil {
+						leads[i] = map[int]bool{}
+					}
+					leads[i][j] = lead
 				}
 			}
 		}
@@ -438,6 +508,18 @@ func spellPayload(psegs []segment, named []string) {
 			}
 		}
 	}
+}
+
+// anyLead reports whether any word of leads is marked.
+func anyLead(leads []map[int]bool) bool {
+	for _, words := range leads {
+		for _, lead := range words {
+			if lead {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fitsWritten reports whether word, read from a string's named text, can be

@@ -570,13 +570,15 @@ var refusals = []refusal{
 		Token: refusedPrefix + "RENDERED",
 		Names: []string{
 			".abcd/development/brief/glossary/core/construal.md",
-			"still carries the excluded heading",
+			"indents the excluded heading",
 			"Audit Notes",
 		},
 		Falsifier: "make sameRendering return false",
-		Why: "the redactor's own span lookup compares the normalised title exactly, which the " +
-			"emphasis marks defeat; the equality that recognises `## **Audit Notes**` as the " +
-			"excluded heading exists on the refusal path alone",
+		Why: "the section scan reads column 0 alone, so an indented heading gives the redactor " +
+			"no span to delete, and only the rendering equality recognises ` ## **Audit Notes**` " +
+			"as the excluded heading. At column 0 the same title is redacted, not refused: the " +
+			"redactor and the refusal share one equality (iss-2610101819067941), so the plant " +
+			"is indented to keep a shape only the refusal can catch",
 	},
 	// The six shapes itd-194 adds. Each is a markdown document the include
 	// table admits and the exclusion floor cannot resolve, and each is refused
