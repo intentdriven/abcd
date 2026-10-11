@@ -286,7 +286,9 @@ func respelled(s varSite) bool {
 // quotedFieldMark), and a reference the enclosing shell wrote as text is read
 // (`${X:-\$Y}`). A guard written out as `${X:?}` would hide that default, so
 // the site keeps its `${X}`, which can be empty. An escaped blank is read as
-// one that splits, refusing where the guard could allow.
+// one that splits, and a `$` or backquote opening nothing the guard follows
+// as one that can print nothing (`${X:-\${Y}}`, whose body ends at the first
+// `}`, and `${X:-\$(true)}`), refusing where the guard could allow.
 func emptiedInside(t string, guarded []string) bool {
 	u := strings.Map(func(r rune) rune {
 		if r == '"' || r == '\'' || r == '\\' {
@@ -298,7 +300,11 @@ func emptiedInside(t string, guarded []string) bool {
 		return true
 	}
 	rest, _ := stripEmptyableRefs(u, guarded)
-	return rest == ""
+	if rest == "" {
+		return true
+	}
+	end, _ := leadingRef(rest)
+	return end == 0 && (rest[0] == '$' || rest[0] == '`')
 }
 
 // leadSpelling is a word's spelling (spellWritten) for a payload re-read's

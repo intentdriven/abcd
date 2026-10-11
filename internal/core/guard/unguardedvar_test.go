@@ -169,6 +169,8 @@ func TestRmGuardedRewriteInsideADoubleQuotedShellString(t *testing.T) {
 		{`sh -c "rm -rf ${X:- }/y"`, VerdictBlock, id},
 		{`sh -c "rm -rf ${X:-a }/y"`, VerdictBlock, id},
 		{`sh -c "rm -rf ${X:-\$Y}/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:-\$(true)}/y"`, VerdictBlock, id},
+		{"sh -c \"rm -rf ${X:-\\`true\\`}/y\"", VerdictBlock, id},
 		// The home's own entry still reads the guarded spelling.
 		{`sh -c "rm -rf ${HOME:?}"`, VerdictBlock, "rm-rf-root-or-home"},
 		{`sh -c "rm -rf '${HOME:?}'"`, VerdictBlock, "rm-rf-root-or-home"},
@@ -226,6 +228,8 @@ func TestRmDefaultThatSplitsAwayIsNoGuard(t *testing.T) {
 	runVerdictCases(t, []verdictCase{
 		{`rm -rf ${X:- }/y`, VerdictBlock, id},
 		{`rm -rf ${X:-a }/y`, VerdictBlock, id},
+		{`rm -rf ${X:-${Y:?} }/y`, VerdictBlock, id},
+		{`rm -rf ${X:-a ${Y:?}}/y`, VerdictAllow, ""},
 		{`rm -rf "${X:- }"/y`, VerdictAllow, ""},
 		{`rm -rf ${X:- a}/y`, VerdictAllow, ""},
 		{`rm -rf ${X:-\ }/y`, VerdictAllow, ""},
