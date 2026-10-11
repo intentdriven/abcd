@@ -173,9 +173,11 @@ func (c *readmeChecks) run(name, body string, addrs []readmeAddr) (string, strin
 	if len(findings) > 0 {
 		// The rule, never the matched text: a part is never written with a
 		// masked span inside it, and the summary does not repeat what it masked.
+		// A kind may come from the project's own pii.json, so it is the
+		// repository's text and is made terminal-safe before the reason holds it.
 		kinds := map[string]bool{}
 		for _, f := range findings {
-			kinds[f.Kind] = true
+			kinds[termsafe.Sanitize(f.Kind)] = true
 		}
 		return refuse("the outbound scrub found " + strings.Join(readmeSortedKeys(kinds), ", "))
 	}
@@ -185,13 +187,16 @@ func (c *readmeChecks) run(name, body string, addrs []readmeAddr) (string, strin
 	}
 	var notes []string
 	if c.lint != nil {
+		// A rule id is the project's .abcd/docs-lint.json text, so it is made
+		// terminal-safe before a reason or a note holds it.
 		blockers := map[string]bool{}
 		for _, f := range c.lint.LintComposed("README.md", body, false, nil) {
+			id := termsafe.Sanitize(f.RuleID)
 			if f.Severity == "blocker" {
-				blockers[f.RuleID] = true
+				blockers[id] = true
 				continue
 			}
-			notes = append(notes, fmt.Sprintf("%s part: docs-lint %s %s at its line %d; written", name, f.Severity, f.RuleID, f.Line))
+			notes = append(notes, fmt.Sprintf("%s part: docs-lint %s %s at its line %d; written", name, termsafe.Sanitize(f.Severity), id, f.Line))
 		}
 		if len(blockers) > 0 {
 			return refuse("the project's docs-lint bans " + strings.Join(readmeSortedKeys(blockers), ", "))

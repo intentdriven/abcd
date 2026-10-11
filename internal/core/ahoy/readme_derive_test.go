@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"net"
@@ -406,6 +407,36 @@ func TestReadmePartRefusedByOutboundScrub(t *testing.T) {
 			wantOmitted(t, derivedPart(t, got, name), name+" refused", "outbound scrub", "degraded scanner config")
 		}
 	})
+
+	// The project's own pii.json names its patterns' kinds, so a kind is the
+	// repository's text: it reaches the reason with no control character in
+	// it, as the reason's other untrusted pieces do.
+	t.Run("a hostile pattern kind", func(t *testing.T) {
+		kind := "house:\x1b[31mKIND\x1b[0m\nFORGED part written"
+		cfg, err := json.Marshal(map[string]any{"patterns": map[string]any{
+			"house_word": map[string]any{"regex": `\bZebrafish\b`, "kind": kind, "severity": "hard_fail"},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := readmeRepo(t, "", map[string]string{
+			"README.md":             "# Project\n\n## Zebrafish\n",
+			".abcd/config/pii.json": string(cfg),
+		})
+		d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+		wantOmitted(t, d, "contents refused", "outbound scrub", "house:?[31mKIND?[0m?FORGED part written")
+		wantTerminalSafe(t, d)
+	})
+}
+
+// wantTerminalSafe asserts nothing a part reports carries a control character.
+func wantTerminalSafe(t *testing.T, d readmeDerived) {
+	t.Helper()
+	for _, s := range append([]string{d.Reason}, d.Notes...) {
+		if strings.IndexFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			t.Errorf("%s: %q carries a control character", d.Name, s)
+		}
+	}
 }
 
 // TestReadmePartRefusedByDocsLint: where the project keeps .abcd/docs-lint.json,
@@ -413,8 +444,15 @@ func TestReadmePartRefusedByOutboundScrub(t *testing.T) {
 // naming the token's id, a warning is noted and the part kept, a configuration
 // that does not load refuses every part, and a project with none skips it.
 func TestReadmePartRefusedByDocsLint(t *testing.T) {
+	quote := func(s string) string {
+		b, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
 	ban := func(id, pattern, severity string) string {
-		return `{"id": ` + strconv.Quote(id) + `, "pattern": ` + strconv.Quote(pattern) + `, "severity": ` + strconv.Quote(severity) +
+		return `{"id": ` + quote(id) + `, "pattern": ` + quote(pattern) + `, "severity": ` + quote(severity) +
 			`, "successor": "other words", "allow_context": ["docs-lint: allow"], "message": "house style"}`
 	}
 	config := `{"roots": ["README.md"], "banned_tokens": [` +
@@ -442,6 +480,23 @@ func TestReadmePartRefusedByDocsLint(t *testing.T) {
 		for _, name := range []string{"licence", "links"} {
 			wantOmitted(t, derivedPart(t, got, name), name+" refused", ".abcd/docs-lint.json")
 		}
+	})
+	// A banned token's id is the repository's text: a blocker's and a
+	// warning's reach the reason and the notes with no control character.
+	t.Run("hostile ids", func(t *testing.T) {
+		hostile := `{"roots": ["README.md"], "banned_tokens": [` +
+			ban("house/\x1b[31mRED\x1b[0m\nFORGED LINE", `(?i)\bguide\b`, "blocker") + ", " +
+			ban("warn/\x1b[32mG\x1b[0m\nFORGED", `\bLicensed\b`, "warn") + `]}`
+		files := map[string]string{"LICENSE": "MIT License\n", "CONTRIBUTING.md": "x\n", ".abcd/docs-lint.json": hostile}
+		got := deriveReadmeParts(readmeRepo(t, "", files), readmeSettings{Parts: []string{"licence", "links"}})
+		links := derivedPart(t, got, "links")
+		wantOmitted(t, links, "links refused", "docs-lint", "house/?[31mRED?[0m?FORGED LINE")
+		wantTerminalSafe(t, links)
+		lic := derivedPart(t, got, "licence")
+		if len(lic.Notes) != 1 || !strings.Contains(lic.Notes[0], "warn/?[32mG?[0m?FORGED") {
+			t.Errorf("licence notes = %q, want one naming the sanitised warning id", lic.Notes)
+		}
+		wantTerminalSafe(t, lic)
 	})
 	t.Run("no configuration", func(t *testing.T) {
 		plain := map[string]string{"LICENSE": "MIT License\n", "CONTRIBUTING.md": "x\n"}
