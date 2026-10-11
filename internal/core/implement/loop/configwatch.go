@@ -619,7 +619,8 @@ func AcceptConfigChange(repoRoot, runID string, o Options) ([]string, error) {
 		if ok {
 			again, err := takeFingerprint(repoRoot, lanes, was.Salt, now)
 			if err != nil {
-				return false, err
+				return false, refuse(StageConfig, "", "", "the repository's git configuration cannot be read, so there is nothing to accept: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
+					"settle what git reports, then accept again; nothing was changed")
 			}
 			accepted = nameChanges(repoRoot, was.changes(repoRoot, again))
 		} else if bad != nil {
