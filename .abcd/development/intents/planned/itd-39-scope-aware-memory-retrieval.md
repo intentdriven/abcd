@@ -1,14 +1,16 @@
 ---
 id: itd-39
 slug: scope-aware-memory-retrieval
-spec_id: null
-kind: standalone
+spec_id: spc-2610111627213138
+kind: bundle-member
 suggested_kind: standalone
 reclassification_history: []
 blocked_by: [itd-36, itd-3]
 severity: minor
 related_intents: [itd-2610091918433290]
 related_adrs: [adr-2610091918443997]
+bundle: memory-recall
+impact: additive
 ---
 
 # abcd Surfaces the Right Memory at the Right Moment
@@ -79,3 +81,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 - Deferred to by: `itd-42` (coherence-aware grill) — itd-42's Tier 3 is index-level only; full-body cross-intent comparison at scale is this intent's selective-retrieval problem.
 
 [carl]: https://github.com/ChristopherKahler/carl "CARL — Context Augmentation & Reinforcement Layer (Kahler)"
+
+## Grounds
+
+- pursued: We expect the right page to reach an agent when it matters, without crowding the context. Shown wrong if matched pages are mostly irrelevant, or if recall crowds out the work.

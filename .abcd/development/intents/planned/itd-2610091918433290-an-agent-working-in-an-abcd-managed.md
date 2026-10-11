@@ -1,8 +1,8 @@
 ---
 id: itd-2610091918433290
 slug: an-agent-working-in-an-abcd-managed
-spec_id: null
-kind: null
+spec_id: spc-2610111627213138
+kind: bundle-member
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-3]
@@ -11,6 +11,8 @@ origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-39, itd-36, itd-2610090831227812]
 related_adrs: [adr-2610091918443997]
+bundle: memory-recall
+impact: additive
 ---
 
 # Agents keep memory notes with /abcd:memory, recalled when they matter
@@ -29,8 +31,8 @@ We expect fewer repeated mistakes, because a note comes back exactly when a prom
 
 ## Scope Conditions
 
-- Holds for a host that runs abcd's prompt hook, through which the rules loader recalls.
-- Holds while notes are written by agents in sessions on the person's own machine, and promotion is a person's act.
+- Holds for a host that runs abcd's prompt hook, through which the rules loader recalls. <!-- cond: cond-2610111627214936 -->
+- Holds while notes are written by agents in sessions on the person's own machine, and promotion is a person's act. <!-- cond: cond-2610111627218946 -->
 
 ## Acceptance Criteria
 
@@ -67,3 +69,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-11: the product thinker accepted Why This Matters and the Mechanism with its falsifier exactly as written above, and walked and accepted all ten acceptance criteria.
 - 2026-10-11, technical facilitator: the two scope conditions (a host that runs abcd's prompt hook; notes written by agents on the person's own machine, with promotion a person's act) were proposed by the facilitator, not asked of the product thinker.
 - 2026-10-11: the impact is additive. Nothing that exists today is renamed or removed: `/abcd:memory` was freed by the verb split (itd-2610090831227812), and notes are a new store.
+
+## Grounds
+
+- pursued: We expect fewer repeated mistakes, because a note comes back exactly when a prompt matches its words, through the loader that already brings rules in. Shown wrong if agents keep repeating a mistake a note covers, or if reviews find most notes wrong or stale.
