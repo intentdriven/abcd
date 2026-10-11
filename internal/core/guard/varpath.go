@@ -169,6 +169,12 @@ func siteOpensPath(word []byte, sites []varSite, k int) bool {
 		return followed()
 	}
 	for _, t := range s.texts {
+		if s.split {
+			// An unquoted blank ends a field, so only the text after a
+			// text's last one runs on into what follows: `${X:- }/y` and
+			// `${X:-a }/y` leave `/y` a field of its own.
+			t = t[strings.LastIndexByte(t, fieldMark)+1:]
+		}
 		rest, stripped := stripEmptyableRefs(t, s.guarded)
 		switch {
 		case rest == "":
@@ -262,7 +268,37 @@ func spellsGuards(sites []varSite) bool {
 
 // respelled reports whether leadSpelling writes the site s as its guards.
 func respelled(s varSite) bool {
-	return len(s.guarded) > 0 && !capped(s.texts) && !slices.Contains(s.texts, "")
+	if len(s.guarded) == 0 || capped(s.texts) {
+		return false
+	}
+	for _, t := range s.texts {
+		if emptiedInside(t, s.guarded) {
+			return false
+		}
+	}
+	return true
+}
+
+// emptiedInside reports whether the string's shell, re-reading the text t a
+// site printed in the enclosing one, can make it print nothing, or end a
+// field before what follows: its quotes come off (`${X:-\"\"}` is `${X:-""}`
+// there), its unquoted blanks split (`${X:- }`, whose text holds the blank as
+// quotedFieldMark), and a reference the enclosing shell wrote as text is read
+// (`${X:-\$Y}`). A guard written out as `${X:?}` would hide that default, so
+// the site keeps its `${X}`, which can be empty. An escaped blank is read as
+// one that splits, refusing where the guard could allow.
+func emptiedInside(t string, guarded []string) bool {
+	u := strings.Map(func(r rune) rune {
+		if r == '"' || r == '\'' || r == '\\' {
+			return -1
+		}
+		return r
+	}, t)
+	if strings.ContainsAny(u, " \t\n"+fieldText+quotedFieldText) {
+		return true
+	}
+	rest, _ := stripEmptyableRefs(u, guarded)
+	return rest == ""
 }
 
 // leadSpelling is a word's spelling (spellWritten) for a payload re-read's

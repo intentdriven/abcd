@@ -163,6 +163,12 @@ func TestRmGuardedRewriteInsideADoubleQuotedShellString(t *testing.T) {
 		{`sh -c "rm -rf \${X}/y ${X:?}/a"`, VerdictBlock, id},
 		{`sh -c "rm -rf ${X:?}/a ${X}/b"`, VerdictBlock, id},
 		{`sh -c "rm -rf ${X:?}/a $X/b"`, VerdictBlock, id},
+		// A default the string's shell empties is no guard there: its quotes
+		// come off (`${X:-""}`) and its unquoted blanks split (`${X:- }`).
+		{`sh -c "rm -rf ${X:-\"\"}/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:- }/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:-a }/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:-\$Y}/y"`, VerdictBlock, id},
 		// The home's own entry still reads the guarded spelling.
 		{`sh -c "rm -rf ${HOME:?}"`, VerdictBlock, "rm-rf-root-or-home"},
 		{`sh -c "rm -rf '${HOME:?}'"`, VerdictBlock, "rm-rf-root-or-home"},
@@ -206,5 +212,24 @@ func TestRmVariableBeforeASubstitutionIsFollowed(t *testing.T) {
 		{`rm -rf $VAR$((1))/x`, VerdictAllow, ""},
 		{`rm -rf "${VAR:?}$(true)"/x`, VerdictAllow, ""},
 		{`rm -rf "$VAR$(date +%s)"`, VerdictAllow, ""},
+	})
+}
+
+// TestRmDefaultThatSplitsAwayIsNoGuard — a default written unquoted is split
+// on its blanks, so `${X:- }/y` with X unset is the field `/y` in bash, sh and
+// dash, and `${X:-a }/y` is the fields `a` and `/y`: the blank leaves the `/`
+// opening a field of its own. Quoted, the blank is text (`"${X:- }"/y` is
+// ` /y`), and so is an escaped one (`${X:-\ }/y`) or an ANSI-C string's
+// (`${X:-$'\x20'}/y`).
+func TestRmDefaultThatSplitsAwayIsNoGuard(t *testing.T) {
+	const id = "rm-unguarded-variable-path"
+	runVerdictCases(t, []verdictCase{
+		{`rm -rf ${X:- }/y`, VerdictBlock, id},
+		{`rm -rf ${X:-a }/y`, VerdictBlock, id},
+		{`rm -rf "${X:- }"/y`, VerdictAllow, ""},
+		{`rm -rf ${X:- a}/y`, VerdictAllow, ""},
+		{`rm -rf ${X:-\ }/y`, VerdictAllow, ""},
+		{`rm -rf ${X:-$'\x20'}/y`, VerdictAllow, ""},
+		{`rm -rf ${X:-/tmp}/y`, VerdictAllow, ""},
 	})
 }
