@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610102142432879"
-slug: "a-peer-s-announced-record-freeze-cannot-hold-pull-requests"
+slug: "a-peer-s-announced-record-freeze-cannot"
 severity: "minor"
 category: "process"
 source: "agent-observation"

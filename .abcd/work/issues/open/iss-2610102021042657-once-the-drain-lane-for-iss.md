@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610102021042657"
-slug: "once-the-drain-lane-for-iss-2610090642392144-lands-this"
+slug: "once-the-drain-lane-for-iss"
 severity: "minor"
 category: "inconsistency"
 source: "review-followup"

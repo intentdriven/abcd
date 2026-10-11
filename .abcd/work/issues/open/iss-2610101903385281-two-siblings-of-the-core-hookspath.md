@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101903385281"
-slug: "two-siblings-of-the-core-hookspath-advice-that"
+slug: "two-siblings-of-the-core-hookspath"
 severity: "minor"
 category: "inconsistency"
 source: "review-followup"

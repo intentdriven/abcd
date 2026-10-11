@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610102020442624"
-slug: "several-sessions-make-preflight-runs-overlap-on-one-machine"
+slug: "several-sessions-make-preflight-runs"
 severity: "minor"
 category: "process"
 source: "agent-observation"

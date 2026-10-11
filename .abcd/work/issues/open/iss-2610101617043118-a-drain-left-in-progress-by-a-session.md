@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101617043118"
-slug: "a-drain-left-in-progress-by-a-session-that-has-ended-stays"
+slug: "a-drain-left-in-progress-by-a-session"
 severity: "minor"
 category: "ux"
 source: "agent-observation"

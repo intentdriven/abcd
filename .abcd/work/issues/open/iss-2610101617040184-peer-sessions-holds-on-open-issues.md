@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101617040184"
-slug: "peer-sessions-holds-on-open-issues-reached-this-drain-only"
+slug: "peer-sessions-holds-on-open-issues"
 severity: "minor"
 category: "process"
 source: "agent-observation"

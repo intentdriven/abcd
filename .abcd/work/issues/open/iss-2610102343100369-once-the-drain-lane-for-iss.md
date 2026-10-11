@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610102343100369"
-slug: "once-the-drain-lane-for-iss-2610072347247487-lands-the"
+slug: "once-the-drain-lane-for-iss"
 severity: "nitpick"
 category: "drift"
 source: "review-followup"

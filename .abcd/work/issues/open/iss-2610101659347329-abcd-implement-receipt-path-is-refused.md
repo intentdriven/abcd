@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101659347329"
-slug: "abcd-implement-receipt-path-is-refused-at-the-state-stage"
+slug: "abcd-implement-receipt-path-is-refused"
 severity: "minor"
 category: "ux"
 source: "agent-observation"

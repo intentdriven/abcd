@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610102021189565"
-slug: "the-shell-guard-s-hook-refused-an-abcd-capture-command-as"
+slug: "the-shell-guard-s-hook-refused-an-abcd"
 severity: "minor"
 category: "bug"
 source: "agent-observation"

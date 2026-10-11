@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101900387053"
-slug: "a-drain-opens-a-full-lane-on-an-issue-whose-fix-has-already"
+slug: "a-drain-opens-a-full-lane-on-an-issue"
 severity: "minor"
 category: "ux"
 source: "agent-observation"

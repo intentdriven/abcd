@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610101803326081"
-slug: "the-brief-s-launch-chapter-s-refusal-kinds-table-describes"
+slug: "the-brief-s-launch-chapter-s-refusal"
 severity: "nitpick"
 category: "drift"
 source: "review-followup"

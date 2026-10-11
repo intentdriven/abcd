@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610102020447522"
-slug: "two-internal-core-interview-tests-fail-under-machine-load"
+slug: "two-internal-core-interview-tests-fail"
 severity: "minor"
 category: "bug"
 source: "agent-observation"
