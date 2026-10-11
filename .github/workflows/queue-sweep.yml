@@ -1,0 +1,150 @@
+name: queue-sweep
+
+# Cancel the CI runs of merge-queue entries the queue has already dropped
+# (iss-2610110613372021).
+#
+# When the queue rebuilds its groups (an entry removed, re-queued or re-armed),
+# it deletes the superseded groups' `gh-readonly-queue/<base>/pr-N-<sha>` refs
+# and starts new runs for the new groups. The superseded runs are not
+# cancelled: ci.yml deliberately exempts every merge_group run from
+# concurrency cancellation, because GitHub reads a cancelled required check on
+# a LIVE entry as a failure and ejects it (iss-2609020716560392). So the dead
+# runs kept their runners, the macOS ones the scarcest, while the live groups'
+# runs waited behind them; on 2026-10-11 nothing merged for five hours until
+# someone cancelled them by hand.
+#
+# This workflow does that cancelling, and only that. It runs on every
+# merge_group event, which is exactly when a rebuild has just happened, lists
+# the in-flight merge_group runs of the workflows that gate the queue, and
+# cancels a run ONLY when its queue ref is proven gone: the ref lookup answered
+# 404 while a lookup of the default branch, made first with the same token,
+# answered 200. Any other answer — a ref that exists, a lookup that failed, a
+# branch that is not a queue ref — leaves the run alone, so the one failure
+# this must never cause, cancelling a live entry's required check, needs the
+# API to say a live ref does not exist.
+#
+# A normal cancel does not reach a run still waiting for a runner, so after a
+# short wait every run not yet completed is force-cancelled — once its ref has
+# been proven gone a second time, because a re-queued entry at the same base
+# sha takes the same ref name back.
+#
+# It is not a required check and must never become one: it reports on the
+# queue entry that triggered it, and a sweep that failed or was slow would
+# then hold the entry for work that is not the entry's. It needs no checkout
+# and no repository code, and runs on ubuntu. A sweep missed when an event's
+# refs are deleted after the sweep looked is caught by the next merge_group
+# event's sweep, or by hand with workflow_dispatch.
+on:
+  merge_group:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sweep:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      # List, cancel and force-cancel workflow runs.
+      actions: write
+      # Read the queue refs through the git refs API.
+      contents: read
+    steps:
+      - name: Cancel the runs of dropped queue entries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # The workflows whose runs the queue waits on.
+          WORKFLOWS: ci.yml attribution.yml external-review.yml
+          # How long a cancelled run gets to finish before it is force-cancelled.
+          GRACE_SECONDS: 30
+        run: |
+          set -euo pipefail
+
+          # ref_status <branch>: the HTTP status of the git refs API's lookup
+          # of refs/heads/<branch> — exact, never a prefix match — or "error"
+          # when no status line came back at all.
+          ref_status() {
+            local line
+            line=$(gh api -i "repos/${REPO}/git/ref/heads/$1" 2>/dev/null | head -n 1 || true)
+            case "$line" in
+              HTTP/*) printf '%s\n' "$line" | awk '{print $2}' ;;
+              *) echo error ;;
+            esac
+          }
+
+          # The control: a ref that certainly exists must read as present
+          # through this token, or a 404 below proves nothing and no run is
+          # touched.
+          probe=$(ref_status "$DEFAULT_BRANCH")
+          if [ "$probe" != 200 ]; then
+            echo "::warning title=queue sweep did nothing::looking up the default branch '${DEFAULT_BRANCH}' answered ${probe}, so a missing queue ref cannot be told from a lookup this token cannot make; no run was cancelled."
+            exit 0
+          fi
+
+          runs="$RUNNER_TEMP/queue-runs.tsv"
+          : >"$runs"
+          for wf in $WORKFLOWS; do
+            for status in requested queued pending waiting in_progress; do
+              gh api --paginate \
+                "repos/${REPO}/actions/workflows/${wf}/runs?event=merge_group&status=${status}&per_page=100" \
+                --jq '.workflow_runs[] | "\(.id)\t\(.head_branch)"' >>"$runs"
+            done
+          done
+
+          # Read through fd 3, so nothing in the loop can consume the list.
+          cancelled=()
+          while IFS=$'\t' read -r id branch <&3; do
+            [ -n "$id" ] || continue
+            case "$id" in *[!0-9]*)
+              echo "::warning::skipping a run id that is not a number"
+              continue ;;
+            esac
+            if ! [[ "$branch" =~ ^gh-readonly-queue/[A-Za-z0-9._/-]+$ ]]; then
+              echo "run ${id}: not on a queue ref, left alone"
+              continue
+            fi
+            status=$(ref_status "$branch")
+            case "$status" in
+              200)
+                echo "run ${id}: ${branch} is live, left alone"
+                ;;
+              404)
+                echo "run ${id}: ${branch} is gone, cancelling"
+                if gh api -X POST "repos/${REPO}/actions/runs/${id}/cancel" >/dev/null 2>&1; then
+                  cancelled+=("${id}"$'\t'"${branch}")
+                else
+                  echo "run ${id}: the cancel was refused (already completed?)"
+                fi
+                ;;
+              *)
+                echo "::warning::run ${id}: looking up ${branch} answered ${status}; left alone"
+                ;;
+            esac
+          done 3< <(sort -u "$runs")
+
+          if [ "${#cancelled[@]}" -eq 0 ]; then
+            echo "no run of a dropped queue entry was in flight"
+            exit 0
+          fi
+
+          sleep "$GRACE_SECONDS"
+          forced=0
+          for entry in "${cancelled[@]}"; do
+            id=${entry%%$'\t'*}
+            branch=${entry#*$'\t'}
+            state=$(gh api "repos/${REPO}/actions/runs/${id}" --jq .status 2>/dev/null || echo unknown)
+            [ "$state" != completed ] || continue
+            if [ "$(ref_status "$branch")" != 404 ]; then
+              echo "::warning::run ${id}: ${branch} no longer reads as gone; not force-cancelling it"
+              continue
+            fi
+            echo "run ${id}: still ${state} after the cancel, force-cancelling"
+            if gh api -X POST "repos/${REPO}/actions/runs/${id}/force-cancel" >/dev/null 2>&1; then
+              forced=$((forced + 1))
+            else
+              echo "::warning::run ${id}: the force-cancel was refused"
+            fi
+          done
+          echo "::notice title=queue sweep::cancelled ${#cancelled[@]} run(s) of dropped queue entries, force-cancelling ${forced}"

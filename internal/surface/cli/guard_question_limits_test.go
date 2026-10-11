@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The question check in the guard hook (spc-2610030944505997, step 2): the
@@ -556,6 +557,33 @@ func TestModeMadeQuestionAbcdsSaysSo(t *testing.T) {
 		if stdout, _, _ := runGuard(askPayload(t, root, q), "guard", "hook"); strings.Contains(stdout, "treated as abcd's") {
 			t.Errorf("%s: a question carrying abcd's chip is abcd's on the chip, not the mode:\n%s", st, stdout)
 		}
+	}
+}
+
+// TestModeMadeQuestionSurvivesAGitHoldingItsPipe: a question without abcd's
+// chip is abcd's only through the mode store, and the gate finds the store
+// through git's toplevel. The hook runs in-process here, so nothing is left
+// unflushed: TestModeMadeQuestionAbcdsSaysSo's empty stdout on a loaded macOS
+// leg was the gate deciding to write nothing. git's toplevel answer missed the
+// runner's WaitDelay, the root lookup failed, the gate read the checkout as one
+// with no mode store and admitted the question silently, and the test read the
+// empty stdout as "not one hook output object: EOF" (iss-2610090642394550; the
+// lookup's own fix is iss-2610100846469473). gittest.SlowPipeGit makes that
+// miss happen without load, on every toplevel call, and the refusal still
+// arrives.
+func TestModeMadeQuestionSurvivesAGitHoldingItsPipe(t *testing.T) {
+	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
+	root := managedCheckout(t)
+	setMode(t, root, mode.ProductThinker)
+	calls := gittest.SlowPipeGit(t, "--show-toplevel", -1)
+
+	stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+	if calls() == 0 {
+		t.Fatal("the gate never asked git for the toplevel, so the held pipe was never in its way")
+	}
+	reason := mustDeny(t, stdout, stderr, code)
+	if want := "treated as abcd's because the mode names the product thinker"; !strings.Contains(reason, want) {
+		t.Errorf("the refusal must say why the question is abcd's (%q):\n%s", want, reason)
 	}
 }
 

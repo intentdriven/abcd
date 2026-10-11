@@ -34,7 +34,7 @@ import (
 // and both are in the tree today:
 //
 //   - The cancel expression is false for a merge_group event — ci.yml, which
-//     guards on `github.event_name`.
+//     arms it on `github.event_name == 'pull_request'` alone.
 //   - The group key is unique per run, so no in-flight run can share it and
 //     there is nothing to cancel — attribution.yml and external-review.yml,
 //     whose `${{ github.event.pull_request.number || github.run_id }}` falls
@@ -379,8 +379,11 @@ func triggersOnMergeGroup(workflow string) bool {
 //     the PR's ref. Both are needed: a group keyed per RUN would arm a cancel
 //     that can never find anything to cancel, which is the silent way to lose
 //     this.
-//   - On a push to the default branch, cancellation is off, so a merge is never
-//     cancelled mid-run by the merge behind it.
+//   - On the nightly schedule and on a dispatched run, which both run on the
+//     default branch's ref, cancellation is off and the group is the run's own
+//     (iss-2610110938294826): a dispatched run must not cancel the nightly one
+//     mid-run, nor be cancelled by it, and a run held pending behind a busy
+//     group would be cancelled outright by a third.
 func TestCIStillSupersedesAnInFlightPullRequestRun(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	const rel = ".github/workflows/ci.yml"
@@ -404,11 +407,13 @@ func TestCIStillSupersedesAnInFlightPullRequestRun(t *testing.T) {
 		"github.base_ref":                  "main",
 		"github.event.pull_request.number": float64(620),
 	})
-	defaultBranchPush := contextFor(map[string]any{
-		"github.event_name": "push",
-		"github.ref":        "refs/heads/main",
-		"github.ref_name":   "main",
-	})
+	defaultBranch := func(event string) map[string]any {
+		return contextFor(map[string]any{
+			"github.event_name": event,
+			"github.ref":        "refs/heads/main",
+			"github.ref_name":   "main",
+		})
+	}
 
 	cancel, err := actionsexpr.EvalValue(b.cancel, pullRequest)
 	if err != nil {
@@ -435,14 +440,26 @@ func TestCIStillSupersedesAnInFlightPullRequestRun(t *testing.T) {
 			rel, actionsexpr.Stringify(group))
 	}
 
-	cancel, err = actionsexpr.EvalValue(b.cancel, defaultBranchPush)
-	if err != nil {
-		t.Fatalf("evaluating cancel-in-progress for a default-branch push: %v", err)
-	}
-	if actionsexpr.Truthy(cancel) {
-		t.Errorf("%s cancels an in-flight run on a push to the default branch (cancel-in-progress "+
-			"%s -> %v); the merge behind a merge would cancel the checks on the merged tip",
-			rel, b.cancel, cancel)
+	for _, event := range []string{"schedule", "workflow_dispatch"} {
+		ctx := defaultBranch(event)
+		cancel, err := actionsexpr.EvalValue(b.cancel, ctx)
+		if err != nil {
+			t.Fatalf("evaluating cancel-in-progress for a %s run: %v", event, err)
+		}
+		if actionsexpr.Truthy(cancel) {
+			t.Errorf("%s cancels an in-flight run on a %s run of the default branch "+
+				"(cancel-in-progress %s -> %v); the nightly and a dispatched run share that ref, "+
+				"and neither may cancel the other", rel, event, b.cancel, cancel)
+		}
+		group, err := actionsexpr.EvalValue(b.group, ctx)
+		if err != nil {
+			t.Fatalf("evaluating group for a %s run: %v", event, err)
+		}
+		if !strings.Contains(actionsexpr.Stringify(group), runIDSentinel) {
+			t.Errorf("%s keys a %s run's concurrency group on %q, which is not unique per run; "+
+				"a run held pending on a busy group is cancelled outright when a third arrives",
+				rel, event, actionsexpr.Stringify(group))
+		}
 	}
 }
 

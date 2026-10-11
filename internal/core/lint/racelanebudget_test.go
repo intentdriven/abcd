@@ -19,9 +19,10 @@ import (
 // macOS runner measured 417.9s, 472.0s and 567.9s on three passing runs, and
 // a merge-group run on a slow runner crossed 600s with no test hung and ejected
 // an unrelated pull request from the queue. The lane's ceiling was the default
-// rather than a budget anyone had sized, so it is written down here, in three
-// places that must agree: the merge gate (ci.yml), the release gate
-// (release.yml's verify job) and the local pre-push gate (make preflight).
+// rather than a budget anyone had sized, so it is written down here, in four
+// places that must agree: the merge gate (ci.yml's race lane on ubuntu and its
+// one race-enabled pass on macOS), the release gate (release.yml's verify job)
+// and the local pre-push gate (make preflight).
 //
 // The enclosing ceilings are the other half, and they differ by job.
 //
@@ -48,12 +49,14 @@ import (
 // the steps ahead of the race step, and the packages `go test` runs ahead of
 // it inside the step.
 //
-// The three commands also name one package list, in one order. go test starts
+// The commands also name one package list, in one order. go test starts
 // packages in the order its arguments list them, a few at a time on a runner
 // with few cores, so the slowest packages are named ahead of the pattern and
 // start first instead of last (iss-2609281715083637). The order may change; the
 // set may not: go list must resolve the command's packages to exactly the ones
-// ./internal/... matches.
+// ./internal/... matches. The macOS pass is the one exception, by design
+// (iss-2610110938293273): it is that leg's only test pass, so the same
+// slowest-first list ends in ./... and resolves to the whole module.
 func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
@@ -63,8 +66,27 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	}
 	local := raceTimeout(t, "Makefile preflight", recipe)
 	localPkgs := racePackages(t, "Makefile preflight", recipe)
-	sameRacePackageSet(t, root, "Makefile preflight", localPkgs)
+	sameRacePackageSet(t, root, "Makefile preflight", localPkgs, raceLanePattern)
 
+	// raceStep finds a job's race step by name and holds its -timeout to the
+	// local gate's and its package list to want, in order.
+	raceStep := func(where, block, name string, want []string) (time.Duration, bool) {
+		step, ok := workflowStepBlock(block, name)
+		if !ok {
+			t.Errorf("%s: no `%s` step", where, name)
+			return 0, false
+		}
+		pkg := raceTimeout(t, where, step)
+		if pkg != local {
+			t.Errorf("%s step %q runs under -timeout %s but make preflight uses %s; "+
+				"local and CI must judge the lane against one budget", where, name, pkg, local)
+		}
+		if pkgs := racePackages(t, where, step); !slices.Equal(pkgs, want) {
+			t.Errorf("%s step %q runs over %q; want %q: local and CI start the same "+
+				"packages in the same order", where, name, pkgs, want)
+		}
+		return pkg, true
+	}
 	// raceJob returns a workflow job's block and the -timeout its race step
 	// carries, holding that timeout to the local gate's.
 	raceJob := func(file, job string) (string, time.Duration, bool) {
@@ -74,25 +96,23 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 			t.Errorf("%s: no such job; the parser or the workflow changed shape", where)
 			return "", 0, false
 		}
-		step, ok := workflowStepBlock(block, "Test (race, internal)")
-		if !ok {
-			t.Errorf("%s: no `Test (race, internal)` step", where)
-			return "", 0, false
-		}
-		pkg := raceTimeout(t, where, step)
-		if pkg != local {
-			t.Errorf("%s runs the race lane under -timeout %s but make preflight uses %s; "+
-				"local and CI must judge the lane against one budget", where, pkg, local)
-		}
-		if pkgs := racePackages(t, where, step); !slices.Equal(pkgs, localPkgs) {
-			t.Errorf("%s runs the race lane over %q but make preflight runs it over %q; "+
-				"local and CI start the same packages in the same order", where, pkgs, localPkgs)
-		}
-		return block, pkg, true
+		pkg, ok := raceStep(where, block, "Test (race, internal)", localPkgs)
+		return block, pkg, ok
 	}
 
 	if check, _, ok := raceJob(".github/workflows/ci.yml", "check"); ok {
 		const where = ".github/workflows/ci.yml job check"
+		// The macOS leg's one pass: the same slowest-first list, ending in the
+		// whole module rather than ./internal/....
+		whole := append(slices.Clone(localPkgs[:len(localPkgs)-1]), modulePattern)
+		if _, ok := raceStep(where, check, macOSRaceStep, whole); ok {
+			step, _ := workflowStepBlock(check, macOSRaceStep)
+			sameRacePackageSet(t, root, where+" step "+macOSRaceStep, racePackages(t, where, step), modulePattern)
+			if !regexp.MustCompile(`(?m)^\s+ABCD_TEST_SKIP_FLUSH: "1"\s*$`).MatchString(step) {
+				t.Errorf("%s step %q does not set ABCD_TEST_SKIP_FLUSH; every synced write on the "+
+					"macOS runner is then an F_FULLFSYNC no test asserts anything about", where, macOSRaceStep)
+			}
+		}
 		queue := mergeQueueResponseTimeout(t, root)
 		for _, leg := range checkLegTimeouts(t, where, check) {
 			if leg.minutes > queue {
@@ -329,16 +349,23 @@ func racePackages(t *testing.T, where, text string) []string {
 // with few cores, but it may neither add nor drop one.
 const raceLanePattern = "./internal/..."
 
-// sameRacePackageSet holds the race lane's packages to exactly the ones
-// raceLanePattern matches, as go list resolves both: the slowest-first order
+// modulePattern is the package set of the macOS leg's one race-enabled pass:
+// the whole module, since it is that leg's only test pass.
+const modulePattern = "./..."
+
+// macOSRaceStep names that pass in ci.yml's check job.
+const macOSRaceStep = "Test (race, whole module)"
+
+// sameRacePackageSet holds a race pass's packages to exactly the ones pattern
+// matches, as go list resolves both: the slowest-first order
 // (iss-2609281715083637) names packages twice, once explicitly and once in the
 // pattern, and go test runs each once, so the order is free while the set is
 // not.
-func sameRacePackageSet(t *testing.T, root, where string, pkgs []string) {
+func sameRacePackageSet(t *testing.T, root, where string, pkgs []string, pattern string) {
 	t.Helper()
-	if pkgs[len(pkgs)-1] != raceLanePattern {
+	if pkgs[len(pkgs)-1] != pattern {
 		t.Errorf("%s: the race lane's packages are %q; want %s last, so every package it matches runs",
-			where, pkgs, raceLanePattern)
+			where, pkgs, pattern)
 	}
 	seen := map[string]bool{}
 	for _, p := range pkgs {
@@ -356,14 +383,14 @@ func sameRacePackageSet(t *testing.T, root, where string, pkgs []string) {
 		}
 		return strings.Fields(string(out))
 	}
-	got, want := list(pkgs...), list(raceLanePattern)
+	got, want := list(pkgs...), list(pattern)
 	if len(got) != len(want) {
-		t.Errorf("%s: go list resolves the race lane to %d packages, %s to %d", where, len(got), raceLanePattern, len(want))
+		t.Errorf("%s: go list resolves the race lane to %d packages, %s to %d", where, len(got), pattern, len(want))
 	}
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
-		t.Errorf("%s: the race lane's packages differ from %s's:\n  lane: %q\n  want: %q", where, raceLanePattern, got, want)
+		t.Errorf("%s: the race lane's packages differ from %s's:\n  lane: %q\n  want: %q", where, pattern, got, want)
 	}
 }
 
