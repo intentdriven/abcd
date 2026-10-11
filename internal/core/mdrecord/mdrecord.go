@@ -18,7 +18,9 @@
 package mdrecord
 
 import (
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -553,6 +555,65 @@ func CodeSpanRanges(ln string) [][2]int {
 	}
 	return out
 }
+
+// MaskCodeSpans hides each inline code span in s behind an opaque token, so a
+// rewrite of the text around the spans (a link read as its text, an HTML tag
+// dropped, a character reference decoded) cannot reach into one, where
+// CommonMark reads every character literally. Spans pair by
+// termsafe.PairCodeSpan, so an unpaired run is literal backticks, and a
+// backtick behind a backslash opens nothing (a backslash behind one does). A token is a NUL, the span's
+// ordinal and a NUL, which no markdown construct matches; a string already
+// holding a NUL is left unmasked.
+//
+// unmask puts each span back into a rewritten string, as written or, with
+// rendered, as the text it renders (termsafe.CodeSpanText); a token the
+// rewrite dropped stays dropped.
+func MaskCodeSpans(s string) (masked string, unmask func(masked string, rendered bool) string) {
+	if strings.IndexByte(s, 0) >= 0 {
+		return s, func(m string, _ bool) string { return m }
+	}
+	var spans []termsafe.PairedSpan
+	var b strings.Builder
+	last := 0
+	for i := 0; i < len(s); {
+		switch {
+		case s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]):
+			i += 2
+		case s[i] == '`':
+			sp, ok := termsafe.PairCodeSpan(s, i)
+			if !ok {
+				i = runEnd(s, i)
+				continue
+			}
+			b.WriteString(s[last:sp.Start])
+			fmt.Fprintf(&b, "\x00%d\x00", len(spans))
+			spans = append(spans, sp)
+			last, i = sp.End, sp.End
+		default:
+			i++
+		}
+	}
+	if spans == nil {
+		return s, func(m string, _ bool) string { return m }
+	}
+	b.WriteString(s[last:])
+	return b.String(), func(m string, rendered bool) string {
+		return codeSpanTokenRe.ReplaceAllStringFunc(m, func(tok string) string {
+			k, err := strconv.Atoi(tok[1 : len(tok)-1])
+			if err != nil || k >= len(spans) {
+				return tok
+			}
+			sp := spans[k]
+			if rendered {
+				return termsafe.CodeSpanText(s[sp.ContentStart:sp.ContentEnd])
+			}
+			return s[sp.Start:sp.End]
+		})
+	}
+}
+
+// codeSpanTokenRe is the token MaskCodeSpans puts in a span's place.
+var codeSpanTokenRe = regexp.MustCompile("\x00[0-9]+\x00")
 
 // runEnd returns the index just past the run of backticks at i: an unpaired run
 // is literal backticks, stepped over whole so none of them opens a span.

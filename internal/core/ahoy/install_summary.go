@@ -48,6 +48,9 @@ const (
 	writeIdentityPin             writeKind = "identity-pin"
 	writeGitIdentity             writeKind = "git-identity"
 	writeArtefactKind            writeKind = "artefact-kind"
+	writeReadmeParts             writeKind = "readme-parts"
+	writeReadmeCreated           writeKind = "readme-created"
+	writeReadmePartsRemoved      writeKind = "readme-parts-removed"
 )
 
 // allWriteKinds is every kind, in the order the summary lists them: the
@@ -55,7 +58,7 @@ const (
 var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
-	writeConventionsBlockRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
+	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
 
@@ -130,6 +133,21 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Removed abcd's block from a conventions file you no longer chose.",
 		Why:    "abcd names itself only in the files you pick.",
 		Action: "Nothing to do.",
+	},
+	writeReadmeParts: {
+		What:   "Wrote the README parts you chose into README.md, each inside its own marked place.",
+		Why:    "abcd reads them from the project itself and rewrites them on each run, so they do not go stale; your own words in README.md are never changed.",
+		Action: "Commit README.md. A part you edit by hand is left as it is; to change which parts abcd keeps, run abcd ahoy install --readme-parts with the parts you want, or none.",
+	},
+	writeReadmeCreated: {
+		What:   "Created README.md holding only the README parts you chose, with no title and no other text.",
+		Why:    "The project had no README.md, and you chose parts for abcd to keep in one.",
+		Action: "Commit README.md, and add your own title and words around the marked parts whenever you like.",
+	},
+	writeReadmePartsRemoved: {
+		What:   "Removed from README.md the parts abcd kept there that you no longer chose, or that can no longer be read from the project.",
+		Why:    "abcd keeps only the parts you choose; a part you edited by hand is left as it is.",
+		Action: "Commit README.md. To have abcd keep a part again, run abcd ahoy install --readme-parts with that part among the ones you want.",
 	},
 	writeToolFileRetired: {
 		What:   "Removed an agent tool's own conventions file that only repeated AGENTS.md, as you answered.",
@@ -269,6 +287,11 @@ var optionalSkippedHelp = map[string]SummaryItem{
 		What:   "The rule for which open issues abcd drain may fix without asking you was not recorded.",
 		Why:    "The rule decides what an unattended agent may change in this repository, so it needs your own yes; until it is recorded, abcd drain refuses to run here.",
 		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the question about the drain rule.",
+	},
+	ReadmeOfferGapID: {
+		What:   "The README question was not asked; abcd keeps no part of README.md current until it is answered.",
+		Why:    "Which parts of README.md abcd keeps current, if any, is the owner's choice, so abcd writes none without an answer.",
+		Action: "To answer it without being asked, pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 	},
 	ConventionsRetireGapID: {
 		What:   "An agent tool's own conventions file that only repeats AGENTS.md was left in place.",
