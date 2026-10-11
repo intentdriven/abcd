@@ -91,8 +91,13 @@ write a verb makes is committed there.
 | `ledger/<repo>.jsonl` | one repository's influence records, one JSON object per line |
 
 **The folder is the classification.** A source's class is declared once, when it
-is added: the add requires the class, confidential or public, and never defaults,
-because a forgotten flag must not file a confidential document as public. Derived
+is added, and it is the person's to give: private (stored in the confidential
+folder) or public. The add never defaults it, because a forgotten flag must not
+file a confidential document as public. Given no class, the add asks the one
+question at a terminal, naming both answers and what each means, and off a
+terminal it refuses and writes nothing; a host asks the person through its own
+question tool and passes the answer
+(spc-2610100613109045, A13 and decision 9). Derived
 artefacts (summaries, notes) live in the source's folder and inherit its class.
 The entry's `confidential` flag mirrors the folder, and a corpus where the two
 disagree (a folder moved by hand, an entry edited by hand) is refused wholesale by
@@ -416,11 +421,11 @@ Sub-verbs: none.
 | `--alias` | stringArray |
 | `--author` | stringArray |
 | `--ban-authors` | bool |
-| `--confidential` | bool |
 | `--key` | string |
 | `--keywords` | stringArray |
 | `--meta` | string |
 | `--permission` | string |
+| `--private` | bool |
 | `--public` | bool |
 | `--text` | string |
 | `--title` | string |

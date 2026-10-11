@@ -88,7 +88,7 @@ func TestSourceEndToEnd(t *testing.T) {
 	if code, out, errs := runLibrary(t, "init"); code != 0 {
 		t.Fatalf("init: %d %s%s", code, out, errs)
 	}
-	code, out, errs := runLibrary(t, "add", notes, "--key", "conf2026a", "--meta", meta, "--confidential", "--json")
+	code, out, errs := runLibrary(t, "add", notes, "--key", "conf2026a", "--meta", meta, "--private", "--json")
 	if code != 0 {
 		t.Fatalf("add confidential: %d %s%s", code, out, errs)
 	}
@@ -198,7 +198,7 @@ func confidentialCorpus(t *testing.T) {
 	if code, out, errs := runLibrary(t, "init"); code != 0 {
 		t.Fatalf("init: %d %s%s", code, out, errs)
 	}
-	if code, out, errs := runLibrary(t, "add", notes, "--key", "conf2026a", "--meta", meta, "--confidential"); code != 0 {
+	if code, out, errs := runLibrary(t, "add", notes, "--key", "conf2026a", "--meta", meta, "--private"); code != 0 {
 		t.Fatalf("add confidential: %d %s%s", code, out, errs)
 	}
 }

@@ -12,8 +12,63 @@ import (
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
+
+// The person's two answers to whether an item is confidential: the flags
+// --private and --public, and the values of the class question. A private item
+// is stored under the confidential class, whose folder and field keep that name
+// (spc-2610100613109045, decision 9).
+const (
+	AnswerPrivate = "private"
+	AnswerPublic  = "public"
+	// AnswerLater is the class question's way to decide later: it files nothing.
+	AnswerLater = "later"
+)
+
+// ClassFor resolves the person's answer to the stored class. ok is false for
+// any other answer, deciding later included: the class is the person's to
+// give, and nothing here supplies one in its place.
+func ClassFor(answer string) (class string, ok bool) {
+	switch answer {
+	case AnswerPrivate:
+		return ClassConfidential, true
+	case AnswerPublic:
+		return ClassPublic, true
+	}
+	return "", false
+}
+
+// ClassQuestion is the one question a front door puts when the person adding
+// an item did not say whether it is confidential (A13 of itd-2610090831227812).
+// It names neither the key nor the title: either may hold a confidential
+// string, and the key has not been checked against the title yet.
+func ClassQuestion() question.Question {
+	return question.Question{
+		ID:   "library.class",
+		Chip: "Library",
+		Material: []question.Block{
+			{Kind: question.KindParagraph, Text: "The item you are adding has no class yet. " +
+				"abcd files every item as private or public, once, and never guesses."},
+			{Kind: question.KindList, Items: []string{
+				"private: filed under confidential/, consulted but never cited",
+				"public: filed under public/, citable once its permission allows",
+			}},
+		},
+		Ask: "Is this item private or public?",
+		Options: []question.Option{
+			{Value: AnswerPrivate, Label: "Private",
+				Meaning: "Filed under confidential/ and never cited. Its title and aliases become banned phrases in each repository you sync."},
+			{Value: AnswerPublic, Label: "Public",
+				Meaning: "Filed under public/. It may be cited once its permission allows."},
+		},
+		Later: question.Option{Value: AnswerLater, Label: question.Default.LaterLabels[0],
+			Meaning: "Adds nothing. Run the command again with --private or --public."},
+		Now:         "nothing is added until you answer",
+		ChangeLater: "library declassify moves a private item to public once it is published",
+	}
+}
 
 // AddRequest registers one source. Class is required and has no default: the
 // classification is declared once, at ingestion, and a forgotten flag must not file
@@ -152,7 +207,7 @@ func validateAdd(c *Corpus, req AddRequest) (Entry, string, string, error) {
 		return Entry{}, "", "", bad("the key is not a source key (lowercase letters, digits, '.', '_' or '-', at most 64; the value is withheld)")
 	}
 	if req.Class != ClassConfidential && req.Class != ClassPublic {
-		return Entry{}, "", "", bad("declare the class — confidential or public; it is decided once, here, and never defaulted")
+		return Entry{}, "", "", bad("declare the class — private or public; it is decided once, here, and never defaulted")
 	}
 	if !oneLine(req.Title) {
 		return Entry{}, "", "", bad("the title is empty or spans lines")

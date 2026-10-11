@@ -2924,14 +2924,15 @@ line naming what would create it, and the verb refuses only when neither can be 
 
 #### `abcd library add`
 
-Register a source under its class folder, with its entry and text: Writes the corpus and commits it; refuses without one of --confidential or --public.
+Register a source in its class folder, with its entry and text: Writes the corpus and commits it, asking its class at a terminal; refuses off one with no class.
 
 **Usage:** `abcd library add [document] [flags]`
 
 Register a source: write its CSL-JSON entry (with the custom block), store the document
 as original.<ext> and its extracted text as text.md under confidential/<key>/ or
-public/<key>/, and commit the corpus. The class is declared here, once: exactly one
-of --confidential or --public is required. abcd converts nothing and fetches nothing:
+public/<key>/, and commit the corpus. The class is declared here, once, and never
+guessed: --private (filed under confidential/) or --public. Given neither, abcd asks
+at a terminal and refuses off one, writing nothing. abcd converts nothing and fetches nothing:
 a Markdown or text document is its own text, any other needs --text, and a URL
 alone registers a metadata stub.
 
@@ -2947,12 +2948,12 @@ history.
       --alias stringArray      another identifying name for a confidential source (repeatable)
       --author stringArray     an author, "Family, Given" or a literal name (repeatable)
       --ban-authors            also ban the authors' names (a confidential source whose authorship is itself identifying)
-      --confidential           file the source under confidential/ (exclusive with --public)
       --key string             the source key: lowercase, opaque for a confidential source (e.g. conf2026a)
       --keywords stringArray   retrieval keywords, comma-separated (repeatable)
       --meta string            a JSON file (or - for stdin) with "title", "aliases", "author" and "keywords"
       --permission string      permission_status: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default by class)
-      --public                 file the source under public/ (exclusive with --confidential)
+      --private                the source is private: file it under confidential/ (exclusive with --public)
+      --public                 the source is public: file it under public/ (exclusive with --private)
       --text string            the extracted text of a non-text document
       --title string           the exact title (for a confidential source prefer --meta)
       --type string            the CSL item type (default document)

@@ -1,7 +1,7 @@
 ---
 name: library
 description: "Render the sources corpus and the checkout's memory store, read-only: Writes nothing; refuses only when neither store can be read."
-argument-hint: "[<empty>] | init | add [document] --key K --confidential|--public [...] | declassify <key> | ledger [--decision D --claim C --source K --influence I | --flip N | --list] | sync-banlist [--refresh] | cite-check <file|-> | ingest <path-or-https-url> [--keep-original] | ask <question> | lint"
+argument-hint: "[<empty>] | init | add [document] --key K [--private|--public] [...] | declassify <key> | ledger [--decision D --claim C --source K --influence I | --flip N | --list] | sync-banlist [--refresh] | cite-check <file|-> | ingest <path-or-https-url> [--keep-original] | ask <question> | lint"
 block: people
 ---
 
@@ -58,15 +58,23 @@ rebuilds or mutates the memory store's coverage index.
 ### Register a source
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" library add <document> --key <key> --confidential|--public \
+"${CLAUDE_PLUGIN_ROOT}/abcd" library add <document> --key <key> --private|--public \
   --meta <meta.json> [--type <csl-type>] [--year YYYY] [--venue V] [--url U] \
   [--permission <status>] [--ban-authors] [--text <extracted.md>] --json
 ```
 
-- The class is required and never defaulted. When in doubt, ask whichever of the
-  product thinker or the technical facilitator is adding the source, under the
-  chip naming their role.
-- For a confidential source, put the title, aliases and authors in a `--meta`
+- **The class is the person's to give, and it is never guessed.** `--private`
+  files the item under `confidential/`: it is consulted, never cited, and its
+  title and aliases become banned phrases. `--public` files it under `public/`.
+  Before you run `library add`, ask whichever of the product thinker or the
+  technical facilitator is adding the source whether it is private or public,
+  through the host's question tool under the chip naming their role, unless the
+  person already said, and pass the answer as `--private` or `--public`. The
+  question follows the asking rules, and the guard's question check applies to
+  it as to any question. Given neither flag, the binary asks at a terminal and,
+  everywhere else (your shell included), refuses with exit 2 and writes
+  nothing.
+- For a private source, put the title, aliases and authors in a `--meta`
   JSON file (`{"title": …, "aliases": […], "author": [{"family": …, "given": …}],
   "keywords": […]}`) so they stay out of argv, and choose an **opaque** key
   (`conf2026a`): the verb refuses a key that contains an alias, the title or a

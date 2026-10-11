@@ -295,8 +295,8 @@ var sentences = map[string]string{
 
 	"abcd library": "Render the sources corpus and the checkout's memory store, read-only: " +
 		"Writes nothing; refuses only when neither store can be read.",
-	"abcd library add": "Register a source under its class folder, with its entry and text: " +
-		"Writes the corpus and commits it; refuses without one of --confidential or --public.",
+	"abcd library add": "Register a source in its class folder, with its entry and text: " +
+		"Writes the corpus and commits it, asking its class at a terminal; refuses off one with no class.",
 	"abcd library ask": "Query memory and synthesise a cited answer: " +
 		"Writes a memory page only with --file-back; refuses outside a git checkout.",
 	"abcd library cite-check": "Scan text for confidential sources and report each hit by key only: " +

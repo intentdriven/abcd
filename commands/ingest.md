@@ -41,7 +41,7 @@ Two rules hold for author names:
 ## 2. Decide class and key
 
 - **Class.** Web content is `public` by default. Signals for
-  `--confidential`: the user says so; it is their own unpublished/submitted
+  `--private`: the user says so; it is their own unpublished/submitted
   work; internal or NDA material; AI-generated content (never citable); a
   private repo's documentation. When confidential, ask whichever of
   the product thinker or the technical facilitator is adding the source, under
@@ -66,7 +66,7 @@ Two rules hold for author names:
 ## 3. Register
 
 ```sh
-"${CLAUDE_PLUGIN_ROOT}/abcd" library add [file] --key <key> --confidential|--public \
+"${CLAUDE_PLUGIN_ROOT}/abcd" library add [file] --key <key> --private|--public \
   --type <csl-type> [--year YYYY] [--venue <venue>] [--url <url>] \
   [--permission <status>] [--ban-authors] [--text <extracted.md>] \
   --meta <meta.json> --json

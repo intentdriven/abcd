@@ -2652,7 +2652,7 @@
     {
       "path": "abcd library add",
       "hidden": false,
-      "sentence": "Register a source under its class folder, with its entry and text: Writes the corpus and commits it; refuses without one of --confidential or --public.",
+      "sentence": "Register a source in its class folder, with its entry and text: Writes the corpus and commits it, asking its class at a terminal; refuses off one with no class.",
       "flags": [
         {
           "name": "alias",
@@ -2670,13 +2670,6 @@
         },
         {
           "name": "ban-authors",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "confidential",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -2707,6 +2700,13 @@
           "name": "permission",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

@@ -28,9 +28,11 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/memory"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/surface/cli/ask"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -225,14 +227,15 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 		key, title, typ, perm, venue, url, text, meta string
 		authors, keywords, aliases                    []string
 		year                                          int
-		confidential, public, banAuthors              bool
+		private, public, banAuthors                   bool
 	)
 	cmd := &cobra.Command{
 		Use: "add [document]",
 		Long: "Register a source: write its CSL-JSON entry (with the custom block), store the document\n" +
 			"as original.<ext> and its extracted text as text.md under confidential/<key>/ or\n" +
-			"public/<key>/, and commit the corpus. The class is declared here, once: exactly one\n" +
-			"of --confidential or --public is required. abcd converts nothing and fetches nothing:\n" +
+			"public/<key>/, and commit the corpus. The class is declared here, once, and never\n" +
+			"guessed: --private (filed under confidential/) or --public. Given neither, abcd asks\n" +
+			"at a terminal and refuses off one, writing nothing. abcd converts nothing and fetches nothing:\n" +
 			"a Markdown or text document is its own text, any other needs --text, and a URL\n" +
 			"alone registers a metadata stub.\n\n" +
 			"A confidential entry's title, aliases and (under --ban-authors) authors become banned\n" +
@@ -246,16 +249,16 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			class := ""
+			var answer string
 			switch {
-			case confidential && public:
-				return &exitError{Code: 2, Msg: "abcd library add: --confidential and --public are exclusive"}
-			case confidential:
-				class = source.ClassConfidential
+			case private && public:
+				return &exitError{Code: 2, Msg: "abcd library add: --private and --public are exclusive"}
+			case private:
+				answer = source.AnswerPrivate
 			case public:
-				class = source.ClassPublic
+				answer = source.AnswerPublic
 			}
-			req := source.AddRequest{Corpus: dir, Key: key, Title: title, Type: typ, Class: class, Permission: perm,
+			req := source.AddRequest{Corpus: dir, Key: key, Title: title, Type: typ, Permission: perm,
 				Year: year, Venue: venue, URL: url, Keywords: splitList(keywords), Aliases: aliases, BanAuthors: banAuthors, Text: text}
 			for _, a := range authors {
 				req.Authors = append(req.Authors, parseAuthor(a))
@@ -275,6 +278,16 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 				req.Authors = append(req.Authors, m.Authors...)
 				req.Keywords = append(req.Keywords, m.Keywords...)
 			}
+			if answer == "" {
+				if answer, err = askLibraryClass(cmd); err != nil {
+					return err
+				}
+			}
+			class, ok := source.ClassFor(answer)
+			if !ok {
+				return &exitError{Code: 2, Msg: "abcd library add: the class was not given; pass --private or --public. Nothing was written"}
+			}
+			req.Class = class
 			res, err := source.Add(req)
 			if err != nil {
 				return sourceError("add", dir, err)
@@ -294,8 +307,8 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 	f.StringVar(&key, "key", "", "the source key: lowercase, opaque for a confidential source (e.g. conf2026a)")
 	f.StringVar(&title, "title", "", "the exact title (for a confidential source prefer --meta)")
 	f.StringVar(&typ, "type", "", "the CSL item type (default document)")
-	f.BoolVar(&confidential, "confidential", false, "file the source under confidential/ (exclusive with --public)")
-	f.BoolVar(&public, "public", false, "file the source under public/ (exclusive with --confidential)")
+	f.BoolVar(&private, "private", false, "the source is private: file it under confidential/ (exclusive with --public)")
+	f.BoolVar(&public, "public", false, "the source is public: file it under public/ (exclusive with --private)")
 	f.StringVar(&perm, "permission", "", "permission_status: "+enumHelp(source.Permissions)+" (default by class)")
 	f.StringArrayVar(&authors, "author", nil, `an author, "Family, Given" or a literal name (repeatable)`)
 	f.IntVar(&year, "year", 0, "the year of issue")
@@ -307,6 +320,36 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 	f.StringVar(&text, "text", "", "the extracted text of a non-text document")
 	f.StringVar(&meta, "meta", "", `a JSON file (or - for stdin) with "title", "aliases", "author" and "keywords"`)
 	return cmd
+}
+
+// askLibraryClass puts the class question when the person adding an item gave
+// neither --private nor --public (spc-2610100613109045, A13). It is drawn only
+// where the setup interview draws its questions, with stdin, stdout and stderr
+// all terminals; anywhere else (a pipe, CI, a host's shell) it refuses with exit
+// 2 naming the flags, because an item the person has not classed is never
+// filed by default. A host asks through its own question tool and passes the
+// answer as the flag (commands/library.md). It returns the answer's value;
+// deciding later, like an interruption, refuses with nothing written.
+func askLibraryClass(cmd *cobra.Command) (string, error) {
+	cwd, _ := os.Getwd()
+	t, notes, ok := drawnTerminal(cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd)
+	if !ok {
+		return "", &exitError{Code: 2, Msg: "abcd library add: say whether the item is private or public (its class): pass --private or --public. " +
+			"abcd asks only at a terminal, and this is not one; the class is never guessed, and nothing was written"}
+	}
+	for _, n := range notes {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd: %s\n", termsafe.Sanitize(n))
+	}
+	got, err := drawnPut(t, question.Ask{Questions: []question.Question{source.ClassQuestion()}})
+	switch {
+	case errors.Is(err, ask.ErrInterrupted):
+		return "", &exitError{Code: ask.ExitInterrupted, Msg: "abcd library add: interrupted at the class question; nothing was written"}
+	case err != nil:
+		return "", &exitError{Code: 1, Msg: "abcd library add: the class question could not be asked (" + err.Error() + "); pass --private or --public. Nothing was written"}
+	case len(got) != 1 || got[0].Later:
+		return "", &exitError{Code: 2, Msg: "abcd library add: you chose to decide later, so nothing was written; run it again with --private or --public"}
+	}
+	return got[0].Value, nil
 }
 
 // splitList flattens comma-separated values.
