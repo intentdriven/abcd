@@ -248,13 +248,29 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"Git LFS needs. The checkout you run this\n" +
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
-			"One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace\n" +
-			"rule, are refused: that half of the verb is not built in this abcd. --session, --pace,\n" +
+			"One pick by default, and nothing picks again once it is delivered. --max <n> (above 1) or\n" +
+			"--until-empty begins a series instead, kept in .abcd/.work.local/run/next.json: one move\n" +
+			"per invocation, and while a series is in progress every `abcd build next` continues it. A\n" +
+			"move reads what the series' last pick has come to. While its run is in progress it picks\n" +
+			"nothing and names the run to drive with `abcd implement step`. Once the run is delivered\n" +
+			"(complete) or its lane stops (handed back, or its run directory removed), it picks again\n" +
+			"among the rest, less every intent the series has picked (excluded at the check `series`),\n" +
+			"writing that pick's reason the same way, until --max picks are made or no candidate is\n" +
+			"left; either ends the series, exit 0, naming why and each exclusion. The series picks only\n" +
+			"inside the pace rule's window: once the window has elapsed it writes next_eligible_at (now\n" +
+			"plus the pause) and picks nothing before then; with no pause the next window opens at once.\n" +
+			"Every run the series starts runs on the pace flags it began with. --session, --pace,\n" +
 			"--sub-agents and --fix-rounds are `abcd build`'s own. A lane handed back after its fix\n" +
-			"rounds falsifies the pick: the run record says so, and the intent's entry is not edited.\n\n" +
-			"No candidate is refused, naming each excluded intent and the check that excluded it, and\n" +
-			"nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in\n" +
-			"progress or the run state is locked.",
+			"rounds falsifies the pick: the run record (`abcd implement record`) carries the pick's\n" +
+			"score table and says so, and the intent's entry is not edited.\n\n" +
+			"No candidate for a first pick is refused, naming each excluded intent and the check that\n" +
+			"excluded it, and nothing is written. Refused too, writing nothing: a negative --max,\n" +
+			"--max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
+			"the one it began with, and, until it is restored or removed, a series state that cannot be\n" +
+			"read, does not parse, or names a count, a pick or an outcome the series never writes; and a\n" +
+			"pick whose reason the grounds writer's gate refuses, a defect to report. Exit 2 on a\n" +
+			"refusal, exit 3 when the chosen intent's run is already in progress or the run state or\n" +
+			"the series is locked.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd build next"
@@ -294,16 +310,25 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&pace, "pace", "", "the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the new run's ceiling on lanes and validators alive at once; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer")
-	cmd.Flags().IntVar(&maxPicks, "max", 0, "how many picks to make; only 1 is built, and more is refused")
-	cmd.Flags().BoolVar(&untilEmpty, "until-empty", false, "pick until no candidate is left; not built, and refused")
+	cmd.Flags().IntVar(&maxPicks, "max", 0, "how many picks to make, one at a time under the pace rule; above 1 begins a series (default one pick)")
+	cmd.Flags().BoolVar(&untilEmpty, "until-empty", false, "pick one at a time under the pace rule until no candidate is left; begins a series")
 	return cmd
 }
 
-// renderNext is the text form of a pick.
+// renderNext is the text form of a pick, or of a series' move that picked
+// nothing.
 func renderNext(w io.Writer, res loop.NextResult) {
+	if res.Pick == nil || res.Start == nil {
+		fmt.Fprintln(w, "build next: no pick")
+		renderSeries(w, res.Series)
+		renderExcluded(w, res.Excluded)
+		fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
+		return
+	}
 	p := res.Pick
 	fmt.Fprintf(w, "build next: picked %s (score %d) from %d candidate(s); run %s started\n",
 		p.Chosen.ID, p.Chosen.Score.Total, len(res.Candidates), res.Start.RunID)
+	renderSeries(w, res.Series)
 	fmt.Fprintln(w, "  candidates, in the pick order:")
 	for _, c := range res.Candidates {
 		s := c.Score
@@ -314,12 +339,7 @@ func renderNext(w io.Writer, res loop.NextResult) {
 		}
 		fmt.Fprintln(w, termsafe.Sanitize(line))
 	}
-	if len(res.Excluded) > 0 {
-		fmt.Fprintln(w, "  excluded:")
-		for _, e := range res.Excluded {
-			fmt.Fprintf(w, "    %s  %s: %s\n", e.ID, e.Check, termsafe.Sanitize(e.Reason))
-		}
-	}
+	renderExcluded(w, res.Excluded)
 	fmt.Fprintf(w, "  rule:    %s\n", p.Rule)
 	switch {
 	case p.RunnerUp == nil:
@@ -336,7 +356,48 @@ func renderNext(w io.Writer, res loop.NextResult) {
 	renderBudget(w, res.Start.Checks)
 	renderLaneLine(w, res.Start.Lane)
 	renderPending(w, res.Start.Pending)
-	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Start.Next)))
+	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
+}
+
+// renderExcluded renders the planned intents a pick's checks excluded.
+func renderExcluded(w io.Writer, ex []loop.Excluded) {
+	if len(ex) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "  excluded:")
+	for _, e := range ex {
+		fmt.Fprintf(w, "    %s  %s: %s\n", e.ID, e.Check, termsafe.Sanitize(e.Reason))
+	}
+}
+
+// renderSeries renders a series of picks: its count, its state, whether it is
+// paused or has ended, and each pick with what its run has come to.
+func renderSeries(w io.Writer, s *loop.SeriesResult) {
+	if s == nil {
+		return
+	}
+	count := fmt.Sprintf("--max %d", s.Max)
+	if s.UntilEmpty {
+		count = "--until-empty"
+	}
+	head := "in progress"
+	switch {
+	case s.Complete:
+		head = "ended (" + s.Stopped + ")"
+	case s.Started:
+		head = "begun"
+	}
+	fmt.Fprintln(w, termsafe.Sanitize(fmt.Sprintf("  series:  %s, %d pick(s), %s; state %s", count, len(s.Picks), head, s.State)))
+	if s.NextEligibleAt != nil {
+		fmt.Fprintf(w, "    paused until %s\n", s.NextEligibleAt.UTC().Format(time.RFC3339))
+	}
+	for _, p := range s.Picks {
+		line := fmt.Sprintf("    %s %s %s", p.Intent, p.RunID, p.Outcome)
+		if p.Falsified {
+			line += "; the pick is falsified"
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
 }
 
 // renderPace renders a run's pace and the layer each number came from; a run
@@ -940,8 +1001,9 @@ func newImplementRecordCommand(asJSON *bool) *cobra.Command {
 			"recorded from a validator's return, the captures each lane fixed, its pull request and\n" +
 			"what its landing did, the route that ran each receipt's or return's agent when a runner\n" +
 			"ran it, every fallback from a routed runner to the host with its count per runner and\n" +
-			"per role, the transcripts captured into the history store, and the record's\n" +
-			"lines. Read-only unless --transcript is given.\n\n" +
+			"per role, the transcripts captured into the history store, the pick a run `abcd build\n" +
+			"next` started from (its score table, and whether a lane handed back after its fix rounds\n" +
+			"met its falsifier), and the record's lines. Read-only unless --transcript is given.\n\n" +
 			"--transcript <path>, repeatable, captures each transcript into the history store as\n" +
 			"`abcd history capture <path>` does, one capture per path, and records it in the run's\n" +
 			"state; it is refused on a run that is not complete, since the record's transcripts are\n" +
@@ -999,6 +1061,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	}
 	fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", rec.RunID, termsafe.Sanitize(rec.Key), termsafe.Sanitize(rec.Spec), state, rec.Driver)
 	renderPace(w, rec.Pace)
+	renderRecordPick(w, rec.Pick)
 	for _, l := range rec.Lanes {
 		fmt.Fprintf(w, "  %s:  spec step %d, %q — %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Stage)
 		if l.Branch != "" {
@@ -1044,6 +1107,27 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	for _, e := range rec.Record {
 		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
 			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
+	}
+}
+
+// renderRecordPick renders the pick a run was started from: the chosen
+// intent, whether its falsifier was met, and the score table.
+func renderRecordPick(w io.Writer, p *loop.RecordPick) {
+	if p == nil {
+		return
+	}
+	met := "falsifier not met"
+	if p.Falsified {
+		met = "falsified: " + p.FalsifiedBy
+	}
+	fmt.Fprintf(w, "  pick:    %s from %d candidate(s); %s\n", termsafe.Sanitize(p.Chosen.ID), len(p.Candidates), termsafe.Sanitize(met))
+	for _, c := range p.Candidates {
+		s := c.Score
+		line := fmt.Sprintf("    %s  %d  criteria %d, test path %d, footprint %d", c.ID, s.Total, s.Criteria.Points, s.TestPath.Points, s.Footprint.Points)
+		if s.NoFootprint {
+			line += "; its spec carries no footprint"
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
 	}
 }
 

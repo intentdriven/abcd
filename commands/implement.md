@@ -453,8 +453,11 @@ move that did not complete and finds what it made rather than making it twice.
 runner reported, every verdict the loop recorded, the route that ran a receipt's
 or a return's agent when a runner ran it, the captures it fixed, its pull
 request and landing, every fallback with its count per runner and per role
-(`fallbacks`, `fallback_counts`), the transcripts captured, and the record's
-lines.
+(`fallbacks`, `fallback_counts`), the transcripts captured, the pick a run
+`build next` started from (`pick`: its score table, rule, runner-up, falsifier
+and exclusions, with `falsified` and `falsified_by` once a lane is handed back
+after its fix rounds; `null` for a run `build <itd-N>` started), and the
+record's lines.
 Without `--run` it reads the one run in progress, or else the latest run. With
 `--transcript <path>` (repeatable) on a complete run it captures each transcript
 into the history store as `history capture <path>` does, one capture per path,

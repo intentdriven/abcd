@@ -98,6 +98,16 @@ pick's own lanes landed.
   next` started that is handed back after the run's fix rounds (ruling DR1:
   `--fix-rounds`, bundled 3) gains a `pick` line in the run record naming the
   pick falsified, and the intent's grounds entry is not edited
-  (`internal/core/implement/loop/handback.go`). The score table read into the
-  run record at close waits on the run record's rendering
-  (spc-2609202134338445 piece 10).
+  (`internal/core/implement/loop/handback.go`).
+- **Landed: criterion 6, the run record's half.** `implement record` carries the
+  pick (`pick`: the score table, rule, runner-up, falsifier and exclusions) and
+  whether its falsifier was met (`falsified`, `falsified_by`), read from the
+  lane's state when the record is read (`internal/core/implement/loop/record.go`).
+- **Landed: criterion 5, the series.** `--max <n>` and `--until-empty` begin a
+  series kept beside the runs (`.abcd/.work.local/run/next.json`), one move per
+  `abcd build next`: the series picks again once its last pick is delivered or
+  its lane stops, only inside the pace rule's window, each further reason written
+  the same way, until the cap or an empty candidate set ends it
+  (`internal/core/implement/loop/nextseries.go`). The default single pick
+  writes no series. `commands/build.md` and `--json` carry both flags, the
+  series and every refusal (criteria 9 and 10).

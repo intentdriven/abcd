@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
@@ -52,7 +53,60 @@ type RunRecord struct {
 	// run's lifetime, each with its minutes, its outcome and what was retried,
 	// so a short outage nobody was told of still appears.
 	Outages []implement.OutageSpan `json:"outages"`
-	Record  []Entry                `json:"record"`
+	// Pick is the pick `abcd build next` started the run from, with its score
+	// table and whether its falsifier was met; nil for a run `abcd build
+	// <itd-N>` started.
+	Pick   *RecordPick `json:"pick"`
+	Record []Entry     `json:"record"`
+}
+
+// RecordPick is a run's pick as its record reads it (itd-2609211116005482
+// criterion 6, spc-2609212015048113 scope 8): the candidates in the pick
+// order with their scores, the rule, the runner-up and the falsifier, as the
+// pick made them; the planned intents the checks excluded; and whether the
+// lane's state has met the falsifier. The intent's grounds entry is never
+// edited: a falsified pick is named here and in the run record's lines.
+type RecordPick struct {
+	Lane  string `json:"lane"`
+	Entry string `json:"entry"`
+	intent.Pick
+	Excluded []Excluded `json:"excluded"`
+	// Falsified is true once a lane of the run was handed back as
+	// unachievable after the run's fix rounds, and FalsifiedBy names it.
+	Falsified   bool   `json:"falsified"`
+	FalsifiedBy string `json:"falsified_by,omitempty"`
+}
+
+// recordPick reads the pick out of a run's state, and judges its falsifier
+// against the lanes as they stand.
+func recordPick(st State) *RecordPick {
+	if st.Pick == nil {
+		return nil
+	}
+	p := &RecordPick{Lane: st.Pick.Lane, Entry: st.Pick.Entry, Pick: st.Pick.Pick, Excluded: st.Pick.Excluded}
+	if p.Excluded == nil {
+		p.Excluded = []Excluded{}
+	}
+	if p.Candidates == nil {
+		p.Candidates = []intent.PickCandidate{}
+	}
+	if lane, hb, ok := pickFalsifiedBy(st); ok {
+		p.Falsified = true
+		p.FalsifiedBy = fmt.Sprintf("%s was handed back as %s after %s", lane, hb.Verdict, fixRoundsPhrase(hb.FixRounds))
+	}
+	return p
+}
+
+// pickFalsifiedBy finds the lane whose outcome meets the pick's falsifier:
+// one handed back by the fix-round bound (a hand-back with no kind; one a
+// lane's own receipt made names a decision, not an unachievable lane).
+func pickFalsifiedBy(st State) (string, HandBack, bool) {
+	for _, l := range st.Lanes {
+		if l.HandBack != nil && l.HandBack.Kind == "" {
+			return l.ID, *l.HandBack, true
+		}
+	}
+	return "", HandBack{}, false
 }
 
 // RecordLane is one lane of the run record.
@@ -97,7 +151,8 @@ func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver,
 		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace,
 		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record,
-		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks), Outages: []implement.OutageSpan{}}
+		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks), Outages: []implement.OutageSpan{},
+		Pick: recordPick(st)}
 	if rec.Fallbacks == nil {
 		rec.Fallbacks = []runner.FallbackReceipt{}
 	}

@@ -391,19 +391,6 @@ func TestAReceiptRefusesABranchThatDroppedThePick(t *testing.T) {
 	}
 }
 
-// TestNextRefusesMoreThanOnePick: continuing under the pace rule (criterion 5)
-// is not built, so asking for it is refused by name and writes nothing.
-func TestNextRefusesMoreThanOnePick(t *testing.T) {
-	repo := pickRepo(t, map[string][2]string{"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", "")}})
-	for _, n := range []NextOptions{{Max: 2}, {UntilEmpty: true}} {
-		_, err := Next(repo.Root(), Options{}, n)
-		if r := mustRefusal(t, err); r.Stage != StagePick || !strings.Contains(r.Reason, "criterion 5") {
-			t.Fatalf("%+v is refused naming criterion 5: %+v", n, r)
-		}
-	}
-	runTierAbsent(t, repo.Root())
-}
-
 // TestAPickedStateRoundTrips: the pick and the lane's pick commit survive the
 // strict reader, and a version-2 file carrying a pick is refused.
 func TestAPickedStateRoundTrips(t *testing.T) {
