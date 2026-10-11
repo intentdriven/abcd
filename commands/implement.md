@@ -440,11 +440,34 @@ over each of the run's lanes' own diff.
    open for a person to merge, and `implement status` shows the landing as
    "left open for a person to merge: the ruleset requires no approval" where a
    queue exists but nothing requires approval; a later step never arms it, and
-   a missing mirror requires nothing. Nothing is pushed to the lane after this.
+   a missing mirror requires nothing. Before arming it asks the forge whether
+   the pull request merges (`gh pr view <n> --json mergeable,mergeStateStatus`),
+   and one the forge reports `CONFLICTING` is refused (exit 2), not armed: the
+   merge queue never takes a conflicting pull request. Nothing is pushed to the
+   lane after this.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
-   done. A pull request closed without merging, or merged in a way that rewrote
-   the head, is refused and nothing is cleaned up.
+   done. The wait names the forge's verdict; `UNKNOWN`, a verdict the forge has
+   not computed yet, keeps it waiting. A pull request closed without merging,
+   or merged in a way that rewrote the head, is refused and nothing is cleaned
+   up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
+   never merges on its own.
+
+A conflicting pull request is refused naming what this checkout can say about
+it: the files a merge of `origin/<default>` and the pushed head conflicts in
+with every merge driver switched to git's built-in merge, as the forge merges,
+and the `merge=` driver each carries here ("GitHub reports a conflict; locally
+these files carry merge drivers the forge ignores: …"), or that no local merge
+reproduces it ("GitHub reports a conflict this checkout cannot reproduce": a
+stale verdict, which pushing a merge of the default branch makes the forge
+compute again). The forge ignores `.gitattributes` merge drivers, so two
+branches that each appended to a `merge=union` file conflict there while they
+merge cleanly here. The refusal writes nothing, and the loop pushes and merges
+nothing on its own: the remedy is a person's hand merge in the lane's worktree
+(disarm it with `gh pr merge <n> --disable-auto` when it is armed, merge
+`origin/<default>` into the lane's branch, run `make preflight`, push, re-arm
+with the queue's method), then `step` again; or closing it and handing the
+lane back.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the
 move that did not complete and finds what it made rather than making it twice.

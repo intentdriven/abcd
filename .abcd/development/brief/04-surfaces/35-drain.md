@@ -156,7 +156,11 @@ and written nowhere, decision 8), then does the first of these that applies:
    with the implement loop's step verb and opens nothing: one lane at a time.
 5. It reads what that lane has come to: its pull request opened (armed, or left
    open where the repository has no merge queue), the run complete, or the lane
-   handed back, which it routes (below).
+   handed back, which it routes (below). A pull request the forge reports
+   conflicting is refused before it is armed, so its lane stays in progress
+   and the drain names its run to drive, whose step names the conflict; one
+   that turns conflicting after it was armed is refused by the run's own step,
+   since the drain's part ends at the open pull request.
 6. When the drain has opened as many lanes as its cap, it ends and says so.
 7. For the next eligible issue in the drain order that the drain has not taken
    or handed back and this checkout has no run for, it asks the host judgement

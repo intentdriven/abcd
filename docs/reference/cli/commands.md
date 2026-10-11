@@ -2225,7 +2225,10 @@ strips a session URL or tool footer; it arms auto-merge with the merge-queue met
 ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request
 open where no merge queue gates the default branch, and pushes nothing after that; and
 once the pushed head is an ancestor of the default branch on origin it removes the lane's
-worktree and branch and the lane is done. Until then the call exits 3 and waits.
+worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull
+request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)
+is refused at exit 2 instead, before arming or at the merged check, naming the files a
+local merge with every merge driver off conflicts in and the hand merge that settles it.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
