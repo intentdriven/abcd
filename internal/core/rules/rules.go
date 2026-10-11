@@ -28,9 +28,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -38,7 +36,6 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"syscall"
 )
@@ -396,26 +393,9 @@ func SwapUserHomeForTest(fn func() (string, error)) (restore func()) {
 // readRepoLayer reads and parses <repoRoot>/.abcd/rules.json. ok is false when
 // the file is absent; every other failure is an error naming the file.
 func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
-	// Refuse a symlinked .abcd directory component before touching the leaf, so a
-	// swapped .abcd cannot redirect the read (trust boundary).
-	if di, err := os.Lstat(filepath.Join(repoRoot, ".abcd")); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return RuleSet{}, false, fmt.Errorf("rules: .abcd is a symlink (refusing to follow)")
-	}
-	path := filepath.Join(repoRoot, ".abcd", "rules.json")
-	data, err := readGuarded(path, maxRulesFileBytes)
-	if err != nil {
-		switch {
-		case os.IsNotExist(err):
-			return RuleSet{}, false, nil
-		case errors.Is(err, syscall.ELOOP):
-			return RuleSet{}, false, fmt.Errorf("rules: %s is a symlink (refusing to follow)", RepoRelPath)
-		case errors.Is(err, errNotRegular):
-			return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file", RepoRelPath)
-		case errors.Is(err, errTooBig):
-			return RuleSet{}, false, fmt.Errorf("rules: %s exceeds the %d-byte cap", RepoRelPath, maxRulesFileBytes)
-		default:
-			return RuleSet{}, false, fmt.Errorf("rules: reading %s: %w", RepoRelPath, err)
-		}
+	data, ok, err := ReadRepoLayerFile(repoRoot, RepoRelPath, "rules", maxRulesFileBytes)
+	if err != nil || !ok {
+		return RuleSet{}, false, err
 	}
 	over, err = parseLayer(data, RepoRelPath)
 	if err != nil {
@@ -427,71 +407,11 @@ func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 // readUserLayer reads and parses the user scope's ~/.abcd.noindex/rules.json. ok is
 // false when there is no such file — or no home to hold one — which is the
 // ordinary case and costs nothing: nothing is created, nothing is reported.
-//
-// The file injects text into every session on the machine, so it is read as the
-// caller's WORD, through the same primitive as the other home-scoped
-// declarations (fsutil.ReadDeclaration): a regular file — never a symlink,
-// FIFO or device — within the size cap, owned by this session's uid and
-// writable by nobody else. That is the ownership rule the repo root's trust
-// bound applies to a foreign-uid checkout (root.go, foreignOwnerRefusal): a
-// file another account could have written is not this account's convention.
-// And the ~/.abcd.noindex directory itself must not be a symlink when a rules.json sits
-// behind it, the pre-check the repo's .abcd gets — checked only once a file is
-// there, because a machine whose ~/.abcd.noindex is a dotfiles symlink holding no
-// rules.json reads nothing and must keep behaving exactly as it did. That check
-// is fsutil.ReadHomeDeclaration's (fsutil.HomeScopeLink), the one every other
-// home-scoped reader and writer applies, so the rule cannot drift per file.
-//
-// Every refusal is an error naming the file in tilde form, never a silent
-// fallback to the defaults: an unreadable user layer that degraded to a partial
-// injection is the silent shape loud-staging exists to prevent.
+// The read and its refusals are ReadUserLayerFile's.
 func readUserLayer(home string) (over RuleSet, ok bool, err error) {
-	// No home, or a relative one, names no user scope: a relative HOME would
-	// resolve ~/.abcd.noindex against whatever directory the session happens to start
-	// in, which is not the machine's scope but a guess at one.
-	if home == "" || !filepath.IsAbs(home) {
-		return RuleSet{}, false, nil
-	}
-	data, refusal, err := fsutil.ReadHomeDeclaration(home, UserRelPath, maxRulesFileBytes)
-	// Absent is the lstat's answer, so a permission error here is a HOME or
-	// ~/.abcd.noindex this uid cannot search, never the file's own mode: that reads as
-	// no user layer, as it does for the sibling home-scoped declarations
-	// (trusted-roots, local-transcript-roots), so a sandboxed or foreign HOME
-	// does not warn on every prompt about a file nobody can see. A rules.json
-	// that is there and cannot be opened is DeclarationUnreadable, and loud.
-	if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission)) {
-		return RuleSet{}, false, nil
-	}
-	switch refusal {
-	case fsutil.DeclarationOK:
-	case fsutil.DeclarationBehindSymlink:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is a symlink (refusing to follow it to %s)", abcdhome.Display(), UserDisplayPath)
-	case fsutil.DeclarationDirectoryExposed:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is not read: %w", UserDisplayPath, err)
-	case fsutil.DeclarationNotRegular:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
-	case fsutil.DeclarationWritableByOthers:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is writable by others, so its rules are not necessarily yours (chmod go-w it): %w", UserDisplayPath, err)
-	case fsutil.DeclarationForeignOwner:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is not owned by this session's uid, so its rules are not this account's: %w", UserDisplayPath, err)
-	default:
-		if errors.Is(err, fsutil.ErrTooBig) {
-			return RuleSet{}, false, fmt.Errorf("rules: %s exceeds the %d-byte cap", UserDisplayPath, maxRulesFileBytes)
-		}
-		if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) {
-			return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
-		}
-		// The raw error can carry the expanded path; the message names the
-		// file in tilde form and keeps only the reason.
-		why := "unknown error"
-		var pe *os.PathError
-		switch {
-		case errors.As(err, &pe):
-			why = pe.Err.Error()
-		case err != nil:
-			why = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-		}
-		return RuleSet{}, false, fmt.Errorf("rules: %s could not be read (%s)", UserDisplayPath, why)
+	data, ok, err := ReadUserLayerFile(home, UserRelPath, "rules", "rules", maxRulesFileBytes)
+	if err != nil || !ok {
+		return RuleSet{}, false, err
 	}
 	over, err = parseLayer(data, UserDisplayPath)
 	if err != nil {
