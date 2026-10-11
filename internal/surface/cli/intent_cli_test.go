@@ -352,6 +352,56 @@ func TestIntentReadyGreenExit0(t *testing.T) {
 	}
 }
 
+// TestIntentReadyRefusesAnOpenQuestion is iss-2610101610446956: the readiness
+// verb runs the open-questions check the build runs, so a record that would
+// pass every one of the gate's other checks but still asks a question reports
+// NOT READY (exit 1), naming the question, rather than READY for a build that
+// then refuses it at check (open_questions).
+func TestIntentReadyRefusesAnOpenQuestion(t *testing.T) {
+	repo := intentTestRepo(t)
+	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
+			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n\n"+
+			"## Open Questions\n\n- Which runner?\n- resolved: which shell (bash)\n"+cliGroundsSection)
+	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n")
+
+	out, _, err := runCLISplit(t, "intent", "ready", "itd-10")
+	if exitCodeOf(err) != 1 {
+		t.Fatalf("exit = %d (%v), want 1: an open question means the build will not start\n%s", exitCodeOf(err), err, out)
+	}
+	if !strings.Contains(out, "NOT READY") {
+		t.Fatalf("an intent asking an open question must render NOT READY:\n%s", out)
+	}
+	if !strings.Contains(out, "[fail] open_questions:") || !strings.Contains(out, "Which runner?") {
+		t.Fatalf("report must carry a failing open_questions row naming the question:\n%s", out)
+	}
+	if strings.Contains(out, "which shell") {
+		t.Fatalf("a settled question must not be reported open:\n%s", out)
+	}
+
+	jsonOut, _, err := runCLISplit(t, "intent", "ready", "itd-10", "--json")
+	if exitCodeOf(err) != 1 {
+		t.Fatalf("--json exit = %d (%v), want 1", exitCodeOf(err), err)
+	}
+	var got struct {
+		Ready  bool `json:"ready"`
+		Checks []struct {
+			Name     string `json:"name"`
+			OK       bool   `json:"ok"`
+			Advisory bool   `json:"advisory"`
+			Remedy   string `json:"remedy"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &got); err != nil {
+		t.Fatalf("ready --json not JSON: %v\n%s", err, jsonOut)
+	}
+	last := got.Checks[len(got.Checks)-1]
+	if got.Ready || last.Name != "open_questions" || last.OK || last.Advisory || last.Remedy == "" {
+		t.Fatalf("ready --json = %+v, want ready=false with a gating open_questions row carrying a remedy last", got)
+	}
+}
+
 func TestIntentReadyUnknownExit2(t *testing.T) {
 	intentTestRepo(t)
 
@@ -362,7 +412,8 @@ func TestIntentReadyUnknownExit2(t *testing.T) {
 }
 
 // TestIntentReadyJSON proves the machine seam: --json emits the full ReadyResult
-// (8 fixed checks) even on the not-ready path, alongside exit 1.
+// (9 fixed checks: the gate's 8 and the build's open_questions) even on the
+// not-ready path, alongside exit 1.
 func TestIntentReadyJSON(t *testing.T) {
 	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
@@ -382,8 +433,8 @@ func TestIntentReadyJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("ready --json not JSON: %v\n%s", err, out)
 	}
-	if got.Ready || len(got.Checks) != 8 {
-		t.Fatalf("ready --json = %+v, want ready=false with 8 checks", got)
+	if got.Ready || len(got.Checks) != 9 {
+		t.Fatalf("ready --json = %+v, want ready=false with 9 checks", got)
 	}
 	if got.Checks[0].Name != "bucket" || got.Checks[0].OK || got.Checks[0].Remedy == "" {
 		t.Fatalf("bucket check = %+v, want fail with remedy", got.Checks[0])
@@ -684,8 +735,8 @@ func TestIntentReadyGroundsJSONCarriesTheWriteReceipt(t *testing.T) {
 	if strings.Contains(out, "/Users/alice") {
 		t.Fatalf("the envelope echoed the raw home path:\n%s", out)
 	}
-	if !env.Ready.Ready || len(env.Ready.Checks) != 8 {
-		t.Fatalf("readiness half = %+v, want the unchanged 8-check result", env.Ready)
+	if !env.Ready.Ready || len(env.Ready.Checks) != 9 {
+		t.Fatalf("readiness half = %+v, want the unchanged 9-check result", env.Ready)
 	}
 	// And the write is announced on stderr too, so a later readiness fault — which
 	// carries no envelope at all — can never hide that a write happened.

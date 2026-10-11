@@ -2729,7 +2729,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// fault that emits no envelope.
 				emitGroundsReceipt(cmd, *asJSON, rec)
 			}
-			res, err := intent.Ready(repoRoot, args[0])
+			// The gate plus the build's open-questions check, so READY means the
+			// build will not refuse the record for a question it still asks
+			// (iss-2610101610446956).
+			res, err := intent.ReadyWithQuestions(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent ready: " + err.Error()}
 			}

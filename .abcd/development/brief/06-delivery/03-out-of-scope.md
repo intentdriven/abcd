@@ -147,6 +147,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on (draft; builds on itd-2609201925079472)
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands (draft)
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping (draft; builds on itd-2610091918433290 and itd-2610032150577708; moved out of the memory notes intent)
+- `itd-2610111707085098` — Each session takes a persona name, shown in the status line and the session list (draft)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

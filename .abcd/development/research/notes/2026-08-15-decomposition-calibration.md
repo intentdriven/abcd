@@ -2395,3 +2395,13 @@ Verdict: SPLIT. The proposal entered as one agent for every writing task; the re
 | vendor-neutral class names with each vendor's models mapped onto them | design choice | the same intent, with the routing table's tiers as the neighbour |
 
 Verdict: FILE-AS-IS, confirmed ("File as proposed"). The product thinker's rough exchange rule did not survive: "Double per class" replaced "times 2 minus 1" once the facilitator showed the latter's inverse gives 4.5, not 3; the scope narrowed from the machine to each abcd run.
+
+## 2026-10-11: a toggle that automates the technical facilitator (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a per-project setting for the technical facilitator, human or auto | capability | intent itd-97 (draft, "The facilitator is a mode, not a person"); refines it |
+| auto-merge refused as a hard rule while the facilitator is human, armed automatically while it is auto | the first two-mode gate | itd-97's acceptance criteria, with how the guard enforces it as an open question |
+| other facilitator responsibilities follow the same pattern | plumbing | the brief, once itd-97 is planned (adr-2609151528057260: every gate declares both modes) |
+
+Verdict: refine, not file. The proposal entered as a new intent; the record grill found itd-97 and the three-roles ADR already holding the switch, and the product thinker confirmed "Add to the draft". A tension surfaced and is carried as an open question: itd-97 keeps irreversible actions with the product thinker in both modes, which would bar an auto facilitator from merging unless a revertable merge is not one.
