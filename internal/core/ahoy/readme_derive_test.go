@@ -212,6 +212,37 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 		wantBody(t, d, "- [Install](#install)\n- [Install-1](#install-1)\n- [Install](#install-2)\n- [Install](#install-3)")
 	})
 
+	// A README abcd cannot read is reported as unread, never as one with no
+	// level-two heading: each of these holds one.
+	unreadable := map[string]struct {
+		lay  func(t *testing.T, root string)
+		want string
+	}{
+		"a symlinked README": {func(t *testing.T, root string) {
+			writeFixture(t, root, "real.md", "# P\n\n## Install\n", 0o644)
+			if err := os.Symlink("real.md", filepath.Join(root, "README.md")); err != nil {
+				t.Fatal(err)
+			}
+		}, "README.md is a symlink or not a regular file"},
+		"a README that is a directory": {func(t *testing.T, root string) {
+			writeFixture(t, root, "README.md/x.md", "## Install\n", 0o644)
+		}, "README.md is a symlink or not a regular file"},
+		"a README past the cap": {func(t *testing.T, root string) {
+			writeFixture(t, root, "README.md", "# P\n\n## Install\n"+strings.Repeat("x", maxAhoyFileBytes), 0o644)
+		}, "README.md is past abcd's " + strconv.Itoa(maxAhoyFileBytes) + "-byte cap"},
+	}
+	for name, tc := range unreadable {
+		t.Run(name, func(t *testing.T) {
+			root := readmeRepo(t, "", nil)
+			tc.lay(t, root)
+			d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+			wantOmitted(t, d, "contents omitted", tc.want)
+			if strings.Contains(d.Reason, noLevelTwoHeading) {
+				t.Errorf("reason %q says the README has no level-two heading; it was not read", d.Reason)
+			}
+		})
+	}
+
 	for name, readme := range map[string]string{
 		"no README.md":                 "",
 		"level-three headings only":    "# Project\n\n### Detail\n",

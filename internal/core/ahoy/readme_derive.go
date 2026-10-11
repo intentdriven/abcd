@@ -2,7 +2,9 @@ package ahoy
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"regexp"
@@ -522,7 +524,7 @@ const noLevelTwoHeading = "the README has no level-two heading"
 func (r *readmeSource) contents() (string, string) {
 	data, err := readInRoot(r.root, "README.md")
 	if err != nil {
-		return "", noLevelTwoHeading
+		return "", readmeUnreadReason(err)
 	}
 	lines, starts, _ := markerLines(data)
 	mask := mdrecord.Mask(lines)
@@ -567,6 +569,21 @@ func (r *readmeSource) contents() (string, string) {
 		return "", noLevelTwoHeading
 	}
 	return strings.Join(out, "\n"), ""
+}
+
+// readmeUnreadReason says why the contents part has no README to read. Only
+// an absent README has no level-two heading; one abcd will not or cannot read
+// is said to be unread, so the reason never claims what the file holds.
+func readmeUnreadReason(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return noLevelTwoHeading
+	case errors.Is(err, fsutil.ErrNotRegular):
+		return "README.md is a symlink or not a regular file, so abcd does not read it"
+	case errors.Is(err, fsutil.ErrTooBig):
+		return fmt.Sprintf("README.md is past abcd's %d-byte cap for the files it reads, so abcd does not read it", maxAhoyFileBytes)
+	}
+	return "README.md could not be read: " + termsafe.Sanitize(err.Error())
 }
 
 // readmeSlugger numbers heading anchors across a page as the forge does: a
