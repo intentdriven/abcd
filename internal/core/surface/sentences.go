@@ -11,7 +11,8 @@ import (
 // command path a caller types, holding the one sentence every place the verb
 // is listed renders: the parent's command list, the root's groups and agents
 // block, the verb's own --help, and — for a top-level verb with a plugin page
-// — the page's description. The front door (internal/surface/cli) sets each
+// — the page's description, where a page may add its own "use when" clause
+// after the sentence (pageUseWhen, internal/surface/cli). The front door (internal/surface/cli) sets each
 // command's Short from here, the snapshot records it, and the generator writes
 // the pages from it, so this table is the one place a sentence is worded.
 //

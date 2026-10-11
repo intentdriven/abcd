@@ -1,6 +1,6 @@
 ---
 name: library
-description: "Render the sources corpus and the checkout's memory store, read-only: Writes nothing; refuses only when neither store can be read."
+description: "Render the sources corpus and the checkout's memory store, read-only: Writes nothing; refuses only when neither store can be read. Use when the user says 'ingest this', 'add this source/URL/paper to the corpus' or 'register this source' (that is library add), or 'consult sources', 'check the corpus' or 'what do my sources say'."
 argument-hint: "[<empty>] | init | add [document] --key K [--private|--public] [...] | declassify <key> | ledger [--decision D --claim C --source K --influence I | --flip N | --list] | sync-banlist [--refresh] | cite-check <file|-> | ingest <path-or-https-url> [--keep-original] | ask <question> | lint"
 block: people
 ---

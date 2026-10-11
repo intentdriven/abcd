@@ -190,10 +190,20 @@ command-tree snapshot records it, `go generate ./internal/surface/cli` writes
 the pages' descriptions from it, and the generated CLI reference carries it,
 which puts it under the docs lint.
 
+A page that carries a host workflow its bare verb does not describe adds one
+"use when" clause after the sentence in its `description:` and nowhere else,
+because the host chooses which page to load from that description. The clauses
+are declared in one map in `internal/surface/cli/sentences.go`, keyed by page
+name, each one line opening "Use when", at most 300 characters. Two pages
+declare one: `library`, which carries the register and consult workflows, and
+`ahoy`, whose `install` carries the repository preparation. A page outside the
+map has the bare sentence as its description.
+
 It is gated. A test in `internal/surface/cli` walks every visible command and
 fails naming the verb and the defect when a sentence is missing, lacks a clause,
 runs past the cap, or differs between the manifest, the command list, the help
-and the page; a synthetic tree proves it names each defect. A reworded sentence
+and the page (the page's declared use-when clause aside); a synthetic tree
+proves it names each defect. A reworded sentence
 is not a break: the surface diff never reads it, because it changes no
 invocation. Adding a verb therefore adds its sentence to the manifest in the
 same change, and the regeneration carries it to every place it appears.

@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/surface"
@@ -22,6 +23,11 @@ import (
 // in the verb's own --help; and the generator writes it as the `description:`
 // of the verb's plugin page (SentencePages). No constructor declares a Short
 // for a visible command, so there is no second copy to drift.
+//
+// A page that carries a host workflow its bare verb does not describe also
+// declares "use when" text in pageUseWhen, which the generator appends to that
+// page's description after the sentence. It is the page's alone: the command
+// list, the help and the reference keep the bare sentence.
 //
 // The gate is internal/surface/cli/sentences_test.go: it walks every visible
 // command and fails naming the verb and the defect when a sentence is missing,
@@ -55,10 +61,59 @@ func applySentences(root *cobra.Command, lookup func(path string) (string, bool)
 	root.SetHelpTemplate(verbHelpTemplate)
 }
 
+// UseWhenCap is the most characters a page's use-when text may run to. The
+// longest use-when clause of the deleted pages whose trigger phrases it carries
+// ran to about 200.
+const UseWhenCap = 300
+
+// pageUseWhen maps a plugin page's name to the "use when" text appended to its
+// description after the verb's sentence. The host picks a page to load from its
+// description, and the verb split (itd-2610090831227812) folded host
+// workflows into pages whose bare verb describes something else: library
+// carries the register and consult workflows of the deleted /abcd:ingest and
+// /abcd:consult pages, and ahoy's install carries the deleted
+// /abcd:prepare-this-repo workflow. Each entry carries the trigger phrases of
+// the deleted pages' descriptions. Registering a document is `library add`;
+// `library ingest` distils a source into the memory store and registers
+// nothing (iss-2610110233253365), so library's text names the former.
+var pageUseWhen = map[string]string{
+	"ahoy": "Use when the user asks to install abcd in a repository, or to prepare, onboard, scaffold or " +
+		"bootstrap a repository for agent work or bring it up to current conventions (that is ahoy install).",
+	"library": "Use when the user says 'ingest this', 'add this source/URL/paper to the corpus' or " +
+		"'register this source' (that is library add), or 'consult sources', 'check the corpus' or " +
+		"'what do my sources say'.",
+}
+
+// pageDescription is the description of the page named page: the verb's
+// sentence, followed by the page's use-when text where useWhen declares one.
+func pageDescription(useWhen map[string]string, page, sentence string) string {
+	if when, ok := useWhen[page]; ok {
+		return sentence + " " + when
+	}
+	return sentence
+}
+
+// checkUseWhen refuses use-when text that is not one line opening with
+// "Use when " and closing with a period, within UseWhenCap characters.
+func checkUseWhen(when string) error {
+	switch {
+	case strings.ContainsAny(when, "\r\n"):
+		return errors.New("the use-when text runs over more than one line")
+	case !strings.HasPrefix(when, "Use when "):
+		return errors.New(`the use-when text does not open with "Use when "`)
+	case !strings.HasSuffix(when, "."):
+		return errors.New("the use-when text does not close with a period")
+	case utf8.RuneCountInString(when) > UseWhenCap:
+		return fmt.Errorf("the use-when text is %d characters, over the cap of %d", utf8.RuneCountInString(when), UseWhenCap)
+	}
+	return nil
+}
+
 // SentencePage is one plugin command page: its repo-relative path, the bytes
 // committed, and the bytes it holds once its description is the verb's
-// sentence. The generator writes Want where the two differ, and the drift test
-// fails on any page where they do.
+// sentence and the page's use-when text, if it declares one. The generator
+// writes Want where the two differ, and the drift test fails on any page where
+// they do.
 type SentencePage struct {
 	File      string
 	Committed string
@@ -95,7 +150,12 @@ func SentencePages(repoRoot string) ([]SentencePage, error) {
 		if err != nil {
 			return nil, err
 		}
-		want, err := withDescription(string(data), sentence)
+		if when, ok := pageUseWhen[cmd.Name()]; ok {
+			if err := checkUseWhen(when); err != nil {
+				return nil, fmt.Errorf("%s: %w", rel, err)
+			}
+		}
+		want, err := withDescription(string(data), pageDescription(pageUseWhen, cmd.Name(), sentence))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", rel, err)
 		}
@@ -105,11 +165,11 @@ func SentencePages(repoRoot string) ([]SentencePage, error) {
 }
 
 // withDescription returns page with its frontmatter `description:` line
-// replaced by the sentence, double-quoted because every sentence carries a
+// replaced by the description, double-quoted because every sentence carries a
 // colon followed by a space, which a plain YAML scalar may not. Nothing else in
 // the page changes. The block's extent is frontmatter.Close's, so a leading
 // `---` nothing closes is no frontmatter here exactly as it is to the reader.
-func withDescription(page, sentence string) (string, error) {
+func withDescription(page, description string) (string, error) {
 	lines := strings.Split(page, "\n")
 	closing := frontmatter.Close(lines)
 	if closing < 0 {
@@ -117,7 +177,7 @@ func withDescription(page, sentence string) (string, error) {
 	}
 	for i := 1; i < closing; i++ {
 		if strings.HasPrefix(lines[i], "description:") {
-			lines[i] = "description: " + frontmatter.QuoteScalar(sentence)
+			lines[i] = "description: " + frontmatter.QuoteScalar(description)
 			return strings.Join(lines, "\n"), nil
 		}
 	}

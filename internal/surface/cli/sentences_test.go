@@ -102,10 +102,12 @@ func listsSentence(help, name, sentence string) bool {
 // each one whose sentence is missing, malformed, or rendered differently in any
 // of its places: the manifest (form), the command list of its parent, its own
 // --help (which must open with it), and — for a verb with a plugin page — the
-// page's description. pages maps a page name (a top-level verb, or the root's
-// name) to the page's bytes.
+// page's description, which is the sentence followed by the page's declared
+// use-when text where useWhen holds one and the sentence alone where it does
+// not. pages maps a page name (a top-level verb, or the root's name) to the
+// page's bytes.
 func sentenceDefects(t *testing.T, build func() *cobra.Command, manifest func(string) (string, bool),
-	pages map[string]string) []string {
+	pages map[string]string, useWhen map[string]string) []string {
 	t.Helper()
 	var out []string
 	for _, cmd := range visibleCommands(build()) {
@@ -146,8 +148,8 @@ func sentenceDefects(t *testing.T, build func() *cobra.Command, manifest func(st
 		switch {
 		case !has || !scalar:
 			out = append(out, fmt.Sprintf("%s: commands/%s.md has no single-line description", path, page))
-		case value != sentence:
-			out = append(out, fmt.Sprintf("%s: commands/%s.md's description differs from the manifest's sentence: %q", path, page, value))
+		case value != pageDescription(useWhen, page, sentence):
+			out = append(out, fmt.Sprintf("%s: commands/%s.md's description differs from the manifest's sentence and the page's use-when text: %q", path, page, value))
 		}
 	}
 	return out
@@ -162,7 +164,7 @@ func TestEveryVisibleVerbCarriesItsSentenceEverywhere(t *testing.T) {
 	if n := len(visibleCommands(build())); n < 100 {
 		t.Fatalf("the walk saw %d visible commands; the tree has more than a hundred, so the check would pass on a fraction", n)
 	}
-	for _, d := range sentenceDefects(t, build, surface.SentenceFor, commandFileBodies(t)) {
+	for _, d := range sentenceDefects(t, build, surface.SentenceFor, commandFileBodies(t), pageUseWhen) {
 		t.Error(d)
 	}
 }
@@ -209,10 +211,12 @@ func TestSentenceDefectsNamesTheVerbAndTheDefect(t *testing.T) {
 		"tool clause":  "Do the thing: Writes nothing.",
 		"tool differs": good,
 		"tool paged":   good,
+		"tool when":    good,
+		"tool bare":    good,
 	}
 	build := func() *cobra.Command {
 		root := &cobra.Command{Use: "tool", Run: func(*cobra.Command, []string) {}}
-		for _, name := range []string{"good", "missing", "long", "clause", "differs", "paged"} {
+		for _, name := range []string{"good", "missing", "long", "clause", "differs", "paged", "when", "bare"} {
 			root.AddCommand(&cobra.Command{Use: name, Run: func(*cobra.Command, []string) {}})
 		}
 		applySentences(root, func(path string) (string, bool) { s, ok := manifest[path]; return s, ok })
@@ -222,9 +226,14 @@ func TestSentenceDefectsNamesTheVerbAndTheDefect(t *testing.T) {
 	pages := map[string]string{
 		"good":  "---\nname: good\ndescription: " + frontmatter.QuoteScalar(good) + "\n---\n\n# good\n",
 		"paged": "---\nname: paged\ndescription: Something else.\n---\n\n# paged\n",
+		// when declares use-when text and its page carries it after the
+		// sentence; bare declares it too, and its page carries the sentence alone.
+		"when": "---\nname: when\ndescription: " + frontmatter.QuoteScalar(good+" Use when the user says go.") + "\n---\n\n# when\n",
+		"bare": "---\nname: bare\ndescription: " + frontmatter.QuoteScalar(good) + "\n---\n\n# bare\n",
 	}
+	useWhen := map[string]string{"when": "Use when the user says go.", "bare": "Use when the user says stop."}
 	lookup := func(path string) (string, bool) { s, ok := manifest[path]; return s, ok }
-	defects := sentenceDefects(t, build, lookup, pages)
+	defects := sentenceDefects(t, build, lookup, pages, useWhen)
 
 	joined := strings.Join(defects, "\n")
 	for _, want := range []struct{ verb, defect string }{
@@ -234,6 +243,7 @@ func TestSentenceDefectsNamesTheVerbAndTheDefect(t *testing.T) {
 		{"tool differs", "command list"},
 		{"tool differs", "--help opens with"},
 		{"tool paged", "commands/paged.md's description differs"},
+		{"tool bare", "commands/bare.md's description differs"},
 	} {
 		found := false
 		for _, d := range defects {
@@ -246,7 +256,7 @@ func TestSentenceDefectsNamesTheVerbAndTheDefect(t *testing.T) {
 		}
 	}
 	for _, d := range defects {
-		if strings.HasPrefix(d, "tool good:") || strings.HasPrefix(d, "tool:") {
+		if strings.HasPrefix(d, "tool good:") || strings.HasPrefix(d, "tool:") || strings.HasPrefix(d, "tool when:") {
 			t.Errorf("a well-formed verb was named: %s", d)
 		}
 	}
@@ -397,5 +407,147 @@ func TestWithDescriptionRewritesOnlyTheDescription(t *testing.T) {
 	// it is body prose and is not rewritten.
 	if _, err := withDescription("---\ndescription: Old words.\n\n# x\n", "S: Writes nothing; refuses y."); err == nil {
 		t.Fatal("a page whose frontmatter is never closed was rewritten instead of refused")
+	}
+}
+
+// committedDescription reads the committed description of commands/<page>.md.
+func committedDescription(t *testing.T, page string) string {
+	t.Helper()
+	body, ok := commandFileBodies(t)[page]
+	if !ok {
+		t.Fatalf("there is no commands/%s.md", page)
+	}
+	head, _ := frontmatter.Split(body)
+	field, has := frontmatter.Fields(strings.Split(head, "\n"))["description"]
+	value, scalar := frontmatter.ScalarString(field.Value)
+	if !has || !scalar {
+		t.Fatalf("commands/%s.md has no single-line description", page)
+	}
+	return value
+}
+
+// TestFoldedPagesCarryTheirUseWhenText: the library and ahoy pages carry the
+// host workflows of pages the verb split deleted (register and consult on
+// library, the repository preparation on ahoy), so their descriptions carry
+// the trigger phrases those pages' descriptions gave the host, after the bare
+// verb's sentence. Library's says registering is `library add`, and never
+// names `library ingest`, which distils and registers nothing
+// (iss-2610110233253365).
+func TestFoldedPagesCarryTheirUseWhenText(t *testing.T) {
+	for _, c := range []struct {
+		page    string
+		phrases []string
+	}{
+		{"library", []string{"ingest this", "register this source", "add this source", "consult sources",
+			"check the corpus", "what do my sources say", "library add"}},
+		{"ahoy", []string{"install", "prepare", "onboard", "scaffold", "bootstrap", "conventions"}},
+	} {
+		sentence, ok := surface.SentenceFor("abcd " + c.page)
+		if !ok {
+			t.Fatalf("abcd %s has no sentence in the manifest", c.page)
+		}
+		got := committedDescription(t, c.page)
+		rest, found := strings.CutPrefix(got, sentence+" ")
+		if !found {
+			t.Errorf("commands/%s.md's description does not open with the sentence and then more: %q", c.page, got)
+			continue
+		}
+		if !strings.HasPrefix(rest, "Use when ") {
+			t.Errorf("commands/%s.md's description carries no use-when text after the sentence: %q", c.page, got)
+		}
+		for _, p := range c.phrases {
+			if !strings.Contains(rest, p) {
+				t.Errorf("commands/%s.md's use-when text lacks %q: %q", c.page, p, rest)
+			}
+		}
+	}
+	if d := committedDescription(t, "library"); strings.Contains(d, "library ingest") {
+		t.Errorf("commands/library.md's description names library ingest, which registers nothing: %q", d)
+	}
+}
+
+// TestUseWhenTextNeverReachesTheHelp: the use-when text is the page's alone.
+// The command list and each verb's own --help still show the bare sentence,
+// byte for byte, and nothing of the use-when text.
+func TestUseWhenTextNeverReachesTheHelp(t *testing.T) {
+	if len(pageUseWhen) == 0 {
+		t.Fatal("no page declares use-when text; the check would pass vacuously")
+	}
+	rootHelp := helpOf(t, NewRootCommand, nil)
+	for page, when := range pageUseWhen {
+		sentence, ok := surface.SentenceFor("abcd " + page)
+		if !ok {
+			t.Fatalf("abcd %s has no sentence in the manifest", page)
+		}
+		if !listsSentence(rootHelp, page, sentence) {
+			t.Errorf("abcd --help does not list %s with its bare sentence", page)
+		}
+		own := helpOf(t, NewRootCommand, []string{page})
+		if first, _, _ := strings.Cut(own, "\n"); first != sentence {
+			t.Errorf("abcd %s --help opens with %q, not the bare sentence", page, first)
+		}
+		if strings.Contains(rootHelp, when) || strings.Contains(own, when) {
+			t.Errorf("abcd %s: the page's use-when text reached the help", page)
+		}
+	}
+}
+
+// TestPagesOutsideTheUseWhenMapCarryTheSentenceAlone: every generated page
+// whose name the map does not hold has the bare sentence as its description.
+func TestPagesOutsideTheUseWhenMapCarryTheSentenceAlone(t *testing.T) {
+	bodies := commandFileBodies(t)
+	checked := 0
+	for _, cmd := range append([]*cobra.Command{NewRootCommand()}, NewRootCommand().Commands()...) {
+		if cmd.Hidden || cmd.Deprecated != "" {
+			continue
+		}
+		if _, declared := pageUseWhen[cmd.Name()]; declared {
+			continue
+		}
+		if _, ok := bodies[cmd.Name()]; !ok {
+			continue
+		}
+		sentence, ok := surface.SentenceFor(cmd.CommandPath())
+		if !ok {
+			continue
+		}
+		if got := committedDescription(t, cmd.Name()); got != sentence {
+			t.Errorf("commands/%s.md's description is not its bare sentence: %q", cmd.Name(), got)
+		}
+		checked++
+	}
+	if checked < 20 {
+		t.Fatalf("checked %d pages; every top-level verb with a page outside the map is one", checked)
+	}
+}
+
+// TestUseWhenEntriesAreWellFormed: each declared entry names a visible
+// top-level verb that has a page, is one line opening with "Use when " and
+// closing with a period, and runs to at most UseWhenCap characters.
+func TestUseWhenEntriesAreWellFormed(t *testing.T) {
+	bodies := commandFileBodies(t)
+	root := NewRootCommand()
+	for page, when := range pageUseWhen {
+		cmd := findByPath(root, []string{page})
+		if cmd == nil || cmd == root || cmd.Hidden || cmd.Deprecated != "" {
+			t.Errorf("use-when key %q is not a visible top-level verb", page)
+		}
+		if _, ok := bodies[page]; !ok {
+			t.Errorf("use-when key %q has no commands/%s.md", page, page)
+		}
+		if err := checkUseWhen(when); err != nil {
+			t.Errorf("use-when text of %s: %v", page, err)
+		}
+	}
+	for _, bad := range []string{
+		"",
+		"When the user says go.",
+		"Use when the user says go",
+		"Use when the user says go.\nAnd again.",
+		"Use when " + strings.Repeat("x", UseWhenCap) + ".",
+	} {
+		if checkUseWhen(bad) == nil {
+			t.Errorf("checkUseWhen accepted %q", bad)
+		}
 	}
 }

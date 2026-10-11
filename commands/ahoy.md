@@ -1,6 +1,6 @@
 ---
 name: ahoy
-description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
+description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once. Use when the user asks to install abcd in a repository, or to prepare, onboard, scaffold or bootstrap a repository for agent work or bring it up to current conventions (that is ahoy install)."
 argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect | credential]"
 block: people
 ---
