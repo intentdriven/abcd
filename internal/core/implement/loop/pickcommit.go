@@ -66,26 +66,33 @@ func pickMessage(st State) string {
 		composedAssistedBy() + "\n"
 }
 
-// pickGit runs one git command in the lane's worktree for the pick commit and
-// returns its stdout verbatim: a porcelain status line opens with a space when
-// the change is unstaged, and the comparison below is made against the line as
-// git wrote it.
-//
-// Automatic maintenance is off (gc.auto=0, maintenance.auto=false, on the
-// command line where they outrank the repository's config): the isolated
-// environment pins them, ScrubbedEnv does not, and a commit or merge would
-// otherwise start `maintenance run --auto` and `gc --auto`, which can run
-// gc.recentObjectsHook, a program the repository names. GIT_NO_LAZY_FETCH=1
-// keeps a merge in a partial clone from fetching a missing object through the
-// repository's promisor remote (iss-2610091935334207).
+// pickGit runs one git command in the lane's worktree and returns its stdout
+// verbatim: a porcelain status line opens with a space when the change is
+// unstaged, and the comparison below is made against the line as git wrote it.
+// It is the loop's one route for a git command that writes or judges a lane's
+// working tree (the pick commit, the land's staging, a sync's merge, the lane's
+// `git worktree add`, a restart's reset and clean), so each sees the
+// repository as the person's own git does: gitutil.WorkingTreeCommand, which
+// keeps the person's global config (a content filter a global `git lfs
+// install` defines, a global ignore file) with the program-starting knobs and
+// automatic maintenance pinned off.
 func pickGit(dir string, args ...string) (string, error) {
-	full := append(append(gitutil.ExecPins(),
-		"-c", "core.quotePath=false",
-		"-c", "gc.auto=0",
-		"-c", "maintenance.auto=false",
-		"-C", dir), args...)
-	cmd := exec.Command("git", full...)
-	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
+	return runTreeGit(gitutil.WorkingTreeCommand(dir, args...), args)
+}
+
+// pickGitIndex is pickGit on a scratch index, for a command that must read the
+// working tree as the person's git does without touching the lane's own index.
+func pickGitIndex(dir, index string, args ...string) (string, error) {
+	if !filepath.IsAbs(index) {
+		return "", fmt.Errorf("the scratch index %q is not an absolute path", index)
+	}
+	cmd := gitutil.WorkingTreeCommand(dir, args...)
+	cmd.Env = append(cmd.Env, "GIT_INDEX_FILE="+index)
+	return runTreeGit(cmd, args)
+}
+
+// runTreeGit runs a pickGit command, bounding what it reads back.
+func runTreeGit(cmd *exec.Cmd, args []string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	// The subcommand an error names follows any `-c` overrides the caller put

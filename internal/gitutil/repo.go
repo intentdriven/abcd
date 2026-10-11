@@ -179,6 +179,37 @@ func ScrubbedEnv() []string {
 	return env
 }
 
+// WorkingTreeCommand builds a git command under root that writes or judges a
+// working tree the way the person's own git does: it reads the person's global
+// and system config (ScrubbedEnv), so the content filters, ignore files and
+// line-ending settings a repository relies on there apply. A filter that a
+// global `git lfs install` defines is the case that made it necessary: under
+// the isolated environment a lane's `git worktree add` and a restart's `reset
+// --hard` wrote Git LFS pointer text where the person's own git writes the
+// files (iss-2610111729375108). The git commands that check files out into a
+// working tree, stage it, clean it or commit from it use this; a read whose
+// answer abcd parses stays isolated.
+//
+// Only which config files git reads changes. The program-starting knobs stay
+// pinned off (ExecPins), automatic maintenance is off on the command line
+// (gc.auto=0, maintenance.auto=false: ScrubbedEnv does not pin them as the
+// isolated environment does, and a commit or merge would otherwise start `gc
+// --auto`, which runs gc.recentObjectsHook, iss-2610091935334207),
+// GIT_NO_LAZY_FETCH=1 keeps a partial clone from fetching a missing object
+// through its promisor remote, and the command passes the lazy-fetch floor
+// guard every isolated command passes.
+func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
+	full := append(append(ExecPins(),
+		"-c", "core.quotePath=false",
+		"-c", "gc.auto=0",
+		"-c", "maintenance.auto=false",
+		"-C", root), args...)
+	cmd := exec.Command("git", full...)
+	cmd.Env = append(ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
+	guardObjectRead(cmd, root, args)
+	return cmd
+}
+
 // CommandLineConfig is the `git -c` configuration the parent environment
 // carries — GIT_CONFIG_PARAMETERS and the GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/
 // GIT_CONFIG_VALUE_n form, the entries ScrubbedEnv strips — as "KEY=value"

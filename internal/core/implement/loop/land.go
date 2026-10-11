@@ -1046,7 +1046,9 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 
 // removeLaneWorktree removes the lane's worktree when git lists it at the lane's
 // path on the lane's branch; git refuses a worktree with changes, and the loop
-// never forces it.
+// never forces it. git judges the changes as the person's own git does
+// (pickGit), through the filters and ignore files their global config names
+// (iss-2610111729375108).
 func removeLaneWorktree(c Context, lane Lane) error {
 	if err := loopWorktree(c, lane, string(StageLand)); err != nil {
 		return err
@@ -1064,7 +1066,7 @@ func removeLaneWorktree(c Context, lane Lane) error {
 			return refuse(string(StageLand), "", lane.ID, "git lists a worktree at the lane's path on another branch, and the loop removes only what it made",
 				"remove it yourself, then run `abcd implement step` again")
 		}
-		if _, err := gitutil.Run(c.RepoRoot, "worktree", "remove", "--", wt.Path); err != nil {
+		if _, err := pickGit(c.RepoRoot, "worktree", "remove", "--", wt.Path); err != nil {
 			return refuse(string(StageLand), "", lane.ID, "git could not remove the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports (it refuses a worktree with changes), then run `abcd implement step` again")
 		}

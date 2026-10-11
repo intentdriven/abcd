@@ -212,7 +212,10 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 				base = mb
 			}
 		}
-		if _, err := gitutil.Run(c.RepoRoot, args...); err != nil {
+		// The checkout writes the lane's files as the person's own git
+		// would, through the filters their global config defines
+		// (iss-2610111729375108).
+		if _, err := pickGit(c.RepoRoot, args...); err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")
