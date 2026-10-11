@@ -258,9 +258,9 @@ page's name is gone with no alias, and typing it at a shell gets a note naming
 the install instead. The fold is page-only. The binary's install is
 unchanged and gains no refusal: it checks no ownership, so the workflow's first
 phase does, as before, and a refusal in the binary would break installs that
-work today. A repository already prepared, its three tiers in place and its
-`AGENTS.md` carrying the working-conventions markers, needs only the binary's
-apply pass.
+work today. The detection pass decides where the page starts: a managed
+repository needs only the binary's apply pass unless the person asks to prepare
+it, and an unmanaged one starts at the workflow's first phase.
 
 The workflow is an **interim bridge**. abcd cannot yet manage repositories
 directly, so the page does by hand what the CLI will later take over, in a
