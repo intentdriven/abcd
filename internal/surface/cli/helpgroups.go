@@ -97,9 +97,11 @@ type helpPlacement struct {
 // inbox, implement, history, site, docs, scribe, identity, guard, hook and
 // statusline with agents. P2 keeps drain with agents until itd-82 ships. P3
 // makes peers and mode agents only, P4 report, spec and rules, and P6 banlist.
-// memory and source have merged into library, a person's verb under records
-// (P4 and decision 1), and changelog into launch as its preview
-// (`launch --dry-run`, P4), so neither old name has a placement. Neither
+// The old memory and source verbs merged into library, a person's verb under
+// records (P4 and decision 1), and changelog into launch as its preview
+// (`launch --dry-run`, P4), so neither source nor changelog has a placement;
+// the memory name returned as the agents' memory-notes verb
+// (itd-2610091918433290), which the verb split gave it. Neither
 // surface caps the person's list (the 2026-10-09 menu ruling), and the plugin menu lists the
 // same commands (TestPluginPersonListEqualsTheCLIs). The groups are the spec's
 // decision 1: ideate under records, reading and lab under checks, dashboard
@@ -136,6 +138,7 @@ var helpPlacements = map[string]helpPlacement{
 	"inbox":               {group: groupAgents, page: "commands/inbox.md"},
 	"intent audit ingest": {page: "commands/intent.md"},
 	"lint":                {group: groupAgents, page: "commands/lint.md"},
+	"memory":              {group: groupAgents, page: "commands/memory.md"},
 	"mode":                {group: groupAgents, page: "commands/mode.md"},
 	"peers":               {group: groupAgents, page: "commands/peers.md"},
 	"reflect":             {group: groupAgents, page: "commands/reflect.md"},

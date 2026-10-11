@@ -95,7 +95,6 @@ var retiredTokens = map[string]string{
 	"ingest":            "`ingest` folded into the library page: run /abcd:library, where `abcd library add` registers a document in the sources corpus; `abcd library ingest` distils a source into memory pages and registers nothing",
 	"prepare-this-repo": "`prepare-this-repo` folded into ahoy install: run /abcd:ahoy install, which prepares the repository in the host agent around the binary's `abcd ahoy install`",
 	"changelog":         "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
-	"memory":            "`memory` merged into the library verb: run `abcd library` for the memory store's status beside the sources corpus, and `abcd library ingest`, `ask` or `lint` for the store's verbs",
 	"source":            "`source` merged into the library verb: run `abcd library` for the sources corpus beside the memory store, and `abcd library init`, `add`, `declassify`, `ledger`, `sync-banlist` or `cite-check` for the corpus's verbs",
 	"version":           "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
 }

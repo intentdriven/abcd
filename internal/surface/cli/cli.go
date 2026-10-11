@@ -402,6 +402,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newLabCommand(&asJSON))
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
+	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newDashboardCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))

@@ -66,6 +66,49 @@ func openStoreRedactor(repoRoot string) (*storeRedactor, error) {
 	return &storeRedactor{sc: sc, home: scanner.CallerHome()}, nil
 }
 
+// StoreRedactor is the store's redactor, exported for the memory-note write
+// gate (internal/core/memnote, spc-2610111627213138) so a note is judged by the
+// one detector a page is, never by a second one written beside it
+// (one-canonical-primitive). It judges and never rewrites: the note gate
+// refuses a note the page writer would have to rewrite, since a lesson with a
+// span cut out of it may say something wrong.
+type StoreRedactor struct{ r *storeRedactor }
+
+// OpenStoreRedactor builds the store's redactor for repoRoot, refusing a
+// scanner that failed to start or that the per-repo pii.json left degraded
+// (openStoreRedactor's refusal, worded "degraded scanner: ...").
+func OpenStoreRedactor(repoRoot string) (*StoreRedactor, error) {
+	r, err := openStoreRedactor(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return &StoreRedactor{r: r}, nil
+}
+
+// BlockingKinds returns, in first-seen order, the distinct kinds of every span
+// in text that the page writer would refuse or rewrite: every blocking finding
+// of the canonical scanner (a hard_fail span, any token, any identity or
+// network span whatever its severity) and the literal-home backstop — the read
+// side, residue, that the store's lint applies to text already written. The
+// kinds name the class of span and never the span itself. A scanner that
+// degraded during the scan (a repository's augmenter failing) is an error,
+// never a clean answer.
+func (s *StoreRedactor) BlockingKinds(text, label string) ([]string, error) {
+	found := s.r.residue(text, label)
+	if bad, why := s.r.sc.Unavailable(); bad {
+		return nil, fmt.Errorf("degraded scanner: %s", why)
+	}
+	seen := map[string]bool{}
+	var kinds []string
+	for _, f := range found {
+		if !seen[f.Kind] {
+			seen[f.Kind] = true
+			kinds = append(kinds, f.Kind)
+		}
+	}
+	return kinds, nil
+}
+
 // newStoreRedactor is the write side of openStoreRedactor: it refuses the whole
 // ingest on a broken per-repo pii.json, matching history's posture — a
 // committed store must never be written with a detector known to be weakened.

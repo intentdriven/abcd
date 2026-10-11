@@ -3208,6 +3208,91 @@ Gate the built website, rendering it first when absent: Writes only inside the o
       --out string   built output directory to check (rendered first if absent) (default "site")
 ```
 
+### `abcd memory`
+
+Count the memory notes in both layers and name any layer it cannot read: Writes nothing; refuses an unknown sub-verb.
+
+**Usage:** `abcd memory`
+
+Keep memory notes: short lessons an agent writes so a later session does not
+relearn them. Personal notes live in the machine layer, `~/.abcd.noindex/memory.json`;
+notes a person promoted into the project live in its `.abcd/memory.json`, beside each
+rules.json. Both are read with the trust checks the rules layers get.
+
+Bare `abcd memory` counts the personal notes tied to this repository and those
+recalled everywhere, and the notes in the project's file, and names any layer
+that could not be read and why. `abcd memory add` writes one note to the machine
+layer and nothing else, after a gate refuses any note holding a secret, a
+network address or a name this checkout's private banlist holds. `abcd memory
+list` shows every note with its body, recall words, stamps and reach; `abcd
+memory remove <mem-id>` removes any personal note. A note in the project's file
+is removed by editing that file in a reviewed change, never by this verb.
+
+Exit 2 on a refusal, with nothing written.
+
+#### `abcd memory add`
+
+Write one memory note, its body read from stdin: Writes ~/.abcd.noindex/memory.json only; refuses a secret, a network address or a private name.
+
+**Usage:** `abcd memory add --title <title> --recall <word> --by <vendor:model> [flags]`
+
+Write one note to the machine layer, the body read from stdin. The note is
+stamped with the writer (--by, the Assisted-by form <Vendor>:<model-version>),
+the clock's time and the host's session id (--session; without it the session
+is recorded as unknown, and the write says so). It is tied to this repository
+unless --everywhere recalls it in every repository; such a note has been
+checked against this checkout's private names only, and the write says so.
+--moved-from-host stamps a lesson the person pointed at in the host's own
+memory files; the text still arrives on stdin, since add takes no path.
+
+Exit 2 on a refusal — a field past its limit, a secret, a network address or
+a private name, a session shaped like a link — with nothing written.
+
+**Flags:**
+
+```
+      --by string            the writer, in the Assisted-by form <Vendor>:<model-version>
+      --everywhere           recall the note in every repository, not only this one
+      --moved-from-host      stamp a lesson the person pointed at in the host's own memory files
+      --recall stringArray   a word or short phrase a later prompt would use (repeatable, 1 to 12)
+      --session string       the host's id for this session; without it the session is recorded as unknown
+      --title string         the note's title, one line of at most 120 characters
+```
+
+**Example:**
+
+```
+abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt
+```
+
+#### `abcd memory list`
+
+List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.
+
+**Usage:** `abcd memory list`
+
+List every note in both layers: its id, title, body, recall words, who wrote
+it, when and in which session, its origin, and its reach (this repository,
+everywhere, another repository, or the project's file). Read-only.
+
+#### `abcd memory remove`
+
+Remove one personal memory note, whoever wrote it: Writes ~/.abcd.noindex/memory.json only; refuses a note in the project's file.
+
+**Usage:** `abcd memory remove <mem-id>`
+
+Remove one personal note from the machine layer, whoever wrote it, run by a
+person or by an agent at a person's request. A note in the project's file is
+removed by editing that file in a reviewed change, and is refused here.
+
+Exit 2 on a refusal, with nothing written.
+
+**Example:**
+
+```
+abcd memory remove mem-2609010000000001
+```
+
 ### `abcd mode`
 
 Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.
