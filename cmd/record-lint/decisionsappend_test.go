@@ -68,3 +68,24 @@ func TestDecisionsAppendFrontDoorExitCodes(t *testing.T) {
 		t.Errorf("outside a repository: exit %d, stderr %q; want 2", code, errs)
 	}
 }
+
+// TestDecisionsAppendSkipIsAnAnnotationOnActions: a run that names no base —
+// the nightly schedule, a dispatched run — skips the range check, and on a
+// GitHub Actions runner says so as a notice annotation, which reaches the
+// run's summary, rather than as a log line nobody opens. Off a runner the line
+// stays plain, so a local run prints no workflow command.
+func TestDecisionsAppendSkipIsAnAnnotationOnActions(t *testing.T) {
+	r := daFrontDoorRepo(t)
+	t.Setenv("GITHUB_ACTIONS", "true")
+	code, out, _ := runDA(r.Root(), "", "work")
+	if code != 0 || !strings.HasPrefix(out, "::notice ") || !strings.Contains(out, "skipped") {
+		t.Errorf("on a runner: exit %d, stdout %q; want 0 and a ::notice annotation announcing the skip", code, out)
+	}
+	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
+		t.Errorf("the annotation spans more than one line: %q", out)
+	}
+	t.Setenv("GITHUB_ACTIONS", "")
+	if _, out, _ := runDA(r.Root(), "", "work"); strings.Contains(out, "::") {
+		t.Errorf("off a runner the skip printed a workflow command: %q", out)
+	}
+}

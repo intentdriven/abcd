@@ -186,7 +186,6 @@ const (
 	nativeIntentsDir  = ".abcd/development/intents"
 	nativeGlossaryDir = ".abcd/development/brief/glossary"
 	nativeDecisions   = ".abcd/work/DECISIONS.md"
-	nativePersonas    = ".abcd/development/brief/01-product/05-personas.md"
 )
 
 // nativeIssueStates are the capture-ledger subdirectories, in a fixed order so
@@ -424,15 +423,23 @@ func (nativeSpineSource) Probe(ctx *SourceContext) Evidence {
 	}
 }
 
-// nativeInvariantsSource grounds "constraints/invariants" from the conventions
-// router (AGENTS.md / CLAUDE.md) and any lint configuration under .abcd/. The
-// router grounds it; lint config alone is partial. Blank when neither exists.
+// nativeInvariantsSource grounds "constraints/invariants" from the section's own
+// brief file, the conventions router (AGENTS.md / CLAUDE.md) and any lint
+// configuration under .abcd/. An authored brief file or the router grounds it;
+// lint config alone, or a stub brief file, is partial. Blank when the record has
+// none of them.
 type nativeInvariantsSource struct{}
 
 func (nativeInvariantsSource) Section() Section { return "constraints/invariants" }
 func (nativeInvariantsSource) Tier() Tier       { return TierNative }
 
-func (nativeInvariantsSource) Probe(ctx *SourceContext) Evidence {
+func (s nativeInvariantsSource) Probe(ctx *SourceContext) Evidence {
+	return nativeWithBriefFile(ctx, s.Section(), s.probeRecord(ctx))
+}
+
+// probeRecord is the invariants reading from the conventions router and lint
+// configuration alone, before the brief file is consulted.
+func (nativeInvariantsSource) probeRecord(ctx *SourceContext) Evidence {
 	var sources []string
 	hasRouter := false
 	for _, f := range []string{"AGENTS.md", "CLAUDE.md"} {
@@ -455,20 +462,27 @@ func (nativeInvariantsSource) Probe(ctx *SourceContext) Evidence {
 	sort.Strings(sources)
 	if !hasRouter {
 		return partial(ConfidenceMedium, sources,
-			"Found lint configuration under .abcd/ but no conventions router, so some rules are enforced but none is stated; an AGENTS.md or CLAUDE.md stating the invariants would ground it.")
+			"Found lint configuration under .abcd/ but no conventions router, so some rules are enforced but none is stated; an AGENTS.md or CLAUDE.md stating the invariants, or an authored "+nativeSectionBriefFile("constraints/invariants")+", would ground it.")
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 }
 
-// nativeNamingSource grounds "constraints/naming" from the brief glossary. A
-// glossary carrying real prose grounds it; an empty or stub glossary is partial;
-// no glossary directory is a blank.
+// nativeNamingSource grounds "constraints/naming" from the section's own brief
+// file and the brief glossary. An authored brief file or a glossary carrying
+// real prose grounds it; a stub glossary or a stub brief file is partial. Blank
+// when the record has neither.
 type nativeNamingSource struct{}
 
 func (nativeNamingSource) Section() Section { return "constraints/naming" }
 func (nativeNamingSource) Tier() Tier       { return TierNative }
 
-func (nativeNamingSource) Probe(ctx *SourceContext) Evidence {
+func (s nativeNamingSource) Probe(ctx *SourceContext) Evidence {
+	return nativeWithBriefFile(ctx, s.Section(), s.probeRecord(ctx))
+}
+
+// probeRecord is the naming reading from the brief glossary alone, before the
+// section's brief file is consulted.
+func (nativeNamingSource) probeRecord(ctx *SourceContext) Evidence {
 	if !ctx.IsDir(nativeGlossaryDir) {
 		return blank(
 			[]string{nativeGlossaryDir},
@@ -495,29 +509,27 @@ func (nativeNamingSource) Probe(ctx *SourceContext) Evidence {
 	}
 	if body < nativeGroundedBodyBytes {
 		return partial(ConfidenceMedium, dedupeSorted(files),
-			fmt.Sprintf("Found %d glossary file(s) under %s carrying %d characters of body prose, under the %d an authored glossary carries; defining the project's terms there in prose would ground it.",
-				len(files), nativeGlossaryDir, body, nativeGroundedBodyBytes))
+			fmt.Sprintf("Found %d glossary file(s) under %s carrying %d characters of body prose, under the %d an authored glossary carries; defining the project's terms there in prose, or an authored %s, would ground it.",
+				len(files), nativeGlossaryDir, body, nativeGroundedBodyBytes, nativeSectionBriefFile("constraints/naming")))
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: dedupeSorted(files)}
 }
 
-// nativePersonasSource is the deliberately hard case: "product/personas" is a
-// human question rarely written down anywhere. It reaches at most PARTIAL, and
-// only when an authored personas file exists; otherwise it returns a blank —
-// the expected, correct result for a section a repository cannot supply.
+// nativePersonasSource grounds "product/personas" from the section's own brief
+// file, as every other brief section is grounded: an authored file grounds it, a
+// stub one is partial, and a missing one is a blank. The section is human-owned
+// (adr-36) — who a product serves is not derivable from a repository — so the
+// record holds no other signal for it, and the blank, the expected result where
+// no one has written the personas down, carries the question only a person can
+// answer.
 type nativePersonasSource struct{}
 
 func (nativePersonasSource) Section() Section { return "product/personas" }
 func (nativePersonasSource) Tier() Tier       { return TierNative }
 
-func (nativePersonasSource) Probe(ctx *SourceContext) Evidence {
-	data, ok := ctx.ReadFile(nativePersonas)
-	if !ok || nativeBodyBytes(data) < nativeGroundedBodyBytes {
-		return blank(
-			[]string{nativePersonas},
-			"Who are the personas this product serves? Personas are a human question, rarely derivable from a repository.",
-		)
-	}
-	return partial(ConfidenceLow, []string{nativePersonas},
-		"Found an authored "+nativePersonas+"; personas stay partial by design, because who a product serves is confirmed by a person, not derived from a repository — a person's confirmation would ground it.")
+func (s nativePersonasSource) Probe(ctx *SourceContext) Evidence {
+	return nativeWithBriefFile(ctx, s.Section(), blank(
+		nil,
+		"Who are the personas this product serves? Personas are a human question, rarely derivable from a repository.",
+	))
 }

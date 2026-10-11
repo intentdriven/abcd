@@ -54,8 +54,8 @@ The exemptions carrying a rationale of their own:
 The remaining surfaces are exempt for the plain reason that no maritime cognate
 adds meaning: `banlist`, `changelog`, `consult`, `decide`, `docs`, `guard`,
 `history`, `ideate`, `identity`, `ingest`, `lint`, `memory`,
-`prepare-this-repo`, `reading`, `rules`, `site`, `spec`, `update`, and
-`version`. They are registered here so the exemption is on the record.
+`prepare-this-repo`, `reading`, `rules`, `site`, `spec`, and `update`. They
+are registered here so the exemption is on the record.
 
 **Reserved meta-development commands** (later phases; named now to prevent
 collisions):

@@ -20,9 +20,11 @@ inbound = outbound statement is the whole of it.
   behind it may be declined on scope alone —
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
-  builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
-  Linux leg alone adds the `make fmt-check` format gate, the record-lint,
-  issue-drift and docs-lint steps, and the site-render gate; separate jobs run the
+  builds, vets and tests (plain and race-enabled) on Linux, with the
+  `make fmt-check` format gate, the record-lint, issue-drift and docs-lint
+  steps, and the site-render gate, and runs the suite on macOS, as one
+  race-enabled pass over the whole module, in the merge queue: on a pull request `check (macos-latest)` reports without running, and
+  the queue entry tests the merged tree on macOS; separate jobs run the
   reviews-charter and issue-resolution checks (RS001–RS006), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
   cold-reading evals (`make evals-cold-reading`, which runs on every event).
@@ -37,9 +39,12 @@ inbound = outbound statement is the whole of it.
   none is armed); run it after arming auto-merge, and after every merge that
   moves `main`. A pull request confined to `docs/`, `.abcd/development/`,
   `.abcd/work/`, the root prose files, and this guide and the security policy
-  beside it in `.github/` stands the macOS leg, the race lane and the `zizmor`,
-  `govulncheck` and smoke lanes down while it is in review; the queue run is not
-  a pull-request event, so the full set gates the merge either way.
+  beside it in `.github/` stands the race lane and the `zizmor`, `govulncheck`
+  and smoke lanes down while it is in review; the queue run is not
+  a pull-request event, so the full set gates the merge either way. CI does
+  not run again on the push the merge makes to `main`; a nightly run checks
+  `main` instead. When the queue drops an entry, a sweep cancels the CI runs
+  still going for it, so they stop holding runners the live entries need.
 - **Publish surface reviews.** Paths listed in
   [`.github/CODEOWNERS`](CODEOWNERS) ship behaviour to installed users
   (plugin hooks and commands, agent prompts, workflows, gates and build

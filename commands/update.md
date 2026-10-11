@@ -36,6 +36,16 @@ Relay `version`, `vintage` and the `check` object: its `verdict`, the `latest`
 tag and its `source`, and — when an update is available — `next_step`, verbatim,
 which names the command that takes the update for this install's shape.
 
+abcd never fetches implicitly (adr-38): the network is touched only when the
+caller runs a command whose documented job includes a remote call. The release
+origin is reached by `update --check`, `update`, and `launch --dry-run
+--fetch-baseline` or `launch ship --fetch-baseline`; a cited source by `docs
+cite refresh`; a URL by `memory ingest <url>`; a provider's verification call by
+`ahoy connect` and `ahoy credential <name> --home`; a model provider by a
+delegating verb routed to one (`reading ingest --dispatch` among them); the
+site host and GitHub by `site setup`; and GitHub, through `gh` or `git`, by
+`ahoy --remote`, `ahoy remote apply` and the implement loop's landing.
+
 To take the update, run:
 
 ```bash

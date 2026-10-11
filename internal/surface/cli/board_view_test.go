@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -245,5 +246,43 @@ func TestAbcdPageRelaysTheMarkdownForm(t *testing.T) {
 	// page runs is the markdown form.
 	if i, j := strings.Index(page, "--format markdown"), strings.Index(page, "\" --json"); i < 0 || (j >= 0 && j < i) {
 		t.Errorf("the /abcd page runs --json before the markdown form")
+	}
+}
+
+// TestBoardShowsTheVersion is A9 at the front door (spc-2610100613109045,
+// decision 4): the installed version is the board's last line in both views
+// and both forms, read from the same core.VersionInfo `abcd --version`
+// reports; --json carries it as `version`; and the first line stays the view
+// label alone.
+func TestBoardShowsTheVersion(t *testing.T) {
+	root := managedCheckout(t)
+	statusRecord(t, root)
+	orig := core.Version
+	core.Version = "v9.9.9"
+	t.Cleanup(func() { core.Version = orig })
+	setBoardWidth(t, 80)
+	t.Setenv("NO_COLOR", "1")
+	for _, tc := range []struct {
+		args        []string
+		first, last string
+	}{
+		{nil, "view for the product thinker", "abcd v9.9.9"},
+		{[]string{"--view", "facilitator"}, "view for the facilitator", "abcd v9.9.9"},
+		{[]string{"--format", "markdown"}, "view for the product thinker", "- abcd v9.9.9"},
+		{[]string{"--view", "facilitator", "--format", "markdown"}, "view for the facilitator", "- abcd v9.9.9"},
+	} {
+		lines := strings.Split(strings.TrimRight(string(runCLI(t, tc.args...)), "\n"), "\n")
+		if lines[0] != tc.first {
+			t.Errorf("%v: the first line is %q, want the view label %q alone", tc.args, lines[0], tc.first)
+		}
+		if got := lines[len(lines)-1]; got != tc.last {
+			t.Errorf("%v: the last line is %q, want the version %q", tc.args, got, tc.last)
+		}
+	}
+	var got struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil || got.Version != "v9.9.9" {
+		t.Errorf("--json version = %q (%v), want the version --version reports, v9.9.9", got.Version, err)
 	}
 }

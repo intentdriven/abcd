@@ -18,6 +18,41 @@ Run:
 
 Paste its output to the user unchanged, in one fenced block: add nothing inside the fence, and retell none of it outside the fence. The output is the view for the product thinker, a few plain lines: what is being built, the next three things to build, and how many more are ready or parked. It is drawn for a person to read as it stands.
 
+## The version
+
+The board's last line is the installed abcd version, in both views and both
+forms (`abcd v0.13.4`, a list item in the markdown form), and `--json` carries
+it as `version`. It is the version `abcd --version` reports, read off the
+binary with no network. When the user asks how abcd was installed, how old it
+is, or whether it has drifted from the reference it should match, run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" --version --json
+```
+
+and tell them the `name`, `version`, `vintage` and `staleness`, plus
+`install_mode` when it is present. The key is omitted when no abcd-owned `PATH`
+entry resolves (nothing installed yet, a foreign or dangling entry, or an
+unresolved plugin root); then say abcd is not on `PATH` yet and point at
+`ahoy install` (see *Binary resolution* below) rather than inventing a mode.
+Whether a newer release exists is the update verb's check
+(`/abcd:update`); ask it only when the user does.
+
+**If `superseded_root` is present, say it FIRST.** It means the binary that just
+answered, and so the version on the board, is served from a plugin root other
+than the one this session resolves: the version reported is true of that root
+and false of this machine. A plugin root is named for the commit it was
+installed from, so an absolute binary path pinned into a page expires on the
+next update while the root it names stays on disk and keeps answering. Relay
+the note as abcd printed it, without paraphrasing: it names both roots, each by
+the commit its root was installed from, and abcd has already replaced any
+control and bidirectional characters in those names. Never rebuild the names
+from a path, and never re-decorate them. Then re-run the board through this
+session's own plugin root (reload the plugin surface if the path this page gave
+you is the stale one) before reporting a version at all. The note is silent
+when the answering binary sits in a source checkout of abcd, whose currency the
+`staleness` field already reports.
+
 ## The view for the facilitator
 
 When the user asks for the full board, run:
@@ -174,5 +209,24 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+**When no binary resolves.** If every rung fails, the fix is **not** to install
+Go. A compiler is a dependency of neither supported install route, which both
+provision a prebuilt, checksum-verified binary. Tell the user to recover in this
+order, no toolchain needed:
+
+1. Restart a session with network access. `hooks/bootstrap.sh` re-provisions the
+   plugin-root binary at the start of every session that can reach the release
+   origin; an empty `.bootstrap.attempt` marker with no binary beside it means a
+   previous provisioning began and did not finish, so a networked restart lands it.
+2. Reinstall the plugin from its marketplace when its remote is stale (for example
+   one predating an organisation rename). Re-adding the marketplace re-points it at
+   the live release origin; the install guide gives the exact steps.
+3. Install the CLI binary with the one-liner in the README, which downloads and
+   SHA-256-verifies the same prebuilt binary into `~/.local/bin`.
+
+`go run ./cmd/abcd` and `go build ./cmd/abcd` serve only a source checkout of this
+repo (contributors) or a platform carrying no released binary; they are never a
+prerequisite for a plugin or CLI user.
 
 **User input:** $ARGUMENTS
