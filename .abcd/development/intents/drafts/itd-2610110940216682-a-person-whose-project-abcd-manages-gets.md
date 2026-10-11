@@ -24,7 +24,7 @@ abcd is built for people who know what they want and are not CI engineers, which
 
 ## Mechanism
 
-We expect total CI time per merged change to fall by about half, with no change ever landing untested on any supported platform, because the merge queue already runs the full suite on the exact merge result: the pull-request run's full suite, the post-merge run and the second macOS test pass repeat work the queue run or the local preflight already did. Shown wrong if, after abcd's own CI takes this shape (iss-2610110938282654, iss-2610110938294826, iss-2610110938293273), runs per merged change do not fall, or platform defects reach the default branch that the old pull-request run would have caught.
+We expect total CI time per merged change to fall by about half, with no change ever landing untested on any supported platform, because the merge queue already runs the full suite on the exact merge result: the pull-request run's full suite, the post-merge run and the second macOS test pass repeat work the queue run or the local preflight already did. Shown wrong if, after abcd's own CI takes this shape (iss-2610110938282654, iss-2610110938294826, iss-2610110938293273), runs per merged change do not fall, or platform defects reach the default branch that the old pull-request run would have caught. <!-- record-lint: forward-looking -->
 
 ## Scope Conditions
 
@@ -54,7 +54,7 @@ We expect total CI time per merged change to fall by about half, with no change 
 | A managed repository's CI runs the full suite once, in the queue | capability | this intent |
 | The full suite must run on the merge result of every change before it lands | trust rule | a decision record and a brief invariant, owed before planning |
 | A remedy is filed whole, built where it can be, measured where it cannot | stance | `a-remedy-is-filed-whole` (principle) |
-| abcd's own CI takes the shape first | plumbing | iss-2610110938282654, iss-2610110938294826, iss-2610110938293273 (built on `ci/full-suite-once-per-merge`), iss-2610110613372021 (superseded queue runs) |
+| abcd's own CI takes the shape first | plumbing | iss-2610110938282654, iss-2610110938294826, iss-2610110938293273 (built on `ci/full-suite-once-per-merge`), iss-2610110613372021 (superseded queue runs) <!-- record-lint: forward-looking --> |
 | Parts that cannot be built yet | measured records | iss-2609012313465609 (up-to-date rule), iss-2610110939547495 (raise the macOS limit), iss-2610110939559446 (receipt as a status) |
 
 Verdict: FILE-AS-IS, the routing awaiting the product thinker's confirmation.
