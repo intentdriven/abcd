@@ -5,7 +5,7 @@ spec_id: spc-2610111627213138
 kind: bundle-member
 suggested_kind: standalone
 reclassification_history: []
-blocked_by: [itd-36, itd-3]
+blocked_by: []
 severity: minor
 related_intents: [itd-2610091918433290]
 related_adrs: [adr-2610091918443997]
