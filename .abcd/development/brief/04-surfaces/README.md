@@ -57,7 +57,7 @@ exempt from the file check.
 The reverse sweep reaches those two directories and no others. The prompt files
 under `agents/`, which a harness registers as invocable agents, are checked in
 neither direction: nothing asserts that one has a row here, and nothing notices
-when one is added or removed. No open record tracks that gap.
+when one is added or removed. iss-2610110456358519 tracks that gap.
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
 file in this directory carries a `## Sub-verbs` table recording, per verb, its
