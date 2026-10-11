@@ -165,6 +165,12 @@ type InstallOptions struct {
 	// --install-tool. Nil is a no for every tool, so a caller that asks nothing
 	// installs nothing. The category approval never stands in for it.
 	ConfirmTool tools.Confirm
+	// ReadmeParts is --readme-parts as given: a comma-separated list of the
+	// README parts abcd keeps current, or none; "" is the flag not given. It
+	// answers the README question in any run, --yes included, and is stored as
+	// readme.parts (readme_apply.go); a value ParseReadmeParts refuses refuses
+	// the install before any write.
+	ReadmeParts string
 	// ApproveDependency answers the dependency category's question yes without
 	// asking it: the front door sets it when the person named a tool to
 	// install (--install-tool), which is that answer given in advance. Every
@@ -248,6 +254,7 @@ type StatusLineReceipt struct {
 // UninstallReceipt is the outcome of Uninstall.
 type UninstallReceipt struct {
 	Marker     MarkerReceipt     `json:"marker"`
+	Readme     ReadmeReceipt     `json:"readme"`
 	Symlink    SymlinkReceipt    `json:"symlink"`
 	StatusLine StatusLineReceipt `json:"status_line"`
 }

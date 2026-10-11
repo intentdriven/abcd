@@ -34,8 +34,7 @@ import (
 // only as a parser, and the live badges are drawn by the forge when someone
 // reads the page (scope condition 5).
 //
-// Staged: nothing outside the tests calls deriveReadmeParts yet. The spec's
-// step 3 hands its bodies to syncReadmeParts from setup.
+// setup hands its bodies to syncReadmeParts (stepReadme, readme_apply.go).
 
 // readmeSettings is what derivation reads of the stored settings: the chosen
 // parts (`readme.parts`) and the owner's declared visibility

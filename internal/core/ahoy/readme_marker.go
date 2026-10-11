@@ -34,10 +34,9 @@ import (
 // patterns below, which require a colon there; neither reading sees the
 // other's blocks.
 //
-// Staged: nothing outside the tests calls syncReadmeParts or removeReadmeParts
-// yet. The spec's step 2 derives each part's body (readme_derive.go, checked
-// by readme_check.go), and its step 3 wires setup (`abcd ahoy install`, from
-// the stored `readme.parts`) and uninstall to them.
+// readme_derive.go derives each part's body, readme_check.go checks it, and
+// readme_apply.go wires setup (`abcd ahoy install`, from the stored
+// `readme.parts`) and uninstall to the write and the removal here.
 
 // readmePartOrder is the parts' fixed order. It places an absent part beside
 // the nearest present one, and only these names may be written.
@@ -123,10 +122,12 @@ type readmePartOutcome struct {
 }
 
 // readmePartsResult is a write's or a removal's outcome. Refused means a
-// duplicated or unclosed fence left the whole file as it was.
+// duplicated or unclosed fence left the whole file as it was; Created means
+// the write made a README that was not there.
 type readmePartsResult struct {
 	Wrote   bool
 	Refused bool
+	Created bool
 	Parts   []readmePartOutcome
 }
 
@@ -511,7 +512,7 @@ func endsWithBlankLine(b []byte) bool {
 // maxAhoyFileBytes, or one the parts would grow past it, is refused and left
 // untouched.
 //
-// Staged for spc-2610031704338417 step 3, which calls it from setup.
+// setup calls it from stepReadme (readme_apply.go).
 func syncReadmeParts(path string, want []readmePartWant) (readmePartsResult, error) {
 	if err := markerFolderRefusal(path); err != nil {
 		return readmePartsResult{}, err
@@ -529,7 +530,7 @@ func syncReadmeParts(path string, want []readmePartWant) (readmePartsResult, err
 // names every part edited by hand, leaving it. A README with no part is never
 // written. A duplicated or unclosed fence leaves the file untouched.
 //
-// Staged for spc-2610031704338417 step 3, which calls it from uninstall.
+// uninstall calls it from uninstallReadme (readme_apply.go).
 func removeReadmeParts(path string) (readmePartsResult, error) {
 	var res readmePartsResult
 	err := withRewriteLock(path, func() error {
@@ -542,35 +543,51 @@ func removeReadmeParts(path string) (readmePartsResult, error) {
 
 // syncReadmePartsLocked is syncReadmeParts' read, change and write.
 func syncReadmePartsLocked(path string, want []readmePartWant) (readmePartsResult, error) {
+	out, res, err := planReadmeFile(path, want)
+	if err != nil || !res.Wrote {
+		return res, err
+	}
+	if werr := fsutil.WriteFileAtomicPreserveMode(path, out); werr != nil {
+		return readmePartsResult{}, fmt.Errorf("it could not be written: %w", werr)
+	}
+	return res, nil
+}
+
+// planReadmeFile reads the README at path and plans the wanted parts into it
+// (planReadmeParts), writing nothing: the content a write would leave, and
+// what it would do. setup's early return asks it whether a run has work to
+// do, and syncReadmePartsLocked writes what it plans.
+func planReadmeFile(path string, want []readmePartWant) ([]byte, readmePartsResult, error) {
 	var existing []byte
+	absent := false
 	fi, lerr := os.Lstat(path)
 	switch {
 	case lerr == nil && fi.Mode()&os.ModeSymlink != 0:
-		return readmePartsResult{}, &ahoyError{"it is a symlink, and abcd never writes through one"}
+		return nil, readmePartsResult{}, &ahoyError{"it is a symlink, and abcd never writes through one"}
 	case lerr == nil && !fi.Mode().IsRegular():
-		return readmePartsResult{}, &ahoyError{"it is not a regular file"}
+		return nil, readmePartsResult{}, &ahoyError{"it is not a regular file"}
 	case lerr == nil:
 		data, rerr := fsutil.ReadGuarded(path, maxAhoyFileBytes)
 		if rerr != nil {
-			return readmePartsResult{}, fmt.Errorf("it could not be read: %w", rerr)
+			return nil, readmePartsResult{}, fmt.Errorf("it could not be read: %w", rerr)
 		}
 		existing = data
-	case !os.IsNotExist(lerr):
-		return readmePartsResult{}, fmt.Errorf("it could not be examined: %w", lerr)
+	case os.IsNotExist(lerr):
+		absent = true
+	default:
+		return nil, readmePartsResult{}, fmt.Errorf("it could not be examined: %w", lerr)
 	}
 	out, res, err := planReadmeParts(existing, want)
 	if err != nil || !res.Wrote {
-		return res, err
+		return nil, res, err
 	}
 	// The read is capped, so a write past the cap would leave a file abcd can
 	// no longer read, and so can no longer take its own part back out of
 	// (iss-2610111552464704). Measured before the write; the file is left as
 	// it was.
 	if len(out) > maxAhoyFileBytes {
-		return readmePartsResult{}, &ahoyError{fmt.Sprintf("writing its parts would grow it to %d bytes, past abcd's %d-byte cap for the files it rewrites; left as it is", len(out), maxAhoyFileBytes)}
+		return nil, readmePartsResult{}, &ahoyError{fmt.Sprintf("writing its parts would grow it to %d bytes, past abcd's %d-byte cap for the files it rewrites; left as it is", len(out), maxAhoyFileBytes)}
 	}
-	if werr := fsutil.WriteFileAtomicPreserveMode(path, out); werr != nil {
-		return readmePartsResult{}, fmt.Errorf("it could not be written: %w", werr)
-	}
-	return res, nil
+	res.Created = absent
+	return out, res, nil
 }
