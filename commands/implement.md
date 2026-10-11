@@ -471,6 +471,7 @@ every refusal as it is.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement load --site preflight|eval-harness [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait [--timeout <duration>] [--json] [-- <command>...]
 ```
 
 `make preflight` runs this first and the eval harness runs it once at its
@@ -482,8 +483,8 @@ limit (four times the online core count by default). What a program could get
 is its fair share: the online cores divided by the one-minute load, never more
 than one core. So on a loaded machine a stray can show well under 100% of a
 core: forty busy loops on 16 cores each show about 40%, and all forty are
-strays. The person's programs and other accounts' are judged alike. It never
-refuses, never waits and never stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
+strays. The person's programs and other accounts' are judged alike. Without
+`--wait` it never refuses, never waits and never stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
 the `reason`) and `unchecked` (a platform other than macOS and
 Linux, or a read that failed, with the `reason`).
 
@@ -498,10 +499,37 @@ total; say nothing more about them. A name the private banned-names layer
 matches reads `[private name]`.
 
 The limits are per machine, in `~/.abcd.noindex/load-limits`, which the check reads and
-never creates: `stray-minutes <1 to 10080>` and `extreme-load <load>`, one per
-line, `#` for comments. An unusable file is reported (`limits.malformed`) and
-both defaults are used. Inside an autonomous run, a warning is also written to
-the run log as a `load` event (`run_log`).
+never creates: `stray-minutes <1 to 10080>`, `extreme-load <load>` and
+`wait-load <load>`, one per line, `#` for comments. An unusable file is reported
+(`limits.malformed`) and every default is used. Inside an autonomous run, a
+warning is also written to the run log as a `load` event (`run_log`).
+
+### Wait for capacity before a preflight or a race run
+
+Gate every `make preflight` and every `go test -race` on a shared machine with
+`--wait`, and never write a waiter loop of your own: a hand-written
+`pgrep -f "go test -race"` loop matched its own shell, whose command line
+carries that string, and never opened. `--wait` blocks until the one-minute
+load average is below the wait limit (`wait-load`, by default the online core
+count) and no other `go test -race` run is live, judged from each go process's
+arguments with the waiter's own process and ancestors excluded. It reads the
+machine every 15 seconds, prints one line when it starts waiting and nothing
+more until it opens, and gives up after `--timeout` (30 minutes by default),
+exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
+`lock` or `unreadable`). `--json` reports `status` (`open`, `timeout`,
+`skipped` on a CI runner, `unchecked` on an unsupported platform), `waited_on`
+and `waited_s`.
+
+One waiter opens at a time: the one that opens writes a machine-wide hold,
+`~/.abcd.noindex/load-wait.json`, and every other waiter waits on `lock` while
+it is in force. Without a command the hold lasts two minutes, so run the gated
+work straight after it opens. Prefer the command form,
+`implement load --wait -- make preflight`: it runs the command once the gate
+opens, exits with the command's exit code, and holds the gate until the
+command has started its own race run, the command exits, or 20 minutes pass. A
+hold whose waiter has died, or whose pid now belongs to another process, is
+reclaimed by the next waiter. A symlinked `~/.abcd.noindex` is refused. Relay a
+timeout as printed; do not loop around it.
 
 ## Wait out a lost connection
 

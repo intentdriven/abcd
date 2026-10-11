@@ -334,3 +334,23 @@ func waitGone(t *testing.T, flag, value string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// TestLoadDomainTeachesTheWaiter: the LOAD domain tells agents to gate a
+// preflight or a race run with abcd's own waiter and never a hand-written loop,
+// and names the self-match that made the hand-written loop wait forever
+// (iss-2610111826193257).
+func TestLoadDomainTeachesTheWaiter(t *testing.T) {
+	all := strings.Join(Defaults().Domains["LOAD"].Rules, "\n")
+	for _, want := range []string{
+		"abcd implement load --wait",
+		"abcd implement load --wait -- make preflight",
+		"never a hand-written",
+		`pgrep -f "go test -race"`,
+		"matched its own shell",
+		"one waiter at a time",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the LOAD rules do not carry %q", want)
+		}
+	}
+}
