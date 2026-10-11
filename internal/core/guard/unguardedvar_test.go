@@ -257,6 +257,14 @@ func TestRmEmptyTextInAShellStringLeads(t *testing.T) {
 		{`sh -c "rm -rf ${X:-\${Y}}/y"`, VerdictBlock, id},
 		{`sh -c "rm -rf ${X:-\${Y:-}}/y"`, VerdictBlock, id},
 		{`sh -c "rm -rf ${X:-\${HOME}}/y"`, VerdictAllow, ""},
+		// Pairing on the written text reaches the home's own entry too: the
+		// string deletes the home.
+		{`sh -c "rm -rf ${X:-\${HOME}}/"`, VerdictBlock, "rm-rf-root-or-home"},
+		{`sh -c "rm -rf ${X:+\${HOME}}"`, VerdictBlock, "rm-rf-root-or-home"},
+		// A brace the default leaves as text is not taken into a reference:
+		// `${X:-\$HOME}}/` hands the string `$HOME}/`, a directory under
+		// the working one.
+		{`sh -c "rm -rf ${X:-\$HOME}}/"`, VerdictAllow, ""},
 		{`sh -c "rm -rf ${X:?}${Y:+z}/y"`, VerdictAllow, ""},
 		{`sh -c "rm -rf ./${X:+x}/y"`, VerdictAllow, ""},
 		{`sh -c "rm -f ${X:+--force} /tmp/a"`, VerdictAllow, ""},
