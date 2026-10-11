@@ -104,7 +104,9 @@ A person finds their command faster and stops opening agent pages by mistake: th
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-07866e464a3a -->
+Fidelity review OWED (receipt rcp-07866e464a3a).
+<!-- abcd-review-end receipt=rcp-07866e464a3a -->
 
 ## Grounds
 

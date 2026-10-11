@@ -103,7 +103,7 @@ aspiration of the 2026-10-09 menu ruling, met but not gated.
 ## Summary
 
 This spec delivers
-[itd-2610090831227812](../../intents/planned/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md):
+[itd-2610090831227812](../../intents/shipped/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md):
 a person who types `/abcd:` sees the fifteen commands people use, and the
 fifteen only agents run are hidden but keep their names. `abcd --help` lists
 the same commands. Four commands about sources become `library`, and three
