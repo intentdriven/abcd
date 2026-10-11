@@ -223,3 +223,109 @@ func TestAMergedLaneTheLoopCannotProveIsNamedNotFatal(t *testing.T) {
 		t.Fatalf("the next move names the lane it could not finish: %s", res.Next)
 	}
 }
+
+// TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt: `git update-ref -d`
+// does not ask, as `git branch -d` does, whether a checkout stands on the
+// branch it deletes, so a merged lane's branch checked out in the main
+// checkout (after the person removed the clean lane worktree) or in a second
+// worktree of the person's would be deleted from under it, leaving that
+// checkout's HEAD naming nothing. The drain names the lane unfinished with
+// that checkout's path, and the run's own step refuses the same way, writing
+// nothing; the branch and that checkout's HEAD survive both.
+func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		arrange func(t *testing.T, f *landFixture, l Lane) string
+	}{
+		{"the main checkout", func(t *testing.T, f *landFixture, l Lane) string {
+			f.repo.Git("worktree", "remove", "--", l.Worktree)
+			f.repo.Git("checkout", "-q", l.Branch)
+			return f.repo.Root()
+		}},
+		{"a second worktree", func(t *testing.T, f *landFixture, l Lane) string {
+			other := filepath.Join(t.TempDir(), "look")
+			f.repo.Git("worktree", "add", "-q", "-f", other, l.Branch)
+			return other
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := drainLandFixture(t)
+			start, err := Start(f.repo.Root(), secondIssue, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.runID, f.issue = start.RunID, secondIssue
+			l := f.armIssueLane(t)
+			f.merged(t, l.Landing.Pushed)
+			other := tc.arrange(t, f, l)
+			want := filepath.Base(other)
+
+			res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+			if err != nil {
+				t.Fatalf("a lane the loop cannot finish does not refuse the drain: %v", err)
+			}
+			if len(res.Finished) != 1 || res.Finished[0].Done || !strings.Contains(res.Finished[0].Note, "checked out") ||
+				!strings.Contains(res.Finished[0].Note, want) {
+				t.Fatalf("the lane is named unfinished, naming the checkout that stands on its branch: %+v", res.Finished)
+			}
+			if out := f.repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) == "" {
+				t.Fatalf("the branch checked out elsewhere is not deleted")
+			}
+			if head := strings.TrimSpace(f.repo.Git("-C", other, "rev-parse", "--verify", "HEAD")); head != l.Landing.Pushed {
+				t.Fatalf("that checkout's HEAD still resolves to the lane's head: %q", head)
+			}
+
+			file := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, StateFileName)
+			before, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
+			r, ok := AsRefusal(err)
+			if !ok || !strings.Contains(r.Reason, "checked out") || !strings.Contains(r.Reason, want) {
+				t.Fatalf("the run's own step refuses, naming the checkout: %v", err)
+			}
+			if after, err := os.ReadFile(file); err != nil || string(after) != string(before) {
+				t.Fatalf("the refused step writes nothing: %v", err)
+			}
+			if out := f.repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) == "" {
+				t.Fatalf("the refused step leaves the branch")
+			}
+			f.repo.Git("-C", other, "rev-parse", "--verify", "HEAD")
+		})
+	}
+}
+
+// TestAMergedLaneWhoseHeadGitCannotPlaceIsNamed: a lane whose pushed head git
+// cannot read (`merge-base` fails, rather than answering no) is named
+// unfinished with git's error, not dropped from finished as though it had not
+// merged.
+func TestAMergedLaneWhoseHeadGitCannotPlaceIsNamed(t *testing.T) {
+	f := drainLandFixture(t)
+	start, err := Start(f.repo.Root(), secondIssue, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runID, f.issue = start.RunID, secondIssue
+	l := f.armIssueLane(t)
+	f.merged(t, l.Landing.Pushed)
+	gone := strings.Repeat("d", 40)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Landing.Pushed = gone
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatalf("a lane git cannot place does not refuse the drain: %v", err)
+	}
+	if len(res.Finished) != 1 || res.Finished[0].Done || res.Finished[0].RunID != f.runID ||
+		!strings.Contains(res.Finished[0].Note, shortSHA(gone)) || !strings.Contains(res.Finished[0].Note, "exit status") {
+		t.Fatalf("the lane is named unfinished with git's error: %+v", res.Finished)
+	}
+	if !strings.Contains(res.Next, "could not finish") {
+		t.Fatalf("the next move names the lane it could not finish: %s", res.Next)
+	}
+}

@@ -100,11 +100,20 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 	}
 	for _, run := range parked {
 		lane := run.Lanes[parkedAtLand(run)]
-		if on, err := gitutil.IsAncestor(repoRoot, lane.Landing.Pushed, tracking); err != nil || !on {
+		f := DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
+		on, err := gitutil.IsAncestor(repoRoot, lane.Landing.Pushed, tracking)
+		if err != nil {
+			// git could not answer, which is not a no: the lane is named, so
+			// an unreadable pushed head does not drop it from finished.
+			f.Note = fsutil.RedactHome("git could not place " + shortSHA(lane.Landing.Pushed) + " on " + tracking + ": " + err.Error() +
+				"; settle what git reports, then run `abcd drain` again")
+			out = append(out, f)
 			continue
 		}
-		f := DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
-		err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		if !on {
+			continue
+		}
+		err = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
 			i := parkedAtLand(*st)
 			if i < 0 {
 				return false, nil

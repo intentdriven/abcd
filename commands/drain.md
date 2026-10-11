@@ -164,7 +164,9 @@ what it did in `next`:
   one `abcd build <iss-N>` started. The default branch is fetched once, and
   only while such a lane is parked; a lane whose head is not on it is left as
   it is. A lane the landing will not finish (its branch moved past what
-  landed, a worktree with changes) is named in `next` and the move goes on.
+  landed, a worktree with changes, its branch checked out in another
+  checkout, which the drain names, or a pushed head git cannot read) is named
+  in `next` and the move goes on.
 - **It pauses.** At the end of the drain's working window it writes
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
