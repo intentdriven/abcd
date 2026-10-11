@@ -90,7 +90,7 @@ subprocess/environment handling.
 7. **[iss-218](../../work/issues/open/iss-218-record-tier-tool-naming-convention.md)**
    (minor) — the record-tier tool-naming convention is prose, not a detector;
    give it one (lint-family rule), fixture-first.
-8. **[iss-96](../../work/issues/open/iss-96-now-that-transcripts-are-captured.md)**
+8. **[iss-96](../../work/issues/wontfix/iss-96-now-that-transcripts-are-captured.md)**
    (minor, verification milestone) — carried from the v0.5.0 plan unchanged:
    re-check the transcript-scanner coverage gaps against the landed pattern
    set; close or re-scope, never close on assumption.
