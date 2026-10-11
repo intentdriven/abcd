@@ -1,8 +1,8 @@
 ---
 id: itd-2609151138388536
 slug: append-only-logs-conflict-on-every-merge
-spec_id: null
-kind: null
+spec_id: spc-2610110931381316
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -11,7 +11,7 @@ impact: breaking
 related_issues: [iss-2609100507439414]
 origin: extracted-from-record
 production_mode: hand-written
-related_adrs: [adr-2609151138420062]
+related_adrs: [adr-2610110925465593, adr-2609151138420062]
 ---
 
 # Every Decision Is Its Own Record, and the Log Stops Conflicting
@@ -24,13 +24,14 @@ Typed links: `related_adrs` [adr-2609151138420062](../../decisions/adrs/26091511
 > conflict it produced on every parallel branch goes away.** A decision is no
 > longer a line appended to the bottom of one shared file. It is a record with
 > an id, allocated through the same seam that mints captures, intents, specs and
-> ADRs, written to its own file under `.abcd/work/decisions/`. An index is
-> assembled from those files, and `.abcd/work/DECISIONS.md` becomes a symlink to
-> it, so every link, every reader and every citation that names the log today
-> keeps resolving. Two branches that each record a decision now merge the way two
-> branches that each capture an issue already do: git sees two new files and has
-> nothing to reconcile. The same shape lands in every repository abcd manages,
-> at adoption, rather than being rediscovered and hand-patched there.
+> ADRs, written to its own file in one flat folder, `.abcd/work/decisions/`.
+> A command and the site list every decision in date order. The old single file,
+> `.abcd/work/DECISIONS.md`, is retired, and every link and citation that named
+> it now points at the decision's own file. Two branches that each record a
+> decision now merge the way two branches that each capture an issue already do:
+> git sees two new files and has nothing to reconcile. A repository abcd manages
+> records its new decisions the same way, and its existing log stays untouched as
+> frozen history.
 >
 > "I landed twenty-seven branches in a day and the decision log fought me on the
 > first two merges — I ended up hand-writing a merge attribute into
@@ -103,26 +104,25 @@ minting verb, and an acceptance criterion below is written to catch exactly that
 failure.
 
 The secondary claim is that the readability cost is recoverable. A folder is
-harder to read end to end than a file, and **we expect the assembled index plus
-the `DECISIONS.md` symlink to recover that** — because the index is the file the
-reader had before, and the symlink means no existing reader, link or citation
-learns a new path. If a reader has to open 330 files to answer a question the
-single file answered, the index has failed and the claim is wrong.
+harder to read end to end than a file, and **we expect the listing command and
+the site page to recover that**, because each renders the whole history in date
+order from the folder, and every citation that named the old file now names the
+decision's own file. If a reader has to open hundreds of files to answer a
+question the single file answered, the listing has failed and the claim is
+wrong.
 
 ## Scope Conditions
 
-- **Repositories using git.** The claim is about git's merge behaviour on file
+- **Repositories using git.** The claim is about git's merge behaviour on file <!-- cond: cond-2610110931385884 -->
   boundaries; nothing here is asserted about another version-control system.
-- **abcd itself and every repository abcd manages.** The shape is not optional
-  per repository: a managed repository that keeps the single file keeps the
-  conflict, and the decision that occasioned this record applies to both.
-- **Parallel branch work.** The benefit is proportional to concurrency. At one
+- **abcd itself and every repository abcd manages.** New decisions take the <!-- cond: cond-2610110931387631 -->
+  shape in both. A managed repository's existing log is never rewritten; it
+  stays as frozen history, so the claim covers the decisions recorded after the
+  shape is adopted.
+- **Parallel branch work.** The benefit is proportional to concurrency. At one <!-- cond: cond-2610110931381195 -->
   branch at a time the single file never conflicts and the folder buys nothing
   but consistency with the other five families.
-- **A filesystem with symlinks, for the interim `DECISIONS.md` form only.** The
-  folder and its index do not depend on symlink support; the compatibility
-  shim does, and a platform without it reads the index at its own path.
-- **Decisions that are independent and dated.** This is the same condition the
+- **Decisions that are independent and dated.** This is the same condition the <!-- cond: cond-2610110931383463 -->
   union attribute silently assumed. A decision family where one entry amends
   another in place is outside this claim — an amendment is a new record, on the
   standing rule that a durable record is superseded rather than edited.
@@ -135,26 +135,32 @@ single file answered, the index has failed and the claim is wrong.
   **then** it is written as one file under the decisions folder carrying an id
   allocated through the adr-45 seam, and no other committed file is appended to
   by that act.
-- **Given** a decisions folder holding entries, **when** the index is assembled,
-  **then** the index lists every entry in dated order with its id, and
-  `.abcd/work/DECISIONS.md` resolves to that index — so a reader following any
-  existing link or citation to `.abcd/work/DECISIONS.md` lands on the assembled
-  history and not on a missing file.
+- **Given** a decisions folder holding entries, **when** a person runs the
+  listing command or opens the site's decisions page, **then** every entry is
+  listed in date order with its id, derived from the folder, and no committed
+  file is written by recording a decision.
+- **Given** the shape has landed in abcd, **when** the repository is searched,
+  **then** `.abcd/work/DECISIONS.md` does not exist, no committed file names it
+  as a live path, and every citation that named a dated entry of it points at
+  that entry's own file. A citation the migration could not map with certainty
+  is listed for review in the change, never guessed.
 - **Given** two branches cut from the same base that each record one decision,
   **when** both are merged into the integration branch, **then** both merges
   complete with no conflict and with both decision files present, and this holds
   with no `merge=union` attribute and no merge driver configured for the path.
-- **Given** a repository adopting abcd, **when** adoption runs, **then** that
-  repository gets the decisions folder, the assembled index and the compatibility
-  form — the same shape abcd itself carries, rather than a merge attribute
-  scaffolded into its `.gitattributes`.
+- **Given** a repository abcd manages that already has a `DECISIONS.md`,
+  **when** abcd's install runs, **then** the existing file is left byte for byte
+  as it was, new decisions are recorded in the decisions folder, and no merge
+  attribute is scaffolded into its `.gitattributes`.
+- **Given** a repository adopting abcd with no decision log, **when** adoption
+  runs, **then** it gets the decisions folder and no single log file.
 - **Given** the new shape is in force, **when** the repository is inspected,
   **then** the decisions-append gate (`record-lint decisions-append`, rules
   DA001–DA004, in `internal/core/lint/decisionsappend.go`) is gone, no CI job invokes it, `make preflight` does not run it,
   and nothing in the record or the conventions names it as a live gate — a folder
   of minted files has no mid-file position to police, so the gate is retired by
   the shape rather than disabled.
-- **Given** the existing log's 330 entries, **when** the migration has run,
+- **Given** abcd's existing log, **when** the migration has run,
   **then** every entry is present as its own file with its original date and text
   preserved verbatim, the index renders them in their original order, and the
   count matches — a migration that silently drops or reorders history fails this
@@ -162,30 +168,21 @@ single file answered, the index has failed and the claim is wrong.
 
 ## Open Questions
 
-- **Where the folder lives, and what its records are called.** `.abcd/work/` is
-  the working tier that holds the log today and the issue ledger beside it, so
-  `.abcd/work/decisions/` is the obvious home; whether the family gets its own
-  prefix or reuses an existing one is a naming decision the shape does not
-  settle.
-- **Whether the index stays a symlink or becomes an assembled file.** The
-  decision taken is the symlink for now, with a later intent free to assemble a
-  single file automatically. If it ever does become a committed assembled file,
-  the mechanism claim above says what it must not do: be appended to by the mint.
-- **How the migration lands in a repository abcd manages but did not create.**
-  abcd rewrites its own log in one change it controls. A managed repository's log
-  is the user's file, and a tool that rewrites it unasked is the act
-  [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md)
-  tells this project to think twice about. Whether adoption migrates, offers, or
-  only applies the shape to new decisions is open.
-- **What happens to the union attribute already in `.gitattributes`.** abcd's own
-  entry for `.abcd/work/DECISIONS.md` (from
-  [iss-118](../../../work/issues/resolved/iss-118-decisions-acknowledgements-multi-writer.md))
-  becomes dead once the path is a symlink to an index. Removing it is trivial;
-  doing it in the same change is the question, since a stale attribute on a path
-  that no longer accumulates is harmless and a half-migrated tree is not.
-- **Whether `CHANGELOG.md`'s union attribute should go at the same time.** It is
-  the same file, a different conflict class, and itd-2609150819432059's business.
+None open: the product thinker settled them on 2026-10-11 (Decisions, below).
+
+## Decisions
+
+- 2026-10-11, the product thinker, in the planning interview: `.abcd/work/DECISIONS.md` is retired outright, not kept as a symlink or a signpost page, and every link to it across the repository is rewritten, since a single decisions file is not a common standard (MADR and adr-tools keep one file per decision). This supersedes the earlier ADR's symlink (adr-2610110925465593).
+- 2026-10-11, the product thinker: the folder is flat, `dec-<id>-<slug>.md`, with no year, month or day subfolders; the id is the timestamp, so a listing sorts by date.
+- 2026-10-11, the product thinker: a repository abcd manages but did not create keeps its existing `DECISIONS.md` as frozen history, never rewritten; new decisions go to the folder.
+- 2026-10-11, the product thinker, in the criteria walk: all eight acceptance criteria stand as written (four walked as stories, four accepted as a list).
+- 2026-10-11, the product thinker: the migration of abcd's own log (splitting its entries into the folder and rewriting every link and citation) is a one-off script run once in this repository, not a verb or any code in abcd. It is needed once and only here; a managed repository is never migrated, since its log stays as frozen history.
+- 2026-10-11, the technical facilitator, with one answer defensible on the record: the folder is `.abcd/work/decisions/` (the home the press release named) and its records are `dec-`, a prefix no family uses; the union attribute for `.abcd/work/DECISIONS.md` goes in the same change; the changelog's attribute stays out of scope as a separate conflict class.
 
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: We expect two pieces of work that each record a decision to land without a collision on decisions. Shown wrong if such a collision happens again after the change lands.
