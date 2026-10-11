@@ -239,7 +239,7 @@ func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 		t.Fatalf("%s has no paragraph saying %q", rel, anchor)
 		return ""
 	}
-	itd193 := paragraph(".abcd/development/intents/disciplines/itd-193-a-verifier-works-on-a-copy-no-agent-mutates-a-live-worktree.md",
+	itd193 := paragraph(".abcd/development/intents/disciplines/itd-193-a-verifier-works-on-a-copy-no-agent.md",
 		"Before reporting, the verifier proves the original is untouched")
 	principle := paragraph(".abcd/development/principles/the-users-directory-is-theirs.md", "a verifier's copy goes")
 

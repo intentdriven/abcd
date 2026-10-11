@@ -43,7 +43,7 @@ collision); everything else is *human-paired*.
 
 The install-experience plan's Cut B (B1 payload asset, B2 plugin-source
 repoint, B3 skew-notice retirement resolving
-[iss-206](../../work/issues/wontfix/iss-206-the-version-skew-notice-promised-by-itd-105-given-an-install.md),
+[iss-206](../../work/issues/wontfix/iss-206-the-version-skew-notice-promised-by-itd.md),
 B4 record consequences) is this plan's opening workstream. Its §4 manual
 verification gate remains the prerequisite; its collision notes and the
 itd-108 precedence rule apply unchanged. Nothing is re-specified here —
@@ -53,7 +53,7 @@ once. Human-paired (the §4 gate is manual by design).
 
 ## Workstream B — intent milestone
 
-- **[itd-111](../intents/shipped/itd-111-a-stale-abcd-never-answers-silently-every-surface-that-runs.md)
+- **[itd-111](../intents/shipped/itd-111-a-stale-abcd-never-answers-silently.md)
   is planned (interview run 2026-08-15, spc-22, `intent ready` exit 0).**
   The interview ran the itd-84 decomposition (SPLIT: network posture →
   adr-38 + brief invariant 7) and the SOTA fit-challenge (path 2 UPHELD);
@@ -80,17 +80,17 @@ once. Human-paired (the §4 gate is manual by design).
    (major) — guard hook fails open past 1 MiB of stdin. Autonomous-eligible.
 5. **[iss-210](../../work/issues/resolved/iss-210-lone-token-subverb-guess-writes-a-record.md)**
    (major) — a lone mistyped token writes a ledger record. Autonomous-eligible.
-6. **[iss-195](../../work/issues/resolved/iss-195-scanner-openended-heuristic-cost-regression-on-network-patterns.md)**
+6. **[iss-195](../../work/issues/resolved/iss-195-scanner-openended-heuristic-cost.md)**
    (minor) — the rigid/open-ended heuristic sends every IPv4/IPv6 match through
    the backward search. Fix-eligible by the 2026-08-08 ruling (it escaped the
    adjacency shelving: a cost bug, not a window-truncation bug).
    Autonomous-eligible.
-7. **[iss-147](../../work/issues/resolved/iss-147-guard-load-reads-abcd-guard-json-from-the-working-tree-so-a.md)**
+7. **[iss-147](../../work/issues/resolved/iss-147-guard-load-reads-abcd-guard-json-from.md)**
    (minor) — working-tree guard config is an instant disarm.
-8. **[iss-148](../../work/issues/resolved/iss-148-guard-registry-coverage-gaps-found-while-wiring-itd-103-regi.md)**
+8. **[iss-148](../../work/issues/resolved/iss-148-guard-registry-coverage-gaps-found-while.md)**
    (minor) — registry coverage gaps; every entry lands fixture-first per the
    v0.5.0 plan's rule.
-9. **[iss-174](../../work/issues/resolved/iss-174-rules-override-withholds-bundled-default-upgrades.md)**
+9. **[iss-174](../../work/issues/resolved/iss-174-rules-override-withholds-bundled-default.md)**
    (minor) — a repo's rules override silently withholds bundled security
    upgrades.
 
@@ -101,18 +101,18 @@ unless its body says otherwise:
 [iss-33](../../work/issues/resolved/iss-33-ahoy-verb-hygiene.md) (unvalidated
 interactive answers persisted),
 [iss-221](../../work/issues/open/iss-221-refounding-lineage-prompt-is-a-one-shot.md),
-[iss-222](../../work/issues/resolved/iss-222-install-dev-silent-noop-over-unowned-wrapper.md),
-[iss-227](../../work/issues/resolved/iss-227-installdevshim-silently-swallows-failures-the-os-remove-mkdi.md),
-[iss-228](../../work/issues/resolved/iss-228-the-plugin-root-binary-repo-root-abcd-bin-abcd-darwin-arm64.md).
+[iss-222](../../work/issues/resolved/iss-222-install-dev-silent-noop-over-unowned.md),
+[iss-227](../../work/issues/resolved/iss-227-installdevshim-silently-swallows.md),
+[iss-228](../../work/issues/resolved/iss-228-the-plugin-root-binary-repo-root-abcd.md).
 
 ## Structural tier — designed, deliberately not next
 
-**[iss-229](../../work/issues/resolved/iss-229-scanner-adjacency-galloping-probe-structural-fix.md)**
+**[iss-229](../../work/issues/resolved/iss-229-scanner-adjacency-galloping-probe.md)**
 — the galloping-probe (`trueMatchEnd`) replacement for the fixed adjacency
 window, superseding
-[iss-189](../../work/issues/resolved/iss-189-adjacency-probe-window-edge-false-positive.md)
+[iss-189](../../work/issues/resolved/iss-189-adjacency-probe-window-edge-false.md)
 and
-[iss-190](../../work/issues/resolved/iss-190-scanner-adjacency-recovery-is-capped-by-maxadjacencyprobewin.md)
+[iss-190](../../work/issues/resolved/iss-190-scanner-adjacency-recovery-is-capped-by.md)
 (their repro shapes are its acceptance corpus). Human-paired or a deliberate
 root-cause escalation round, per the 2026-08-08 shelving: local patches to the
 window-edge discard logic are exhausted — three independent BLOCKs — so the

@@ -12,6 +12,167 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-10 (iss-2610091942156774 — sub-agents are taught the rm the guard refuses)
+
+### cold-reading-comparative 0.1.4
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### cold-reading-detection 0.1.5
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### cold-reading-entailment 0.1.4
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### cold-reading-widening 0.2.4
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### docs-currency-reviewer 0.2.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### graveyard-interpreter 0.1.2
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### intent-auditor 0.5.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### lifeboat-reviewer 0.1.2
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### planning-interviewer 0.1.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### press-release-composer 0.1.2
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### principle-distiller 0.2.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### question-drafter 0.1.2
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### reflection-composer 0.3.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### release-changelog-composer 0.4.2
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### ruthless-reviewer 0.2.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
+
+### security-reviewer 0.3.1
+
+PATCH: the definition ends with the generated guard-lessons block, which
+restates the guard's `rm-unguarded-variable-path` rule as the SHELL domain
+renders it: an `rm` whose path starts with a variable that can be empty
+followed by `/` is refused, and the operand is written `"${VAR:?}"/...` or as
+a literal path instead. A sub-agent is handed none of the session's SHELL
+rules, so the block is where it learns the rule before the guard refuses the
+command. Nothing else changes. Unmeasured, in the `0.x` band.
 ## 2026-10-10 (iss-2610100626211810 — a question's chip sets the mode)
 
 ### question-drafter 0.1.1

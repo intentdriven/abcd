@@ -1,6 +1,8 @@
 package ahoy
 
 import (
+	"io/fs"
+	"os"
 	"strconv"
 	"strings"
 
@@ -72,26 +74,79 @@ func (a *applyCtx) emDashSeverity() (severity, note string) {
 		" names neither choice (blocking or warning), so the " + emDashTokenID + " house-style rule is seeded as a warning; set its severity to \"blocker\" in " + where + " to make it block"
 }
 
-// docsLintSeed renders the docs-lint seed with the em-dash token at severity.
-// The embedded seed carries the default; any other severity rewrites that one
-// token's severity line and nothing else. The render is textual rather than a
-// decode and re-encode because the seed is a file a person reads and edits, and
-// a round trip through a map would reorder it.
-func docsLintSeed(severity string) []byte {
+// seedRootsLine is the embedded seed's roots field, exactly as the file spells
+// it: the one span seedRoots rewrites.
+const seedRootsLine = "\"roots\": [\n    \"docs\",\n    \"README.md\"\n  ],"
+
+// seedRootChoices are the roots the seed may list, in the order it lists
+// them, each with the test a path must pass to be one the documentation check
+// runs over rather than refuses: docs as a folder (a file named docs is not
+// markdown, and the check refuses it), README.md as anything that exists.
+var seedRootChoices = []struct {
+	rel string
+	ok  func(fs.FileInfo) bool
+}{
+	{"docs", fs.FileInfo.IsDir},
+	{"README.md", func(fs.FileInfo) bool { return true }},
+}
+
+// seedRoots is the roots the seed lists for the project held open at root:
+// those of seedRootChoices present at install time (iss-2610040758095861).
+// Seeding a root that is not there armed a check that refused to run from the
+// moment it was written, `abcd lint docs` exiting 2 over a root setup named
+// itself. With neither present the list is empty, and the check runs, reads no
+// document and says loudly that nothing was checked, at exit 0. Each look stays
+// inside the project, through the root held open.
+func seedRoots(root *os.Root) []string {
+	out := []string{}
+	for _, c := range seedRootChoices {
+		if st, err := root.Stat(c.rel); err == nil && c.ok(st) {
+			out = append(out, c.rel)
+		}
+	}
+	return out
+}
+
+// docsLintSeed renders the docs-lint seed with the em-dash token at severity
+// and roots as its roots. The embedded seed carries the default severity and
+// both roots; any other value rewrites that one token's severity line, or the
+// roots field, and nothing else. The render is textual rather than a decode
+// and re-encode because the seed is a file a person reads and edits, and a
+// round trip through a map would reorder it.
+func docsLintSeed(severity string, roots []string) []byte {
+	return []byte(renderSeedRoots(renderSeedSeverity(severity), roots))
+}
+
+// renderSeedRoots rewrites the seed's roots field to list roots, one per line
+// as the embedded file spells them, or [] when there are none.
+func renderSeedRoots(seed string, roots []string) string {
+	field := "\"roots\": [],"
+	if len(roots) > 0 {
+		quoted := make([]string, len(roots))
+		for i, r := range roots {
+			quoted[i] = "    " + strconv.Quote(r)
+		}
+		field = "\"roots\": [\n" + strings.Join(quoted, ",\n") + "\n  ],"
+	}
+	return strings.Replace(seed, seedRootsLine, field, 1)
+}
+
+// renderSeedSeverity is the seed with the em-dash token at severity.
+func renderSeedSeverity(severity string) string {
 	if severity == emDashDefaultSeverity {
-		return []byte(publicFamilySeed)
+		return publicFamilySeed
 	}
 	const sevLine = `"severity": "` + emDashDefaultSeverity + `"`
 	anchor := strings.Index(publicFamilySeed, `"id": "`+emDashTokenID+`"`)
 	if anchor < 0 {
-		return []byte(publicFamilySeed)
+		return publicFamilySeed
 	}
 	rest := publicFamilySeed[anchor:]
 	end := strings.Index(rest, "}")
 	at := strings.Index(rest, sevLine)
 	if at < 0 || (end >= 0 && at > end) {
-		return []byte(publicFamilySeed)
+		return publicFamilySeed
 	}
 	at += anchor
-	return []byte(publicFamilySeed[:at] + `"severity": "` + severity + `"` + publicFamilySeed[at+len(sevLine):])
+	return publicFamilySeed[:at] + `"severity": "` + severity + `"` + publicFamilySeed[at+len(sevLine):]
 }

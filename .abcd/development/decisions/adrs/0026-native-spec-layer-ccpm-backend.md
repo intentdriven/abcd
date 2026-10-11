@@ -21,7 +21,7 @@ needing a spec/task store of its own — but abcd already owns a lightweight,
 proven pattern for lifecycle state (directory location is the source of truth,
 [ADR-3](0003-directory-as-truth-for-lifecycle.md)), and the companion harness's `ccpm` is a
 capable deeper store abcd can reach at the convention level without linking to
-it ([ADR-24](0024-companion-harness-peer-via-conventions-and-mcp.md)).
+it ([ADR-24](0024-companion-harness-peer-via-conventions.md)).
 
 ## Decision
 

@@ -1,0 +1,46 @@
+---
+schema_version: 1
+id: "iss-2609020716570699"
+slug: "nothing-tells-an-agent-that-a-record-it"
+severity: "major"
+category: "process"
+source: "agent-observation"
+found_during: "autonomous-run-2026-09-01"
+origin: researcher-authored
+production_mode: hand-written
+found_at: ".abcd/work/issues"
+remedy: "Waits on the M20 interview for itd-2609091034175565: the same-account half is built (abcd implement claim with a lease, and abcd peers), so if the claim's stop may stay within one account's machine-scoped run state, resolve this record against those and move the draft's pushed claim to wontfix; if it must reach other machines, build the pushed claim stamp with a lease after the two-release schema migration the draft names, plus itd-2609091416304128's capture resolve refusal against origin/main. Prove the remote form with a test that a second session's claim of a leased record is refused and a lapsed lease is claimable."
+related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091034175565]
+deferred_after: v0.11.1
+deferral_reason: "Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?"
+---
+
+Nothing tells an agent that a record it is about to fix has been claimed or resolved by another session until the resolution gate refuses the push. In one night a peer session re-fixed two issues a paused branch also fixed, and two of its open PRs duplicate merged work. The claim signal that worked in every published multi-agent run is the repository itself: a claim written into the open record (claimed_by: account and harness, branch) and pushed alone through the queue before any fix starts, so a losing race is a push rejection; plus a duplicate-guard required check that fails a PR whose Resolves trailer names a record already resolved on origin/main; plus capture resolve refusing a record that is already terminal on the fetched origin/main. Folder membership is already the status signal, so the claim extends the one canonical primitive rather than adding a lock file that rots. Refines iss-2608220750029993.
+
+## Grounds
+
+- pursued: we expect a session to be able to tell, before it starts work, that another session has already claimed or resolved the record it is about to fix, so the duplicated effort this record measured stops happening; a claim signal nobody reads, or one that goes stale and blocks a session from work nobody is doing, would show it wrong.
+
+**Corroboration (2026-09-18, Gropius managed-repo session gropiusllm-56, relayed
+to abcd-17).** The sibling-worktree half, split into itd-2609091416295622 on
+2026-09-09, was met again at v0.9.0 in a second managed repository: the ledger
+is per worktree and says so nowhere. A capture filed in one worktree was
+invisible to `capture resolve` in another until the branch carrying it merged
+main (recorded in that repository's own ledger), and an audit agent working from
+a worktree that predated a merge reported three shipped intents as existing
+nowhere. The session's ask is either of two things the draft intent already
+weighs: resolve the store through `git rev-parse --git-common-dir` and warn, or
+have every ledger verb print which checkout's ledger it addressed. Note the
+same mechanism produced this batch's "not found in any bucket" diagnosis from
+`intent audit`, which at v0.9.0 does distinguish a draft from a never-minted id
+in the same checkout; what it cannot see is a record on another worktree.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?
+
+## Remedy grounds (2026-09-29)
+
+- itd-2609221656373558 (shipped) answers how an abandoned claim is told from a live one inside one account: a lease that lapses and is logged; itd-2609091416295622 (shipped) is the sibling-worktree listing.
+- The open question is only whether the stop must reach other machines, where the 2026-09-09 ruling in .abcd/work/DECISIONS.md prices the pushed claim at a merge-queue pass per claim.
+- Rejected: a lock file in the tree, which the record refuses as a primitive that rots.

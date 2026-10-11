@@ -10,7 +10,7 @@ abcd lives in **one repository** and ships a **curated release artifact** cut fr
 
 ## One conventions file
 
-**`AGENTS.md` is the one conventions file abcd writes, in its own project and in every project it sets up** ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md)). abcd writes no `CLAUDE.md` and no other tool's own conventions file, as a copy, a link or a pointer. It still reads such a file where it finds one, for detection and uninstall, and finds one for the lifeboat packer; it takes abcd's own block back out of one where an earlier setup put it, and otherwise leaves a file holding the owner's words as it is.
+**`AGENTS.md` is the one conventions file abcd writes, in its own project and in every project it sets up** ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file.md)). abcd writes no `CLAUDE.md` and no other tool's own conventions file, as a copy, a link or a pointer. It still reads such a file where it finds one, for detection and uninstall, and finds one for the lifeboat packer; it takes abcd's own block back out of one where an earlier setup put it, and otherwise leaves a file holding the owner's words as it is.
 
 ## Front doors
 

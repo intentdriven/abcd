@@ -217,11 +217,14 @@ func TestParametersThatPrintNothingTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf $#/`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf $0/`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${0}/`, shellBare | shellSQ, VerdictAllow, ""},
-		{`rm -rf $_x/`, shellBare | shellSQ, VerdictAllow, ""},
+		// `$_x` is the variable `_x`, not `$_`: no delete of the root as
+		// written, and a path from the root when it is empty, which its own
+		// entry refuses (iss-2610091942156774).
+		{`rm -rf $_x/`, shellBare | shellSQ, VerdictBlock, "rm-unguarded-variable-path"},
 		{`rm -rf $!`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf "$1"`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -f "$tmp.$!"`, shellBare | shellSQ, VerdictAllow, ""},
-		{`rm -rf "$d/$!"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "$d/$!"`, shellBare | shellSQ, VerdictBlock, "rm-unguarded-variable-path"},
 		{`kill $!`, shellBare | shellSQ, VerdictAllow, ""},
 		{`wait $!`, shellBare | shellSQ, VerdictAllow, ""},
 		{`echo $!`, shellBare | shellSQ, VerdictAllow, ""},
@@ -483,8 +486,11 @@ func TestExpansionsThatCanPrintNothingTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${X@U}/`, all, VerdictBlock, home},
 		// The look-alikes: text after the empty text, a quoted array, and
 		// an error message.
-		{`rm -rf "${TMPDIR:-}/abcd-x"`, shellBare | shellSQ, VerdictAllow, ""},
-		{`rm -rf "${A[0]}/build"`, shellBare | shellSQ, VerdictAllow, ""},
+		// Neither is the root or the home as written; each is a path from
+		// the root when it prints nothing, which its own entry refuses
+		// (iss-2610091942156774).
+		{`rm -rf "${TMPDIR:-}/abcd-x"`, shellBare | shellSQ, VerdictBlock, "rm-unguarded-variable-path"},
+		{`rm -rf "${A[0]}/build"`, shellBare | shellSQ, VerdictBlock, "rm-unguarded-variable-path"},
 		{`rm -rf "${files[@]}"`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${X^^}.txt`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf "${BUILD_DIR:?}/"*`, shellBare | shellSQ, VerdictAllow, ""},

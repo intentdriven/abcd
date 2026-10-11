@@ -2333,7 +2333,7 @@ File a draft intent from quoted text, or render the intent store's status bare: 
 ```
       --impact string            stamp the draft's product impact: additive|breaking|fix (optional)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --title string             the draft's H1 title (default: the first sentence of the text, cut at the slug cap)
+      --title string             the draft's H1 title (default: the first sentence of the text, cut on a word boundary at 60 characters)
 ```
 
 #### `abcd intent audit`

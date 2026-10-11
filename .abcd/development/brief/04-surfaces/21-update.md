@@ -10,7 +10,7 @@ The verb is the explicit ask. abcd never checks for or applies updates on its ow
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb,
 with its check, is the only **command** that reaches the release origin, and only
 when invoked
-([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md),
+([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md),
 spc-32).
 
 They are not the only code paths to that origin. `hooks/bootstrap.sh` pins the
@@ -160,7 +160,7 @@ documented shape, never a broken receipt.
 ## References
 
 - Plugin command: [`commands/update.md`](../../../../commands/update.md)
-- Intent / spec: [itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md) / [spc-32](../../specs/closed/spc-32-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md)
+- Intent / spec: [itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md) / [spc-32](../../specs/closed/spc-32-abcd-update-completes-a-chosen-update-in.md)
 - Staleness check it completes: [`12-version.md`](12-version.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

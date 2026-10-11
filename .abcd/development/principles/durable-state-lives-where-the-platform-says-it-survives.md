@@ -32,7 +32,7 @@ binary cache moved to (itd-132 / spc-35, seeded as iss-2608210934566227).
 - Location changes trust obligations, never trust bars: state promoted into a
   longer-lived home keeps every verification it needed in the short-lived one,
   plus whatever the longer at-rest window now demands
-  ([adr-46](../decisions/adrs/0046-persistence-never-weakens-the-verification-posture.md)).
+  ([adr-46](../decisions/adrs/0046-persistence-never-weakens-the.md)).
 - When the platform hands over no survivable location, degrade loudly to the
   transient behaviour — deriving the undocumented path is the guess this rule
   forbids.
