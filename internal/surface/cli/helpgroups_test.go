@@ -83,17 +83,20 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 		t.Fatalf("the line saying --agent expands the list must sit above the first group\n%s", help)
 	}
 
+	// The product thinker's placements of 2026-10-09 (P1 to P6 in
+	// spc-2610100613109045's audit) and the spec's decision 1 on the groups.
 	for group, want := range map[string][]string{
-		"Records:":     {"build", "capture", "decide", "intent", "memory", "source", "spec"},
-		"Checks:":      {"lint"},
+		"Set-up:":      {"ahoy", "completion", "dashboard", "help", "update"},
+		"Records:":     {"build", "capture", "decide", "ideate", "intent", "memory", "source"},
+		"Checks:":      {"lab", "reading"},
 		"Portability:": {"disembark", "embark"},
-		"Release:":     {"launch", "reflect"},
+		"Release:":     {"launch"},
 	} {
 		if strings.Join(entries[group], " ") != strings.Join(want, " ") {
 			t.Errorf("%s lists %v, want %v", group, entries[group], want)
 		}
 	}
-	for _, agentVerb := range []string{"implement", "statusline", "changelog", "mode", "reading", "history"} {
+	for _, agentVerb := range []string{"implement", "statusline", "changelog", "mode", "history", "lint", "reflect", "rules", "spec"} {
 		for _, group := range peopleGroupTitles {
 			for _, got := range entries[group] {
 				if got == agentVerb {
@@ -234,28 +237,6 @@ func TestPlacementChangesNoInvocation(t *testing.T) {
 	}
 }
 
-// TestRulesAndSpecKeepTheirPlaces is criterion 6: `rules` and `spec` stay
-// top-level, visible and listed in the person's default help.
-func TestRulesAndSpecKeepTheirPlaces(t *testing.T) {
-	help, root := executedHelp(t, "--help")
-	_, entries := helpSections(help)
-	listed := map[string]bool{}
-	for _, group := range peopleGroupTitles {
-		for _, n := range entries[group] {
-			listed[n] = true
-		}
-	}
-	for _, verb := range []string{"rules", "spec"} {
-		cmd := findByPath(root, []string{verb})
-		if cmd == nil || cmd.Hidden {
-			t.Errorf("`abcd %s` must stay a visible top-level verb", verb)
-		}
-		if !listed[verb] {
-			t.Errorf("`abcd %s` is missing from the person's default help\n%s", verb, help)
-		}
-	}
-}
-
 // TestAgentFlagOutsideHelpRefuses: --agent modifies the help and nothing else, so
 // passing it to the bare board is a usage error, not a silently ignored flag.
 func TestAgentFlagOutsideHelpRefuses(t *testing.T) {
@@ -367,7 +348,8 @@ func TestSurfaceSnapshotRecordsHelpPlacement(t *testing.T) {
 	}
 	for _, tc := range []struct{ path, group, block string }{
 		{"abcd capture", groupRecords, blockPeople},
-		{"abcd rules", groupSetUp, blockPeople},
+		{"abcd rules", groupAgents, blockAgents},
+		{"abcd reading", groupChecks, blockPeople},
 		{"abcd implement", groupAgents, blockAgents},
 		{"abcd guard hook", "", blockAgents},
 		{"abcd intent audit ingest", "", blockAgents},

@@ -3,6 +3,7 @@ name: docs
 description: "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb."
 argument-hint: "[cite refresh | cite confirm <url>... | fidelity [--report|--apply|--autonomous] [--intent <itd-N>]... | fidelity record --verdict-json <file|->]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:docs` documentation currency and citations

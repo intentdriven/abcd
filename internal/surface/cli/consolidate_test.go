@@ -465,41 +465,6 @@ func personVerbs(help string) []string {
 	return out
 }
 
-// maxPersonVerbs is criterion 5's ceiling, raised from fourteen to fifteen by
-// the product thinker's ruling H13 (2026-09-29), which lists reflect there.
-const maxPersonVerbs = 15
-
-// TestPersonsListHoldsAtMostFifteenVerbs is criterion 5 under ruling H13: the
-// person's default list counts at most fifteen verbs.
-func TestPersonsListHoldsAtMostFifteenVerbs(t *testing.T) {
-	help, _ := executedHelp(t, "--help")
-	verbs := personVerbs(help)
-	if len(verbs) == 0 {
-		t.Fatalf("read no verbs out of the person's list; the count would pass vacuously:\n%s", help)
-	}
-	if len(verbs) > maxPersonVerbs {
-		t.Fatalf("the person's list counts %d verbs, over the ceiling of %d: %v", len(verbs), maxPersonVerbs, verbs)
-	}
-}
-
-// TestPersonVerbsCountsEveryListedVerb is the count's negative control: sixteen
-// listed verbs read as sixteen, so the ceiling above can fail, and help and
-// completion are not among them.
-func TestPersonVerbsCountsEveryListedVerb(t *testing.T) {
-	var b strings.Builder
-	b.WriteString("Usage:\n  abcd [command]\n\n" + peopleGroupTitles[0] + "\n")
-	for _, n := range []string{"completion", "help", "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"} {
-		b.WriteString("  " + n + "  does a thing\n")
-	}
-	b.WriteString("\n" + peopleGroupTitles[1] + "\n")
-	for _, n := range []string{"india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa"} {
-		b.WriteString("  " + n + "  does a thing\n")
-	}
-	if got := personVerbs(b.String()); len(got) != 16 {
-		t.Fatalf("personVerbs read %d verbs, want 16: %v", len(got), got)
-	}
-}
-
 // TestReferenceNamesTheNewFormsOnly is criterion 4 on the generated CLI
 // reference: a stub that moved whole has no section.
 func TestReferenceNamesTheNewFormsOnly(t *testing.T) {

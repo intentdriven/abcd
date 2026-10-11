@@ -2,6 +2,7 @@
 name: peers
 description: "List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout."
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:peers`

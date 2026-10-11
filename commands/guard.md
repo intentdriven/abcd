@@ -3,6 +3,7 @@ name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | hook]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:guard` shell-hazard check

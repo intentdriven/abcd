@@ -2,6 +2,7 @@
 name: abcd
 description: "Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument."
 argument-hint: "[<record-id>]"
+block: people
 ---
 
 # `/abcd` where-am-i

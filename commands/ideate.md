@@ -2,7 +2,7 @@
 name: ideate
 description: "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb."
 argument-hint: "<the idea, in one or two sentences>"
-block: agents
+block: people
 ---
 
 # `/abcd:ideate` — the idea-admission gauntlet

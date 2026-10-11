@@ -3,6 +3,7 @@ name: report
 description: "File a defect report or an enhancement proposal about abcd: Writes it into your account's inbox; refuses a malformed field or a filesystem path."
 argument-hint: "[--template | <file> | -]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:report` — report back to abcd
