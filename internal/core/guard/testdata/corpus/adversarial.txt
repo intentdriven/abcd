@@ -248,6 +248,16 @@ block	ps aux | grep make | awk '{print $2}' | xargs kill
 quiet	ps -o pid= -p 4242 | xargs kill
 quiet	echo $! > run.pid; kill $(cat run.pid)
 
+# --- block: kill-port, through a package runner or not -----------------------
+# iss-2610112232319827: stopping by holder, as fuser -k is.
+block	npx kill-port 3000
+block	npm exec -- kill-port@latest 3000
+block	pnpm dlx kill-port 3000
+
+# --- quiet: another package, and installing it -------------------------------
+quiet	npx prettier --check .
+quiet	npm install --save-dev kill-port
+
 # --- fp: accepted false positives, and the exact shape they take ------------
 fp	rg git push --force docs/
 fp	grep -rn gh repo delete .

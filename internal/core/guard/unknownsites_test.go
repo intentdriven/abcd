@@ -105,6 +105,7 @@ var wordReaders = map[string]string{
 
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).
+	"packageName":        "unknownMark: an `@` before a substitution's output is no version the line fixes",
 	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep, awk or ps",
 	"awkMatches":         "isUnknown on every word: an option or program the line does not fix is read as one that matches",
 	"recordAssignments":  "commandSites and isUnknown: a declarer, unset or read is taken only at a site whose name the line fixes; a name a substitution prints assigns nothing the reading follows",

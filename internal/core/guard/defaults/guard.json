@@ -607,6 +607,32 @@
         ]
       }
     },
+    "kill-port": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "kill-port",
+        "min_operands": 1
+      },
+      "why": "`kill-port` — run as `npx kill-port 3000`, `npm exec`, `pnpm dlx`, `yarn dlx` or installed — stops every process that holds the port it names, another session's server or test run included, exactly as `fuser -k` does.",
+      "successor": "Stop only a process you started, by the pid you recorded when you started it (`kill \"$pid\"`) or by its own process group (`kill -- -\"$pgid\"`); if another session holds the port or file, message that session or ask the person.",
+      "fixtures": {
+        "known_bad": [
+          "npx kill-port 3000",
+          "npx --yes kill-port@latest 3000 8080",
+          "npm exec kill-port 3000",
+          "pnpm dlx kill-port 3000",
+          "yarn dlx kill-port 3000",
+          "kill-port 3000"
+        ],
+        "known_good": [
+          "npx prettier --check .",
+          "npm exec eslint .",
+          "lsof -i :3000",
+          "kill 4242",
+          "abcd capture \"npx kill-port 3000 stopped a peer's server\""
+        ]
+      }
+    },
     "abcd-source-ledger-flip": {
       "tier": "blocker",
       "pattern": {
