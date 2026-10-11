@@ -258,6 +258,24 @@ ruling or a deferral) is flagged in the summary naming the rule. Every route is
 in the summary, in text and in the machine-readable payload, with the record
 change it made, so nothing is dropped silently.
 
+### The summary's counts
+
+Every move's summary totals the drain as it stands, in text and in the
+machine-readable payload's `counts`: the lanes opened, by outcome (in progress,
+handed back), and the pull requests they opened; the hand-backs routed, by
+route (promoted, flagged for a decision record, flagged with a home); the
+issues the rule flags; the host judgements taken; the eligible issues the move
+passed over; and the spend. The spend is counted in agent runs, the unit the
+budget check estimates a run in: each implementer's receipt the loop verified
+across the drain's lanes (the implement stage's, each fix round's, a
+hand-back's) and each validator's return it read a verdict from. No runner
+reports tokens or money, so neither is counted. A lane whose run state cannot
+be read is named in the spend, which is then a floor, rather than refusing the
+summary. A merge is a person's gate, so the drain counts the pull requests its
+lanes opened, not the ones merged; a drain that ends with every lane ended and
+none in a pull request says so as a normal ending and exits 0, and one that
+stops with a lane still in progress (an outage give-up) claims no such ending.
+
 ## The trust boundary
 
 The eligibility record is a file the drained repository authors, and it decides
@@ -324,8 +342,8 @@ verb refuses it.
 ## Where this sits
 
 - The intent and its decisions: itd-82; the design record:
-  spc-2609212015054359, which stays open for the summary's remaining counts,
-  the decision-record marker and the issues its plan names.
+  spc-2609212015054359, which stays open for the decision-record marker and
+  the issues its plan names.
 - The lane it hands issues to: itd-2609201916151817 decision 10,
   [`34-build.md`](34-build.md) and [`27-implement.md`](27-implement.md).
 - The field it reads is written by capture: [`06-capture.md`](06-capture.md).
