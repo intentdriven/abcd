@@ -51,8 +51,9 @@ const (
 	scriptWrittenEntryID = "script-written-then-run"
 
 	// scriptUnreadEntryID is the reserved id for a file a shell runs that the
-	// guard did not read: binary (block), unreadable or over the cap (warn),
-	// or past the check's read budget (warn).
+	// guard did not read: binary (block), named by a startup variable the
+	// shell expands first (block), unreadable or over the cap (warn), or past
+	// the check's read budget (warn).
 	scriptUnreadEntryID = "script-unread"
 
 	familyScript = "script file"
@@ -1095,6 +1096,10 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 			sigs = append(sigs, interpreterStreamSignal())
 			return
 		}
+		if shellExpandsStartup(value) {
+			sigs = append(sigs, startupExpandedSignal(varName))
+			return
+		}
 		if p, ok := st.resolve(rc, value, tilde); ok {
 			out = append(out, child(p, "the startup file "+varName+" names ("+value+")", targetStartup))
 		}
@@ -1228,6 +1233,17 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	return out, sigs
 }
 
+// shellExpandsStartup reports whether a BASH_ENV or ENV value holds text the
+// shell expands before it opens the file: bash runs parameter expansion,
+// command substitution and arithmetic expansion on the value
+// (iss-2610111600039059), so a `$` or a backquote in it means the file is not
+// the one the text names, and a substitution in it runs during the expansion,
+// before any file is read. The value is the line's text after its own quoting,
+// so a substitution the line ran itself is not here: its output is unknown.
+func shellExpandsStartup(value string) bool {
+	return strings.ContainsAny(value, "$`")
+}
+
 // readTarget reads one file a command points a shell at and judges it.
 // before are the files written before the command runs.
 func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget) []payloadSignal {
@@ -1310,7 +1326,9 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		// A shell script run directly is run by a non-interactive shell, which
 		// reads BASH_ENV first.
 		if v, ok := t.env["BASH_ENV"]; ok && v.ok && v.text != "" {
-			if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
+			if shellExpandsStartup(v.text) {
+				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
+			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
 					kind: targetStartup, env: t.env}, before)...)
 			}
@@ -1478,6 +1496,18 @@ func scriptOversizedSignal(shown string, size int64) payloadSignal {
 		reason: fmt.Sprintf("A shell runs %s, which is %d bytes, over the %d the guard reads, so it has not checked what runs.",
 			shown, size, maxScriptBytes),
 		successor: "Split the script into files under 256 KiB, so the guard reads what runs.",
+	}
+}
+
+// startupExpandedSignal is the block for a startup variable whose value the
+// shell expands before it reads the file: what runs is not text the guard can
+// read from the line.
+func startupExpandedSignal(varName string) payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command hands a shell " + varName + " holding a substitution or a variable, which the shell " +
+			"expands before it reads the file: a substitution there runs, and the file it names is not one the guard can read.",
+		successor: "Set " + varName + " to the startup file's fixed path, or source the file in the command string instead.",
 	}
 }
 

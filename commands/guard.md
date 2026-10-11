@@ -371,6 +371,10 @@ is. The verdicts:
   before a script a shell is pointed at is a **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
+- a `BASH_ENV` or `ENV` value holding a `$` or a backquote (`BASH_ENV='$HOME/f'`,
+  a substitution) is a **block** (`script-unread`): the shell expands it before
+  it opens the file, so a substitution in it runs and the file it names is not
+  one the guard can read;
 - a file a shell is handed that holds a NUL byte in its first 8 KiB is a
   **block** (`script-unread`); one the guard cannot read, or a shell script over
   256 KiB, is a **warn** (`script-unread`);
@@ -389,8 +393,8 @@ check and the run; a writer missing from the list above; a variable a sourced
 file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
-the current directory; `INPUTRC` (key bindings, not commands); ksh's expanded
-`ENV`; a `PROMPT_COMMAND` set as an array; and any spelling not listed here.
+the current directory; `INPUTRC` (key bindings, not commands); a
+`PROMPT_COMMAND` set as an array; and any spelling not listed here.
 
 Startup text a line carries in a variable, rather than in a file, is judged as
 the command it becomes. A `PS0`, `PS1`, `PS2` or `PS4` value is decoded the way
