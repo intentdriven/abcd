@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -218,6 +220,26 @@ func TestImplementRecordCarriesThePick(t *testing.T) {
 	for _, want := range []string{"pick:    itd-10 from 2 candidate(s); falsifier not met", "itd-10  100", "itd-11  0"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the text record names %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestBuildNextRendersMaskTheStateFilesText: the series' picks and a run
+// record's pick are read back from state files a hostile checkout can ship,
+// so their text form masks terminal control runes as every sibling line does.
+func TestBuildNextRendersMaskTheStateFilesText(t *testing.T) {
+	const esc = "\x1b[2J\u202e"
+	var b bytes.Buffer
+	renderSeries(&b, &loop.SeriesResult{State: loop.NextSeriesRel, NextSeries: loop.NextSeries{Max: 2,
+		Picks: []loop.SeriesPick{{Intent: "itd-10" + esc, RunID: "run-1" + esc, Outcome: "delivered" + esc}}}})
+	renderRecordPick(&b, &loop.RecordPick{Pick: intent.Pick{Chosen: intent.PickCandidate{ID: "itd-10" + esc}}})
+	out := b.String()
+	if strings.ContainsAny(out, "\x1b\u202e") {
+		t.Fatalf("a control rune read from a state file reaches the terminal: %q", out)
+	}
+	for _, want := range []string{"itd-10?[2J? run-1?[2J? delivered?[2J?", "pick:    itd-10?[2J? from 0 candidate(s)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the masked line still names %q:\n%s", want, out)
 		}
 	}
 }

@@ -315,3 +315,35 @@ func TestTheRunRecordCarriesThePickAndItsFalsifier(t *testing.T) {
 		t.Fatalf("a run `build <itd-N>` started carries no pick: %+v %v", rec.Pick, err)
 	}
 }
+
+// TestASeriesRefusesAnOutcomeItNeverWrites: a pick's outcome in next.json is
+// one of the four the series writes; any other text (a hand edit, or a file a
+// hostile checkout ships, carrying terminal control runes) is refused at the
+// pick, so it never reaches a render or the --json payload.
+func TestASeriesRefusesAnOutcomeItNeverWrites(t *testing.T) {
+	root := seriesRepo(t)
+	if _, err := Next(root, Options{}, NextOptions{Max: 2}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, filepath.FromSlash(NextSeriesRel))
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{`\u001b[2Jdelivered`, `shipped`, ``} {
+		forged := strings.Replace(string(raw), `"outcome": "in-progress"`, `"outcome": "`+bad+`"`, 1)
+		if forged == string(raw) {
+			t.Fatal("the series' state names its pick's outcome")
+		}
+		if err := os.WriteFile(path, []byte(forged), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Next(root, Options{}, NextOptions{})
+		if r := mustRefusal(t, err); r.Stage != StagePick || !strings.Contains(r.Reason, "outcome the series never writes") {
+			t.Fatalf("outcome %q is refused at the pick: %+v", bad, r)
+		}
+		if runs, _ := Runs(root); len(runs) != 1 {
+			t.Fatalf("a refused series starts no run: %d runs", len(runs))
+		}
+	}
+}

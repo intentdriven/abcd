@@ -384,7 +384,7 @@ func renderSeries(w io.Writer, s *loop.SeriesResult) {
 	case s.Started:
 		head = "begun"
 	}
-	fmt.Fprintf(w, "  series:  %s, %d pick(s), %s; state %s\n", count, len(s.Picks), head, s.State)
+	fmt.Fprintln(w, termsafe.Sanitize(fmt.Sprintf("  series:  %s, %d pick(s), %s; state %s", count, len(s.Picks), head, s.State)))
 	if s.NextEligibleAt != nil {
 		fmt.Fprintf(w, "    paused until %s\n", s.NextEligibleAt.UTC().Format(time.RFC3339))
 	}
@@ -393,7 +393,7 @@ func renderSeries(w io.Writer, s *loop.SeriesResult) {
 		if p.Falsified {
 			line += "; the pick is falsified"
 		}
-		fmt.Fprintln(w, line)
+		fmt.Fprintln(w, termsafe.Sanitize(line))
 	}
 }
 
@@ -1117,7 +1117,7 @@ func renderRecordPick(w io.Writer, p *loop.RecordPick) {
 	if p.Falsified {
 		met = "falsified: " + p.FalsifiedBy
 	}
-	fmt.Fprintf(w, "  pick:    %s from %d candidate(s); %s\n", p.Chosen.ID, len(p.Candidates), termsafe.Sanitize(met))
+	fmt.Fprintf(w, "  pick:    %s from %d candidate(s); %s\n", termsafe.Sanitize(p.Chosen.ID), len(p.Candidates), termsafe.Sanitize(met))
 	for _, c := range p.Candidates {
 		s := c.Score
 		line := fmt.Sprintf("    %s  %d  criteria %d, test path %d, footprint %d", c.ID, s.Total, s.Criteria.Points, s.TestPath.Points, s.Footprint.Points)

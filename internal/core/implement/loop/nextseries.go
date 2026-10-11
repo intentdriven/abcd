@@ -71,6 +71,9 @@ const (
 	SeriesPickRemoved = "removed"
 )
 
+// seriesOutcomes are the outcomes a series writes, and the only ones it reads.
+var seriesOutcomes = []string{SeriesPickInProgress, SeriesPickDelivered, SeriesPickHandedBack, SeriesPickRemoved}
+
 // NextSeries is one series of picks, between invocations.
 type NextSeries struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -396,6 +399,13 @@ func readSeries(repoRoot string) (NextSeries, bool, error) {
 	for _, p := range st.Picks {
 		if !recordid.ValidIntentID(p.Intent) || !ValidRunID(p.RunID) {
 			return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names a pick that is not an intent and a run",
+				"`abcd build next` is the file's only writer; restore it or remove it")
+		}
+		// The outcome is one the series writes, so no other text (a hand
+		// edit, or control runes in a file a hostile checkout ships) reaches a
+		// render, an exclusion's reason or the --json payload.
+		if !slices.Contains(seriesOutcomes, p.Outcome) {
+			return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names a pick with an outcome the series never writes",
 				"`abcd build next` is the file's only writer; restore it or remove it")
 		}
 	}
