@@ -43,7 +43,7 @@ We expect fewer repeated mistakes, because a note comes back exactly when a prom
 - **Given** a personal note and a promoted note, **when** each is stored, **then** the personal note lives in the machine's file and the promoted note in the project's.
 - **Given** a note whose text holds a secret, a private name or a network address, **when** an agent writes it, **then** the write is refused, so a note can never hold one.
 - **Given** any note, **when** it is written, **then** it records who wrote it, when, and in which session.
-- **Given** a session filling up, **when** a prompt matches notes, **then** recall shrinks as the session fills: the notes in full, then one line each, then nothing.
+- **Given** a session filling up, **when** a prompt matches notes, **then** recall shrinks as the session fills: the notes in full, then one line each, to the end of the session.
 
 ## Open Questions
 
@@ -67,6 +67,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-11: the product thinker accepted Why This Matters and the Mechanism with its falsifier exactly as written above, and walked and accepted all ten acceptance criteria.
 - 2026-10-11, technical facilitator: the two scope conditions (a host that runs abcd's prompt hook; notes written by agents on the person's own machine, with promotion a person's act) were proposed by the facilitator, not asked of the product thinker.
 - 2026-10-11, product thinker, where review and promotion happen: reviewing notes and promoting them "will be part of a later PT / TF dashboard where the PT can click on those they want to promote", and then "Move them to the dashboard". The second and third criteria accepted earlier the same day (the review, and promotion with its second-maintainer rule) are moved out of this intent, verbatim, into the draft itd-2610111655362931, which builds on this intent and the dashboard intent (itd-2610032150577708). This intent keeps the store both layers read: a promoted note is one in the project's file, and the act that puts it there is the dashboard's. The press release's promotion and the second scope condition describe the product as a whole and stand.
+- 2026-10-11, technical facilitator, how recall ends: "never send nothing". Recall goes full, then one-line titles, and stays at titles to the end of the session; there is no bracket in which matched notes come back as nothing, because a compaction or a new session resets recall anyway, so the titles cost little and a session never loses sight of a note that matches. The last criterion's earlier wording, "the notes in full, then one line each, then nothing", was accepted on 2026-10-11 and changed the same day by this ruling to "to the end of the session".
 - 2026-10-11: the impact is additive. Nothing that exists today is renamed or removed: `/abcd:memory` was freed by the verb split (itd-2610090831227812), and notes are a new store.
 
 ## Grounds
