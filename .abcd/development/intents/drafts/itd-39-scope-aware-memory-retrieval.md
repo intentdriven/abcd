@@ -7,6 +7,8 @@ suggested_kind: standalone
 reclassification_history: []
 blocked_by: [itd-36, itd-3]
 severity: minor
+related_intents: [itd-2610091918433290]
+related_adrs: [adr-2610091918443997]
 ---
 
 # abcd Surfaces the Right Memory at the Right Moment
@@ -59,13 +61,18 @@ The failure mode itd-3 guards against is *unbounded scaffolding outside the repo
 
 ## Open Questions
 
-- Should the three context-bracket thresholds be shared with itd-3's rule injection or tuned separately for memory? (Rules are smaller per-item than memory pages.)
-- Does the `DEPLETED`-bracket "titles-only" fallback need a relevance ranking, or is recall-keyword match count sufficient?
-- Release placement is deferred until itd-36's storage model has shipped and accumulated real corpus.
+- None for the product thinker. The three questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec.
 
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+
+## Decisions
+
+- 2026-10-11, product thinker: "Build both together". Memory pages (this intent) and memory notes (itd-2610091918433290) share one recall and are planned as one bundle. Where this intent's criteria overlap the notes intent's (the brackets; never reading the host's memory files), both criteria stand and one mechanism serves both.
+- 2026-10-11, technical facilitator, the first question first left here: "Share the brackets". Memory recall uses the rules loader's context brackets (itd-3); there are no thresholds tuned separately for memory.
+- 2026-10-11, technical facilitator, the second question first left here: "A relevance ranking". When the context is short and only some matching titles fit, a relevance ranking chooses the ones that stay, not the raw count of matching recall words. The spec designs a simple ranking whose choice can be explained, cites its prior art, and adds no dependency unless the person signs off.
+- 2026-10-11, settled on the record, the third question first left here: release placement no longer waits. itd-36's storage model has shipped, and its store is now reached as `library ingest`, `library ask` and `library lint` (itd-2610090831227812).
 
 ## References
 

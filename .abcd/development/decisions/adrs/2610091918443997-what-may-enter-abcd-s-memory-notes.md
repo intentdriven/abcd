@@ -1,7 +1,7 @@
 ---
 id: adr-2610091918443997
 slug: what-may-enter-abcd-s-memory-notes
-status: proposed
+status: accepted
 date: 2026-10-09
 supersedes: null
 superseded_by: null
@@ -24,12 +24,21 @@ Open before this record can be decided:
 
 ## Decision
 
-_Not yet decided; settled at the planning interview of itd-2610091918433290._
+Decided at the planning interview of itd-2610091918433290 on 2026-10-11, by the product thinker except where a line says otherwise.
+
+- **An agent writes any note without asking.** Capture is automatic: there is no class of note that needs the person's yes before it is written.
+- **Every note is visible and reviewed.** Each note records who wrote it, when, and in which session. The product thinker or the technical facilitator reviews the notes from time to time and keeps, discards or promotes each one. A note steers later sessions the way a rule does, which is why this was a trust question; the answer is automatic capture with visible review, not a yes before each write.
+- **Only a person promotes, in a review.** Promotion moves a note from the person's machine (`~/.abcd.noindex/memory.json`) into the project's record (`.abcd/memory.json`, the storage the technical facilitator ruled the same day). An agent never promotes. In a repository with more than two maintainers, at least one other maintainer must agree before a promotion lands.
+- **The host's memory files are moved by hand only.** The person points at a lesson in the host's own memory files, or pastes it, and it is filed as a memory note. abcd never reads or writes the host's memory files on its own; the product thinker's ruling of 2026-10-05 that abcd never touches `~/.claude` stands.
+- **Never in a note** (settled on the record, not asked): a secret, a private name or a live network identifier. The write is judged by the existing redactor (the shared scanner's secret, identity and network spans, which the memory store's writer already applies) and the private-names banlist, and a note that still holds one after redaction is refused, whichever layer it is bound for.
 
 ## Alternatives Considered
 
-_To be laid out at planning: an agent writes freely to the machine layer and promotion needs the person's yes; every write needs the person's yes; an agent writes and promotes, disclosed in the commit._
+- An agent writes any note without asking; every note is stamped and reviewed, and only a person promotes (chosen): lessons are kept the moment they are learned, and the review is where trust is earned, in plain sight.
+- Every note asks the person first: nothing is written unseen, but an agent mid-task stops to ask about each small fact, so most lessons are never kept or the person learns to say yes without reading.
+- An agent writes and promotes, disclosing the promotion in the commit: no person is needed for a note to reach every teammate's agents, so a wrong lesson spreads before anyone reads it, and the commit trailer is the only trace.
+- An agent writes freely to the machine layer but needs the person's yes for some kinds of note (for example anything about another person): a line between kinds that every agent must judge alike, where the review already shows every note whatever its kind.
 
 ## Consequences
 
-_To be written with the decision._
+Notes accumulate unseen between reviews, so the review is load-bearing: a note recalled wrongly steers sessions until a person reviews it, and the intent's falsifier names reviews that find most notes wrong or stale. Promotion needs a person's act the binary can tell from an agent's, as the source ledger's flip does under adr-41 (a guard entry and a terminal check), and the more-than-two-maintainers rule needs abcd to know how many maintainers a repository has, which it does not record today; the spec of the plan leaves both to the facilitator as open questions. The redactor and the banlist become a write-time gate on the machine's file, which no committed-artefact scan reaches, so they must run on every note write, not only on promotion.
