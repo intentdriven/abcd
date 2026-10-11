@@ -239,6 +239,15 @@ quiet	pid=$(cat run.pid); kill "$pid"
 quiet	GO=go; "$GO" build ./...
 quiet	cmd="go test ./..."; eval "$cmd"
 
+# --- block: a search's pid list through a file, or a ps listing filtered ----
+# iss-2610112214257996: a pid list that came from a search blocks.
+block	pgrep make > pids; xargs kill < pids
+block	ps aux | grep make | awk '{print $2}' | xargs kill
+
+# --- quiet: a pid the caller names or recorded -------------------------------
+quiet	ps -o pid= -p 4242 | xargs kill
+quiet	echo $! > run.pid; kill $(cat run.pid)
+
 # --- fp: accepted false positives, and the exact shape they take ------------
 fp	rg git push --force docs/
 fp	grep -rn gh repo delete .

@@ -393,7 +393,7 @@ func argsFed(p Pattern, s segment, site int) bool {
 	}
 	from := site + 1
 	if x, ok := xargsBefore(s, site); ok {
-		if s.piped.hits(p.ArgsFrom) || anyHits(s.stdinIn, p.ArgsFrom) {
+		if s.piped.hits(p.ArgsFrom) || anyHits(s.stdinIn, p.ArgsFrom) || anyHits(s.carries, p.ArgsFrom) {
 			return true
 		}
 		from = x + 1
@@ -458,6 +458,7 @@ func newArgsReader(s segment) *argsReader {
 			r.base = append(r.base, s.piped)
 		}
 		r.base = append(r.base, s.stdinIn...)
+		r.base = append(r.base, s.carries...)
 		r.next = r.x + 1
 	}
 	return r
@@ -512,6 +513,13 @@ func segmentHits(s segment, srcs []Pattern) bool {
 	}
 	if anyHits(s.carries, srcs) {
 		return true
+	}
+	if s.processSearch {
+		for _, src := range srcs {
+			if matchSegment(src, processSearchReading) {
+				return true
+			}
+		}
 	}
 	if s.home == nil {
 		return false

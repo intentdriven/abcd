@@ -517,8 +517,17 @@ the account is among what it selects. `pkill`'s signal is read as a signal
 first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
 so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list a search
 printed into a variable the same line assigns is read as the search's output
-(`p=$(pgrep make); kill $p`, `p=$(pgrep make); echo "$p" | xargs kill`); one
-carried through a file, or taken from a `ps | grep` chain, is not seen.
+(`p=$(pgrep make); kill $p`, `p=$(pgrep make); echo "$p" | xargs kill`), and
+so is one written to a file the same line then reads (`pgrep make > p; kill
+$(cat p)`, `xargs kill < p`, `while read q; do kill $q; done < p`): each is a
+**block**. The file is matched by the name the line writes it under, and a
+name the line does not fix can be any file; one written under another
+spelling of the path, or by a command that names it as an operand (`tee p`),
+is not followed. A `ps` listing filtered by a name — through `grep`, or an
+`awk` program that matches (`ps aux | grep make | awk '{print $2}' | xargs
+kill`, `ps aux | awk '/make/ {print $2}'`) — is a search as `pgrep` is, and a
+**block** under `kill-by-search`; a `ps` that reports the pid you name (`ps -o
+pid= -p 4242 | xargs kill`) is not.
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 

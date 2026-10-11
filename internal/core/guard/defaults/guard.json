@@ -483,12 +483,15 @@
           "kill $(pidof make)",
           "{ pgrep make; } | xargs kill",
           "kill $(sh -c 'pgrep make')",
-          "pgrep make | xargs sh -c 'kill \"$@\"' _"
+          "pgrep make | xargs sh -c 'kill \"$@\"' _",
+          "pgrep make > pids; xargs kill < pids",
+          "ps aux | grep make | awk '{print $2}' | xargs kill"
         ],
         "known_good": [
           "kill 4242",
           "kill -- -4242",
           "kill $(cat pidfile)",
+          "ps -o pid= -p 4242 | xargs kill",
           "kill $(pgrep -g 4242)",
           "pgrep -l make",
           "pgrep make | wc -l",

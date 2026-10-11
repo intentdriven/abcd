@@ -134,8 +134,17 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		// hold a value's output passes that output on (segment.carries).
 		carried, carriedSigs := carriedReadings(item.segs)
 		signals = append(signals, carriedSigs...)
+		// The records go to the copy of each command in out, and to its
+		// copy in the tokenize call that emitted it, which a run another
+		// command of that call names reads (segment.home): a substitution
+		// in a here-document body or a double-quoted word is its own call.
 		for k := range item.segs {
-			out[item.base+k].carries = item.segs[k].carries
+			s := item.segs[k]
+			out[item.base+k].carries, out[item.base+k].processSearch = s.carries, s.processSearch
+			if s.home != nil && s.at < len(s.home.segs) {
+				h := &s.home.segs[s.at]
+				h.carries, h.processSearch = s.carries, s.processSearch
+			}
 		}
 		for k, s := range item.segs {
 			// A word that is an unquoted `$(cat <<'EOF' … EOF)` runs the
@@ -587,6 +596,7 @@ func payloadInput(s segment) (stdin, args []feed) {
 	}
 	stdin = append(stdin, s.stdinIn...)
 	stdin = append(stdin, redirectedInput(s)...)
+	stdin = append(stdin, s.carries...)
 	args = newArgsReader(s).before(len(s.tokens))
 	return stdin, append(args, wordFeeds(s, func(int) bool { return true })...)
 }

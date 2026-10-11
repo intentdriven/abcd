@@ -67,6 +67,7 @@ var readValueFlags = map[string]bool{"-a": true, "-d": true, "-i": true, "-n": t
 // output came from (segment.carries) in place, where the runs that name it
 // read it.
 func carriedReadings(segs []segment) (map[int][]segment, []payloadSignal) {
+	fileCarries(segs)
 	var vals map[string][]carriedValue
 	var out map[int][]segment
 	var signals []payloadSignal
@@ -78,7 +79,7 @@ func carriedReadings(segs []segment) (map[int][]segment, []payloadSignal) {
 			// The output a value holds is what this command's words hold,
 			// so a command it prints into reads it too: `echo "$p" | xargs
 			// kill` hands kill what pgrep printed.
-			segs[k].carries = append(segs[k].carries, held...)
+			segs[k].carries = mergeRuns(append(segs[k].carries, held...))
 			if len(ds) > 0 {
 				if out == nil {
 					out = map[int][]segment{}
@@ -92,7 +93,7 @@ func carriedReadings(segs []segment) (map[int][]segment, []payloadSignal) {
 		}
 		var loopIn []feed
 		if e, ok := ends[k]; ok {
-			loopIn = wordFeeds(segs[e], allWords)
+			loopIn = append(wordFeeds(segs[e], allWords), segs[e].carries...)
 		}
 		for _, r := range readings {
 			vals = recordAssignments(r, vals, loopIn)
@@ -208,6 +209,7 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 			}
 			v.feeds = append(v.feeds, s.stdinIn...)
 			v.feeds = append(v.feeds, wordFeeds(s, allWords)...)
+			v.feeds = append(v.feeds, s.carries...)
 			v.feeds = append(v.feeds, loopIn...)
 			args := s.tokens[a.idx+1:]
 			for i := 0; i < len(args); i++ {
@@ -244,7 +246,7 @@ func addValue(vs []carriedValue, v carriedValue) []carriedValue {
 	last := vs[len(vs)-1]
 	out := append([]carriedValue(nil), vs[:len(vs)-1]...)
 	merged := carriedValue{tok: unknownText, output: true,
-		feeds: append(append([]feed(nil), last.feeds...), v.feeds...)}
+		feeds: mergeRuns(append(append([]feed(nil), last.feeds...), v.feeds...))}
 	return append(out, merged)
 }
 
@@ -477,6 +479,200 @@ func outputRunAsString(s segment, at []int) bool {
 	}
 	return false
 }
+
+// Output carried through a file (iss-2610112214257996, in the spirit of ruling
+// AS: a pid list that came from a search blocks, a recorded pid does not).
+//
+// A command that reads a file an earlier command of the same text wrote — as
+// its standard input (`< p`, `$(< p)`) or as an operand naming it (`cat p`,
+// `xargs -a p`) — reads what that command printed, so it carries it
+// (segment.carries) as a pipe from it would. The file is matched by the name
+// the line writes it under, so `pgrep make > p; kill $(cat p)` is a kill fed
+// by the search and `kill $(cat pidfile)`, a pid file the line did not write,
+// is not. A file written under another spelling of the same path, through a
+// variable, or by a command that names it as an operand (`tee p`) is not
+// followed.
+//
+// A ps listing is not a search, since `ps -o pid= -p N` reports the pid the
+// caller names; a grep, or an awk program that matches, filtering a ps
+// listing by a name is (segment.processSearch).
+
+// fileCarries records, in place, what each command of segs reads from a file
+// an earlier one wrote, and which commands filter a ps listing by a name. A
+// file name the line does not fix, written or read, can be any file, so a read
+// of one reads every file written before it, and a write to one reaches every
+// read after it; those are held as one covering run per call (mergeRuns), so
+// a line of many writes and reads costs what its commands do.
+func fileCarries(segs []segment) {
+	var written map[string][]feed
+	var wild, all []feed
+	for k := range segs {
+		s := &segs[k]
+		if len(all) > 0 {
+			var got []feed
+			read := func(name string, fixed bool) {
+				if !fixed {
+					got = append(got, all...)
+					return
+				}
+				got = append(append(got, written[name]...), wild...)
+			}
+			for _, r := range s.redirects {
+				if (r.op == "<" || r.op == "<>") && (r.fd == -1 || r.fd == 0) {
+					read(r.target.text, r.target.ok)
+				}
+			}
+			for _, tok := range s.tokens {
+				tally(1)
+				read(tok, !isUnknown(tok))
+			}
+			s.carries = append(s.carries, mergeRuns(got)...)
+		}
+		s.processSearch = filtersProcessList(*s)
+		for _, r := range s.redirects {
+			if !writesOutput(r) {
+				continue
+			}
+			fs := outputOf(*s)
+			all = mergeRuns(append(all, fs...))
+			if !r.target.ok {
+				wild = mergeRuns(append(wild, fs...))
+				continue
+			}
+			if written == nil {
+				written = map[string][]feed{}
+			}
+			written[r.target.text] = mergeRuns(append(written[r.target.text], fs...))
+		}
+	}
+}
+
+// mergeRuns holds runs as one covering run per tokenize call they name: the
+// commands between two runs of one call are read with them, which can only
+// add a source, never drop one.
+func mergeRuns(fs []feed) []feed {
+	if len(fs) < 2 {
+		return fs
+	}
+	var out []feed
+	for _, f := range fs {
+		tally(1)
+		merged := false
+		for i := range out {
+			if out[i].list == f.list {
+				out[i].lo, out[i].hi = min(out[i].lo, f.lo), max(out[i].hi, f.hi)
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// writesOutput reports whether a redirection sends a command's standard
+// output into the file it names.
+func writesOutput(r redirect) bool {
+	switch r.op {
+	case ">", ">>", ">|":
+		return r.fd == -1 || r.fd == 1
+	case "&>", "&>>":
+		return true
+	case ">&":
+		return (r.fd == -1 || r.fd == 1) && strings.Trim(r.target.text, "0123456789-") != ""
+	}
+	return false
+}
+
+// outputOf is every run whose output can reach what s prints: s itself, what
+// it reads on its standard input, and what its words hold. What s carries is
+// read through s itself (segmentHits reads its carries), so it is copied only
+// for a command no tokenize call holds.
+func outputOf(s segment) []feed {
+	var out []feed
+	if s.home != nil {
+		out = append(out, feed{list: s.home, lo: s.at, hi: s.at + 1})
+	} else {
+		out = append(out, s.carries...)
+	}
+	if s.piped.list != nil {
+		out = append(out, s.piped)
+	}
+	out = append(out, s.stdinIn...)
+	return append(out, wordFeeds(s, allWords)...)
+}
+
+// grepNames and awkNames are the filters that pick lines of a listing by
+// what they hold.
+var (
+	grepNames = []string{"grep", "egrep", "fgrep", "rg"}
+	awkNames  = []string{"awk", "gawk", "mawk", "nawk"}
+)
+
+// filtersProcessList reports whether s is a grep, or an awk whose program
+// matches (awkMatches), reading a ps listing: a search by name, as pgrep is.
+func filtersProcessList(s segment) bool {
+	filter := false
+	for _, a := range commandSites(s) {
+		tok := s.tokens[a.idx]
+		if nameCouldBeAny(tok, grepNames) || nameCouldBeAny(tok, awkNames) && awkMatches(s.tokens[a.idx+1:]) {
+			filter = true
+			break
+		}
+	}
+	if !filter {
+		return false
+	}
+	runs := append([]feed(nil), s.stdinIn...)
+	if s.piped.list != nil {
+		runs = append(runs, s.piped)
+	}
+	runs = append(runs, s.carries...)
+	for _, f := range runs {
+		for i := f.lo; i < f.hi && i < len(f.list.segs); i++ {
+			tally(1)
+			for _, a := range commandSites(f.list.segs[i]) {
+				if nameCouldBe(f.list.segs[i].tokens[a.idx], "ps") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// awkMatches reports whether an awk command's program selects lines by what
+// they hold: a regular expression, a match operator or an equality test. A
+// program read from a file (`-f`), or a word the line does not fix before or
+// as the program, is taken as one that does.
+func awkMatches(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		w := args[i]
+		switch {
+		case w == "-f" || strings.HasPrefix(w, "--file") || isUnknown(w):
+			return true
+		case w == "-F" || w == "-v":
+			i++
+		case w == "--":
+		case strings.HasPrefix(w, "-") && len(w) > 1:
+		default:
+			for _, m := range []string{"/", "~", "==", "index(", "match("} {
+				if strings.Contains(w, m) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	return false
+}
+
+// processSearchReading is how a command that filters a ps listing by a name
+// is read by an entry that names its sources (segmentHits): as the pgrep
+// whose search it makes.
+var processSearchReading = segment{tokens: []string{"pgrep", "name"}}
 
 // carriedOutputSignal is the verdict on a line that runs, as a command string,
 // a variable it set from output the guard did not read (ruling AT).

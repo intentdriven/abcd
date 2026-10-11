@@ -154,11 +154,16 @@ type segment struct {
 	argsIn  []feed
 	// carries records commands whose output reaches this command by a way
 	// no word's substitution and no pipe names: a value the text assigned
-	// from their output that its words hold (carried.go). A run that names
-	// this command reads them as its own (segmentHits), so `echo "$p" |
-	// xargs kill` after `p=$(pgrep make)` hands kill what pgrep printed. nil
-	// when nothing does.
+	// from their output that its words hold, or a file the text wrote with
+	// their output that it reads (carried.go). A run that names this command
+	// reads them as its own (segmentHits), so `echo "$p" | xargs kill` after
+	// `p=$(pgrep make)` hands kill what pgrep printed, and so does `xargs
+	// kill < p` after `pgrep make > p`. nil when nothing does.
 	carries []feed
+	// processSearch records a grep, or a matching awk, that filters a ps
+	// listing: a search by name, which an entry that names pgrep as a
+	// source reads as one (fileCarries, segmentHits).
+	processSearch bool
 	// home and at name the segment in the tokenize call that emitted it,
 	// list.segs[at]; home is nil for a segment built anywhere else. They are
 	// what a command's own string is filed under (segList.payloads).
