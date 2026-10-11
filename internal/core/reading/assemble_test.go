@@ -869,6 +869,45 @@ func TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted(t *testing.T) {
 	}
 }
 
+// TestAnExcludedHeadingBehindAnyValidLinkShapeIsRedacted: each heading below is
+// a valid CommonMark link or image whose rendered text is exactly an excluded
+// heading. The link pattern bounded a destination at its first `)` and a label
+// at its first `]`, and unwrapped an image nested in a link one level only, so
+// each of these travelled (iss-2610101930329211). The scanner that replaced the
+// pattern reads balanced and escaped parentheses, an angle-bracket destination,
+// a quoted title and nesting, so each is the excluded heading and redacted.
+func TestAnExcludedHeadingBehindAnyValidLinkShapeIsRedacted(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-SECTION"
+	cases := map[string]string{
+		"balanced parentheses in the destination":   "## [Audit Notes](https://example.com/wiki/Audit_(finance))",
+		"an escaped parenthesis in the destination": "## [Audit Notes](a\\)b)",
+		"an angle-bracket destination":              "## [Audit Notes](<a)b>)",
+		"a parenthesis inside a quoted title":       "## [Audit Notes](u \"ti)tle\")",
+		"an inline image inside an inline link":     "## [![Audit Notes](a.png)](https://x)",
+		"a reference image inside a reference link": "## [![Audit Notes][img]][lnk]",
+	}
+	for what, heading := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-link-shape.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+heading+"\n\n"+sentinelAuditNotes+"\n\n## Next\n\n"+kept+
+				"\n\n[img]: https://example.com/i.png\n[lnk]: https://example.com/l\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: an excluded heading behind a valid link was refused, not redacted: %v", what, err)
+			continue
+		}
+		text := bundleText(res.Bundle)
+		if strings.Contains(text, sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading behind a valid link let its section travel", what)
+		}
+		if !strings.Contains(text, kept) {
+			t.Errorf("%s: the redaction took more than the excluded section; the text after it is missing", what)
+		}
+	}
+}
+
 // TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
 // with a Cyrillic A (U+0410) reads as the excluded heading and compared as
 // nothing like it, because every comparison the floor made was over code points,

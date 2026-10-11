@@ -223,16 +223,6 @@ var (
 	// (iss-2608301251394412). It stops at the end of the name, so asking it at
 	// every `<` stays linear where the whole pattern would scan to the next `>`.
 	htmlTagOpenRe = regexp.MustCompile(`^` + htmlTagOpen + `[\s/>]`)
-	// mdLinkRe unwraps a link to the text a reader sees: the inline form
-	// `[text](target)`, the full and collapsed reference forms `[text][ref]` and
-	// `[text][]`, and the shortcut `[text]`. Whether a definition exists for a
-	// reference is not asked: a bracketed title with none renders with its
-	// brackets, and reading it as its label too redacts it, which is the side
-	// a floor errs on. Unwrapping the inline form alone let the three reference
-	// forms of an excluded heading travel. An image, `![alt](src)` and its
-	// reference forms, is unwrapped to its alt text the same way: the heading a
-	// screen reader announces and a page without images shows.
-	mdLinkRe = regexp.MustCompile(`!?\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?`)
 	// mdFootnoteRe matches a footnote marker, `[^1]`, which renders as a
 	// superscript after the heading it marks rather than as part of its title.
 	mdFootnoteRe = regexp.MustCompile(`\[\^[^\]]*\]`)
@@ -321,13 +311,34 @@ const (
 //     CommonMark and GFM show the braces, so the floor reads it as written and
 //     it travels.
 //
-// Every other inline form that renders as plain text is reduced before the
-// comparison: emphasis, code and strikethrough marks are dropped (stripMarks),
-// links and images unwrapped to their text, footnote markers dropped, backslash
-// escapes and character references decoded, HTML tags and comments removed
-// (renderedTexts). A heading nested in a blockquote or a list item IS caught:
-// the section scan cannot span it, so the verifier refuses it (nestedHeadingRe,
-// iss-2609251509209801).
+//   - A footnote marker is dropped before anything else is read, so a title
+//     that is only a marker, `## [^Audit Notes]`, compares as empty and
+//     travels; it renders as a superscript or, with no definition, with its
+//     caret and brackets.
+//   - Inside a link label, a code span or a raw HTML tag binds more tightly
+//     than the brackets in CommonMark, and the scanner does not model that: a
+//     `]` written inside one ends the label early. What that misreads is
+//     either a title that still carries a bracket, which the backstop below
+//     judges, or one read as the excluded heading and redacted.
+//   - The backstop compares letters as written: a link it could not read,
+//     spelled with a non-ASCII lookalike letter as well, carries no ASCII
+//     `auditnotes` and travels, where the same lookalike in a title with no
+//     brackets is a near-match (nearExcluded) and refused.
+//
+// The inline forms that render as plain text are reduced in two layers before
+// the comparison. First, the reduction: emphasis, code and strikethrough marks
+// are dropped (stripMarks); links and images are unwrapped to their text by a
+// scanner that follows the CommonMark inline link grammar, passed until the
+// title stops changing so an image inside a link reduces to its alt text
+// (unwrapLinks); footnote markers are dropped; backslash escapes and character
+// references decoded; HTML tags and comments removed (renderedTexts). Second,
+// the backstop: a title still carrying a bracket after the reduction holds
+// link syntax the scanner did not read, and it is refused if its letters
+// contain an excluded heading's (unreadLinkNames). The first layer redacts
+// what it reads; the second refuses what it did not, so a link shape the
+// scanner misreads is refused rather than travelling. A heading nested in a
+// blockquote or a list item IS caught: the section scan cannot span it, so
+// the verifier refuses it (nestedHeadingRe, iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
 // ones, under the ONE equality this floor uses: an ASCII case fold or the same
@@ -350,7 +361,7 @@ func namesExcludedHeading(title string, headings map[string]bool) (string, headi
 		}
 	}
 	for _, want := range wants {
-		if nearExcluded(title, want) {
+		if nearExcluded(title, want) || unreadLinkNames(title, want) {
 			return want, nearHeading
 		}
 	}
@@ -500,10 +511,10 @@ func nearKey(text string) string {
 }
 
 // renderedTexts reduces a heading title to the text a reader sees — HTML
-// comments and tags removed, backslash escapes decoded, footnote markers
-// dropped, link and image wrappers unwrapped to their label or alt text,
-// character references decoded — and returns EVERY reading of it rather than
-// one. The comparison then judges what the page shows rather than what the
+// comments and tags removed, footnote markers dropped, link and image wrappers
+// unwrapped to their label or alt text and backslash escapes decoded
+// (inlineReduced), character references decoded — and returns EVERY reading of
+// it rather than one. The comparison then judges what the page shows rather than what the
 // source spells.
 //
 // A removed tag has two readings and neither is the title on its own. `<br>` is
@@ -524,16 +535,323 @@ func nearKey(text string) string {
 // determinism instrument had a coin-flip refusal. One pass also covers the
 // numeric and hex character references a short list could never enumerate.
 func renderedTexts(title string) []string {
-	out := htmlCommentRe.ReplaceAllString(title, "")
-	out = mdEscapeRe.ReplaceAllString(out, "$1")
-	out = mdFootnoteRe.ReplaceAllString(out, "")
-	out = mdLinkRe.ReplaceAllString(out, "$1")
+	return readingsOf(inlineReduced(title))
+}
+
+// readingsOf is renderedTexts' second half: the two readings of a title whose
+// comments, footnote markers, links and escapes are already reduced.
+func readingsOf(out string) []string {
 	spaced := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, " ")))
 	joined := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, "")))
 	if joined == spaced {
 		return []string{spaced}
 	}
 	return []string{spaced, joined}
+}
+
+// inlineReduced is a title with its HTML comments removed, its footnote markers
+// dropped, every link and image unwrapped and its backslash escapes decoded
+// (unwrapLinks): the text renderedTexts reads, before tags and character
+// references.
+func inlineReduced(title string) string {
+	out := htmlCommentRe.ReplaceAllString(title, "")
+	out = mdFootnoteRe.ReplaceAllString(out, "")
+	return unwrapLinks(out)
+}
+
+// maxLinkPasses caps how many times unwrapLinks runs its pass over one title.
+// Each pass unwraps one level of nesting, and CommonMark nests an image inside
+// a link and no deeper, so eight is generous. A title nested deeper than the
+// cap keeps its innermost brackets, and the floor's backstop
+// (unreadLinkNames) refuses it if those carry an excluded heading.
+const maxLinkPasses = 8
+
+// unwrapLinks reduces every link and image in a title to the text a reader
+// sees, its label or alt text, and decodes the title's backslash escapes. It
+// runs unwrapLinkPass until the title stops changing, at most maxLinkPasses
+// times, so `[![alt](src)](href)` reduces to `alt`; the passes are a loop,
+// never recursion, so nesting the document chooses costs it nothing beyond the
+// cap.
+//
+// Escapes are decoded once, at the first fixed point, and the passes carry on
+// after it. The scanner reads `\[` and `\)` as literal characters, which is
+// what lets `[Audit Notes](a\)b)` be read as the one link it is; decoding first
+// turned that `\)` into the `)` that ended the link early. Decoding at the
+// fixed point and passing again keeps the older reading of `\[Open Questions\]`,
+// which renders with its brackets and is unwrapped to its label the way a
+// bracketed title with no definition is: the side a floor errs on.
+func unwrapLinks(s string) string {
+	decoded := false
+	for range maxLinkPasses {
+		next, _ := unwrapLinkPass(s)
+		if next == s {
+			if decoded {
+				return s
+			}
+			next, decoded = mdEscapeRe.ReplaceAllString(s, "$1"), true
+			if next == s {
+				return s
+			}
+		}
+		s = next
+	}
+	if !decoded {
+		s = mdEscapeRe.ReplaceAllString(s, "$1")
+	}
+	return s
+}
+
+// unwrapLinkPass makes one left-to-right pass over a title and replaces each
+// outermost link or image it can read with its label, following the CommonMark
+// inline link grammar (spec 6.3 and 6.4) closely enough for a heading:
+//
+//   - the label runs to its matching `]`, with brackets balanced and a
+//     backslash escape read as a literal character (matchBrackets);
+//   - the inline form's destination is `<...>`, on one line with `\>` escaped,
+//     or a run of non-space bytes whose unescaped parentheses balance, and an
+//     optional title follows in `"..."`, `'...'` or `(...)` (inlineTail);
+//   - the full and collapsed reference forms, `[label][ref]` and `[label][]`,
+//     drop the second bracket pair, and the shortcut `[label]` drops its
+//     brackets. Whether a definition exists is not asked, as before: a
+//     bracketed title with none renders with its brackets, and reading it as
+//     its label too redacts it, which is the side a floor errs on;
+//   - an image, `!` before any of these, is unwrapped to its alt text: the
+//     heading a screen reader announces and a page without images shows.
+//
+// A label followed by an inline tail the scanner cannot read is left as it is
+// written, brackets and all, rather than read as a shortcut. Reading it as a
+// shortcut would take its brackets away and hide from the backstop
+// (unreadLinkNames) a link the scanner failed to read.
+//
+// The pass is linear in the title by construction. The bracket table is one
+// stack walk; the main walk visits each byte once, jumping past what it
+// unwraps; and the only re-reading is an inline tail that fails, which is
+// charged to a budget of the title's own length. Once the budget is spent the
+// rest of the title is copied as written, so its brackets stay for the
+// backstop. The work done, in bytes, is returned for the test that holds the
+// bound.
+func unwrapLinkPass(s string) (string, int) {
+	n := len(s)
+	match := matchBrackets(s)
+	var b strings.Builder
+	b.Grow(n)
+	work, spent := n, 0
+	for i := 0; i < n; {
+		c := s[i]
+		if c == '\\' && i+1 < n && isASCIIPunct(s[i+1]) {
+			b.WriteString(s[i : i+2])
+			i += 2
+			continue
+		}
+		open := -1
+		switch {
+		case c == '[':
+			open = i
+		case c == '!' && i+1 < n && s[i+1] == '[':
+			open = i + 1
+		}
+		if open < 0 || match[open] < 0 {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		closeAt := match[open]
+		end := closeAt + 1
+		switch {
+		case end < n && s[end] == '(':
+			if spent >= n {
+				b.WriteString(s[i:])
+				return b.String(), work
+			}
+			k, ok := inlineTail(s, end)
+			if !ok {
+				spent += k - end
+				work += k - end
+				b.WriteString(s[i : open+1])
+				i = open + 1
+				continue
+			}
+			end = k
+		case end < n && s[end] == '[' && match[end] >= 0:
+			end = match[end] + 1
+		}
+		b.WriteString(s[open+1 : closeAt])
+		i = end
+	}
+	return b.String(), work
+}
+
+// matchBrackets pairs every unescaped `[` with the `]` that closes it, in one
+// stack walk: match[i] is the closing position for an opening bracket at i, and
+// -1 for one never closed and for every other byte.
+func matchBrackets(s string) []int {
+	match := make([]int, len(s))
+	var open []int
+	for i := 0; i < len(s); i++ {
+		match[i] = -1
+		switch s[i] {
+		case '\\':
+			if i+1 < len(s) && isASCIIPunct(s[i+1]) {
+				i++
+				match[i] = -1
+			}
+		case '[':
+			open = append(open, i)
+		case ']':
+			if len(open) > 0 {
+				match[open[len(open)-1]] = i
+				open = open[:len(open)-1]
+			}
+		}
+	}
+	return match
+}
+
+// inlineTail reads an inline link's tail, the `(destination "title")` after its
+// label, starting at the `(` at j. It returns the position just past the
+// closing `)` and true, or the position it stopped at and false when the tail
+// is not one CommonMark reads as a link.
+func inlineTail(s string, j int) (int, bool) {
+	n := len(s)
+	k := skipLinkSpace(s, j+1)
+	if k < n && s[k] == '<' {
+		for k++; ; k++ {
+			if k >= n || s[k] == '\n' || s[k] == '<' {
+				return k, false
+			}
+			if s[k] == '\\' && k+1 < n && isASCIIPunct(s[k+1]) {
+				k++
+				continue
+			}
+			if s[k] == '>' {
+				k++
+				break
+			}
+		}
+	} else {
+		depth := 0
+		for k < n {
+			c := s[k]
+			if c == '\\' && k+1 < n && isASCIIPunct(s[k+1]) {
+				k += 2
+				continue
+			}
+			if c <= ' ' || c == 0x7f {
+				break
+			}
+			if c == '(' {
+				depth++
+			} else if c == ')' {
+				if depth == 0 {
+					break
+				}
+				depth--
+			}
+			k++
+		}
+		if depth != 0 {
+			return k, false
+		}
+	}
+	t := skipLinkSpace(s, k)
+	if t < n && s[t] == ')' {
+		return t + 1, true
+	}
+	if t == k || t >= n {
+		return t, false
+	}
+	closer := s[t]
+	switch closer {
+	case '"', '\'':
+	case '(':
+		closer = ')'
+	default:
+		return t, false
+	}
+	for t++; ; t++ {
+		if t >= n || (closer == ')' && s[t] == '(') {
+			return t, false
+		}
+		if s[t] == '\\' && t+1 < n && isASCIIPunct(s[t+1]) {
+			t++
+			continue
+		}
+		if s[t] == closer {
+			break
+		}
+	}
+	t = skipLinkSpace(s, t+1)
+	if t < n && s[t] == ')' {
+		return t + 1, true
+	}
+	return t, false
+}
+
+// skipLinkSpace returns the first position at or after i that is not the
+// white space CommonMark allows around a link's destination and title.
+func skipLinkSpace(s string, i int) int {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
+		i++
+	}
+	return i
+}
+
+// isASCIIPunct reports whether a byte is ASCII punctuation, the class a
+// backslash escapes (CommonMark 2.4, mdEscapeRe).
+func isASCIIPunct(c byte) bool {
+	return '!' <= c && c <= '/' || ':' <= c && c <= '@' || '[' <= c && c <= '`' || '{' <= c && c <= '~'
+}
+
+// unreadLinkNames is the floor's backstop for link syntax the scanner did not
+// read. A title still carrying a bracket once its links are unwrapped
+// (inlineReduced) or once it is read (renderedTexts) holds link or image
+// syntax the scanner could not follow: malformed, unbalanced, nested past the
+// pass cap, or past the pass budget. Such a title is judged on its letters
+// alone, every other rune dropped and ASCII letters case folded (lettersKey),
+// and it names the excluded heading if those CONTAIN the heading's letters.
+//
+// It fails closed on purpose. Patching the link pattern one shape at a time
+// failed twice, each time leaving a valid link the pattern misread to compare
+// as some other title and travel. This refuses whatever link syntax the floor
+// did not read and that still carries the excluded words, so the next misread
+// shape is refused rather than leaked. The cost is refusing a heading that
+// carries the words beside a stray bracket, which costs the author an edit.
+func unreadLinkNames(title, want string) bool {
+	key := lettersKey(want)
+	if key == "" {
+		return false
+	}
+	reduced := inlineReduced(title)
+	readings := readingsOf(reduced)
+	unread := strings.ContainsAny(reduced, "[]")
+	for _, x := range readings {
+		unread = unread || strings.ContainsAny(x, "[]")
+	}
+	if !unread {
+		return false
+	}
+	for _, x := range readings {
+		if strings.Contains(lettersKey(x), key) {
+			return true
+		}
+	}
+	return false
+}
+
+// lettersKey is a title's letters alone: every rune that is not a letter
+// dropped, and ASCII letters case folded.
+func lettersKey(text string) string {
+	var b strings.Builder
+	for _, r := range text {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		if 'A' <= r && r <= 'Z' {
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // normaliseHeadingTitle reduces a heading to the text it names: surrounding

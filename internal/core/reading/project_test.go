@@ -53,6 +53,70 @@ func TestTheCaseFoldIsASCIIOnly(t *testing.T) {
 	}
 }
 
+// TestLinkSyntaxTheScannerCannotReadRefusesAnExcludedHeading: the floor's second
+// layer. A title the link scanner leaves with link or image syntax in it is
+// one the floor has not read, so it is refused whenever its letters still
+// carry an excluded heading's, whatever the rest of it says. Each title below
+// is malformed, unbalanced or nested past the pass cap, and each travelled
+// under the link pattern, which unwrapped what it could and compared the rest
+// (iss-2610101930329211). The controls show the layer is narrow: a link the
+// scanner reads is the same heading and redacted, and a title with brackets
+// or another language and no excluded words travels.
+func TestLinkSyntaxTheScannerCannotReadRefusesAnExcludedHeading(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	refused := []string{
+		"[Audit Notes](a b c",
+		"[Audit Notes(x)",
+		"Audit Notes]",
+		"[[Audit Notes]",
+		"[Open Questions](x \"unclosed title)",
+		"[![Audit Notes](a.png)](x y z)",
+		strings.Repeat("[", 10) + "Audit Notes" + strings.Repeat("]", 10),
+		"[A]udit Notes](x)",
+		// Many unreadable tails spend the pass's budget, and the valid link
+		// after them is left as written rather than read.
+		strings.Repeat("[a](x(", 200) + " [Audit Notes](https://x)",
+	}
+	for _, title := range refused {
+		if want, got := namesExcludedHeading(title, headings); got != nearHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want nearHeading", title, got, want)
+		}
+	}
+	if _, got := namesExcludedHeading("[Audit Notes](https://x)", headings); got != sameHeading {
+		t.Errorf("a plain inline link is no longer the same heading: %v", got)
+	}
+	for _, title := range []string{"Notas de auditor\u00eda", "See [the guide](https://x) for notes", "[Release notes](a b", "Notes [1] and audits]"} {
+		if want, got := namesExcludedHeading(title, headings); got != noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading", title, got, want)
+		}
+	}
+}
+
+// TestTheLinkPassIsLinear: a heading title is the document's to choose, so the
+// link scanner's pass must cost a bounded multiple of the title's length on
+// any input. The shapes below are the ones that make a naive scanner re-read:
+// inline tails that open and never close, unbalanced parentheses, an unclosed
+// angle destination or title, and brackets nested deep. The pass charges
+// every failed tail to a budget of the title's length and copies the rest as
+// written once it is spent, so its work stays under three times the length.
+func TestTheLinkPassIsLinear(t *testing.T) {
+	const reps = 4000
+	for _, s := range []string{
+		strings.Repeat("[a](x", reps),
+		strings.Repeat("[a](x(", reps) + " ",
+		strings.Repeat("[a](<x", reps),
+		strings.Repeat("[a](x \"", reps),
+		strings.Repeat("[a](x (", reps),
+		strings.Repeat("[", reps) + strings.Repeat("]", reps),
+		strings.Repeat("![[a]", reps),
+	} {
+		if _, work := unwrapLinkPass(s); work > 3*len(s) {
+			t.Errorf("a pass over %q... (%d bytes) did %d bytes of work, over three times its length",
+				s[:12], len(s), work)
+		}
+	}
+}
+
 // TestRenderedTextLeavesAnAutolinkAlone: stripping tags must not eat an autolink,
 // which is a URL a heading may legitimately carry.
 func TestRenderedTextLeavesAnAutolinkAlone(t *testing.T) {
