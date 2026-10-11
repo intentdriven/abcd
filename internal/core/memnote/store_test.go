@@ -75,7 +75,7 @@ func TestWriteStampsTimeAndMintsAMemID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ValidID(n.ID) || !strings.HasPrefix(n.ID, "mem-261011120000") {
+	if !validID(n.ID) || !strings.HasPrefix(n.ID, "mem-261011120000") {
 		t.Errorf("id = %q, want a mem- id minted at the clock's second", n.ID)
 	}
 	if n.WrittenAt != "2026-10-11T12:00:00Z" {
@@ -165,7 +165,7 @@ func TestWriteTouchesOnlyTheMachineLayer(t *testing.T) {
 	if after := tree(t, repo); !equal(before, after) {
 		t.Errorf("Add changed the repository: %v -> %v", before, after)
 	}
-	want := []string{".", ".abcd.noindex", ".abcd.noindex/memory.json"}
+	want := []string{".", filepath.FromSlash(abcdhome.Rel()), filepath.FromSlash(MachineRelPath)}
 	if got := tree(t, home); !equal(got, want) {
 		t.Errorf("home = %v, want %v", got, want)
 	}
@@ -413,7 +413,7 @@ func TestNoteSchemaRefusesEachMalformedField(t *testing.T) {
 // The id is minted through the shared seam, in the mem family.
 func TestMintedIDIsTheMemFamily(t *testing.T) {
 	id, err := recordid.Minter{}.Mint(Family)
-	if err != nil || !ValidID(id) {
+	if err != nil || !validID(id) {
 		t.Fatalf("Mint(%q) = %q, %v", Family, id, err)
 	}
 }

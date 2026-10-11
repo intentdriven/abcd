@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -66,7 +67,7 @@ func TestMemoryAddWritesTheMachineLayer(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("envelope: %v\n%s", err, out)
 	}
-	if !memnote.ValidID(env.ID) {
+	if !regexp.MustCompile(`^mem-[0-9]{16}$`).MatchString(env.ID) {
 		t.Errorf("id = %q", env.ID)
 	}
 	notes := readMachineNotes(t, home)
@@ -274,7 +275,7 @@ func TestBareMemoryNamesAnUnreadableLayer(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = string(runCLI(t, "memory"))
-	for _, want := range []string{".abcd/memory.json", "malformed", "~/.abcd.noindex/memory.json", "writable by others"} {
+	for _, want := range []string{".abcd/memory.json", "malformed", memnote.MachineDisplayPath, "writable by others"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("bare does not name the unreadable layer (%q):\n%s", want, out)
 		}

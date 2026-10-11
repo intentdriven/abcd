@@ -83,13 +83,13 @@ func Add(req AddRequest) (Note, error) {
 	if req.MovedFromHost {
 		n.Origin = OriginHostMemoryMove
 	}
-	for _, err := range []error{CheckTitle(n.Title), CheckBody(n.Body), CheckRecall(n.Recall), CheckWrittenBy(n.WrittenBy)} {
+	for _, err := range []error{checkTitle(n.Title), checkBody(n.Body), checkRecall(n.Recall), checkWrittenBy(n.WrittenBy)} {
 		if err != nil {
 			return Note{}, err
 		}
 	}
 	if req.Session != "" {
-		if err := CheckSession(req.Session); err != nil {
+		if err := checkSession(req.Session); err != nil {
 			return Note{}, err
 		}
 		s := req.Session
@@ -135,7 +135,7 @@ func Add(req AddRequest) (Note, error) {
 // Remove removes the personal note id from the machine layer, whoever wrote
 // it, and returns it. ErrNotFound when the machine layer holds no such note.
 func Remove(home, id string) (Note, error) {
-	if !ValidID(id) {
+	if !validID(id) {
 		return Note{}, &FieldError{"id", "is not a mem-<16 digits> note id"}
 	}
 	if _, present, err := ReadMachine(home); err != nil {

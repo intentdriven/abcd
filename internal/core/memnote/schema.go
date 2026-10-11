@@ -112,8 +112,8 @@ var idRe = regexp.MustCompile(`^mem-[0-9]{16}$`)
 // '.'), and so the id carries no session URL.
 var sessionRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
-// ValidID reports whether s is a note id's shape.
-func ValidID(s string) bool { return idRe.MatchString(s) }
+// validID reports whether s is a note id's shape.
+func validID(s string) bool { return idRe.MatchString(s) }
 
 // layerKind says which layer a note is judged as: the machine layer requires a
 // root key (a full object name, or null), the repository layer forbids one.
@@ -136,9 +136,9 @@ func (e *FieldError) Error() string { return e.Field + " " + e.Why }
 // ErrMalformed wraps every refusal of a file's contents.
 var ErrMalformed = errors.New("malformed memory file")
 
-// CheckTitle refuses a title that is empty, longer than MaxTitleChars, not one
+// checkTitle refuses a title that is empty, longer than MaxTitleChars, not one
 // line, or carrying a control, bidirectional or zero-width character.
-func CheckTitle(t string) error {
+func checkTitle(t string) error {
 	switch {
 	case strings.TrimSpace(t) == "":
 		return &FieldError{"title", "is empty"}
@@ -154,9 +154,9 @@ func CheckTitle(t string) error {
 	return nil
 }
 
-// CheckBody refuses a body that is empty, over MaxBodyBytes, or carrying a
+// checkBody refuses a body that is empty, over MaxBodyBytes, or carrying a
 // control, bidirectional or zero-width character other than a newline or tab.
-func CheckBody(b string) error {
+func checkBody(b string) error {
 	switch {
 	case strings.TrimSpace(b) == "":
 		return &FieldError{"body", "is empty"}
@@ -176,11 +176,11 @@ func CheckBody(b string) error {
 	return nil
 }
 
-// CheckRecall refuses a recall list outside MinRecall..MaxRecall, or holding a
+// checkRecall refuses a recall list outside MinRecall..MaxRecall, or holding a
 // word that is empty, longer than MaxRecallChars, not one line, carrying a
 // control character, holding no letter or digit (the loader's term rule
 // matches only those), or repeating another.
-func CheckRecall(words []string) error {
+func checkRecall(words []string) error {
 	if len(words) < MinRecall || len(words) > MaxRecall {
 		return &FieldError{"recall", fmt.Sprintf("must hold %d to %d words or short phrases, not %d", MinRecall, MaxRecall, len(words))}
 	}
@@ -208,19 +208,19 @@ func CheckRecall(words []string) error {
 	return nil
 }
 
-// CheckWrittenBy refuses a writer stamp that is not the Assisted-by trailer's
+// checkWrittenBy refuses a writer stamp that is not the Assisted-by trailer's
 // model form, <Vendor>:<model-version>.
-func CheckWrittenBy(v string) error {
+func checkWrittenBy(v string) error {
 	if !assistedby.IsModelValue(v) {
 		return &FieldError{"written_by", "is not the <Vendor>:<model-version> form an Assisted-by trailer carries"}
 	}
 	return nil
 }
 
-// CheckSession refuses a session id that is longer than MaxSessionChars or is
+// checkSession refuses a session id that is longer than MaxSessionChars or is
 // not letters, digits, '-' and '_' — so a link, which carries ':', '/' or '.',
 // is refused and no session URL can enter a note.
-func CheckSession(s string) error {
+func checkSession(s string) error {
 	switch {
 	case len(s) > MaxSessionChars:
 		return &FieldError{"session", fmt.Sprintf("is longer than %d characters", MaxSessionChars)}
@@ -232,10 +232,10 @@ func CheckSession(s string) error {
 
 // checkNote validates one note as layer reads it.
 func checkNote(n Note, layer layerKind, rootKeyPresent bool) error {
-	if !ValidID(n.ID) {
+	if !validID(n.ID) {
 		return &FieldError{"id", "is not a mem-<16 digits> note id"}
 	}
-	for _, err := range []error{CheckTitle(n.Title), CheckBody(n.Body), CheckRecall(n.Recall), CheckWrittenBy(n.WrittenBy)} {
+	for _, err := range []error{checkTitle(n.Title), checkBody(n.Body), checkRecall(n.Recall), checkWrittenBy(n.WrittenBy)} {
 		if err != nil {
 			return err
 		}
@@ -262,7 +262,7 @@ func checkNote(n Note, layer layerKind, rootKeyPresent bool) error {
 		return &FieldError{"written_at", "is not a UTC RFC 3339 time (2026-10-11T12:00:00Z)"}
 	}
 	if n.Session != nil {
-		if err := CheckSession(*n.Session); err != nil {
+		if err := checkSession(*n.Session); err != nil {
 			return err
 		}
 	}

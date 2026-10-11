@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // secretToken builds a GitHub-token-shaped string at run time, so no
@@ -138,8 +139,8 @@ func TestGateInALinkedWorktreeJudgesThePrimarysPrivateNames(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
-			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		cmd.Env = append(gittest.Env(t), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
