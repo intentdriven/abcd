@@ -1202,6 +1202,9 @@ func otherOpenSpecs(claimers []spec.Spec, closingID string) []spec.Spec {
 // one intent are one request repeated; a genuinely different second remainder is
 // asked for under a different slug and mints normally.
 func openRemainderWithSlug(claimers []spec.Spec, slug, closingID string) (spec.Spec, bool) {
+	// The mint cuts a long slug at the record cap, so the comparison is against
+	// the slug as minted, or a retry would not recognise its own remainder.
+	slug = recordid.CapSlug(slug, recordid.MaxSlugLen)
 	for _, c := range claimers {
 		if c.Status != spec.StatusOpen || spec.SameNum(c.ID, closingID) {
 			continue

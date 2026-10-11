@@ -224,7 +224,7 @@
         "item": ".abcd/development/brief/04-surfaces/06-capture.md",
         "where": ".abcd/development/brief/04-surfaces/06-capture.md:107",
         "claim": "\u00a74 acceptance example: \"an existing issue at `.abcd/work/issues/open/iss-3-foo.md` \u2026 the file moves to `.abcd/work/issues/resolved/iss-3-foo.md`\" \u2014 small-integer ids presented as the current filename layout.",
-        "reality": "No new issue can be filed under that shape; every id minted since adr-45/spc-33 is 16 digits (`iss-2608231025198888-abcd-capture-writes-to-the-ledger-without-running-the-redact.md`). Small-integer names survive only as legacy records already on disk (iss-33, iss-202). The acceptance criterion describes a filename the shipped mint cannot produce.",
+        "reality": "No new issue can be filed under that shape; every id minted since adr-45/spc-33 is 16 digits (`iss-2608231025198888-abcd-capture-writes-to-the-ledger.md`). Small-integer names survive only as legacy records already on disk (iss-33, iss-202). The acceptance criterion describes a filename the shipped mint cannot produce.",
         "class": "false-claim"
       },
       {
@@ -280,7 +280,7 @@
         "item": ".abcd/development/brief/04-surfaces/07-memory.md",
         "where": ".abcd/development/brief/04-surfaces/07-memory.md:3",
         "claim": "\"Every bare `spc-38`/`spc-39` on this page is a predecessor-store id cited as provenance \u2014 neither id names a spec in this repo's store (`.abcd/development/specs/`), whose own ids stop well short of spc-38.\"",
-        "reality": "Both ids now name specs in this repo's store: `.abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and-reads-the-whole-developm.md` (id: spc-38, intent itd-136 \u2014 the record explorer) and `.abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects-one-relationship-chart.md` (id: spc-39, intent itd-137 \u2014 the relationship chart). The store's ids do not stop short of spc-38: spc-40 and spc-41 also exist. The disambiguation note that the page's ~20 bare `spc-38`/`spc-39` references rely on is false, and each of those references now collides with a real local spec.",
+        "reality": "Both ids now name specs in this repo's store: `.abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and.md` (id: spc-38, intent itd-136 \u2014 the record explorer) and `.abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects.md` (id: spc-39, intent itd-137 \u2014 the relationship chart). The store's ids do not stop short of spc-38: spc-40 and spc-41 also exist. The disambiguation note that the page's ~20 bare `spc-38`/`spc-39` references rely on is false, and each of those references now collides with a real local spec.",
         "class": "stale-count"
       },
       {
@@ -574,7 +574,7 @@
         "item": ".abcd/development/brief/04-surfaces/17-guard.md",
         "where": ".abcd/development/brief/04-surfaces/17-guard.md:143",
         "claim": "For a hazard inside a non-shell interpreter's payload (`python -c`, `perl -e`): \"A loud warn for it is a recorded design target, not yet implemented (iss-315)\" \u2014 citing iss-315 as the live tracker.",
-        "reality": "iss-315 is RESOLVED \u2014 it sits at `.abcd/work/issues/resolved/iss-315-guard-changelog-code-comment-and-test-claim-python-c-and-per.md`, category `documentation`, with resolution \"the false 'loud warn' claim for python/perl is corrected in the CHANGELOG, comment, help and brief\". Its own adversarial verdict states \"Implementing an actual warn posture is OUT of scope\" and \"no ledger issue names python/perl\". The shipped `abcd guard check --help` agrees, saying the warn is \"a recorded design target, not yet raised\". So the brief cites a closed documentation-fix issue as the open tracker for an unimplemented behaviour that the binary says has no issue at all. (The behaviour itself is accurate: `guard check --json --command 'python3 -c \"import os; os.system(1)\"'` \u2192 `{\"verdict\":\"allow\"}`, exit 0.)",
+        "reality": "iss-315 is RESOLVED \u2014 it sits at `.abcd/work/issues/resolved/iss-315-guard-changelog-code-comment-and-test.md`, category `documentation`, with resolution \"the false 'loud warn' claim for python/perl is corrected in the CHANGELOG, comment, help and brief\". Its own adversarial verdict states \"Implementing an actual warn posture is OUT of scope\" and \"no ledger issue names python/perl\". The shipped `abcd guard check --help` agrees, saying the warn is \"a recorded design target, not yet raised\". So the brief cites a closed documentation-fix issue as the open tracker for an unimplemented behaviour that the binary says has no issue at all. (The behaviour itself is accurate: `guard check --json --command 'python3 -c \"import os; os.system(1)\"'` \u2192 `{\"verdict\":\"allow\"}`, exit 0.)",
         "class": "false-claim"
       },
       {
@@ -630,7 +630,7 @@
         "item": ".abcd/development/brief/04-surfaces/20-banlist.md",
         "where": ".abcd/development/brief/04-surfaces/20-banlist.md:238-239",
         "claim": "'carving an exception into the fence gives up the one-switch property that record chose' \u2014 the one-switch property is presented as still intact, so the placement question is left open at iss-176.",
-        "reality": "The one-switch property is already conditionally abandoned in shipped code: internal/core/ahoy/gitignore.go:56 substitutes the private entry set for /.abcd/ on any repo with tracked .abcd/ files, and internal/core/ahoy/apply.go:546 announces the narrowing out loud. A second open issue, .abcd/work/issues/open/iss-223-public-visibility-fence-vs-committed-record-repos.md, covers the same ground; the chapter cites only iss-176.",
+        "reality": "The one-switch property is already conditionally abandoned in shipped code: internal/core/ahoy/gitignore.go:56 substitutes the private entry set for /.abcd/ on any repo with tracked .abcd/ files, and internal/core/ahoy/apply.go:546 announces the narrowing out loud. A second open issue, .abcd/work/issues/open/iss-223-public-visibility-fence-vs-committed.md, covers the same ground; the chapter cites only iss-176.",
         "class": "false-claim"
       },
       {

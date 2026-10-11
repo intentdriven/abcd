@@ -41,6 +41,12 @@ const (
 // ConventionsFile is the file a brief's conventions are read from.
 const ConventionsFile = "AGENTS.md"
 
+// conventionsRemedy is the remedy a brief refused for a base without
+// ConventionsFile carries. prepare-this-repo runs in the host agent and has no
+// binary verb, so the remedy names the plugin command.
+const conventionsRemedy = "write the repository's conventions into " + ConventionsFile +
+	" on the default branch (`/abcd:prepare-this-repo` sets one up)"
+
 // DecisionsLogRel is the append-only decision log the brief quotes entries of.
 const DecisionsLogRel = ".abcd/work/DECISIONS.md"
 
@@ -204,7 +210,7 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 	}
 	if !found {
 		return src, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s holds no %s, so the lane has no conventions to be briefed with", base, ConventionsFile),
-			"write the repository's conventions into "+ConventionsFile+" on the default branch (`abcd prepare-this-repo` sets one up)")
+			conventionsRemedy)
 	}
 	agents, err := read(agentsEntry, maxRecordBytes)
 	if err != nil {

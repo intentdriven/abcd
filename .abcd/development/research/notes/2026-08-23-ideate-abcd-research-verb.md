@@ -18,7 +18,7 @@ secondary citation.
 |---|---|---|
 | Survey-shaped SOTA research recurs in this repo as an established genre (14 *sota* notes since 2026-07-06) | .abcd/development/research/notes/ directory listing | verified |
 | The /abcd:ideate schema cannot hold a survey: one idea in, ordered legs, mandatory survives/killed/reframed verdict | commands/ideate.md | verified |
-| ideate's own validator rung was admitted after three manual protocol runs on 2026-07-14, so a small run-count is no bar to a validator rung | .abcd/development/intents/shipped/itd-104-abcd-gates-a-new-idea-before-it-becomes-a-record-entry-resea.md | verified |
+| ideate's own validator rung was admitted after three manual protocol runs on 2026-07-14, so a small run-count is no bar to a validator rung | .abcd/development/intents/shipped/itd-104-abcd-gates-a-new-idea-before-it-becomes.md | verified |
 | The survey-note schema a validator would enforce is unsettled: the two 2026-08-22 sota notes each declare a different evidence-tier ladder | .abcd/development/research/notes/2026-08-22-context-window-management-sota.md and 2026-08-22-local-models-mlx-sota.md (headers) | verified |
 | No existing surface validates a survey note: consult/ingest cover the sources corpus and provenance; docs-lint/record-lint check currency and structure, not review presence | commands/consult.md, commands/ingest.md | verified |
 | Review outcomes are now recorded in-tree, giving a validator something checkable | Review record sections of the three 2026-08-22 research notes | verified |

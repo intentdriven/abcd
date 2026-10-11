@@ -26,9 +26,11 @@ import (
 // rules' results are not taken down with it, and a composition that does not
 // render is exactly what a gate over the site exists to say.
 //
-// Every finding is warn severity, as docs-currency's are: the authoritative
-// release gate is `abcd lint site`, which exits 1 on any failure, and
-// re-raising the same failures as errors here would double-gate one check.
+// Every gate finding is warn severity, as docs-currency's are: the
+// authoritative release gate is `abcd lint site`, which exits 1 on any
+// failure, and re-raising the same failures as errors here would double-gate
+// one check. A site that cannot be rendered is the exception: it is the
+// target's refusal, and an error (targetRefusal).
 type siteGates struct{}
 
 func (siteGates) Meta() RuleMeta {
@@ -56,12 +58,11 @@ func (siteGates) Eval(ctx Context) ([]Finding, error) {
 
 	res, err := site.Check(site.CheckRequest{RepoRoot: ctx.RepoRoot, OutDir: filepath.Join(tmp, "site")})
 	if err != nil {
-		return []Finding{{
-			RuleID:   "site-gates",
-			Severity: SeverityWarn,
-			File:     site.ManifestRelPath,
-			Message:  "the site could not be rendered and checked: " + cleanErr(err),
-		}}, nil
+		// `abcd lint site` exits 2 when it cannot run at all: a refusal, so an
+		// error here, not one more warning.
+		return []Finding{targetRefusal("site-gates", "site", site.ManifestRelPath,
+			"the site could not be rendered and checked: "+cleanErr(err),
+			"run `abcd lint site` and fix what its refusal names at its source")}, nil
 	}
 	out := make([]Finding, 0, len(res.Findings))
 	for _, f := range res.Findings {

@@ -84,7 +84,7 @@ func readIssueBriefSources(repoRoot string, st State, lane *Lane) (issueBriefSou
 	}
 	if !ok {
 		return src, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s holds no %s, so the lane has no conventions to be briefed with", base, ConventionsFile),
-			"write the repository's conventions into "+ConventionsFile+" on the default branch (`abcd prepare-this-repo` sets one up)")
+			conventionsRemedy)
 	}
 	agents, err := read(agentsEntry, maxRecordBytes)
 	if err != nil {

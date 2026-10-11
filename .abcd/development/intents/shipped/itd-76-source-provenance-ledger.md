@@ -21,7 +21,7 @@ builds_on: [itd-77]
 
 ## Why This Matters
 
-Automatic citation is a virtue that becomes a breach the moment a source is confidential: an agent that helpfully names "the working paper this design follows" in a commit message has leaked something no history rewrite fully recalls. The naive fix — keep the material away from the agent — throws away exactly the context that makes its design work good. The resolution is to split *consultation* from *citation* and put a durable, machine-readable record between them: influence is captured eagerly and automatically (cheap, local, append-only), citation happens lazily and manually (when permission exists). The ledger is also the seed of something bigger — a team bibliography and a reconstructable paper — but those travel as their own intents ([itd-126](../drafts/itd-126-a-team-shares-one-bibliography-without-sharing-anyone-s-corp.md), [itd-127](../drafts/itd-127-a-paper-is-reconstructed-from-the-provenance-ledger-claims-g.md), each `refines` this one); this intent is the personal core they stand on.
+Automatic citation is a virtue that becomes a breach the moment a source is confidential: an agent that helpfully names "the working paper this design follows" in a commit message has leaked something no history rewrite fully recalls. The naive fix — keep the material away from the agent — throws away exactly the context that makes its design work good. The resolution is to split *consultation* from *citation* and put a durable, machine-readable record between them: influence is captured eagerly and automatically (cheap, local, append-only), citation happens lazily and manually (when permission exists). The ledger is also the seed of something bigger — a team bibliography and a reconstructable paper — but those travel as their own intents ([itd-126](../drafts/itd-126-a-team-shares-one-bibliography-without.md), [itd-127](../drafts/itd-127-a-paper-is-reconstructed-from-the.md), each `refines` this one); this intent is the personal core they stand on.
 
 This composes existing abcd designs rather than inventing new machinery: the two-layer name banlist ([itd-74](../shipped/itd-74-name-banlist.md)) supplies the leak guard; the append-only audit chain ([itd-16](../drafts/itd-16-hash-chain-merkle-audit.md)) is a possible later integrity backend for the ledger — the corpus repo's git history carries tamper-evidence until then, and nothing here depends on itd-16 shipping; and the provenance substrate ([`09-provenance-substrate.md`](../../brief/05-internals/09-provenance-substrate.md)) already defines citation blocks, a source registry, and an NDA-aware publish gate for *ingested* content — this intent extends the same stance to *consulted* content. The trust boundary itself — documents and ledgers never leave the user tier; a public citation requires both gates — is recorded as [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md) and brief invariant 9, which this intent cites rather than declares; the standing stance is the [consult-freely-cite-deliberately](../../principles/consult-freely-cite-deliberately.md) principle.
 
@@ -57,7 +57,7 @@ None stated.
 ## Open Questions
 
 - Ledger ownership once work spans machines: **explicitly deferred** (maintainer ruling, 2026-08-16) — per-repo files in the user-level corpus serve one machine; revisit when a second machine actually exists.
-- The share/ingest questions that previously lived here (conflict shape between teammates, provenance marks on ingested entries) travel with [itd-126](../drafts/itd-126-a-team-shares-one-bibliography-without-sharing-anyone-s-corp.md).
+- The share/ingest questions that previously lived here (conflict shape between teammates, provenance marks on ingested entries) travel with [itd-126](../drafts/itd-126-a-team-shares-one-bibliography-without.md).
 
 ## Audit Notes
 
@@ -128,7 +128,7 @@ Gap audit:
 - diverged:
   - the pre-commit guard auto-refreshes the block on every commit in a managed repo — delivered as opt-in per clone (abcd.sourcesBinary) for the scaffolded hook, automatic only in abcd's own checkout, pending the ruling in iss-2609250834251447
     evidence: internal/core/ahoy/defaults/pre-commit:482 — "this hook refreshes its banlist block only on opt-in: git config --local abcd.sourcesBinary"
-    evidence: .abcd/work/issues/resolved/iss-2609252007419997-the-scaffolded-pre-commit-template-refreshes-the-sources.md:14 — "iss-2609250834251447's ruling stays open and can widen it"
+    evidence: .abcd/work/issues/resolved/iss-2609252007419997-the-scaffolded-pre-commit-template.md:14 — "iss-2609250834251447's ruling stays open and can widen it"
   - every corpus-dependent step no-ops and says so, never a failure — the verbs answer with exit 3 (the spec's distinct no-corpus code), the guard with exit 0
     evidence: internal/surface/cli/source.go:8 — "3 there is no corpus at the configured location — the distinct no-corpus code"
 - missing:

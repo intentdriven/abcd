@@ -374,7 +374,7 @@ Gap audit:
 - Paired with: [[itd-61-brief-change-derivation]] (the reverse direction) and
   [[itd-62-pluggable-safety-gate]] (whose brief change this pass would govern);
   the other Phase 8 rung is
-  [[itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t]].
+  [[itd-147-the-brief-s-surface-chapters-are-a]].
 - Governing principle: single source of truth — the brief is canonical
   (`.abcd/development/brief/` and the engineering conventions in `AGENTS.md`).
 

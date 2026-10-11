@@ -87,6 +87,21 @@ type Pattern struct {
 	// compared as a path with its redundant separators taken out: `//*` is
 	// the word `/*`, and `$HOME/./` the word `$HOME/`.
 	ArgValues []string `json:"arg_values,omitempty"`
+	// ArgShapes constrain an OPERAND by a shape of the word as the line wrote
+	// it, which neither a fixed prefix nor an exact word can say: every listed
+	// shape must be carried by some non-flag argument. The shapes are a closed
+	// set the matcher knows (argShapes), so a misspelt name is refused at load
+	// rather than describing an operand nothing can be.
+	//
+	// ShapeUnguardedVariablePath is an operand that begins with a variable
+	// whose value can be empty, directly followed by `/` (`"$VAR"/*`,
+	// `${VAR}/x`, `"$VAR/x"`): empty or unset, it names a path from the
+	// filesystem root. `"${VAR:?}"/x` is not it, nor is a default that cannot
+	// be empty (`"${TMPDIR:-/tmp}"/x`), a variable later in the path
+	// (`./build/$name`), or a bare `"$VAR"`, which empties to no path at all.
+	// `$HOME` and `$PWD` are not counted: the login and the shell set them,
+	// and the entries that name them own a delete of them.
+	ArgShapes []string `json:"arg_shapes,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —
 	// `pkill make`, whose operand is the pattern — from `pkill -g 4242`, which
@@ -385,6 +400,13 @@ func validatePattern(id string, p Pattern) error {
 		}
 		if strings.HasPrefix(value, "-") {
 			return fmt.Errorf("%w: entry %s argument value %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, value)
+		}
+	}
+	// A shape the matcher does not know describes an operand nothing can be:
+	// the silent defang again, one field along.
+	for i, shape := range p.ArgShapes {
+		if !argShapes[shape] {
+			return fmt.Errorf("%w: entry %s argument shape %d is %q, which is not a shape the guard knows", ErrInvalidEntry, id, i, shape)
 		}
 	}
 	// A flag-value constraint with no flag, or with no accepted value, can
@@ -916,6 +938,7 @@ func clonePattern(p Pattern) Pattern {
 	out.Flags = append([]string(nil), p.Flags...)
 	out.ArgPrefixes = append([]string(nil), p.ArgPrefixes...)
 	out.ArgValues = append([]string(nil), p.ArgValues...)
+	out.ArgShapes = append([]string(nil), p.ArgShapes...)
 	out.ArgPaths = append([]PathArg(nil), p.ArgPaths...)
 	out.FlagValues = cloneFlagValues(p.FlagValues)
 	out.ArgsFrom = clonePatterns(p.ArgsFrom)

@@ -468,7 +468,7 @@ func TestCreateFromTextSeedsPressRelease(t *testing.T) {
 // TestDeriveTitle pins the sentence split the H1 is derived from: the text up
 // to the first `.`, `!` or `?` that is followed by whitespace or ends the text,
 // with that terminator dropped (no shipped intent's H1 carries one); a text
-// with no terminator is one sentence; a sentence longer than the slug cap is
+// with no terminator is one sentence; a sentence longer than the title cap is
 // cut on a word boundary at or before the cap.
 func TestDeriveTitle(t *testing.T) {
 	longSentence := "a sentence that runs on well past the sixty-character slug cap without ever reaching a terminator"
@@ -485,7 +485,7 @@ func TestDeriveTitle(t *testing.T) {
 		{"an ellipsis leaves no stub", "Wait... what is owed? Everything.", "Wait"},
 		{"one long sentence is cut on a word boundary", longSentence, "a sentence that runs on well past the sixty-character slug"},
 		{"a long sentence with a terminator is cut the same way", longSentence + ". Then more.", "a sentence that runs on well past the sixty-character slug"},
-		{"one unbroken word is cut at the cap", strings.Repeat("x", maxSlugLen+5), strings.Repeat("x", maxSlugLen)},
+		{"one unbroken word is cut at the cap", strings.Repeat("x", maxTitleLen+5), strings.Repeat("x", maxTitleLen)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -493,8 +493,8 @@ func TestDeriveTitle(t *testing.T) {
 			if got != tc.want {
 				t.Errorf("deriveTitle(%q) = %q, want %q", tc.text, got, tc.want)
 			}
-			if n := len([]rune(got)); n > maxSlugLen {
-				t.Errorf("derived title is %d runes, over the %d cap", n, maxSlugLen)
+			if n := len([]rune(got)); n > maxTitleLen {
+				t.Errorf("derived title is %d runes, over the %d cap", n, maxTitleLen)
 			}
 		})
 	}
