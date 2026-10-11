@@ -176,8 +176,8 @@ func Resolve(home, cwd string) Plan {
 		return Plan{Notes: []string{"abcd dogfood: " + fsutil.DisplayPath(c.Toplevel) + " is listed in " + RootsDisplay +
 			", but " + err.Error() + "; the installed release runs"}}
 	}
-	root := gitutil.RootCommit(c.Repo)
-	if !gitutil.IsFullSHA(root) {
+	root, err := gitutil.RootCommit(c.Repo)
+	if err != nil || !gitutil.IsFullSHA(root) {
 		return Plan{Notes: []string{"abcd dogfood: " + fsutil.DisplayPath(c.Toplevel) + " is listed in " + RootsDisplay +
 			", but its root commit could not be read; the installed release runs"}}
 	}
