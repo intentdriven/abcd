@@ -30,9 +30,10 @@ const (
 var ErrLazyFetchFloor = fmt.Errorf("the repository declares a promisor remote (a partial clone), and git older than %d.%d ignores GIT_NO_LAZY_FETCH, so reading a missing object would run the transport the repository configures: abcd reads no objects here until git is %d.%d or later",
 	lazyFetchFloorMajor, lazyFetchFloorMinor, lazyFetchFloorMajor, lazyFetchFloorMinor)
 
-// versionCache holds the `git version` answer, probed once per process. The
-// source is a field so a test can inject a version on either side of the
-// floor whatever git is installed.
+// versionCache holds the `git version` answer, probed once per process. Two
+// floors read it: the lazy-fetch floor here, and the merge driver's options
+// (BuiltinMergeDriver). The source is a field so a test can inject a version
+// on either side of a floor whatever git is installed.
 type versionCache struct {
 	mu   sync.Mutex
 	src  func() (string, error)
@@ -43,9 +44,9 @@ type versionCache struct {
 
 var gitVersion = &versionCache{src: probeGitVersion}
 
-// SwapGitVersionForTest replaces the `git version` probe the lazy-fetch floor
-// reads, so a test in any package can put git on either side of the floor
-// whatever is installed. It returns the restore, which puts the real probe
+// SwapGitVersionForTest replaces the `git version` probe, so a test in any
+// package can put git on either side of a floor whatever is installed; the
+// swap moves the lazy-fetch floor and the merge driver's options together. It returns the restore, which puts the real probe
 // back; the cached answer is cleared both ways.
 func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
 	gitVersion.set(src)
