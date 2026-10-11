@@ -35,8 +35,9 @@ import (
 // other's blocks.
 //
 // Staged: nothing outside the tests calls syncReadmeParts or removeReadmeParts
-// yet. The spec's step 2 derives each part's body, and its step 3 wires setup
-// (`abcd ahoy install`, from the stored `readme.parts`) and uninstall to them.
+// yet. The spec's step 2 derives each part's body (readme_derive.go, checked
+// by readme_check.go), and its step 3 wires setup (`abcd ahoy install`, from
+// the stored `readme.parts`) and uninstall to them.
 
 // readmePartOrder is the parts' fixed order. It places an absent part beside
 // the nearest present one, and only these names may be written.
@@ -496,8 +497,9 @@ func endsWithBlankLine(b []byte) bool {
 // planReadmeParts), creating the file when it is absent and something is to be
 // written. A run in which every part is current writes nothing, so the file's
 // bytes and modification time are unchanged. The read and the write hold the
-// file's lock (withRewriteLock); a symlinked or non-regular README, or one past
-// maxAhoyFileBytes, is refused and left untouched.
+// file's lock (withRewriteLock); a symlinked or non-regular README, one past
+// maxAhoyFileBytes, or one the parts would grow past it, is refused and left
+// untouched.
 //
 // Staged for spc-2610031704338417 step 3, which calls it from setup.
 func syncReadmeParts(path string, want []readmePartWant) (readmePartsResult, error) {
@@ -549,6 +551,13 @@ func syncReadmePartsLocked(path string, want []readmePartWant) (readmePartsResul
 	out, res, err := planReadmeParts(existing, want)
 	if err != nil || !res.Wrote {
 		return res, err
+	}
+	// The read is capped, so a write past the cap would leave a file abcd can
+	// no longer read, and so can no longer take its own part back out of
+	// (iss-2610111552464704). Measured before the write; the file is left as
+	// it was.
+	if len(out) > maxAhoyFileBytes {
+		return readmePartsResult{}, &ahoyError{fmt.Sprintf("writing its parts would grow it to %d bytes, past abcd's %d-byte cap for the files it rewrites; left as it is", len(out), maxAhoyFileBytes)}
 	}
 	if werr := fsutil.WriteFileAtomicPreserveMode(path, out); werr != nil {
 		return readmePartsResult{}, fmt.Errorf("it could not be written: %w", werr)
