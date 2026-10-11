@@ -610,8 +610,10 @@ func (r *readmeSource) contents() (string, string) {
 		}
 		if m := atxHeadingRe.FindStringSubmatch(ln); m != nil {
 			para, inBlock = nil, false
-			text := strings.TrimSpace(inlineLinkRe.ReplaceAllString(m[2], "$1"))
-			heading(i, len(m[1]), text, text)
+			// The space a stripped tag leaves before the text is in the
+			// anchor, as it is in the forge's.
+			text := headingText(m[2])
+			heading(i, len(m[1]), text, strings.TrimSpace(text))
 			continue
 		}
 		blank := strings.TrimSpace(ln) == ""
@@ -623,8 +625,8 @@ func (r *readmeSource) contents() (string, string) {
 				}
 				// The forge's page keeps the line break between a heading's
 				// lines, which its anchor drops; the list shows a space.
-				joined := inlineLinkRe.ReplaceAllString(strings.Join(para, "\n"), "$1")
-				heading(paraAt, level, joined, strings.ReplaceAll(joined, "\n", " "))
+				joined := headingText(strings.Join(para, "\n"))
+				heading(paraAt, level, joined, strings.TrimSpace(strings.ReplaceAll(joined, "\n", " ")))
 				para = nil
 				continue
 			}
@@ -791,6 +793,18 @@ func headingSlug(text string) string {
 		}
 	}
 	return b.String()
+}
+
+// inlineTagRe is inline HTML as the forge reads it in a heading: an opening
+// tag with its attributes, a closing tag, or a comment. An autolink
+// (`<https://…>`) and a lone angle bracket are not tags.
+var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:[^\s"'=<>` + "`" + `]+|'[^']*'|"[^"]*"))?)*\s*/?>|</[A-Za-z][A-Za-z0-9-]*\s*>|<!--.*?-->`)
+
+// headingText is a heading's text as the page shows it: an inline link read
+// as its text, and inline HTML tags dropped, which render as markup
+// (iss-2610111850405447). The spaces around a dropped tag are kept.
+func headingText(src string) string {
+	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(src, "$1"), "")
 }
 
 // escapeLinkText keeps a heading's text from closing the link it sits in.

@@ -381,6 +381,34 @@ func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
 	}
 }
 
+// TestContentsStripsInlineHTMLFromHeadings: inline HTML in a heading renders
+// as markup, not text (iss-2610111850405447), so its tags are carried neither
+// into the list's text nor into the anchor. The space the tags leave before
+// the text is the forge's too: `## <a name="install"></a> Install` anchors
+// #-install. An autolink is not a tag, and a lone angle bracket is text.
+func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		`## <a name="install"></a> Install`,
+		"",
+		"## Usage <sup>beta</sup>",
+		"",
+		"## Old<br/>New",
+		"",
+		"## a < b > c",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [Install](#-install)",
+		"- [Usage beta](#usage-beta)",
+		"- [OldNew](#oldnew)",
+		"- [a < b > c](#a--b--c)",
+	}, "\n"))
+}
+
 // TestBadgePartsNeedPublicAndForge: the release and build badges are derived
 // only where the owner declared the project public and the origin is on
 // github.com; the build badge also needs one workflow it can name. The
