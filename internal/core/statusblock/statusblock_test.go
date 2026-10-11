@@ -688,8 +688,9 @@ func gitStore(t *testing.T, root, branch string) {
 
 // TestInFlightNeedsAnOpenSpecAndABranch is A5's in-flight marker: a lane is in
 // flight when its branch exists and its intent's spec is open; a lane at its
-// worktree stage before its branch is cut, a lane whose recorded branch does
-// not resolve, and a lane whose spec is closed are not.
+// worktree stage before its branch is cut, and a lane whose spec is closed, are
+// not. A lane whose recorded branch does not resolve has left Now altogether
+// (TestALandedLaneLeavesNow).
 func TestInFlightNeedsAnOpenSpecAndABranch(t *testing.T) {
 	const branch = "build/run-1-lane-1"
 	for _, tc := range []struct {
@@ -700,7 +701,6 @@ func TestInFlightNeedsAnOpenSpecAndABranch(t *testing.T) {
 	}{
 		{"its branch exists and its spec is open", Lane{Run: "run-1", Lane: "lane-1", Stage: "implement", Branch: branch}, false, true},
 		{"at its worktree stage, before its branch", Lane{Run: "run-1", Lane: "lane-1", Stage: "worktree"}, false, false},
-		{"its recorded branch does not resolve", Lane{Run: "run-1", Lane: "lane-1", Stage: "implement", Branch: "build/run-1-lane-9"}, false, false},
 		{"its spec is closed", Lane{Run: "run-1", Lane: "lane-1", Stage: "implement", Branch: branch}, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -727,5 +727,115 @@ func TestInFlightNeedsAnOpenSpecAndABranch(t *testing.T) {
 				t.Errorf("in flight = %v, want %v (lane %+v)", got, tc.want, *b.Now[0].Lane)
 			}
 		})
+	}
+}
+
+// openIssue lays an open issue record in the ledger at root, its first body
+// line the summary given. The test reads it back by id, never by file name.
+func openIssue(t *testing.T, root, id, summary string) {
+	t.Helper()
+	dir := filepath.Join(root, filepath.FromSlash(".abcd/work/issues/open"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nschema_version: 1\nid: \"" + id + "\"\nslug: \"a-lane-fixture\"\n" +
+		"severity: \"minor\"\ncategory: \"bug\"\nsource: \"agent-finding\"\n" +
+		"found_during: \"a status board\"\nremedy: \"render it\"\n---\n\n" + summary + "\n\nMore of the record.\n"
+	if err := os.WriteFile(filepath.Join(dir, id+"-a-lane-fixture.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// git runs one git command in root as a fixture author.
+func git(t *testing.T, root string, args ...string) {
+	t.Helper()
+	full := append([]string{"-C", root, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "-c", "commit.gpgsign=false"}, args...)
+	cmd := exec.Command("git", full...)
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// TestAnIssueKeyedLaneShowsTheIssuesTitle is iss-2610090824041378's first half:
+// a run started for an issue is looked up in the issue ledger, so its lane row
+// carries the issue's one-line summary, marked as an issue, rather than an
+// empty title.
+func TestAnIssueKeyedLaneShowsTheIssuesTitle(t *testing.T) {
+	root := store(t)
+	const id = "iss-2610090000000001"
+	openIssue(t, root, id, "The board drops an   issue lane's title")
+	b, err := Read(root, lanesOf(Started{Intent: id, Lanes: []Lane{{Run: "run-1", Lane: "lane-1", Stage: "implement"}}}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Now) == 0 || b.Now[0].ID != id || b.Now[0].Lane == nil {
+		t.Fatalf("Now = %+v, want the issue's lane row first", b.Now)
+	}
+	r := b.Now[0]
+	if want := "issue: The board drops an issue lane's title"; r.Title != want {
+		t.Errorf("Title = %q, want %q: the issue's summary, marked as an issue", r.Title, want)
+	}
+	if r.Kind != KindIssue || r.Bucket != "open" {
+		t.Errorf("Kind, Bucket = %q, %q, want %q, %q: an issue row names its kind and its ledger folder", r.Kind, r.Bucket, KindIssue, "open")
+	}
+
+	// An issue the ledger does not hold still reads as an issue, by its id.
+	const missing = "iss-2610090000000002"
+	b, err = Read(root, lanesOf(Started{Intent: missing, Lanes: []Lane{{Run: "run-2", Lane: "lane-1", Stage: "implement"}}}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Now[0].ID != missing || b.Now[0].Title != "issue: "+missing || b.Now[0].Kind != KindIssue {
+		t.Errorf("Now[0] = %+v, want the missing issue marked as an issue by its id", b.Now[0])
+	}
+}
+
+// TestALandedLaneLeavesNow is iss-2610090824041378's second half: a lane whose
+// pull request has merged (its branch's tip is on the default branch, at the
+// land stage) or whose branch is gone is no longer building, so it leaves Now;
+// a lane still in flight, and a lane whose fresh branch sits at the default
+// tip before any work, stay.
+func TestALandedLaneLeavesNow(t *testing.T) {
+	root := store(t)
+	const (
+		inFlight = "iss-2610090000000011"
+		merged   = "iss-2610090000000012"
+		gone     = "iss-2610090000000013"
+		fresh    = "iss-2610090000000014"
+	)
+	for _, id := range []string{inFlight, merged, gone, fresh} {
+		openIssue(t, root, id, "Issue "+id)
+	}
+	git(t, root, "init", "-q", "--initial-branch=main")
+	git(t, root, "commit", "-q", "--allow-empty", "-m", "c0")
+	git(t, root, "branch", "build/run-14-lane-1")
+	git(t, root, "checkout", "-q", "-b", "build/run-11-lane-1")
+	git(t, root, "commit", "-q", "--allow-empty", "-m", "in flight")
+	git(t, root, "checkout", "-q", "-b", "build/run-12-lane-1", "main")
+	git(t, root, "commit", "-q", "--allow-empty", "-m", "merged")
+	git(t, root, "checkout", "-q", "main")
+	git(t, root, "merge", "-q", "--no-ff", "-m", "Merge pull request", "build/run-12-lane-1")
+
+	b, err := Read(root, lanesOf(
+		Started{Intent: inFlight, Lanes: []Lane{{Run: "run-11", Lane: "lane-1", Stage: "land", Branch: "build/run-11-lane-1"}}},
+		Started{Intent: merged, Lanes: []Lane{{Run: "run-12", Lane: "lane-1", Stage: "land", Branch: "build/run-12-lane-1"}}},
+		Started{Intent: gone, Lanes: []Lane{{Run: "run-13", Lane: "lane-1", Stage: "land", Branch: "build/run-13-lane-1"}}},
+		Started{Intent: fresh, Lanes: []Lane{{Run: "run-14", Lane: "lane-1", Stage: "implement", Branch: "build/run-14-lane-1"}}},
+	), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lanes []string
+	for _, r := range b.Now {
+		if r.Lane != nil {
+			lanes = append(lanes, r.ID)
+			if r.Title != "issue: Issue "+r.ID {
+				t.Errorf("%s's row title = %q, want the issue's summary marked as an issue", r.ID, r.Title)
+			}
+		}
+	}
+	if want := []string{inFlight, fresh}; !reflect.DeepEqual(lanes, want) {
+		t.Errorf("Now's lanes = %v, want %v: the merged lane and the lane whose branch is gone have left Now", lanes, want)
 	}
 }
