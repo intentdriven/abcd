@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 id: "iss-2610110401224302"
-slug: "a-lane-pr-leaves-the-merge-queue-silently"
+slug: "a-lane-pr-leaves-the-merge-queue"
 severity: "minor"
 category: "ux"
 source: "agent-observation"
