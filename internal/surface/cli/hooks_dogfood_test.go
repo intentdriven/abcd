@@ -9,7 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/dogfood"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // hooks_dogfood_test.go — the shims' dogfood rung (iss-2610070547057816). With
@@ -172,7 +172,7 @@ func dogfoodCLIFixture(t *testing.T, listed bool) (home, checkout string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-c", "init.defaultBranch=main"}, args...)...)
 		cmd.Dir = dir
-		cmd.Env = append(gitutil.IsolatedEnv(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		cmd.Env = append(gittest.Env(t), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
 			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		out, err := cmd.CombinedOutput()
 		if err != nil {

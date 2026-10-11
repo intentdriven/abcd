@@ -198,7 +198,7 @@ func Resolve(home, cwd string) Plan {
 			", but its root commit could not be read; the installed release runs"}}
 	}
 	c.Ref, c.Commit, c.RootSHA = ref, commit, root
-	if bin, ok := ReadyBinary(home, root, commit); ok {
+	if bin, ok := readyBinary(home, root, commit); ok {
 		return Plan{Binary: bin, Checkout: c}
 	}
 	what := gitutil.ShortRef(ref) + " at " + c.Short()
@@ -305,11 +305,11 @@ func sourceCommit(repo string) (ref, commit string, err error) {
 	return ref, commit, nil
 }
 
-// ReadyBinary is the finished build of commit for the repository rooted at
+// readyBinary is the finished build of commit for the repository rooted at
 // rootSHA, when there is one this account alone can change: every store level
 // a real directory owned by this uid that no one else can write, and the
 // binary a regular, executable file of the same kind.
-func ReadyBinary(home, rootSHA, commit string) (string, bool) {
+func readyBinary(home, rootSHA, commit string) (string, bool) {
 	if !gitutil.IsFullSHA(rootSHA) || !gitutil.IsFullSHA(commit) {
 		return "", false
 	}
@@ -367,7 +367,7 @@ func Build(home string, c Checkout) (string, error) {
 	storeAbs := filepath.Join(home, filepath.FromSlash(storeRel))
 	var bin string
 	err = fsutil.WithFileLock(filepath.Join(storeAbs, lockName), 0, func() error {
-		if p, ok := ReadyBinary(home, c.RootSHA, c.Commit); ok {
+		if p, ok := readyBinary(home, c.RootSHA, c.Commit); ok {
 			bin = p
 			return nil
 		}

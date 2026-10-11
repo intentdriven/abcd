@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // git runs git in dir under the isolated environment with a fixed identity,
@@ -21,7 +22,7 @@ func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-c", "init.defaultBranch=main", "-c", "protocol.file.allow=always"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(gitutil.IsolatedEnv(),
+	cmd.Env = append(gittest.Env(t),
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
 		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
 	out, err := cmd.CombinedOutput()
@@ -69,11 +70,29 @@ type fixture struct {
 	upstream, checkout, home string
 }
 
+// goCaches are the build and module caches of the account running the tests,
+// read once before any test repoints HOME: gittest.Env gives each test a
+// fresh HOME, and a build under it would otherwise start from empty caches
+// and fetch its toolchain again.
+var goCaches = sync.OnceValues(func() ([]string, error) {
+	out, err := exec.Command("go", "env", "GOCACHE", "GOMODCACHE").Output()
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(string(out)), nil
+})
+
 func newFixture(t *testing.T, module string) fixture {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("no go toolchain on PATH")
 	}
+	caches, err := goCaches()
+	if err != nil || len(caches) != 2 {
+		t.Fatalf("reading the go caches: %v %q", err, caches)
+	}
+	t.Setenv("GOCACHE", caches[0])
+	t.Setenv("GOMODCACHE", caches[1])
 	up := realDir(t)
 	git(t, up, "init", "-q")
 	write(t, filepath.Join(up, "go.mod"), "module "+module+"\n\ngo "+goVersion()+"\n")
