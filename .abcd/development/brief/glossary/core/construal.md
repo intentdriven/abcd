@@ -27,7 +27,7 @@ how a later reader construes the record (iss-2609012245352480).
 
 ## The split that makes it usable
 
-[adr-55](../../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md)
+[adr-55](../../../decisions/adrs/0055-the-construal-stands-in-the-record-its.md)
 divides the word from its history, and both rules are unconditional:
 
 - **The construal as it presently stands is committed record** — the framing section's

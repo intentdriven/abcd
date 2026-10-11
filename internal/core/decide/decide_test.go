@@ -324,3 +324,25 @@ func TestCreateStatedWritesAnAcceptedRecordWithItsFields(t *testing.T) {
 		t.Fatalf("the body is not the H1 then the stated sections:\n%s", s)
 	}
 }
+
+// TestCreateCutsTheSlugAtTheRecordCap is iss-2610100626320367 at the decide
+// verb: a long title's slug is cut at recordid.MaxSlugLen, in the filename and
+// the frontmatter alike, while the title itself is kept whole.
+func TestCreateCutsTheSlugAtTheRecordCap(t *testing.T) {
+	root := t.TempDir()
+	title := "A record's file name has no cap tied to the length of its full path"
+	d, err := Create(root, title)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	const want = "a-record-s-file-name-has-no-cap-tied-to"
+	if d.Slug != want {
+		t.Fatalf("slug = %q, want %q", d.Slug, want)
+	}
+	if !strings.HasSuffix(filepath.Base(d.Path), "-"+want+".md") {
+		t.Fatalf("filename %q does not carry the capped slug", d.Path)
+	}
+	if d.Title != title {
+		t.Fatalf("title = %q, want it whole", d.Title)
+	}
+}

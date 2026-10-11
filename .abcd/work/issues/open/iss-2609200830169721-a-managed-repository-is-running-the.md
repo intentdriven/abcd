@@ -1,0 +1,22 @@
+---
+schema_version: 1
+id: "iss-2609200830169721"
+slug: "a-managed-repository-is-running-the"
+severity: "minor"
+category: "future-work-seed"
+source: "agent-observation"
+found_during: "Gropius sub-agent-lane experiment, session gropiusllm-2b, relayed to abcd-17 on 2026-09-20"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "commands/intent.md (planning interview)"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed E): Does one-sub-agent-per-record become an abcd recipe (plugin page, runbook or lane brief)?"
+remedy: "Waits on ruling E (does one-sub-agent-per-record become a recipe): if yes, write it as a how-to page under docs/ driven by the verbs that already exist (intent ready --json as the lane gate, implement claim and join, implement step and receipt for the brief), proven by docs-lint and a smoke test that runs the recipe's first commands; if no, resolve this record as wontfix pointing at the brief renderer of itd-2609201916151817 as the mechanism."
+---
+
+A managed repository is running the whole intent lifecycle through one sub-agent per record, and asks whether the pattern should become an abcd recipe. The shape, reported by the Gropius session gropiusllm-2b on 2026-09-20: a main session interviews the product thinker one decision at a time, reading the reviewer's recorded options off the draft rather than re-deriving them, records each answer as it is given, then fans out one Opus 5 sub-agent per intent or issue, each in its own worktree, which fills the draft from the answers, runs abcd intent plan, writes the spec, implements test-first, runs the security and ruthless reviewers as its own sub-agents, closes the spec in the landing pull request and arms auto-merge; record-only lanes edit exactly one record each and may not plan. The session named what abcd already gave it (quoted-text filing, capture provenance flags, intent ready --json as the gate every lane runs, the Review and Open Questions convention on a held draft) and what it lacked (recorded separately: the answer write path, the hold state, the append-lock on the decision log, the integration-branch landing, the lane worktree location). Whether abcd documents this as a recipe (a plugin page, a runbook in the brief, or a scaffolded lane brief) is the product thinker's to decide; recorded here so the decision has a record to rest on. Note that abcd's own record already plans the worktree half (itd-148) and asks the same session-per-lane question from the coordination side (itd-2609150819440345).
+
+## Remedy grounds (2026-09-29)
+
+- The implement loop already renders a per-lane brief (spc-2609202134338445 step 5, landed) and claims records per session, so a recipe is a thin page over shipped verbs rather than a new mechanism; no outside practice was needed.
+- Rejected: a scaffolded lane-brief template, which would duplicate the brief the loop renders.

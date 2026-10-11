@@ -21,7 +21,7 @@ sound: an opaque host banner is not something a configuration layer can fix by
 drawing its own, and claiming otherwise would have been the strong form of a
 metaphor the project deliberately held at arm's length.
 
-[ADR-2609151528057260](2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md) changes what that
+[ADR-2609151528057260](2609151528057260-three-roles-who-each-artefact-addresses.md) changes what that
 position costs. The facilitator is a machine by default, the agents stop only to
 obtain a verdict, and a question the product thinker must answer travels to them
 rather than waiting at a terminal. The command line is the facilitator's
