@@ -3,10 +3,12 @@ package reading
 import (
 	"fmt"
 	"html"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/lint"
@@ -107,7 +109,9 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	// namesExcludedHeading, the one equality the verifier also uses: an exact
 	// lookup here left `## Open questions` in place for the verifier, which
 	// folds case, to refuse, failing the whole assembly over one record's
-	// spelling (iss-2610101819067941).
+	// spelling (iss-2610101819067941). Only a heading that renders as the
+	// excluded one is redacted; a near-match is left in place for the verifier
+	// to refuse, so a confusable spelling is named rather than silently dropped.
 	body, offset := site.StripFrontmatter(doc)
 	sections, err := site.Sections(rel, body, offset)
 	if err != nil {
@@ -117,7 +121,7 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 		if sec.Level == 0 {
 			continue
 		}
-		if _, ok := namesExcludedHeading(normaliseHeadingTitle(sec.Title), headings); !ok {
+		if _, m := namesExcludedHeading(normaliseHeadingTitle(sec.Title), headings); m != sameHeading {
 			continue
 		}
 		start, end := sectionSpan(sections, i, len(lines))
@@ -267,28 +271,57 @@ var (
 	flowAliasKeyRe = regexp.MustCompile(`[{\[,]\s*(?:[!&][^\s{}\[\],]*\s+)*\*`)
 )
 
-// One shape this floor does NOT see, disclosed rather than claimed: a title
-// reaching the excluded one through a homoglyph or an invisible format character
-// slugs differently by construction, because the slug compares code points. It
-// is residue and is not caught. A heading nested in a blockquote or a list item
-// IS caught: the section scan cannot span it, so the verifier refuses it
-// (nestedHeadingRe, iss-2609251509209801).
+// headingMatch is how closely a heading title names an excluded one.
+type headingMatch int
+
+const (
+	// noHeading: the title is not an excluded heading.
+	noHeading headingMatch = iota
+	// sameHeading: the title renders as the excluded heading. The redactor
+	// drops its section, and a verifier path that still finds one refuses.
+	sameHeading
+	// nearHeading: the title is an excluded heading's near-match (nearExcluded)
+	// without rendering as it. The redactor leaves it, and every verifier path
+	// refuses it: too unlike the heading to drop silently, too like it to pass.
+	nearHeading
+)
+
+// What this floor does NOT see, disclosed rather than claimed: a title whose
+// every letter is a non-ASCII lookalike, with no ASCII letter left in the
+// excluded heading's place, is not a near-match (nearExcluded says why), and a
+// title spelled with ASCII lookalikes — a digit one for an l, `rn` for an m — is
+// an ordinary different title. Both are residue and are not caught. Nor is a
+// title that adds or changes punctuation (`## Audit Notes:`, `## Open/Questions`):
+// it renders as a different heading and travels. A heading nested in a
+// blockquote or a list item IS caught: the section scan cannot span it, so the
+// verifier refuses it (nestedHeadingRe, iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
-// ones, under the ONE equality this floor uses: a case fold, or the same
-// rendering. It exists so the redactor and every refusal path — the section
-// scan, the indented ATX line, the setext underline — cannot drift apart on what
-// "the same heading" means. They did: the render comparison was added on the
-// first refusal path only, which closed the class on one of three, and the
-// redactor kept an exact lookup, so a heading differing only in case was
-// refused rather than redacted (iss-2610101819067941).
-func namesExcludedHeading(title string, headings map[string]bool) (string, bool) {
-	for want := range headings {
+// ones, under the ONE equality this floor uses: a case fold or the same
+// rendering (sameHeading), else a near-match (nearHeading). It exists so the
+// redactor and every refusal path — the section scan, the indented ATX line, the
+// setext underline, the raw HTML heading — cannot drift apart on what "the same
+// heading" means. They did: the render comparison was added on the first
+// refusal path only, which closed the class on one of three, and the redactor
+// kept an exact lookup, so a heading differing only in case was refused rather
+// than redacted (iss-2610101819067941).
+//
+// The excluded headings are walked in sorted order and a rendering match is
+// sought across all of them before any near-match, so the verdict and the
+// heading it names are a function of the input, never of map order.
+func namesExcludedHeading(title string, headings map[string]bool) (string, headingMatch) {
+	wants := slices.Sorted(maps.Keys(headings))
+	for _, want := range wants {
 		if strings.EqualFold(title, want) || sameRendering(title, want) {
-			return want, true
+			return want, sameHeading
 		}
 	}
-	return "", false
+	for _, want := range wants {
+		if nearExcluded(title, want) {
+			return want, nearHeading
+		}
+	}
+	return "", noHeading
 }
 
 // sameRendering reports whether two heading titles come out as the same heading
@@ -324,6 +357,72 @@ func sameRendering(a, b string) bool {
 // page, and a heading carrying one is a different heading.
 func renderedKey(text string) string {
 	return strings.Join(strings.Fields(site.StripMarks(text)), " ")
+}
+
+// nearExcluded reports whether a heading title is a near-match of an excluded
+// one: the two agree position by position once both are folded (nearKey),
+// except where the title holds a NON-ASCII LETTER and the excluded heading an
+// ASCII letter, and at least one ASCII letter agrees. `## Audit Notes` spelled
+// with a Cyrillic A (U+0410) compared as nothing like the excluded heading,
+// because every comparison here was over code points, and its section travelled
+// (iss-2610101930333607).
+//
+// Setting a non-ASCII letter aside, rather than folding it through a table of
+// confusables (Unicode TR39), is what makes this fail CLOSED: a table names the
+// lookalikes someone thought of, and a lookalike it omits travels, where a
+// letter set aside matches whatever it stands in for. The cost is refusing a
+// title that is genuinely another word with one letter accented, which costs
+// the author an edit and leaks nothing.
+//
+// The ASCII letter that must agree is what keeps a heading wholly in another
+// script out of it: a Russian heading of two five-letter words shares
+// `## Audit Notes`'s shape, five letters, a space, five letters, and no letter
+// of it stands for the excluded heading's. The price is the residue namesExcludedHeading discloses — a title
+// with every letter a lookalike — which no fold short of a full confusables
+// table closes either.
+func nearExcluded(title, want string) bool {
+	w := []rune(nearKey(want))
+	for _, x := range renderedTexts(title) {
+		a := []rune(nearKey(x))
+		if len(a) != len(w) {
+			continue
+		}
+		agreed, near := false, true
+		for i := range a {
+			switch {
+			case a[i] == w[i]:
+				agreed = agreed || (a[i] < utf8.RuneSelf && unicode.IsLetter(a[i]))
+			case a[i] >= utf8.RuneSelf && unicode.IsLetter(a[i]) &&
+				w[i] < utf8.RuneSelf && unicode.IsLetter(w[i]):
+			default:
+				near = false
+			}
+			if !near {
+				break
+			}
+		}
+		if near && agreed {
+			return true
+		}
+	}
+	return false
+}
+
+// nearKey folds a rendered title for nearExcluded: invisible runes dropped,
+// every Unicode space read as one, compatibility forms normalised
+// (foldForMatching, the ingest regime's fold — so fullwidth letters and a
+// ligature read as the letters they render), lower-cased, combining marks left
+// over from the normalisation dropped (a mark on a letter no precomposed form
+// carries), and the emphasis and code marks dropped last, so a fullwidth
+// asterisk that normalised to an ASCII one goes with the rest.
+func nearKey(text string) string {
+	folded := strings.Map(func(r rune) rune {
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			return -1
+		}
+		return r
+	}, strings.ToLower(foldForMatching(text)))
+	return strings.Join(strings.Fields(site.StripMarks(folded)), " ")
 }
 
 // renderedTexts reduces a heading title to the text a reader sees — HTML
@@ -530,7 +629,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		m := floorATXRe.FindStringSubmatch(line)
 		if m == nil {
 			if n := nestedHeadingRe.FindStringSubmatch(line); n != nil {
-				if want, ok := namesExcludedHeading(normaliseHeadingTitle(n[1]), headings); ok {
+				if want, m := namesExcludedHeading(normaliseHeadingTitle(n[1]), headings); m != noHeading {
 					return fmt.Errorf("reading: %s nests the excluded heading %q in a list item, a "+
 						"blockquote or an indent at line %d; the section scan cannot span it, the floor "+
 						"names %q, and a heading is excluded however it is spelled",
@@ -539,8 +638,8 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 			}
 			continue
 		}
-		want, ok := namesExcludedHeading(normaliseHeadingTitle(m[2]), headings)
-		if !ok {
+		want, match := namesExcludedHeading(normaliseHeadingTitle(m[2]), headings)
+		if match == noHeading {
 			continue
 		}
 		// An indented heading has no span in the site walk, which reads column
@@ -550,6 +649,13 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		if m[1] != "" {
 			return fmt.Errorf("reading: %s indents the excluded heading %q at line %d; the floor "+
 				"names %q, and a heading is excluded however it is spelled", rel, strings.TrimSpace(lines[i]), i+1, want)
+		}
+		if match == nearHeading {
+			return fmt.Errorf("reading: %s carries the heading %q at line %d, a near-match of the "+
+				"excluded heading %q: a non-ASCII letter, a compatibility form or an invisible rune "+
+				"stands where the excluded heading's own letters do, so the floor refuses rather than "+
+				"redact a heading it cannot tell from the excluded one or pass it",
+				rel, normaliseHeadingTitle(m[2]), i+1, want)
 		}
 		return fmt.Errorf("reading: %s still carries the excluded heading %q at line %d after "+
 			"redaction; the floor names %q, and a heading is excluded however it is spelled",
@@ -586,7 +692,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// maps back to a line so the refusal still names one.
 	line, title, ok, overBudget := rawHTMLHeading(lines, fenced, offset, headings)
 	if ok {
-		if want, hit := namesExcludedHeading(title, headings); hit {
+		if want, m := namesExcludedHeading(title, headings); m != noHeading {
 			return fmt.Errorf("reading: %s carries the excluded heading %q as raw HTML at line %d; "+
 				"the floor names %q, and a heading is excluded however it is spelled",
 				rel, title, line, want)
@@ -643,7 +749,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		if title == "" {
 			continue
 		}
-		if want, ok := namesExcludedHeading(title, headings); ok {
+		if want, m := namesExcludedHeading(title, headings); m != noHeading {
 			return fmt.Errorf("reading: %s underlines the excluded heading %q at line %d; the floor "+
 				"names %q, and a heading is excluded however it is spelled", rel, lines[i], i+1, want)
 		}
@@ -1311,7 +1417,7 @@ func excludedRawTitle(readings []string, bounds []*rawHeadingBounds, p int, name
 					if title == "" {
 						continue
 					}
-					if _, ok := namesExcludedHeading(title, headings); ok {
+					if _, m := namesExcludedHeading(title, headings); m != noHeading {
 						return title, true
 					}
 				}

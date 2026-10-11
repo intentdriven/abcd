@@ -813,6 +813,68 @@ func TestASlugAlikeHeadingIsNotTheExcludedOne(t *testing.T) {
 	}
 }
 
+// TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
+// with a Cyrillic A (U+0410) reads as the excluded heading and compared as
+// nothing like it, because every comparison the floor made was over code points,
+// so the section travelled (iss-2610101930333607). A near-match once non-ASCII
+// letters are set aside, compatibility forms normalised and invisible runes
+// dropped is REFUSED: it is not the heading closely enough to redact silently,
+// and too close to let through. A genuinely different heading in another script,
+// or one sharing an excluded heading's shape in letters that stand for nothing
+// in it, travels.
+func TestAConfusableSpellingOfAnExcludedHeadingRefuses(t *testing.T) {
+	refused := map[string]string{
+		"a Cyrillic A":                      "## \u0410udit Notes\n\n" + sentinelAuditNotes + "\n",
+		"a Cyrillic A over a setext rule":   "\u0410udit Notes\n---\n\n" + sentinelAuditNotes + "\n",
+		"a Cyrillic A under an indent":      " ## \u0410udit Notes\n\n" + sentinelAuditNotes + "\n",
+		"most letters Cyrillic or Greek":    "## \u0410\u03c5d\u0456t \u039d\u043et\u0435\u0455\n\n" + sentinelAuditNotes + "\n",
+		"an unlisted letter among ASCII":    "## Aud\u0268t Notes\n\n" + sentinelAuditNotes + "\n",
+		"fullwidth letters":                 "## \uff21\uff55\uff44\uff49\uff54 \uff2e\uff4f\uff54\uff45\uff53\n\n" + sentinelAuditNotes + "\n",
+		"a zero-width space inside a word":  "## Au\u200bdit Notes\n\n" + sentinelAuditNotes + "\n",
+		"a combining mark on a letter":      "## Au\u0300dit Notes\n\n" + sentinelAuditNotes + "\n",
+		"a Cyrillic O in a different title": "## \u041epen Questions\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range refused {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-confusable.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err == nil {
+			if strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+				t.Errorf("%s: a confusable spelling of an excluded heading let its section travel", what)
+			} else {
+				t.Errorf("%s: a confusable spelling of an excluded heading was silently redacted, not refused", what)
+			}
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-4-confusable.md") {
+			t.Errorf("%s: the refusal does not name the file: %v", what, err)
+		}
+	}
+
+	travels := map[string]string{
+		"a Spanish heading":                   "## Notas de auditor\u00eda\n\n" + sentinelAuditNotes + "\n",
+		"a Russian heading of the same shape": "## \u041d\u043e\u0432\u044b\u0435 \u0444\u0430\u043a\u0442\u044b\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range travels {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-foreign.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: a genuinely different non-ASCII heading was refused: %v", what, err)
+			continue
+		}
+		if !strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: a genuinely different non-ASCII heading was redacted", what)
+		}
+	}
+}
+
 // TestAHeadingInsideAnHTMLBlockRefuses: the section walk reads a column-0
 // `## Next` as a heading even inside a `<div>` block, which a renderer reads as
 // raw HTML, so the redactor's span for the excluded section above it ended
