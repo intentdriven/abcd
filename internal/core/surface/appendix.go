@@ -93,9 +93,9 @@ func HostDelegatedSentence(path string) string {
 }
 
 // rootFlagSentence is the whole appendix of a chapter whose surface ships as a
-// flag of the bare root rather than as a verb: /abcd:version runs the root's
-// `--version` (iss-2609302306003610). The flag is listed in the bare command's
-// own appendix, so it is named here and not tabled twice.
+// flag of the bare root rather than as a verb, as the retired version page ran
+// the root's `--version` (iss-2609302306003610). The flag is listed in the bare
+// command's own appendix, so it is named here and not tabled twice.
 func rootFlagSentence(path, flag string) string {
 	return "It ships as the root flag `--" + flag + "`, listed in the bare `abcd` command's appendix: the command tree registers no `" +
 		path + "` verb, so there are no sub-verbs to list."

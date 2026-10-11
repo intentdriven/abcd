@@ -89,10 +89,10 @@ Wait for the confirmation that the marketplace was added, then:
 /plugin install abcd@abcd-marketplace
 ```
 
-Restart the session afterwards so the hooks load, then check what you got:
+Restart the session afterwards so the hooks load, then check what you got: the board's last line names the installed version.
 
 ```
-/abcd:version
+/abcd:abcd
 ```
 
 Later, `/plugin update abcd` takes the latest cut release: the marketplace names that release's plugin archive by its SHA-256, and the harness refuses any other bytes. The plugin route needs Claude Code v2.1.224 or later. <!-- docs-lint: allow -->
@@ -122,6 +122,7 @@ view for the product thinker
 ● building: nothing right now
 ○ next: nothing is ready
 • no more ready, nothing parked
+abcd v0.13.4
 ```
 
 `abcd --view facilitator` shows the full board: the repository, the record, the work tiers, the presence line and every intent with its spec.
