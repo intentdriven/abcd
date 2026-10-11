@@ -195,6 +195,38 @@ func TestCDPATHBlockNamesWhereCDPATHCameFrom(t *testing.T) {
 	}
 }
 
+// TestCdOptionsBeforeTheOperand: zsh's `cd -q` and `-s` are options, and so
+// is pushd's `-n`, which adds the operand to the stack without changing
+// directory; any other word starting with `-` that the reader does not know
+// leaves the operand unfixed, never read as a directory name
+// (iss-2610111749093946).
+func TestCdOptionsBeforeTheOperand(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"s.sh":           hazardLine,
+		"sub/s.sh":       hazardLine,
+		"-x/s.sh":        hazardLine,
+		"empty/keep":     "",
+		"cdpok/sub/s.sh": "echo benign",
+		"stay/s.sh":      hazardLine,
+		"stay/sub/s.sh":  "echo benign",
+	})
+	runScriptCases(t, dir, []scriptCase{
+		{`cd {d} && cd -q sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -s sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -qP sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -q -- sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/empty && CDPATH={d}/cdpok cd -q sub && bash s.sh`, VerdictAllow, ""},
+		// pushd -n stays where it is: the script beside it is the one run.
+		{`cd {d}/stay && pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/stay && CDPATH={d}/cdpok pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		// An option the reader does not know: the directory is unknown, and
+		// the word is never searched for or entered.
+		{`cd {d} && cd -x && bash s.sh`, VerdictAllow, ""},
+		{`cd {d} && cd -n sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/empty && CDPATH={d}/cdpok cd -x sub && bash s.sh`, VerdictAllow, ""},
+	})
+}
+
 // TestSourcePathPrefixIsSearched: a `PATH=` prefix on `source` is the PATH
 // its search reads, relative entries included, before the working directory.
 func TestSourcePathPrefixIsSearched(t *testing.T) {

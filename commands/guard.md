@@ -362,7 +362,9 @@ relative path resolves against the working directory, and against a `cd` or
 `pushd` earlier on the line only when its target exists and the script is
 chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
-is. A `..` in a path resolves the way the kernel opens it, against the directory
+is. `pushd -n` changes no directory, and a `cd` option the reader does not know
+(other than `-L`, `-P`, `-e`, `-@`, `-q` and `-s`) leaves the directory
+unknown. A `..` in a path resolves the way the kernel opens it, against the directory
 a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
 link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
 zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while
