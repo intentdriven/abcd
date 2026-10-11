@@ -820,6 +820,27 @@ is recorded in `.abcd/config.json`, so a later `install` without the flag keeps
 the hook and restores a hand-deleted one; a `prepare-commit-msg` hook abcd did
 not write is reported, never replaced.
 
+`--outbound-hook` opts the repo into the committed `commit-msg` hook, which
+refuses a commit whose message carries a live agent-session URL or a tool's own
+attribution footer, by running `abcd lint outbound` over it. Like
+`--attribution` it is its own approval, it is opt-in and never a default
+(installing a hook changes how the repository's commits work, which is the
+repository's choice), the choice is recorded in `.abcd/config.json`, and a
+`commit-msg` hook abcd did not write is reported, never replaced. The hook finds
+abcd one way only, an absolute path each clone sets once:
+
+```bash
+git config --local abcd.binary /absolute/path/to/abcd
+```
+
+It never searches `PATH`, never reads an environment variable, and never runs a
+file inside the working tree, a symlink that resolves into it included. When no
+usable abcd is configured, or the one configured cannot judge the message, it
+prints one warning line and the commit proceeds: refusing every commit where
+abcd is absent would change how the repository works. Only a message abcd
+judges and refuses is blocked. Like the guard hooks, it runs once the clone's
+`core.hooksPath` points at `.githooks`.
+
 For dogfooding abcd itself, `abcd ahoy install --dev` installs a track-latest
 shim instead of the pinned owned copy: the `PATH` entry rebuilds abcd from
 the source tip on every call and fails loudly on a broken build. Re-running

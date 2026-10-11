@@ -154,6 +154,15 @@ type InstallOptions struct {
 	// install keeps the hook instead of making the maintainer re-pass the flag to
 	// keep something they already chose.
 	Attribution bool
+	// OutboundHook opts this repo into the committed commit-msg hook that runs
+	// `abcd lint outbound` over every commit message. --outbound-hook.
+	//
+	// Opt-IN, never a default: installing a hook changes how the repository's
+	// commits work, which is the repository's choice (iss-2609250834251447). The
+	// hook finds abcd only through `git config --local abcd.binary` and fails
+	// open with one warning when none is configured. The choice is PERSISTED
+	// (`outbound.hook` in config.json), as Attribution's is.
+	OutboundHook bool
 	// AllowStaleBinary overrides the itd-111 staleness refusal: an install run
 	// through a binary that is stale against its source tip, or whose vintage
 	// cannot be determined, otherwise refuses before any write. The override is

@@ -152,6 +152,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		!(!opts.Yes && len(optionalAskable(det.Gaps, p)) > 0) &&
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
+		!outboundWouldChange(abs, opts) &&
 		!modeForced {
 		// One state reaches here that is NOT a no-op: a config.json that could not
 		// be parsed. It raises exactly one gap, deliberately non-resolvable — the
@@ -192,6 +193,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		modeForced:  modeForced,
 		binTarget:   binTargetPath,
 		attribution: opts.Attribution,
+		outbound:    opts.OutboundHook,
 		confirmTool: opts.ConfirmTool,
 	}
 
@@ -211,6 +213,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// Beside the guard hooks, and after them: both land in the same committed hooks
 	// directory, and the EOL pin stepBanlist appends covers `.githooks/*`.
 	ac.stepAttributionHook()
+	ac.stepOutboundHook()
 	ac.stepHistory()
 	ac.stepMarker(cfg)
 	ac.stepSymlink()
@@ -389,6 +392,7 @@ type applyCtx struct {
 	devMode     bool     // --dev: install the track-latest shim instead of the symlink
 	modeForced  bool     // the requested install mode differs from the on-disk state
 	attribution bool     // --attribution: opt this repo into the committed prompt hook
+	outbound    bool     // --outbound-hook: opt this repo into the committed commit-msg gate
 	binTarget   string   // the resolved PATH entry this run installs (never re-derived)
 	confirmTool tools.Confirm
 

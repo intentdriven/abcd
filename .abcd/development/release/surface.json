@@ -281,6 +281,13 @@
           "hidden": false
         },
         {
+          "name": "outbound-hook",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "refuse-adopt",
           "shorthand": "",
           "type": "bool",
