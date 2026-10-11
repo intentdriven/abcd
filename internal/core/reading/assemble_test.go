@@ -946,6 +946,46 @@ func TestAnExcludedHeadingBehindHiddenOrUnmodelledMarkupNeverTravels(t *testing.
 	}
 }
 
+// assertHeadingsNeverTravel assembles a spec carrying each heading above the
+// Audit Notes sentinel, and fails a case whose sentinel reaches the bundle.
+// A refusal passes only if it names the spec.
+func assertHeadingsNeverTravel(t *testing.T, cases map[string]string) {
+	t.Helper()
+	for what, heading := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-hidden.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+heading+"\n\n"+sentinelAuditNotes+"\n\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			if !strings.Contains(err.Error(), "spc-4-hidden.md") {
+				t.Errorf("%s: the refusal does not name the file: %v", what, err)
+			}
+			continue
+		}
+		if strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: the excluded heading %q let its section travel", what, heading)
+		}
+	}
+}
+
+// TestAnExcludedHeadingBehindAQuotedAttributeNeverTravels: a `>` inside a
+// quoted attribute value does not end a tag, so each heading below renders as
+// the excluded heading, and the ATX ones travelled while the tag stripper ended
+// the tag there (iss-2610101930329211). The raw HTML headings are the sweep's
+// controls: their openers are read once more with attribute values masked.
+func TestAnExcludedHeadingBehindAQuotedAttributeNeverTravels(t *testing.T) {
+	assertHeadingsNeverTravel(t, map[string]string{
+		"a double-quoted value":       "## Audit <b title=\">x\"> Notes",
+		"a single-quoted value":       "## Audit <b title='>x'> Notes",
+		"several attributes":          "## Audit <b class=\"a\" title=\">x\" data-y='<z>'> Notes",
+		"inside a raw heading":        "<h2>Audit <b title=\">x\"> Notes</h2>",
+		"on a raw heading's opener":   "<h2 title=\">x\">Audit Notes</h2>",
+		"on a heading role's element": "<div title=\">x\" role=\"heading\">Audit Notes</div>",
+	})
+}
+
 // TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
 // with a Cyrillic A (U+0410) reads as the excluded heading and compared as
 // nothing like it, because every comparison the floor made was over code points,

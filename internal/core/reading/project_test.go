@@ -1,6 +1,7 @@
 package reading
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -172,6 +173,44 @@ func TestAnyMarkupRemnantRefusesAnExcludedHeading(t *testing.T) {
 	} {
 		if want, got := namesExcludedHeading(title, headings); got != noHeading {
 			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading", title, got, want)
+		}
+	}
+}
+
+// TestAQuotedAttributeValueDoesNotEndATag: CommonMark and every browser read a
+// `>` inside a quoted attribute value as part of the value, so each tag below
+// ends at the `>` after its closing quote and the title renders as the excluded
+// heading. The tag stripper ended a tag at the first `>`, so `x">` stayed in the
+// reduced title and the section travelled (iss-2610101930329211). Each is now
+// stripped whole and the title is the same heading.
+func TestAQuotedAttributeValueDoesNotEndATag(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	for _, title := range []string{
+		"Audit <b title=\">x\"> Notes",
+		"Audit <b title='>x'> Notes",
+		"Audit <b class=\"a\" title=\">x\" data-y='<z>' hidden> Notes",
+		"Audit <b title=\">x\">Notes</b>",
+		"<span title=\"a>b\">Open</span> Questions",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+}
+
+// TestTheBackstopSetsAsideAQuotedAngleSpanWhole: the backstop sets aside each
+// `<...>` span of markup no stripper models, so letters inside it cannot split
+// the excluded words. A span ending at the first `>` stopped inside a quoted
+// value, `<x:y a=">z">`, and left `z` between them, so the title travelled. The
+// span is now also read past a quoted `>`.
+func TestTheBackstopSetsAsideAQuotedAngleSpanWhole(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, title := range []string{
+		"Audit<x:y a=\">z\"> Notes",
+		"Audit<x:y a='>z'> Notes",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got == noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want it refused or redacted", title, got, want)
 		}
 	}
 }
@@ -770,22 +809,82 @@ func TestTheEscapedKeyRefusalStatesOnlyWhatItKnows(t *testing.T) {
 	}
 }
 
-// TestOpensTagIsHTMLTagResRule is iss-2608301251394412: the attribute walk's
-// opensTag and the title stripper's htmlTagRe are one definition of what opens
-// a tag, so on any input the pattern can read to its `>`, the walk opens exactly
-// where the pattern matches. The hand-written copy took a `<` and a letter for
-// a tag, so it opened on an autolink its own comment said opens nothing.
-func TestOpensTagIsHTMLTagResRule(t *testing.T) {
+// TestOpensTagIsTheStrippersRule is iss-2608301251394412: the attribute walk's
+// opensTag and the title stripper (stripTags) are one definition of what opens
+// a tag, so on any input the stripper can read to its `>`, the walk opens
+// exactly where the stripper finds a tag. The hand-written copy took a `<` and
+// a letter for a tag, so it opened on an autolink its own comment said opens
+// nothing.
+func TestOpensTagIsTheStrippersRule(t *testing.T) {
 	for _, s := range []string{
 		"<h2>", "</h2>", "<h2 id=\"a\">", "<br/>", "<br />", "<my-tag>", "<a\nhref=\"x\">",
 		"<https://example.com>", "<mailto:someone@example.com>", "<h2:x>",
-		"< h2>", "<2>", "<-x>", "<>", "</>", "a < b >",
+		"< h2>", "<2>", "<-x>", "<>", "</>", "a < b >", "<b title=\">x\">",
 	} {
-		loc := htmlTagRe.FindStringIndex(s)
-		want := loc != nil && loc[0] == 0
+		want := tagAt(s, 0, newQuotedTagEnds(s)) >= 0
 		if got := opensTag(s, 0); got != want {
-			t.Errorf("opensTag(%q) = %v, htmlTagRe matches at 0 = %v", s, got, want)
+			t.Errorf("opensTag(%q) = %v, stripTags finds a tag at 0 = %v", s, got, want)
 		}
+	}
+}
+
+// htmlTagSpecRe is the tag grammar stripTags walks, spelled as the pattern it
+// replaced: a bounded name, then optionally a space and attributes whose
+// quoted values are read whole, then an optional slash and the `>`. It lives
+// here because the pattern is quadratic on a title of tags that open a quote
+// and never close it, and the walk is not (TestTheTagWalksStayLinear).
+var htmlTagSpecRe = regexp.MustCompile(htmlTagOpen + `(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?/?>`)
+
+// angleQuotedSpecRe is the extent setAsideQuotedSpans walks, as a pattern.
+var angleQuotedSpecRe = regexp.MustCompile(`<(?:[^>"']|"[^"]*"|'[^']*')*>`)
+
+// TestTheTagWalksAreTheirPatterns holds stripTags and setAsideQuotedSpans to
+// the patterns they spell out, on the shapes that make either one choose: quoted
+// `>` bytes, quotes never closed, nested and adjacent openers, autolinks, and
+// every short string over the bytes that matter.
+func TestTheTagWalksAreTheirPatterns(t *testing.T) {
+	inputs := []string{
+		"Audit <b title=\">x\"> Notes", "<b a='>' c=\"'\">x", "<b \"><i>", "<b '><i>'>",
+		"<b ' <i> ' <b ' <i> ' <b '", "<a href=x>y</a>", "<https://x> <b>", "<br/><br />",
+		"<x:y a=\">z\">", "<<b>>", "</b x=\">\">", "<b/x>", "<b\n\"a\nb\"\n>",
+	}
+	alphabet := []string{"<", ">", "\"", "'", "b", " ", "/", "x"}
+	var grow func(prefix string, depth int)
+	grow = func(prefix string, depth int) {
+		inputs = append(inputs, prefix)
+		if depth == 0 {
+			return
+		}
+		for _, a := range alphabet {
+			grow(prefix+a, depth-1)
+		}
+	}
+	grow("", 6)
+	for _, s := range inputs {
+		for _, repl := range []string{"", " "} {
+			if got, want := stripTags(s, repl), htmlTagSpecRe.ReplaceAllString(s, repl); got != want {
+				t.Fatalf("stripTags(%q, %q) = %q, the pattern gives %q", s, repl, got, want)
+			}
+		}
+		if got, want := setAsideQuotedSpans(s), angleQuotedSpecRe.ReplaceAllString(s, ""); got != want {
+			t.Fatalf("setAsideQuotedSpans(%q) = %q, the pattern gives %q", s, got, want)
+		}
+	}
+}
+
+// TestTheTagWalksStayLinear: a title of tags that each open a quote and close
+// it only on the next tag, ending on one never closed, kept the pattern's
+// search alive to the end of the title once per tag. Measured as patterns, a
+// 90 KB title took 10 s; the walks remember each quote's answer and take
+// milliseconds at the size cap.
+func TestTheTagWalksStayLinear(t *testing.T) {
+	n := (MaxFileBytes - 64) / len("<b ' <i> ' ")
+	title := strings.Repeat("<b ' <i> ' ", n) + "<b '"
+	start := processCPU()
+	stripTags(title, " ")
+	setAsideQuotedSpans(title)
+	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
+		t.Errorf("the tag walks took %s of CPU over a %d-byte title", elapsed, len(title))
 	}
 }
 

@@ -160,8 +160,9 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	return out, nil
 }
 
-// htmlTagOpen is what opens an HTML tag, the one definition htmlTagRe and
-// htmlTagOpenRe are both built from: a `<`, an optional slash, and a name. The
+// htmlTagOpen is what opens an HTML tag, the one definition the tag stripper
+// (stripTags) and opensTag both read through htmlTagOpenRe: a `<`, an
+// optional slash, and a name. The
 // name is bounded so an AUTOLINK is left alone: `<https://x>` looks like a tag
 // until the colon.
 const htmlTagOpen = `</?[A-Za-z][A-Za-z0-9-]*`
@@ -211,21 +212,19 @@ var (
 	// second question, asked against explicitYAMLKeyRe: a `?` line that pattern
 	// cannot fully read is a key this package cannot resolve.
 	questionLineRe = regexp.MustCompile(`^\s*\?(\s|$)`)
-	// htmlHiddenRe and htmlTagRe strip the markup a title can carry without
+	// htmlHiddenRe and stripTags strip the markup a title can carry without
 	// changing how it reads on the page. htmlHiddenRe is the raw HTML a
 	// renderer passes through and a browser never shows (CommonMark 6.6): a
 	// comment, a processing instruction `<?...?>`, a declaration `<!X ...>` and
 	// a CDATA section `<![CDATA[...]]>`. Stripping only the comment let
 	// `## Audit<?x?> Notes`, which renders as `Audit Notes`, travel.
 	htmlHiddenRe = regexp.MustCompile(`(?s)<!--.*?-->|<\?.*?\?>|<!\[CDATA\[.*?\]\]>|<![A-Za-z][^>]*>`)
-	// angleSpanRe is any `<` to the next `>`, the extent the backstop sets
-	// aside for markup no stripper models (unreadMarkupNames), so `<%x%>`
-	// cannot split the excluded words it sits between.
+	// angleSpanRe is any `<` to the next `>`, one of the two extents the
+	// backstop sets aside for markup no stripper models (unreadMarkupNames),
+	// so `<%x%>` cannot split the excluded words it sits between. The other is
+	// the same span read past a quoted `>` (setAsideQuotedSpans).
 	angleSpanRe = regexp.MustCompile(`<[^>]*>`)
-	// Its name is bounded (htmlTagOpen) so an AUTOLINK is left alone: stripping
-	// `<https://x>` turns a heading carrying a URL into a different heading.
-	htmlTagRe = regexp.MustCompile(htmlTagOpen + `(?:\s[^>]*)?/?>`)
-	// htmlTagOpenRe is htmlTagRe's opening half, anchored: the `<` or `</`, the
+	// htmlTagOpenRe is a tag's opening half (stripTags), anchored: the `<` or `</`, the
 	// name, and the byte that ends the name. opensTag asks it where the attribute
 	// walk may start, so the walk and the stripper share one rule
 	// (iss-2608301251394412). It stops at the end of the name, so asking it at
@@ -307,7 +306,7 @@ const (
 //   - A title that adds or changes punctuation (`## Audit Notes:`,
 //     `## Open/Questions`) renders as a different heading and travels.
 //   - An autolink, `<https://x>` or `<a@b.c>`, is left as it is written
-//     (htmlTagRe stops short of it). It renders with its scheme's colon or the
+//     (stripTags stops short of it). It renders with its scheme's colon or the
 //     address's at sign, which no excluded heading carries, so it can never
 //     render as one. Beside the excluded words it is refused: the backstop
 //     reads its angle brackets as markup it did not model.
@@ -332,7 +331,8 @@ const (
 //     ASCII letter to agree, so unread markup whose every letter in the
 //     excluded heading's place is a lookalike travels: nearExcluded's residue,
 //     above, carried into the backstop.
-//   - The backstop sets aside only what lies between a `<` and the next `>`.
+//   - The backstop sets aside only what lies between a `<` and the next `>`,
+//     or the next `>` outside a quoted value (setAsideQuotedSpans).
 //     Letters written inside an unmodelled construct of some other extent
 //     split the excluded words, `## Audit [x Notes`, and the title travels;
 //     such a construct renders its letters unless a renderer hides it.
@@ -345,13 +345,15 @@ const (
 // that follows the CommonMark inline link grammar, passed until the title
 // stops changing so an image inside a link reduces to its alt text
 // (unwrapLinks); footnote markers are dropped; backslash escapes and character
-// references decoded; HTML tags removed (renderedTexts). Second, the
+// references decoded; HTML tags removed, a quoted attribute value whole
+// (renderedTexts, stripTags). Second, the
 // backstop: a title still carrying any markup remnant, a bracket or an angle
 // bracket, holds markup the floor did not model, and it is refused if its
 // letters contain an excluded heading's (unreadMarkupNames). The remnant is
-// judged before escapes are decoded, with only the tags htmlTagRe models
+// judged before escapes are decoded, with only the tags stripTags models
 // removed; a non-ASCII letter stands for any ASCII letter as in nearExcluded;
-// and the text between an unmodelled `<` and `>` is set aside. The first
+// and the text between an unmodelled `<` and `>` is set aside, read both to
+// the first `>` and past a quoted one. The first
 // layer redacts what it reads; the second refuses what it did not, so a link
 // shape the scanner misreads, an unknown raw HTML kind or a tag shape no
 // stripper models is refused rather than travelling. A heading nested in a
@@ -561,8 +563,8 @@ func renderedTexts(title string) []string {
 // readingsOf is renderedTexts' second half: the two readings of a title whose
 // hidden raw HTML, footnote markers, links and escapes are already reduced.
 func readingsOf(out string) []string {
-	spaced := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, " ")))
-	joined := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, "")))
+	spaced := strings.TrimSpace(html.UnescapeString(stripTags(out, " ")))
+	joined := strings.TrimSpace(html.UnescapeString(stripTags(out, "")))
 	if joined == spaced {
 		return []string{spaced}
 	}
@@ -846,7 +848,7 @@ func isASCIIPunct(c byte) bool {
 //
 // The remnant is looked for where it cannot have been erased: in the title
 // before backslash escapes were decoded (unwrapLinks), with only the tags
-// htmlTagRe models removed, and, for brackets, in each reading after
+// stripTags models removed, and, for brackets, in each reading after
 // character references are decoded too.
 //
 // It fails closed on purpose. Patching the link pattern one shape at a time
@@ -864,7 +866,7 @@ func unreadMarkupNames(title, want string) bool {
 	}
 	reduced, before := inlineReduced(title)
 	readings := readingsOf(reduced)
-	unread := strings.ContainsAny(htmlTagRe.ReplaceAllString(before, ""), "[]<>")
+	unread := strings.ContainsAny(stripTags(before, ""), "[]<>")
 	for _, x := range readings {
 		unread = unread || strings.ContainsAny(x, "[]")
 	}
@@ -873,7 +875,8 @@ func unreadMarkupNames(title, want string) bool {
 	}
 	for _, x := range readings {
 		if lettersContain(lettersKey(x), key) ||
-			lettersContain(lettersKey(angleSpanRe.ReplaceAllString(x, "")), key) {
+			lettersContain(lettersKey(angleSpanRe.ReplaceAllString(x, "")), key) ||
+			lettersContain(lettersKey(setAsideQuotedSpans(x)), key) {
 			return true
 		}
 	}
@@ -1736,7 +1739,7 @@ func skipSpaceAndNewlines(s string, i int) int {
 	return i
 }
 
-// opensTag reports whether s[i] begins an HTML tag, on htmlTagRe's own rule,
+// opensTag reports whether s[i] begins an HTML tag, on stripTags' own rule,
 // read through htmlTagOpenRe: a `<` followed by a name, or by a slash and a
 // name, and the name ended by a space, a slash or a `>`. An autolink and a bare
 // `<` in prose open nothing, so neither drags the attribute walk over them.
