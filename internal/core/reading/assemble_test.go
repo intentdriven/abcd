@@ -828,6 +828,12 @@ func TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted(t *testing.T) {
 		"a double-tilde strikethrough": "## ~~Audit Notes~~\n\n" + sentinelAuditNotes + "\n",
 		"a single-tilde strikethrough": "## ~Open Questions~\n\n" + sentinelAuditNotes + "\n",
 		"an HTML strikethrough":        "## <s>Audit Notes</s>\n\n" + sentinelAuditNotes + "\n",
+		"a shortcut reference link":    "## [Audit Notes]\n\n" + sentinelAuditNotes + "\n",
+		"a collapsed reference link":   "## [Audit Notes][]\n\n" + sentinelAuditNotes + "\n",
+		"a full reference link":        "## [Audit Notes][ref]\n\n" + sentinelAuditNotes + "\n",
+		// No definition names this label, so a renderer shows the brackets. It
+		// is redacted all the same: that is the side to err on.
+		"a bracketed title with no definition": "## [Open Questions]\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, section := range cases {
 		root := fixtureRepo(t)

@@ -223,8 +223,14 @@ var (
 	// (iss-2608301251394412). It stops at the end of the name, so asking it at
 	// every `<` stays linear where the whole pattern would scan to the next `>`.
 	htmlTagOpenRe = regexp.MustCompile(`^` + htmlTagOpen + `[\s/>]`)
-	// mdLinkRe unwraps `[text](target)` to the text a reader sees.
-	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	// mdLinkRe unwraps a link to the text a reader sees: the inline form
+	// `[text](target)`, the full and collapsed reference forms `[text][ref]` and
+	// `[text][]`, and the shortcut `[text]`. Whether a definition exists for a
+	// reference is not asked: a bracketed title with none renders with its
+	// brackets, and reading it as its label too redacts it, which is the side
+	// a floor errs on. Unwrapping the inline form alone let the three reference
+	// forms of an excluded heading travel.
+	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?`)
 	// explicitYAMLKeyRe matches YAML's explicit-key form, `? origin`.
 	explicitYAMLKeyRe = regexp.MustCompile(`^\s*\?\s+["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*$`)
 	// flowKeyRe matches a key inside a flow mapping, at top level or nested, and
