@@ -25,7 +25,7 @@ talk your way past — so write for the reader, and cite everything.
 ## What you read
 
 The **cut** — the emit step's JSON, produced by `abcd launch ship --json` (or the
-read-only preview `abcd changelog --json`):
+`cut` of the read-only preview `abcd launch --dry-run --json`):
 
 - `next_tag` — the derived version (e.g. `v0.4.1`). Copy it verbatim into your
   payload; never compute, guess, or "correct" it.

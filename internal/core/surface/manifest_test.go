@@ -219,8 +219,8 @@ func TestManifestEntriesUsesRepoRelativePaths(t *testing.T) {
 // per-repo fact — adr-19's version-location contract is abcd's own precedent for
 // declaring such a fact rather than assuming it. A repo whose artefact is a
 // binary, an application bundle or a library has no plugin manifest, and reading
-// its absence as a broken payload is what stops `abcd changelog` before anything
-// else runs.
+// its absence as a broken payload is what stops the release cut and its preview
+// before anything else runs.
 //
 // Nothing about the guardrail is weakened: the removal case
 // (TestManifestEntriesAbsenceStillReportsTheRemoval) is caught as a BREAK

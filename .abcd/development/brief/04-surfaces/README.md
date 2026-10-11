@@ -141,13 +141,16 @@ the command's sentence (the section below).
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
 carry no adr-40 bucket meaning. `version` is the root's `--version` flag
 (itd-2609212130136102), not a verb, so it is in neither block, and bare `abcd`
-shows the installed version as the board's last line (itd-2610090831227812). The product
+shows the installed version as the board's last line (itd-2610090831227812).
+`changelog` is in neither block either: it merged into `launch` as its preview,
+and `abcd launch --dry-run` renders the cut it showed beside the bundle report
+(itd-2610090831227812). The product
 thinker placed every verb on 2026-10-09 by who types it: a command a person
 needs to do their job is a person's, and only a command no person types is
 listed with the agents (itd-2610090831227812; its spec's verb audit cites each
@@ -240,7 +243,6 @@ verb the binary registers apart from the framework's own `help`.
 
 | Verb | What it is | Delivered by |
 |---|---|---|
-| `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
 | `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |

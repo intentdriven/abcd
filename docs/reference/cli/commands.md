@@ -633,12 +633,6 @@ Move an open issue to wontfix/ with the reason it is not acted on: Writes the mo
 abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"
 ```
 
-### `abcd changelog`
-
-Preview the next release cut's version, records, and guardrail verdict: Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.
-
-**Usage:** `abcd changelog`
-
 ### `abcd completion`
 
 Generate the autocompletion script for the specified shell
@@ -2759,12 +2753,14 @@ abcd lab sweep lab-260901000000-0123abc
 
 ### `abcd launch`
 
-Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
+Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
 
 **Usage:** `abcd launch [flags]`
 
 Preview the release bundle and run the release gates with --dry-run; nothing is
-published.
+published. The preview also renders the release cut the next `launch ship` would
+make: the derived version, the deciding impact, the records, and the guard verdict.
+A refused cut is reported, and changes nothing about the preview's exit.
 
 The dirty-tree gate compares the working tree with HEAD byte for byte. The repository's
 content filters (filter.<name>.clean, .smudge and .process) are switched off for that
@@ -2783,7 +2779,7 @@ configuration names runs; a submodule moved to a different commit still does.
 ```
       --baseline string   the release tag the payload parity diff measures against (default: the newest release tag)
       --deep-smoke        also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)
-      --dry-run           preview the launch bundle and gates without publishing
+      --dry-run           preview the launch bundle, its gates and the release cut without publishing
       --fetch-baseline    read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
 ```
 

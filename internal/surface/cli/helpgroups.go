@@ -98,7 +98,8 @@ type helpPlacement struct {
 // statusline with agents. P2 keeps drain with agents until itd-82 ships. P3
 // makes peers and mode agents only, P4 report, spec and rules, and P6 banlist.
 // memory and source stay person's verbs until they merge into library (P4);
-// changelog stays with agents until it merges into launch. Neither surface caps
+// changelog has merged into launch as its preview (`launch --dry-run`, P4), so
+// it has no placement. Neither surface caps
 // the person's list (the 2026-10-09 menu ruling), and the plugin menu lists the
 // same commands (TestPluginPersonListEqualsTheCLIs). The groups are the spec's
 // decision 1: ideate under records, reading and lab under checks, dashboard
@@ -126,7 +127,6 @@ var helpPlacements = map[string]helpPlacement{
 	// loader, and spec the user-facing half of the spec lifecycle (the spec's
 	// decision 2).
 	"banlist":             {group: groupAgents, page: "commands/banlist.md"},
-	"changelog":           {group: groupAgents, page: "commands/launch.md"},
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
 	"guard hook":          {page: "commands/guard.md"},

@@ -93,7 +93,8 @@ var pagesWithNoVerb = map[string]string{
 // does not know a retired name is never called stale for it. A token here has
 // no page, so it is not in pagesWithNoVerb.
 var retiredTokens = map[string]string{
-	"version": "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
+	"changelog": "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
+	"version":   "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
 }
 
 // maxCommandPageBytes caps a command-page read; the pages are a few KiB.
