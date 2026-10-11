@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/land_test.go"
 remedy: "Add a bare-repository constructor to internal/gittest that applies the same repo-level maintenance config as NewRepo. Use it in newLandFixture and at every other git init --bare site in the tests. Then add a guard test that refuses a raw init --bare in a _test.go file outside gittest, so the sibling cannot come back."
-resolution: "gittest.InitBare and gittest.CloneBare write NewRepo's maintenance-off config from one shared list; all twelve hand-made bare repositories in tests use them, and a guard test refuses a new one."
+resolution: "gittest.InitBare and gittest.CloneBare write NewRepo's maintenance-off config from one shared list; all thirteen hand-made bare repositories in tests use them, and a guard test refuses a new one."
 impact: fix
 resolved_by:
   commit: "41289dcef"

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -118,44 +119,110 @@ func TestNoTestMakesABareRepositoryByHand(t *testing.T) {
 	}
 }
 
-// bareGitCalls returns the line of every call in the file whose string
-// arguments run git init or git clone with --bare, as separate arguments or
-// as one string.
+// bareGitCalls returns the line of every git init or git clone with --bare
+// in the file. A verb and a "--bare" written as separate string literals pair
+// within one function body, wherever in it they appear, so an argument list
+// assembled through a variable is caught as surely as one written in a single
+// call; the line reported is the "--bare" literal's. A verb and --bare written
+// as one string are caught on that string's line. A "--bare" outside any
+// function (a table of flag names) pairs with nothing.
 func bareGitCalls(path string) ([]int, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 	if err != nil {
 		return nil, err
 	}
-	var lines []int
+	found := map[int]bool{}
 	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
+		var body *ast.BlockStmt
+		switch fn := n.(type) {
+		case *ast.FuncDecl:
+			body = fn.Body
+		case *ast.FuncLit:
+			body = fn.Body
+		case *ast.BasicLit:
+			if v, ok := stringLit(fn); ok && bareInOneString.MatchString(v) {
+				found[fset.Position(fn.Pos()).Line] = true
+			}
+			return true
+		default:
 			return true
 		}
-		var verb, bare bool
-		for _, arg := range call.Args {
-			lit, ok := arg.(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				continue
-			}
-			v, err := strconv.Unquote(lit.Value)
-			if err != nil {
-				continue
-			}
+		if body == nil {
+			return true
+		}
+		var verb bool
+		var bares []int
+		ast.Inspect(body, func(m ast.Node) bool {
+			v, ok := stringLit(m)
 			switch {
+			case !ok:
 			case v == "init" || v == "clone":
 				verb = true
 			case v == "--bare":
-				bare = true
-			case bareInOneString.MatchString(v):
-				verb, bare = true, true
+				bares = append(bares, fset.Position(m.Pos()).Line)
 			}
-		}
-		if verb && bare {
-			lines = append(lines, fset.Position(call.Pos()).Line)
+			return true
+		})
+		if verb {
+			for _, line := range bares {
+				found[line] = true
+			}
 		}
 		return true
 	})
+	lines := make([]int, 0, len(found))
+	for line := range found {
+		lines = append(lines, line)
+	}
+	sort.Ints(lines)
 	return lines, nil
+}
+
+// stringLit returns the value of n when it is a string literal.
+func stringLit(n ast.Node) (string, bool) {
+	lit, ok := n.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(lit.Value)
+	return v, err == nil
+}
+
+// TestBareGitCallsPairsWithinAFunction pins the guard's reach: a --bare
+// appended to an argument list held in a variable is caught at the --bare
+// literal's line, while a --bare that is some other program's flag, or an
+// entry in a package-level table of flag names, is not.
+func TestBareGitCallsPairsWithinAFunction(t *testing.T) {
+	src := `package x
+
+var flags = []string{"init", "--bare"}
+
+func viaVariable(bare bool) {
+	args := []string{"init", "-q"}
+	if bare {
+		args = append(args,
+			"--bare")
+	}
+	run(args...)
+}
+
+func otherProgram() { run("claude", "--print", "--bare") }
+
+func oneString() { sh("git clone --bare src dst") }
+
+func run(...string) {}
+func sh(string)     {}
+`
+	path := filepath.Join(t.TempDir(), "x_test.go")
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := bareGitCalls(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{9, 16}; !slices.Equal(got, want) {
+		t.Errorf("bareGitCalls = %v, want lines %v", got, want)
+	}
 }
