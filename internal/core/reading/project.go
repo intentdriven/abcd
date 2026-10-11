@@ -3,10 +3,12 @@ package reading
 import (
 	"fmt"
 	"html"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/lint"
@@ -107,7 +109,9 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	// namesExcludedHeading, the one equality the verifier also uses: an exact
 	// lookup here left `## Open questions` in place for the verifier, which
 	// folds case, to refuse, failing the whole assembly over one record's
-	// spelling (iss-2610101819067941).
+	// spelling (iss-2610101819067941). Only a heading that renders as the
+	// excluded one is redacted; a near-match is left in place for the verifier
+	// to refuse, so a confusable spelling is named rather than silently dropped.
 	body, offset := site.StripFrontmatter(doc)
 	sections, err := site.Sections(rel, body, offset)
 	if err != nil {
@@ -117,7 +121,7 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 		if sec.Level == 0 {
 			continue
 		}
-		if _, ok := namesExcludedHeading(normaliseHeadingTitle(sec.Title), headings); !ok {
+		if _, m := namesExcludedHeading(normaliseHeadingTitle(sec.Title), headings); m != sameHeading {
 			continue
 		}
 		start, end := sectionSpan(sections, i, len(lines))
@@ -156,8 +160,9 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	return out, nil
 }
 
-// htmlTagOpen is what opens an HTML tag, the one definition htmlTagRe and
-// htmlTagOpenRe are both built from: a `<`, an optional slash, and a name. The
+// htmlTagOpen is what opens an HTML tag, the one definition the tag stripper
+// (stripTags) and opensTag both read through htmlTagOpenRe: a `<`, an
+// optional slash, and a name. The
 // name is bounded so an AUTOLINK is left alone: `<https://x>` looks like a tag
 // until the colon.
 const htmlTagOpen = `</?[A-Za-z][A-Za-z0-9-]*`
@@ -207,20 +212,23 @@ var (
 	// second question, asked against explicitYAMLKeyRe: a `?` line that pattern
 	// cannot fully read is a key this package cannot resolve.
 	questionLineRe = regexp.MustCompile(`^\s*\?(\s|$)`)
-	// htmlCommentRe and htmlTagRe strip the markup a title can carry without
-	// changing how it reads on the page.
-	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
-	// Its name is bounded (htmlTagOpen) so an AUTOLINK is left alone: stripping
-	// `<https://x>` turns a heading carrying a URL into a different heading.
-	htmlTagRe = regexp.MustCompile(htmlTagOpen + `(?:\s[^>]*)?/?>`)
-	// htmlTagOpenRe is htmlTagRe's opening half, anchored: the `<` or `</`, the
+	// angleSpanRe is any `<` to the next `>`, one of the two extents the
+	// backstop sets aside for markup no stripper models (unreadMarkupNames),
+	// so `<%x%>` cannot split the excluded words it sits between. The other is
+	// the same span read past a quoted `>` (setAsideQuotedSpans).
+	angleSpanRe = regexp.MustCompile(`<[^>]*>`)
+	// htmlTagOpenRe is a tag's opening half (stripTags), anchored: the `<` or `</`, the
 	// name, and the byte that ends the name. opensTag asks it where the attribute
 	// walk may start, so the walk and the stripper share one rule
 	// (iss-2608301251394412). It stops at the end of the name, so asking it at
 	// every `<` stays linear where the whole pattern would scan to the next `>`.
 	htmlTagOpenRe = regexp.MustCompile(`^` + htmlTagOpen + `[\s/>]`)
-	// mdLinkRe unwraps `[text](target)` to the text a reader sees.
-	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	// mdFootnoteRe matches a footnote marker, `[^1]`, which renders as a
+	// superscript after the heading it marks rather than as part of its title.
+	mdFootnoteRe = regexp.MustCompile(`\[\^[^\]]*\]`)
+	// mdEscapeRe matches a backslash escape, a backslash before ASCII
+	// punctuation (CommonMark 2.4), which renders as the punctuation alone.
+	mdEscapeRe = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 	// explicitYAMLKeyRe matches YAML's explicit-key form, `? origin`.
 	explicitYAMLKeyRe = regexp.MustCompile(`^\s*\?\s+["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*$`)
 	// flowKeyRe matches a key inside a flow mapping, at top level or nested, and
@@ -267,28 +275,134 @@ var (
 	flowAliasKeyRe = regexp.MustCompile(`[{\[,]\s*(?:[!&][^\s{}\[\],]*\s+)*\*`)
 )
 
-// One shape this floor does NOT see, disclosed rather than claimed: a title
-// reaching the excluded one through a homoglyph or an invisible format character
-// slugs differently by construction, because the slug compares code points. It
-// is residue and is not caught. A heading nested in a blockquote or a list item
-// IS caught: the section scan cannot span it, so the verifier refuses it
-// (nestedHeadingRe, iss-2609251509209801).
+// headingMatch is how closely a heading title names an excluded one.
+type headingMatch int
+
+const (
+	// noHeading: the title is not an excluded heading.
+	noHeading headingMatch = iota
+	// sameHeading: the title renders as the excluded heading. The redactor
+	// drops its section, and a verifier path that still finds one refuses.
+	sameHeading
+	// nearHeading: the title is an excluded heading's near-match (nearExcluded)
+	// without rendering as it. The redactor leaves it, and every verifier path
+	// refuses it: too unlike the heading to drop silently, too like it to pass.
+	nearHeading
+)
+
+// What this floor does NOT see, disclosed rather than claimed:
+//
+//   - A title whose every letter is a non-ASCII lookalike, with no ASCII letter
+//     left in the excluded heading's place, is not a near-match (nearExcluded
+//     says why), and a title spelled with ASCII lookalikes — a digit one for an
+//     l, `rn` for an m — is an ordinary different title. Neither is caught.
+//   - A title that adds or changes punctuation (`## Audit Notes:`,
+//     `## Open/Questions`) renders as a different heading and travels.
+//   - An autolink, `<https://x>` or `<a@b.c>`, is left as it is written
+//     (stripTags stops short of it). It renders with its scheme's colon or the
+//     address's at sign, which no excluded heading carries, so it can never
+//     render as one. Beside the excluded words it is refused: the backstop
+//     reads its angle brackets as markup it did not model.
+//   - Markup that hides text by an attribute or a style rather than by its
+//     element: `## Audit <span hidden>x</span> Notes` reads as `Audit Notes` and
+//     compares as `Audit x Notes`, so it travels; modelling which attributes
+//     hide an element is a renderer's job, and a CSS class can do the same out
+//     of this floor's sight. An element that hides its content by its name
+//     alone IS read without it (unrenderedElements): template, script, style,
+//     title, noscript, noembed, noframes, iframe, datalist and rp, and the
+//     fallback inside video, audio, canvas and object. Left out, and read with
+//     their content, are textarea, xmp, plaintext and select, whose text a
+//     browser shows, and details, which folds its content away under a summary
+//     that shows. Inside an unrendered element the walk follows nesting, end
+//     tags and raw text; an element it does not model opened inside one (a
+//     void element and a template's content aside) flags the title, because
+//     the parser may ignore the end tag that follows, and a flagged title
+//     carrying the heading's letters in order is refused (unmodelledHides),
+//     which over-refuses rather than leaks. It does not model the parser's
+//     other implied end tags or a script's escaped `<!--<script>` state, so a title built on
+//     either can read more or less content than a browser hides.
+//   - Foreign content is not modelled: inside svg or math a CDATA section is
+//     text a browser shows, where the floor reads it as hidden.
+//   - Two over-redactions are kept on purpose. A declaration with a lower-case
+//     letter, `## Audit <!x> Notes`, is text under GFM's older rule and hidden
+//     under CommonMark's current one and in every browser, so it is redacted.
+//     A CDATA section is read to `]]>` as well as to a browser's first `>`, so
+//     `## Audit<![CDATA[>]]> Notes`, which a browser shows as `Audit]]> Notes`,
+//     is redacted too. Either costs the author an edit and leaks nothing.
+//   - A heading attribute block, `## Audit Notes {#id}`, is renderer-specific:
+//     CommonMark and GFM show the braces, so the floor reads it as written and
+//     it travels.
+//   - A footnote marker is dropped before anything else is read, so a title
+//     that is only a marker, `## [^Audit Notes]`, compares as empty and
+//     travels; it renders as a superscript or, with no definition, with its
+//     caret and brackets.
+//   - Inside a link label, a code span or a raw HTML tag binds more tightly
+//     than the brackets in CommonMark, and the scanner does not model that: a
+//     `]` written inside one ends the label early. What that misreads is
+//     either a title that still carries a bracket, which the backstop below
+//     judges, or one read as the excluded heading and redacted.
+//   - The backstop reads a non-ASCII letter as any ASCII letter but wants one
+//     ASCII letter to agree, so unread markup whose every letter in the
+//     excluded heading's place is a lookalike travels: nearExcluded's residue,
+//     above, carried into the backstop.
+//   - The backstop sets aside only what lies between a `<` and the next `>`,
+//     or the next `>` outside a quoted value (setAsideQuotedSpans).
+//     Letters written inside an unmodelled construct of some other extent
+//     split the excluded words, `## Audit [x Notes`, and the title travels;
+//     such a construct renders its letters unless a renderer hides it.
+//
+// The inline forms that render as plain text are reduced in two layers before
+// the comparison. First, the reduction: emphasis, code and strikethrough marks
+// are dropped (stripMarks); the raw HTML a browser never shows, comments,
+// processing instructions, declarations and CDATA sections, is removed under
+// CommonMark's reading of where it ends and a browser's, and once more with
+// every unrendered element's content removed as well (hiddenViews);
+// links and images are unwrapped to their text by the inline link scanner
+// the principle projection shares (mdrecord.UnwrapLinkPass)
+// that follows the CommonMark inline link grammar, passed until the title
+// stops changing so an image inside a link reduces to its alt text
+// (unwrapLinks); footnote markers are dropped; backslash escapes and character
+// references decoded; HTML tags removed, a quoted attribute value whole
+// (renderedTexts, stripTags). Second, the
+// backstop: a title still carrying any markup remnant, a bracket or an angle
+// bracket, holds markup the floor did not model, and it is refused if its
+// letters contain an excluded heading's (unreadMarkupNames). The remnant is
+// judged before escapes are decoded, with only the tags stripTags models
+// removed; a non-ASCII letter stands for any ASCII letter as in nearExcluded;
+// and the text between an unmodelled `<` and `>` is set aside, read both to
+// the first `>` and past a quoted one. The first
+// layer redacts what it reads; the second refuses what it did not, so a link
+// shape the scanner misreads, an unknown raw HTML kind or a tag shape no
+// stripper models is refused rather than travelling. A heading nested in a
+// blockquote or a list item IS caught: the section scan cannot span it, so
+// the verifier refuses it (nestedHeadingRe, iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
-// ones, under the ONE equality this floor uses: a case fold, or the same
-// rendering. It exists so the redactor and every refusal path — the section
-// scan, the indented ATX line, the setext underline — cannot drift apart on what
-// "the same heading" means. They did: the render comparison was added on the
-// first refusal path only, which closed the class on one of three, and the
-// redactor kept an exact lookup, so a heading differing only in case was
-// refused rather than redacted (iss-2610101819067941).
-func namesExcludedHeading(title string, headings map[string]bool) (string, bool) {
-	for want := range headings {
-		if strings.EqualFold(title, want) || sameRendering(title, want) {
-			return want, true
+// ones, under the ONE equality this floor uses: an ASCII case fold or the same
+// rendering (sameHeading), else a near-match (nearHeading). It exists so the
+// redactor and every refusal path — the section scan, the indented ATX line, the
+// setext underline, the raw HTML heading — cannot drift apart on what "the same
+// heading" means. They did: the render comparison was added on the first
+// refusal path only, which closed the class on one of three, and the redactor
+// kept an exact lookup, so a heading differing only in case was refused rather
+// than redacted (iss-2610101819067941).
+//
+// The excluded headings are walked in sorted order and a rendering match is
+// sought across all of them before any near-match, so the verdict and the
+// heading it names are a function of the input, never of map order.
+func namesExcludedHeading(title string, headings map[string]bool) (string, headingMatch) {
+	wants := slices.Sorted(maps.Keys(headings))
+	for _, want := range wants {
+		if asciiEqualFold(title, want) || sameRendering(title, want) {
+			return want, sameHeading
 		}
 	}
-	return "", false
+	for _, want := range wants {
+		if nearExcluded(title, want) || unreadMarkupNames(title, want) || unmodelledHides(title, want) {
+			return want, nearHeading
+		}
+	}
+	return "", noHeading
 }
 
 // sameRendering reports whether two heading titles come out as the same heading
@@ -296,18 +410,21 @@ func namesExcludedHeading(title string, headings map[string]bool) (string, bool)
 // non-breaking space differ in bytes and are the same heading to every reader,
 // so a byte comparison is the wrong test for what the floor is trying to name.
 //
-// The site's own anchor slug is the comparison: it drops emphasis and code
-// marks, lower-cases, and collapses every other run of non-alphanumerics to a
-// hyphen — which is exactly the equivalence "renders as the same heading" needs,
-// and it is one function rather than a table of markup shapes to keep current.
+// The comparison is the rendered text itself (renderedKey), under an ASCII case
+// fold (asciiEqualFold).
+// It was once the site's anchor slug, which is COARSER than "renders the same":
+// the slug collapses every run of non-alphanumerics to a hyphen, so
+// `## Open/Questions` and `## Audit & Notes` slugged onto excluded headings they
+// do not read as, and because the redactor shares this equality their sections
+// were silently dropped from the bundle (iss-2610101930329211).
 func sameRendering(a, b string) bool {
 	for _, x := range renderedTexts(a) {
-		slug := site.Slug(x)
-		if slug == "" {
+		key := renderedKey(x)
+		if key == "" {
 			continue
 		}
 		for _, y := range renderedTexts(b) {
-			if slug == site.Slug(y) {
+			if asciiEqualFold(key, renderedKey(y)) {
 				return true
 			}
 		}
@@ -315,10 +432,127 @@ func sameRendering(a, b string) bool {
 	return false
 }
 
-// renderedTexts reduces a heading title to the text a reader sees — HTML
-// comments and tags removed, link wrappers unwrapped to their label, character
-// references decoded — and returns EVERY reading of it rather than one. The
-// slug then compares what the page shows rather than what the source spells.
+// asciiEqualFold reports whether two titles are equal once ASCII letters are
+// case folded, and every other byte compared as it is. strings.EqualFold is
+// Unicode simple folding, which takes the long s (U+017F) to an s and the
+// Kelvin sign (U+212A) to a k, so `## Open Queſtions` was the excluded heading
+// and silently redacted although it renders differently; strings.ToLower is no
+// better, since it maps the Kelvin sign to an ASCII k. Under an ASCII-only fold
+// such a title is a near-match (nearExcluded), which is refused and named. A
+// non-ASCII case difference falls the same way, and an excluded heading is
+// ASCII.
+func asciiEqualFold(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range len(a) {
+		x, y := a[i], b[i]
+		if 'A' <= x && x <= 'Z' {
+			x += 'a' - 'A'
+		}
+		if 'A' <= y && y <= 'Z' {
+			y += 'a' - 'A'
+		}
+		if x != y {
+			return false
+		}
+	}
+	return true
+}
+
+// renderedKey is a rendered title as a reader sees it: the emphasis, code and
+// strikethrough marks dropped (stripMarks), and every run of white space — a
+// non-breaking space among it, which renders as a plain one — read as a single
+// space. Punctuation stays: a slash or an ampersand is on the page, and a
+// heading carrying one is a different heading.
+func renderedKey(text string) string {
+	return strings.Join(strings.Fields(stripMarks(text)), " ")
+}
+
+// stripMarks drops the marks a heading carries without them reaching the page:
+// the emphasis and code marks the anchor also ignores (site.StripMarks), and
+// the tilde that wraps a strikethrough, `~~Audit Notes~~` or `~Audit Notes~`.
+// The tilde is dropped here and not in site.StripMarks because the anchor's
+// slug keeps a tilde as a hyphen (`a~b` is `a-b`), and moving it would move
+// anchors already published. Without it the markdown strikethrough travelled
+// while its HTML spelling, `<s>Audit Notes</s>`, was redacted.
+func stripMarks(text string) string {
+	return strings.ReplaceAll(site.StripMarks(text), "~", "")
+}
+
+// nearExcluded reports whether a heading title is a near-match of an excluded
+// one: the two agree position by position once both are folded (nearKey),
+// except where the title holds a NON-ASCII LETTER and the excluded heading an
+// ASCII letter, and at least one ASCII letter agrees. `## Audit Notes` spelled
+// with a Cyrillic A (U+0410) compared as nothing like the excluded heading,
+// because every comparison here was over code points, and its section travelled
+// (iss-2610101930333607).
+//
+// Setting a non-ASCII letter aside, rather than folding it through a table of
+// confusables (Unicode TR39), is what makes this fail CLOSED: a table names the
+// lookalikes someone thought of, and a lookalike it omits travels, where a
+// letter set aside matches whatever it stands in for. The cost is refusing a
+// title that is genuinely another word with one letter accented, which costs
+// the author an edit and leaks nothing.
+//
+// The ASCII letter that must agree is what keeps a heading wholly in another
+// script out of it: a Russian heading of two five-letter words shares
+// `## Audit Notes`'s shape, five letters, a space, five letters, and no letter
+// of it stands for the excluded heading's. The price is the residue namesExcludedHeading discloses — a title
+// with every letter a lookalike — which no fold short of a full confusables
+// table closes either.
+func nearExcluded(title, want string) bool {
+	w := []rune(nearKey(want))
+	for _, x := range renderedTexts(title) {
+		a := []rune(nearKey(x))
+		if len(a) != len(w) {
+			continue
+		}
+		agreed, near := false, true
+		for i := range a {
+			switch {
+			case a[i] == w[i]:
+				agreed = agreed || (a[i] < utf8.RuneSelf && unicode.IsLetter(a[i]))
+			case a[i] >= utf8.RuneSelf && unicode.IsLetter(a[i]) &&
+				w[i] < utf8.RuneSelf && unicode.IsLetter(w[i]):
+			default:
+				near = false
+			}
+			if !near {
+				break
+			}
+		}
+		if near && agreed {
+			return true
+		}
+	}
+	return false
+}
+
+// nearKey folds a rendered title for nearExcluded: invisible runes dropped,
+// every Unicode space read as one, compatibility forms normalised
+// (foldForMatching, the ingest regime's fold — so fullwidth letters and a
+// ligature read as the letters they render), lower-cased, combining marks left
+// over from the normalisation dropped (a mark on a letter no precomposed form
+// carries), and the emphasis, code and strikethrough marks dropped last
+// (stripMarks), so a fullwidth asterisk that normalised to an ASCII one goes
+// with the rest.
+func nearKey(text string) string {
+	folded := strings.Map(func(r rune) rune {
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			return -1
+		}
+		return r
+	}, strings.ToLower(foldForMatching(text)))
+	return strings.Join(strings.Fields(stripMarks(folded)), " ")
+}
+
+// renderedTexts reduces a heading title to the text a reader sees — hidden
+// raw HTML and tags removed, footnote markers dropped, link and image wrappers
+// unwrapped to their label or alt text and backslash escapes decoded
+// (inlineReductions), character references decoded — and returns EVERY reading of
+// it rather than one. The comparison then judges what the page shows rather than what the
+// source spells.
 //
 // A removed tag has two readings and neither is the title on its own. `<br>` is
 // a line break and `</em>` closes a word, so dropping either without the
@@ -328,8 +562,9 @@ func sameRendering(a, b string) bool {
 // first shape and opened the second; replacing every tag with nothing did the
 // reverse. Both readings are returned and the caller refuses on either, which is
 // the doctrine the heading bound already uses: a title read two ways is excluded
-// if EITHER way names an excluded heading. A comment is dropped outright under
-// both, because a comment draws no boundary either way.
+// if EITHER way names an excluded heading. A comment, and the other hidden
+// raw HTML (hiddenViews), is dropped outright under both, because it draws
+// no boundary either way.
 //
 // Decoding is html.UnescapeString, one pass over the whole string. A hand list
 // of entities applied by ranging a map was not merely incomplete — it was
@@ -338,14 +573,228 @@ func sameRendering(a, b string) bool {
 // determinism instrument had a coin-flip refusal. One pass also covers the
 // numeric and hex character references a short list could never enumerate.
 func renderedTexts(title string) []string {
-	out := htmlCommentRe.ReplaceAllString(title, "")
-	out = mdLinkRe.ReplaceAllString(out, "$1")
-	spaced := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, " ")))
-	joined := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, "")))
+	var out []string
+	for _, r := range inlineReductions(title) {
+		for _, x := range readingsOf(r.reduced) {
+			if !slices.Contains(out, x) {
+				out = append(out, x)
+			}
+		}
+	}
+	return out
+}
+
+// readingsOf is renderedTexts' second half: the two readings of a title whose
+// hidden raw HTML, footnote markers, links and escapes are already reduced.
+func readingsOf(out string) []string {
+	spaced := strings.TrimSpace(html.UnescapeString(stripTags(out, " ")))
+	joined := strings.TrimSpace(html.UnescapeString(stripTags(out, "")))
 	if joined == spaced {
 		return []string{spaced}
 	}
 	return []string{spaced, joined}
+}
+
+// inlineReduction is one reading of a title with its hidden raw HTML removed
+// (hiddenViews), its footnote markers dropped, every link and image unwrapped
+// and its backslash escapes decoded (unwrapLinks): the text renderedTexts
+// reads, before tags and character references. before is the same reading
+// before its escapes were decoded, where the backstop (unreadMarkupNames)
+// looks for markup remnants.
+type inlineReduction struct {
+	reduced, before string
+}
+
+// inlineReductions returns a title's inline reduction under each reading of
+// its hidden raw HTML (hiddenViews).
+func inlineReductions(title string) []inlineReduction {
+	var out []inlineReduction
+	for _, v := range hiddenViews(title) {
+		reduced, before := unwrapLinks(mdFootnoteRe.ReplaceAllString(v, ""))
+		out = append(out, inlineReduction{reduced: reduced, before: before})
+	}
+	return out
+}
+
+// maxLinkPasses caps how many times unwrapLinks runs its pass over one title.
+// Each pass unwraps one level of nesting, and CommonMark nests an image inside
+// a link and no deeper, so eight is generous. A title nested deeper than the
+// cap keeps its innermost brackets, and the floor's backstop
+// (unreadMarkupNames) refuses it if those carry an excluded heading.
+const maxLinkPasses = 8
+
+// unwrapLinks reduces every link and image in a title to the text a reader
+// sees, its label or alt text, and decodes the title's backslash escapes. It
+// runs mdrecord.UnwrapLinkPass, reading a shortcut reference as its label,
+// until the title stops changing, at most maxLinkPasses
+// times, so `[![alt](src)](href)` reduces to `alt`; the passes are a loop,
+// never recursion, so nesting the document chooses costs it nothing beyond the
+// cap.
+//
+// Escapes are decoded once, at the first fixed point, and the passes carry on
+// after it. The scanner reads `\[` and `\)` as literal characters, which is
+// what lets `[Audit Notes](a\)b)` be read as the one link it is; decoding first
+// turned that `\)` into the `)` that ended the link early. Decoding at the
+// fixed point and passing again keeps the older reading of `\[Open Questions\]`,
+// which renders with its brackets and is unwrapped to its label the way a
+// bracketed title with no definition is: the side a floor errs on.
+//
+// The second result is the title at that first fixed point, before decoding.
+// A decoded `\[` is a `[` the next pass may pair with a remnant `]` and
+// unwrap, so the decoded title can show no bracket where the scanner failed
+// to read one; the backstop (unreadMarkupNames) judges remnants here instead.
+func unwrapLinks(s string) (string, string) {
+	decoded, before := false, s
+	for range maxLinkPasses {
+		next, _ := mdrecord.UnwrapLinkPass(s, true)
+		if next == s {
+			if decoded {
+				return s, before
+			}
+			before = s
+			next, decoded = mdEscapeRe.ReplaceAllString(s, "$1"), true
+			if next == s {
+				return s, before
+			}
+		}
+		s = next
+	}
+	if !decoded {
+		before = s
+		s = mdEscapeRe.ReplaceAllString(s, "$1")
+	}
+	return s, before
+}
+
+// unreadMarkupNames is the floor's backstop for markup it did not model. A
+// title still carrying a bracket or an angle bracket once its hidden HTML is
+// stripped, its links unwrapped and its HTML tags removed holds markup the
+// floor could not follow: link or image syntax that is malformed, unbalanced,
+// nested past the pass cap or past the pass budget, a raw HTML kind or a tag
+// shape no stripper models, or a construct no one has named yet. Such a title
+// is judged on its letters alone (lettersKey), every other rune dropped and
+// ASCII letters case folded, and it names the excluded heading if those
+// CONTAIN the heading's letters (lettersContain), read once as reduced and
+// once with every `<...>` span set aside (angleSpanRe), so letters inside an
+// unmodelled tag cannot split the excluded words apart.
+//
+// The remnant is looked for where it cannot have been erased: in the title
+// before backslash escapes were decoded (unwrapLinks), with only the tags
+// stripTags models removed, and, for brackets, in each reading after
+// character references are decoded too.
+//
+// It fails closed on purpose. Patching the link pattern one shape at a time
+// failed twice, each time leaving a valid link the pattern misread to compare
+// as some other title and travel, and the next two reviews found further
+// unmodelled hiding constructs in raw HTML. This refuses whatever markup the
+// floor did not read and that still carries the excluded words, so the next
+// unmodelled shape is refused rather than leaked. The cost is refusing a
+// heading that carries the words beside a stray bracket or angle bracket,
+// which costs the author an edit.
+func unreadMarkupNames(title, want string) bool {
+	key := []rune(lettersKey(want))
+	if len(key) == 0 {
+		return false
+	}
+	var readings []string
+	unread := false
+	for _, r := range inlineReductions(title) {
+		rs := readingsOf(r.reduced)
+		readings = append(readings, rs...)
+		unread = unread || strings.ContainsAny(stripTags(r.before, ""), "[]<>")
+		for _, x := range rs {
+			unread = unread || strings.ContainsAny(x, "[]")
+		}
+	}
+	if !unread {
+		return false
+	}
+	for _, x := range readings {
+		if lettersContain(lettersKey(x), key) ||
+			lettersContain(lettersKey(angleSpanRe.ReplaceAllString(x, "")), key) ||
+			lettersContain(lettersKey(setAsideQuotedSpans(x)), key) {
+			return true
+		}
+	}
+	return false
+}
+
+// unmodelledHides reports whether a title holds structure the browser walk
+// cannot follow (browserWalk) and still carries an excluded heading's letters
+// in order, with its tags removed and its other text kept. Inside an
+// unrendered element, an element the walk does not model can make the parser
+// ignore the end tag that follows, so text the walk reads as shown may be
+// hidden: `## Audit <audio><div></audio>x</div></audio> Notes` shows as the
+// excluded heading. The walk cannot say how much is hidden, so the floor
+// refuses such a title whenever the heading's letters survive in order.
+// That over-refuses, which costs the author an edit and leaks nothing.
+func unmodelledHides(title, want string) bool {
+	_, flagged := browserWalk(title)
+	if !flagged {
+		return false
+	}
+	key := lettersKey(want)
+	if key == "" {
+		return false
+	}
+	hay := lettersKey(stripTags(title, ""))
+	k := 0
+	for i := 0; i < len(hay) && k < len(key); i++ {
+		if hay[i] == key[k] {
+			k++
+		}
+	}
+	return k == len(key)
+}
+
+// lettersContain reports whether a title's letters contain an excluded
+// heading's at some position, under nearExcluded's rule: a NON-ASCII letter in
+// the title stands for whatever ASCII letter the heading has there, and at
+// least one ASCII letter must agree. Comparing letters as written let a link
+// the scanner misread, spelled with a Cyrillic A as well, travel where the
+// same lookalike with no link was refused. Its cost is linear in the title
+// times the heading's length, and the heading is the configuration's. The
+// containment is looser than nearExcluded's equal length, so a heading in
+// another script beside one agreeing ASCII letter and a bracket can be
+// refused; that costs the author an edit and leaks nothing.
+func lettersContain(title string, want []rune) bool {
+	a := []rune(title)
+	for i := 0; i+len(want) <= len(a); i++ {
+		agreed, near := false, true
+		for j, w := range want {
+			r := a[i+j]
+			switch {
+			case r == w:
+				agreed = agreed || r < utf8.RuneSelf
+			case r >= utf8.RuneSelf && w < utf8.RuneSelf:
+			default:
+				near = false
+			}
+			if !near {
+				break
+			}
+		}
+		if near && agreed {
+			return true
+		}
+	}
+	return false
+}
+
+// lettersKey is a title's letters alone: every rune that is not a letter
+// dropped, and ASCII letters case folded.
+func lettersKey(text string) string {
+	var b strings.Builder
+	for _, r := range text {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		if 'A' <= r && r <= 'Z' {
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // normaliseHeadingTitle reduces a heading to the text it names: surrounding
@@ -519,7 +968,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		m := floorATXRe.FindStringSubmatch(line)
 		if m == nil {
 			if n := nestedHeadingRe.FindStringSubmatch(line); n != nil {
-				if want, ok := namesExcludedHeading(normaliseHeadingTitle(n[1]), headings); ok {
+				if want, m := namesExcludedHeading(normaliseHeadingTitle(n[1]), headings); m != noHeading {
 					return fmt.Errorf("reading: %s nests the excluded heading %q in a list item, a "+
 						"blockquote or an indent at line %d; the section scan cannot span it, the floor "+
 						"names %q, and a heading is excluded however it is spelled",
@@ -528,8 +977,8 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 			}
 			continue
 		}
-		want, ok := namesExcludedHeading(normaliseHeadingTitle(m[2]), headings)
-		if !ok {
+		want, match := namesExcludedHeading(normaliseHeadingTitle(m[2]), headings)
+		if match == noHeading {
 			continue
 		}
 		// An indented heading has no span in the site walk, which reads column
@@ -539,6 +988,13 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		if m[1] != "" {
 			return fmt.Errorf("reading: %s indents the excluded heading %q at line %d; the floor "+
 				"names %q, and a heading is excluded however it is spelled", rel, strings.TrimSpace(lines[i]), i+1, want)
+		}
+		if match == nearHeading {
+			return fmt.Errorf("reading: %s carries the heading %q at line %d, a near-match of the "+
+				"excluded heading %q: a non-ASCII letter, a compatibility form or an invisible rune "+
+				"stands where the excluded heading's own letters do, so the floor refuses rather than "+
+				"redact a heading it cannot tell from the excluded one or pass it",
+				rel, normaliseHeadingTitle(m[2]), i+1, want)
 		}
 		return fmt.Errorf("reading: %s still carries the excluded heading %q at line %d after "+
 			"redaction; the floor names %q, and a heading is excluded however it is spelled",
@@ -575,7 +1031,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// maps back to a line so the refusal still names one.
 	line, title, ok, overBudget := rawHTMLHeading(lines, fenced, offset, headings)
 	if ok {
-		if want, hit := namesExcludedHeading(title, headings); hit {
+		if want, m := namesExcludedHeading(title, headings); m != noHeading {
 			return fmt.Errorf("reading: %s carries the excluded heading %q as raw HTML at line %d; "+
 				"the floor names %q, and a heading is excluded however it is spelled",
 				rel, title, line, want)
@@ -632,7 +1088,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		if title == "" {
 			continue
 		}
-		if want, ok := namesExcludedHeading(title, headings); ok {
+		if want, m := namesExcludedHeading(title, headings); m != noHeading {
 			return fmt.Errorf("reading: %s underlines the excluded heading %q at line %d; the floor "+
 				"names %q, and a heading is excluded however it is spelled", rel, lines[i], i+1, want)
 		}
@@ -1088,15 +1544,19 @@ func maskMarkupData(s string, lineBound bool) (string, string) {
 		}
 		return nl
 	}
+	// The comment's close is found by a search that remembers it failed: one
+	// searching the whole remainder per unclosed `<!--` took 21 seconds over a
+	// file of 200 000 of them, quadratic in their number.
+	commentClose := newTerminatorFinder(s, "-->")
 	for i := 0; i < len(s); {
 		if strings.HasPrefix(s[i:], "<!--") {
-			end := strings.Index(s[i+4:], "-->")
+			end := commentClose.next(i + 4)
 			if end < 0 {
 				i += 4
 				continue
 			}
-			maskAngles(out, i+4, i+4+end)
-			i += 4 + end + 3
+			maskAngles(out, i+4, end)
+			i = end + 3
 			continue
 		}
 		if !opensTag(s, i) {
@@ -1147,7 +1607,7 @@ func skipSpaceAndNewlines(s string, i int) int {
 	return i
 }
 
-// opensTag reports whether s[i] begins an HTML tag, on htmlTagRe's own rule,
+// opensTag reports whether s[i] begins an HTML tag, on stripTags' own rule,
 // read through htmlTagOpenRe: a `<` followed by a name, or by a slash and a
 // name, and the name ended by a space, a slash or a `>`. An autolink and a bare
 // `<` in prose open nothing, so neither drags the attribute walk over them.
@@ -1300,7 +1760,7 @@ func excludedRawTitle(readings []string, bounds []*rawHeadingBounds, p int, name
 					if title == "" {
 						continue
 					}
-					if _, ok := namesExcludedHeading(title, headings); ok {
+					if _, m := namesExcludedHeading(title, headings); m != noHeading {
 						return title, true
 					}
 				}

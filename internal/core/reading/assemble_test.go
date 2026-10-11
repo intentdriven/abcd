@@ -768,6 +768,322 @@ func TestCaseVariantExcludedHeadingIsRedacted(t *testing.T) {
 	}
 }
 
+// TestASlugAlikeHeadingIsNotTheExcludedOne: the anchor slug collapses every run
+// of non-alphanumerics to a hyphen, so `## Open/Questions` slugs exactly like
+// `## Open Questions` while rendering as a different heading. Comparing through
+// the slug made it the excluded heading, and since the redactor shares the
+// verifier's equality its section was silently dropped from the bundle
+// (iss-2610101930329211). Only a heading that renders alike is the excluded one:
+// the slug-alike travels whole, the emphasised spelling is still redacted.
+func TestASlugAlikeHeadingIsNotTheExcludedOne(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-SECTION"
+	travels := map[string]string{
+		"a slash for the space": "## Open/Questions\n\n" + sentinelAuditNotes + "\n",
+		// One pass decodes this to `Audit & Notes`, which is not the title a
+		// reader sees under the excluded name; it slugged onto it all the same.
+		"an ampersand between the words": "## Audit &amp; Notes\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range travels {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-slug-alike.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\n"+kept+"\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: a heading that only slugs like an excluded one was refused: %v", what, err)
+			continue
+		}
+		if !strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: a heading that only slugs like an excluded one was silently redacted", what)
+		}
+	}
+
+	root := fixtureRepo(t)
+	writeFile(t, root, ".abcd/development/specs/open/spc-4-slug-alike.md",
+		"---\nid: spc-4\n---\n\n# A spec\n\n## **Open Questions**\n\n"+sentinelAuditNotes+"\n\n## Next\n\n"+kept+"\n")
+	gitCommitAll(t, root)
+	res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+	if err != nil {
+		t.Fatalf("an emphasised excluded heading was refused rather than redacted: %v", err)
+	}
+	text := bundleText(res.Bundle)
+	if strings.Contains(text, sentinelAuditNotes) || !strings.Contains(text, kept) {
+		t.Error("an emphasised excluded heading was not redacted to its own section")
+	}
+}
+
+// TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted: each heading below renders
+// as an excluded one, wrapped in an inline form the reader never sees. The anchor
+// slug caught them by turning every mark into a hyphen; the rendered-text
+// comparison that replaced it (iss-2610101930329211) strips only emphasis and
+// code marks and unwraps only an inline link, so a strikethrough, a reference
+// link, an image and an escaped mark travelled while the HTML spelling of the
+// same thing (`<s>Audit Notes</s>`) was redacted; a footnote marker travelled
+// under either comparison. Each is the excluded heading, so its
+// section is redacted and the rest of the file travels. The definitions a
+// reference and a footnote need sit after the section, where they survive the
+// redaction.
+func TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-SECTION"
+	cases := map[string]string{
+		"a double-tilde strikethrough": "## ~~Audit Notes~~\n\n" + sentinelAuditNotes + "\n",
+		"a single-tilde strikethrough": "## ~Open Questions~\n\n" + sentinelAuditNotes + "\n",
+		"an HTML strikethrough":        "## <s>Audit Notes</s>\n\n" + sentinelAuditNotes + "\n",
+		"a shortcut reference link":    "## [Audit Notes]\n\n" + sentinelAuditNotes + "\n",
+		"a collapsed reference link":   "## [Audit Notes][]\n\n" + sentinelAuditNotes + "\n",
+		"a full reference link":        "## [Audit Notes][ref]\n\n" + sentinelAuditNotes + "\n",
+		// No definition names this label, so a renderer shows the brackets. It
+		// is redacted all the same: that is the side to err on.
+		"a bracketed title with no definition": "## [Open Questions]\n\n" + sentinelAuditNotes + "\n",
+		// An image's alt text is the heading a screen reader announces and a page
+		// without images shows.
+		"an inline image":   "## ![Audit Notes](a.png)\n\n" + sentinelAuditNotes + "\n",
+		"a reference image": "## ![Audit Notes][ref]\n\n" + sentinelAuditNotes + "\n",
+		// An escaped mark renders as the mark, and a mark is dropped from the
+		// comparison whether it renders or not, as an unpaired `*` already is.
+		"escaped emphasis marks": "## \\*Audit Notes\\*\n\n" + sentinelAuditNotes + "\n",
+		"escaped brackets":       "## \\[Open Questions\\]\n\n" + sentinelAuditNotes + "\n",
+		// A footnote marker renders as a superscript after the heading it marks.
+		"a footnote marker": "## Audit Notes[^1]\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-inline-form.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\n"+kept+
+				"\n\n[Audit Notes]: https://example.com/a\n[ref]: https://example.com/r\n[^1]: A note.\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: an excluded heading in an inline form was refused, not redacted: %v", what, err)
+			continue
+		}
+		text := bundleText(res.Bundle)
+		if strings.Contains(text, sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading in an inline form let its section travel", what)
+		}
+		if !strings.Contains(text, kept) {
+			t.Errorf("%s: the redaction took more than the excluded section; the text after it is missing", what)
+		}
+	}
+}
+
+// TestAnExcludedHeadingBehindAnyValidLinkShapeIsRedacted: each heading below is
+// a valid CommonMark link or image whose rendered text is exactly an excluded
+// heading. The link pattern bounded a destination at its first `)` and a label
+// at its first `]`, and unwrapped an image nested in a link one level only, so
+// each of these travelled (iss-2610101930329211). The scanner that replaced the
+// pattern reads balanced and escaped parentheses, an angle-bracket destination,
+// a quoted title and nesting, so each is the excluded heading and redacted.
+func TestAnExcludedHeadingBehindAnyValidLinkShapeIsRedacted(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-SECTION"
+	cases := map[string]string{
+		"balanced parentheses in the destination":   "## [Audit Notes](https://example.com/wiki/Audit_(finance))",
+		"an escaped parenthesis in the destination": "## [Audit Notes](a\\)b)",
+		"an angle-bracket destination":              "## [Audit Notes](<a)b>)",
+		"a parenthesis inside a quoted title":       "## [Audit Notes](u \"ti)tle\")",
+		"an inline image inside an inline link":     "## [![Audit Notes](a.png)](https://x)",
+		"a reference image inside a reference link": "## [![Audit Notes][img]][lnk]",
+	}
+	for what, heading := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-link-shape.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+heading+"\n\n"+sentinelAuditNotes+"\n\n## Next\n\n"+kept+
+				"\n\n[img]: https://example.com/i.png\n[lnk]: https://example.com/l\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: an excluded heading behind a valid link was refused, not redacted: %v", what, err)
+			continue
+		}
+		text := bundleText(res.Bundle)
+		if strings.Contains(text, sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading behind a valid link let its section travel", what)
+		}
+		if !strings.Contains(text, kept) {
+			t.Errorf("%s: the redaction took more than the excluded section; the text after it is missing", what)
+		}
+	}
+}
+
+// TestAnExcludedHeadingBehindHiddenOrUnmodelledMarkupNeverTravels: each heading
+// below renders as an excluded heading, or carries its words inside markup the
+// floor does not model, and each travelled (iss-2610101930329211). Processing
+// instructions, declarations and CDATA sections are raw HTML a browser hides;
+// a decoded escape paired with a remnant bracket and erased the backstop's
+// trigger; a misread link spelled with a Cyrillic A compared its letters as
+// written; and an unmodelled `<%...%>` carried no bracket for the backstop to
+// see. Each is redacted or refused through Assemble, never travelling.
+func TestAnExcludedHeadingBehindHiddenOrUnmodelledMarkupNeverTravels(t *testing.T) {
+	cases := map[string]string{
+		"a processing instruction inside":   "## Audit<?x?> Notes",
+		"a leading processing instruction":  "## <?x?>Audit Notes",
+		"a declaration":                     "## Audit<!X y> Notes",
+		"a CDATA section":                   "## Audit<![CDATA[>]]> Notes",
+		"an escaped bracket behind PIs":     "## [<?\\[?>Audit Notes<?]?>](x)",
+		"an escaped bracket behind markup":  "## [<%\\[%>Audit Notes<%]%>](x)",
+		"a Cyrillic A in a misread link":    "## [Аudit Notes<b a=]>](x)",
+		"unmodelled markup inside the word": "## Audit<%x%> Notes",
+	}
+	for what, heading := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-hidden.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+heading+"\n\n"+sentinelAuditNotes+"\n\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			if !strings.Contains(err.Error(), "spc-4-hidden.md") {
+				t.Errorf("%s: the refusal does not name the file: %v", what, err)
+			}
+			continue
+		}
+		if strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading behind hidden or unmodelled markup let its section travel", what)
+		}
+	}
+}
+
+// assertHeadingsNeverTravel assembles a spec carrying each heading above the
+// Audit Notes sentinel, and fails a case whose sentinel reaches the bundle.
+// A refusal passes only if it names the spec.
+func assertHeadingsNeverTravel(t *testing.T, cases map[string]string) {
+	t.Helper()
+	for what, heading := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-hidden.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+heading+"\n\n"+sentinelAuditNotes+"\n\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			if !strings.Contains(err.Error(), "spc-4-hidden.md") {
+				t.Errorf("%s: the refusal does not name the file: %v", what, err)
+			}
+			continue
+		}
+		if strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: the excluded heading %q let its section travel", what, heading)
+		}
+	}
+}
+
+// TestAnExcludedHeadingBehindAQuotedAttributeNeverTravels: a `>` inside a
+// quoted attribute value does not end a tag, so each heading below renders as
+// the excluded heading, and the ATX ones travelled while the tag stripper ended
+// the tag there (iss-2610101930329211). The raw HTML headings are the sweep's
+// controls: their openers are read once more with attribute values masked.
+func TestAnExcludedHeadingBehindAQuotedAttributeNeverTravels(t *testing.T) {
+	assertHeadingsNeverTravel(t, map[string]string{
+		"a double-quoted value":       "## Audit <b title=\">x\"> Notes",
+		"a single-quoted value":       "## Audit <b title='>x'> Notes",
+		"several attributes":          "## Audit <b class=\"a\" title=\">x\" data-y='<z>'> Notes",
+		"inside a raw heading":        "<h2>Audit <b title=\">x\"> Notes</h2>",
+		"on a raw heading's opener":   "<h2 title=\">x\">Audit Notes</h2>",
+		"on a heading role's element": "<div title=\">x\" role=\"heading\">Audit Notes</div>",
+	})
+}
+
+// TestAnExcludedHeadingBetweenBrowserHiddenHTMLNeverTravels: a browser ends a
+// comment at `<!-->` or `--!>` and a processing instruction or CDATA section at
+// the first `>`, so the `Notes` between two of them is on the page and each
+// heading renders as the excluded one. Read to CommonMark's end, the hidden
+// HTML took `Notes` with it and the section travelled (iss-2610101930329211).
+func TestAnExcludedHeadingBetweenBrowserHiddenHTMLNeverTravels(t *testing.T) {
+	assertHeadingsNeverTravel(t, map[string]string{
+		"an empty comment":        "## Audit <!-->Notes<!-- -->",
+		"a comment ended by --!>": "## Audit <!-- --!>Notes<!-- -->",
+		"processing instructions": "## Audit <?x>Notes<?y?>",
+		"CDATA sections":          "## Audit <![CDATA[x>Notes<![CDATA[y]]>",
+		"inside a raw heading":    "<h2>Audit <?x>Notes<?y?></h2>",
+	})
+}
+
+// TestAnExcludedHeadingAroundAnUnrenderedElementNeverTravels: a browser
+// renders no content for a template, script, style or noscript element, so
+// each heading below shows as the excluded one and travelled
+// (iss-2610101930329211).
+func TestAnExcludedHeadingAroundAnUnrenderedElementNeverTravels(t *testing.T) {
+	assertHeadingsNeverTravel(t, map[string]string{
+		"a template":           "## Audit <template>x</template> Notes",
+		"a script":             "## Audit <script>x</script> Notes",
+		"a style":              "## Audit <style>x</style> Notes",
+		"a noscript":           "## Audit <noscript>x</noscript> Notes",
+		"a title":              "## Audit <title>x</title> Notes",
+		"an upper-case script": "## Audit <SCRIPT>x</SCRIPT> Notes",
+		"an unclosed script":   "## Audit Notes <script>x",
+		"inside a raw heading": "<h2>Audit <template>x</template> Notes</h2>",
+	})
+}
+
+// TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
+// with a Cyrillic A (U+0410) reads as the excluded heading and compared as
+// nothing like it, because every comparison the floor made was over code points,
+// so the section travelled (iss-2610101930333607). A near-match once non-ASCII
+// letters are set aside, compatibility forms normalised and invisible runes
+// dropped is REFUSED: it is not the heading closely enough to redact silently,
+// and too close to let through. A genuinely different heading in another script,
+// or one sharing an excluded heading's shape in letters that stand for nothing
+// in it, travels.
+func TestAConfusableSpellingOfAnExcludedHeadingRefuses(t *testing.T) {
+	refused := map[string]string{
+		"a Cyrillic A":                      "## \u0410udit Notes\n\n" + sentinelAuditNotes + "\n",
+		"a Cyrillic A over a setext rule":   "\u0410udit Notes\n---\n\n" + sentinelAuditNotes + "\n",
+		"a Cyrillic A under an indent":      " ## \u0410udit Notes\n\n" + sentinelAuditNotes + "\n",
+		"most letters Cyrillic or Greek":    "## \u0410\u03c5d\u0456t \u039d\u043et\u0435\u0455\n\n" + sentinelAuditNotes + "\n",
+		"an unlisted letter among ASCII":    "## Aud\u0268t Notes\n\n" + sentinelAuditNotes + "\n",
+		"fullwidth letters":                 "## \uff21\uff55\uff44\uff49\uff54 \uff2e\uff4f\uff54\uff45\uff53\n\n" + sentinelAuditNotes + "\n",
+		"a zero-width space inside a word":  "## Au\u200bdit Notes\n\n" + sentinelAuditNotes + "\n",
+		"a combining mark on a letter":      "## Au\u0300dit Notes\n\n" + sentinelAuditNotes + "\n",
+		"a Cyrillic O in a different title": "## \u041epen Questions\n\n" + sentinelAuditNotes + "\n",
+		// Unicode simple case folding takes the long s (U+017F) to an s, so a
+		// fold that was not ASCII-only redacted this silently although it
+		// renders differently.
+		"a long s for an s": "## Open Que\u017ftions\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range refused {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-confusable.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err == nil {
+			if strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+				t.Errorf("%s: a confusable spelling of an excluded heading let its section travel", what)
+			} else {
+				t.Errorf("%s: a confusable spelling of an excluded heading was silently redacted, not refused", what)
+			}
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-4-confusable.md") {
+			t.Errorf("%s: the refusal does not name the file: %v", what, err)
+		}
+	}
+
+	travels := map[string]string{
+		"a Spanish heading":                   "## Notas de auditor\u00eda\n\n" + sentinelAuditNotes + "\n",
+		"a Russian heading of the same shape": "## \u041d\u043e\u0432\u044b\u0435 \u0444\u0430\u043a\u0442\u044b\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range travels {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-foreign.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: a genuinely different non-ASCII heading was refused: %v", what, err)
+			continue
+		}
+		if !strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: a genuinely different non-ASCII heading was redacted", what)
+		}
+	}
+}
+
 // TestAHeadingInsideAnHTMLBlockRefuses: the section walk reads a column-0
 // `## Next` as a heading even inside a `<div>` block, which a renderer reads as
 // raw HTML, so the redactor's span for the excluded section above it ended
@@ -1273,10 +1589,11 @@ func TestRenderEquivalenceCoversWrappersAndEntities(t *testing.T) {
 		"a span wrapper":   "## <span>Audit Notes</span>\n\n" + sentinelAuditNotes + "\n",
 		"a link wrapper":   "## [Audit Notes](#audit-notes)\n\n" + sentinelAuditNotes + "\n",
 		"an entity":        "## Audit&nbsp;Notes\n\n" + sentinelAuditNotes + "\n",
-		// One pass decodes this to "Audit & Notes", which slugs onto the excluded
-		// title. Skipping the assertion when the run refuses would have made this
-		// probe check nothing at all, which is how it sat for a round.
-		"an amp entity": "## Audit &amp; Notes\n\n" + sentinelAuditNotes + "\n",
+		// One pass decodes this to "Audit Notes". It stood as `Audit &amp; Notes`,
+		// which decodes to a title that only SLUGS like the excluded one and now
+		// travels (TestASlugAlikeHeadingIsNotTheExcludedOne); the decoding it
+		// exercised is exercised by a reference that renders as the space.
+		"a numeric space reference": "## Audit&#32;Notes\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, body := range cases {
 		root := fixtureRepo(t)

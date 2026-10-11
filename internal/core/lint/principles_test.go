@@ -551,3 +551,29 @@ func TestWarnRuleDoesNotFailPreflight(t *testing.T) {
 		}
 	}
 }
+
+// TestUnwrapPrincipleLinksReadsTheWholeDestination: the reading projection
+// unwraps a principle statement's links through UnwrapPrincipleLinks, which
+// ended a destination at its first `)` and a label at its first `]`. A
+// destination holding balanced or escaped parentheses, an angle-bracketed
+// destination holding a `)`, or a title holding one left the rest of the
+// address in the projected statement. Each link now reduces to its label, and
+// a shortcut reference, literal text without its definition, is kept.
+func TestUnwrapPrincipleLinksReadsTheWholeDestination(t *testing.T) {
+	for in, want := range map[string]string{
+		"see [label](https://x/Audit_(finance)) here":  "see label here",
+		"see [label](https://x/a\\)b) here":            "see label here",
+		"see [label](<https://x/a b)>) here":           "see label here",
+		"see [label](https://x \"t)itle\") here":       "see label here",
+		"see [label](https://x 't)itle') here":         "see label here",
+		"see [a [b] c](https://x) here":                "see a [b] c here",
+		"see [label][ref] and [other][] here":          "see label and other here",
+		"see [label] here":                             "see [label] here",
+		"see [inside [label](https://x/(y))] here":     "see [inside label] here",
+		"see [![alt](https://x/i.png)](https://x/(y))": "see alt",
+	} {
+		if got := UnwrapPrincipleLinks(in); got != want {
+			t.Errorf("UnwrapPrincipleLinks(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

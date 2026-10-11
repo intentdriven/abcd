@@ -36,7 +36,7 @@ type Section struct {
 	Level int
 	// Title is the heading text, trimmed.
 	Title string
-	// Anchor is Slug(Title).
+	// Anchor is slug(Title).
 	Anchor string
 	// Body is the text between this heading and the next, with leading and
 	// trailing blank lines removed.
@@ -148,7 +148,7 @@ func Sections(path, md string, offset int) ([]Section, error) {
 		if m != nil {
 			flush()
 			title := strings.TrimSpace(m[2])
-			cur = Section{Level: len(m[1]), Title: title, Anchor: Slug(title), Line: offset + i + 1}
+			cur = Section{Level: len(m[1]), Title: title, Anchor: slug(title), Line: offset + i + 1}
 			body = nil
 			bodyStart = offset + i + 2
 			continue
@@ -184,9 +184,17 @@ func trimBlankLines(body []string, start int) (string, int) {
 	return strings.Join(body[lo:hi], "\n"), start + lo
 }
 
-// Slug renders a heading as its anchor: emphasis and code marks dropped,
+// slug renders a heading as its anchor: emphasis and code marks dropped,
 // lower-cased, every other run of non-alphanumerics collapsed to a hyphen.
-func Slug(t string) string {
-	t = strings.ToLower(slugStripRe.ReplaceAllString(t, ""))
+func slug(t string) string {
+	t = strings.ToLower(StripMarks(t))
 	return strings.Trim(nonSlugRe.ReplaceAllString(t, "-"), "-")
+}
+
+// StripMarks drops the emphasis and code marks a heading's anchor ignores, the
+// first step of slug and nothing more: punctuation and spacing are left as they
+// render. It is exported for a caller asking whether two headings READ the
+// same, a finer question than whether they share an anchor.
+func StripMarks(t string) string {
+	return slugStripRe.ReplaceAllString(t, "")
 }

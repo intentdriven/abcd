@@ -320,8 +320,8 @@ func TestSlug(t *testing.T) {
 		"**Bold** heading":            "bold-heading",
 	}
 	for in, want := range cases {
-		if got := Slug(in); got != want {
-			t.Errorf("Slug(%q) = %q, want %q", in, got, want)
+		if got := slug(in); got != want {
+			t.Errorf("slug(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

@@ -303,7 +303,7 @@ func (c *composer) identity() (positioning.Block, bool) {
 
 // identitySrc is the provenance of every span the Identity block supplies.
 func (c *composer) identitySrc() string {
-	return srcAttr(c.manifest.Identity.File, Slug(c.manifest.Identity.Heading))
+	return srcAttr(c.manifest.Identity.File, slug(c.manifest.Identity.Heading))
 }
 
 // brandName is the short handle the header shows beside the mark: the first word
@@ -382,7 +382,7 @@ func (c *composer) chapterAnchor(ch Chapter) string {
 	if err != nil {
 		return ""
 	}
-	return Slug(p.Sections[0].Title)
+	return slug(p.Sections[0].Title)
 }
 
 func (c *composer) firstChapterAnchor() string {
@@ -614,7 +614,7 @@ func (c *composer) chapter(ch Chapter) (string, error) {
 		return "", err
 	}
 	title := p.Sections[0].Title
-	anchor := Slug(title)
+	anchor := slug(title)
 
 	var body string
 	switch ch.Layout {
@@ -833,7 +833,7 @@ func (c *composer) chapterNamed(name string) (*docPage, error) {
 			return nil, err
 		}
 		stem := strings.TrimSuffix(path.Base(ch.Page), ".md")
-		if ch.Letter == name || stem == name || Slug(p.Sections[0].Title) == name {
+		if ch.Letter == name || stem == name || slug(p.Sections[0].Title) == name {
 			return p, nil
 		}
 	}
@@ -902,7 +902,7 @@ func (c *composer) prose(p *docPage) (string, string, error) {
 	for _, s := range p.Sections {
 		anchor := s.Anchor
 		if anchor == "" {
-			anchor = Slug(s.Title)
+			anchor = slug(s.Title)
 		}
 		if s.Level > 1 {
 			out.WriteString(`<h3 class="subh"` + srcAttr(p.Rel, anchor) + `>` + escapeText(s.Title) + `</h3>`)
@@ -1204,7 +1204,7 @@ func (c *composer) featureBlock(f *Feature) (string, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString(`<div class="quote"` + srcAttr(node.Path, Slug("Press Release")) + `><div class="pr"><span>`)
+	b.WriteString(`<div class="quote"` + srcAttr(node.Path, slug("Press Release")) + `><div class="pr"><span>`)
 	if c.repo.Repository != "" {
 		b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, node.Path)) + `">` + escapeText(node.ID) + `</a>`)
 	} else {
@@ -1217,7 +1217,7 @@ func (c *composer) featureBlock(f *Feature) (string, error) {
 	b.WriteString(`</span><span>` + escapeText(c.ui.FromTheRecord) + `</span></div>`)
 	b.WriteString(quote)
 	if crit != "" {
-		b.WriteString(`<div class="crit"` + srcAttr(node.Path, Slug("Acceptance Criteria")) + `>` + crit + `</div>`)
+		b.WriteString(`<div class="crit"` + srcAttr(node.Path, slug("Acceptance Criteria")) + `>` + crit + `</div>`)
 	}
 	b.WriteString(`</div>`)
 	return b.String(), nil

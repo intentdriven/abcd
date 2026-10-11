@@ -98,6 +98,29 @@ func TestLinksUnwrapInTheStatement(t *testing.T) {
 	}
 }
 
+// TestALinkHoldingParenthesesUnwrapsWhole (iss-2610110348151970): the
+// statement's links were unwrapped by a pattern that ended the destination at
+// its first `)`, so a destination holding parentheses, or a title holding one,
+// left the rest of its address in the projected statement. Each link now
+// reduces to its label, whatever its destination holds.
+func TestALinkHoldingParenthesesUnwrapsWhole(t *testing.T) {
+	for _, link := range []string{
+		"[the ruling](https://example.com/" + sentinelPrincipleLink + "_(finance))",
+		"[the ruling](https://example.com/a\\)" + sentinelPrincipleLink + ")",
+		"[the ruling](<https://example.com/a b)" + sentinelPrincipleLink + ">)",
+		"[the ruling](https://example.com/x \"t)" + sentinelPrincipleLink + "\")",
+	} {
+		rule := principleStatement + ", as " + link + " says."
+		text, _, _ := projectField(principleRel, principleDoc(rule), "The rule", KindPrinciple)
+		if strings.Contains(text, sentinelPrincipleLink) || strings.Contains(text, ")") {
+			t.Errorf("%s: the link's address travelled: %q", link, text)
+		}
+		if !strings.Contains(text, "as the ruling says.") {
+			t.Errorf("%s: the link's label did not travel as prose: %q", link, text)
+		}
+	}
+}
+
 // TestPrincipleProjectsItsStatementOnly is ac-6's item half: at every position
 // whose entry admits `principle`, the principle is ONE projected item naming its
 // statement field, and neither its keys nor its citations reach the bundle. At
