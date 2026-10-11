@@ -515,9 +515,9 @@ deferred or removed in the working tree: whenever any issue record under
 `.abcd/work/issues/open/` differs from HEAD — added, edited, deleted or only
 staged, at any severity — the cut refuses and the `reason` names every path.
 That covers an uncommitted edit, an uncommitted waiver and an uncommitted
-regrade alike. When an unfixed or deleted finding is present too, the refusal
-names those findings and the `findings:` line names the uncommitted paths, so
-one run names every reason. `--allow-dirty` never waives it, because the gate
+regrade alike. It is a refusal entry of its own, beside an unfixed or deleted
+finding's when either is present too, so one run names every reason, each
+once. `--allow-dirty` never waives it, because the gate
 would still read HEAD. Commit the records (or discard the change) and run again.
 
 The anchor is what bounds it. Records that already existed at the last tag are
@@ -526,7 +526,9 @@ itself captured is in scope. "It was already there when I started" is therefore
 not available as a defence for anything the gate names.
 
 **What the render shows.** The `findings:` line gives the verdict, the count of
-unfixed findings and the anchor they were counted from, and the count deferred.
+unfixed findings and the anchor they were counted from, the count of deleted
+records, the count of open records that differ from HEAD, and the count
+deferred; the refusals below it name the records and paths.
 One `deferred:` line follows per waiver, naming the record, its severity and the
 reason recorded on it. Report both to the user verbatim — a deferral nobody sees
 in the report they actually read is indistinguishable from a finding that was
