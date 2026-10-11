@@ -260,14 +260,19 @@ func hiddenKey(salt, key string) string {
 // linked worktrees the loop's lane steps run git in. A lane still in progress
 // is listed whatever stands at its path, since its steps still run git there;
 // a lane that landed or was discarded only while its worktree is a real
-// directory on disk.
+// directory on disk. A live lane is skipped as the checkout only when its
+// recorded path is the checkout's own: a symlink at the lane's path that
+// resolves to the checkout is still the lane's path, and is watched.
 func laneWorktrees(repoRoot string, st State) []laneDir {
 	var out []laneDir
 	for _, l := range st.Lanes {
-		if l.Worktree == "" || samePath(repoRoot, l.Worktree, repoRoot) {
+		if l.Worktree == "" {
 			continue
 		}
 		live := l.Stage != StageDone && l.Stage != StageDiscarded
+		if filepath.Clean(l.Worktree) == filepath.Clean(repoRoot) || (!live && samePath(repoRoot, l.Worktree, repoRoot)) {
+			continue
+		}
 		if live || fsutil.IsRealDir(l.Worktree) {
 			out = append(out, laneDir{Path: filepath.Clean(l.Worktree), Live: live})
 		}

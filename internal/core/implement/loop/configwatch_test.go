@@ -552,6 +552,31 @@ func TestALiveLaneReplacedByASymlinkIsAChange(t *testing.T) {
 	}
 }
 
+// TestALiveLaneReplacedByASymlinkToTheCheckoutIsAChange: a live lane whose
+// path comes to name the checkout itself is still the lane's path, where the
+// loop runs its git, so it is watched like any other symlink and not taken
+// for the checkout.
+func TestALiveLaneReplacedByASymlinkToTheCheckoutIsAChange(t *testing.T) {
+	repo, runID, lane := laneRun(t, nil)
+	moved := filepath.Join(t.TempDir(), "moved")
+	if err := os.Rename(lane, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(repo.Root(), lane); err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, repo.Root(), runID)
+
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "the worktree "+fsutil.RedactHome(lane)+" (changed)") {
+		t.Fatalf("the step is refused naming the lane's path: %+v", r)
+	}
+	if after := stateBytes(t, repo.Root(), runID); string(after) != string(before) {
+		t.Fatal("the refused step took no stage")
+	}
+}
+
 // TestARemovedLaneIsAChangeOnlyWhileItIsLive: a live lane's worktree that is
 // no longer there is named gone, since the loop still runs git at its path; a
 // lane that landed or was discarded runs nothing, so its worktree's removal
