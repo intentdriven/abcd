@@ -1876,6 +1876,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			addCur([]byte{c}, mask)
 			lastList = false
 			i++
+		case c == '=' && !hasCur && i+1 < len(line) && line[i+1] == '(':
+			// zsh's `=(…)` is process substitution through a temporary file:
+			// at the start of a word it runs its command and hands the
+			// enclosing one the file's name, as `<(…)` hands a /dev/fd path,
+			// so `source =(…)` runs the output as a script (iss-2610111559070779).
+			// Only a word-initial `=` opens one; the `=(` of an array
+			// assignment (`a=(1 2)`) follows its name and stays a word. Bash
+			// refuses a word-initial `=(` as a syntax error, so reading it as
+			// a substitution costs bash nothing.
+			procSubNext = true
+			lastList = false
+			i++
 		case c == unknownMark || c == varMark:
 			// A payload re-read from a word that carried a substitution's
 			// output or a variable's value: the mark stays where it goes, and

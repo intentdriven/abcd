@@ -327,7 +327,8 @@ A shell reading its script from a pipe, a here-document or a here-string
 what it runs is text the guard read as data. So is a shell handed the stdin
 device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
 `source` handed a process substitution as its script (`bash <(curl …)`, `bash <
-<(curl …)`, `source <(curl …)`, `bash --init-file <(…) -i -c true`). A command
+<(curl …)`, `source <(curl …)`, zsh's `source =(…)`, `bash --init-file <(…) -i
+-c true`). A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
