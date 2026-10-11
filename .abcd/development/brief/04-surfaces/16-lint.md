@@ -8,7 +8,7 @@ order.
 
 It is **read-only** but for one target: bare and every other target perform
 zero writes, and the site target renders the site into its output directory when
-that directory holds no `index.html`, as the site verb's check does
+that directory holds no `index.html`, and gates what it rendered
 ([`22-site.md`](22-site.md)). Remediation stays with `/abcd:prepare-this-repo`
 and the technical facilitator. It answers a different
 question from `/abcd:ahoy`: `ahoy` reports whether the *tool* is installed and
@@ -27,7 +27,12 @@ one piece of outbound text (below). Bare, the verb runs every target that
 judges the repository, each as one rule of the set below: the docs through
 `docs-currency`, the identity through `identity-positioning`, the outbound
 policy over every committed file through `privacy-hygiene`, and the site
-through `site-gates`. The outbound target alone stays out of the bare run,
+through `site-gates`. A target that refuses rather than reports (a docs-lint
+`roots` entry that does not exist, a configuration or registry that will not
+load, a site that will not render) checked nothing, so its rule raises one
+`error` finding naming the target and quoting its refusal, and the bare run
+exits 2 as the target alone does, never `0` over a check that never ran
+(iss-2610100649479892). The outbound target alone stays out of the bare run,
 because its subject is text the caller hands it, not the repository. The verbs
 that WRITE stay where they were, under the docs, site and identity verbs: the
 citation baseline, the site render and the recording of the identity block.
@@ -142,10 +147,10 @@ iss-2608231000561060.
 | `three-tier-layout` | error | `.abcd/development/` and `.abcd/work/` present as directories on disk; `.abcd/.work.local/`, when present, gitignored, which is the rule's one committedness assertion; no local-tier artefacts (`NEXT.md`, `scratch/`, `logs/`, in any case) directly in one of the two shared tiers or at the `.abcd/` root, and no `NEXT.md` at any depth in a shared tier |
 | `conventions-router` | error | `AGENTS.md` present at the repo root |
 | `decision-durability` | warn | a committed `.abcd/work/DECISIONS.md`; decisions not living only in the gitignored layer |
-| `docs-currency` | warn | reuses the docs-lint engine where `docs/` exists, and says so where it cannot: a repo with a `docs/` tree but no docs-lint configuration, and a configuration that will not load, each raise a finding against `.abcd/docs-lint.json` rather than passing quietly |
+| `docs-currency` | warn | reuses the docs-lint engine where `docs/` exists or `.abcd/docs-lint.json` does (its roots need not include `docs/`), and says so where it cannot: a repo with a `docs/` tree but no docs-lint configuration raises a warn against `.abcd/docs-lint.json`, and the docs target's refusal (a configuration that will not load, or one the engine refuses, such as a `roots` entry that does not exist) is an `error` finding against it, rather than passing quietly |
 | `privacy-hygiene` | error (network-identifier findings mapped from a scanner `warn`/`info` land as `warn`, and so do the two not-scanned findings: a file over the cap, and one that could not be opened) | three leak classes on any tracked text line: absolute local paths in committed files, real network identifiers, and the harness-leak pair the outbound policy bans everywhere (a live agent-session URL, and a tool's own "generated with" footer). The fix names reserved documentation values (RFC 5737/3849/2606/7042, or a persona-derived device name), and an `abcd-lint:allow` line waiver is honoured (the `abcd-audit:allow` spelling too). Each line is read as written and in the scanner's decoded spellings of it (`scanner.DecodedViews`: its percent and JSON-escape views), so a home path, an address or a harness-leak shape written behind an escape in a JSON fixture, export or transcript is the finding its plain spelling is; the waiver is read on the line as written, and the record/docs `harness_leak` rule reads the same spellings. The network severities come from the merged scanner configuration, so a repo that raises one in `.abcd/config/pii.json` is honoured, and an override that cannot be read is itself an `error` finding saying the scan fell back to the built-in severities. Two findings report what was *not* read rather than a leak: a tracked text file over the 4 MiB scan cap, and one that could not be opened. Binary files are skipped silently. In a repository that armed gitleaks (`.abcd/config/gitleaks.json`), each line of a tracked text file gitleaks flags is an `error` finding naming the rule, never the value; an armed gitleaks with no binary installed, or a run that fails, is an `error` finding citing that config |
-| `site-gates` | warn | where `.abcd/site.json` declares a site: renders it into a fresh temporary directory outside the repository, runs the website's gates over it (the site target's, [`22-site.md`](22-site.md)), and removes it, so the lint still writes nothing in the repository. Each gate failure is one finding, filed against the source span it names; a composition that cannot be rendered is a finding against `.abcd/site.json` rather than an aborted lint. Warn, as `docs-currency` is, because the authoritative gate is the site target's exit 1 and re-raising it as an error would double-gate one check |
-| `identity-positioning` | warn | every registered surface still carries the canonical identity block's tagline (and pitch, where required), and every registered surface can still be found: a surface whose locator matches nothing is its own finding, because drift there would go unseen. A registry or identity block that cannot be read is reported rather than passed. Gated on `.abcd/positioning.json` being present on disk, and per-repo upgradeable to `error` (see [`19-identity.md`](19-identity.md)) |
+| `site-gates` | warn | where `.abcd/site.json` declares a site: renders it into a fresh temporary directory outside the repository, runs the website's gates over it (the site target's, [`22-site.md`](22-site.md)), and removes it, so the lint still writes nothing in the repository. Each gate failure is one finding, filed against the source span it names; a composition that cannot be rendered is the site target's refusal, an `error` finding against `.abcd/site.json` rather than an aborted lint. Gate failures are warn, as `docs-currency` is, because the authoritative gate is the site target's exit 1 and re-raising it as an error would double-gate one check |
+| `identity-positioning` | warn | every registered surface still carries the canonical identity block's tagline (and pitch, where required), and every registered surface can still be found: a surface whose locator matches nothing is its own finding, because drift there would go unseen. A registry or identity block that cannot be read is the identity target's refusal, an `error` finding whatever the family's severity, rather than a pass. Gated on `.abcd/positioning.json` being present on disk, and per-repo upgradeable to `error` (see [`19-identity.md`](19-identity.md)) |
 
 ## How it is built
 

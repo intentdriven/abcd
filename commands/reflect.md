@@ -2,7 +2,8 @@
 name: reflect
 description: "Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id."
 argument-hint: "<release-tag>"
-block: people
+block: agents
+user-invocable: false
 ---
 
 # `/abcd:reflect` — a cut release's retrospective

@@ -9,8 +9,8 @@ production_mode: hand-written
 
 ## Summary
 
-The remainder of [itd-111](../../intents/shipped/itd-111-a-stale-abcd-never-answers-silently-every-surface-that-runs.md)
-that [spc-22](spc-22-a-stale-abcd-never-answers-silently-every-surface-that-runs.md) did not deliver. spc-22 closed on
+The remainder of [itd-111](../../intents/shipped/itd-111-a-stale-abcd-never-answers-silently.md)
+that [spc-22](spc-22-a-stale-abcd-never-answers-silently.md) did not deliver. spc-22 closed on
 2026-09-23 with acceptance criteria 1 to 7 delivered: the SessionStart staleness notice, the install refusal on a stale or unknown vintage, install mode and vintage on `version` and `ahoy`, no version-discovery network request without `version --check`, the transition report, and the unknown-never-fresh outcome. This spec carries what did not ship.
 
 The delivered part was already announced in the [0.5.0] changelog section,

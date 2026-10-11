@@ -168,3 +168,20 @@ func sortFindings(fs []Finding) {
 		return fs[i].Line < fs[j].Line
 	})
 }
+
+// targetRefusal is the finding bare `abcd lint` raises when one of its targets
+// refuses rather than reports: the target checked nothing, so a warning, or
+// worse a skip, would let the aggregate read clean over a check that never
+// ran (iss-2610100649479892). It is error severity whatever the rule's own
+// findings weigh, because the target alone exits 2 on the same refusal; the
+// message names the target and carries the refusal's own words, and fix says
+// where the next edit goes.
+func targetRefusal(ruleID, target, file, refusal, fix string) Finding {
+	return Finding{
+		RuleID:   ruleID,
+		Severity: SeverityError,
+		File:     file,
+		Message:  "`abcd lint " + target + "` refuses, so nothing in it was checked: " + refusal,
+		Fix:      fix,
+	}
+}

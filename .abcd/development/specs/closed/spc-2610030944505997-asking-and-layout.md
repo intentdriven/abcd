@@ -12,10 +12,10 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers the bundle `asking-and-layout`:
-[itd-2610030810350727](../../intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person-reads-the-same-way-and.md)
+[itd-2610030810350727](../../intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person.md)
 (every question abcd asks reads the same way, on a narrow window and a wide
 one) and
-[itd-201](../../intents/shipped/itd-201-every-question-abcd-s-agents-put-to-a-human-is-asked-one-at.md)
+[itd-201](../../intents/shipped/itd-201-every-question-abcd-s-agents-put-to-a.md)
 (every question is asked one thing at a time, in plain language, with options
 that widen). Both ship at one moment, from one change set split into the steps
 below.
@@ -68,7 +68,7 @@ In (this bundle):
   the Claude Code version, and the row estimate calibrated against them.
 
 Out (the plain-Terminal spec,
-[spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md),
+[spc-2610030911534855](spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a.md),
 for itd-2610030810370060):
 
 - The question type itself (`Ask`, `Question`, `Block`, `Option`, `List`),

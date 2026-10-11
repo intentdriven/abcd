@@ -15,7 +15,7 @@ before writing any of them, refusing the whole pack rather than redacting.
 
 > **Model of record: [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md).** The packer is read-only and out-of-tree, the voyage log lives at the operator level (`~/.abcd.noindex/voyage/<source-root-sha>/`, never committed), and the review returns the registered `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` verdicts. The coverage experiment (itd-88) leads: the pack carries only what abcd could ground, and `coverage.{json,md}` carry what is missing, what was searched, and the question a human must answer.
 
-> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the packer and the round-trip belong to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. The coverage experiment comes ahead of the rest of that pipeline, per adr-35; sequence is dependencies plus the lifecycle shelves ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)).
+> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the packer and the round-trip belong to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. The coverage experiment comes ahead of the rest of that pipeline, per adr-35; sequence is dependencies plus the lifecycle shelves ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md)).
 
 > **Recovery humility.** The lifeboat is the highest-fidelity proxy of a project's theory we can leave behind. It is not the theory. The theory of any non-trivial project lives in the people who built it, the conversations where decisions were made, and the alternatives they rejected before this one — what Naur (1985) called the lived activity of building. The lifeboat is the floor we can carry across a session, machine, or team boundary. See [`01-product/03-mental-model.md § The Naurian gap`](../01-product/03-mental-model.md#the-naurian-gap--modification-axis).
 
@@ -165,7 +165,7 @@ The synthesis sub-verbs add the rest afterwards: the press release writes
 `press-release.{json,md}`, the principles write `principles.{json,md}` (schema
 version 2: each principle carries `claim_type`, `reference` and `comparison`
 beside its evidence, a declined claim as `null`, per
-[adr-2609021016270132](../../decisions/adrs/2609021016270132-the-principles-family-is-a-declared-record-store-whose-entri.md)), the review
+[adr-2609021016270132](../../decisions/adrs/2609021016270132-the-principles-family-is-a-declared.md)), the review
 writes the verdict artefact, and the graveyard validates and writes the lesson
 JSON. None of these exist at pack time.
 

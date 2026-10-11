@@ -20,6 +20,7 @@ package launch
 // it was asked about, fails the tier: an unanswered page is not a loaded one.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -104,20 +105,9 @@ func RenderPageHelp(root string, ref PageRef) PageHelp {
 	if !utf8.Valid(data) {
 		return fail("is not valid UTF-8")
 	}
-	text := frontmatter.TrimBOM(string(data))
-	body := text
-	fields := map[string]string{}
-	if lines := strings.SplitN(text, "\n", 2); frontmatter.IsDelimiter(lines[0]) {
-		inner, rest, closed := pageFrontmatter(text)
-		if !closed {
-			return fail("opens a frontmatter block that is never closed")
-		}
-		body = rest
-		var reason string
-		fields, reason = pageFields(inner)
-		if reason != "" {
-			return fail("%s", reason)
-		}
+	fields, body, err := readPageFields(string(data))
+	if err != nil {
+		return fail("%s", err)
 	}
 
 	help.Name = fields["name"]
@@ -140,6 +130,37 @@ func RenderPageHelp(root string, ref PageRef) PageHelp {
 		return fail("renders no help: no description and no body text")
 	}
 	return help
+}
+
+// readPageFields reads a page's top-level frontmatter keys the way the deep
+// tier judges them, hyphenated keys such as `argument-hint` and `user-invocable`
+// included (frontmatter.Fields skips those), and returns the body after the
+// block. A page that opens no block has no fields, its whole text as the body,
+// and no error. The error names a block that never closes, a column-0 line no
+// YAML mapping holds, or a duplicated key.
+func readPageFields(text string) (fields map[string]string, body string, err error) {
+	text = frontmatter.TrimBOM(text)
+	if lines := strings.SplitN(text, "\n", 2); !frontmatter.IsDelimiter(lines[0]) {
+		return map[string]string{}, text, nil
+	}
+	inner, rest, closed := pageFrontmatter(text)
+	if !closed {
+		return nil, text, errors.New("opens a frontmatter block that is never closed")
+	}
+	fields, reason := pageFields(inner)
+	if reason != "" {
+		return nil, rest, errors.New(reason)
+	}
+	return fields, rest, nil
+}
+
+// PageFieldsForTest is readPageFields, the reader the deep tier loads a page
+// with, exported as a cross-package test seam: the menu gate in
+// internal/surface/cli reads each command page's `block` and `user-invocable`
+// through it, so the smoke and the gate read a page's keys the same way
+// (spc-2610100613109045).
+func PageFieldsForTest(text string) (fields map[string]string, body string, err error) {
+	return readPageFields(text)
 }
 
 // pageFrontmatter splits a page that opens a frontmatter block into the

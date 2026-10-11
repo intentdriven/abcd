@@ -325,17 +325,28 @@ func TestReflectWriteRefusesAMistypedAnswersKey(t *testing.T) {
 	}
 }
 
-// TestReflectIsListedUnderRelease is ruling H13: reflect is a person's verb,
-// listed in the Release group.
-func TestReflectIsListedUnderRelease(t *testing.T) {
-	help, _ := executedHelp(t, "--help")
+// TestReflectIsListedWithTheAgents is the product thinker's placement of
+// 2026-10-09 (itd-2610090831227812), which supersedes ruling H13: reflect is an
+// agent's verb, listed in the agents-and-hosts block naming its page, and in
+// none of the person's groups.
+func TestReflectIsListedWithTheAgents(t *testing.T) {
+	help, _ := executedHelp(t, "--help", "--agent")
 	_, entries := helpSections(help)
+	for _, group := range peopleGroupTitles {
+		for _, n := range entries[group] {
+			if n == "reflect" {
+				t.Errorf("reflect is listed under the person's %s\n%s", group, help)
+			}
+		}
+	}
 	found := false
-	for _, n := range entries["Release:"] {
-		found = found || n == "reflect"
+	for _, line := range strings.Split(help, "\n") {
+		if m := helpEntryRe.FindStringSubmatch(line); m != nil && m[1] == "reflect" {
+			found = pageNamed(line) == "commands/reflect.md"
+		}
 	}
 	if !found {
-		t.Fatalf("reflect is not listed under Release:\n%s", help)
+		t.Fatalf("reflect is not in the agents-and-hosts block naming commands/reflect.md:\n%s", help)
 	}
 }
 

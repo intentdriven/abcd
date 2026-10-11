@@ -265,10 +265,21 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 	if len(findings.Deleted) > 0 {
 		cut.Refusals = append(cut.Refusals, deletedRefusal(findings))
 	}
+	// The open records the working tree holds differently from HEAD are the
+	// guard's third half, and they are raised as their own entry beside the
+	// other two (iss-2610090642371836): carried only by the backstop below, they
+	// vanished whenever an unfixed or deleted finding was present, so a front
+	// door acting on the list fixed those, ran again, and only then met this
+	// reason. The kind stays unfixed-finding, the kind the backstop always gave
+	// it, and the reason is this half alone, naming every path.
+	if len(findings.Uncommitted) > 0 {
+		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalUnfixedFinding, Reason: findings.UncommittedReason()})
+	}
 	// The guard's own verdict is the backstop: a failure it reports through
-	// neither list would otherwise pass silently, which is the fail-open shape
-	// this whole gate exists to close.
-	if findings.Status != changelog.FindingGuardPassed && len(findings.Unfixed) == 0 && len(findings.Deleted) == 0 {
+	// none of the three lists would otherwise pass silently, which is the
+	// fail-open shape this whole gate exists to close.
+	if findings.Status != changelog.FindingGuardPassed &&
+		len(findings.Unfixed) == 0 && len(findings.Deleted) == 0 && len(findings.Uncommitted) == 0 {
 		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalUnfixedFinding, Reason: findings.Reason})
 	}
 	// The doc-fidelity gate's second enforcement point (itd-60): the same

@@ -59,7 +59,7 @@ any row it carries is still format-checked.
   working-conventions block; a registered identity block; and the commit gates.
   `AGENTS.md` is the one conventions file it writes: it makes no other tool's
   conventions file, as a link or as a copy
-  ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md)).
+  ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file.md)).
 
 ## Where the binary does the work
 

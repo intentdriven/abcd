@@ -10,7 +10,7 @@ the retrospective stays a judgement and never becomes a second copy of the
 record.
 
 The grain is the release, deliberately
-([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)
+([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md)
 retired the phase; itd-24 decisions 4 and 5). Per-intent reflection is the
 `intent-auditor`'s job, and a retrospective per intent would be a chore nobody
 finishes.
@@ -36,8 +36,10 @@ finishes.
 tag** the repository holds, in the strict `vMAJOR.MINOR.PATCH` shape
 (`v0.11.0`). It is not an intent id: an intent id is refused, naming the intent
 audit as the per-intent surface. Bare `/abcd:reflect`
-renders help and writes nothing. The person's help lists the verb under
-**Release**, beside `launch` (ruling H13).
+renders help and writes nothing. The verb is an agent's: the help lists it in
+the agents-and-hosts block, naming `commands/reflect.md`, and the page is
+hidden from a person's `/abcd:` menu (the product thinker's placement of
+2026-10-09, itd-2610090831227812).
 
 ## The seed
 

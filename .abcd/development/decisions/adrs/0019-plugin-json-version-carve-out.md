@@ -98,7 +98,7 @@ compatibility claim traces to the pinned schema pointer, not to prose.
 - A new obligation: the no-half-state lint asserts the terminology and docs
   describe the *selected* location (or the escalation text under BLOCKED), never a
   stale hard-coded `plugin.json.version` claim.
-- [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md) amends this decision: the catalog sources the plugin from the
+- [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s.md) amends this decision: the catalog sources the plugin from the
   latest release's pinned archive instead of the tree, so the version reaches an
   install through that published archive. The working tree still carries no
   version key, and the `./` source this ADR's Context records holds only until

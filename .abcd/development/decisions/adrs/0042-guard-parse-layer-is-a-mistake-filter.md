@@ -16,7 +16,7 @@ related_adrs: [adr-25]
 
 `abcd guard` reads a proposed shell command, walks past "wrappers" to find the
 real command, and matches it against a registry of hazard patterns
-([itd-103](../../intents/shipped/itd-103-abcd-teaches-repo-agents-the-shell-commands-they-must-never.md),
+([itd-103](../../intents/shipped/itd-103-abcd-teaches-repo-agents-the-shell.md),
 spc-16). Three separate defects have now been filed against the same shape:
 
 | defect | the enumeration that was incomplete |

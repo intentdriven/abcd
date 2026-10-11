@@ -135,7 +135,9 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf "$HO"{ME,}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${HO}{ME,}`, bare | sq, VerdictAllow, ""},
 		{"rm -rf $HO\\ME", bare | sq, VerdictAllow, ""},
-		{`rm -rf {$OUT,x}/`, bare | sq, VerdictAllow, ""},
+		// No home in either word; `$OUT/` is a path from the root when OUT
+		// is empty, which its own entry refuses (iss-2610091942156774).
+		{`rm -rf {$OUT,x}/`, bare | sq, VerdictBlock, "rm-unguarded-variable-path"},
 		{`rm -rf ${X:+$HOME/x}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${X:+$HOMEx}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${X:+$HO}ME`, bare | sq, VerdictAllow, ""},

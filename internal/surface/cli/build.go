@@ -123,7 +123,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,\n" +
 			"--sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,\n" +
 			"pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in\n" +
-			abcdhome.Display("config.json") + ", else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run\n" +
+			abcdhome.Display("config.json") + ", else the bundled 120/0 (no pause) with 2 sub-agents and 3 fix rounds. The result and the run\n" +
 			"record name each number's layer. A malformed pace or ceiling, typed or configured, is\n" +
 			"refused naming the value and the accepted form, and writes nothing. Starting again keeps\n" +
 			"the run's pace; a flag naming another is refused. The window, the pause and the ceiling\n" +

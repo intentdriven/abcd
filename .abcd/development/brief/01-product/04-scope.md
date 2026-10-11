@@ -1,6 +1,6 @@
 # Scope
 
-The scope this brief covers is the intents on the lifecycle shelves: what has shipped (`intents/shipped/`), what is committed (`intents/planned/`), and the uncommitted bench (`intents/drafts/`). No stored unit sits above the intent for sequence ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)): order comes from each record's dependencies (`blocked_by`, `builds_on`) and its shelf, the bare `/abcd` board renders it as the Now / Next / Later block, and an intent that must land by a cut names that release in `target_release`. The phase documents under `roadmap/phases/` are history.
+The scope this brief covers is the intents on the lifecycle shelves: what has shipped (`intents/shipped/`), what is committed (`intents/planned/`), and the uncommitted bench (`intents/drafts/`). No stored unit sits above the intent for sequence ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md)): order comes from each record's dependencies (`blocked_by`, `builds_on`) and its shelf, the bare `/abcd` board renders it as the Now / Next / Later block, and an intent that must land by a cut names that release in `target_release`. The phase documents under `roadmap/phases/` are history.
 
 ## What the intents deliver
 
@@ -27,7 +27,7 @@ disciplines have no user moment, and they impose acceptance gates on every other
 spec per the three-kinds taxonomy in
 [`01-product/03-mental-model.md`](03-mental-model.md) and itd-34.
 
-See [`intents/README.md`](../../intents/README.md) for the intent index. The phase documents under [`roadmap/phases/`](../../roadmap/phases/README.md) are history: [adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md) retired the phase and the milestone as units of the record. Capture history lives in `git log` and each intent file's own provenance, never in this page (per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md)).
+See [`intents/README.md`](../../intents/README.md) for the intent index. The phase documents under [`roadmap/phases/`](../../roadmap/phases/README.md) are history: [adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md) retired the phase and the milestone as units of the record. Capture history lives in `git log` and each intent file's own provenance, never in this page (per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md)).
 
 **Plumbing infrastructure** (eighteen agents — the canonical roster is the catalog in [`05-internals/01-agents.md`](../05-internals/01-agents.md) — 11 adapters, harness shim, prompt-quality stack, hooks): see [`05-internals/`](../05-internals).
 

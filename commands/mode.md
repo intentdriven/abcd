@@ -3,6 +3,7 @@ name: mode
 description: "Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier."
 argument-hint: "[managed|facilitator|product-thinker]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:mode`

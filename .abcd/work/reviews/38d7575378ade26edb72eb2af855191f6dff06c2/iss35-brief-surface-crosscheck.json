@@ -849,7 +849,7 @@
       "disposition": "deferred to iss-2608231346137587 (brief-tier record drift); not release-blocking: the brief ships in no release artefact (adr-28), so no installed surface is affected"
     },
     {
-      "where": ".abcd/development/specs/closed/spc-18-abcd-gates-a-new-idea-before-it-becomes-a-record-entry-resea.md:76",
+      "where": ".abcd/development/specs/closed/spc-18-abcd-gates-a-new-idea-before-it-becomes.md:76",
       "class": "fictional-layout",
       "item": "skills surface",
       "disposition": "deferred to iss-2608231346137587 (brief-tier record drift); not release-blocking: the brief ships in no release artefact (adr-28), so no installed surface is affected"

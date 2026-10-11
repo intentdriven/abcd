@@ -37,7 +37,7 @@ are wiring rather than user-facing surface are listed separately under
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
 | 24 | `/abcd:decide` | shipped | Mint a decision record with its id, date and skeleton, ready to write the decision into | [`24-decide.md`](24-decide.md) |
-| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
+| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 | 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it | [`08-abcd.md`](08-abcd.md) |
 | 27 | `/abcd:implement` | shipped | Share one autonomous run between two sessions: claim a record before its lane, keep the second session inside its bounds, and compare the ways of dividing the work from the run log | [`27-implement.md`](27-implement.md) |
 | 28 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
@@ -90,7 +90,7 @@ chapter is correct (iss-246).
 ## The generated appendix
 
 A chapter's shape — its verbs' flags and sub-verbs — is derived, never
-hand-written ([adr-2609231028044006](../../decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived-never-hand-authored.md),
+hand-written ([adr-2609231028044006](../../decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived.md),
 invariant 18 in [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
 Every chapter in this directory ends with a generated appendix between two
 marker comments, composed from the same walk of the command tree that builds the
@@ -137,21 +137,26 @@ the command's sentence (the section below).
 
 | Block | Group | Verbs |
 |---|---|---|
-| people | set-up | `ahoy`, `rules`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `intent`, `memory`, `source`, `spec` |
-| people | checks | `lint` |
+| people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `memory`, `source` |
+| people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
-| people | release | `launch`, `reflect` |
-| agents and hosts | — | `banlist`, `changelog`, `dashboard`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lab`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
+| people | release | `launch` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
 carry no adr-40 bucket meaning. `version` is the root's `--version` flag
-(itd-2609212130136102), not a verb, so it is in neither block, and the person's
-count is held by a test at fifteen verbs at most. The
-product thinker placed the people's verbs
-and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
-[`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
+(itd-2609212130136102), not a verb, so it is in neither block. The product
+thinker placed every verb on 2026-10-09 by who types it: a command a person
+needs to do their job is a person's, and only a command no person types is
+listed with the agents (itd-2610090831227812; its spec's verb audit cites each
+ruling). Neither the help nor the plugin menu caps the person's list, and the
+two list the same commands: the command pages whose `block:` is `people` that
+back a verb are the verbs this help lists under the person's groups. `rules`
+and `spec` sit with the agents, their lines naming `commands/ahoy.md` and
+`commands/intent.md`; the marker block's `abcd rules` still runs, because the
+verb is listed, not removed.
 
 It is gated like every other surface claim. The committed command-tree snapshot
 records each visible top-level verb's group and each listed entry's block, so a
@@ -159,6 +164,11 @@ regroup shows in its diff; the drift test and the release gate's stale-surface
 refusal name every verb whose placement moved without a regeneration. A test in
 `internal/surface/cli` fails on a visible top-level verb registered with no
 group, and another holds each command page's `block:` frontmatter to the tree.
+Two more hold the plugin menu to the same placement: every page says `block:`
+as `people` or `agents`, every agents page carries the host's
+`user-invocable: false`, which leaves it off a person's `/abcd:` menu and keeps
+its name, and no people page carries that key; and the people pages that back a
+verb are exactly the verbs the person's groups list.
 A regroup is not a break: the surface diff never reads the placement, because it
 changes no invocation.
 

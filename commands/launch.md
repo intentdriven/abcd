@@ -494,7 +494,9 @@ the issue ledger, and they are the two most easily skipped lines in the report:
 
 **What refuses.** An issue record that entered the ledger *since the anchor tag*,
 is graded `major` or `critical`, and is still in `open/`, refuses the cut under
-the refusal kind `unfixed-finding`. A refused cut carries **no derived version**,
+the refusal kind `unfixed-finding`. That kind is not about grades alone: an open
+issue record that differs from HEAD refuses under it too, at any severity (see
+*An uncommitted open record* below). A refused cut carries **no derived version**,
 so nothing downstream has a release to make. A record whose `severity` is
 missing, misspelled, or outside the ledger's enum refuses too: it has not been
 judged, and "not judged" must not read as "not serious".
@@ -512,8 +514,11 @@ reads the ledger at HEAD, so it cannot judge a finding captured, regraded,
 deferred or removed in the working tree: whenever any issue record under
 `.abcd/work/issues/open/` differs from HEAD — added, edited, deleted or only
 staged, at any severity — the cut refuses and the `reason` names every path.
-`--allow-dirty` never waives it, because the gate would still read HEAD. Commit
-the records (or discard the change) and run again.
+That covers an uncommitted edit, an uncommitted waiver and an uncommitted
+regrade alike. It is a refusal entry of its own, beside an unfixed or deleted
+finding's when either is present too, so one run names every reason, each
+once. `--allow-dirty` never waives it, because the gate
+would still read HEAD. Commit the records (or discard the change) and run again.
 
 The anchor is what bounds it. Records that already existed at the last tag are
 the standing backlog and are never this cut's to answer; only what this cycle
@@ -521,7 +526,9 @@ itself captured is in scope. "It was already there when I started" is therefore
 not available as a defence for anything the gate names.
 
 **What the render shows.** The `findings:` line gives the verdict, the count of
-unfixed findings and the anchor they were counted from, and the count deferred.
+unfixed findings and the anchor they were counted from, the count of deleted
+records, the count of open records that differ from HEAD, and the count
+deferred; the refusals below it name the records and paths.
 One `deferred:` line follows per waiver, naming the record, its severity and the
 reason recorded on it. Report both to the user verbatim — a deferral nobody sees
 in the report they actually read is indistinguishable from a finding that was

@@ -202,6 +202,36 @@ func TestAStreamWithoutDone(t *testing.T) {
 	}
 }
 
+// neverEnds answers the chat call with an event stream of 1 MiB keep-alive
+// comments, more in all than the stream's byte bound, until the client goes
+// away. pause is the wait between two comments: none stands for a runner that
+// carries the stream to the bound at once, a pause for one too loaded to
+// carry it there before the call's own deadline (iss-2610080243367274).
+func neverEnds(pause time.Duration) func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) {
+	return chatOnly(func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		streamHead(w)
+		line := ": " + strings.Repeat("z", 1<<20)
+		for i := 0; i < 80 && r.Context().Err() == nil; i++ {
+			emit(w, line)
+			if pause > 0 {
+				select {
+				case <-time.After(pause):
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+	})
+}
+
+// totalLimit is what every refusal at the call's total cap names.
+const totalLimit = "the call's total limit"
+
+// capWait is how long a test waits for a call bounded by the total cap
+// limit: the cap, and a margin of twice the cap for the refusal to come back
+// on a loaded runner, so the wait grows with the deadline it waits for.
+func capWait(limit time.Duration) time.Duration { return 3 * limit }
+
 // TestEveryStreamFailureIsRefusedWithoutTheKey is the streamed counterpart of
 // TestEveryFailureIsRefusedWithoutTheKey.
 func TestEveryStreamFailureIsRefusedWithoutTheKey(t *testing.T) {
@@ -210,39 +240,50 @@ func TestEveryStreamFailureIsRefusedWithoutTheKey(t *testing.T) {
 	for i := 0; i <= MaxResponseBytes/len(big); i++ {
 		flood = append(flood, chunkLine("m", big, ""), "")
 	}
+	// The streams that never end are bounded by the call's own total cap, set
+	// short here, and not by how fast the runner carries them: a loaded runner
+	// that cannot read the flood to its byte bound sees the cap refuse it
+	// instead (iss-2610080243367274).
+	const (
+		floodCap   = 10 * time.Second
+		trickleCap = 2 * time.Second
+	)
 	cases := []struct {
 		name    string
 		handler func(http.ResponseWriter, *http.Request, map[string]json.RawMessage)
 		want    string
+		// total, when set, is the client's total cap; the call is then
+		// waited for a margin derived from it (capWait), and the cap's own
+		// refusal is accepted beside want.
+		total time.Duration
 	}{
 		{"an error event echoing the key", streams(chunkLine("m", `{"verdict":`, ""), "",
-			`data: {"error":{"message":"provider overloaded `+testKey+`","code":502}}`, ""), "reported an error"},
-		{"an event that is not JSON", streams(`data: {"choices": [`, ""), "not a chat completion"},
-		{"no choice in any chunk", streams(`data: {"model":"m","choices":[]}`, "", "data: [DONE]", ""), "no choice"},
-		{"no model reported", streams(chunkLine("", `{"verdict":"yes"}`, "stop"), "", "data: [DONE]", ""), "reported no model"},
+			`data: {"error":{"message":"provider overloaded `+testKey+`","code":502}}`, ""), "reported an error", 0},
+		{"an event that is not JSON", streams(`data: {"choices": [`, ""), "not a chat completion", 0},
+		{"no choice in any chunk", streams(`data: {"model":"m","choices":[]}`, "", "data: [DONE]", ""), "no choice", 0},
+		{"no model reported", streams(chunkLine("", `{"verdict":"yes"}`, "stop"), "", "data: [DONE]", ""), "reported no model", 0},
 		{"the model changes mid-answer", streams(chunkLine("m", `{"verdict":`, ""), "", chunkLine("other", `"yes"}`, "stop"), "",
-			"data: [DONE]", ""), "more than one model"},
-		{"an assembled answer past the bound", streams(append(flood, chunkLine("m", "", "stop"), "", "data: [DONE]", "")...), "larger than"},
-		{"one event past the bound", streams("data: "+strings.Repeat("y", MaxResponseBytes+10), ""), "larger than"},
-		{"a stream that never ends", func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
-			streamHead(w)
-			line := ": " + strings.Repeat("z", 1<<20)
-			for i := 0; i < 80 && r.Context().Err() == nil; i++ {
-				emit(w, line)
-			}
-		}, "larger than"},
-		{"an answer that fails the output contract", streams(chunkLine("m", `{"verdict":""}`, "stop"), "", "data: [DONE]", ""), "output contract"},
-		{"an empty stream", streams(), "ended before the answer was complete"},
+			"data: [DONE]", ""), "more than one model", 0},
+		{"an assembled answer past the bound", streams(append(flood, chunkLine("m", "", "stop"), "", "data: [DONE]", "")...), "larger than", 0},
+		{"one event past the bound", streams("data: "+strings.Repeat("y", MaxResponseBytes+10), ""), "larger than", 0},
+		{"a stream that never ends", neverEnds(0), "larger than", floodCap},
+		{"a stream that never ends, carried too slowly to reach the bound", neverEnds(500 * time.Millisecond), totalLimit, trickleCap},
+		{"an answer that fails the output contract", streams(chunkLine("m", `{"verdict":""}`, "stop"), "", "data: [DONE]", ""), "output contract", 0},
+		{"an empty stream", streams(), "ended before the answer was complete", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFake(t, tc.handler)
-			_, err, _ := completeWithin(t, 30*time.Second, context.Background(), mustClient(t, f.base(), testKey), jsonObject)
+			c, wait := mustClient(t, f.base(), testKey), 30*time.Second
+			if tc.total > 0 {
+				c, wait = mustClient(t, f.base(), testKey, WithTimeout(tc.total)), capWait(tc.total)
+			}
+			_, err, _ := completeWithin(t, wait, context.Background(), c, jsonObject)
 			if err == nil {
 				t.Fatal("Complete succeeded; want a refusal")
 			}
 			assertNoKey(t, err)
-			if !strings.Contains(err.Error(), tc.want) {
+			if !strings.Contains(err.Error(), tc.want) && (tc.total == 0 || !strings.Contains(err.Error(), totalLimit)) {
 				t.Fatalf("error = %v, want it to name %q", err, tc.want)
 			}
 			if errors.Is(err, ErrUnreachable) {

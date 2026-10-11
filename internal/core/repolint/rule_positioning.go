@@ -50,13 +50,10 @@ func (r identityPositioning) Eval(ctx Context) ([]Finding, error) {
 		// A registry that cannot be loaded must not read as "no drift": report
 		// it as a finding of this family rather than aborting the whole audit,
 		// which would take the other rules' results down with it.
-		return []Finding{{
-			RuleID:   "identity-positioning",
-			Severity: SeverityWarn,
-			File:     positioning.ConfigRelPath,
-			Message:  "positioning registry could not be loaded: " + cleanErr(err),
-			Fix:      "correct " + positioning.ConfigRelPath + " (or remove it to opt out of the positioning check)",
-		}}, nil
+		// `abcd lint identity` refuses the same registry, so this is an error.
+		return []Finding{targetRefusal("identity-positioning", "identity", positioning.ConfigRelPath,
+			"positioning registry could not be loaded: "+cleanErr(err),
+			"correct "+positioning.ConfigRelPath+" (or remove it to opt out of the positioning check)")}, nil
 	}
 	if !ok {
 		// Raced away between Where and Eval; nothing to check.
@@ -65,13 +62,11 @@ func (r identityPositioning) Eval(ctx Context) ([]Finding, error) {
 
 	rep, err := positioning.Check(ctx.RepoRoot, cfg)
 	if err != nil {
-		return []Finding{{
-			RuleID:   "identity-positioning",
-			Severity: severityFor(cfg),
-			File:     cfg.Block.File,
-			Message:  "the canonical identity block could not be read: " + cleanErr(err),
-			Fix:      "add the identity block, or point " + positioning.ConfigRelPath + " at where it lives",
-		}}, nil
+		// A block that cannot be read checked no surface: the target's
+		// refusal, an error whatever severity the family's drift takes.
+		return []Finding{targetRefusal("identity-positioning", "identity", cfg.Block.File,
+			"the canonical identity block could not be read: "+cleanErr(err),
+			"add the identity block, or point "+positioning.ConfigRelPath+" at where it lives")}, nil
 	}
 
 	sev := severityFor(cfg)

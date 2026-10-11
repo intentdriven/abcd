@@ -238,6 +238,11 @@ func (p Pattern) Describe() string {
 	for _, pre := range p.ArgPrefixes {
 		with = append(with, "an operand starting `"+pre+"`")
 	}
+	for _, shape := range p.ArgShapes {
+		if shape == ShapeUnguardedVariablePath {
+			with = append(with, "an operand that starts with a variable that can be empty followed by `/` (`\"$VAR\"/…`, `$VAR/…`, `\"${VAR}\"/…`, `${VAR}/…`)")
+		}
+	}
 	switch {
 	case p.MinOperands == 1:
 		with = append(with, "an operand")

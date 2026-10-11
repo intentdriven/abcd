@@ -49,6 +49,8 @@ own state lives in the checkout's local tier, not in the shared run state below;
 ~/.abcd.noindex/runs/<root-sha>/<YYYY-MM-DD>.jsonl    the run log, one event per line, per UTC day
 ~/.abcd.noindex/runs/<root-sha>/claims/<record>.json  one claim per record
 ~/.abcd.noindex/runs/<root-sha>/sessions/<id>.json    one record per joined session
+~/.abcd.noindex/runs/<root-sha>/outage.json           the run's one outage, while it is open
+~/.abcd.noindex/runs/<root-sha>/.lock                 the advisory lock every mutation takes
 ```
 
 The key is the full root-commit SHA, the key the transcript, history and voyage
@@ -341,8 +343,10 @@ saved aside.
 `0` done, and every status of the load check; `2` refused (an unrecognised input, a session that has not joined, a
 bound the role does not permit, no checkout to key a run on), with nothing
 written for the refused act; `3` contention (the record is claimed by another
-session, or the run state is locked) — back off and take other work. The JSON
-form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
+session, or the run state is locked) — back off and take other work. The
+outage probe gives `3` a meaning of its own, wait: the probe is not due, another
+session holds it, or a service is still down; and it exits `2` once the run gave
+up. The JSON form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
 
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

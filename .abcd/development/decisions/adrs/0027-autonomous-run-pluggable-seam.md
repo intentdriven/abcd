@@ -31,7 +31,7 @@ an adapter:
 
 - **Claude Workflows** — delegate the loop to the host's workflow engine.
 - **The companion harness's agent loop** — drive the companion harness's loop as a peer over conventions/MCP
-  ([ADR-24](0024-companion-harness-peer-via-conventions-and-mcp.md)).
+  ([ADR-24](0024-companion-harness-peer-via-conventions.md)).
 - **Thin native Go loop** — a minimal built-in fallback that iterates,
   gates on receipts, and enforces the safety guard, so abcd can run
   autonomously with no external loop present.

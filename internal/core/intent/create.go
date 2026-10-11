@@ -38,9 +38,10 @@ var minter recordid.Minter
 // 2). It mirrors the capture ledger's placeholder retry budget.
 const mintRetryBudget = 8
 
-// maxSlugLen caps a derived slug so a pathological free-text line cannot produce
-// an unwieldy filename. Mirrors the capture-side derivation budget.
-const maxSlugLen = 60
+// maxTitleLen caps a derived H1 so a long first sentence stays a heading. It was
+// the slug cap until the slug moved to recordid.MaxSlugLen (iss-2610100626320367),
+// and it keeps its own budget: the title is not part of the path.
+const maxTitleLen = 60
 
 // CreateFromText files a new draft intent seeded from free-form text, mirroring
 // the capture engine's create shape: it derives a filename-safe slug, mints a
@@ -149,7 +150,7 @@ var sentenceEndRe = regexp.MustCompile(`[.!?](\s|$)`)
 // deriveTitle is the H1 a quoted-text create derives: the text's first sentence
 // with its terminator dropped (no intent in the record ends its H1 with one),
 // whitespace collapsed, and — when the sentence is longer than the slug cap —
-// cut on a word boundary at or before maxSlugLen runes, so the title stays a
+// cut on a word boundary at or before maxTitleLen runes, so the title stays a
 // heading and never a paragraph. A single unbroken token longer than the cap is
 // cut at the cap. It never returns an empty string for non-empty input: a text
 // that is only terminators keeps its first sentence whole.
@@ -164,10 +165,10 @@ func deriveTitle(text string) string {
 		first = titleLine(text)
 	}
 	runes := []rune(first)
-	if len(runes) <= maxSlugLen {
+	if len(runes) <= maxTitleLen {
 		return first
 	}
-	cut := string(runes[:maxSlugLen])
+	cut := string(runes[:maxTitleLen])
 	if i := strings.LastIndexAny(cut, " "); i > 0 {
 		cut = cut[:i]
 	}
@@ -245,6 +246,10 @@ func createDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outc
 	if !slugRe.MatchString(opts.Slug) {
 		return Intent{}, nil, fmt.Errorf("intent: slug %q is not kebab-case", opts.Slug)
 	}
+	// Every draft mint cuts its slug at the one record cap, whichever route
+	// handed it in: the promote routes carry a slug from the record they
+	// graduate, which may predate the cap (iss-2610100626320367).
+	opts.Slug = recordid.CapSlug(opts.Slug, recordid.MaxSlugLen)
 	if strings.TrimSpace(opts.Title) == "" {
 		return Intent{}, nil, fmt.Errorf("intent: refusing to create a draft with an empty title")
 	}
@@ -388,7 +393,7 @@ func draftStamp(opts DraftOptions) (provenance.Stamp, error) {
 // is kebab-case and non-empty — the slug becomes a filename, so it is validated
 // before any path is built (path-traversal / filename-safety defence).
 func deriveIntentSlug(text string) (string, error) {
-	collapsed := recordid.Slug(text, maxSlugLen)
+	collapsed := recordid.Slug(text, recordid.MaxSlugLen)
 	if collapsed == "" {
 		return "", fmt.Errorf("intent: text %q has no slug-able characters", text)
 	}

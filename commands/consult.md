@@ -1,6 +1,7 @@
 ---
 name: consult
 description: Consult the local sources corpus (the user-level home's sources store, default ~/.abcd.noindex/sources) and record source→decision provenance in its append-only ledger. Use when the user says "consult sources", "check the corpus", "what do my sources say", or when a design/research decision arises where prior literature or private working material plausibly matters. Confidential sources are NEVER cited or named in public artifacts.
+block: people
 ---
 
 # Consult sources

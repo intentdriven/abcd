@@ -18,7 +18,7 @@ behaviour, lifecycle class) is
 surface contract: what the user types and what happens.
 
 > **Provenance, and a warning about ids.** The surface traces to itd-36, which
-> sits in `intents/planned/`. The write core and the lint family were specified
+> sits in `intents/shipped/`. The write core and the lint family were specified
 > in a predecessor store whose `spc-38` and `spc-39` collide with live ids in
 > this repo's own store. So on this page the store an id belongs to is read from
 > the sentence around it, never from the number.

@@ -3,6 +3,7 @@ name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | hook]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:guard` shell-hazard check
@@ -502,6 +503,24 @@ segment unexpanded, and an escaped glob is read as unescaped (`~/*\*` blocks
 as `~/*` does); a final dot-glob (`~/.?`) is not read so,
 since rm refuses a last segment `..`. Quoted, `'/**'` and `"~/.?"/*` block as
 `"/*"` does.
+
+An `rm` whose path starts with a variable that can be empty, directly followed
+by `/`, is a **block** whatever its flags (`rm-unguarded-variable-path`):
+`"$VAR"/*`, `$VAR/x`, `"${VAR}"/x`, `${VAR}/x` and `"$VAR/x"` name a path from
+the filesystem root when the variable is empty or unset, and nothing on the
+line says which. So are `"$1"/x`, `"$A$B"/x`, an expansion that can print
+nothing (`${VAR:-}/x`, `${VAR:+x}/x`), and a default whose word is such a
+variable (`"${X:-$Y}"/x`), inside a string a shell runs as on the line. The
+successor is the rewrite, `"${VAR:?}"/...`, which stops the shell on an empty
+value, or a literal path; neither is refused, and nor is a default that cannot
+be empty (`"${TMPDIR:-/tmp}"/x`), a variable later in the path
+(`./build/$name`), a bare `"$VAR"`, which empties to no path at all, a trim, a
+replacement, a substring or a case change (`"${DIR%/}"/x`), or `$HOME` and
+`$PWD`, whose deletes the two entries above name. The guard never rewrites the
+command itself. The same rule is restated in every agent definition that can
+run a shell, in a block generated from this entry, because a sub-agent is
+handed none of the `SHELL` rules the session is taught; the scribe's is the
+one exception, its definition being held to ledger content alone.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),

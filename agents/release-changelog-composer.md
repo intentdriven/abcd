@@ -1,7 +1,7 @@
 ---
 name: release-changelog-composer
 description: Compose the prose of one release cut from the records that shipped in it — the changelog lines and the release page, every line and headline citing the record id it reports, so the binary can prove both documents describe exactly the cut. Host-delegated; feeds `abcd launch ship --changelog-json`.
-prompt_version: 0.4.1
+prompt_version: 0.4.2
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -268,3 +268,13 @@ No other keys, at any level. There is no `mode` field here.
   `breaking` record says what stops working.
 - Entries keep your order **within** a section; the section order is the binary's.
   So group your lines by importance inside each section.
+
+<!-- generated: guard-lessons -->
+<!-- Written by `go test ./internal/core/guard -run TestAgentDefinitionsCarryTheGuardLessons -update` from the guard registry (internal/core/guard/defaults/guard.json); edit the entry there, never this block. -->
+
+## Shell commands the guard refuses
+
+A sub-agent is not handed the shell rules the session is taught, so the rules for the commands you are most likely to write are restated here. The guard refuses a command that breaks one before it runs; write it the way the rule says from the start.
+
+- Refused by the guard (rm-unguarded-variable-path): `rm` with an operand that starts with a variable that can be empty followed by `/` (`"$VAR"/…`, `$VAR/…`, `"${VAR}"/…`, `${VAR}/…`). A path that starts with a variable followed by `/` names a path from the filesystem root when the variable is empty or unset — `rm -f "$VAR"/*` becomes `rm -f /*` — and nothing on the line says which, so whoever is asked to approve it cannot tell either. Instead: Write the variable as `"${VAR:?}"/...` (`rm -f -- "${VAR:?}"/*`), which stops the shell with an error when it is empty or unset, or use a literal path.
+<!-- /generated -->

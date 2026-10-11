@@ -2574,7 +2574,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// The text itself always seeds the Press Release; the title is only the
 	// heading over it, held to the same bar as the text (non-empty, one line,
 	// redacted).
-	intentCmd.Flags().StringVar(&intentTitle, "title", "", "the draft's H1 title (default: the first sentence of the text, cut at the slug cap)")
+	intentCmd.Flags().StringVar(&intentTitle, "title", "", "the draft's H1 title (default: the first sentence of the text, cut on a word boundary at 60 characters)")
 	// --production-mode is a CLOSED CHOICE, refused outright outside the
 	// vocabulary — the same shape as --impact and --severity, both of which
 	// already stamp machine-read enums. There is no flag for `origin`: it is

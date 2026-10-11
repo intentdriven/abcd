@@ -1,6 +1,7 @@
 ---
 name: version
 description: "Print abcd's version, install mode, and vintage through abcd --version: Writes nothing; refuses any argument."
+block: people
 ---
 
 # `/abcd:version`

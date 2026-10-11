@@ -918,6 +918,13 @@ func findingsLine(g changelog.FindingGuard) string {
 	if len(g.Deleted) > 0 {
 		line += fmt.Sprintf(" (%d record(s) deleted from the ledger since %s)", len(g.Deleted), g.BaseTag)
 	}
+	// The uncommitted open records are counted like the other two halves, and
+	// named once, by the refusal the cut raises for them whatever else is
+	// present (iss-2610072347238476, iss-2610090642371836): naming the paths
+	// here too would print them twice.
+	if len(g.Uncommitted) > 0 {
+		line += fmt.Sprintf(" (%d open record(s) differ from HEAD)", len(g.Uncommitted))
+	}
 	if len(g.Waived) > 0 {
 		line += fmt.Sprintf(" (%d deferred)", len(g.Waived))
 	}

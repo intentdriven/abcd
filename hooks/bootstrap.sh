@@ -583,10 +583,10 @@ staged=yes
 # SIGKILL runs no trap, so a killed run leaves its PID-stamped temp directory
 # behind holding a partially downloaded, UNVERIFIED binary. The lock is held from
 # here on, so sweeping them cannot touch a live run's directory.
-rm -rf "$plugin_root"/.bootstrap.tmp.* 2>/dev/null
+rm -rf "${plugin_root:?}"/.bootstrap.tmp.* 2>/dev/null
 if [ -n "$cache_mode" ]; then
-	rm -rf "$data_dir"/.bootstrap.tmp.* 2>/dev/null
-	rm -rf "$data_dir"/.bootstrap.auth.* 2>/dev/null
+	rm -rf "${data_dir:?}"/.bootstrap.tmp.* 2>/dev/null
+	rm -rf "${data_dir:?}"/.bootstrap.auth.* 2>/dev/null
 fi
 
 # 5. Refresh detector (spc-35): the recorded cache state plus ONE best-effort
@@ -1025,7 +1025,7 @@ else
 	# No data dir provisioned this root, so no stamp may say one did: a stale
 	# record from an earlier cache-mode provision of the same root would route
 	# a terminal `ahoy install` to a cache this binary did not come from.
-	rm -f "$plugin_root/.data-dir" 2>/dev/null
+	rm -f "${plugin_root:?}/.data-dir" 2>/dev/null
 
 	# The root-local provenance record, written only on this path: cache-mode
 	# roots read the cache meta instead, and the skew notice compares the LIVE

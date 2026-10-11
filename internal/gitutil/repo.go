@@ -50,6 +50,13 @@ func guardObjectRead(cmd *exec.Cmd, root string, args []string) {
 // context has ended and git was killed, for its output pipes to close — so a
 // process git started that kept a pipe open cannot hold the caller past its
 // deadline.
+//
+// exec starts the same timer when git exits on its own, so on a heavily loaded
+// machine the copy of an answer git already gave can miss it, and Wait reports
+// exec.ErrWaitDelay over a successful git (iss-2610100846469473). It is
+// therefore set only for a context that can end: a caller with no deadline
+// (Toplevel, RootCommit) has no deadline to protect, and waits for git's
+// output as every unbounded isolated command (Run, RunLimited) does.
 const contextWaitDelay = 50 * time.Millisecond
 
 // isolatedGitContext is isolatedGit bound to ctx: when ctx ends, git is KILLED,
@@ -59,7 +66,9 @@ const contextWaitDelay = 50 * time.Millisecond
 func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
-	cmd.WaitDelay = contextWaitDelay
+	if ctx.Done() != nil {
+		cmd.WaitDelay = contextWaitDelay
+	}
 	guardObjectRead(cmd, root, args)
 	return cmd
 }
@@ -277,22 +286,29 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 //
 // The output is bounded (one object name, so the cap is generous) rather than
 // buffered whole: a hostile repository must not be able to make an identity
-// probe allocate.
+// probe allocate. It has no deadline, so it waits for git's answer however
+// loaded the machine is (contextWaitDelay): a slow git is never read as a
+// repository with no root commit (iss-2610100846469473).
 func RootCommit(root string) string {
 	sha, _ := RootCommitContext(context.Background(), root)
 	return sha
 }
 
 // RootCommitContext is RootCommit bound to ctx: the same answer, total in the
-// same way, except that a context that ends before git answers is returned as
-// its own error (wrapped) with git killed — so a caller on a deadline can tell
-// "this repository has no root commit" from "git did not answer in time".
+// same way, except that git not answering in time is returned as its own
+// error — a context that ends before git answers (wrapped, with git killed),
+// or a git whose output missed the runner's WaitDelay twice (ErrGitTimedOut) —
+// so a caller can tell "this repository has no root commit" from "git did not
+// answer in time".
 func RootCommitContext(ctx context.Context, root string) (string, error) {
 	out, err := RunLimitedContext(ctx, root, 4096, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
 	}
 	if err != nil {
+		if errors.Is(err, ErrGitTimedOut) {
+			return "", err
+		}
 		return "", nil
 	}
 	fields := strings.Fields(out)
@@ -485,16 +501,39 @@ func RunLimited(root string, maxBytes int, args ...string) (string, error) {
 	return out, err
 }
 
+// ErrGitTimedOut is RunLimitedContext's answer for a git whose output was
+// still open when the wait for it ran out (exec.ErrWaitDelay), on a retry as
+// well as the first time. Nothing cancelled it; git may well have answered. On
+// a heavily loaded machine the copy of git's output can miss the runner's
+// WaitDelay after git exits, and a caller that read that error as git's answer
+// turned it into "not a repository" or "no root commit" (iss-2610100846469473).
+// A caller that must tell "git said no" from "git did not answer" checks for
+// it with errors.Is; the exec error it came from stays wrapped.
+var ErrGitTimedOut = errors.New("git did not answer in time")
+
 // RunLimitedContext is RunLimited bound to ctx: when ctx ends before git
 // answers, git is killed (isolatedGitContext) and the error wraps ctx's own,
 // so errors.Is(err, context.DeadlineExceeded) tells a caller that git did not
 // answer in time rather than that it said no. It is the one primitive every
 // deadline-bound git question goes through.
+//
+// Under a context that can end, the WaitDelay that bounds a killed git's
+// pipes also starts when git exits on its own (contextWaitDelay), so on a
+// loaded machine a git that answered can still come back as
+// exec.ErrWaitDelay, its output not yet copied. That miss is asked once more;
+// a second miss is returned as ErrGitTimedOut, never as git's answer.
 func RunLimitedContext(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	out, _, err := runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+		out, _, err = runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+			return "", fmt.Errorf("git %s: %w: its output was still open when the wait for it ran out, on a retry too (%w)",
+				strings.Join(args, " "), ErrGitTimedOut, err)
+		}
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}
@@ -575,7 +614,8 @@ var ErrToplevelShape = errors.New("git's toplevel answer is not one absolute pat
 // A git failure (not a repository, git absent, an ownership refusal under the
 // isolated environment) is returned as git's own error; a caller that must
 // tell "no repository" from "a repository git will not answer for" follows up
-// with RepoShapedRoot.
+// with RepoShapedRoot. It has no deadline, so a slow git is waited for, never
+// read as either (contextWaitDelay).
 func Toplevel(dir string) (string, error) {
 	return ToplevelContext(context.Background(), dir)
 }

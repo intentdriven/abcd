@@ -306,7 +306,7 @@ func TestDocsLintSeedRendersTheChosenSeverity(t *testing.T) {
 	base := decode(t, []byte(publicFamilySeed))
 	for _, sev := range []string{"blocker", "warn"} {
 		t.Run(sev, func(t *testing.T) {
-			data := docsLintSeed(sev)
+			data := docsLintSeed(sev, []string{"docs", "README.md"})
 			path := filepath.Join(t.TempDir(), "docs-lint.json")
 			if err := os.WriteFile(path, data, 0o644); err != nil {
 				t.Fatal(err)

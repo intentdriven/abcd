@@ -108,6 +108,11 @@ const (
 // the warning (ruling G1; docsLintSeed renders the choice). The embedded file
 // carries the warning, so it is a loadable config as it stands.
 //
+// The roots are rendered at install time from what the project holds
+// (seedRoots): the embedded file lists both docs and README.md, and the seed
+// written keeps only those present, so the check it arms never refuses over a
+// root it named itself (iss-2610040758095861).
+//
 // The stray_root_docs allowlist names CLAUDE and AGENTS, the two root files the
 // scaffold itself may write, so the seeded gate does not refuse its own output.
 //
@@ -894,7 +899,7 @@ func (a *applyCtx) stepBanlist() {
 	// own severity, and a question whose answer would go nowhere is not asked.
 	if a.has("banlist.public_family_missing") && publicPathIsWritable(a.cwd) {
 		sev, note := a.emDashSeverity()
-		if a.createContained(writeDocsCheck, root, banlist.PublicConfigRelPath, docsLintSeed(sev), 0o644, 0o755) && note != "" {
+		if a.createContained(writeDocsCheck, root, banlist.PublicConfigRelPath, docsLintSeed(sev, seedRoots(root)), 0o644, 0o755) && note != "" {
 			a.notes = append(a.notes, note)
 		}
 	}

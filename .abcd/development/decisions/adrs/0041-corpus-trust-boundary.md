@@ -18,9 +18,9 @@ The sources corpus ([itd-76](../../intents/shipped/itd-76-source-provenance-ledg
 lets an agent consult material the user is not free to name in public. Anything
 that makes consultation safe rests on two boundaries holding mechanically,
 regardless of which surface — personal verbs, team share/ingest
-([itd-126](../../intents/drafts/itd-126-a-team-shares-one-bibliography-without-sharing-anyone-s-corp.md)),
+([itd-126](../../intents/drafts/itd-126-a-team-shares-one-bibliography-without.md)),
 or paper reconstruction
-([itd-127](../../intents/drafts/itd-127-a-paper-is-reconstructed-from-the-provenance-ledger-claims-g.md)) —
+([itd-127](../../intents/drafts/itd-127-a-paper-is-reconstructed-from-the.md)) —
 is doing the moving.
 
 ## Decision

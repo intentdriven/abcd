@@ -195,7 +195,7 @@
       "disposition": "deferred to iss-2608231346137587 (brief-tier record drift); not release-blocking: the brief ships in no release artefact (adr-28), so no installed surface is affected"
     },
     {
-      "where": ".abcd/development/intents/planned/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md and .abcd/development/intents/planned/itd-73-derived-versioning.md (asserted at 04-launch.md:3, :20, :21)",
+      "where": ".abcd/development/intents/planned/itd-93-abcd-scaffolds-a-hardened-changelog.md and .abcd/development/intents/planned/itd-73-derived-versioning.md (asserted at 04-launch.md:3, :20, :21)",
       "class": "false-claim",
       "item": ".abcd/development/brief/04-surfaces/04-launch.md",
       "disposition": "deferred to iss-2608231346137587 (brief-tier record drift); not release-blocking: the brief ships in no release artefact (adr-28), so no installed surface is affected"

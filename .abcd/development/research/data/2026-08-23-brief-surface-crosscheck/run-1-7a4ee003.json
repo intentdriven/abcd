@@ -216,7 +216,7 @@
         "item": ".abcd/development/brief/04-surfaces/06-capture.md",
         "where": ".abcd/development/brief/04-surfaces/06-capture.md:52",
         "claim": "The frontmatter schema block annotates the id field as `id: iss-N  # unpadded, mirrors itd-N`, and \u00a71 line 27 describes the fast path as appending an entry \"with auto-assigned `iss-N`\" \u2014 the chapter records no mint scheme beyond a sequential-looking `iss-N`.",
-        "reality": "Since adr-45 (`.abcd/development/decisions/adrs/0045-record-ids-are-timestamp-numeric-and-capture-stable.md`, rollout \"captures-first\") the capture family mints timestamp-numeric ids through `recordid.Minter` \u2014 `<family>-<yymmddHHMMSS><4 random digits>` (`internal/core/recordid/mint.go:6,27`; `internal/core/capture/alloc.go:12,102`). Live ledger ids are e.g. `iss-2608231226347380` (18 digits), while the itd family is still allocated max+1 by `nextIntentID` (`internal/core/intent/create.go:169-215`; newest draft `itd-146`). The two schemes no longer mirror each other, and the chapter never records the timestamp mint, its placeholder retry budget, or the orphan sweep (`internal/core/capture/alloc.go:18-33`).",
+        "reality": "Since adr-45 (`.abcd/development/decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md`, rollout \"captures-first\") the capture family mints timestamp-numeric ids through `recordid.Minter` \u2014 `<family>-<yymmddHHMMSS><4 random digits>` (`internal/core/recordid/mint.go:6,27`; `internal/core/capture/alloc.go:12,102`). Live ledger ids are e.g. `iss-2608231226347380` (18 digits), while the itd family is still allocated max+1 by `nextIntentID` (`internal/core/intent/create.go:169-215`; newest draft `itd-146`). The two schemes no longer mirror each other, and the chapter never records the timestamp mint, its placeholder retry budget, or the orphan sweep (`internal/core/capture/alloc.go:18-33`).",
         "class": "false-claim"
       },
       {
@@ -244,7 +244,7 @@
         "item": ".abcd/development/brief/04-surfaces/07-memory.md",
         "where": ".abcd/development/brief/04-surfaces/07-memory.md:3",
         "claim": "\"Every bare `spc-38`/`spc-39` on this page is a predecessor-store id cited as provenance \u2014 neither id names a spec in this repo's store (`.abcd/development/specs/`), whose own ids stop well short of spc-38.\"",
-        "reality": "Both ids DO name specs in this repo's store, and they name different things: .abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and-reads-the-whole-developm.md and .abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects-one-relationship-chart.md. The store's ids do not \"stop well short of spc-38\" \u2014 they reach spc-40 (spc-40-bob-installs-abcd-with-one-checksum-verified-command-served.md). Every bare spc-38/spc-39 on this page therefore collides with a real, unrelated repo spec.",
+        "reality": "Both ids DO name specs in this repo's store, and they name different things: .abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and.md and .abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects.md. The store's ids do not \"stop well short of spc-38\" \u2014 they reach spc-40 (spc-40-bob-installs-abcd-with-one-checksum.md). Every bare spc-38/spc-39 on this page therefore collides with a real, unrelated repo spec.",
         "class": "false-claim"
       },
       {

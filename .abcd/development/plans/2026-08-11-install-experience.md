@@ -14,9 +14,9 @@ having a working `/abcd:*` surface.
 **Release framing (maintainer interview, 2026-08-11): one theme, two cuts.**
 Cut A makes the install path *work* on today's packaging. Cut B makes it
 *small* by repointing the marketplace at the curated release artefact
-([itd-108](../intents/drafts/itd-108-the-plugin-installs-from-the-curated-release-artifact-not-th.md)).
+([itd-108](../intents/drafts/itd-108-the-plugin-installs-from-the-curated.md)).
 The split is not caution for its own sake — it is
-[iss-205](../../work/issues/resolved/iss-205-every-one-of-the-17-files-under-commands-resolves-the-binary.md)'s
+[iss-205](../../work/issues/resolved/iss-205-every-one-of-the-17-files-under-commands.md)'s
 own recorded prerequisite: the `${CLAUDE_PLUGIN_ROOT}` binding must land **and
 be verified on a real install** before the payload slims, so there is never a
 release in which the `go run` fallback is gone and the primary path is not yet

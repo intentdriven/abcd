@@ -6,7 +6,7 @@ at one commit of a repository, run to answer one question. Its evidence lives at
 the operator level, its knowledge enters the record only through capture, and
 nothing any lab verb does writes into the repository it studies. The procedure
 the verb encodes is the discipline record
-[itd-2609251624540864](../../intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md).
+[itd-2609251624540864](../../intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md).
 
 ## Sub-verbs
 

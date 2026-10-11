@@ -1,7 +1,7 @@
 # itd-114 field test: four minters, one morning — pre-registered
 
 The morning of 2026-08-20 is a natural experiment for
-[itd-114](../../intents/shipped/itd-114-abcd-mints-collision-proof-record-ids-across-parallel-agents.md)
+[itd-114](../../intents/shipped/itd-114-abcd-mints-collision-proof-record-ids.md)
 (collision-proof record ids), run deliberately after two live collisions in the
 preceding day (the standing record is iss-330; the second occurrence is logged
 in the round-2 entry of `.abcd/work/DECISIONS.md`). The maintainer's decision,

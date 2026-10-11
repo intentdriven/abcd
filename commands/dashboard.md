@@ -2,7 +2,7 @@
 name: dashboard
 description: "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument."
 argument-hint: "[start|stop|status]"
-block: agents
+block: people
 ---
 
 # `/abcd:dashboard`

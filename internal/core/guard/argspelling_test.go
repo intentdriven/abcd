@@ -28,8 +28,10 @@ func TestArgValuesReadAVariableAsWritten(t *testing.T) {
 		{`rm -rf "$PWD"`, VerdictWarn, cwd},
 		{`rm -rf $PWD`, VerdictWarn, cwd},
 		{`rm -rf ${PWD}/*`, VerdictWarn, cwd},
-		{`rm -rf "$BUILD_DIR"/*`, VerdictAllow, ""},
-		{`rm -rf $OUT/`, VerdictAllow, ""},
+		// Not a delete of the root as written; a path from the root when the
+		// variable is empty, which its own entry refuses (iss-2610091942156774).
+		{`rm -rf "$BUILD_DIR"/*`, VerdictBlock, "rm-unguarded-variable-path"},
+		{`rm -rf $OUT/`, VerdictBlock, "rm-unguarded-variable-path"},
 		{`rm -rf /`, VerdictBlock, home},
 		{`rm -rf ~`, VerdictBlock, home},
 		{`rm -rf ~/.*`, VerdictBlock, home},

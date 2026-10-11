@@ -110,11 +110,6 @@
       "id": "iss-196",
       "class": "never-minted",
       "note": "named by iss-200's `found_during` ('fix attempt for iss-196 blocked at pre-PR review') and by the 2026-09-05 entry in .abcd/work/DECISIONS.md, which rules that it be treated as superseded by iss-200. No file of this id was added in any commit on any branch: the narrower fix attempt was abandoned before its capture was committed. The mention is a true account of the run and is not illustrative or forward-looking, so no line marker would be honest."
-    },
-    {
-      "id": "adr-260902101",
-      "class": "never-minted",
-      "note": "not an id anyone allocated: it is the 60-character SLUG truncation of adr-2609021016272867 severing that id mid-number, in iss-2609021857343626's `slug:` frontmatter field ('ruling-owed-on-the-reading-of-at-the-target-in-adr-260902101'). The record's body cites the full id, which resolves. The slug is a machine-derived filename component that every reader reconstructing the filename reads verbatim, so it cannot carry a line marker; a long title naming a record id can produce this shape again."
     }
   ]
 }

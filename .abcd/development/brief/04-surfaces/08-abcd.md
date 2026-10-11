@@ -65,7 +65,9 @@ and in the JSON form's `dir` alike, never by an absolute path
 consumer acts on `dir`. The text line masks a control character or bidi control
 in that name, as every other board line does (iss-2609281736483740); `dir`
 carries the name as it is, escaped by the JSON encoder where it is a control
-byte. The plugin command invokes its JSON form.
+byte. The plugin command draws the product thinker's view as markdown, the
+facilitator's view as markdown when the full board is asked for, and the JSON
+form only when the agent reasons over the fields rather than shows them.
 
 The text form answers in words: `yes` or `no` for the repository and the
 record, and the work tiers named and separated by commas, or `none`. Every
@@ -299,7 +301,7 @@ reason on stderr, as it refuses build next.
 
 ## The board itself is not built
 
-> **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in
+> **Design target (itd-20, `intents/superseded/`, superseded by itd-121, `spec_id: null`).** Everything in
 > the rest of this chapter describes a board that does not exist on any shipped
 > surface. The shipped status path reads `.git`, `.abcd/development` and the
 > three work tiers, and nothing else: no visibility, no disembark log, no

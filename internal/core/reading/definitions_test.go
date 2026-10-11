@@ -698,11 +698,16 @@ const retiredFourthConditionSentence = "Items come back unordered and unweighted
 // with spc-2609020626042471: their object's source list gains the knowledge
 // record, which the include table admits there and not at comparative, so the
 // comparative definition did not move.
+//
+// All four moved PATCH together with iss-2610091942156774: each ends with the
+// guard-lessons block generated from the shell guard's registry, outside the
+// blindness core, which restates the rm the guard refuses for a sub-agent the
+// session's shell rules never reach.
 var promptVersions = map[Position]string{
-	PositionWidening:    "0.2.3",
-	PositionEntailment:  "0.1.3",
-	PositionComparative: "0.1.3",
-	PositionDetection:   "0.1.4",
+	PositionWidening:    "0.2.4",
+	PositionEntailment:  "0.1.4",
+	PositionComparative: "0.1.4",
+	PositionDetection:   "0.1.5",
 }
 
 // TestDetectionItemShapeCitesAConditionIdentity is spc-2609020626046252's

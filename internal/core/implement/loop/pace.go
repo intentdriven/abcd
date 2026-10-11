@@ -20,13 +20,13 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
-// The bundled pace: 120 minutes of work, 300 of pause, two lanes (decision 5,
-// the product thinker's numbers for this repository's runs on 2026-09-20). A
-// repository that measured otherwise writes its own under `pace` in its
-// .abcd/config.json.
+// The bundled pace: 120 minutes of work, no pause, two lanes (decision 5, the
+// product thinker's numbers for this repository's runs on 2026-09-20, with the
+// pause removed by the product thinker's ruling of 2026-10-10). A repository
+// that wants a pause writes its own under `pace` in its .abcd/config.json.
 const (
 	BundledWorkMinutes  = 120
-	BundledPauseMinutes = 300
+	BundledPauseMinutes = 0
 	BundledSubAgents    = 2
 )
 

@@ -15,7 +15,7 @@ shipped machinery, never an aspiration:
 The list-item em-dash rule is machine-enforced as a banned token. The colon
 and semicolon casing rules are `review` by nature — no machine check holds
 them without misfiring on legitimate prose, and
-[adr-54](https://github.com/intentdriven/abcd/blob/main/.abcd/development/decisions/adrs/0054-punctuation-enforcement-stays-mechanical-only.md)
+[adr-54](https://github.com/intentdriven/abcd/blob/main/.abcd/development/decisions/adrs/0054-punctuation-enforcement-stays-mechanical.md)
 records the corpus evidence.
 
 A machine check is promoted, not born, blocking: a new rule enters as a

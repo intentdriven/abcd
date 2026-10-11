@@ -9,7 +9,7 @@ production_mode: hand-written
 
 ## Summary
 
-This spec carries what [spc-2610030911534855](../closed/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md) did not deliver for [itd-2610030810370060](../../intents/planned/itd-2610030810370060-a-person-can-run-abcd-s-interviews-in-a-plain-terminal.md). Its four steps are built: the question type and the drawing, the answer loop, the fixed interviews with the answers record, and the AI-written interviews on the person's own route with the change guard around each turn. On the product thinker's rulings of 2026-10-04 (the decision log), the intent stays planned until three pieces land, and a fourth, found by the last security re-check, joins them:
+This spec carries what [spc-2610030911534855](../closed/spc-2610030911534855-a-person-can-run-abcd-s-interviews-in-a.md) did not deliver for [itd-2610030810370060](../../intents/planned/itd-2610030810370060-a-person-can-run-abcd-s-interviews-in-a.md). Its four steps are built: the question type and the drawing, the answer loop, the fixed interviews with the answers record, and the AI-written interviews on the person's own route with the change guard around each turn. On the product thinker's rulings of 2026-10-04 (the decision log), the intent stays planned until three pieces land, and a fourth, found by the last security re-check, joins them:
 
 - setup's answers file settles every question before setup writes anything, so criterion B3 holds when a file stops at a question decided during the run (iss-2610040025088395);
 - the AI-written interviews in a Terminal take the person's own typed answer beside the role's drafts ("Add it to the remaining work");

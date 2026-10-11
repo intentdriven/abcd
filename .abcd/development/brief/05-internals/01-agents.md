@@ -51,10 +51,13 @@ record carries, and two hand-kept copies drift the moment one side gains a field
 So the cold-reading item contract does not live with cold reading; the reading
 package imports it from there.
 
-`agents/` also holds two plain docs, its README and its changelog, which carry no
-agent frontmatter. Because the plugin manifest declares no agents key, the loader
-globs the flat `agents/*.md` set and registers both as harness agents alongside
-the real prompt files; iss-110 tracks the mis-registration.
+`agents/` holds the prompt files and their per-agent fixture directories and
+nothing else. Because the plugin manifest declares no agents key, the loader
+globs the flat `agents/*.md` set and registers every file in it as a harness
+agent, so the roster's README and changelog, plain docs with no agent
+frontmatter, live at [`.abcd/development/agents/`](../../agents/README.md)
+instead (iss-110), and `TestPluginAgentSurfaceRegistersOnlyAgents` holds the
+directory to prompts alone.
 
 ## The design roster still to be built
 
@@ -153,11 +156,19 @@ does the deterministic work and hands a prompt to the host's subagent dispatch,
 which owns model choice, credentials and execution, and abcd consumes the
 structured result.
 
-Concrete backends are **opt-in adapters** behind the same seam, selected when an
-operator wants abcd to reach a model directly: a local model, a model CLI run as a
-subprocess, a provider API, or a model over MCP. The `oracle.backend` config key
-records the choice, defaulting to host-delegated; an unreachable adapter degrades
-to that default rather than blocking. Per
+Concrete backends are **opt-in adapters** behind the same seam, for an operator
+who wants abcd to reach a model directly. Two ship. A provider API, hosted or a
+local OpenAI-compatible server, is reached through the OpenAI-compatible adapter
+by pointing an agent's `oracle.roles` entry at `<provider>/<model>` on a
+connection `abcd ahoy connect` configured
+([`03-configuration.md` § The provider adapter's keys](03-configuration.md#the-provider-adapters-keys));
+a provider that cannot be reached leaves the step to the host rather than
+blocking. A model CLI run as a subprocess is a runner that
+`roles.<role>.runner` names (`internal/core/runner`); an absent or failing
+runner hands the role back to the host. A model over MCP is a **design
+target**. The `oracle.backend` config key records a choice, defaulting to
+host-delegated, and routes nothing: host-delegated is the only value with an
+adapter behind it, so install records it without asking. Per
 [`04-universal-patterns.md § 7`](04-universal-patterns.md#7-vendor-agnostic-adapters-with-environment-branching)
 the seam is one interface with a native default and opt-in shapes, never a fixed
 cascade the core imposes.

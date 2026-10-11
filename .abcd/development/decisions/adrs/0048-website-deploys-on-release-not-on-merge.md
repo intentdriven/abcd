@@ -14,7 +14,7 @@ related_adrs: [adr-47, adr-37, adr-38]
 
 ## Context
 
-[adr-47](0047-abcdev-app-rendered-from-this-repository-alone.md) makes
+[adr-47](0047-abcdev-app-rendered-from-this-repository.md) makes
 abcdev.app a rendered surface of this repository. The remaining question is
 the trigger. Every hosted platform's default is deploy-on-push, and the
 record is the most alive part of this repository — 1,188 commits in 45 days

@@ -3,6 +3,7 @@ name: scribe
 description: "Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb."
 argument-hint: "assemble --run <rdg-N> --dispositions <path> [--out <dir>] [--dry-run] | ingest --scribe-json <path> --dispositions <path> [--context <path>]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:scribe` — the ledger scribe's context and ingest

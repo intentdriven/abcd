@@ -69,7 +69,7 @@ every consumer treats that as it treats a broken `pii.json`.
 ## Plugin interop
 
 abcd interoperates with peer tools — notably the companion harness
-([adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions-and-mcp.md)) —
+([adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions.md)) —
 over shared conventions and MCP, with **no code dependency in either
 direction**. Interop is a capability, never a prerequisite: abcd runs fully with
 no peer present.

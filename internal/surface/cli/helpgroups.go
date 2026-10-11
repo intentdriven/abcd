@@ -19,7 +19,11 @@ import (
 // around it: the surface snapshot records each placement (surface.Command.Group
 // and .Block), TestEveryVisibleVerbHasAGroup fails on a visible top-level verb
 // with no group, and TestCommandPagesDeclareTheirBlock holds each command page's
-// `block:` frontmatter to the tree.
+// `block:` frontmatter to the tree. The plugin menu follows the same placement
+// (itd-2610090831227812): TestCommandPagesMatchTheMenu holds every agents page
+// to the host's `user-invocable: false`, which hides it from a person's
+// `/abcd:` menu, and TestPluginPersonListEqualsTheCLIs holds the people pages
+// equal to the person's groups here.
 
 // The help group ids. The first five are the person's groups, in the order the
 // help lists them; groupAgents is the agents-and-hosts block, which is one
@@ -83,56 +87,64 @@ type helpPlacement struct {
 	page  string
 }
 
-// helpPlacements is every placement, keyed by the path below the root. Decision
-// 2 of itd-146 places the people's thirteen and the agent block's nine. Twelve of
-// the thirteen sit in the person's groups; drain sits in the agents block until
-// the product thinker rules on where it goes. The person's list holds at most
-// fifteen verbs (ruling H13 of 2026-09-29, which raised the ceiling from
-// fourteen to list reflect under release). The rest are the technical ruling
-// recorded in .abcd/work/DECISIONS.md on 2026-09-25, which gives each its
-// reason, except source, which the merge that landed it placed under records,
-// the block its page declares. cobra's own `help` and `completion` are filed
-// under set-up by applyHelpPlacement, because they exist only once the tree
-// executes.
+// helpPlacements is every placement, keyed by the path below the root. The
+// product thinker placed every verb on 2026-10-09 and 2026-10-10, by who types
+// it: a command a person needs to do their job is a person's, and only a
+// command no person types leaves the person's list (itd-2610090831227812; the
+// entries P1 to P6 in spc-2610100613109045's verb audit). P1 puts abcd (the
+// board), ahoy, build, capture, decide, disembark, embark, intent, launch,
+// update, ideate, dashboard, lab and reading with people, and lint, reflect,
+// inbox, implement, history, site, docs, scribe, identity, guard, hook and
+// statusline with agents. P2 keeps drain with agents until itd-82 ships. P3
+// makes peers and mode agents only, P4 report, spec and rules, and P6 banlist.
+// memory and source stay person's verbs until they merge into library (P4);
+// changelog stays with agents until it merges into launch. Neither surface caps
+// the person's list (the 2026-10-09 menu ruling), and the plugin menu lists the
+// same commands (TestPluginPersonListEqualsTheCLIs). The groups are the spec's
+// decision 1: ideate under records, reading and lab under checks, dashboard
+// under set-up. cobra's own `help` and `completion` are filed under set-up by
+// applyHelpPlacement, because they exist only once the tree executes.
 var helpPlacements = map[string]helpPlacement{
 	// The person's groups.
 	"ahoy":      {group: groupSetUp},
-	"rules":     {group: groupSetUp},
+	"dashboard": {group: groupSetUp},
 	"update":    {group: groupSetUp},
 	"build":     {group: groupRecords},
 	"capture":   {group: groupRecords},
 	"decide":    {group: groupRecords},
+	"ideate":    {group: groupRecords},
 	"intent":    {group: groupRecords},
 	"memory":    {group: groupRecords},
-	"spec":      {group: groupRecords},
 	"source":    {group: groupRecords},
-	"lint":      {group: groupChecks},
+	"lab":       {group: groupChecks},
+	"reading":   {group: groupChecks},
 	"disembark": {group: groupPortability},
 	"embark":    {group: groupPortability},
 	"launch":    {group: groupRelease},
-	"reflect":   {group: groupRelease},
 
-	// The agents-and-hosts block.
+	// The agents-and-hosts block. rules names the page that installs the rule
+	// loader, and spec the user-facing half of the spec lifecycle (the spec's
+	// decision 2).
 	"banlist":             {group: groupAgents, page: "commands/banlist.md"},
 	"changelog":           {group: groupAgents, page: "commands/launch.md"},
-	"dashboard":           {group: groupAgents, page: "commands/dashboard.md"},
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
 	"guard hook":          {page: "commands/guard.md"},
 	"history":             {group: groupAgents, page: "commands/history.md"},
-	"ideate":              {group: groupAgents, page: "commands/ideate.md"},
 	"ideate record":       {page: "commands/ideate.md"},
 	"identity":            {group: groupAgents, page: "commands/identity.md"},
 	"implement":           {group: groupAgents, page: "commands/implement.md"},
 	"inbox":               {group: groupAgents, page: "commands/inbox.md"},
 	"intent audit ingest": {page: "commands/intent.md"},
-	"lab":                 {group: groupAgents, page: "commands/lab.md"},
+	"lint":                {group: groupAgents, page: "commands/lint.md"},
 	"mode":                {group: groupAgents, page: "commands/mode.md"},
 	"peers":               {group: groupAgents, page: "commands/peers.md"},
-	"reading":             {group: groupAgents, page: "commands/reading.md"},
+	"reflect":             {group: groupAgents, page: "commands/reflect.md"},
 	"report":              {group: groupAgents, page: "commands/report.md"},
+	"rules":               {group: groupAgents, page: "commands/ahoy.md"},
 	"scribe":              {group: groupAgents, page: "commands/scribe.md"},
 	"site":                {group: groupAgents, page: "commands/site.md"},
+	"spec":                {group: groupAgents, page: "commands/intent.md"},
 	"statusline":          {group: groupAgents, page: "commands/ahoy.md"},
 
 	// Role 2's ingest sits in the agents block beside Role 1's.
@@ -142,10 +154,9 @@ var helpPlacements = map[string]helpPlacement{
 	// page runs it either side of its own judgement, so it lists with the agents.
 	"intent prepass": {page: "commands/intent.md"},
 
-	// itd-146 decision 2 files drain under records, but the person's list is at
-	// its fifteen-verb ceiling, and each run invocation performs one move and
-	// names the run an agent drives with `implement step`, so an agent reads it
-	// either way. Listed here until the product thinker rules.
+	// Each drain run performs one move and names the run an agent drives with
+	// `implement step`, so it stays with the agents until itd-82 ships (ruling
+	// BX1 of 2026-09-29, P2), when it joins the person's list.
 	"drain": {group: groupAgents, page: "commands/drain.md"},
 }
 

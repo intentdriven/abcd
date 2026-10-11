@@ -1,6 +1,7 @@
 ---
 name: prepare-this-repo
 description: Prepare the current repository to abcd's working conventions — audit it against the abcd record, then adopt the three-tier .abcd/ layout, an AGENTS.md conventions section, and the commit gates. Interim bridge until abcd manages repos directly. Use when the user asks to prepare, onboard, scaffold, or bootstrap a repo for agent work, or to bring a repo up to current conventions. Owned repos only — refuses everywhere else.
+block: people
 ---
 
 # Prepare this repo

@@ -2,7 +2,7 @@
 name: reading
 description: "Render the cold-reading assembler's state: Writes nothing; refuses any argument."
 argument-hint: "[] | assemble --position <widening|entailment|comparative|detection> --target <HEAD|sha> [--out <dir>] [--dry-run] | ingest --reading-json <path> | ingest --dispatch <rdg-N>"
-block: agents
+block: people
 ---
 
 # `/abcd:reading` — cold-reading input assembler

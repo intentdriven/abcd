@@ -36,7 +36,7 @@ candidate, and never fabricate an absent rung. Provenance:
 [`../research/notes/2026-07-09-practice-mvp-tool-extraction.md`](../research/notes/2026-07-09-practice-mvp-tool-extraction.md).
 
 **Typed claims.** The family is a declared record store
-([adr-2609021016270132](../decisions/adrs/2609021016270132-the-principles-family-is-a-declared-record-store-whose-entri.md)):
+([adr-2609021016270132](../decisions/adrs/2609021016270132-the-principles-family-is-a-declared.md)):
 an entry's handle is `prn-<filename stem>`, and an entry may open with a
 frontmatter block declaring what kind of claim it makes and what it rests on.
 

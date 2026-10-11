@@ -102,6 +102,17 @@ type segment struct {
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
 	ifsSplit map[int]bool
+	// varLead records, per token index, a word that opens with a variable
+	// whose value can be empty directly followed by `/` (opensUnguardedPath
+	// in varpath.go), which empty names a path from the filesystem root. Only
+	// an entry's arg_shapes read it (ShapeUnguardedVariablePath). nil when no
+	// word does.
+	varLead map[int]bool
+	// leadFrom records, per token index, a spelled word holding a value a
+	// guard keeps from being empty, as the word and its sites, from which
+	// only a payload re-read's varLead spells it again (leadSpelling in
+	// varpath.go, spellPayload). nil when no word does.
+	leadFrom map[int]leadSource
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built
@@ -491,6 +502,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curVarAt []varSite
 		// splits rides with the segment (segment.ifsSplit).
 		splits map[int]bool
+		// leads rides with the segment (segment.varLead), and leadFrom with
+		// it as segment.leadFrom.
+		leads    map[int]bool
+		leadFrom map[int]leadSource
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -767,6 +782,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		splits[len(toks)] = true
 	}
+	// markVarLead files the word being built under segment.varLead when it
+	// opens with a variable that can be empty, directly followed by `/`
+	// (opensUnguardedPath in varpath.go).
+	markVarLead := func(word []byte, sites []varSite) {
+		if !opensUnguardedPath(word, sites) {
+			return
+		}
+		if leads == nil {
+			leads = map[int]bool{}
+		}
+		leads[len(toks)] = true
+	}
 	// recordSpelling files the word being built under segment.spelled when a
 	// variable's mark is in it: word is the token it becomes, and whole
 	// reports that the token is cur as built, so each mark's place is known.
@@ -784,6 +811,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		case whole:
 			spells[len(toks)] = spellWritten(cur, curVarAt, nil)
 			markIFSSplit(curVarAt)
+			markVarLead(cur, curVarAt)
+			if spellsGuards(curVarAt) {
+				if leadFrom == nil {
+					leadFrom = map[int]leadSource{}
+				}
+				leadFrom[len(toks)] = leadSource{word: bytes.Clone(cur), sites: append([]varSite(nil), curVarAt...)}
+			}
 		case isUnknown(word):
 			spells[len(toks)] = []string{unknownText}
 		}
@@ -813,6 +847,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		spells[len(toks)] = spellWritten(w.b, sites, w.m)
 		markIFSSplit(sites)
+		markVarLead(w.b, sites)
 	}
 	flushToken := func() {
 		if !hasCur {
@@ -897,7 +932,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			curRedirs, andNext = nil, false
 			toks = nil
@@ -906,6 +941,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			vars = nil
 			spells = nil
 			splits = nil
+			leads = nil
+			leadFrom = nil
 			feeds = nil
 			braceGroup = false
 			pipeNext = false
@@ -1052,7 +1089,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
 			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
-			spells: spells, curVarAt: curVarAt, splits: splits,
+			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
@@ -1062,7 +1099,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
-		spells, curVarAt, splits = nil, nil, nil
+		spells, curVarAt, splits, leads, leadFrom = nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -1134,7 +1171,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits = e.spells, e.curVarAt, e.splits
+		spells, curVarAt, splits, leads, leadFrom = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom
 		curRedirs, andNext = e.redirs, e.andNext
 		resumeDocs(e)
 		if !f.bare {
@@ -1159,7 +1196,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits = e.spells, e.curVarAt, e.splits
+		spells, curVarAt, splits, leads, leadFrom = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom
 		curRedirs, andNext = e.redirs, e.andNext
 		feedFrom(e.segStart)
 		if e.procSub {
@@ -1190,6 +1227,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		addVar(spellParameter(body, split)...)
 		site := &curVarAt[len(curVarAt)-1]
 		site.split = split
+		site.guarded = guardedValues(body)
+		site.transform = transformsValue(body)
 		if len(segs) > start {
 			curSub = true
 		}
@@ -2380,6 +2419,8 @@ type enclosing struct {
 	spells     map[int][]string
 	curVarAt   []varSite
 	splits     map[int]bool
+	leads      map[int]bool
+	leadFrom   map[int]leadSource
 	cur        []byte
 	curMask    []byte
 	hasCur     bool

@@ -215,7 +215,7 @@
       "id": "dc-24",
       "category": "stale-record",
       "severity": "minor",
-      "summary": ".abcd/work/issues/resolved/iss-323-hook-salvage-entries-invoke-bootstrap-sh-with-no-timeout-bud.md:12: The resolved record's `resolution:` says every salvage entry (UserPromptSubmit, PreToolUse, PreCompact) declares a 120-second timeout; commit 6a40c898b (ruling CH1) later removed the 120 from PreToolUse and PreCompact, and the changelog line at CHANGELOG.md:84 was derived from this stale text (see dc-17).",
+      "summary": ".abcd/work/issues/resolved/iss-323-hook-salvage-entries-invoke-bootstrap-sh.md:12: The resolved record's `resolution:` says every salvage entry (UserPromptSubmit, PreToolUse, PreCompact) declares a 120-second timeout; commit 6a40c898b (ruling CH1) later removed the 120 from PreToolUse and PreCompact, and the changelog line at CHANGELOG.md:84 was derived from this stale text (see dc-17).",
       "disposition": "deferred",
       "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
     }

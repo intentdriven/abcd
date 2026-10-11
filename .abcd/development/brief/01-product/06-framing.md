@@ -6,7 +6,7 @@ The section opens with a construal statement — what the situation is treated
 as, in one or two sentences — and a widening reading reads against that
 statement and nothing behind it: the construal as it presently stands is
 committed record, its history stays on the local ledger side
-([adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md)).
+([adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its.md)).
 A passage describing an intention rather than a commitment opens with the
 not-yet-real marker: a blockquote line holding exactly `**Status: NOT YET
 REAL.**`, a blank line, then the statement as the first paragraph. The

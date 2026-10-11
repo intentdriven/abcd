@@ -151,8 +151,8 @@ the same advisory lock the ledger allocators use.
 ## References
 
 - Plugin command: [`commands/ideate.md`](../../../../commands/ideate.md)
-- Intent: [`itd-104`](../../intents/shipped/itd-104-abcd-gates-a-new-idea-before-it-becomes-a-record-entry-resea.md)
-- Spec: [`spc-18`](../../specs/closed/spc-18-abcd-gates-a-new-idea-before-it-becomes-a-record-entry-resea.md)
+- Intent: [`itd-104`](../../intents/shipped/itd-104-abcd-gates-a-new-idea-before-it-becomes.md)
+- Spec: [`spc-18`](../../specs/closed/spc-18-abcd-gates-a-new-idea-before-it-becomes.md)
 - Routing-help neighbours: [`05-intent.md`](05-intent.md), [`06-capture.md`](06-capture.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

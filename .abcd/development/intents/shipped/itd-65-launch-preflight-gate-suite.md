@@ -176,17 +176,17 @@ Per-criterion verdicts:
   evidence: internal/core/launch/gates.go:749 — "func narrationFindings(bundle Bundle) []GateFinding {"
   evidence: internal/core/launch/gates_test.go:184 — "func TestNarrationGateHardFailsOnAChangeConstruct"
   evidence: .abcd/development/intents/shipped/itd-65-launch-preflight-gate-suite.md:98 — "Superseded: the offer to auto-append"
-  evidence: .abcd/work/issues/open/iss-2609251827286563-the-launch-gate-suite-s-change-narration-gate-hard-fail-tier.md:1 — "the-launch-gate-suite-s-change-narration-gate-hard-fail-tier"
+  evidence: .abcd/work/issues/open/iss-2609251827286563-the-launch-gate-suite-s-change-narration.md:1 — "the-launch-gate-suite-s-change-narration-gate-hard-fail-tier"
 - ac-4 — MET_WITH_CONCERNS: the dirty-tree row refuses a dirty tree and --allow-dirty proceeds with the override and its paths in the report, on the core and through the CLI; the concern is the open finding that the render path hardcodes the gate to DirtySkip (iss-2609251827294854), so one entry point states a policy it does not apply
   evidence: internal/core/launch/gates.go:941 — "func dirtyTreeGate(repoRoot string, policy DirtyPolicy) (GateSummary, []string, string) {"
   evidence: internal/core/launch/gates_test.go:265 — "func TestDirtyTreeGateRefusesUnlessAllowed"
   evidence: internal/surface/cli/launch_gates_test.go:73 — "func TestLaunchShipRefusesADirtyTreeUnlessAllowed"
-  evidence: .abcd/work/issues/open/iss-2609251827294854-renderpayload-hardcodes-the-dirty-tree-gate-to-dirtyskip-for.md:1 — "renderpayload-hardcodes-the-dirty-tree-gate-to-dirtyskip-for"
+  evidence: .abcd/work/issues/open/iss-2609251827294854-renderpayload-hardcodes-the-dirty-tree.md:1 — "renderpayload-hardcodes-the-dirty-tree-gate-to-dirtyskip-for"
 - ac-5 — MET_WITH_CONCERNS: the documentation-auditor and hook-compliance rows are warn tier, surfaced as warnings and refusing only under strict_warnings in the include config; the concern is the open finding that the hook-compliance row fails open on one shape (iss-2609251827104081)
   evidence: internal/core/launch/gates.go:181 — "if req.Policy.StrictWarnings {"
   evidence: internal/core/launch/gates.go:1003 — "func hookComplianceGate(bundle Bundle) GateSummary {"
   evidence: internal/core/launch/gates_test.go:330 — "func TestWarnRowsSurfaceWithoutBlocking"
-  evidence: .abcd/work/issues/open/iss-2609251827104081-the-launch-gate-suite-s-hook-compliance-row-fails-open-on-a.md:1 — "the-launch-gate-suite-s-hook-compliance-row-fails-open-on-a"
+  evidence: .abcd/work/issues/open/iss-2609251827104081-the-launch-gate-suite-s-hook-compliance.md:1 — "the-launch-gate-suite-s-hook-compliance-row-fails-open-on-a"
 - ac-6 — MET_WITH_CONCERNS: the suite fails closed when the scanner is unavailable or leaves an included file uncovered, never publishing; the premise of the criterion does not hold as written, because gitleaks is not the engine: the 2026-07-24 ruling made the native pattern scanner the default engine with no shell-out and gitleaks an optional stronger one, so there is no pinned-floor check and the fail-closed property attaches to scanner availability and coverage instead
   evidence: internal/core/launch/dryrun.go:241 — "if scan.Unavailable {"
   evidence: internal/core/launch/dryrun.go:247 — "// Fail closed on the coverage gap: any include-selected file the scanner"
@@ -233,5 +233,5 @@ Gap audit:
   - the doc-history auto-reroute ordered before the dirty-tree gate; nothing reroutes, recorded as superseded whole
     evidence: .abcd/development/intents/shipped/itd-65-launch-preflight-gate-suite.md:106 — "Superseded whole: with no auto-append there"
   - the review's five gate-suite findings captured on 2026-09-25 remain open, two of them on gates this audit marks with concerns (hook-compliance fails open; the render path's DirtySkip)
-    evidence: .abcd/work/issues/open/iss-2609251827104081-the-launch-gate-suite-s-hook-compliance-row-fails-open-on-a.md:1 — "the-launch-gate-suite-s-hook-compliance-row-fails-open-on-a"
-    evidence: .abcd/work/issues/open/iss-2609251827294854-renderpayload-hardcodes-the-dirty-tree-gate-to-dirtyskip-for.md:1 — "renderpayload-hardcodes-the-dirty-tree-gate-to-dirtyskip-for"
+    evidence: .abcd/work/issues/open/iss-2609251827104081-the-launch-gate-suite-s-hook-compliance.md:1 — "the-launch-gate-suite-s-hook-compliance-row-fails-open-on-a"
+    evidence: .abcd/work/issues/open/iss-2609251827294854-renderpayload-hardcodes-the-dirty-tree.md:1 — "renderpayload-hardcodes-the-dirty-tree-gate-to-dirtyskip-for"

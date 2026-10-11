@@ -140,7 +140,7 @@ findings is what names it.
 
 `intent review` already shows the correct shape: its emit fires automatically
 from `spec close`, its ingest is a deliberate act, one verb. Per
-[itd-97](../../intents/drafts/itd-97-the-facilitator-is-a-mode-not-a-person-abcd-runs-duo-with-a.md),
+[itd-97](../../intents/drafts/itd-97-the-facilitator-is-a-mode-not-a-person.md),
 deciding *when* a check fires is the facilitator's work. Encoding the trigger
 would double the namespace for no semantic gain and push a facilitator concern
 into a name the other two roles must read.
@@ -189,7 +189,7 @@ promote` cannot then be called "live" elsewhere without failing the build.
 | **AI implementation team** | "Is this change any good?" | **review** and **lint** |
 
 This mapping is the operational reason the split is worth its cost.
-[itd-99](../../intents/drafts/itd-99-a-team-of-product-thinkers-decides-as-one-individual-thinkin.md)
+[itd-99](../../intents/drafts/itd-99-a-team-of-product-thinkers-decides-as.md)
 commits abcd to never asking a product thinker to make a technical decision —
 only to decide on a clear proposal. A product thinker handed a lint failure has
 been handed a technical decision. The four-bucket split with one act per surface

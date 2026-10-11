@@ -1,0 +1,14 @@
+---
+schema_version: 1
+id: "iss-2608250743421381"
+slug: "two-slash-command-argument-hints"
+severity: "major"
+category: "documentation"
+source: "agent-finding"
+found_during: "v0.6.6 brief-surface crosscheck 2026-08-25"
+found_at: "commands/ahoy.md"
+resolution: "commands/ahoy.md advertises [install | uninstall | doctor | dry-run], the four the page carries a flow section for and the four the plugin surface dispatches. The status token is dropped because the binary refuses it and bare abcd ahoy is the status render. identity-check is deliberately NOT added: the page carries a scoping note saying it stays a bare-CLI entrypoint rather than a plugin sub-verb, so a hook or CI job can read its exit code, and a first attempt at this fix that added it was reverted. commands/launch.md advertises [--dry-run] | ship [--changelog-json <path>] | scaffold, so the flag reads as a flag and only the two registered sub-verbs read as sub-verbs. Every token in both hints was invoked against the built binary and resolves."
+impact: fix
+---
+
+two slash-command argument-hints advertise sub-verbs the binary refuses, in the one string a user reads before invoking. commands/ahoy.md:4 offers '[status | install | uninstall | doctor | dry-run]': 'abcd ahoy status' exits 2 with unknown command — bare 'abcd ahoy' is the status render — and the real sub-verb identity-check is absent from the hint. commands/launch.md:4 offers '[dry-run | ship | scaffold]': dry-run is a FLAG, so 'abcd launch dry-run' exits 2 while 'abcd launch --dry-run' exits 0; the binary registers only scaffold and ship. Both files' own bodies get it right, so the drift is confined to the frontmatter hint, which is exactly the part no prose reader checks and the part the harness surfaces first. The brief does NOT get it right: 04-surfaces/01-ahoy.md's dispatch sentence carries the same phantom status token, which is brief-tier and tracked under iss-2608231346137587. A first attempt at this fix ALSO added identity-check to the ahoy hint, which is wrong in the other direction: that verb is deliberately CLI-only, the command page carries a scoping note saying it stays a bare-CLI entrypoint rather than a plugin sub-verb, and the page carries a flow section for every other hinted token and none for it. The plugin dispatch set is install, uninstall, doctor and dry-run. This is a shipped surface, not record drift: commands/ is carried in the release bundle, so the adr-28 disposition that covers brief-tier findings does not apply. Found by the iss-35 crosscheck's plugin-command-surface probe at the v0.6.6 gate; the docs-currency pass had not flagged it across three runs, because its scope reads command prose rather than frontmatter.

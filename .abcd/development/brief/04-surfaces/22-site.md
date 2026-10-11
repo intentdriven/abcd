@@ -5,7 +5,7 @@ version behind, the install snippet no longer matches the CLI, a statistic was
 true last quarter. `/abcd:site` removes the drift by removing the second copy:
 every sentence the site publishes is a span of a repository file, selected by path
 and heading, and a gate refuses to publish text that is not
-([adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md)).
+([adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository.md)).
 
 What that costs the product thinker: a sentence that would improve the site has to be
 written into `docs/` or the record, where it must also read true on the forge.
@@ -57,7 +57,7 @@ release with abcd's checksum- and attestation-verified binary and deploys the
 rendered archive from a second job; and the provider's host configuration. The
 composition and the static inputs are the repository's own once they exist, so
 a later run keeps them as they are, with one exception
-([adr-2609301720596683](../../decisions/adrs/2609301720596683-abcd-adds-a-missing-site-label-to-an-existing-ui-json-and.md)):
+([adr-2609301720596683](../../decisions/adrs/2609301720596683-abcd-adds-a-missing-site-label-to-an.md)):
 an interface-string file that lacks a label the allowlist declares, because it
 was written before the label existed, gains that label with abcd's own words
 for it, and the run names each added label. Nothing the file already says is
@@ -148,7 +148,7 @@ already in the file stays, and a file carrying a
 key no field reads is left untouched and refused as before. The render the
 site gate makes of an empty output directory writes only inside that directory,
 so it never completes the file and refuses an incomplete one by name
-([adr-2609301720596683](../../decisions/adrs/2609301720596683-abcd-adds-a-missing-site-label-to-an-existing-ui-json-and.md)).
+([adr-2609301720596683](../../decisions/adrs/2609301720596683-abcd-adds-a-missing-site-label-to-an.md)).
 
 Every picture is a committed asset under `docs/assets/img/`, referenced from a
 docs page like any other image. SVGs are inlined so their colours follow the
@@ -285,7 +285,7 @@ artefact and is never committed.
 ## References
 
 - Plugin command: [`commands/site.md`](../../../../commands/site.md)
-- Decisions: [`adr-47`](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md), [`adr-48`](../../decisions/adrs/0048-website-deploys-on-release-not-on-merge.md)
+- Decisions: [`adr-47`](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository.md), [`adr-48`](../../decisions/adrs/0048-website-deploys-on-release-not-on-merge.md)
 - Internals: [`05-internals/10-site.md`](../05-internals/10-site.md)
 - Composition rules: [`research/abcdev-site/`](../../research/abcdev-site/)
 - Release surface: [`04-launch.md`](04-launch.md)

@@ -1,7 +1,7 @@
 ---
 name: lab
 description: "List this repository's labs with their pins, probe counts and halts: Writes nothing; refuses outside a git checkout."
-block: agents
+block: people
 ---
 
 # `/abcd:lab`
