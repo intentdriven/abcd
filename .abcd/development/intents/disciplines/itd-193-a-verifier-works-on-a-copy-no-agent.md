@@ -28,7 +28,9 @@ does that on a **copy**, never on the live worktree:
 git -C <worktree> archive HEAD | tar -x -C <scratch>/mut
 ```
 
-The copy lives in the local ephemeral tier. Before reporting, the verifier
+The copy goes outside every working tree: the session's scratchpad or a
+directory under `~/.abcd.noindex/`, never `.abcd/.work.local/scratch/`. Before
+reporting, the verifier
 proves the original is untouched, and says so:
 
 ```text
