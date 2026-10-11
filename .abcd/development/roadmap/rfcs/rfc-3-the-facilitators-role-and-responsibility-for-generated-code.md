@@ -15,7 +15,7 @@ authors: [project]
 
 ## The question
 
-[ADR-2609151528057260](../../decisions/adrs/2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md)
+[ADR-2609151528057260](../../decisions/adrs/2609151528057260-three-roles-who-each-artefact-addresses.md)
 settles who acts. It deliberately leaves open who answers for the result, and
 that question gets harder the better the framework works.
 

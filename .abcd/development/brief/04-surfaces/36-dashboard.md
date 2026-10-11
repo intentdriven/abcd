@@ -4,7 +4,7 @@
 computer that the product thinker opens from a phone, an iPad or another
 computer on their own Tailscale network (itd-2610032150577708,
 spc-2610040741034208). Who may reach it, and on what terms, is the standing
-rule [adr-2610032150581128](../../decisions/adrs/2610032150581128-abcd-is-reachable-on-a-network-only-through-the-dashboard.md)
+rule [adr-2610032150581128](../../decisions/adrs/2610032150581128-abcd-is-reachable-on-a-network-only.md)
 and brief invariant 7's inbound clause
 ([`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
 

@@ -189,6 +189,10 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 	if !slugRe.MatchString(slug) {
 		return Spec{}, fmt.Errorf("spec: slug %q must be kebab-case", slug)
 	}
+	// The slug arrives whole — the intent's, a remainder's, a bundle's name —
+	// and may predate the record cap, so it is cut here, at the one mint every
+	// spec passes (iss-2610100626320367).
+	slug = recordid.CapSlug(slug, recordid.MaxSlugLen)
 	stamp, err := provenance.NewStamp(provenance.KindResearcherAuthored, productionMode)
 	if err != nil {
 		return Spec{}, fmt.Errorf("spec: %w", err)

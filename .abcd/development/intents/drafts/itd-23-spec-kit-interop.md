@@ -20,7 +20,7 @@ severity: minor
 
 Legacy abcd shipped `spec-export` and `spec-import` for [GitHub Spec Kit][spec-kit] interop, but those tools targeted the earlier feature-spec format. abcd uses intents (press-release format), so the old importers do not apply directly. The interop concept is still valuable — abcd users collaborate with non-abcd teams who use Spec Kit, Linear, Jira, or Notion as their canonical artefact.
 
-The right format-of-record question (which external tools, which adapter shapes, what fidelity guarantee on round-trip) needs fresh design. This interop is now more tractable than before: adapters are a first-class abcd pattern ([adr-22](../../decisions/adrs/0022-bundled-deps-as-pluggable-adapters.md), [adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions-and-mcp.md)), so a Spec Kit ↔ intent adapter is one more instance of an established shape rather than bespoke plumbing.
+The right format-of-record question (which external tools, which adapter shapes, what fidelity guarantee on round-trip) needs fresh design. This interop is now more tractable than before: adapters are a first-class abcd pattern ([adr-22](../../decisions/adrs/0022-bundled-deps-as-pluggable-adapters.md), [adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions.md)), so a Spec Kit ↔ intent adapter is one more instance of an established shape rather than bespoke plumbing.
 
 See [`research/legacy-harvest.md`](../../research/legacy-harvest.md) Pass 2 (skills) and Pass 5 (v0 scripts) for the deferral context.
 

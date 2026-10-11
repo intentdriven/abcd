@@ -54,10 +54,6 @@ var minter recordid.Minter
 // intent and spec stores' budget.
 const mintRetryBudget = 8
 
-// maxSlugLen caps the derived slug so a pathological title cannot produce an
-// unwieldy filename. Mirrors the intent-side derivation budget.
-const maxSlugLen = 60
-
 // mintLockTimeout bounds how long Create waits for the store mint lock. A var
 // (not const) so a test can shorten it to exercise contention.
 var mintLockTimeout = 5 * time.Second
@@ -168,7 +164,7 @@ func create(repoRoot, title string, render func(Decision) string) (Decision, err
 // and non-empty — the slug becomes a filename, so it is validated before any
 // path is built.
 func deriveSlug(title string) (string, error) {
-	collapsed := recordid.Slug(title, maxSlugLen)
+	collapsed := recordid.Slug(title, recordid.MaxSlugLen)
 	if collapsed == "" {
 		return "", fmt.Errorf("decide: title %q has no slug-able characters", title)
 	}

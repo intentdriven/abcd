@@ -369,9 +369,14 @@ func spelledViews(s segment) []segment {
 // the mark-view word's known text in the same order around it (fitsWritten);
 // a word no reading pairs keeps the spelling it has, which names no variable.
 // A word paired with more than maxSpellings texts, or with a text past a
-// bound, is spellCapped. Nothing else of psegs is changed.
+// bound, is spellCapped. A paired word also takes its segment.varLead from
+// the readings it was paired with, any one of which opening a path with a
+// variable that can be empty marks it: the mark-view word holds the value's
+// mark, whose name it no longer has (opensUnguardedPath). Nothing else of
+// psegs is changed.
 func spellPayload(psegs []segment, named []string) {
 	paired := make([]map[int][]string, len(psegs))
+	leads := make([]map[int]bool, len(psegs))
 	for _, nm := range named {
 		nsegs, err := tokenize(nm)
 		if err != nil || len(nsegs) != len(psegs) {
@@ -398,6 +403,10 @@ func spellPayload(psegs []segment, named []string) {
 				if !fitsWritten(m.tokens[j], n.tokens[j]) {
 					continue
 				}
+				if leads[i] == nil {
+					leads[i] = map[int]bool{}
+				}
+				leads[i][j] = leads[i][j] || n.varLead[j]
 				for _, w := range ws {
 					if fitsWritten(m.tokens[j], w) {
 						if paired[i] == nil {
@@ -415,6 +424,18 @@ func spellPayload(psegs []segment, named []string) {
 				texts = []string{spellCapped}
 			}
 			psegs[i].spelled[j] = texts
+		}
+	}
+	for i, words := range leads {
+		for j, lead := range words {
+			switch {
+			case lead && psegs[i].varLead == nil:
+				psegs[i].varLead = map[int]bool{j: true}
+			case lead:
+				psegs[i].varLead[j] = true
+			default:
+				delete(psegs[i].varLead, j)
+			}
 		}
 	}
 }

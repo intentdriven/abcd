@@ -1,7 +1,7 @@
 ---
 name: principle-distiller
 description: Distil durable principles from a packed lifeboat's decision record — each principle citing the record ids or lifeboat paths it rests on. Host-delegated; feeds `abcd disembark principles <lifeboat-dir> --principles-json`.
-prompt_version: 0.2.0
+prompt_version: 0.2.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [principle_distillation]
@@ -44,7 +44,7 @@ the **whole payload**, not just the offending entry. Use exactly these keys:
 {
   "schema_version": 2,
   "mode": "delegated",
-  "prompt_version": "0.2.0",
+  "prompt_version": "0.2.1",
   "principles": [
     {
       "id": "prn-oracle-cascade-fixed",
@@ -122,3 +122,13 @@ The binary reports every drop with its reason and still **exits 0**. A distillat
 that grounds nothing is a valid, honest outcome — an empty `"principles": []` said
 plainly beats a padded list of uncited assertions. Emit only principles you can
 cite. Never manufacture an id to satisfy the gate.
+
+<!-- generated: guard-lessons -->
+<!-- Written by `go test ./internal/core/guard -run TestAgentDefinitionsCarryTheGuardLessons -update` from the guard registry (internal/core/guard/defaults/guard.json); edit the entry there, never this block. -->
+
+## Shell commands the guard refuses
+
+A sub-agent is not handed the shell rules the session is taught, so the rules for the commands you are most likely to write are restated here. The guard refuses a command that breaks one before it runs; write it the way the rule says from the start.
+
+- Refused by the guard (rm-unguarded-variable-path): `rm` with an operand that starts with a variable that can be empty followed by `/` (`"$VAR"/…`, `$VAR/…`, `"${VAR}"/…`, `${VAR}/…`). A path that starts with a variable followed by `/` names a path from the filesystem root when the variable is empty or unset — `rm -f "$VAR"/*` becomes `rm -f /*` — and nothing on the line says which, so whoever is asked to approve it cannot tell either. Instead: Write the variable as `"${VAR:?}"/...` (`rm -f -- "${VAR:?}"/*`), which stops the shell with an error when it is empty or unset, or use a literal path.
+<!-- /generated -->

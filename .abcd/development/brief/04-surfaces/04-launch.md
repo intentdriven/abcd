@@ -192,7 +192,7 @@ with no semantic detector degrades cleanly to the deterministic gates and the
 empty build job.
 
 **Dependency-bump re-authoring is opt-in per repository**
-([itd-2609221842494980](../../intents/shipped/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md)).
+([itd-2609221842494980](../../intents/shipped/itd-2609221842494980-a-dependency-bump-lands-without-a-person.md)).
 Opting in seeds the declaration, `.abcd/config/dependency-reauthor.conf`, and
 the declaration's presence keeps the repository opted in on every later run;
 without it nothing of this is written. Beside the release workflows the scaffold
@@ -209,7 +209,7 @@ lands, is outside the bound, and anything else is left alone with the clause it
 failed named. The bound judges which files change, never their content: a
 manifest's content inside the bound (a `go.mod` `replace`, `toolchain` or `tool`
 directive, a `go.sum` line) is re-authored unreviewed, the residual
-[adr-2609292116133348](../../decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re-authored-as-the.md)
+[adr-2609292116133348](../../decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re.md)
 accepts. The in-bound commit is replayed with the owner as author and committer,
 a message naming the bot and the workflow, and `Assisted-by: None`, pushed under
 a lease by a GitHub App whose id and key are Dependabot secrets
@@ -529,6 +529,13 @@ than a design target.
 - **What blocks** is a severity of `major` or `critical`, and also a severity
   that is absent, misspelled, or outside the ledger's enum. An unreadable grade
   has not been judged, and "not judged" must not read as "not serious".
+- **An uncommitted open record** refuses under `unfixed-finding` too, at any
+  severity. The gate reads the ledger at `HEAD`, so an issue record under
+  `open/` that differs from `HEAD` (an uncommitted edit, waiver or regrade, a
+  capture, a removal) is a finding it cannot judge; the refusal names every
+  such path, and no override waives it. When an unfixed or deleted
+  finding is present too, the findings line names the uncommitted paths beside
+  their counts, so one run names every reason.
 - **The waiver** is the frontmatter pair `deferred_after` plus
   `deferral_reason`, both schema-accepted keys, written by the ledger's deferral
   verb ([`06-capture.md`](06-capture.md)). `deferred_after` names the cut's
@@ -581,7 +588,7 @@ version-writing refuses and the escalation stands. Concretely, the cut:
 A release publishes its plugin as one zip, `<plugin>-plugin-v<version>.zip`,
 and the committed catalog names it:
 `{"source": "archive", "url": "<repository>/releases/download/v<version>/<name>", "sha256": "<digest>"}`
-([adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md),
+([adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s.md),
 amending adr-19 and adr-20 on the 2026-09-23 ruling). The harness downloads the
 zip and refuses it when the digest differs, so an install or update at the tip of
 `main` receives the latest cut release, stamped with its version and

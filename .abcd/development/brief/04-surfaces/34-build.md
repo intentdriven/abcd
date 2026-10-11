@@ -165,8 +165,8 @@ the build's own pace, sub-agent and fix-round flags, the pace written as
 `<work-minutes>/<pause-minutes>`; `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
 `pace.fix_rounds` in the
 repository's `.abcd/config.json`; the same keys in `~/.abcd.noindex/config.json`; and
-the bundled default, 120 minutes of work, 300 of pause, 2 sub-agents and 3 fix
-rounds (decision 5 and ruling DR1), held in one set of constants. The files are read through the
+the bundled default, 120 minutes of work, no pause, 2 sub-agents and 3 fix
+rounds (decision 5, the pause removed by the ruling of 2026-10-10, and ruling DR1), held in one set of constants. The files are read through the
 reader's guards (a regular file inside the checkout; on the machine, one the
 caller owns and nobody else can write), and the reader claims the `pace`
 namespace, so a key under it the loop does not read is refused rather than
@@ -479,7 +479,10 @@ every path it names held inside the lane's directory. Its fields are
 `definition_of_done` (`command`, `exit_code`, `output`), `report`, an
 optional `model`, the model the implementer's harness reported, and an optional
 `resolves`: each capture the lane fixed, with the `commit` that fixed it, the
-`note`, the `impact` and the `grounds` its resolution records. It verifies
+`note`, the `impact` and the `grounds` its resolution records. On an
+issue-keyed lane an optional `handback` (`kind`, `reason`, `home`) stands in
+for `resolves`: it ends the lane, discards its worktree and branch and hands the
+issue back by kind ([`35-drain.md`](35-drain.md)). It verifies
 only when every commit it names is on the lane's branch and not already on the
 default branch at the lane's base, the definition of done's output exists
 non-empty with exit code 0, the report exists non-empty, and each fixed capture

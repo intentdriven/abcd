@@ -10,7 +10,7 @@ the retrospective stays a judgement and never becomes a second copy of the
 record.
 
 The grain is the release, deliberately
-([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)
+([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md)
 retired the phase; itd-24 decisions 4 and 5). Per-intent reflection is the
 `intent-auditor`'s job, and a retrospective per intent would be a chore nobody
 finishes.

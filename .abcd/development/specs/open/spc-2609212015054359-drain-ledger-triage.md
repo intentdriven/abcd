@@ -35,7 +35,8 @@ under the pace rule.
    done, resolve and pull request apply (criterion 3).
 5. **The hand-back, by kind**: user moment → `capture promote <iss-N>`
    (itd-119's verb) and nothing else written; trust rule → a flag in the
-   summary with the question; above severity or outside the fixable set →
+   summary with the question and the decision-record marker on the open
+   issue (decision 10); above severity or outside the fixable set →
    a flag naming the rule; other → a flag with the proposed home; a
    `handback:` on a lane report → the lane discarded and the same routing
    (criteria 4, 5, 6).
@@ -57,7 +58,10 @@ under the pace rule.
 ## Out of scope
 
 - The lane's internals (the parent); picking among intents (the sibling).
-- Writing a classification onto the issue (decision 8).
+- Writing a classification onto the issue (decision 8); the decision-record
+  marker is a hand-back's flag, not a classification (decision 10).
+- A run flag that lets `major` through (decision 11): a repository's drain
+  record loosens its own rule.
 
 ## Approach
 
@@ -92,6 +96,9 @@ ADR is minted in the first delivery and reviewed with the diff.
 5. A pull request that leaves the merge queue is put back (iss-2610090642376032)
    - packages: internal/core/implement/loop
    - tests: a landed pull request left unqueued at CLEAN is enqueued, and one dropped after a failed merge-group check is reported with the failed check
+6. The decision-record marker on the issue (decision 10)
+   - packages: internal/core/issueschema, internal/core/capture, internal/core/implement
+   - tests: a trust-rule hand-back writes a `decision_needed:` field holding its question onto the open issue and changes nothing else in the record; the dry run and the next drain pass a marked issue over with the marker as its reason; invariant 19 and the drain page name the marker
 
 ## How the criteria are satisfied
 
@@ -101,7 +108,7 @@ ADR is minted in the first delivery and reviewed with the diff.
 | 2 judgement only hands back | scope 3 |
 | 3 the issue-keyed lane | scope 4 |
 | 4 user moment promoted, `related_intents` stamp only | scope 5 |
-| 5 trust rule flagged, nothing minted | scope 5 |
+| 5 trust rule flagged and marked, nothing minted | scope 5, step 6 |
 | 6 handback stops and routes | scope 5 |
 | 7 window exit; `--max` | scope 7 |
 | 8 the summary | scope 8 |
@@ -156,4 +163,5 @@ until the run itself closes it.
 - **Remaining:** scope 3 (the host judgement over each eligible remedy; the run
   opens a lane for every eligible issue until it lands, and only the lane can
   hand its issue back), and the counts of scope 8 not yet in the summary (the
-  spend).
+  spend), and the decision-record marker on a trust-rule hand-back (decision
+  10).

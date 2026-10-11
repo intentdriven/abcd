@@ -549,6 +549,19 @@ approvals had before they listed anything.
 | `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
+**A docs-lint root that does not resolve is a report-only gap**
+(iss-2610100649479892). Each `roots` entry of `.abcd/docs-lint.json` that names
+nothing on disk, judged as the documentation check judges it, raises one
+non-required, non-resolvable `config-change` gap, `docs_lint.root_missing`,
+whose fix hint names the file to edit and the entry to take out (or create).
+The check refuses to run while one is listed, so every rule it carries, the
+banned names included, checks nothing. The usual cause is a `CLAUDE.md` retired
+after it was listed, by the conventions-file offer or by hand: the offer
+removes the file and nothing else, and `.abcd/docs-lint.json` is the person's
+file, which setup reads but never edits once it exists. A missing or unloadable
+config raises nothing here, and an entry that is not a plain path inside the
+repository is not looked up: the check's own refusal names both.
+
 **The artefact kind is a gap until it is declared** (itd-2609150819432059). A
 managed repository with no `.abcd/config/artefact.json` raises a required,
 resolvable `artefact.missing` gap, because the launch verbs choose what to
@@ -739,6 +752,18 @@ a saved setting puts that approval even with no `config-change` gap, and a
 decline drops it, saves nothing and names it (the product thinker's ruling on
 iss-2610071538032843, "do what the user tells you in their response, no
 surprises").
+
+**The seeded roots are what exists** (iss-2610040758095861). The seeded
+docs-lint config lists `docs` in `roots` only when that folder exists and
+`README.md` only when that path exists, each looked up inside the project at
+install time. A seed naming a root that is not there armed a check that refused
+from the moment it was written, and with `docs_lint.root_missing` and the
+bare lint reporting that refusal, every such fresh install would open on an
+error. With neither, `roots` is `[]`: the check runs, reads no
+document and warns that nothing was checked, at exit 0, the honest report for a
+repository with no documentation yet, which a refusal would overstate and a
+silent pass would hide. Only the seed of a new config is shaped this way; an
+existing config is never changed.
 
 **The house-style question.** When the install seeds the docs-lint config, it
 asks one more question: whether the em-dash-in-list-item rule, abcd's own house

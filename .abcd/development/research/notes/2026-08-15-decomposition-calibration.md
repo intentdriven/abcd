@@ -366,7 +366,7 @@ Per hand-run, append:
 - **Corrected routing:** read-only doctor + drift + tier report (capability |
   itd-92, extended in place); apply-on-request (capability | future intent,
   named in itd-92's out-of-scope); both trust rules (ADR |
-  [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity-trust-rules.md),
+  [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md),
   proposed, brief invariant at adoption); gate refusal policy (deferred to
   its own decision record after doctor field experience — out of itd-92's
   press release entirely); verdict mechanics (plumbing | spec at planning);

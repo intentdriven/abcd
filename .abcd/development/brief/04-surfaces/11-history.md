@@ -95,7 +95,7 @@ owns is refused and left untouched (iss-2609291610432030).
   the scribe stamp of one run and exits non-zero; otherwise it says the property
   held for the runs it saw, or that it is unobserved when no retained transcript
   carries a stamp, and never that it is clean
-  ([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the-ledger-and-a-per-run.md)).
+  ([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the.md)).
   The listing's text render ends with the same one line.
 
 - **Ingesting** — redact and store transcripts that are already on disk, at the
@@ -330,10 +330,12 @@ transcript is redacted on write, the redaction counts are recorded on the
 record, and a redaction failure refuses the write rather than storing
 unredacted content.
 
-The corpus has three write paths that all redact: the explicit capture,
-the explicit drain, and the automatic session-start drain. The migration above is a fourth
-path into the store, reached from every verb rather than from those three, and
-the one that does not redact: it moves bytes verbatim, because a record at the
+Every write path into the corpus redacts but one: a capture, whether the
+explicit one or a delegated agent's transcript that `abcd build` and the written
+interview store through that same capture; an ingest; and a drain, whether
+explicit, at session start, or live on a prompt. The migration above is the
+exception, a path into the store reached from every verb rather than from
+those, and the one that does not redact: it moves bytes verbatim, because a record at the
 legacy path was redacted by the same engine when it was first stored, and a
 staged file moves into staging, where the next drain redacts it exactly as it
 would a freshly staged one. Relocating a corpus is not the moment to rewrite it.
