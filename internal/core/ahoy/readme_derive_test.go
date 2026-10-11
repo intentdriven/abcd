@@ -203,6 +203,15 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 		"- [`abcd` and_more](#abcd-and_more)",
 	}, "\n"))
 
+	// The forge numbers a repeated slug from the slug's own count and moves
+	// past a number a heading already owns: the third heading here is
+	// install-2, not a second install-1.
+	t.Run("a numbered slug a heading already owns", func(t *testing.T) {
+		root := readmeRepo(t, "", map[string]string{"README.md": "# P\n\n## Install\n\n## Install-1\n\n## Install\n\n## Install\n"})
+		d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+		wantBody(t, d, "- [Install](#install)\n- [Install-1](#install-1)\n- [Install](#install-2)\n- [Install](#install-3)")
+	})
+
 	for name, readme := range map[string]string{
 		"no README.md":                 "",
 		"level-three headings only":    "# Project\n\n### Detail\n",

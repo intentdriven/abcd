@@ -538,7 +538,7 @@ func (r *readmeSource) contents() (string, string) {
 			inPart[i] = true
 		}
 	}
-	seen := map[string]int{}
+	seen := readmeSlugger{}
 	var out []string
 	hasH2 := false
 	for i, ln := range lines {
@@ -550,13 +550,7 @@ func (r *readmeSource) contents() (string, string) {
 			continue
 		}
 		text := strings.TrimSpace(inlineLinkRe.ReplaceAllString(m[2], "$1"))
-		slug := headingSlug(text)
-		if n, ok := seen[slug]; ok {
-			seen[slug] = n + 1
-			slug = fmt.Sprintf("%s-%d", slug, n+1)
-		} else {
-			seen[slug] = 0
-		}
+		slug := seen.anchor(text)
 		level := len(m[1])
 		if inPart[i] || text == "" || (level != 2 && level != 3) {
 			continue
@@ -573,6 +567,27 @@ func (r *readmeSource) contents() (string, string) {
 		return "", noLevelTwoHeading
 	}
 	return strings.Join(out, "\n"), ""
+}
+
+// readmeSlugger numbers heading anchors across a page as the forge does: a
+// slug already taken takes the next number its own base has not handed out
+// and no heading already owns, so `Install`, `Install-1`, `Install` anchor
+// #install, #install-1 and #install-2. It counts per base slug.
+type readmeSlugger map[string]int
+
+// anchor returns the next heading's anchor and records it as taken.
+func (s readmeSlugger) anchor(text string) string {
+	base := headingSlug(text)
+	slug := base
+	for {
+		if _, taken := s[slug]; !taken {
+			break
+		}
+		s[base]++
+		slug = fmt.Sprintf("%s-%d", base, s[base])
+	}
+	s[slug] = 0
+	return slug
 }
 
 // headingSlug is the forge's heading anchor: lower case, every character but
