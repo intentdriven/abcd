@@ -492,7 +492,7 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, cc...)
 	}
 
-	// surface_coverage cross-checks the plugin surface (commands/, skills/ —
+	// surface_coverage cross-checks the plugin surface (commands/, skills/, agents/ —
 	// outside cfg.Roots) against the brief's surface registry (inside a root), so
 	// it too runs once, outside the per-root loop.
 	if scCfg, ok := cfg.Rules["surface_coverage"]; ok && scCfg.Enabled {
@@ -894,7 +894,10 @@ type surfaceRow struct {
 //     marked "staged" does not — the bare "/abcd" top-level names no sub-verb,
 //     so its command file is the configured BareCommand and it is exempt from
 //     the file check;
-//   - registry integrity: every row's status is "shipped" or "staged".
+//   - registry integrity: every row's status is "shipped" or "staged";
+//   - agent coverage, armed by AgentsDir: every agents/*.md page has a row in
+//     the registry's agents table, and every row there names a page
+//     (checkAgentCoverage, iss-2610110456358519).
 //
 // It is a row-level presence check and says so in every finding
 // (SurfaceCoverageLabel): it reads no chapter prose. A chapter's flags and
@@ -962,7 +965,11 @@ func checkSurfaceCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			})
 		}
 	}
-	return out, nil
+	agents, err := checkAgentCoverage(repoRoot, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, agents...), nil
 }
 
 // surfaceLabel renders a surface name as its slash-command spelling.
