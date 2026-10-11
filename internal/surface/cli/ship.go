@@ -882,18 +882,12 @@ func findingsLine(g changelog.FindingGuard) string {
 	if len(g.Deleted) > 0 {
 		line += fmt.Sprintf(" (%d record(s) deleted from the ledger since %s)", len(g.Deleted), g.BaseTag)
 	}
-	// The uncommitted open records are named here when an unfixed or deleted
-	// finding is present too (iss-2610072347238476). The cut raises them as a
-	// refusal of their own only when neither list carries anything, so beside
-	// either the paths reached the operator through --json alone, and fixing the
-	// named findings led straight to a second refusal this run could have shown.
-	if len(g.Uncommitted) > 0 && (len(g.Unfixed) > 0 || len(g.Deleted) > 0) {
-		paths := make([]string, len(g.Uncommitted))
-		for i, p := range g.Uncommitted {
-			paths[i] = termsafe.Sanitize(p)
-		}
-		line += fmt.Sprintf(" (%d open record(s) differ from HEAD, commit or discard them: %s)",
-			len(g.Uncommitted), strings.Join(paths, ", "))
+	// The uncommitted open records are counted like the other two halves, and
+	// named once, by the refusal the cut raises for them whatever else is
+	// present (iss-2610072347238476, iss-2610090642371836): naming the paths
+	// here too would print them twice.
+	if len(g.Uncommitted) > 0 {
+		line += fmt.Sprintf(" (%d open record(s) differ from HEAD)", len(g.Uncommitted))
 	}
 	if len(g.Waived) > 0 {
 		line += fmt.Sprintf(" (%d deferred)", len(g.Waived))

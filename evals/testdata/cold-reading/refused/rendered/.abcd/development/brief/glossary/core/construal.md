@@ -2,8 +2,9 @@
 
 What the situation is treated as.
 
-## **Audit Notes**
+ ## **Audit Notes**
 
-ABCD-EVAL-REFUSED-RENDERED under an emphasised excluded heading, in a glossary
-term that travels whole. The redactor compares heading titles by their
-normalised text, which the emphasis marks defeat, so it has no span to delete.
+ABCD-EVAL-REFUSED-RENDERED under an emphasised, indented excluded heading, in a
+glossary term that travels whole. The section scan reads column 0 alone, so the
+redactor has no span to delete, and only the rendering equality recognises the
+emphasised title as the excluded one.
