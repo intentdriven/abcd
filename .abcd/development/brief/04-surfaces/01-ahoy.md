@@ -43,10 +43,11 @@ commands. The slash command dispatches every sub-verb and
 mode but the identity check, the write verbs included, and each announces that
 it writes before it runs. The identity check is a plain command-line
 entrypoint, because its exit code is the whole point of it and its home is a
-pre-commit hook or CI rather than a conversation. `status` is a plugin-page
-alias for the bare form and has no CLI sub-command behind it: `abcd ahoy
-status` is refused as an unknown command. Every other word ships on the CLI:
-the table above is the sub-verb set, and the modes are the bare verb's flags.
+pre-commit hook or CI rather than a conversation. `status` is a word neither
+surface takes: the plugin page passes it to the binary, which refuses it like
+any other word it does not register, so `abcd ahoy status` is an unknown
+command. The table above is the sub-verb set, and the modes are the bare verb's
+flags.
 
 - **Install** installs or updates abcd in this repo, covering first install
   and upgrade alike. It runs the detection pass, then an apply pass over the
@@ -392,6 +393,12 @@ earlier version wrote wider is narrowed when abcd next writes it
   inbox/                         reports managed repositories filed back to abcd,
                                  <received-stamp>-<sender-key>.md; promoted/ keeps
                                  the ones filed as captures (itd-2609221656361680)
+  interviews/                    the setup answers that change the machine (the
+                                 status line, the machine's routing table), one
+                                 record per install run that asked them
+  backups/                       copies of the harness's settings file, taken
+                                 before the status line changes it; the newest 10
+                                 are kept
   config.json                    the machine layer of the layered configuration,
                                  read-only except for the provider blocks
                                  (oracle.api.<provider>) the provider setup writes,
@@ -421,8 +428,20 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  between the bundled domains and each repo's
                                  .abcd/rules.json, read-only; abcd never creates it
                                  (itd-117)
+  oracle-routing.json            the machine's model-tier routing table, written
+                                 owner-only on the install's answered consent and
+                                 left by uninstall (itd-2609170822093401)
+  statusline.json                the status line's settings: the elements switched
+                                 on and the command the harness ran before abcd
+                                 took the row; written on the status-line offer's
+                                 consent, left by uninstall
   path-entry                     the abcd copy this machine owns, the one PATH binary a
                                  hook will run
+  cache-attestation              the bootstrap's record that the plugin data
+                                 directory's cached binary matched the published
+                                 release manifest, written only after that check
+                                 passed; install promotes the cache to the owned
+                                 PATH copy only when the record agrees
   trusted-roots                  foreign-uid configuration roots the caller vouches for
   local-transcript-roots         checkouts whose transcripts are pulled in to
                                  <repo>/.abcd/.work.local/transcripts/ instead
