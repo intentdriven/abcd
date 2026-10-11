@@ -3,11 +3,14 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -241,5 +244,30 @@ func TestBuildNextRendersMaskTheStateFilesText(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("the masked line still names %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestBuildNextBacksOffWhileTheSeriesIsLocked: a move that cannot take the
+// series' lock exits 3, contention, naming it.
+func TestBuildNextBacksOffWhileTheSeriesIsLocked(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	mustImplement(t, "build", "next", "--max", "2", "--json")
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- fsutil.WithFileLock(filepath.Join(repo.Root(), ".abcd", ".work.local", "run", "next.lock"), time.Second, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	ref := refusalDocs(t, 3, "build", "next", "--json")
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if ref["stage"] != "pick" || ref["contention"] != true || !strings.Contains(ref["reason"].(string), "another `abcd build next` is moving") {
+		t.Fatalf("the contention names the series' move: %v", ref)
 	}
 }

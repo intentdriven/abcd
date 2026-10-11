@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The run count of `abcd build next` (itd-2609211116005482 criterion 5,
@@ -316,6 +318,79 @@ func TestTheRunRecordCarriesThePickAndItsFalsifier(t *testing.T) {
 	}
 }
 
+// TestARemovedPickIsPickedPast: a pick whose run directory was removed (the
+// way out of a handed-back run) is a lane that stopped, so the series picks
+// again, records the pick removed, and excludes the intent naming it.
+func TestARemovedPickIsPickedPast(t *testing.T) {
+	root := seriesRepo(t)
+	first, err := Next(root, Options{}, NextOptions{Max: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(runRel(first.Start.RunID)))); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Next(root, Options{}, NextOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Pick == nil || second.Pick.Chosen.ID != "itd-11" || second.Start == nil {
+		t.Fatalf("a removed pick's lane stopped, so the series picks again: %+v", second)
+	}
+	if p := second.Series.Picks[0]; p.Outcome != SeriesPickRemoved || p.Falsified || len(second.Series.Picks) != 2 {
+		t.Fatalf("the series records the first pick removed: %+v", second.Series.Picks)
+	}
+	removed := false
+	for _, e := range second.Excluded {
+		if e.ID == "itd-10" && e.Check == CheckSeries && strings.Contains(e.Reason, first.Start.RunID+", which came to "+SeriesPickRemoved) {
+			removed = true
+		}
+	}
+	if !removed {
+		t.Fatalf("the removed pick's intent is excluded naming what its run came to: %+v", second.Excluded)
+	}
+}
+
+// TestASeriesMoveBacksOffWhileAnotherHoldsItsLock: a move that cannot take
+// next.lock within the lock timeout is refused as contention (exit 3 at the
+// front door), at the pick, and starts nothing.
+func TestASeriesMoveBacksOffWhileAnotherHoldsItsLock(t *testing.T) {
+	root := seriesRepo(t)
+	first, err := Next(root, Options{}, NextOptions{Max: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliver(t, root, first.Start.RunID)
+	before, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(NextSeriesRel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- fsutil.WithFileLock(filepath.Join(root, filepath.FromSlash(nextLockRel)), time.Second, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	_, err = Next(root, Options{}, NextOptions{})
+	close(release)
+	if lockErr := <-done; lockErr != nil {
+		t.Fatal(lockErr)
+	}
+	if r := mustRefusal(t, err); !r.Contention || r.Stage != StagePick || !strings.Contains(r.Reason, "another `abcd build next` is moving") {
+		t.Fatalf("a held series lock is contention at the pick: %+v", r)
+	}
+	after, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(NextSeriesRel)))
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("a move that backed off changes nothing in the series (%v)", err)
+	}
+	if runs, _ := Runs(root); len(runs) != 1 {
+		t.Fatalf("a move that backed off starts no run: %d runs", len(runs))
+	}
+}
+
 // TestASeriesRefusesAnOutcomeItNeverWrites: a pick's outcome in next.json is
 // one of the four the series writes; any other text (a hand edit, or a file a
 // hostile checkout ships, carrying terminal control runes) is refused at the
@@ -345,5 +420,67 @@ func TestASeriesRefusesAnOutcomeItNeverWrites(t *testing.T) {
 		if runs, _ := Runs(root); len(runs) != 1 {
 			t.Fatalf("a refused series starts no run: %d runs", len(runs))
 		}
+	}
+}
+
+// TestAPickedRunHandedBackAfterItsFixRoundsLeavesTheEntryAlone is criterion
+// 6's "the entry is not edited": a picked run whose lane takes its one fix
+// round and is then handed back as unachievable meets the pick's falsifier in
+// the run record, and the intent's grounds, as the pick commit wrote them on
+// the lane's branch, are byte for byte what they were; the checkout the run
+// started from is never written.
+func TestAPickedRunHandedBackAfterItsFixRoundsLeavesTheEntryAlone(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)}})
+	ir, _ := pickRel("10")
+	before, err := os.ReadFile(filepath.Join(repo.Root(), ir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Next(repo.Root(), Options{FixRounds: strp("1")}, NextOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := res.Start.RunID, DefaultStages()
+	l := implemented(t, repo, id, stages, "one.txt")
+	picked := repo.Git("show", l.PickSHA+":"+ir)
+	if strings.Count(picked, "- pursued: picked by run "+id+" on ") != 1 {
+		t.Fatalf("the pick commit carries the run's one entry:\n%s", picked)
+	}
+
+	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("FIX FIRST"))
+	passRound(t, repo, id, stages, RoleSecurity, RoleAuditor)
+	fix := laneCommit(t, repo, l, "fix.txt")
+	fixed(t, repo, id, stages, "applied the finding in "+fix+"\n", fix)
+	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity)
+	handBack(t, repo, id, stages, RoleAuditor, "NOT_MET")
+	step, err := advance(repo.Root(), id, stages, Options{})
+	if err != nil || step.Stage != StageHandedBack || step.HandBack == nil {
+		t.Fatalf("the round past the cap hands the picked lane back: %+v %v", step, err)
+	}
+	rec, err := ReadRecord(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Pick == nil || !rec.Pick.Falsified || !strings.Contains(rec.Pick.FalsifiedBy, VerdictUnachievable) {
+		t.Fatalf("the hand-back meets the pick's falsifier in the run record: %+v", rec.Pick)
+	}
+
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lane := st.Lanes[0]
+	if head := repo.Git("show", lane.Branch+":"+ir); head != picked {
+		t.Fatalf("the intent on the lane's branch is the pick commit's, unedited:\n%s", head)
+	}
+	got, err := os.ReadFile(filepath.Join(lane.Worktree, ir))
+	if err != nil || strings.TrimRight(string(got), "\n") != strings.TrimRight(picked, "\n") {
+		t.Fatalf("the intent in the lane's worktree is the pick commit's, unedited (%v):\n%s", err, got)
+	}
+	if !strings.Contains(string(got), "- pursued: "+rec.Pick.Entry) {
+		t.Fatalf("the grounds entry is the one the record names:\n%s", got)
+	}
+	if now, err := os.ReadFile(filepath.Join(repo.Root(), ir)); err != nil || string(now) != string(before) {
+		t.Fatalf("the checkout the run started from is never written (%v)", err)
 	}
 }
