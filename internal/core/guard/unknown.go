@@ -122,10 +122,10 @@ type varSite struct {
 	bare  bool
 	split bool
 	width int
-	// guarded is the text of the variable's own value (`${X}`) where the
-	// expansion never prints that value empty — `${X:?}`, `${X:-w}`,
-	// `${X:=w}` — and "" otherwise (guardedValue in varpath.go).
-	guarded string
+	// guarded is the texts of the variables' own values (`${X}`) the
+	// expansion never prints empty — `${X:?}`, `${X:-w}`, `${X:=w}`, and a
+	// guard nested in w — and nil otherwise (guardedValues in varpath.go).
+	guarded []string
 	// transform records a trim, a replacement, a substring or a case
 	// change (transformsValue in varpath.go).
 	transform bool

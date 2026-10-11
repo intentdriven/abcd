@@ -637,3 +637,84 @@ func TestEmitRefusesACutOverAnUncommittedFinding(t *testing.T) {
 		t.Errorf("NextTag = %q bumped=%v on a refused cut", cut.NextTag, cut.Bumped)
 	}
 }
+
+// The detector iss-2610090642371836 owes. The findings gate has three halves —
+// unfixed, deleted and uncommitted — and the cut raised the first two as
+// refusals of their own while the third reached it only through the guard's
+// backstop, which fired when both other lists were empty. So a cut refused for
+// all three at once named the uncommitted records in Findings.Reason alone: a
+// front door acting on the refusal list fixed the findings, ran again, and only
+// then met the third reason. Each half is its own entry, each reason appears
+// exactly once across the list, and no entry carries another half's prose.
+func TestEmitRaisesEveryFindingsHalfAsItsOwnRefusal(t *testing.T) {
+	const (
+		deletedRec     = openIssuesDir + "iss-91-found-last-cycle.md"
+		unfixedRec     = openIssuesDir + "iss-90-found-while-shipping.md"
+		uncommittedRec = openIssuesDir + "iss-92-captured-not-committed.md"
+	)
+	r := releasedRepo(t)
+	r.Write(deletedRec, "---\nid: \"iss-91\"\nseverity: \"major\"\n---\n\nfound before the anchor moved.\n")
+	r.Commit("capture a finding")
+	r.Git("tag", "v0.5.0")
+	r.Write("CHANGELOG.md", "# Changelog\n\n## [0.5.0] - 2026-07-02\n\n### Added\n\n- the base.\n")
+	r.Write(shippedDir+"itd-74-something-shipped.md",
+		"---\nid: itd-74\nimpact: additive\n---\n\n# Something Shipped\n\nderived.\n")
+	r.Remove(deletedRec)
+	r.Write(unfixedRec, "---\nid: \"iss-90\"\nseverity: \"major\"\n---\n\nfound while shipping.\n")
+	r.Commit("ship an intent, delete the standing finding, capture a new one")
+	r.Write(uncommittedRec, "---\nid: \"iss-92\"\nseverity: \"critical\"\n---\n\ncaptured, never committed.\n")
+
+	cut := emit(t, r)
+
+	if cut.Ready {
+		t.Fatalf("the cut is ready over all three findings halves: %+v", cut.Findings)
+	}
+	g := cut.Findings
+	if len(g.Unfixed) != 1 || len(g.Deleted) != 1 || len(g.Uncommitted) != 1 {
+		t.Fatalf("fixture: unfixed=%d deleted=%d uncommitted=%d, want one of each",
+			len(g.Unfixed), len(g.Deleted), len(g.Uncommitted))
+	}
+	halves := []struct {
+		name   string
+		kind   RefusalKind
+		reason string
+		record string
+	}{
+		{"unfixed", RefusalUnfixedFinding, g.UnfixedReason(), "iss-90"},
+		{"deleted", RefusalDeletedFinding, g.DeletedReason(), "iss-91"},
+		{"uncommitted", RefusalUnfixedFinding, g.UncommittedReason(), ""},
+	}
+	for _, h := range halves {
+		var found []Refusal
+		for _, ref := range cut.Refusals {
+			if ref.Reason == h.reason {
+				found = append(found, ref)
+			}
+		}
+		if len(found) != 1 {
+			t.Errorf("%s half: %d refusal(s) carry its reason, want exactly one\nrefusals: %+v",
+				h.name, len(found), cut.Refusals)
+			continue
+		}
+		if found[0].Kind != h.kind {
+			t.Errorf("%s half: kind = %q, want %q", h.name, found[0].Kind, h.kind)
+		}
+		if h.record != "" && !contains(found[0].Records, h.record) {
+			t.Errorf("%s half: Records = %v, want %s", h.name, found[0].Records, h.record)
+		}
+	}
+	// Every path the uncommitted half reports is named, and by one entry only:
+	// the other two halves' remedies do not apply to it.
+	named := 0
+	for _, ref := range cut.Refusals {
+		if strings.Contains(ref.Reason, uncommittedRec) {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Errorf("%d refusal(s) name %s, want exactly one\nrefusals: %+v", named, uncommittedRec, cut.Refusals)
+	}
+	if cut.NextTag != "" || cut.Bumped {
+		t.Errorf("NextTag = %q bumped=%v on a refused cut", cut.NextTag, cut.Bumped)
+	}
+}

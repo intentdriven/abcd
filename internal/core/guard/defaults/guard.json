@@ -143,13 +143,20 @@
           "make clean && rm -rf \"$OUT\"/*",
           "sh -c 'rm -rf \"$VAR\"/*'",
           "rm -rf \"$1\"/build",
-          "rm -rf ${VAR:-}/build"
+          "rm -rf ${VAR:-}/build",
+          "rm -rf \"${VAR:-${OTHER}}\"/build",
+          "rm -rf \"${VAR:-${VAR}}\"/build",
+          "rm -rf $VAR$(true)/build",
+          "rm -rf \"$VAR`true`\"/build"
         ],
         "known_good": [
           "rm -rf \"${VAR:?}\"/build",
           "rm -f -- \"${VAR:?}\"/*",
           "rm -rf ${VAR:?VAR is unset}/build",
           "rm -rf \"${TMPDIR:-/tmp}/abcd-x\"",
+          "rm -rf \"${VAR:-${OTHER:?}}\"/build",
+          "rm -rf \"${VAR:-${OTHER:-/tmp}}\"/build",
+          "rm -rf $VAR$((1))/build",
           "rm -rf /tmp/build",
           "rm -rf ./build/$name",
           "rm -rf \"$tmp\"",
