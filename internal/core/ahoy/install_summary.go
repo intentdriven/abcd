@@ -147,7 +147,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeReadmePartsRemoved: {
 		What:   "Removed from README.md the parts abcd kept there that you no longer chose, or that can no longer be read from the project.",
 		Why:    "abcd keeps only the parts you choose; a part you edited by hand is left as it is.",
-		Action: "Commit README.md.",
+		Action: "Commit README.md. To have abcd keep a part again, run abcd ahoy install --readme-parts with that part among the ones you want.",
 	},
 	writeToolFileRetired: {
 		What:   "Removed an agent tool's own conventions file that only repeated AGENTS.md, as you answered.",
