@@ -272,3 +272,63 @@ func TestDogfoodBinaryVerb(t *testing.T) {
 		}
 	})
 }
+
+// guardRig is a plugin root whose installed-release guard writes relOut and
+// exits relCode, and a dogfood build whose guard writes dogOut and exits
+// dogCode, each recording its call.
+func guardRig(t *testing.T, relOut, relCode, dogOut, dogCode string) string {
+	t.Helper()
+	root := hookRoot(t, noopBootstrap, false)
+	build := filepath.Join(t.TempDir(), "abcd")
+	release := "#!/bin/sh\n" +
+		"printf '%s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\n" +
+		"if [ \"$1 $2\" = 'hook dogfood-binary' ]; then printf '%s\\n' '" + build + "'; exit 0; fi\n" +
+		"cat >/dev/null\nprintf '%s' '" + relOut + "'\nexit " + relCode + "\n"
+	dog := "#!/bin/sh\ncat >/dev/null\nprintf 'dogfood %s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\n" +
+		"printf '%s' '" + dogOut + "'\nexit " + dogCode + "\n"
+	if err := os.WriteFile(filepath.Join(root, "abcd"), []byte(release), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(build, []byte(dog), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// TestDogfoodGuardVerdicts: the guard's answers are an allow (exit 0, nothing
+// on stdout), a deny (exit 0 with the host's deny on stdout, or exit 2), and
+// exit 1, which is a warn OR "NOT CHECKED — runs UNGUARDED". A dogfood allow
+// or deny stands. A dogfood exit 1 is not trusted to be a verdict: the
+// installed release judges the same command, and its deny stands, so a
+// dogfood guard that fails open never silences the release.
+func TestDogfoodGuardVerdicts(t *testing.T) {
+	const deny = `{"hookSpecificOutput":{"permissionDecision":"deny"}}`
+	cases := []struct {
+		name                             string
+		relOut, relCode, dogOut, dogCode string
+		wantOut                          string
+		wantCode                         int
+		wantRelease                      bool
+	}{
+		{"dogfood allows", "", "0", "", "0", "", 0, false},
+		{"dogfood denies on stdout", "", "0", deny, "0", deny, 0, false},
+		{"dogfood blocks at exit 2", "", "0", "", "2", "", 2, false},
+		{"dogfood not checked, release denies", deny, "0", "", "1", deny, 0, true},
+		{"dogfood not checked, release blocks at exit 2", "", "2", "", "1", "", 2, true},
+		{"dogfood not checked, release allows", "", "0", "", "1", "", 1, true},
+		{"dogfood not checked, release warns", "", "1", "", "1", "", 1, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := guardRig(t, c.relOut, c.relCode, c.dogOut, c.dogCode)
+			stdout, stderr, code := hookRunHome(t, "PreToolUse", root, "", t.TempDir(), dogfoodListHome(t))
+			calls := callLog(t, filepath.Join(root, "calls.log"))
+			if code != c.wantCode || strings.TrimSpace(stdout) != c.wantOut {
+				t.Fatalf("exit %d, stdout %q; want exit %d, stdout %q (stderr %q, calls %q)", code, stdout, c.wantCode, c.wantOut, stderr, calls)
+			}
+			if !strings.Contains(calls, "dogfood guard hook") || releaseRan(calls, "guard hook") != c.wantRelease {
+				t.Fatalf("calls %q; want the dogfood guard asked, and the release asked: %v", calls, c.wantRelease)
+			}
+		})
+	}
+}
