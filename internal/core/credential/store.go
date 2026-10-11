@@ -20,7 +20,7 @@ package credential
 // The index is the one file the store writes that must never hold a secret,
 // so the secret scanner reads its bytes before they are written, and a
 // finding refuses the write. The abcd home, the one that keeps a value under
-// ~/.abcd.noindex, is never written inside a git working tree.
+// ~/.abcd.noindex, is never written inside a git working tree, nor read there.
 
 import (
 	"encoding/json"
@@ -130,6 +130,14 @@ func (s store) Resolve(name string) (string, error) {
 	case !indexed && err != nil:
 		return "", notSetError{name: name}
 	case !indexed:
+		// Set never keeps a value in the abcd home inside a git working tree,
+		// so one found there is the checkout's (HOME set into the tree by an
+		// environment the repository shapes), and it is refused, not handed
+		// to a caller that would spend it (iss-2609300012273350).
+		if workingTreeAbove(s.home, abcdhome.Rel()) != "" {
+			return "", errors.New("credential: " + abcdhome.Display() + " lies inside a git working tree, where abcd never keeps a credential, so " +
+				name + " is not read from it; run abcd with your own HOME")
+		}
 		return v, nil
 	case err == nil:
 		return "", fmt.Errorf("credential: %s is named in two homes, %s and the %s home in %s, so it is not read; remove one by hand",

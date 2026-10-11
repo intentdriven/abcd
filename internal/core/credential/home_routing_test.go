@@ -406,3 +406,33 @@ func TestSetMachineKeepsTheStoreInTheDirectoryItHolds(t *testing.T) {
 		t.Errorf("the directory swapped in was changed: err %v", err)
 	}
 }
+
+// TestResolveRefusesTheAbcdHomeInsideAWorkingTree is the read half of the
+// write refusal Set already makes (iss-2609300012273350): a home inside a git
+// working tree (HOME set into a checkout by an environment the repository
+// can shape) is never where Set keeps a value, so a credentials.json found
+// there is the checkout's, and Resolve refuses it naming the working tree
+// rather than handing its value to a caller.
+func TestResolveRefusesTheAbcdHomeInsideAWorkingTree(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(repo, "planted-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetMachine(home, "svc", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	v, err := Store(home).Resolve("svc")
+	if err == nil || v != "" {
+		t.Fatalf("Resolve read the abcd home inside a working tree: value %q, err %v", v, err)
+	}
+	if !strings.Contains(err.Error(), "git working tree") {
+		t.Errorf("the refusal must name the working tree: %v", err)
+	}
+	if strings.Contains(err.Error(), secretValue) {
+		t.Fatal("the refusal echoes the value")
+	}
+}
