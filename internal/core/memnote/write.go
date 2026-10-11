@@ -173,7 +173,7 @@ func withMachineLayer(home string, change func(*File) error) error {
 		return fmt.Errorf("memory: nothing was written to %s: %v", MachineDisplayPath, err)
 	}
 	if err != nil {
-		return fmt.Errorf("memory: %s could not be created, so nothing was written", abcdhome.Display())
+		return fmt.Errorf("memory: %s could not be created (%s), so nothing was written", abcdhome.Display(), fsutil.RedactHome(err.Error()))
 	}
 	defer dir.Close()
 	machineScopeOpened()
@@ -196,7 +196,7 @@ func withMachineLayer(home string, change func(*File) error) error {
 			return fmt.Errorf("memory: %s would exceed its %d-byte cap; remove a note first (nothing was written)", MachineDisplayPath, maxFileBytes)
 		}
 		if err := fsutil.WriteFileAtomicInRoot(dir, machineLeaf, data, abcdhome.FileMode); err != nil {
-			return fmt.Errorf("memory: %s could not be written, so nothing was written", MachineDisplayPath)
+			return fmt.Errorf("memory: %s could not be written (%s), so nothing was written", MachineDisplayPath, fsutil.RedactHome(err.Error()))
 		}
 		return nil
 	})

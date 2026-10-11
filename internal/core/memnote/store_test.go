@@ -470,3 +470,47 @@ func TestWriteReadsUnderTheLockThroughTheDirectoryItWrites(t *testing.T) {
 		t.Errorf("the directory now at the name gained a memory.json (stat err %v)", err)
 	}
 }
+
+// A write that cannot create the scope or write the file says why, so a full
+// disk and a permission refusal read differently, and never with the expanded
+// home.
+func TestWriteErrorsKeepTheirReason(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a 0500 directory")
+	}
+	for name, lock := range map[string]func(t *testing.T, home string){
+		"creating the scope": func(t *testing.T, home string) {
+			if err := os.Chmod(home, 0o500); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"writing the file": func(t *testing.T, home string) {
+			if err := os.Mkdir(abcdhome.Path(home), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(abcdhome.Path(home), 0o500); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home, repo := fixture(t)
+			t.Setenv("HOME", home)
+			lock(t, home)
+			t.Cleanup(func() {
+				_ = os.Chmod(abcdhome.Path(home), 0o700)
+				_ = os.Chmod(home, 0o700)
+			})
+			_, err := Add(addReq(home, repo))
+			if err == nil {
+				t.Fatal("the write landed in a directory it may not write")
+			}
+			if !strings.Contains(err.Error(), "permission denied") {
+				t.Errorf("the refusal lost its reason: %v", err)
+			}
+			if strings.Contains(err.Error(), home) {
+				t.Errorf("the refusal carries the expanded home: %v", err)
+			}
+		})
+	}
+}
