@@ -57,7 +57,7 @@ exempt from the file check.
 The reverse sweep reaches those two directories and no others. The prompt files
 under `agents/`, which a harness registers as invocable agents, are checked in
 neither direction: nothing asserts that one has a row here, and nothing notices
-when one is added or removed (iss-110).
+when one is added or removed. No open record tracks that gap.
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
 file in this directory carries a `## Sub-verbs` table recording, per verb, its
@@ -67,8 +67,10 @@ the table with its header alone, so an empty table is a recorded fact rather tha
 a missing one, and a file without the table is a finding whatever its verb
 registers. The rule checks each table against the committed command-tree
 snapshot in both directions: a `shipped` row must be registered, a `staged` row
-must not be, a registered sub-command must have a row, and a sub-command-bearing
-verb cannot lack a file entirely. The bare command, and any host-delegated
+must not be, a registered sub-command must have a row unless it sits in a hidden
+subtree (`launch smoke-pages` and `dashboard serve` today; `loadSnapshotSubVerbs`
+in `internal/core/lint/subverbs.go`), and a sub-command-bearing verb cannot lack
+a file entirely. The bare command, and any host-delegated
 surface (a page with no verb; the list is empty today), are exempt from that
 comparison by explicit configuration, never silently, and from nothing else:
 their tables are still required and format-checked.
@@ -361,9 +363,12 @@ sub-verb.
 
 Most plugin agents under [`agents/`](../../../../agents) serve a verb, which
 builds their input or validates what they return, and the chapter of that verb
-documents them. Four serve no verb, and no command page calls on them: the host
-agent invokes each directly, when its `description` or abcd's asking rules say
-to, and reads the report itself. In the binary they are roster entries: the bundled model-tier
+documents them. Four serve no verb: the host agent invokes each directly, when
+its `description`, a command page or abcd's asking rules say to, and reads the
+report itself. Three of the four are called on by name. `build.md` and the
+implement loop's validator roles dispatch the two reviewers, and `guard.md` and
+`intent.md` send a question through the question drafter. Only
+`sota-researcher` is named by no command page. In the binary they are roster entries: the bundled model-tier
 proposal the `oracle-routing` offer of [`01-ahoy.md`](01-ahoy.md) renders places
 the two reviewers at `frontier`, and the researcher and the question drafter at
 `economy`. Each prompt declares `reads_untrusted_input: true`,
