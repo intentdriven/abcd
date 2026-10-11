@@ -366,9 +366,13 @@ is. A `..` in a path resolves the way the kernel opens it, against the directory
 a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
 link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
 zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while
-`CDPATH` is set on the line or in the environment the check runs in is a
-**block** (`script-unread`): name the directory as `./sub` or by its absolute
-path. The verdicts:
+`CDPATH` is set on the line or in the environment the check runs in enters the
+one directory holding the operand when exactly one exists among the current
+directory and each `CDPATH` entry, and the scripts after it are read there;
+where two exist, or an entry or the current directory is not fixed by the line,
+it is a **block** (`script-unread`) whose reason says whether the line set
+`CDPATH` or the environment exported it: name the directory as `./sub` or by
+its absolute path. The verdicts:
 
 - a registry blocker at command position in the script is a **block**
   (`script-runs-hazard`), naming the script, the line and the entry, and so is

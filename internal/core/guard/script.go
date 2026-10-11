@@ -862,32 +862,23 @@ func (st *shellState) withArray(s segment) *shellState {
 func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 	i, physical := cdOperand(s, site)
 	n := st.unresolved()
-	if cdSearchesCDPATH(rc, st, s, site) {
-		// The directory is one of CDPATH's, or not (targetsOf blocks it).
+	if c := cdpathLookup(rc, st, s, site); c.searches {
+		// The one directory the search can enter, or not one the guard can
+		// name (targetsOf blocks it).
+		if c.dir != "" {
+			n.cd = &pendingCD{dir: c.dir, chain: s.chain}
+		}
 		return n
 	}
-	var target string
-	var ok bool
-	if i >= len(s.tokens) {
-		target, ok = st.home(rc)
-	} else if s.tokens[i] == "-" || strings.HasPrefix(s.tokens[i], "+") {
-		ok = false
-	} else if w, fixed := fixedToken(s, i); fixed {
-		// bash's `cd -L` drops a `..` with the name before it, and falls
-		// back to the physical path when that names no directory; `-P`
-		// resolves it physically, and the directory it lands in is the
-		// physical one (iss-2610111600031244).
-		tilde := strings.HasPrefix(w, "~")
-		if !physical {
-			target, ok = st.resolveIn(rc, w, tilde, true)
-			if fi, err := os.Stat(target); ok && (err != nil || !fi.IsDir()) {
-				physical = true
+	if i < len(s.tokens) {
+		if w, fixed := fixedToken(s, i); fixed && w != "-" && !strings.HasPrefix(w, "+") {
+			if target, ok := st.cdLands(rc, w, strings.HasPrefix(w, "~"), physical); ok {
+				n.cd = &pendingCD{dir: target, chain: s.chain}
 			}
 		}
-		if physical {
-			target, ok = st.resolveIn(rc, w, tilde, false)
-		}
+		return n
 	}
+	target, ok := st.home(rc)
 	if !ok || target == "" {
 		return n
 	}
@@ -903,6 +894,39 @@ func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 	}
 	n.cd = &pendingCD{dir: filepath.Clean(target), chain: s.chain}
 	return n
+}
+
+// cdLands is the directory a `cd` to word enters, or ok false where it names
+// no directory or the line does not fix one. bash's `cd -L` drops a `..` with
+// the name before it, and falls back to the physical path when that names no
+// directory; `-P` resolves it physically, and the directory it lands in is
+// the physical one (iss-2610111600031244).
+func (st *shellState) cdLands(rc *readCtx, word string, tilde, physical bool) (string, bool) {
+	var target string
+	var ok bool
+	if !physical {
+		target, ok = st.resolveIn(rc, word, tilde, true)
+		if fi, err := os.Stat(target); ok && (err != nil || !fi.IsDir()) {
+			physical = true
+		}
+	}
+	if physical {
+		target, ok = st.resolveIn(rc, word, tilde, false)
+	}
+	if !ok || target == "" {
+		return "", false
+	}
+	if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
+		return "", false
+	}
+	if physical {
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			return "", false
+		}
+		target = real
+	}
+	return filepath.Clean(target), true
 }
 
 // cdOperand is the index of the operand of the `cd`/`pushd` at site, past
@@ -931,25 +955,41 @@ func cdOperand(s segment, site int) (i int, physical bool) {
 	return i, physical
 }
 
-// cdSearchesCDPATH reports whether the `cd`/`pushd` at site searches CDPATH:
-// its operand is not absolute and does not start with `./` or `../` (nor is
-// `.` or `..`), and CDPATH — as the line set it, a prefix on the cd
-// included, else as the environment the check runs in holds it — is not
-// empty. zsh's cdpath is the same variable. The shell then enters the first
-// CDPATH directory holding the operand, bash and zsh in different orders, so
-// the directory is not one the guard can name, and the cd blocks
-// (iss-2610111600031244).
-func cdSearchesCDPATH(rc *readCtx, st *shellState, s segment, site int) bool {
-	i, _ := cdOperand(s, site)
+// cdpathSearch is what the CDPATH search of a `cd`/`pushd` comes to.
+type cdpathSearch struct {
+	// searches is set where the shell searches CDPATH for the operand.
+	searches bool
+	// fromEnv is set where that CDPATH is the one the check's environment
+	// exports, not one the command sets.
+	fromEnv bool
+	// dir is the one directory the search can enter, or "" where the guard
+	// cannot name it.
+	dir string
+}
+
+// cdpathLookup is the CDPATH search of the `cd`/`pushd` at site. The shell
+// searches CDPATH when the operand is not absolute and does not start with
+// `./` or `../` (nor is `.` or `..`), and CDPATH — as the line set it, a
+// prefix on the cd included, else as the environment the check runs in holds
+// it — is not empty. zsh's cdpath is the same variable. The shell then enters
+// the first candidate holding the operand, bash and zsh in different orders:
+// bash tries the CDPATH entries (an empty or `.` entry is the current
+// directory) and then the current directory, zsh the current directory first
+// unless `.` is an entry. Where exactly one candidate exists both enter it,
+// and that is dir; two, or an entry or a current directory the line does not
+// fix, leave dir empty, and the cd blocks (iss-2610111600031244,
+// iss-2610111749083184).
+func cdpathLookup(rc *readCtx, st *shellState, s segment, site int) cdpathSearch {
+	i, physical := cdOperand(s, site)
 	w, fixed := fixedToken(s, i)
 	if !fixed {
 		// No operand goes HOME; one the line does not fix leaves the
 		// directory unknown whatever CDPATH holds.
-		return false
+		return cdpathSearch{}
 	}
 	if w == "-" || strings.HasPrefix(w, "+") || strings.HasPrefix(w, "/") || strings.HasPrefix(w, "~") ||
 		w == "." || w == ".." || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../") {
-		return false
+		return cdpathSearch{}
 	}
 	v, set := st.vars["CDPATH"]
 	for j := 0; j < site && j < len(s.tokens); j++ {
@@ -957,10 +997,52 @@ func cdSearchesCDPATH(rc *readCtx, st *shellState, s segment, site int) bool {
 			v, set = pv, true
 		}
 	}
+	c := cdpathSearch{searches: true}
 	if !set {
-		return rc.files.cdpath != ""
+		v, c.fromEnv = varVal{text: rc.files.cdpath, ok: true}, true
 	}
-	return !v.ok || v.text != ""
+	if v.ok && v.text == "" {
+		return cdpathSearch{}
+	}
+	if !v.ok {
+		return c
+	}
+	entries := strings.Split(v.text, ":")
+	if len(entries) > maxScriptTargets {
+		return c
+	}
+	words := make([]string, 0, len(entries)+1)
+	cwdEntry := false
+	for _, e := range entries {
+		switch {
+		case isUnknown(e) || strings.ContainsRune(e, varMark) || strings.HasPrefix(e, "~"):
+			return c
+		case e == "" || e == ".":
+			cwdEntry = true
+			words = append(words, w)
+		default:
+			words = append(words, strings.TrimSuffix(e, "/")+"/"+w)
+		}
+	}
+	if !cwdEntry {
+		words = append(words, w)
+	}
+	found := ""
+	for _, cw := range words {
+		if !filepath.IsAbs(cw) && (!st.dirOK || st.dir == "") {
+			return c
+		}
+		d, ok := st.cdLands(rc, cw, false, physical)
+		if !ok || d == found {
+			continue
+		}
+		if found != "" {
+			return c
+		}
+		found = d
+	}
+	c.dir = found
+	return c
 }
 
 // sourcedChangesDir reports whether the file a `source` at site reads holds a
@@ -1040,9 +1122,11 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			continue
 		}
 		name := strings.ToLower(path.Base(tok))
-		if (name == "cd" || name == "pushd") && cdSearchesCDPATH(rc, st, s, a.idx) {
-			sigs = append(sigs, cdpathSignal())
-			continue
+		if name == "cd" || name == "pushd" {
+			if c := cdpathLookup(rc, st, s, a.idx); c.searches && c.dir == "" {
+				sigs = append(sigs, cdpathSignal(c.fromEnv))
+				continue
+			}
 		}
 		first, opaque, autoload := autoloadCall(s, a.idx, name)
 		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") && !autoload {
@@ -1834,14 +1918,23 @@ func startupExpandedSignal(varName string) payloadSignal {
 	}
 }
 
-// cdpathSignal is the block for a `cd` that searches CDPATH: the directory
-// the commands after it run in is not one the guard can name.
-func cdpathSignal() payloadSignal {
+// cdpathSignal is the block for a `cd` that searches CDPATH where the guard
+// cannot name the directory it enters; fromEnv says the CDPATH is the one the
+// check's environment exports, which the command never names.
+func cdpathSignal(fromEnv bool) payloadSignal {
+	where := "the CDPATH this command sets"
+	successor := "Name the directory as an absolute path or with a leading ./ (cd ./sub), which the shell does not search CDPATH for."
+	if fromEnv {
+		where = "the CDPATH exported in the environment this check runs in, which the command does not set,"
+		successor = "Name the directory as an absolute path or with a leading ./ (cd ./sub), which the shell does not search " +
+			"CDPATH for, or unset CDPATH in the environment the commands run in."
+	}
 	return payloadSignal{
 		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
-		reason: "This command changes directory by a name the shell searches CDPATH for, so the directory the " +
+		reason: "This command changes directory by a name the shell searches CDPATH for, and " + where +
+			" offers more than one directory holding it, or one the line does not fix, so the directory the " +
 			"commands after it run in, and the scripts they name, are not ones the guard can read.",
-		successor: "Name the directory as an absolute path or with a leading ./ (cd ./sub), which the shell does not search CDPATH for.",
+		successor: successor,
 	}
 }
 

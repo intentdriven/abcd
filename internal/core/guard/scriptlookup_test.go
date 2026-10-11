@@ -3,6 +3,7 @@ package guard
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,7 +52,8 @@ func TestCDPATHCdBlocks(t *testing.T) {
 		{`cd {d}/empty && CDPATH={d}/cdp cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
 		{`cd {d}/empty && CDPATH={d}/cdp; cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
 		{`cd {d}/empty && export CDPATH={d}/cdp; pushd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
-		{`zsh -c 'cdpath=({d}/cdp); cd sub && bash s.sh'`, VerdictBlock, scriptUnreadEntryID},
+		// cdp/sub is the one candidate, so the cd enters it and its script is read.
+		{`zsh -c 'cdpath=({d}/cdp); cd sub && bash s.sh'`, VerdictBlock, scriptHazardEntryID},
 		{`CDPATH=$X cd sub`, VerdictBlock, scriptUnreadEntryID},
 
 		// An operand CDPATH is not searched for, and an empty CDPATH.
@@ -79,6 +81,117 @@ func TestCDPATHCdBlocks(t *testing.T) {
 		if d.Verdict != c.want || d.EntryID != c.id {
 			t.Errorf("CDPATH in the environment: %s\n  = %s/%s, want %s/%s\n  %s", c.cmd, d.Verdict, d.EntryID, c.want, c.id, d.Message)
 		}
+	}
+}
+
+// TestCDPATHSingleCandidateResolves: where exactly one directory the search
+// can enter exists — a fixed CDPATH entry holding the operand, or the current
+// directory — both shells enter it whatever their order, so the cd resolves
+// there and the scripts after it are read; two candidates, or an entry or a
+// current directory the line does not fix, keep the block
+// (iss-2610111749083184).
+func TestCDPATHSingleCandidateResolves(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"empty/keep":       "",
+		"cdp/sub/s.sh":     hazardLine,
+		"cdpok/sub/s.sh":   "echo benign",
+		"other/sub/s.sh":   "echo benign",
+		"outer/in.sh":      "cd sub && bash s.sh",
+		"outer/sub/s.sh":   "echo benign",
+		"outerb/in.sh":     "cd sub && bash s.sh",
+		"outerb/sub/s.sh":  "echo benign",
+		"outerb/keep/keep": "",
+	})
+	runScriptCases(t, dir, []scriptCase{
+		// One candidate: the cd enters it, and the script there is read.
+		{`cd {d}/empty && CDPATH={d}/cdp cd sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/empty && CDPATH={d}/cdpok cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/empty && CDPATH={d}/cdpok pushd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/empty && CDPATH={d}/none:{d}/cdpok cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/empty && CDPATH={d}/cdpok:{d}/cdpok cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d} && CDPATH=cdpok cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d} && CDPATH=cdp cd sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/cdpok && CDPATH=.:{d}/empty cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/cdpok && CDPATH=:{d}/empty cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/cdpok && CDPATH={d}/empty cd sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/empty && CDPATH={d}/cdpok cd -P sub && bash s.sh`, VerdictAllow, ""},
+
+		// Two candidates, or one the line does not fix: the block stays.
+		{`cd {d}/empty && CDPATH={d}/cdpok:{d}/other cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`cd {d}/cdpok && CDPATH={d}/other cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`cd {d}/empty && CDPATH={d}/cdpok:$X cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`cd {d}/empty && CDPATH='~/x':{d}/cdpok cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`cd $X; CDPATH={d}/cdpok cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`cd $X; CDPATH=cdpok cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+	})
+
+	// CDPATH in the environment: a script's own `cd sub` resolves where only
+	// its directory holds sub, and blocks where CDPATH offers another.
+	f := NewFiles(filepath.Join(dir, "outer"))
+	f.home = ""
+	f.cdpath = filepath.Join(dir, "empty")
+	r := Defaults().ReadingFrom(f)
+	for _, c := range []scriptCase{
+		{`cd sub && bash s.sh`, VerdictAllow, ""},
+		{`bash in.sh`, VerdictAllow, ""},
+	} {
+		d, err := r.Check(c.cmd)
+		if err != nil {
+			t.Fatalf("Check(%q): %v", c.cmd, err)
+		}
+		if d.Verdict != c.want || d.EntryID != c.id {
+			t.Errorf("CDPATH in the environment: %s\n  = %s/%s, want %s/%s\n  %s", c.cmd, d.Verdict, d.EntryID, c.want, c.id, d.Message)
+		}
+	}
+	f = NewFiles(filepath.Join(dir, "outerb"))
+	f.home = ""
+	f.cdpath = filepath.Join(dir, "cdpok")
+	r = Defaults().ReadingFrom(f)
+	for _, c := range []scriptCase{
+		{`cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`bash in.sh`, VerdictBlock, scriptUnreadEntryID},
+	} {
+		d, err := r.Check(c.cmd)
+		if err != nil {
+			t.Fatalf("Check(%q): %v", c.cmd, err)
+		}
+		if d.Verdict != c.want || d.EntryID != c.id {
+			t.Errorf("CDPATH in the environment: %s\n  = %s/%s, want %s/%s\n  %s", c.cmd, d.Verdict, d.EntryID, c.want, c.id, d.Message)
+		}
+	}
+}
+
+// TestCDPATHBlockNamesWhereCDPATHCameFrom: the block says whether the
+// command set CDPATH or the environment the check runs in exported it, so a
+// person whose line never names CDPATH is told where it came from
+// (iss-2610111749083184).
+func TestCDPATHBlockNamesWhereCDPATHCameFrom(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"a/sub/s.sh": "echo benign",
+		"b/sub/s.sh": "echo benign",
+	})
+	f := NewFiles(dir)
+	f.home = ""
+	r := Defaults().ReadingFrom(f)
+	d, err := r.Check("cd " + dir + "/a && CDPATH=" + dir + "/b cd sub && bash s.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Verdict != VerdictBlock || !strings.Contains(d.Message, "CDPATH this command sets") ||
+		strings.Contains(d.Message, "environment") {
+		t.Errorf("CDPATH set on the line: %s/%s\n  %s", d.Verdict, d.EntryID, d.Message)
+	}
+
+	f = NewFiles(filepath.Join(dir, "a"))
+	f.home = ""
+	f.cdpath = filepath.Join(dir, "b")
+	r = Defaults().ReadingFrom(f)
+	d, err = r.Check("cd sub && bash s.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Verdict != VerdictBlock || !strings.Contains(d.Message, "CDPATH exported in the environment") {
+		t.Errorf("CDPATH from the environment: %s/%s\n  %s", d.Verdict, d.EntryID, d.Message)
 	}
 }
 
