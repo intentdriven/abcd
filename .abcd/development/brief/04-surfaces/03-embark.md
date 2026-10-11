@@ -131,7 +131,7 @@ scaffolder and no model sit in the write path.
    `.abcd/config.json`, read with setup's reader): `agents_md` or no choice
    saved gives `AGENTS.md`; `skip` gives no file; a retired `claude_md` or
    `both` gives no file and the note setup itself shows for it
-   ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file-abcd-writes-it-never.md)).
+   ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file.md)).
    A skipped block, or a chosen file that is a link or not a regular file,
    never stops the records landing. The block is the modular-rules-loader block (itd-3);
    principles surface through the loader's domain rules on demand.

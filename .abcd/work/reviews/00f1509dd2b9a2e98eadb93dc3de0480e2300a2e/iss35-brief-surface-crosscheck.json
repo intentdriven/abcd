@@ -467,8 +467,8 @@
       "introducedInRelease": false,
       "evidence": [
         ".abcd/development/brief/04-surfaces/07-memory.md:3 (`neither id names a spec in this repo's store ... whose own ids stop well short of spc-38`)",
-        ".abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and-reads-the-whole-developm.md",
-        ".abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects-one-relationship-chart.md",
+        ".abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and.md",
+        ".abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects.md",
         "highest id under .abcd/development/specs/*/ = spc-54",
         "run-1 n14: both specs present in `git ls-tree v0.6.7`; git diff v0.6.7..HEAD -- 07-memory.md: empty"
       ],

@@ -44,9 +44,9 @@ the manifest's re-runnability rests on a reference that cannot move, and a
 positional argument is refused outright.
 
 Closing the invocation at two operands is the point rather than a convenience
-([adr-2609021016286571](../../decisions/adrs/2609021016286571-the-invocation-is-a-position-and-a-target-state-and-the-comm.md),
+([adr-2609021016286571](../../decisions/adrs/2609021016286571-the-invocation-is-a-position-and-a.md),
 which supersedes
-[adr-58](../../decisions/adrs/0058-a-reading-is-commissioned-about-something-so-the-invocation-takes-a-scope.md)).
+[adr-58](../../decisions/adrs/0058-a-reading-is-commissioned-about.md)).
 The reading's object and its question come from its definition, so there is no
 channel through which ledger content can travel in the framing of a request. No
 repository path is accepted at the invocation either: a path may be named only
@@ -60,7 +60,7 @@ file. There is no override at the invocation and nothing to stamp.
 
 **The comparative position derives its candidate set from the record**, because
 its object is a prior widening run's pre-admission output
-([adr-2609021016272867](../../decisions/adrs/2609021016272867-the-comparative-reading-receives-one-widening-run-s-candidat.md)).
+([adr-2609021016272867](../../decisions/adrs/2609021016272867-the-comparative-reading-receives-one.md)).
 The assembler selects the one committed widening run at the target whose items
 carry no disposition and no admission, and hands the reading that run's items
 projected to two body fields. "At the target" reaches one commit further back on
@@ -104,7 +104,7 @@ holding the two to each other. The exclusion floor rides in every manifest, each
 entry with the signal by which a reader detects it.
 
 **The knowledge record travels as statements**
-([adr-2609021016270132](../../decisions/adrs/2609021016270132-the-principles-family-is-a-declared-record-store-whose-entri.md)).
+([adr-2609021016270132](../../decisions/adrs/2609021016270132-the-principles-family-is-a-declared.md)).
 The principles family is admitted at the widening, entailment and detection
 positions and projected to one field: each principle's H1 title above its
 `**The rule.**` paragraph, with every inline or reference-style link unwrapped to
@@ -307,7 +307,7 @@ A refused run reports the orphans it left in place instead of sweeping them: the
 sweep is a delete in the committed tier, and a refused run never reaches one.
 
 **Every stored finding is matched against the record** (ruling DQ2b,
-[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)).
+[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the.md)).
 The ingest runs capture's filing-time match on each item as it lands, with the
 same threshold, link cap and configuration (see
 [`06-capture.md`](06-capture.md)): the item's pattern and body are compared
@@ -386,7 +386,7 @@ one run on the harness.
 - The family's charter and the rendered include table:
   [`.abcd/development/readings/README.md`](../../readings/README.md)
 - The construal's admissibility:
-  [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md)
+  [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its.md)
 - Invariants 14 and 15: [`03-invariants.md`](../02-constraints/03-invariants.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

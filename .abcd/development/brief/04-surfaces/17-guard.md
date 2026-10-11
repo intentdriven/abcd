@@ -403,7 +403,7 @@ which are carried out naming the script, the line and the entry; a script
 written earlier on the same line is refused, because the file read at check
 time is not the one that runs, and a write the guard cannot place before it
 warns
-([adr-2610091150447054](../../decisions/adrs/2610091150447054-the-guard-reads-a-script-the-command-names-before-it-judges.md)). A git alias declared on the same command line is resolved, and the
+([adr-2610091150447054](../../decisions/adrs/2610091150447054-the-guard-reads-a-script-the-command.md)). A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. A commit or push that
 moves `core.hooksPath` for itself is read as skipping its hooks, which is what
 it does. A delete chained after `pushd` or `popd` is read as one chained after
@@ -591,8 +591,8 @@ into the bundled defaults through the admission gate.
 ## References
 
 - Plugin command: [`commands/guard.md`](../../../../commands/guard.md)
-- Spec: [`spc-16`](../../specs/closed/spc-16-abcd-teaches-repo-agents-the-shell-commands-they-must-never.md)
-- Intent: [`itd-103`](../../intents/shipped/itd-103-abcd-teaches-repo-agents-the-shell-commands-they-must-never.md)
+- Spec: [`spc-16`](../../specs/closed/spc-16-abcd-teaches-repo-agents-the-shell.md)
+- Intent: [`itd-103`](../../intents/shipped/itd-103-abcd-teaches-repo-agents-the-shell.md)
 - Install/health surface: [`01-ahoy.md`](01-ahoy.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
