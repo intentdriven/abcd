@@ -375,7 +375,10 @@ current directory's path with the second and enters the result where that
 directory exists; such an option word alone (`cd -x`) is a directory zsh
 enters by that name where one exists, unless it is a directory-stack word
 (`cd -2`). Only where neither reading names a directory is the directory
-unknown. A `..` in a path resolves the way the kernel opens it, against the directory
+unknown. A `pushd` with no operand swaps the top two directories of the
+stack, never going to `HOME`, so the scripts after it are read in the
+directory the line's own `pushd` left, and the directory is unknown where
+the line did not fix the stack. A `..` in a path resolves the way the kernel opens it, against the directory
 a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
 link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
 zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while

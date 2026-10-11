@@ -304,6 +304,13 @@ type shellState struct {
 	vars     map[string]varVal
 	exported map[string]bool
 	fds      map[int]fdFile
+	// stack is the top of the directory stack below the current directory,
+	// as the line's own pushd commands fixed it, nearest first: the
+	// directory a bare pushd swaps to is stack[0]. An entry is "" where the
+	// line does not fix it, and nil is a stack the line did not fix, which
+	// a bare pushd leaves unknown (iss-2610111815024967). It is never
+	// changed in place.
+	stack []string
 }
 
 // pendingCD is a cd the next commands run after: dirs is every directory it
@@ -362,14 +369,15 @@ func (st *shellState) at(s segment) []*shellState {
 		return out
 	}
 	n := st.clone()
-	n.dir, n.dirOK, n.cd = "", false, nil
+	n.dir, n.dirOK, n.cd, n.stack = "", false, nil, nil
 	return []*shellState{n}
 }
 
-// unresolved returns st with its directory unknown.
+// unresolved returns st with its directory unknown, and its directory stack,
+// which whatever left the directory unknown may have changed.
 func (st *shellState) unresolved() *shellState {
 	n := st.clone()
-	n.dir, n.dirOK, n.cd = "", false, nil
+	n.dir, n.dirOK, n.cd, n.stack = "", false, nil, nil
 	return n
 }
 
@@ -855,6 +863,12 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 			out = cdTarget(rc, out, s, a.idx)
 		case name == "popd":
 			out = out.unresolved()
+		case name == "dirs" && len(args) > 0:
+			// `dirs -c` clears the stack and `+N`/`-N` name entries of
+			// it; any operand leaves it as the line does not fix it.
+			n := out.clone()
+			n.stack = nil
+			out = n
 		case name == "eval" && stringChangesDir:
 			out = out.unresolved()
 		case (name == "source" || name == ".") && sourcedChangesDir(rc, out, s, a.idx):
@@ -950,16 +964,32 @@ func (st *shellState) withArray(s segment) *shellState {
 // directory now, holds for the commands chained after it with `&&`, and the
 // scripts they name are read in each; a cd no reading fixes a directory for
 // leaves the directory unknown.
+//
+// A pushd with no operand swaps the top two directories of the stack in
+// bash and zsh, so it enters the directory the line's own pushd left, and
+// no directory where the line did not fix the stack; it never enters HOME,
+// which is `cd`'s (iss-2610111815024967). A pushd that enters a directory
+// pushes the one it left. A cd leaves the stack as the line does not fix
+// it, since zsh's AUTO_PUSHD makes it push too.
 func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 	n := st.unresolved()
 	c := cdOperand(s, site)
+	pushd := strings.ToLower(path.Base(s.tokens[site])) == "pushd"
 	var dirs []string
 	add := func(d string, ok bool) {
 		if ok && d != "" && !containsString(dirs, d) {
 			dirs = append(dirs, d)
 		}
 	}
+	swap := false
 	for _, e := range c.enters {
+		if pushd && e.i >= len(s.tokens) {
+			swap = true
+			if len(st.stack) > 0 {
+				add(st.stack[0], true)
+			}
+			continue
+		}
 		add(st.cdEnters(rc, s, site, e))
 	}
 	if c.stays {
@@ -970,6 +1000,17 @@ func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 	}
 	if len(dirs) > 0 {
 		n.cd = &pendingCD{dirs: dirs, chain: s.chain}
+	}
+	if pushd && len(dirs) > 0 && len(c.enters) == 1 && !c.stays && c.subst == nil {
+		left := ""
+		if st.dirOK {
+			left = st.dir
+		}
+		rest := st.stack
+		if swap {
+			rest = rest[1:]
+		}
+		n.stack = append([]string{left}, rest...)
 	}
 	return n
 }

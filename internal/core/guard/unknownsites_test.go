@@ -104,6 +104,7 @@ var wordReaders = map[string]string{
 	"lastSite":       "commandSites",
 	"writerTargets":  "commandSites and isUnknown: no writer is read for a program name the line does not fix",
 	"curlTargets":    "isUnknown on every URL it names; an unknown one is a write the guard cannot place",
+	"cdTarget":       "exempt: tells pushd from cd at a site after reached by that literal name; a name the line does not fix never reaches it, since after leaves the directory unknown first",
 	"cdEnters":       "exempt: reads cd's literal `-` and `+N` operands; its target goes through fixedToken, which refuses a word holding a substitution's output or a variable's value, and only then through resolveIn (by cdLands), or through cdpathLookup, which reads it the same way",
 	"autoloadCall":   "isUnknown on every option word: one the line does not fix may be -m or -w, so the operands are read as unfixed",
 	"cdOperand":      "exempt: reads cd's literal -L/-P/-e/-@/-q/-s and pushd's -n options as bash and zsh each take them; any other word starting with a dash, one holding a mark included, is taken only as zsh's first operand of its substitution form or, alone, as the directory zsh enters by that name, whose words cdSubstitutes and cdEnters read through fixedToken, or takes no reading, and a word holding a mark without one is taken as an operand, which goes through fixedToken",
