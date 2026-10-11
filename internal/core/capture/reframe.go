@@ -574,7 +574,8 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 					ErrInvariantViolation, strings.Join(open, ", "), open[0]))
 			}
 		}
-		id, err := minter.Mint(issueschema.ReframeFamily)
+		dir := filepath.Join(issuesRoot, issueschema.ReframesDir)
+		id, err := mintRecordID(issueschema.ReframeFamily, func(id string) string { return filepath.Join(dir, id+".md") })
 		if err != nil {
 			return err
 		}
@@ -586,7 +587,6 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 		if err != nil {
 			return err
 		}
-		dir := filepath.Join(issuesRoot, issueschema.ReframesDir)
 		if err := safeMkdirLeaf(dir); err != nil {
 			return err
 		}

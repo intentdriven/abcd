@@ -539,7 +539,7 @@ func writeDispositionLocked(repoRoot, issuesRoot string, head itemHead, req Disp
 		return writtenDisposition{}, err
 	}
 
-	id, err := minter.Mint(issueschema.DispositionFamily)
+	id, err := mintRecordID(issueschema.DispositionFamily, func(id string) string { return filepath.Join(itemDir, id+".md") })
 	if err != nil {
 		return writtenDisposition{}, err
 	}
