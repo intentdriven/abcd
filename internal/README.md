@@ -251,6 +251,16 @@ plugin surface, and a future MCP server share one engine.
   front door compensates by making a disabled registry loud rather than silent.
   Fail-open-loud on a broken guard belongs to the hook shim (`hooks/hooks.json`)
   and the `abcd guard hook` adapter, not here.
+- **`core/dogfood/`** — which abcd binary a hook runs in a checkout the person
+  opted in to dogfooding through `~/.abcd.noindex/dogfood-roots`
+  (iss-2610070547057816), and the build it runs. The list is read through
+  `fsutil.HomeDeclarationNames`; a listed main checkout covers the worktrees it
+  records; the build is made from `origin`'s default-branch tip as last fetched
+  (`sourceCommit`, the one place that chooses it), never HEAD, exported with
+  `git archive` and built under a lock into
+  `~/.abcd.noindex/dogfood/<root-sha>/<commit>/`. Every failure leaves the
+  installed release running, said on stderr. The hook shims reach it through
+  `hook dogfood-binary`.
 - **`core/board/`** — the status board's one renderer (spc-2610031844142274):
   the product thinker's view and the facilitator's, each as text fitted or
   wrapped to the window or as a markdown list a host session pastes unchanged.
