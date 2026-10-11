@@ -412,7 +412,8 @@ package-manager install takes the manager's own upgrade.
 
 ## What adopting a repository commits
 
-Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
+Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it,
+and it is how you prepare, onboard or bootstrap a repository for agent work:
 it lays down the `.abcd/` layout and the commit gates. The layout is the three
 tiers `abcd lint` checks for: `.abcd/development/` and `.abcd/work/`, the
 shared tiers, and `.abcd/.work.local/`, which stays on this machine. A missing
