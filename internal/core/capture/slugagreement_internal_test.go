@@ -8,7 +8,7 @@ import (
 )
 
 // The filename and the frontmatter slug are ONE value written twice. Capture
-// derives it once (deriveSlug, which is where the 60-char cap lives),
+// derives it once (deriveSlug, which is where the cap lives),
 // normalises it once, and hands that single string to both writers:
 // reservePath builds issID+"-"+slug+".md" and commitCapture stores the same
 // variable as fm["slug"]. Nothing downstream re-truncates, so the filename can
@@ -21,9 +21,10 @@ import (
 // frontmatter says something else, and every reader that locates a record by
 // its filename and every reader that trusts the field disagree in silence.
 func TestFilenameSlugMustMatchFrontmatterSlug(t *testing.T) {
-	// A 60-char slug sits exactly on deriveSlug's cap, and the ledger holds
-	// explicit slugs well past it (normaliseSlug does not cap), so both sides of
-	// the boundary must pass whole rather than being compared as prefixes.
+	// A 60-char slug sat exactly on deriveSlug's former cap, and the ledger holds
+	// slugs well past recordid.MaxSlugLen, minted before the cap
+	// (iss-2610100626320367), so both sides of the boundary must pass whole
+	// rather than being compared as prefixes: the reader never caps.
 	at60 := strings.Repeat("ab-", 20)[:59] + "c" // 60 chars, kebab-case
 	past60 := at60 + "-and-then-some-more-words"
 

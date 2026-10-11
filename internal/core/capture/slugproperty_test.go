@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // TestDerivedSlugAlwaysSatisfiesItsOwnValidator is the property half of
@@ -15,7 +17,7 @@ import (
 //
 // The inputs are adversarial by construction and seeded, so a failure
 // reproduces: separator runs, punctuation, non-ASCII, and lengths either side
-// of the 60-character budget, which is where the reported trailing hyphen was
+// of the slug budget (recordid.MaxSlugLen), which is where the reported trailing hyphen was
 // cut.
 func TestDerivedSlugAlwaysSatisfiesItsOwnValidator(t *testing.T) {
 	rng := rand.New(rand.NewSource(20260912))
@@ -43,8 +45,8 @@ func TestDerivedSlugAlwaysSatisfiesItsOwnValidator(t *testing.T) {
 		if !reSlug.MatchString(got) {
 			t.Fatalf("deriveSlug(%q) = %q, which the reader's slug validator refuses", text, got)
 		}
-		if len(got) > 60 {
-			t.Fatalf("deriveSlug(%q) = %q exceeds the 60-character budget", text, got)
+		if len(got) > recordid.MaxSlugLen {
+			t.Fatalf("deriveSlug(%q) = %q exceeds the %d-character budget", text, got, recordid.MaxSlugLen)
 		}
 	}
 }

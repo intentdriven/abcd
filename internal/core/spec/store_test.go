@@ -297,3 +297,28 @@ func TestSpecCreateStampsProvenance(t *testing.T) {
 		t.Error("an out-of-vocabulary production mode must be refused")
 	}
 }
+
+// TestCreateCutsTheSlugAtTheRecordCap is iss-2610100626320367 at the spec mint:
+// a spec takes its intent's slug (or a remainder's, or a bundle's name), and a
+// long one is cut at recordid.MaxSlugLen before it becomes a filename.
+func TestCreateCutsTheSlugAtTheRecordCap(t *testing.T) {
+	root := t.TempDir()
+	sp, err := Create(root, "itd-9", "a-record-s-file-name-has-no-cap-tied-to-the-length-of-its", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "a-record-s-file-name-has-no-cap-tied-to"
+	if sp.Slug != want {
+		t.Fatalf("slug = %q, want %q", sp.Slug, want)
+	}
+	if sp.Path != filepath.Join(specsOpen, sp.ID+"-"+want+".md") {
+		t.Fatalf("path = %q, want the capped slug", sp.Path)
+	}
+	data, err := os.ReadFile(filepath.Join(root, sp.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "slug: "+want+"\n") {
+		t.Fatalf("frontmatter does not carry the capped slug:\n%s", data)
+	}
+}

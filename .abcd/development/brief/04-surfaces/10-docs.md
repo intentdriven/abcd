@@ -117,8 +117,8 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   per-task pass: it states every finding, refuses nothing and exits 0.
 
 Bare `abcd docs` prints command usage rather than a status board; the
-[surfaces index](README.md) carries the one enumeration of where the
-bare-status convention holds, and `docs` is not on it. The working verbs accept
+[surfaces index](README.md) carries the one enumeration of the exceptions to
+the bare-status convention, and `docs` is on it. The working verbs accept
 the `docs-lint.json` to load and the repo to work over; the bare citation parent
 only routes and takes neither. That is what makes the refresh fetch exactly the
 set the gate demands receipts for.

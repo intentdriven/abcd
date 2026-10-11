@@ -98,7 +98,7 @@
         "item": ".abcd/development/brief/04-surfaces/02-disembark.md",
         "where": ".abcd/development/brief/04-surfaces/02-disembark.md:119",
         "claim": "Acceptance: \"Given a corpus repo with an intent corpus, ADRs, and a memory backend present, when `/abcd:disembark pack <source-repo> <dest>` runs to completion, then `<dest>` contains all sections in \u00a7 5 and the review returns a registered verdict of `SHIP`.\"",
-        "reality": "Packing abcd's own repository \u2014 the reference corpus repo, with intents, ADRs and the memory backend all present \u2014 never runs to completion: `abcd disembark pack . <dest>` exits 1 with `4 hard-fail secret(s) in planned content (first: activity/issues/resolved/iss-307-scanner-network-ipv4re-and-macre-rely-on-a-trailing-ascii-wo.md (net:mac))`. The hits are prose about MAC/IPv4 regexes in committed issue records, i.e. scanner false positives. `disembark plan` on the same tree succeeds, so the criterion is unreachable on the repo it is written for and the \u00a7 7 pack/review acceptance has never been exercised end to end here.",
+        "reality": "Packing abcd's own repository \u2014 the reference corpus repo, with intents, ADRs and the memory backend all present \u2014 never runs to completion: `abcd disembark pack . <dest>` exits 1 with `4 hard-fail secret(s) in planned content (first: activity/issues/resolved/iss-307-scanner-network-ipv4re-and-macre-rely-on.md (net:mac))`. The hits are prose about MAC/IPv4 regexes in committed issue records, i.e. scanner false positives. `disembark plan` on the same tree succeeds, so the criterion is unreachable on the repo it is written for and the \u00a7 7 pack/review acceptance has never been exercised end to end here.",
         "class": "criterion-violation"
       },
       {
@@ -238,7 +238,7 @@
         "item": ".abcd/development/brief/04-surfaces/05-intent.md",
         "where": ".abcd/development/brief/04-surfaces/05-intent.md:3",
         "claim": "\"The `/abcd:intent` plugin command surface exists (`commands/intent.md`, resolving iss-105) \u2026\"",
-        "reality": "`commands/intent.md` exists, but iss-105 is still filed in the open bucket: `.abcd/work/issues/open/iss-105-the-intent-verb-family-plan-link-review-ingest-and-now-quote.md`. The ledger does not record the issue as resolved.",
+        "reality": "`commands/intent.md` exists, but iss-105 is still filed in the open bucket: `.abcd/work/issues/open/iss-105-the-intent-verb-family-plan-link-review.md`. The ledger does not record the issue as resolved.",
         "class": "false-claim"
       },
       {
@@ -294,7 +294,7 @@
         "item": ".abcd/development/brief/04-surfaces/07-memory.md",
         "where": ".abcd/development/brief/04-surfaces/07-memory.md:3",
         "claim": "\"Every bare `spc-38`/`spc-39` on this page is a predecessor-store id cited as provenance \u2014 neither id names a spec in this repo's store (`.abcd/development/specs/`), whose own ids stop well short of spc-38.\"",
-        "reality": "The repo's spec store has grown past both ids. `.abcd/development/specs/closed/` contains spc-38 (`spc-38-alice-opens-the-record-explorer-and-reads-the-whole-development.md`), spc-39 (`spc-39-maya-sees-how-every-decision-connects-one-relationship-chart.md`) and spc-40 (`spc-40-bob-installs-abcd-with-one-checksum-verified-command-served.md`). Both bare ids the page uses ~20 times now collide with live, unrelated in-repo specs, and the disclaimer that was written to prevent that collision is itself false.",
+        "reality": "The repo's spec store has grown past both ids. `.abcd/development/specs/closed/` contains spc-38 (`spc-38-alice-opens-the-record-explorer-and-reads-the-whole-development.md`), spc-39 (`spc-39-maya-sees-how-every-decision-connects.md`) and spc-40 (`spc-40-bob-installs-abcd-with-one-checksum.md`). Both bare ids the page uses ~20 times now collide with live, unrelated in-repo specs, and the disclaimer that was written to prevent that collision is itself false.",
         "class": "false-claim"
       },
       {

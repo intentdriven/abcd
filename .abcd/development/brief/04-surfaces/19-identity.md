@@ -126,8 +126,8 @@ the recorded three-variant tagline drift this check exists to catch.
 ## References
 
 - Plugin command: [`commands/identity.md`](../../../../commands/identity.md)
-- Spec: [`spc-19`](../../specs/closed/spc-19-your-repo-says-the-same-thing-about-itself-everywhere-becaus.md)
-- Intent: [`itd-102`](../../intents/shipped/itd-102-your-repo-says-the-same-thing-about-itself-everywhere-becaus.md)
+- Spec: [`spc-19`](../../specs/closed/spc-19-your-repo-says-the-same-thing-about.md)
+- Intent: [`itd-102`](../../intents/shipped/itd-102-your-repo-says-the-same-thing-about.md)
 - Onboarding consumer: [`15-prepare-this-repo.md`](15-prepare-this-repo.md)
 - Conformance surface: [`16-lint.md`](16-lint.md)
 

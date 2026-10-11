@@ -6,7 +6,7 @@ with parallelism where dependencies allow. The canonical intent set lives on the
 lifecycle shelves and in the intent index
 ([`intents/README.md`](../../intents/README.md)); the product phases that once
 bundled it are retired
-([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)),
+([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired.md)),
 and their documents under
 [`roadmap/phases/`](../../roadmap/phases/README.md) are history. This file is the
 **build-milestone** detail: what each milestone stands up in the Go core, the
@@ -30,9 +30,14 @@ load cleanly.
 
 A seam is stood up by the milestone that first consumes it, never on day one:
 "wired or it isn't done" forbids the stub-interface scaffold this milestone was
-first drawn around. The scanner is the one seam standing — the native secret and
-PII scan, with an external backend as its config-selected plug-in. The oracle,
-history, spec and run seams, and the wiring packages beside them, are planned
+first drawn around. The scanner is the one capability seam standing — the native
+secret and PII scan, with an external backend as its config-selected plug-in.
+Three further adapter packages stand outside the capability seams: `openaiapi`,
+the opt-in OpenAI-compatible provider an agent's oracle role can be pointed at;
+`hosting`, the provider seam `abcd site setup` routes a rendered site through;
+and `tailscale`, the dashboard's view of this computer's own addresses. The
+oracle seam's own package, the history, spec and run seams, and the wiring
+packages beside them, are planned
 rather than present, and the claim is gated rather than trusted: the `index_drift`
 record-lint rule holds every path in the planned-seams region of
 [`internal/README.md`](../../../../internal/README.md) to being absent from the
@@ -51,9 +56,11 @@ core and the packaging boundary holds.
   the conventions marker block and the rules loader (itd-3), and bootstrapping the
   user-scope history store. There is no `abcd init` and no config get/set pair:
   install is the write path a person reaches for, and the bare invocation,
-  its `--dry-run`, `--identity` and `--remote` modes, and `doctor` are the
-  read-only halves. Two further forms write: `uninstall` takes abcd back out again, and
-  `remote apply` turns on the forge's own secret scanning. The full surface is
+  its `--dry-run`, `--identity`, `--remote` and `--providers` modes, and `doctor`
+  are the read-only halves. Four further forms write: `uninstall` takes abcd back
+  out again, `remote apply` turns on the forge's own secret scanning, `connect`
+  configures a provider on this machine after one verification call, and
+  `credential --home` stores a verified key. The full surface is
   the machine-checked table in
   [`04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md); this milestone is what
   install has to do, not the whole verb.
@@ -82,20 +89,23 @@ core and the packaging boundary holds.
 
 ## 3. Intent, brief, and review through the host-delegated oracle
 
-- **intent**: `/abcd:intent` (itd-1, itd-27, itd-34), with press-release
+- **intent**: `/abcd:intent` (itd-1, itd-34, itd-94), with press-release
   composition. Creation is bare quoted text; the shipped sub-verbs are the machine-checked table in
   [`../04-surfaces/05-intent.md`](../04-surfaces/05-intent.md). Shipping runs the
   other way round: an intent moves to `shipped/` as the close-hook of `abcd spec
   close` — on the close after which no open spec names it, since an intent owns
-  one or more specs — so there is no `intent ship`. `grill` is a design target (itd-27); the
-  admission gauntlet that ships is `/abcd:ideate`.
+  one or more specs — so there is no `intent ship`. There is no `grill` sub-verb
+  either: the grilling itd-27 asked for is the planning interview, `abcd intent
+  interview`, under itd-94, which supersedes it; the admission gauntlet that
+  ships is `/abcd:ideate`.
 - **review**: the oracle seam, **host-delegated by default**
   ([adr-25](../../decisions/adrs/0025-host-delegated-llm-default.md)): abcd emits
   a prompt, the host's subagent dispatch runs it, abcd consumes the structured
   result. Native, CLI, API and MCP adapters are opt-in for an operator who wants
   abcd to reach a model directly; the default install needs no API keys.
 - **MCP front door** *(design target)*: a second thin door over the unchanged
-  core (adr-23). `internal/surface/` holds one door, `cli`; the second is added
+  core (adr-23). `internal/surface/` holds `cli`, the one door onto the core, and
+  `dashboard`, the network listener behind `abcd dashboard`; the second door is added
   once a surface is worth exposing, and the core needs no rework for it because it
   is transport-agnostic already.
 
@@ -113,7 +123,7 @@ core and the packaging boundary holds.
   per-intent, through `abcd intent ready`.
 - **A companion-harness backend** *(design target)*: read and written at the
   **convention level**
-  ([adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions-and-mcp.md)),
+  ([adr-24](../../decisions/adrs/0024-companion-harness-peer-via-conventions.md)),
   a peer over conventions and MCP, never a code dependency.
 
 ## 5. Autonomous run seam *(design target)*
@@ -126,9 +136,10 @@ and a companion agent loop as opt-in adapter loops behind the same contract. The
 receipt-gated, report-not-block iteration boundary is the seam contract every
 adapter loop inherits.
 
-Nothing of this ships: the binary registers no `run` verb, the run adapter is on
-the planned-seams list, and the operator surface over it is itd-29, in
-`intents/planned/`.
+The seam does not ship: the binary registers no `run` verb, and the run adapter
+is on the planned-seams list. The operator surface itd-29 drew over it is
+superseded by itd-2609201916151817, in `intents/planned/`, whose loop ships on
+the intent key without the seam, through `abcd build`.
 
 ## 6. Lifeboat round-trip
 

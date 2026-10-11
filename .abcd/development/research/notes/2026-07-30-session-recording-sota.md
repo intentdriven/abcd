@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-30
 **Scope:** state of the art in persisting AI coding-assistant session transcripts — SpecStory and its alternatives, how the field's consensus compares with abcd's native transcript store (ADR-29), and the guardrails any optional SpecStory plug-in must carry.
-**Backs:** [iss-217](../../../work/issues/open/iss-217-add-a-cross-agent-capture-source-as-an-optional-plugin.md) (add a cross-agent capture source as an optional plugin); informs any intent decomposed from it.
+**Backs:** [iss-217](../../../work/issues/open/iss-217-add-a-cross-agent-capture-source-as-an.md) (add a cross-agent capture source as an optional plugin); informs any intent decomposed from it.
 **Drawn from:** [ADR-22](../../decisions/adrs/0022-bundled-deps-as-pluggable-adapters.md), [ADR-29](../../decisions/adrs/0029-native-transcript-corpus.md), [itd-89](../../intents/shipped/itd-89-start-the-transcript-clock.md), [itd-59 (draft)](../../intents/drafts/itd-59-autonomous-worker-transcript-capture.md).
 
 > **Status of citations:** gathered 2026-07-30 by a web-research agent. SpecStory's privacy docs, CLI README, and company page, the Claude Code hooks and monitoring docs, and the ghosttype write-up were opened directly; the smaller GitHub projects and the HN/dev.to threads were read at summary level. Verify before quoting in an ADR.

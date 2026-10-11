@@ -138,7 +138,7 @@ Per-criterion verdicts:
   evidence: internal/core/memory/ask.go:33 — "SourceHash string `json:"source_hash"`"
   evidence: internal/core/memory/lint.go:446 — "fix := "Re-ingest the source (or backfill `source_token_count` in `.sources_index.json`).""
 - ac-3 — NOT_MET: disembark packs the record families by path and reads neither source.licence nor a kept original, so nothing refuses to surface .abcd/memory/sources/< sha256>.< ext> against the launch allowlist; the spec declares criterion 3 out of scope and the gap is the open issue iss-2609211905347458
-  evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate-does-not-read-a-kept-memory-original.md:16 — "The lifeboat restrictive-licence gate does not read a kept memory original."
+  evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate.md:16 — "The lifeboat restrictive-licence gate does not read a kept memory original."
   evidence: .abcd/development/specs/closed/spc-2609211905174684-memory-unification.md:44 — "criteria 3,"
 - ac-4 — MET: the quotation budget's MaxContiguousQuoteWords is 150 and lint emits MQ001 at the offending span's line when a contiguous quoted span exceeds it, with a test on the budget
   evidence: internal/core/memory/coverage.go:44 — "MaxContiguousQuoteWords: 150,"
@@ -167,13 +167,13 @@ Per-criterion verdicts:
   evidence: internal/core/memory/backfill_preamble_test.go:120 — "func TestBackfillLegacyStillBackfillsGenuineLegacyPages(t *testing.T) {"
   evidence: internal/core/ahoy/gitignore.go:39 — ""public": {"/.abcd/", "/memory/"},"
 - ac-10 — NOT_MET: no dredge synthesiser writes dredge_synthesis pages into the memory store; the spec declares criterion 10 out of scope and the gap is the open issue iss-2609211905340006
-  evidence: .abcd/work/issues/open/iss-2609211905340006-dredge-synthesis-output-lands-in-the-memory-store-as-its-own-source-class.md:3 — "id: "iss-2609211905340006""
+  evidence: .abcd/work/issues/open/iss-2609211905340006-dredge-synthesis-output-lands-in-the.md:3 — "id: "iss-2609211905340006""
   evidence: .abcd/development/specs/closed/spc-2609211905174684-memory-unification.md:45 — "10, 11 and 12 are the out-of-scope items"
 - ac-11 — NOT_MET: the registry is written by memory ingest alone; no loot consumer shares it and no ingest_count of 2 with both keys can arise; the spec declares criterion 11 out of scope and the gap is the open issue iss-2609211905346507
-  evidence: .abcd/work/issues/open/iss-2609211905346507-one-registry-entry-for-a-source-ingested-as-documentation-and-vendored-as-code.md:3 — "id: "iss-2609211905346507""
+  evidence: .abcd/work/issues/open/iss-2609211905346507-one-registry-entry-for-a-source-ingested.md:3 — "id: "iss-2609211905346507""
   evidence: internal/core/memory/ingest.go:205 — "ContentHash: contentHash, Consumer: "memory", SourceClass: sourceClass,"
 - ac-12 — NOT_MET: no disembark gate compares a citation's licence with the project's, and no --accept-licence-risk override exists anywhere under internal/; the spec declares criterion 12 out of scope and the open issue iss-2609211905347458 names the GPL-3.0-against-MIT refusal as wanted
-  evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate-does-not-read-a-kept-memory-original.md:16 — "refuse a gated payload carrying a GPL-3.0 citation when the project publishes as MIT"
+  evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate.md:16 — "refuse a gated payload carrying a GPL-3.0 citation when the project publishes as MIT"
 - ac-13 — MET_WITH_CONCERNS: the page schema fails closed on any key outside it, so a known_failure_modes field cannot enter memory frontmatter without a schema change; the concern is that the criterion describes a proposal-review boundary, and no gate reviews proposals — the schema is the only mechanical form of the rejection
   evidence: internal/core/memory/schema.go:425 — "DistilledPage carries unknown key(s) %v — the boundary fails closed on keys outside the schema"
 
@@ -194,11 +194,11 @@ Gap audit:
     evidence: internal/core/memory/lint.go:446 — "fix := "Re-ingest the source (or backfill `source_token_count` in `.sources_index.json`).""
 - missing:
   - the disembark restrictive-licence gate over kept originals and licence mismatches (criteria 3 and 12)
-    evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate-does-not-read-a-kept-memory-original.md:16 — "The lifeboat restrictive-licence gate does not read a kept memory original."
+    evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate.md:16 — "The lifeboat restrictive-licence gate does not read a kept memory original."
   - dredge synthesis pages in the memory store (criterion 10)
-    evidence: .abcd/work/issues/open/iss-2609211905340006-dredge-synthesis-output-lands-in-the-memory-store-as-its-own-source-class.md:3 — "id: "iss-2609211905340006""
+    evidence: .abcd/work/issues/open/iss-2609211905340006-dredge-synthesis-output-lands-in-the.md:3 — "id: "iss-2609211905340006""
   - one registry shared by memory and loot (criterion 11)
-    evidence: .abcd/work/issues/open/iss-2609211905346507-one-registry-entry-for-a-source-ingested-as-documentation-and-vendored-as-code.md:3 — "id: "iss-2609211905346507""
+    evidence: .abcd/work/issues/open/iss-2609211905346507-one-registry-entry-for-a-source-ingested.md:3 — "id: "iss-2609211905346507""
 
 ## References
 
