@@ -269,12 +269,25 @@ variable is read as an operand, as a wholly-substituted one is, so `git push
 origin "$branch"` stays allowed and `git push $X origin main` is not seen. A
 string handed to a shell carries its variables for that shell to expand
 (`sh -c "git push --$X …"` is read as that shell reads it), and the string's
-own quotes apply to the value, so `'--$X'` inside it is a flag too. A variable's value
-is not read as what an earlier command carried into it: as a shell's or
-`source`'s script it is not a stream (`bash "$script"`), and as the program's
-name it is not `pkill` or `killall`, whose entries name only the program and an
-operand, nor a bare interpreter inside a string, so `"$GO" build ./...` and
-`$EDITOR notes.md` stay allowed. A variable standing as the program with
+own quotes apply to the value, so `'--$X'` inside it is a flag too. A variable
+the line itself assigns before it uses it is read with that value in place, as
+well as by the rule above: a pid list a search printed (`p=$(pgrep make); kill
+$p`, `pgrep make | while read p; do kill $p; done`, `for p in $(pgrep make)`)
+is a kill by name, a stream path (`f=<(curl …); bash "$f"`) is a shell reading
+a stream, text a string runs (`X='…'; eval "$X"`, `sh -c "$X"`, `bash -c "… $X
+…"`) is judged as the command it holds, and `P=pkill; $P make` is a `pkill`;
+each is a **block** under the entry that names it. A string that runs a value
+the line set from output the guard did not read — a command substitution
+(`X=$(curl …); eval "$X"`) or a `read` — is a **block** as uninspectable. A
+variable the line did not set is not read as what an earlier command carried
+into it: as a shell's or `source`'s script it is not a stream (`bash
+"$script"`), and as the program's name it is not `pkill` or `killall`, whose
+entries name only the program and an operand, nor a bare interpreter inside a
+string, so `"$GO" build ./...`, `$EDITOR notes.md`, `eval "$cmd"` and the
+successor `kill "$pid"` stay allowed; so does a value the line set from a
+source of none of these kinds (`pid=$(cat run.pid); kill "$pid"`, `GO=go;
+"$GO" build`). Which assignment reaches which use is read by order alone, so a
+name the line assigns more than once is read with each of its values. A variable standing as the program with
 another variable as its first operand (`exec "$BIN" "$@"`) can be `git clean`
 and warns, as a substitution there does. Inside double quotes a `${…}` ends at
 its own `}`, and a `"` in it opens a nested string rather than closing the
@@ -502,8 +515,10 @@ against it, as `pkill -tpts/3`) is a **block** too, under `pkill-by-owner`,
 `killall-by-owner` or the entry for a kill by name, because every session under
 the account is among what it selects. `pkill`'s signal is read as a signal
 first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
-so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
-through a variable or a file, or taken from a `ps | grep` chain, is not seen.
+so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list a search
+printed into a variable the same line assigns is read as the search's output
+(`p=$(pgrep make); kill $p`, `p=$(pgrep make); echo "$p" | xargs kill`); one
+carried through a file, or taken from a `ps | grep` chain, is not seen.
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
@@ -581,11 +596,13 @@ guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 whose API path an entry names by its ROOT
 segment but the host serves under a prefix (a GitHub Enterprise Server install
 mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
-form **is** read), what a variable carries in from an earlier command — a pid
-list, a stream path, shell text run through `eval "$X"` or a string a shell
-runs, or `pkill` or `killall` as the program a variable names (`$P make`) —
-because reading each would refuse the ordinary commands a variable carries a
-value for, an IFS the shell already holds when
+form **is** read), what a variable the line did not assign carries in from an
+earlier command — a pid list, a stream path, shell text run through `eval "$X"`
+or a string a shell runs, or `pkill` or `killall` as the program a variable
+names (`$P make`) — because reading each would refuse the ordinary commands a
+variable carries a value for (a value the line assigns and then uses **is**
+read; a value a `+=` adds to, or a word the value splits into when it stands
+unquoted, is not), an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
 (a sourced file, a nameref set before the line, or an operator the line does
 not write, such as a command's output an arithmetic context evaluates; every

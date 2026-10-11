@@ -502,12 +502,16 @@ func anyHits(fs []feed, srcs []Pattern) bool {
 }
 
 // segmentHits reports whether a command matches one of srcs, or any command of
-// a command string it runs does (segList.payloads), however deep they nest.
+// a command string it runs does (segList.payloads), however deep they nest, or
+// any command whose output reaches it otherwise does (segment.carries).
 func segmentHits(s segment, srcs []Pattern) bool {
 	for _, src := range srcs {
 		if matchSegment(src, s) {
 			return true
 		}
+	}
+	if anyHits(s.carries, srcs) {
+		return true
 	}
 	if s.home == nil {
 		return false
@@ -532,16 +536,20 @@ func (f feed) hits(srcs []Pattern) bool {
 	counts, ok := f.list.hits[key]
 	if !ok {
 		counts = make([]int, len(f.list.segs)+1)
+		// Filed before it is counted: a command's carries (segmentHits) name
+		// only commands before it in its own list, which are counted by the
+		// time it is read, so the question it asks of them is answered from
+		// the counts already made rather than counted again without end.
+		if f.list.hits == nil {
+			f.list.hits = map[*Pattern][]int{}
+		}
+		f.list.hits[key] = counts
 		for i, s := range f.list.segs {
 			counts[i+1] = counts[i]
 			if segmentHits(s, srcs) {
 				counts[i+1]++
 			}
 		}
-		if f.list.hits == nil {
-			f.list.hits = map[*Pattern][]int{}
-		}
-		f.list.hits[key] = counts
 	}
 	hi := f.hi
 	if hi > len(f.list.segs) {

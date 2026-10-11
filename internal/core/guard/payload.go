@@ -128,6 +128,15 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:]
+		// A value the text assigns before it uses it is read in place
+		// (carried.go): each such command is read once more with the value
+		// in its words, as another reading of it, and a command whose words
+		// hold a value's output passes that output on (segment.carries).
+		carried, carriedSigs := carriedReadings(item.segs)
+		signals = append(signals, carriedSigs...)
+		for k := range item.segs {
+			out[item.base+k].carries = item.segs[k].carries
+		}
 		for k, s := range item.segs {
 			// A word that is an unquoted `$(cat <<'EOF' … EOF)` runs the
 			// words its document splits into. That command is read at this
@@ -138,6 +147,11 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 				fs.carrier, fs.depth, fs.end = item.base+k+1, item.depth, s.end
 				out = append(out, fs)
 				queue = append(queue, work{segs: []segment{fs}, depth: item.depth, base: len(out) - 1})
+			}
+			for _, d := range carried[k] {
+				d.carrier, d.depth, d.end = item.base+k+1, item.depth, s.end
+				out = append(out, d)
+				queue = append(queue, work{segs: []segment{d}, depth: item.depth, base: len(out) - 1})
 			}
 			// What reaches the commands of a string s runs is read once per
 			// segment, however many strings it carries (payloadInput).

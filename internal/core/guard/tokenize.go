@@ -69,8 +69,14 @@ type segment struct {
 	// reading reaches is lost.
 	literal map[int]wordLiteral
 	// fromFixedOutput records a segment fixedOutputSegment built: another
-	// reading of the segment carrying the output, not another command.
+	// reading of the segment carrying the output, not another command. A
+	// reading carriedReadings built, with the values the text assigned in its
+	// words, is another reading in the same way and carries it too.
 	fromFixedOutput bool
+	// valuesPlaced records a reading carriedReadings built. Tier 2 does not
+	// speculate on it: the command's own reading was speculated on, and a
+	// value in place only spells out more text for a guess to fire on.
+	valuesPlaced bool
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word
@@ -146,6 +152,13 @@ type segment struct {
 	// reaches the command from outside its own line.
 	stdinIn []feed
 	argsIn  []feed
+	// carries records commands whose output reaches this command by a way
+	// no word's substitution and no pipe names: a value the text assigned
+	// from their output that its words hold (carried.go). A run that names
+	// this command reads them as its own (segmentHits), so `echo "$p" |
+	// xargs kill` after `p=$(pgrep make)` hands kill what pgrep printed. nil
+	// when nothing does.
+	carries []feed
 	// home and at name the segment in the tokenize call that emitted it,
 	// list.segs[at]; home is nil for a segment built anywhere else. They are
 	// what a command's own string is filed under (segList.payloads).

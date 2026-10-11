@@ -1,0 +1,61 @@
+# Everyday command lines that carry a value through a variable — the
+# carried-value half of the false-positive sweep (sweep_test.go,
+# iss-2609281134544802, ruling AT).
+#
+# Each line is ordinary work and should allow: a pid the caller recorded, a
+# program named by a variable, a script or a command a script built up. The
+# first block uses a variable the line did not set, which the guard reads as
+# it always has; the second sets it on the same line, which the carried-value
+# reading follows. A block or warn on any line here is a false positive the
+# sweep's ceiling counts.
+
+# --- set before the line ran -------------------------------------------------
+kill "$pid"
+kill -TERM "$PID"
+kill -- -"$pg"
+kill -0 "$pid" 2>/dev/null
+kill $(cat run.pid)
+"$GO" build ./...
+"$GO" test ./internal/...
+exec "$BIN" "$@"
+$EDITOR notes.md
+bash "$SCRIPT"
+source "$ENV_FILE"
+eval "$cmd"
+sh -c "$cmd"
+git push origin "$branch"
+git checkout "$BRANCH"
+gh pr view "$PR"
+go run ./cmd/abcd capture "$TITLE"
+curl -fsS "$URL" -o "$OUT"
+ps -o pid= -p "$pid" | xargs kill
+
+# --- set on the same line ----------------------------------------------------
+sleep 30 & pid=$!; kill "$pid"
+pid=$!; kill -TERM "$pid"
+pid=$(cat run.pid); kill "$pid"
+pg=$(ps -o pgid= -p "$pid" | tr -d ' '); kill -- -"$pg"
+GO=go; "$GO" build ./...
+GO=$(command -v go); "$GO" version
+BIN=./bin/abcd-darwin-arm64; "$BIN" --version
+P=make; $P build
+cmd="go test ./..."; eval "$cmd"
+cmd="make build"; sh -c "$cmd"
+msg="hello"; bash -c "echo $msg"
+S=scripts/check-vcs-stamp.sh; bash "$S"
+out=$(mktemp); go test ./... > "$out"; cat "$out"
+branch=$(git branch --show-current); git push origin "$branch"
+root=$(git rev-parse --show-toplevel); cd "$root" && make build
+dir=$(mktemp -d); rm -rf "$dir"
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+n=$(wc -l < notes.txt); echo "$n"
+PORT=8080; curl "http://localhost:$PORT/health"
+f=notes.md; $EDITOR "$f"
+for f in *.go; do gofmt -l "$f"; done
+for pid in $(cat pids); do kill "$pid"; done
+while read -r line; do echo "$line"; done < notes.txt
+git log --oneline | while read -r sha msg; do echo "$sha $msg"; done
+ps -o pid= -p 4242 | xargs kill
+pgrep -l make > procs.txt; cat procs.txt
+lsof -i :8080 > holders.txt; cat holders.txt
+X='echo hi'; eval "$X"

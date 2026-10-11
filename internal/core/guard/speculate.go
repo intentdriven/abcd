@@ -129,7 +129,7 @@ func (r Registry) speculate(segs []segment, matched []bool, ids []string) []payl
 		bytes:  maxSpeculativeExpansionBytes,
 	}
 	for i, s := range segs {
-		if matched[i] {
+		if matched[i] || s.valuesPlaced {
 			continue
 		}
 		// A segment whose payload the guard READ is not an unrecognised launcher,
