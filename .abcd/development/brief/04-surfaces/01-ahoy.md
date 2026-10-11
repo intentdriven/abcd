@@ -882,7 +882,7 @@ vintage and staleness, and `superseded_root` when the note applies; the plugin
 command reads those from exactly this render, so they are a contract with the
 plugin surface rather than a convenience. The note is the one the version flag
 carries, under the same conditions
-([`12-version.md`](12-version.md#a-superseded-plugin-root-names-itself)).
+([`08-abcd.md`](08-abcd.md#a-superseded-plugin-root-names-itself)).
 
 **The dry run** renders the detection envelope as JSON and nothing else, so the
 plugin command can summarise state off the folder kind and the gaps and name
