@@ -510,9 +510,13 @@ Gate every `make preflight` and every `go test -race` on a shared machine with
 `--wait`, and never write a waiter loop of your own: a hand-written
 `pgrep -f "go test -race"` loop matched its own shell, whose command line
 carries that string, and never opened. `--wait` blocks until the one-minute
-load average is below the wait limit (`wait-load`, by default the online core
-count) and no other `go test -race` run is live, judged from each go process's
-arguments with the waiter's own process and ancestors excluded. It reads the
+load average is below the wait limit (`wait-load`, by default twice the online
+core count) and no other `go test -race` run is live, judged from each go
+process's arguments with the waiter's own process and ancestors excluded. Twice,
+because a busy machine with several sessions already sits near one core-count of
+load; one waiter at a time is kept by the race-run condition and the hold, not
+by the load number; and one race run adds about a core-count, so the peak stays
+near three times the cores, under the extreme limit. It reads the
 machine every 15 seconds, prints one line when it starts waiting and nothing
 more until it opens, and gives up after `--timeout` (30 minutes by default),
 exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,

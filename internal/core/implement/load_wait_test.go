@@ -203,11 +203,29 @@ func TestWaitTimesOutNamingTheCondition(t *testing.T) {
 	if res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnLoad}) || res.WaitedS != 60 {
 		t.Fatalf("result = %+v, want a timeout after 60s still on [load]", res)
 	}
-	if res.WaitLoad != 16 || res.LimitSource != LimitsDefault {
-		t.Fatalf("limit %v from %q, want the core count by default", res.WaitLoad, res.LimitSource)
+	if res.WaitLoad != 32 || res.LimitSource != LimitsDefault {
+		t.Fatalf("limit %v from %q, want twice the core count by default", res.WaitLoad, res.LimitSource)
 	}
 	if res.Hold != nil {
 		t.Fatalf("a timed-out wait holds the gate: %+v", res.Hold)
+	}
+}
+
+// TestWaitOpensBelowTwiceTheCores: a busy multi-session machine sits near one
+// core-count of load, so the default limit is twice the cores; a load of 24 on
+// 16 cores opens the gate, and a load of 32 does not.
+func TestWaitOpensBelowTwiceTheCores(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	res, err := WaitLoad(waitReq(t.TempDir(), 60000, clock, poll{load: 24}))
+	if err != nil || res.Status != WaitOpen || res.WaitLoad != 32 {
+		t.Fatalf("result %+v, err %v, want open at load 24 under the default limit of 32", res, err)
+	}
+	clock = &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 60000, clock, poll{load: 32})
+	req.Timeout = 0
+	res, err = WaitLoad(req)
+	if err != nil || res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnLoad}) {
+		t.Fatalf("result %+v, err %v, want shut at load 32: the limit is strict", res, err)
 	}
 }
 

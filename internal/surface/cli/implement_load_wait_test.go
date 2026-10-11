@@ -62,7 +62,7 @@ func TestImplementLoadWaitOpensOnceTheRaceRunExits(t *testing.T) {
 	}
 	for _, want := range []string{
 		"waiting for capacity: a go test -race run is live (pid 70000)",
-		"load gate open after 30s: load 3.0 is below 16 (16 online cores), and no other go test -race run is live;",
+		"load gate open after 30s: load 3.0 is below 32 (2 x 16 online cores), and no other go test -race run is live;",
 		"held for 2m0s, so one waiter starts at a time",
 	} {
 		if !strings.Contains(out, want) {
@@ -83,7 +83,7 @@ func TestImplementLoadWaitTimeoutExitsNonZero(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
-	want := "load gate still shut after 1m0s: load 40.0 is not below 16 (16 online cores)"
+	want := "load gate still shut after 1m0s: load 40.0 is not below 32 (2 x 16 online cores)"
 	if !strings.Contains(out, want) {
 		t.Fatalf("output lacks %q:\n%s", want, out)
 	}

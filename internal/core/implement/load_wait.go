@@ -21,8 +21,8 @@ import (
 // The waiter (`abcd implement load --wait`, iss-2610111826193257) is the one
 // wait-for-capacity primitive concurrent sessions use instead of writing their
 // own. It blocks until the one-minute load average is strictly below the
-// machine's wait limit (wait-load in ~/.abcd.noindex/load-limits, the online
-// core count by default) and no other `go test -race` run is live, judged by
+// machine's wait limit (wait-load in ~/.abcd.noindex/load-limits, twice the
+// online core count by default) and no other `go test -race` run is live, judged by
 // each go process's argv with the waiter's own process and ancestors excluded
 // (machineload.RaceRuns). It never signals anything.
 //

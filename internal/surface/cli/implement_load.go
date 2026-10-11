@@ -69,12 +69,16 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"With --wait it waits for capacity instead of warning, and it is the one waiter\n" +
 			"concurrent sessions gate a preflight or a race run with, in place of a hand-written\n" +
 			"loop. It blocks until the one-minute load average is below the wait limit\n" +
-			"(`wait-load <load>` in the same file; by default the online core count, so the\n" +
-			"work it admits, which can fill every core by itself, starts with cores idle) and\n" +
-			"no other `go test -race` run is live. A race run is a process executing go whose\n" +
-			"go command is `test` with -race, read from its arguments, never from a pattern\n" +
-			"over a command line, and the waiter's own process and ancestors are never one: a\n" +
-			"hand-written `pgrep -f \"go test -race\"` matched its own shell and never opened.\n" +
+			"(`wait-load <load>` in the same file; by default twice the online core count) and\n" +
+			"no other `go test -race` run is live. Twice, because a busy multi-session machine\n" +
+			"already idles near one core-count of load, so a limit of the cores never opens;\n" +
+			"one waiter at a time is kept by the race-run condition and the hold below, not\n" +
+			"by the load number; and one race run adds about a core-count, so admitting below\n" +
+			"twice the cores bounds the peak near three times them, under the extreme limit.\n" +
+			"A race run is a process executing go whose go command is `test` with -race, read\n" +
+			"from its arguments, never from a pattern over a command line, and the waiter's own\n" +
+			"process and ancestors are never one: a hand-written `pgrep -f \"go test -race\"`\n" +
+			"matched its own shell and never opened.\n" +
 			"It reads the machine every " + implement.WaitPollInterval.String() + ", prints one line when it starts waiting and\n" +
 			"nothing more until it opens, and gives up after --timeout (" + implement.WaitDefaultTimeout.String() + " by default),\n" +
 			"exiting 1 and naming what it was still waiting on. --json reports what it waited\n" +
@@ -259,7 +263,7 @@ func waitLimitText(res implement.WaitResult) string {
 	if res.LimitSource == implement.LimitsFile {
 		return "set in " + implement.LimitsFileDisplay
 	}
-	return fmt.Sprintf("%d online cores", res.Cores)
+	return fmt.Sprintf("%d x %d online cores", machineload.DefaultWaitFactor, res.Cores)
 }
 
 // renderLoad writes the check's report.

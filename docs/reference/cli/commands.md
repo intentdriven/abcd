@@ -1798,12 +1798,16 @@ value out of range, is reported loudly and every default is used.
 With --wait it waits for capacity instead of warning, and it is the one waiter
 concurrent sessions gate a preflight or a race run with, in place of a hand-written
 loop. It blocks until the one-minute load average is below the wait limit
-(`wait-load <load>` in the same file; by default the online core count, so the
-work it admits, which can fill every core by itself, starts with cores idle) and
-no other `go test -race` run is live. A race run is a process executing go whose
-go command is `test` with -race, read from its arguments, never from a pattern
-over a command line, and the waiter's own process and ancestors are never one: a
-hand-written `pgrep -f "go test -race"` matched its own shell and never opened.
+(`wait-load <load>` in the same file; by default twice the online core count) and
+no other `go test -race` run is live. Twice, because a busy multi-session machine
+already idles near one core-count of load, so a limit of the cores never opens;
+one waiter at a time is kept by the race-run condition and the hold below, not
+by the load number; and one race run adds about a core-count, so admitting below
+twice the cores bounds the peak near three times them, under the extreme limit.
+A race run is a process executing go whose go command is `test` with -race, read
+from its arguments, never from a pattern over a command line, and the waiter's own
+process and ancestors are never one: a hand-written `pgrep -f "go test -race"`
+matched its own shell and never opened.
 It reads the machine every 15s, prints one line when it starts waiting and
 nothing more until it opens, and gives up after --timeout (30m0s by default),
 exiting 1 and naming what it was still waiting on. --json reports what it waited

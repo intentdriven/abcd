@@ -87,12 +87,12 @@ func TestMalformedLimitsFallBackWhole(t *testing.T) {
 	}
 }
 
-// TestWaitLoadDefaultsToTheCoreCountAndReadsItsKey: the waiter's limit is the
-// online core count unless the settings file sets wait-load, and a bad value
-// is a fault like any other key's.
-func TestWaitLoadDefaultsToTheCoreCountAndReadsItsKey(t *testing.T) {
-	if l := DefaultLimits(16); l.WaitLoad != 16 || l.WaitFromFile {
-		t.Fatalf("DefaultLimits(16) = %+v, want wait-load 16 from the default", l)
+// TestWaitLoadDefaultsToTwiceTheCoreCountAndReadsItsKey: the waiter's limit is
+// twice the online core count unless the settings file sets wait-load, and a
+// bad value is a fault like any other key's.
+func TestWaitLoadDefaultsToTwiceTheCoreCountAndReadsItsKey(t *testing.T) {
+	if l := DefaultLimits(16); l.WaitLoad != 32 || l.WaitFromFile {
+		t.Fatalf("DefaultLimits(16) = %+v, want wait-load 32 from the default", l)
 	}
 	l, fault := ParseLimits([]byte("wait-load 24\n"), 16)
 	if fault != nil || l.WaitLoad != 24 || !l.WaitFromFile || l.StrayFromFile || l.ExtremeFromFile {

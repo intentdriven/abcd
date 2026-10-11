@@ -30,11 +30,16 @@ const (
 	// DefaultExtremeFactor times the online core count is the extreme load.
 	DefaultExtremeFactor = 4
 	// DefaultWaitFactor times the online core count is the waiter's limit: the
-	// waiter opens only while the one-minute load is strictly below the core
-	// count, so the work it admits (a race run fills every core by itself)
-	// starts on a machine with idle cores rather than stacking a second
-	// machine's worth of work on one already oversubscribed.
-	DefaultWaitFactor = 1
+	// waiter opens only while the one-minute load is strictly below twice the
+	// core count. Once was too low: the baseline load of a busy multi-session
+	// machine already sits around one core-count, so a limit of the cores kept
+	// every waiter shut for hours (between 20 and 100 on 16 cores, 2026-10-11)
+	// and sent sessions back to hand-written loops. Serialising the work is the
+	// job of the race-run condition and the hold, not of the load number. One
+	// race run adds about a core-count of load, so admitting below twice the
+	// cores bounds the peak near three times them, under the extreme limit's
+	// DefaultExtremeFactor of four.
+	DefaultWaitFactor = 2
 
 	maxStrayMinutes = 10080 // one week
 	maxExtremeLoad  = 100000
@@ -60,7 +65,7 @@ type Limits struct {
 }
 
 // DefaultLimits derives the defaults from the online core count: 30 minutes,
-// four times the cores, and the cores.
+// four times the cores, and twice the cores.
 func DefaultLimits(cores int) Limits {
 	return Limits{StrayMinutes: DefaultStrayMinutes, ExtremeLoad: float64(DefaultExtremeFactor * cores),
 		WaitLoad: float64(DefaultWaitFactor * cores)}
