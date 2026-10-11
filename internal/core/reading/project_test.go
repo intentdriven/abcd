@@ -139,6 +139,53 @@ func TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel(t *testing.T) {
 	}
 }
 
+// TestHiddenRawHTMLIsReadToWhereABrowserEndsIt: CommonMark decides what raw
+// HTML a title carries and a browser decides how much of it is hidden, and the
+// two disagree on where it ends. A comment may be `<!-->` or `<!--->` alone
+// (CommonMark 0.31 and every browser), and a browser also ends one at `--!>`;
+// it ends a processing instruction, a declaration and, outside SVG and MathML,
+// a CDATA section at the first `>`. The floor read each to CommonMark's end, so
+// the visible `Notes` between two of them was stripped with them, the title
+// compared as `Audit`, and the section travelled (iss-2610101930329211). The
+// title is now also read the way a browser hides it.
+func TestHiddenRawHTMLIsReadToWhereABrowserEndsIt(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, title := range []string{
+		"Audit <!-->Notes<!-- -->",
+		"Audit <!--->Notes<!-- -->",
+		"Audit <!-- --!>Notes<!-- -->",
+		"Audit <?x>Notes<?y?>",
+		"Audit <![CDATA[x>Notes<![CDATA[y]]>",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+}
+
+// TestTheHiddenHTMLReadersStayLinear: the hidden raw HTML pattern kept its
+// search alive past an unclosed comment until a later processing instruction
+// was confirmed, once per pair, so a title of `<!-- <?x?> ` repeated took 4.6 s
+// at 44 KB and grew with the square of its length; and the attribute mask
+// searched the whole remainder for `-->` once per unclosed `<!--`, 21 s over
+// 800 KB. Each terminator search now remembers that it failed.
+func TestTheHiddenHTMLReadersStayLinear(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	unit := "<!-- <?x?> <![CDATA[ <!x "
+	title := strings.Repeat(unit, (MaxFileBytes-64)/len(unit))
+	start := processCPU()
+	namesExcludedHeading(title, headings)
+	if elapsed := processCPU() - start; !raceEnabled && elapsed > 10*time.Second {
+		t.Errorf("namesExcludedHeading took %s of CPU over a %d-byte title of unclosed hidden HTML", elapsed, len(title))
+	}
+	doc := "# S\n\n" + strings.Repeat("<!--", (MaxFileBytes-64)/4) + "\n"
+	start = processCPU()
+	maskMarkupData(doc, true)
+	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
+		t.Errorf("the mask took %s of CPU over a %d-byte run of unclosed comments", elapsed, len(doc))
+	}
+}
+
 // TestAnyMarkupRemnantRefusesAnExcludedHeading: the backstop's widened
 // trigger. A title still carrying a bracket or an angle bracket once its links,
 // tags and hidden HTML are reduced holds markup the floor did not model, so it
@@ -868,6 +915,42 @@ func TestTheTagWalksAreTheirPatterns(t *testing.T) {
 		}
 		if got, want := setAsideQuotedSpans(s), angleQuotedSpecRe.ReplaceAllString(s, ""); got != want {
 			t.Fatalf("setAsideQuotedSpans(%q) = %q, the pattern gives %q", s, got, want)
+		}
+	}
+}
+
+// commonMarkHiddenSpecRe and browserHiddenSpecRe are the extents stripHidden
+// walks under each reading (hiddenViews), spelled as patterns. They live here
+// because the patterns are quadratic on a title of unclosed openers
+// (TestTheHiddenHTMLReadersStayLinear).
+var (
+	commonMarkHiddenSpecRe = regexp.MustCompile(`(?s)<!---?>|<!--.*?-->|<\?.*?\?>|<!\[CDATA\[.*?\]\]>|<![A-Za-z][^>]*>`)
+	browserHiddenSpecRe    = regexp.MustCompile(`(?s)<!---?>|<!--.*?(?:-->|--!>|\z)|<\?[^>]*(?:>|\z)|<![^>]*(?:>|\z)`)
+)
+
+// TestTheHiddenHTMLWalksAreTheirPatterns holds stripHidden, under each
+// reading, to the pattern it spells out, over every short string of the pieces
+// hidden raw HTML is made of.
+func TestTheHiddenHTMLWalksAreTheirPatterns(t *testing.T) {
+	pieces := []string{"<!--", "-->", "--!>", "<?", "?>", "<![CDATA[", "]]>", "<!", ">", "-", "x"}
+	inputs := []string{"Audit <!-->Notes<!-- -->", "<!-- a\nb -->", "<!X y>", "<!x>", "<!>"}
+	var grow func(prefix string, depth int)
+	grow = func(prefix string, depth int) {
+		inputs = append(inputs, prefix)
+		if depth == 0 {
+			return
+		}
+		for _, p := range pieces {
+			grow(prefix+p, depth-1)
+		}
+	}
+	grow("", 4)
+	for _, s := range inputs {
+		if got, want := stripHidden(s, commonMarkHiddenAt), commonMarkHiddenSpecRe.ReplaceAllString(s, ""); got != want {
+			t.Fatalf("stripHidden(%q, CommonMark) = %q, the pattern gives %q", s, got, want)
+		}
+		if got, want := stripHidden(s, browserHiddenAt), browserHiddenSpecRe.ReplaceAllString(s, ""); got != want {
+			t.Fatalf("stripHidden(%q, browser) = %q, the pattern gives %q", s, got, want)
 		}
 	}
 }

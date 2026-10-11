@@ -986,6 +986,21 @@ func TestAnExcludedHeadingBehindAQuotedAttributeNeverTravels(t *testing.T) {
 	})
 }
 
+// TestAnExcludedHeadingBetweenBrowserHiddenHTMLNeverTravels: a browser ends a
+// comment at `<!-->` or `--!>` and a processing instruction or CDATA section at
+// the first `>`, so the `Notes` between two of them is on the page and each
+// heading renders as the excluded one. Read to CommonMark's end, the hidden
+// HTML took `Notes` with it and the section travelled (iss-2610101930329211).
+func TestAnExcludedHeadingBetweenBrowserHiddenHTMLNeverTravels(t *testing.T) {
+	assertHeadingsNeverTravel(t, map[string]string{
+		"an empty comment":        "## Audit <!-->Notes<!-- -->",
+		"a comment ended by --!>": "## Audit <!-- --!>Notes<!-- -->",
+		"processing instructions": "## Audit <?x>Notes<?y?>",
+		"CDATA sections":          "## Audit <![CDATA[x>Notes<![CDATA[y]]>",
+		"inside a raw heading":    "<h2>Audit <?x>Notes<?y?></h2>",
+	})
+}
+
 // TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
 // with a Cyrillic A (U+0410) reads as the excluded heading and compared as
 // nothing like it, because every comparison the floor made was over code points,

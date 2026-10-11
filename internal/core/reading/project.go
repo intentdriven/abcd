@@ -212,13 +212,6 @@ var (
 	// second question, asked against explicitYAMLKeyRe: a `?` line that pattern
 	// cannot fully read is a key this package cannot resolve.
 	questionLineRe = regexp.MustCompile(`^\s*\?(\s|$)`)
-	// htmlHiddenRe and stripTags strip the markup a title can carry without
-	// changing how it reads on the page. htmlHiddenRe is the raw HTML a
-	// renderer passes through and a browser never shows (CommonMark 6.6): a
-	// comment, a processing instruction `<?...?>`, a declaration `<!X ...>` and
-	// a CDATA section `<![CDATA[...]]>`. Stripping only the comment let
-	// `## Audit<?x?> Notes`, which renders as `Audit Notes`, travel.
-	htmlHiddenRe = regexp.MustCompile(`(?s)<!--.*?-->|<\?.*?\?>|<!\[CDATA\[.*?\]\]>|<![A-Za-z][^>]*>`)
 	// angleSpanRe is any `<` to the next `>`, one of the two extents the
 	// backstop sets aside for markup no stripper models (unreadMarkupNames),
 	// so `<%x%>` cannot split the excluded words it sits between. The other is
@@ -341,7 +334,8 @@ const (
 // the comparison. First, the reduction: emphasis, code and strikethrough marks
 // are dropped (stripMarks); the raw HTML a browser never shows, comments,
 // processing instructions, declarations and CDATA sections, is removed
-// (htmlHiddenRe); links and images are unwrapped to their text by a scanner
+// under CommonMark's reading of where it ends and a browser's (hiddenViews);
+// links and images are unwrapped to their text by a scanner
 // that follows the CommonMark inline link grammar, passed until the title
 // stops changing so an image inside a link reduces to its alt text
 // (unwrapLinks); footnote markers are dropped; backslash escapes and character
@@ -533,7 +527,7 @@ func nearKey(text string) string {
 // renderedTexts reduces a heading title to the text a reader sees — hidden
 // raw HTML and tags removed, footnote markers dropped, link and image wrappers
 // unwrapped to their label or alt text and backslash escapes decoded
-// (inlineReduced), character references decoded — and returns EVERY reading of
+// (inlineReductions), character references decoded — and returns EVERY reading of
 // it rather than one. The comparison then judges what the page shows rather than what the
 // source spells.
 //
@@ -546,7 +540,7 @@ func nearKey(text string) string {
 // reverse. Both readings are returned and the caller refuses on either, which is
 // the doctrine the heading bound already uses: a title read two ways is excluded
 // if EITHER way names an excluded heading. A comment, and the other hidden
-// raw HTML (htmlHiddenRe), is dropped outright under both, because it draws
+// raw HTML (hiddenViews), is dropped outright under both, because it draws
 // no boundary either way.
 //
 // Decoding is html.UnescapeString, one pass over the whole string. A hand list
@@ -556,8 +550,15 @@ func nearKey(text string) string {
 // determinism instrument had a coin-flip refusal. One pass also covers the
 // numeric and hex character references a short list could never enumerate.
 func renderedTexts(title string) []string {
-	reduced, _ := inlineReduced(title)
-	return readingsOf(reduced)
+	var out []string
+	for _, r := range inlineReductions(title) {
+		for _, x := range readingsOf(r.reduced) {
+			if !slices.Contains(out, x) {
+				out = append(out, x)
+			}
+		}
+	}
+	return out
 }
 
 // readingsOf is renderedTexts' second half: the two readings of a title whose
@@ -571,16 +572,25 @@ func readingsOf(out string) []string {
 	return []string{spaced, joined}
 }
 
-// inlineReduced is a title with its hidden raw HTML removed (htmlHiddenRe),
-// its footnote markers dropped, every link and image unwrapped and its
-// backslash escapes decoded (unwrapLinks): the text renderedTexts reads,
-// before tags and character references. The second result is the same title
+// inlineReduction is one reading of a title with its hidden raw HTML removed
+// (hiddenViews), its footnote markers dropped, every link and image unwrapped
+// and its backslash escapes decoded (unwrapLinks): the text renderedTexts
+// reads, before tags and character references. before is the same reading
 // before its escapes were decoded, where the backstop (unreadMarkupNames)
 // looks for markup remnants.
-func inlineReduced(title string) (string, string) {
-	out := htmlHiddenRe.ReplaceAllString(title, "")
-	out = mdFootnoteRe.ReplaceAllString(out, "")
-	return unwrapLinks(out)
+type inlineReduction struct {
+	reduced, before string
+}
+
+// inlineReductions returns a title's inline reduction under each reading of
+// its hidden raw HTML (hiddenViews).
+func inlineReductions(title string) []inlineReduction {
+	var out []inlineReduction
+	for _, v := range hiddenViews(title) {
+		reduced, before := unwrapLinks(mdFootnoteRe.ReplaceAllString(v, ""))
+		out = append(out, inlineReduction{reduced: reduced, before: before})
+	}
+	return out
 }
 
 // maxLinkPasses caps how many times unwrapLinks runs its pass over one title.
@@ -864,11 +874,15 @@ func unreadMarkupNames(title, want string) bool {
 	if len(key) == 0 {
 		return false
 	}
-	reduced, before := inlineReduced(title)
-	readings := readingsOf(reduced)
-	unread := strings.ContainsAny(stripTags(before, ""), "[]<>")
-	for _, x := range readings {
-		unread = unread || strings.ContainsAny(x, "[]")
+	var readings []string
+	unread := false
+	for _, r := range inlineReductions(title) {
+		rs := readingsOf(r.reduced)
+		readings = append(readings, rs...)
+		unread = unread || strings.ContainsAny(stripTags(r.before, ""), "[]<>")
+		for _, x := range rs {
+			unread = unread || strings.ContainsAny(x, "[]")
+		}
 	}
 	if !unread {
 		return false
@@ -1680,15 +1694,19 @@ func maskMarkupData(s string, lineBound bool) (string, string) {
 		}
 		return nl
 	}
+	// The comment's close is found by a search that remembers it failed: one
+	// searching the whole remainder per unclosed `<!--` took 21 seconds over a
+	// file of 200 000 of them, quadratic in their number.
+	commentClose := newTerminatorFinder(s, "-->")
 	for i := 0; i < len(s); {
 		if strings.HasPrefix(s[i:], "<!--") {
-			end := strings.Index(s[i+4:], "-->")
+			end := commentClose.next(i + 4)
 			if end < 0 {
 				i += 4
 				continue
 			}
-			maskAngles(out, i+4, i+4+end)
-			i += 4 + end + 3
+			maskAngles(out, i+4, end)
+			i = end + 3
 			continue
 		}
 		if !opensTag(s, i) {
