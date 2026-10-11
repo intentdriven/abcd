@@ -298,7 +298,8 @@ func dirsAfter(t *testing.T, dir, line string) []string {
 // operands, or with an option word it does not take, as the substitution
 // form: it replaces the first occurrence of the first word in the current
 // directory's path with the second and enters the result. bash enters the
-// operand instead, stays put for pushd -n, and refuses a second operand. The
+// operand instead, stays put for pushd -n, and enters the first of two
+// operands (an older bash) or refuses them (a newer one). The
 // reader does not know which shell runs the line, so it reads the scripts
 // after such a cd in every directory either reading fixes, and leaves the
 // directory unknown only where neither fixes one (iss-2610111809142536).
@@ -319,7 +320,8 @@ func TestCdReadsEveryShellsDirectory(t *testing.T) {
 		`cd {d}/with-n/dir && CDPATH={d}/with-n/dir pushd -n sub && bash s.sh`: "with-n/dir withsub/dir",
 		// zsh takes `--` after `-n` as a third operand, and refuses it.
 		`cd {d}/with-n/dir && pushd -n -- sub && bash s.sh`: "with-n/dir",
-		// Two operands: bash refuses them, zsh substitutes.
+		// Two operands: bash enters the first, here no directory, or refuses
+		// them; zsh substitutes.
 		`cd {d}/with-n/dir && cd with-n withsub && bash s.sh`:    "withsub/dir",
 		`cd {d}/with-n/dir && cd -q with-n withsub && bash s.sh`: "withsub/dir",
 		`cd {d}/with-n/dir && pushd with-n withsub && bash s.sh`: "withsub/dir",
@@ -348,6 +350,37 @@ func TestCdReadsEveryShellsDirectory(t *testing.T) {
 		{`cd {d}/with-n/dir && pushd -n sub && bash s.sh`, VerdictAllow, ""},
 		{`cd {d}/with-e/dir && cd -e sub && bash s.sh`, VerdictAllow, ""},
 	})
+}
+
+// TestCdTwoOperandsBashEntersTheFirst: an older bash enters the first of two
+// operands and succeeds, where a newer one refuses the cd, so the first
+// operand is a directory bash's reading may enter and the scripts after it
+// are read there (iss-2610111809142536).
+func TestCdTwoOperandsBashEntersTheFirst(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"s.sh":        "echo benign",
+		"a/s.sh":      hazardLine,
+		"base/s.sh":   "echo benign",
+		"base/a/keep": "",
+	})
+	runScriptCases(t, dir, []scriptCase{
+		{`cd {d} && cd a b && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -- a b && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && cd -P a b && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && pushd a b && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		// The control: the first operand holds no hazard.
+		{`cd {d}/base && cd a b && bash s.sh`, VerdictAllow, ""},
+	})
+	for line, want := range map[string]string{
+		`cd {d} && cd a b && bash s.sh`:       "a",
+		`cd {d} && cd -- a b && bash s.sh`:    "a",
+		`cd {d} && cd nowhere b && bash s.sh`: "",
+	} {
+		cmd := strings.ReplaceAll(line, "{d}", dir)
+		if got := strings.Join(dirsAfter(t, dir, cmd), " "); got != want {
+			t.Errorf("%s\n  runs its last command in %q; want %q", line, got, want)
+		}
+	}
 }
 
 // TestCdHazardInEitherReadingBlocks: a hazard in the directory either
