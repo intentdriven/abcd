@@ -310,7 +310,6 @@ const (
 //   - A heading attribute block, `## Audit Notes {#id}`, is renderer-specific:
 //     CommonMark and GFM show the braces, so the floor reads it as written and
 //     it travels.
-//
 //   - A footnote marker is dropped before anything else is read, so a title
 //     that is only a marker, `## [^Audit Notes]`, compares as empty and
 //     travels; it renders as a superscript or, with no definition, with its
