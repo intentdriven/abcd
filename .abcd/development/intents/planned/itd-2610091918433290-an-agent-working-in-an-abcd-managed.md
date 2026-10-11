@@ -9,7 +9,7 @@ builds_on: [itd-3]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
-related_intents: [itd-39, itd-36, itd-2610090831227812]
+related_intents: [itd-39, itd-36, itd-2610090831227812, itd-2610111655362931]
 related_adrs: [adr-2610091918443997]
 bundle: memory-recall
 impact: additive
@@ -37,8 +37,6 @@ We expect fewer repeated mistakes, because a note comes back exactly when a prom
 ## Acceptance Criteria
 
 - **Given** an agent that learns, during a session, that the project's tests need the race flag, **when** it writes a memory note saying so, without asking the person, **then** in the next session a prompt about tests brings the note back.
-- **Given** notes written since the last review, **when** the person opens the review, **then** they see every one of those notes with who wrote it, when and in which session, and they keep, discard or promote each.
-- **Given** a note the person promotes, **when** the promotion lands, **then** the note joins the project's record, so every agent and teammate gets it; only a person promotes, and in a repository with more than two maintainers at least one other maintainer must agree before it lands.
 - **Given** a memory note and a longer memory page that both match a prompt about tests, **when** that prompt is sent, **then** both come back together, through one recall.
 - **Given** a lesson in the host's own memory files, **when** the person points at it (or pastes it), **then** it is filed as a memory note, and nothing reads or changes the host's memory files on its own.
 - **Given** a person reading abcd's user-facing docs after this intent ships, **when** they look up memory, **then** the page explains memory and the library side by side in plain words (what each holds, who adds to it, how it comes back, where it can go), the same comparison the brief's surfaces overview carries, so the two are never mistaken for one store. (Required by the product thinker, 2026-10-09: "explain both in that accessible way in the docs and in the brief".)
@@ -68,6 +66,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-11, settled on the record without a question: a note never holds a secret, a private name or a live network identifier. abcd's existing redactor and private-names banlist refuse one. Recorded in adr-2610091918443997.
 - 2026-10-11: the product thinker accepted Why This Matters and the Mechanism with its falsifier exactly as written above, and walked and accepted all ten acceptance criteria.
 - 2026-10-11, technical facilitator: the two scope conditions (a host that runs abcd's prompt hook; notes written by agents on the person's own machine, with promotion a person's act) were proposed by the facilitator, not asked of the product thinker.
+- 2026-10-11, product thinker, where review and promotion happen: reviewing notes and promoting them "will be part of a later PT / TF dashboard where the PT can click on those they want to promote", and then "Move them to the dashboard". The second and third criteria accepted earlier the same day (the review, and promotion with its second-maintainer rule) are moved out of this intent, verbatim, into the draft itd-2610111655362931, which builds on this intent and the dashboard intent (itd-2610032150577708). This intent keeps the store both layers read: a promoted note is one in the project's file, and the act that puts it there is the dashboard's. The press release's promotion and the second scope condition describe the product as a whole and stand.
 - 2026-10-11: the impact is additive. Nothing that exists today is renamed or removed: `/abcd:memory` was freed by the verb split (itd-2610090831227812), and notes are a new store.
 
 ## Grounds
