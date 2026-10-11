@@ -16,7 +16,7 @@ below is gone from the menu, and the page named beside it does its job:
 
 | Retired | Use instead |
 |---------|-------------|
-| `/abcd:version` | `/abcd:abcd` (or bare `abcd`): the board's last line is the installed version. `abcd --version` still answers. |
+| `/abcd:version` | `/abcd:abcd` (or bare `abcd`): The board's last line is the installed version. `abcd --version` still answers. |
 | `abcd changelog` | `abcd launch --dry-run`, which renders the release cut after the bundle report. |
 | `/abcd:prepare-this-repo` | `/abcd:ahoy install` |
 | `abcd memory` | `abcd library` |
@@ -25,13 +25,13 @@ below is gone from the menu, and the page named beside it does its job:
 | `/abcd:consult` | `/abcd:library`, which searches the sources corpus and records what influenced a decision with `abcd library ledger`. |
 | `/abcd:ingest` | `/abcd:library`, where `abcd library add` registers a document in the sources corpus. |
 
-Search your scripts, hooks and CI workflows for each spelling in the left-hand
+Search your scripts, hooks, and CI workflows for each spelling in the left-hand
 column, change it to the right-hand one, and run the changed command once to
 see it answer.
 
 ## Move memory and source commands under library
 
-`abcd library` holds two stores under one command: your sources corpus and the
+`abcd library` holds two stores under one command: Your sources corpus and the
 project's memory store. They stay separate, and each keeps its own sub-verbs
 under their old names:
 
@@ -58,7 +58,8 @@ folder a private source sits in keeps its name, `confidential/<key>/`.
 Bare `abcd library` renders both stores. A store that cannot be read is one
 line naming what would create it, and the command refuses only when neither
 store can be read. Every corpus sub-verb but `init` still exits 3 when there is
-no corpus.
+no corpus, except `sync-banlist --refresh`, the hook's mode, which says so on
+one line and exits 0.
 
 ## Read the release cut from the launch preview
 
