@@ -348,7 +348,8 @@ func NewRootCommand() *cobra.Command {
 			// plugin page relays it, and a reader that needs the path already
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
+			ver := core.NewVersion()
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -363,7 +364,7 @@ func NewRootCommand() *cobra.Command {
 				ASCII: !term.UTF8Locale(os.Getenv),
 			}
 			return render(cmd.OutOrStdout(), asJSON, bo, func(w io.Writer) {
-				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo)}, frame) {
+				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo), Version: ver}, frame) {
 					fmt.Fprintln(w, l)
 				}
 			})
@@ -415,7 +416,9 @@ func NewRootCommand() *cobra.Command {
 	launchCmd := &cobra.Command{
 		Use: "launch",
 		Long: "Preview the release bundle and run the release gates with --dry-run; nothing is\n" +
-			"published.\n\n" +
+			"published. The preview also renders the release cut the next `launch ship` would\n" +
+			"make: the derived version, the deciding impact, the records, and the guard verdict.\n" +
+			"A refused cut is reported, and changes nothing about the preview's exit.\n\n" +
 			"The dirty-tree gate compares the working tree with HEAD byte for byte. The repository's\n" +
 			"content filters (filter.<name>.clean, .smudge and .process) are switched off for that\n" +
 			"comparison, so no program a filter names runs. A filter the repository marks required\n" +
@@ -434,6 +437,15 @@ func NewRootCommand() *cobra.Command {
 			}
 			if !launchDryRun {
 				return fmt.Errorf("abcd launch: pass --dry-run to preview the bundle (publishing is not wired at this stage)")
+			}
+			// The preview carries the release cut, which is a fact about the
+			// repository, so the whole preview reads the checkout root wherever
+			// it is run, as the cut always has (iss-2609251713073532): from a
+			// subdirectory it no longer reads the subdirectory as a repository
+			// that declares nothing. Outside a checkout it reads the working
+			// directory, as it did, and refuses there as it did.
+			if root, rerr := gitutil.CheckoutRoot(cwd, "the release record"); rerr == nil {
+				cwd = root
 			}
 			// The parity diff measures the payload against the previous
 			// release's, rendered fresh at its tag unless --fetch-baseline asks
@@ -472,7 +484,12 @@ func NewRootCommand() *cobra.Command {
 			// Every preview leaves its pre-flight report in the local logs tier
 			// (itd-65); the preview still refuses nothing and exits 0.
 			rep.ReportPath, rep.ReportError = writePreflight(cwd, rep.PreflightReport(time.Now()))
-			return render(cmd.OutOrStdout(), asJSON, rep, func(w io.Writer) {
+			// Beside the bundle, the cut the release would make
+			// (spc-2610100613109045, decision 5). It is read after the bundle
+			// report, so a dry run that refuses still refuses as it did.
+			preview := launchPreview{DryRunReport: rep}
+			preview.Cut, preview.CutError = previewCut(cwd)
+			return render(cmd.OutOrStdout(), asJSON, preview, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd launch (dry-run) — version %s\n", rep.Version)
 				fmt.Fprintf(w, "  artefact kind:  %s\n", rep.Kind)
 				fmt.Fprintf(w, "  scanned tree:   %s\n", rep.ScannedTree)
@@ -497,8 +514,12 @@ func NewRootCommand() *cobra.Command {
 				}
 				renderDeepSmoke(w, rep.DeepSmoke)
 				renderParity(w, rep.Parity)
-				for _, tg := range rep.Targets {
-					fmt.Fprintf(w, "  targeted:       %s\n", targetLine(tg))
+				// The cut below lists the same targeted intents and says which
+				// it moves, so they are listed here only when it was not read.
+				if preview.Cut == nil {
+					for _, tg := range rep.Targets {
+						fmt.Fprintf(w, "  targeted:       %s\n", targetLine(tg))
+					}
 				}
 				fmt.Fprintf(w, "  would publish:  %v\n", rep.WouldPublish)
 				for _, reason := range rep.WouldRefuseOn {
@@ -519,10 +540,16 @@ func NewRootCommand() *cobra.Command {
 				} else {
 					fmt.Fprintf(w, "  report:         not written — %s\n", termsafe.Sanitize(rep.ReportError))
 				}
+				if preview.Cut == nil {
+					fmt.Fprintf(w, "  cut:            not read — %s\n", termsafe.Sanitize(preview.CutError))
+					return
+				}
+				fmt.Fprintln(w)
+				renderCut(w, "abcd launch --dry-run", *preview.Cut)
 			})
 		},
 	}
-	launchCmd.Flags().BoolVar(&launchDryRun, "dry-run", false, "preview the launch bundle and gates without publishing")
+	launchCmd.Flags().BoolVar(&launchDryRun, "dry-run", false, "preview the launch bundle, its gates and the release cut without publishing")
 	launchCmd.Flags().BoolVar(&launchDeepSmoke, "deep-smoke", false,
 		"also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)")
 	launchCmd.Flags().StringVar(&launchBaseline, "baseline", "",
@@ -553,7 +580,6 @@ func NewRootCommand() *cobra.Command {
 	launchCmd.AddCommand(newLaunchSmokePagesCommand())
 	root.AddCommand(launchCmd)
 
-	root.AddCommand(newChangelogCommand(&asJSON))
 	// `reflect` is the release retrospective (itd-24): the seed a cut release's
 	// interview opens from, and the one write that files it.
 	root.AddCommand(newReflectCommand(&asJSON))

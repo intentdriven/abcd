@@ -1,21 +1,22 @@
 ---
 name: launch
-description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
+description: "Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
 argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
 # `/abcd:launch` release preview and release cut
 
-`abcd --help` lists `launch` in the person's release group. `changelog`, the
-read-only preview of the same cut, is in the agents-and-hosts block of
-`abcd --help --agent`, and its line there names this page.
+`abcd --help` lists `launch` in the person's release group. The preview
+(`--dry-run`) also renders the release cut the next ship would make; there is
+no separate changelog command.
 
 Two flows over the abcd binary, kept apart on purpose:
 
-- **preview** (`dry-run`) — the bundle, the scan, and the pre-flight gates. Its
-  one write is its pre-flight report, under the gitignored
-  `.abcd/.work.local/logs/launch/`.
+- **preview** (`dry-run`) — the bundle, the scan, the pre-flight gates, and the
+  release cut: the version the release would carry, the records it is made of,
+  and the guard verdict. Its one write is its pre-flight report, under the
+  gitignored `.abcd/.work.local/logs/launch/`.
 - **ship** — the release cut: derive the version from what shipped, compose the
   changelog prose and the release page, write them. It writes the dated section
   of `CHANGELOG.md`, the release page `RELEASE.md`, the outgoing page's copy
@@ -370,10 +371,22 @@ Then summarise the JSON for the user:
 - `targets` — every planned intent that names a release it must land by
   (`target_release`, written by `abcd intent target`): its `id`, `path`, the
   `target_release` it names, and `invalid` when the value is not a legal
-  target. The plain preview prints each on a `targeted:` line and the
-  pre-flight report lists them under *Targeted, not shipped*. A target is a
-  report and never a refusal: it adds nothing to `would_refuse_on`. Relay the
-  list, so the user sees what was meant to land and has not.
+  target. The plain preview prints each on a `targeted:` line, in the cut
+  below when the cut was read, and the pre-flight report lists them under
+  *Targeted, not shipped*. A target is a report and never a refusal: it adds
+  nothing to `would_refuse_on`. Relay the list, so the user sees what was
+  meant to land and has not.
+- `cut` — the release cut the next `launch ship` would make, read from HEAD at
+  the checkout root: exactly what its emit step derives (*1. Emit the cut*
+  below), with no prose, so no agent runs in a preview. Relay the derived
+  `next_tag` and `impact`, the records under `added` and `removed`, which of
+  them the release page would cite (`in_press_release`), the guard verdict
+  (`guard`) and the findings verdict (`findings`). A refused cut (`ready`
+  false) carries its `refusals`, each naming what blocks it; relay them as
+  information. A refused cut changes nothing about the preview's exit, which
+  stays the bundle's. When the cut could not be read at all, `cut_error` says
+  why in its place. The plain preview renders the cut after the bundle report,
+  under its own `abcd launch --dry-run —` line, as `launch ship` renders it.
 
 This is preview-only: publishing is not driven from this command.
 
@@ -415,7 +428,8 @@ the second marks the intents the release page must cite (the user-facing intents
 that entered `shipped/` since the base tag; never an issue, an `impact: internal`
 intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
-alone. Read-only preview of the same thing: `abcd changelog --json`.
+alone. Read-only preview of the same thing: the `cut` in
+`abcd launch --dry-run --json`.
 
 **The cut is read from HEAD, so an uncommitted record move refuses it.** The
 record set comes out of git at HEAD, never the working tree, so a spec close or
@@ -428,8 +442,8 @@ the same reader as the pre-flight's dirty-tree gate, narrowed to those folders:
 dirt anywhere else is not the derivation's concern (the ingest's pre-flight
 judges the whole tree), and `--allow-dirty` does not waive it, because the cut
 would still be read from HEAD. Commit the records (or discard the change) and
-run again. `abcd changelog` carries the same refusal, rendered `REFUSED` with
-the paths; as the preview it still exits 0.
+run again. The preview (`launch --dry-run`) carries the same refusal in its
+cut, rendered `REFUSED` with the paths, and its exit stays the bundle's.
 
 The cut also lists every planned intent that names a release it must land by
 (`targets`, one `targeted:` line each in the render, and `targets_error` when
@@ -484,8 +498,9 @@ that no brief chapter names.
 
 ### The findings gate
 
-Both renders — `abcd changelog` and `abcd launch ship` — carry two lines about
-the issue ledger, and they are the two most easily skipped lines in the report:
+Both renders of the cut — in `abcd launch --dry-run` and in `abcd launch ship`
+— carry two lines about the issue ledger, and they are the two most easily
+skipped lines in the report:
 
 ```
   findings:   failed (2 unfixed finding(s) captured since v0.7.0) (1 record(s) deleted from the ledger since v0.7.0)

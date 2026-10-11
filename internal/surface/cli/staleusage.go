@@ -38,7 +38,7 @@ import (
 //     than the binary, and the remedy follows where the binary sits: a source
 //     checkout is rebuilt, a plugin-root binary is replaced by a plugin update,
 //     a PATH copy takes `abcd update`.
-//  2. Otherwise, the disk-only vintage comparison the `version` verb already
+//  2. Otherwise, the disk-only vintage comparison `abcd --version` already
 //     renders: behind the checkout tip (dogfood) or differing from the release
 //     the plugin cache pinned.
 //  3. Otherwise nothing — cobra's line stands alone, byte-for-byte.
@@ -81,11 +81,20 @@ const dispatcherPage = "abcd"
 // this set, so a new host-delegated page is added here or the parity check
 // reads its missing verb as drift.
 var pagesWithNoVerb = map[string]string{
-	dispatcherPage:      "`abcd` is the binary itself, not one of its commands — the page /abcd:abcd documents the bare call; did you mean `abcd <record-id>` (or bare `abcd` for the status board)?",
-	"consult":           "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
-	"ingest":            "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
-	"prepare-this-repo": "`prepare-this-repo` has no binary verb — it runs in the host agent; invoke it as /abcd:prepare-this-repo",
-	"version":           "`version` is a root flag, not a verb: run `abcd --version` (asking for a newer release is the update verb's --check); /abcd:version runs it",
+	dispatcherPage: "`abcd` is the binary itself, not one of its commands — the page /abcd:abcd documents the bare call; did you mean `abcd <record-id>` (or bare `abcd` for the status board)?",
+	"consult":      "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
+	"ingest":       "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
+}
+
+// retiredTokens are top-level tokens whose page or verb was retired with no
+// alias (adr-40, itd-2610090831227812), each with what answers instead. The
+// command still refuses; the note only names the successor, so a binary that
+// does not know a retired name is never called stale for it. A token here has
+// no page, so it is not in pagesWithNoVerb.
+var retiredTokens = map[string]string{
+	"prepare-this-repo": "`prepare-this-repo` folded into ahoy install: run /abcd:ahoy install, which prepares the repository in the host agent around the binary's `abcd ahoy install`",
+	"changelog":         "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
+	"version":           "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
 }
 
 // maxCommandPageBytes caps a command-page read; the pages are a few KiB.
@@ -114,6 +123,9 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 		if what, noVerb := pagesWithNoVerb[skew.verb]; noVerb {
 			return what
 		}
+		if what, retired := retiredTokens[skew.verb]; retired {
+			return what
+		}
 	}
 	// A status/show sub-verb under a record verb is answered by the record
 	// dispatcher, not by a newer binary (iss-2609190337466942).
@@ -137,7 +149,7 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 		}
 	}
 	// No page names what was typed (a typo, or a surface no older than the
-	// binary): fall back to the vintage the `version` verb renders, git-only and
+	// binary): fall back to the vintage `abcd --version` renders, git-only and
 	// disk-only. A fresh or undeterminable vintage says nothing.
 	cwd, err := os.Getwd()
 	if err != nil {

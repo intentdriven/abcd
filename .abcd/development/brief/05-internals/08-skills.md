@@ -7,11 +7,13 @@ makes the call at design time, and records where abcd came out.
 
 **abcd ships zero skills.** The `/abcd:` namespace is commands only, and there is
 no `skills/` directory in the tree. The three workflows once shipped as skills —
-`consult`, `ingest`, and `prepare-this-repo` — are commands, because each mutates
-state: the sources corpus, its ledger, the target repo. They live at
-`commands/<name>.md` with chapters [`13-consult.md`](../04-surfaces/13-consult.md),
-[`14-ingest.md`](../04-surfaces/14-ingest.md), and
-[`15-prepare-this-repo.md`](../04-surfaces/15-prepare-this-repo.md).
+`consult`, `ingest`, and the preparation of a target repo — are commands,
+because each mutates state: the sources corpus, its ledger, the target repo.
+The first two live at `commands/<name>.md` with chapters
+[`13-consult.md`](../04-surfaces/13-consult.md) and
+[`14-ingest.md`](../04-surfaces/14-ingest.md); the preparation runs from the
+install section of `commands/ahoy.md`, its chapter
+[`01-ahoy.md`](../04-surfaces/01-ahoy.md#preparing-a-repository-the-host-run-half-of-the-install).
 
 The plugin carries two further surface kinds this choice does not cover, because
 neither is something a person invokes by name: the agent prompts under `agents/`,
@@ -64,19 +66,19 @@ output, any artefact mutation, any state change makes it a command.
   instead.
 
 Most of abcd's commands are **binary-backed**: a Go verb plus a `commands/` file.
-Three are **host-delegated** — `/abcd:consult`, `/abcd:ingest` and
-`/abcd:prepare-this-repo` — with a command page and no Go verb, so the workflow
-runs in the host agent, and they have no bare-status render and no sub-verbs. That
+Two are **host-delegated** — `/abcd:consult` and `/abcd:ingest` — with a
+command page and no Go verb, so the workflow runs in the host agent, and they
+have no bare-status render and no sub-verbs. That
 is the shape a command takes when its work is host-delegated rather than owned by
 the transport-agnostic core.
 
 The mapping between command pages and binary verbs is one-to-one in neither
 direction, and both exceptions are deliberate. Five verbs have a Go verb and no
-command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. Three
-command pages carry no Go verb of their own name: the host-delegated three above.
-Two of those three call no part of the binary at all; `/abcd:prepare-this-repo`
-is the exception, running the binary's audit, install and identity verbs as steps
-inside a workflow the host drives. See
+command page: `completion`, `hook`, `rules`, `spec`, and `statusline`. Two
+command pages carry no Go verb of their own name: the host-delegated two above.
+A page that backs a verb can still carry a workflow the host drives: the ahoy
+page's install section prepares a repository by running the binary's audit,
+install and identity verbs as steps. See
 [`04-surfaces/`](../04-surfaces) for per-command detail.
 
 ## Skills are not in `04-surfaces/`

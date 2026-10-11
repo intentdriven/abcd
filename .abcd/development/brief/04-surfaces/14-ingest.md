@@ -22,8 +22,8 @@ on an unknown command, and because a command page of that name exists, the binar
 adds a line saying the command has no binary verb and runs in the host agent, naming the
 `/abcd:ingest` invocation, never a rebuild or an update. For a host-delegated command
 that advice could never come true, because there is no Go verb for a rebuild to
-bring in. Every host-delegated page has the same shape, `/abcd:consult` and
-`/abcd:prepare-this-repo` alongside this one. What the note should say is that the
+bring in. Every host-delegated page has the same shape, `/abcd:consult`
+alongside this one. What the note should say is that the
 command runs in the host agent rather than at the CLI, and that is what the line says.
 
 ## Sub-verbs

@@ -24,10 +24,8 @@ are wiring rather than user-facing surface are listed separately under
 | 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
-| 12 | `/abcd:version` | shipped | Know which abcd this is, how it was installed, and whether it is behind | [`12-version.md`](12-version.md) |
 | 13 | `/abcd:consult` | shipped | Ask the local sources corpus what prior work says, and record what it changed | [`13-consult.md`](13-consult.md) |
 | 14 | `/abcd:ingest` | shipped | Put a document or URL into the sources corpus with its reference metadata | [`14-ingest.md`](14-ingest.md) |
-| 15 | `/abcd:prepare-this-repo` | shipped | Bring an owned repo up to abcd's conventions (interim bridge until abcd manages repos directly) | [`15-prepare-this-repo.md`](15-prepare-this-repo.md) |
 | 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
@@ -142,12 +140,16 @@ the command's sentence (the section below).
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
 carry no adr-40 bucket meaning. `version` is the root's `--version` flag
-(itd-2609212130136102), not a verb, so it is in neither block. The product
+(itd-2609212130136102), not a verb, so it is in neither block, and bare `abcd`
+shows the installed version as the board's last line (itd-2610090831227812).
+`changelog` is in neither block either: it merged into `launch` as its preview,
+and `abcd launch --dry-run` renders the cut it showed beside the bundle report
+(itd-2610090831227812). The product
 thinker placed every verb on 2026-10-09 by who types it: a command a person
 needs to do their job is a person's, and only a command no person types is
 listed with the agents (itd-2610090831227812; its spec's verb audit cites each
@@ -240,7 +242,6 @@ verb the binary registers apart from the framework's own `help`.
 
 | Verb | What it is | Delivered by |
 |---|---|---|
-| `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
 | `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
@@ -307,11 +308,12 @@ present the result: the markdown is the surface, the binary is the engine. Those
 commands stay thin — they call `abcd <verb> --json` and format the result, and
 never reimplement behaviour that belongs in the core.
 
-The three host-delegated commands named below are the exception, and are
-configured as such rather than being silently different: `/abcd:consult`,
-`/abcd:ingest` and `/abcd:prepare-this-repo` back onto no verb of their own, so
-`consult.md` and `ingest.md` invoke the binary nowhere at all and carry the
-workflow itself, and `prepare-this-repo.md` calls other verbs on the way through.
+The two host-delegated commands named below are the exception, and are
+configured as such rather than being silently different: `/abcd:consult` and
+`/abcd:ingest` back onto no verb of their own, and carry the workflow itself.
+The preparation workflow that brings an owned repository up to the conventions
+runs in the host agent too, but from `ahoy.md`'s install section, around the
+binary's install, so it backs a verb.
 
 The directory is **flat**, and that is load-bearing rather than tidiness. A
 harness maps each `commands/` subdirectory to an extra namespace segment, so a
@@ -324,8 +326,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`,
-`version`.
+`reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -343,11 +344,13 @@ the only reliable fix is a home outside the auto-discovery root.
 ## No skills
 
 **abcd ships zero skills** — the `/abcd:` surface is commands only, and there is
-no `skills/` directory in the tree. `/abcd:consult`, `/abcd:ingest` and
-`/abcd:prepare-this-repo` were once shipped as skills and are commands: each
-mutates state — the sources corpus, its ledger, the target repo — which the
-boundary rule makes command-shaped. They are **host-delegated** commands, with a
-command page and no Go verb, so the workflow runs in the host agent. The
+no `skills/` directory in the tree. `/abcd:consult` and `/abcd:ingest` were
+once shipped as skills and are commands: each mutates state — the sources
+corpus and its ledger — which the boundary rule makes command-shaped. They are
+**host-delegated** commands, with a command page and no Go verb, so the
+workflow runs in the host agent. The third workflow once shipped as a skill,
+the preparation of a target repo, mutates that repo; its page retired into the
+install section of `ahoy.md` (itd-2610090831227812). The
 skill/command boundary is documented in
 [`05-internals/08-skills.md`](../05-internals/08-skills.md).
 

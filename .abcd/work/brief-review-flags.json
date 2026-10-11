@@ -122,22 +122,6 @@
       "applied": "2026-10-04T23:45:50Z"
     },
     {
-      "chapter": "15-prepare-this-repo.md",
-      "sentence": "at a shell is an unknown command rather than a route in. Today that refusal also",
-      "replacement": "at a shell is an unknown command rather than a route in. That refusal",
-      "evidence": "internal/surface/cli/staleusage.go:86",
-      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
-      "applied": "2026-10-04T23:45:50Z"
-    },
-    {
-      "chapter": "15-prepare-this-repo.md",
-      "sentence": "blames a stale binary and asks for a rebuild, which is the wrong reading for a",
-      "replacement": "says the command has no binary verb and runs in the host agent, naming `/abcd:prepare-this-repo`: the right reading for a",
-      "evidence": "internal/surface/cli/staleusage.go:86",
-      "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
-      "applied": "2026-10-04T23:45:50Z"
-    },
-    {
       "chapter": "24-decide.md",
       "sentence": "and only the citation resolver, the `abcd \u003crecord-id\u003e` dispatch and `decide`",
       "replacement": "and the citation resolver, the `abcd \u003crecord-id\u003e` dispatch, `decide` itself and the `adr_id_unique` gate call them, as do the record resolver (`internal/core/record`), the intent start-check and reclassify readers, the drain rule and the implement loop's brief. Three readers still carry their own: the `record_schema` gate and",

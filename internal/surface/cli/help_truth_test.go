@@ -62,6 +62,6 @@ func TestUpdateCheckHelpClaimsNoMonopolyOnTheNetwork(t *testing.T) {
 		t.Fatalf("launch --help exited %d: %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "--fetch-baseline") {
-		t.Fatalf("launch no longer carries --fetch-baseline; the network sentences in update --help and commands/version.md name it")
+		t.Fatalf("launch no longer carries --fetch-baseline; the network sentences in update --help and commands/update.md name it")
 	}
 }

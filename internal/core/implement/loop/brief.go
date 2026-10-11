@@ -42,16 +42,18 @@ const (
 const ConventionsFile = "AGENTS.md"
 
 // conventionsRemedy is the remedy a brief refused for a base without
-// ConventionsFile carries. prepare-this-repo runs in the host agent and has no
-// binary verb, so the remedy names the plugin command.
+// ConventionsFile carries. The preparation that merges the conventions into
+// ConventionsFile runs in the host agent from the ahoy page's install section,
+// around the binary's install, which by default writes no ConventionsFile, so
+// the remedy names the plugin command.
 const conventionsRemedy = "write the repository's conventions into " + ConventionsFile +
-	" on the default branch (`/abcd:prepare-this-repo` sets one up)"
+	" on the default branch (`/abcd:ahoy install` sets one up)"
 
 // DecisionsLogRel is the append-only decision log the brief quotes entries of.
 const DecisionsLogRel = ".abcd/work/DECISIONS.md"
 
 // The markers the working-conventions section sits between in a managed
-// repository's AGENTS.md (commands/prepare-this-repo.md).
+// repository's AGENTS.md (commands/ahoy.md, the install section).
 const (
 	conventionsBegin = "<!-- working-conventions "
 	conventionsEnd   = "<!-- /working-conventions -->"

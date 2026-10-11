@@ -128,7 +128,7 @@ is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
 does: `consult` and `ingest` run as host-side markdown over the sources corpus,
 and reach the binary only through the `source` verb, which makes every write to
-the corpus. `prepare-this-repo` is the mixed
+the corpus. The install's preparation workflow, on the ahoy page, is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
 too and writes — the identity verb's initialiser records the repo's identity
 block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
@@ -298,6 +298,139 @@ page renders too ([`22-site.md`](22-site.md#the-page-set)); the state file and
 the peers are read through the implement loop (`loop.StatusLanes`,
 `loop.StatusPeers`), and a fault reading the peers omits the block with the
 reason on stderr, as it refuses build next.
+
+## The version
+
+The board's last line is the installed version, as the version flag names it
+(`abcd v0.13.4`), in both views and both forms, a list item in the markdown
+form so the fence rule holds for it too; the JSON form carries it as `version`
+(itd-2610090831227812, spc-2610100613109045 decision 4). It is read from the
+same `core.VersionInfo` the flag reports, with no network and no subprocess
+([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)), and
+the first line stays the view label alone. The plugin's board page carries
+what the retired version page told an agent: run the version flag for the
+install mode, vintage and staleness, and say a superseded root first.
+
+The full answer is a flag on the root, where every tool keeps its version, and
+not a verb (itd-2609212130136102); the appendix below lists it. It tells
+whether the abcd you are running is the one you think it is: its version, how
+it was installed, how old it is, and whether it has drifted from the reference
+it should match. The whole answer is read off disk, so it costs nothing, works
+offline, and writes nothing. The opt-in online check is a flag of the update
+verb, which fetches the latest release exactly once, compares, and names the
+source it consulted: it lives with the verb that takes the update it finds
+([`21-update.md`](21-update.md)), and it is the only network touch either
+answer makes, because abcd never fetches implicitly.
+
+### What the version flag reports
+
+The version flag prints a short block: the version line, then `install:`
+(only when an install mode is resolvable), `vintage:` and `staleness:`. It is a
+read-only render of the binary's own state, not a board for the repository, and
+it answers alone: a record id beside the flag is refused rather than silently
+dropped. The JSON form emits the same facts as `name`, `version`, `vintage` and
+`staleness`, with `install_mode` present only when it resolves, and
+`superseded_root` present only when the answering binary sits in a plugin root
+other than the one this session resolves (see *A superseded plugin root names
+itself* below); the plain render prints that note on a `note:` line. The update
+verb's check prints the same report with a `check` object added.
+
+When the online check finds an update, the answer carries the command that takes it,
+so the reader's next move is on screen rather than inferred: `abcd update` for
+the one install shape the update verb can swap, and for every other shape the
+remedy that shape's owner requires (the host's plugin update for a plugin-root
+binary, a fresh ahoy installation for a stranded entry, the package manager's own command
+for a Homebrew install). The classification is the disk-only one `abcd update`
+itself dispatches on, so the online check keeps its single sanctioned fetch
+([`21-update.md`](21-update.md)).
+
+**`staleness` is prose, not a token enum.** The field carries the same words the
+plain render prints, because one derivation serves both and a second spelling
+for the machine would be a second thing to keep true. A binary that matches its
+reference reads `up to date`; one with no reference to compare against reads
+`unknown`; one that has drifted reads `stale — ` followed by the comparison and
+the reference. A consumer matches on the `stale` prefix and on `unknown`
+verbatim; there is no `fresh` token to match.
+
+### A stale binary names itself
+
+The plugin surface and the binary ship from one release but drift apart: a
+plugin update lands a newer surface before the bootstrap re-provisions the
+binary, a cached root goes stale, a PATH copy outlives the root it was copied
+from. A page then names a verb or flag the binary predates, and the CLI
+framework's answer — `unknown command` or `unknown flag` — has the shape of a
+typo rather than of a stale install.
+
+So an unknown command or flag carries a second line, derived from what the
+binary can prove on disk alone and never from the network (adr-38). Where the
+command surface beside the resolved plugin root documents the very verb or flag
+that was refused, the line says the binary predates it and names the remedy for
+where the binary sits. A page that documents no verb is not that evidence: the
+dispatcher page `abcd.md` documents the bare call, and the host-delegated pages
+(`consult`, `ingest`) run in the host agent, so the line
+for one of those tokens says what it is instead — `abcd <record-id>` for the
+first, the `/abcd:<page>` invocation for the rest — and never sends the reader
+to rebuild or update. Neither is a `status` or `show` sub-verb under a record
+verb (`capture`, `intent`, `spec`): the refusal names the record dispatcher,
+`abcd <record-id>`, which answers that question. A name retired with no
+alias (`version`, whose page retired when the board took the version,
+`changelog`, which the launch preview replaced, and `prepare-this-repo`,
+whose page retired into the install) is answered with what replaced it, and
+never as a stale binary. Failing that evidence, the disk-only vintage the
+version flag renders stands in. When neither says anything, the framework's line stands
+byte-for-byte. The exit code, the stream and the JSON envelope are the
+framework's own.
+
+### A superseded plugin root names itself
+
+The two shapes above are loud: the binary is asked for something it does not
+have, so there is an error to hang a line on. A third shape has none. A plugin
+root is named for the commit it was installed from, so every update mints a new
+root and nothing prunes the old ones; a command page interpolates an absolute,
+hash-pinned binary path into its own prose, and that path is designed to
+expire. Between an update and the reload that re-interpolates it, following the
+page runs a superseded binary that is still on disk, answers normally — exit 0,
+no diagnostic — and reports a version that is true of that root and false of
+this machine (iss-2609020113012227, refining iss-2608230943088357).
+
+What the disk proves, with no network and no heuristic, is the divergence: the
+plugin root this session resolves — through the same ladder every other surface
+uses, which prefers the environment's own plugin-root variable over the
+executable's ancestors — against the plugin root the running binary sits in,
+found by that ladder's own executable-ancestor walk and layout check. When those
+are two different roots, the version flag's report (and the update verb's check,
+which extends it) and bare `ahoy` add a `superseded_root` note naming both roots
+by the commit each was installed from, in the plain render as well as in the
+JSON form. It is a note beside the answer: the reported version, vintage and
+staleness are unchanged, and nothing refuses.
+
+The two names are directory names read off the disk, so each passes through the
+terminal sanitiser before it is printed: a control or bidirectional character in
+one is replaced, never rendered. The command pages tell the agent to relay the
+note as abcd printed it and never to rebuild the names from a path, which would
+undo that.
+
+The note is silent in three cases. A binary inside no plugin root at all — a
+PATH copy, a `go run` build — has no superseded root to name, and the vintage
+comparison already covers it. A binary in the root this session resolves has
+nothing to disclose. And a binary served from a source checkout of abcd says
+nothing: a checkout is a valid plugin root (`hooks/` sits at its top), so a
+developer running the `make build` artefact while a harness session resolves its
+own cache root satisfies the divergence test, but a checkout is not named for a
+commit it was installed from, and the note's remedy would point at the
+plugin-root binary the dogfooding rule calls the stale one. That case is the
+vintage comparison's, and the stale-binary line above keys its rebuild remedy on
+the same source-checkout test. The guard is keyed on the root that served the
+answer: a provisioned root answering into a session whose own root is a source
+checkout still names itself.
+
+### Where the version comes from
+
+The version is **derived, never hand-authored**: it is read from the shipped
+build, not from a literal in the record
+([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
+`/abcd:launch` stamps the derived version into the release artefact; the
+board and the version flag only report what is installed.
 
 ## The board itself is not built
 

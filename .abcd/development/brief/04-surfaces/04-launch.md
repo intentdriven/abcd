@@ -12,9 +12,16 @@ a dated changelog heading and the release page and stops, and CI and a human tak
 And it never ships the design record: the payload is default-deny with the whole
 `.abcd/` namespace excluded structurally, so no include line can put it back.
 
-The preview always exits 0, because a preview never blocks, and its one write is
-its pre-flight report in the gitignored local tier. Bare `abcd launch` refuses
-with a hint to ask for it. A repository that declares `kind: plugin` with no
+The preview never blocks on what it finds: every finding a cut would refuse
+on, and a refused cut, is reported and the preview exits 0. It exits non-zero
+only when it cannot run at all: an undeclared or unknown artefact kind and a
+plugin with no launch payload are refused, and a named baseline that is not a
+release tag exits 2. Its one write is its pre-flight
+report in the gitignored local tier. Beside the bundle report it renders the
+release cut the next ship would make, the deterministic emit with no prose
+(spc-2610100613109045, decision 5): the preview is the one way to see the cut
+without starting one, and there is no separate changelog verb. Bare
+`abcd launch` refuses with a hint to ask for the preview. A repository that declares `kind: plugin` with no
 launch payload (`.abcd/config/launch-payload.json`) has nothing to preview, and
 the preview says so and names the release path a repository that ships no plugin
 has: declaring its kind as `binary` or `application`, the scaffolded release
@@ -143,7 +150,9 @@ admit (or nothing is armed), 1 when it would refuse, and 2 on a structural fault
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent, including the release page's retry loop. The
-deterministic emit alone is `abcd changelog`, read-only and prose-free.
+deterministic emit alone is the cut the preview renders, read-only and
+prose-free; it is exactly what the ship's emit step
+derives, through the same derivation and the same render.
 
 **Commit, tag and publish stay a design target** (itd-72's publishing). The
 verb neither commits, tags, nor publishes, so every step past the changelog
@@ -226,9 +235,13 @@ kind exits 2 with nothing written.
 **The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
 binary registers no `dry-run` subcommand under launch, and `commands/launch.md`
 names it as a flag. Its report is
-preview-only and always exits 0. It is **not** "ship minus publish": it runs the
-same gate suite the cut's render path runs and reports what that path would
-refuse on, but refusing is the cut's.
+preview-only, and what it finds changes no exit code (the opening of this
+chapter names the cases where it cannot run). It is **not** "ship minus
+publish": it runs the same gate suite the cut's render path runs and reports
+what that path would refuse on, and it renders the cut the ship's emit step
+would derive, but refusing is the cut's. The cut is read from the checkout
+root wherever the preview is run, and so is the whole preview: run from a
+subdirectory, it reads the same repository as from the root.
 
 ## 1. Pre-flight gates
 
@@ -312,7 +325,12 @@ hard-fails, citations, a line for every gate row that did not run (its name,
 its status — `host-run`, `not_armed`, `not_implemented` — and why; the
 semantic-receipts row is always one) and whether it would publish, then a
 would-refuse-on line per refusal, a warning line per warn-tier concern, and
-where its report landed. The JSON carries the gate detail.
+where its report landed. After the bundle report it renders the cut, under its
+own header line, exactly as the ship renders its emit:
+the base and derived tags or `REFUSED`, the deciding records, the guard and
+findings lines, the records added and removed, the release page's intents,
+the targeted intents and every refusal. The JSON carries the gate detail, and
+the cut under `cut` (or `cut_error` when the cut could not be read).
 
 The **manifest lockstep check** also runs for real on the preview, at its `dev`
 polarity over the working tree — the polarity adr-19 requires the committed
@@ -511,8 +529,8 @@ binary whose placement or sentence disagrees with the snapshot committed at
 `HEAD` is refused as stale, and the refusal names each moved verb and each
 reworded sentence.
 
-**Unfixed-findings guardrail.** The cut and the read-only `changelog` preview
-both ask one further question of the cut: of the findings **this cycle**
+**Unfixed-findings guardrail.** The cut and its read-only preview in
+the launch preview both ask one further question of the cut: of the findings **this cycle**
 produced, is any of them consequential, still open, and unanswered? A cut that
 carries one is refused, and a refused cut carries no derived version at all.
 The gate fired on this release's own first cut, so it is live behaviour rather
@@ -543,9 +561,8 @@ than a design target.
   single-use: the anchor moves at the next release and every waiver written
   against the old one lapses, so a deferred finding is re-asked rather than
   forgotten. Half a waiver does not stand.
-- **What the render shows.** Every render of `abcd changelog` and of the launch
-  cut carries a findings line
- (the verdict, the count of unfixed findings and
+- **What the render shows.** Every render of the cut, in the launch preview and
+  in the ship, carries a findings line (the verdict, the count of unfixed findings and
   the anchor they were measured from, and the count deferred), then one line per
   waiver naming the record, its severity and its stated reason. A deferral an
   operator cannot see in the report they actually read is indistinguishable from
@@ -764,13 +781,13 @@ performed by a human and by CI.
   nothing is published.
 - **Given** an issue record captured since the anchor tag, graded major or
   critical (or carrying no readable grade), still open and carrying no standing
-  waiver, **when** the cut or `changelog` runs, **then** the cut is refused under
+  waiver, **when** the cut or the preview runs, **then** the cut is refused under
   `unfixed-finding`, the refusal names every such record with its grade and path,
   no version is derived, and the findings line says how many were counted and
   from which anchor.
 - **Given** an issue record the anchor tag held in `open/`, graded major or
   critical (or carrying no readable grade), and present in no status directory at
-  HEAD, **when** the cut or `changelog` runs, **then** the cut is refused under
+  HEAD, **when** the cut or the preview runs, **then** the cut is refused under
   `deleted-finding`, the refusal names the record with the grade and path the
   anchor held and says it is in no status directory, and the three dispositions —
   a move to `resolved/`, a move to `wontfix/`, a re-slug inside `open/` — each go
@@ -794,6 +811,13 @@ performed by a human and by CI.
 - **Given** findings in several gates at once, **when** the preview or the cut
   runs, **then** every one of them is reported in the one pass and in the
   pre-flight report.
+- **Given** shipped records since the anchor tag, **when** the preview runs,
+  **then** it renders, beside the bundle report, the cut the ship would
+  emit: the derived version and deciding impact, the records, and the guard and
+  findings verdicts, in text and in its JSON; **given** a cut that
+  refuses, the preview renders the refusal and its exit is unchanged. **Given**
+  the retired changelog verb, the binary refuses it as an unknown command, and
+  the note names the preview.
 - **Given** a previous release tag, **when** the preview or a cut that renders a
   payload runs, **then** the report lists every payload path added, changed or
   removed since that tag's payload, each with its SHA-256; **given** no previous

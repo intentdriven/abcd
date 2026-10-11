@@ -699,45 +699,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 	return nil
 }
 
-// newChangelogCommand builds `abcd changelog`, the DETERMINISTIC-ONLY preview of
-// the next release cut.
-//
-// It renders exactly what `abcd launch ship` would emit — the derived version,
-// the deciding impact, the record list, and the guardrail status — and no prose:
-// the changelog text is composed once, at the reviewed ship, never twice with a
-// chance of disagreeing. It performs ZERO writes.
-//
-// It always exits 0 (2 only on a structural fault), which is the deliberate
-// difference from `launch ship`. This is a status render in the shape of `abcd
-// capture` bare and `abcd launch --dry-run`: a refused cut is information a
-// reader asked for, not a gate they tripped. The gate is the ship verb.
-func newChangelogCommand(asJSON *bool) *cobra.Command {
-	return &cobra.Command{
-		Use:  "changelog",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			// The same root the ship verb reads, from wherever it is run.
-			root, err := gitutil.CheckoutRoot(cwd, "the release record")
-			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
-			}
-			cut, err := emitCut(root)
-			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
-			}
-			return render(cmd.OutOrStdout(), *asJSON, cut, func(w io.Writer) {
-				renderCut(w, "abcd changelog", cut)
-			})
-		},
-	}
-}
-
-// renderCut writes the human rendering of a cut, shared by the preview and the
-// ship verb so the two can never describe the same repository differently.
+// renderCut writes the human rendering of a cut, shared by the preview (`launch
+// --dry-run`) and the ship verb so the two can never describe the same
+// repository differently.
 //
 // Every value that came out of a record — a title, a path, a refusal quoting
 // either — is sanitised: record frontmatter and prose are author-supplied text

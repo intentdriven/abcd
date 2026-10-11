@@ -91,8 +91,8 @@ a release cut it takes the set-difference of issue-ledger membership between the
 anchor tag's tree and HEAD, keyed on record id, and refuses the cut when any
 record that difference names is still in `open/` and graded `major` or
 `critical`. The refusal names every blocking record and all three ways out, and it
-reaches `abcd changelog` and `abcd launch ship` through the same `refusals`
-channel as the surface guardrail. Membership is read from git rather than from
+reaches the cut `abcd launch --dry-run` previews and `abcd launch ship` through
+the same `refusals` channel as the surface guardrail. Membership is read from git rather than from
 the timestamp inside a record id, so the gate's verdict is not decided by a
 field the record it is judging can edit.
 

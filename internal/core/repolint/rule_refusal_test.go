@@ -108,3 +108,24 @@ func TestPositioningMissingBlockIsAnError(t *testing.T) {
 		file(".abcd/development/brief.md", "# no identity block here\n").commit().run()
 	requireRefusal(t, res, "identity-positioning", "identity")
 }
+
+// A docs/ folder with no .abcd/docs-lint.json cannot be checked, and the
+// warning names the command that seeds the config. prepare-this-repo folded
+// into `ahoy install` (spc-2610100613109045, step 4), and the binary's install
+// is what writes .abcd/docs-lint.json, so the message names it and not the
+// retired page.
+func TestDocsWithoutConfigNamesAhoyInstall(t *testing.T) {
+	res := newFixtureRepo(t).conforming().
+		file("docs/index.md", "# docs\n").
+		commit().run()
+	f := findingFor(res, "docs-currency")
+	if f == nil {
+		t.Fatalf("no docs-currency finding for docs/ without a config: findings=%+v skipped=%v", res.Findings, res.Skipped)
+	}
+	if !strings.Contains(f.Message, "abcd ahoy install") {
+		t.Errorf("the message does not name `abcd ahoy install`: %s", f.Message)
+	}
+	if strings.Contains(f.Message, "prepare-this-repo") {
+		t.Errorf("the message names the retired prepare-this-repo: %s", f.Message)
+	}
+}

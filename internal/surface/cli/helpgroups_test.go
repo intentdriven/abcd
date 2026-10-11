@@ -96,7 +96,7 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 			t.Errorf("%s lists %v, want %v", group, entries[group], want)
 		}
 	}
-	for _, agentVerb := range []string{"implement", "statusline", "changelog", "mode", "history", "lint", "reflect", "rules", "spec"} {
+	for _, agentVerb := range []string{"implement", "statusline", "mode", "history", "lint", "reflect", "rules", "spec"} {
 		for _, group := range peopleGroupTitles {
 			for _, got := range entries[group] {
 				if got == agentVerb {
