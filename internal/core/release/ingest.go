@@ -535,7 +535,12 @@ func checkOutbound(root, text, label, at string, rs *reasons) error {
 // the caller's own home or identity) adds a reason, and so does a token whatever
 // its severity (scanner.IsTokenKind): a credential rule that only warns, so a
 // hash-like string already committed cannot fail the launch scan, still names a
-// key that newly composed public text must not carry. The documents are public
+// key that newly composed public text must not carry. Above the launch bar, it
+// also refuses another account's home path (scanner.KindHomePathOther, a warn):
+// the product thinker's ruling on iss-2609290405451613 holds public release
+// text to a middle bar, where a third party's home path is refused and a
+// username (github_username, also a warn) stays allowed, since a release note
+// may legitimately name the repository's owner. The documents are public
 // release text, so a finding is refused here, where the composer can drop it,
 // rather than written and found by the launch scan after a person may have
 // committed it (iss-2609290405381338). The detail names the kind and the line,
@@ -550,11 +555,11 @@ func checkPrivacy(root, text, label, at string, rs *reasons) error {
 		return fmt.Errorf("the %s's privacy check: refusing to judge with a degraded scanner config: %s", label, reason)
 	}
 	for _, f := range sc.ScanText(text, label) {
-		if f.Severity != scanner.SeverityHardFail && !scanner.IsTokenKind(f.Kind) {
+		if f.Severity != scanner.SeverityHardFail && !scanner.IsTokenKind(f.Kind) && f.Kind != scanner.KindHomePathOther {
 			continue
 		}
 		rs.add(ReasonPrivacy, at, "the rendered %s carries a %s on line %d; remove it (release text is public, "+
-			"and a secret or the composer's own identity has no place in it)", label, f.Kind, f.Line)
+			"and a secret, the composer's own identity or another account's home path has no place in it)", label, f.Kind, f.Line)
 	}
 	// A repository's opt-in scanner augmenter (gitleaks) runs inside ScanText,
 	// and a run that failed degrades the scanner during it: a check that did not
