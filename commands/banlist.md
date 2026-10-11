@@ -3,6 +3,7 @@ name: banlist
 description: "Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it."
 argument-hint: "[list --private|--public] | add --private|--public <key> <pattern> [--severity blocker|warn] [--successor <text>] | remove --private|--public <key> | migrate"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:banlist` — banned names, two layers

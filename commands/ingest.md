@@ -2,6 +2,7 @@
 name: ingest
 description: Ingest a URL or document into the local sources corpus (the user-level home's sources store, default ~/.abcd.noindex/sources) with extracted reference metadata, keywords, and a text-quality check. Use when the user says "ingest this", "add this source/URL/paper to the corpus", "register this source", or hands over a document/link to be stored. For consulting the corpus or recording provenance, use /abcd:consult.
 argument-hint: <url-or-file>
+block: people
 ---
 
 # Ingest a source

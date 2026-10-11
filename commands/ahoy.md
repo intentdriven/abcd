@@ -8,8 +8,9 @@ block: people
 # `/abcd:ahoy` install/update detector
 
 `abcd --help` lists `ahoy` in the person's set-up group. `statusline`, the
-harness-invoked row that `install` wires, is in the agents-and-hosts block of
-`abcd --help --agent`, and its line there names this page.
+harness-invoked row that `install` wires, and `rules`, which renders the rule
+loader `install` sets up, are in the agents-and-hosts block of
+`abcd --help --agent`, and their lines there name this page.
 
 Run abcd's install/update engine for the current repo and present the result.
 Bare invocation, its `--dry-run`, `--remote` and `--providers` modes, and the

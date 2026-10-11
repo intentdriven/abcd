@@ -3,6 +3,7 @@ name: implement
 description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
 argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|record|outage] …"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:implement` — share a run between sessions

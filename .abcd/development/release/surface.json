@@ -953,8 +953,8 @@
     {
       "path": "abcd dashboard",
       "hidden": false,
-      "group": "agents",
-      "block": "agents",
+      "group": "set-up",
+      "block": "people",
       "sentence": "Report whether the dashboard runs, where, and the devices that opened it: Writes nothing; refuses any argument.",
       "flags": []
     },
@@ -1567,8 +1567,8 @@
     {
       "path": "abcd ideate",
       "hidden": false,
-      "group": "agents",
-      "block": "agents",
+      "group": "records",
+      "block": "people",
       "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
       "flags": []
     },
@@ -2431,8 +2431,8 @@
     {
       "path": "abcd lab",
       "hidden": false,
-      "group": "agents",
-      "block": "agents",
+      "group": "checks",
+      "block": "people",
       "sentence": "List this repository's labs with their pins, probe counts and halts: Writes nothing; refuses outside a git checkout.",
       "flags": []
     },
@@ -2644,8 +2644,8 @@
     {
       "path": "abcd lint",
       "hidden": false,
-      "group": "checks",
-      "block": "people",
+      "group": "agents",
+      "block": "agents",
       "sentence": "Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
       "flags": [
         {
@@ -2808,8 +2808,8 @@
     {
       "path": "abcd reading",
       "hidden": false,
-      "group": "agents",
-      "block": "agents",
+      "group": "checks",
+      "block": "people",
       "sentence": "Render the cold-reading assembler's state: Writes nothing; refuses any argument.",
       "flags": []
     },
@@ -2879,8 +2879,8 @@
     {
       "path": "abcd reflect",
       "hidden": false,
-      "group": "release",
-      "block": "people",
+      "group": "agents",
+      "block": "agents",
       "sentence": "Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.",
       "flags": []
     },
@@ -2952,8 +2952,8 @@
     {
       "path": "abcd rules",
       "hidden": false,
-      "group": "set-up",
-      "block": "people",
+      "group": "agents",
+      "block": "agents",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
       "flags": []
     },
@@ -3369,8 +3369,8 @@
     {
       "path": "abcd spec",
       "hidden": false,
-      "group": "records",
-      "block": "people",
+      "group": "agents",
+      "block": "agents",
       "sentence": "Render the spec store's status: Writes nothing; refuses outside a git checkout.",
       "flags": []
     },

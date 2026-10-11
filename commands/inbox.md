@@ -3,6 +3,7 @@ name: inbox
 description: "List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument."
 argument-hint: "[show <id> | promote <id>]"
 block: agents
+user-invocable: false
 ---
 
 # `/abcd:inbox` — read and promote reports

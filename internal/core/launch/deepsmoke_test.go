@@ -294,3 +294,37 @@ func TestPrecheckRunsTheDeepTierAndParityWhenAsked(t *testing.T) {
 
 // testReportInstant pins the clock a pre-flight report is stamped with.
 var testReportInstant = time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+
+// TestPageFieldsReadsWhatThePagesDeclare holds the reader the menu gate
+// shares with the deep tier (spc-2610100613109045, step 1): it keeps a
+// hyphenated key, which frontmatter.Fields skips, returns the body after the
+// block, reads a page with no block as no fields, and refuses what the deep
+// tier refuses.
+func TestPageFieldsReadsWhatThePagesDeclare(t *testing.T) {
+	fields, body, err := PageFieldsForTest("---\nname: guard\nblock: agents\nuser-invocable: false\nargument-hint: \"[check]\"\n---\n# Guard\n")
+	if err != nil {
+		t.Fatalf("PageFieldsForTest: %v", err)
+	}
+	for key, want := range map[string]string{"name": "guard", "block": "agents", "user-invocable": "false", "argument-hint": "[check]"} {
+		if got, ok := fields[key]; !ok || got != want {
+			t.Errorf("fields[%q] = %q (present %v), want %q", key, got, ok, want)
+		}
+	}
+	if body != "# Guard\n" {
+		t.Errorf("body = %q, want the text after the block", body)
+	}
+
+	fields, body, err = PageFieldsForTest("# No frontmatter\n")
+	if err != nil || len(fields) != 0 || body != "# No frontmatter\n" {
+		t.Errorf("a page with no block: fields %v, body %q, err %v; want none, the whole text, nil", fields, body, err)
+	}
+
+	for _, tc := range []struct{ page, wantErr string }{
+		{"---\nname: a\n", "never closed"},
+		{"---\nblock: people\nblock: agents\n---\n", "duplicate"},
+	} {
+		if _, _, err := PageFieldsForTest(tc.page); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("PageFieldsForTest(%q) err = %v, want one naming %q", tc.page, err, tc.wantErr)
+		}
+	}
+}
