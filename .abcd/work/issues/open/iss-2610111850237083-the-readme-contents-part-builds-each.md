@@ -12,4 +12,4 @@ found_at: "internal/core/ahoy/readme_derive.go"
 remedy: "Slug the heading's rendered text: render emoji shortcodes and decode HTML entities as the forge does before slugging, or omit such a heading's anchor with a stated reason."
 ---
 
-The README contents part builds each anchor slug from the heading's markdown source rather than its rendered text, so an emoji shortcode or an HTML entity in a heading gives an anchor the forge does not have: '## :rocket: Launch' is linked as #rocket-launch where the forge renders #-launch, and '## A &amp; B' as #a-amp-b where the forge renders #a--b.
+The README contents part builds each anchor slug from the heading's markdown source rather than its rendered text, so an emoji shortcode or an HTML entity in a heading gives an anchor the forge does not have: `## :rocket: Launch` is linked as `#rocket-launch` where the forge renders `#-launch`, and `## A &amp; B` as `#a-amp-b` where the forge renders `#a--b`.

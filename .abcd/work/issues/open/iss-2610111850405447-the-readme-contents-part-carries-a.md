@@ -12,4 +12,4 @@ found_at: "internal/core/ahoy/readme_derive.go"
 remedy: "Strip inline HTML tags from a heading's text before it is listed and before its anchor is slugged."
 ---
 
-The README contents part carries a heading's inline HTML raw into the list text and its tag characters into the anchor: '## <a name="install"></a> Install' is listed with the tag in its link text and an anchor built from the tag's characters, where the forge renders the heading as 'Install' with the anchor #-install.
+The README contents part carries a heading's inline HTML raw into the list text and its tag characters into the anchor: `## <a name="install"></a> Install` is listed with the tag in its link text and an anchor built from the tag's characters, where the forge renders the heading as `Install` with the anchor `#-install`.

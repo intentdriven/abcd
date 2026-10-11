@@ -12,4 +12,4 @@ found_at: "internal/core/ahoy/readme_derive.go"
 remedy: "Track an open HTML block until the line that ends it, and read no heading inside one."
 ---
 
-The README contents part lists an ATX heading that sits inside an HTML block no blank line has closed, though the forge renders that line as text: '<div align="center">' then '## Title' then '</div>' gives a contents entry linking an anchor the page does not have.
+The README contents part lists an ATX heading that sits inside an HTML block no blank line has closed, though the forge renders that line as text: `<div align="center">` then `## Title` then `</div>` gives a contents entry linking an anchor the page does not have.
