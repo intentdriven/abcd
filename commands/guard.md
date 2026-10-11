@@ -464,9 +464,11 @@ read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 A verb that is the person's own act is left to the person. `abcd library ledger
 --flip N` records that a human chose to cite a source publicly, so an agent
 running it is a **block** (`abcd-source-ledger-flip`); recording a line and
-listing the ledger are not. The entry names the program `abcd`, so it matches
-the binary on `PATH` and the plugin root's by basename, not a `go run` of the
-source or a copy under another name.
+listing the ledger are not. The retired spelling, `abcd source ledger --flip N`,
+is a **block** too (`abcd-source-ledger-flip-retired`), because a binary older
+than the library verb still answers it. The entries name the program `abcd`,
+so they match the binary on `PATH` and the plugin root's by basename, not a
+`go run` of the source or a copy under another name.
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 `~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the

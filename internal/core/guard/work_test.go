@@ -32,10 +32,12 @@ const linearWorkBar = 6.0
 // grows with the registry: an unknown program name followed by unknown
 // dash-words (`$(a) -$(b) x` repeated) measured about 18 units per byte with
 // fourteen bundled entries and about 20 with sixteen, the two rm-target
-// entries of iss-2609282105242542. The bar sits at 24, which keeps that shape
+// entries of iss-2609282105242542, and about 24.7 once the retired spelling of
+// the ledger flip took an entry of its own beside the library one
+// (spc-2610100613109045, step 5). The bar sits at 28, which keeps that shape
 // under it with room for a few more entries and stays far below the hundred a
 // dropped bound costs.
-const workPerByteBar = 24.0
+const workPerByteBar = 28.0
 
 // checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes

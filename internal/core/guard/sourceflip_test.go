@@ -23,3 +23,19 @@ func TestSourceLedgerFlipIsLeftToThePerson(t *testing.T) {
 		{`abcd capture "an agent ran abcd library ledger --flip 3"`, VerdictAllow, ""},
 	})
 }
+
+// TestRetiredSourceLedgerFlipIsStillLeftToThePerson holds the retired spelling
+// to the same refusal: a binary older than the library verb still answers
+// `abcd source ledger --flip`, and such a binary is often reachable (the
+// plugin root's copy, an older build), so the flip it writes is the same
+// false record of who decided.
+func TestRetiredSourceLedgerFlipIsStillLeftToThePerson(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`abcd source ledger --flip 3`, VerdictBlock, "abcd-source-ledger-flip-retired"},
+		{`abcd source ledger --flip=3`, VerdictBlock, "abcd-source-ledger-flip-retired"},
+		{`abcd source --corpus /srv/corpus ledger --flip 3`, VerdictBlock, "abcd-source-ledger-flip-retired"},
+		{`"$CLAUDE_PLUGIN_ROOT"/abcd source ledger --flip 3`, VerdictBlock, "abcd-source-ledger-flip-retired"},
+		{`abcd source ledger --list`, VerdictAllow, ""},
+		{`abcd capture "an agent ran abcd source ledger --flip 3"`, VerdictAllow, ""},
+	})
+}
