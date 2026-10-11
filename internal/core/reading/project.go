@@ -309,13 +309,17 @@ const (
 //     hide an element is a renderer's job, and a CSS class can do the same out
 //     of this floor's sight. An element that hides its content by its name
 //     alone IS read without it (unrenderedElements): template, script, style,
-//     title, noscript, noembed, noframes, iframe and datalist, and the fallback
-//     inside video, audio, canvas and object. Left out, and read with their
-//     content, are textarea, xmp, plaintext and select, whose text a browser
-//     shows; details, which folds its content away under a summary that shows;
-//     and rp, hidden only inside ruby. Inside an unrendered element the walk
-//     follows nesting, end tags and raw text, but not the parser's implied end
-//     tags or a script's escaped `<!--<script>` state, so a title built on
+//     title, noscript, noembed, noframes, iframe, datalist and rp, and the
+//     fallback inside video, audio, canvas and object. Left out, and read with
+//     their content, are textarea, xmp, plaintext and select, whose text a
+//     browser shows, and details, which folds its content away under a summary
+//     that shows. Inside an unrendered element the walk follows nesting, end
+//     tags and raw text; an element it does not model opened inside one (a
+//     void element and a template's content aside) flags the title, because
+//     the parser may ignore the end tag that follows, and a flagged title
+//     carrying the heading's letters in order is refused (unmodelledHides),
+//     which over-refuses rather than leaks. It does not model the parser's
+//     other implied end tags or a script's escaped `<!--<script>` state, so a title built on
 //     either can read more or less content than a browser hides.
 //   - Foreign content is not modelled: inside svg or math a CDATA section is
 //     text a browser shows, where the floor reads it as hidden.
@@ -394,7 +398,7 @@ func namesExcludedHeading(title string, headings map[string]bool) (string, headi
 		}
 	}
 	for _, want := range wants {
-		if nearExcluded(title, want) || unreadMarkupNames(title, want) {
+		if nearExcluded(title, want) || unreadMarkupNames(title, want) || unmodelledHides(title, want) {
 			return want, nearHeading
 		}
 	}
@@ -713,6 +717,34 @@ func unreadMarkupNames(title, want string) bool {
 		}
 	}
 	return false
+}
+
+// unmodelledHides reports whether a title holds structure the browser walk
+// cannot follow (browserWalk) and still carries an excluded heading's letters
+// in order, with its tags removed and its other text kept. Inside an
+// unrendered element, an element the walk does not model can make the parser
+// ignore the end tag that follows, so text the walk reads as shown may be
+// hidden: `## Audit <audio><div></audio>x</div></audio> Notes` shows as the
+// excluded heading. The walk cannot say how much is hidden, so the floor
+// refuses such a title whenever the heading's letters survive in order.
+// That over-refuses, which costs the author an edit and leaks nothing.
+func unmodelledHides(title, want string) bool {
+	_, flagged := browserWalk(title)
+	if !flagged {
+		return false
+	}
+	key := lettersKey(want)
+	if key == "" {
+		return false
+	}
+	hay := lettersKey(stripTags(title, ""))
+	k := 0
+	for i := 0; i < len(hay) && k < len(key); i++ {
+		if hay[i] == key[k] {
+			k++
+		}
+	}
+	return k == len(key)
 }
 
 // lettersContain reports whether a title's letters contain an excluded

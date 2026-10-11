@@ -153,7 +153,7 @@ func TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent(t *testing.T) {
 	headings := map[string]bool{"Audit Notes": true}
 	var titles []string
 	for _, name := range []string{"template", "script", "style", "title", "noscript", "noembed",
-		"noframes", "iframe", "datalist", "video", "audio", "canvas", "object"} {
+		"noframes", "iframe", "datalist", "video", "audio", "canvas", "object", "rp"} {
 		titles = append(titles, "Audit <"+name+">x</"+name+"> Notes")
 	}
 	titles = append(titles,
@@ -166,6 +166,7 @@ func TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent(t *testing.T) {
 		"Audit <template><textarea></template></textarea>x</template> Notes",
 		"Audit <template><!-- </template> -->x</template> Notes",
 		"Audit <script>x</scripts></script> Notes",
+		"Audit <ruby><rp>x</rp></ruby> Notes",
 	)
 	for _, title := range titles {
 		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
@@ -994,5 +995,33 @@ func TestTheTagWalksStayLinear(t *testing.T) {
 	setAsideQuotedSpans(title)
 	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
 		t.Errorf("the tag walks took %s of CPU over a %d-byte title", elapsed, len(title))
+	}
+}
+
+// TestAnEndTagABrowserIgnoresNeverShowsHiddenContent holds the walk to fail
+// closed where it does not model the parser: an element it does not know,
+// opened inside an unrendered one, can leave the parser ignoring the
+// unrendered element's end tag (an audio end tag while a div is open is
+// dropped), so the content after it stays hidden. The walk then reads the
+// unrendered element to the end of the title, which redacts or refuses and
+// never lets the section travel. A void element opens nothing, so a video's
+// source still closes as written.
+func TestAnEndTagABrowserIgnoresNeverShowsHiddenContent(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, title := range []string{
+		"Audit <audio><div></audio>x</div></audio> Notes",
+		"Audit <video><p></video>x</p></video> Notes",
+	} {
+		if _, got := namesExcludedHeading(title, headings); got == noHeading {
+			t.Errorf("namesExcludedHeading(%q) = noHeading; the hidden content must never travel", title)
+		}
+	}
+	for _, title := range []string{
+		"Audit <video><source src=a.mp4></video> Notes",
+		"Audit <audio><track src=a.vtt><br></audio> Notes",
+	} {
+		if _, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v, want sameHeading: a void element opens nothing", title, got)
+		}
 	}
 }

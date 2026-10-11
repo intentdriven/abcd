@@ -352,7 +352,15 @@ var rawTextElements = map[string]bool{
 var unrenderedElements = map[string]bool{
 	"template": true, "script": true, "style": true, "title": true, "noembed": true,
 	"noframes": true, "datalist": true, "iframe": true, "noscript": true,
-	"video": true, "audio": true, "canvas": true, "object": true,
+	"video": true, "audio": true, "canvas": true, "object": true, "rp": true,
+}
+
+// voidElements open nothing a later end tag could be held behind, so the
+// parsed walk steps over them (parsedEnd).
+var voidElements = map[string]bool{
+	"area": true, "base": true, "br": true, "col": true, "embed": true, "hr": true,
+	"img": true, "input": true, "link": true, "meta": true, "param": true,
+	"source": true, "track": true, "wbr": true,
 }
 
 // elementWalk is one title read the way a browser hides its unrendered
@@ -363,6 +371,9 @@ type elementWalk struct {
 	q        *quotedTagEnds
 	f        *hiddenHTMLFinders
 	closes   map[string]*terminatorFinder
+	// unmodelled is set when an element the walk does not model opened
+	// inside an unrendered one (parsedEnd).
+	unmodelled bool
 }
 
 func newElementWalk(s string) *elementWalk {
@@ -459,6 +470,15 @@ func (w *elementWalk) parsedEnd(name string, c int) int {
 		case unrenderedElements[n]:
 			stack = append(stack, n)
 			open[n]++
+		case !voidElements[n] && stack[0] != "template":
+			// An element the walk does not model can leave the parser
+			// ignoring the unrendered element's end tag (an audio end tag
+			// while a div is open is dropped), so content after that end tag
+			// may stay hidden. The walk cannot say how far, so it flags the
+			// title and the floor refuses it (unmodelledHides). A template's
+			// content is its own fragment, closed by its first end tag, so it
+			// is exempt.
+			w.unmodelled = true
 		}
 		i = end
 	}
@@ -470,8 +490,16 @@ func (w *elementWalk) parsedEnd(name string, c int) int {
 // removed with its content (unrenderedElements), each unclosed one to the end
 // of the title.
 func browserView(s string) string {
+	v, _ := browserWalk(s)
+	return v
+}
+
+// browserWalk is browserView, also reporting whether the walk met an element
+// it does not model inside an unrendered one, where the parser may hide more
+// than the walk can tell (parsedEnd).
+func browserWalk(s string) (string, bool) {
 	if strings.IndexByte(s, '<') < 0 {
-		return s
+		return s, false
 	}
 	w := newElementWalk(s)
 	var b strings.Builder
@@ -499,7 +527,7 @@ func browserView(s string) string {
 		b.WriteByte('<')
 		i++
 	}
-	return b.String()
+	return b.String(), w.unmodelled
 }
 
 // hiddenViews returns a title with its hidden markup removed under each
