@@ -533,9 +533,9 @@ than a design target.
   severity. The gate reads the ledger at `HEAD`, so an issue record under
   `open/` that differs from `HEAD` (an uncommitted edit, waiver or regrade, a
   capture, a removal) is a finding it cannot judge; the refusal names every
-  such path, and no override waives it. When an unfixed or deleted
-  finding is present too, the findings line names the uncommitted paths beside
-  their counts, so one run names every reason.
+  such path, and no override waives it. It is a refusal entry of its own,
+  raised beside an unfixed or deleted finding's when either is present too, so
+  one run names every reason, each once; the findings line counts the paths.
 - **The waiver** is the frontmatter pair `deferred_after` plus
   `deferral_reason`, both schema-accepted keys, written by the ledger's deferral
   verb ([`06-capture.md`](06-capture.md)). `deferred_after` names the cut's
