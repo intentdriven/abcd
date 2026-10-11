@@ -258,7 +258,10 @@ with `*CONCURRENCY` to force it).
   stash it away silently; uncommitted peer work is untouchable.
 - **A verifier works on a copy** (`git -C <wt> archive HEAD | tar -x -C
   <scratch>`), never on a live worktree, and a merge, commit, push or gate run
-  proves the tree clean **immediately before the act** (itd-193).
+  proves the tree clean **immediately before the act** (itd-193). The copy goes
+  outside every working tree: the session's scratchpad or a directory under
+  `~/.abcd.noindex/`, never `.abcd/.work.local/scratch/`, where every verb run
+  from it reads the worktree around it instead.
 - **A session cutting a release has the final say on what merges before its
   tag.** A change ready while a peer is mid-cut is handed over as a pull
   request and merged or held on the cutting session's ruling.

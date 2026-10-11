@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -183,5 +184,74 @@ func TestAgentsMDDetailMovedUnderTheLoaderIsRecalled(t *testing.T) {
 				t.Errorf("the prompt %q does not recall the %s domain", tc.prompt, tc.domain)
 			}
 		})
+	}
+}
+
+// TestVerifierCopyGoesOutsideEveryWorkingTree holds the verifier-copy rule, in
+// both its short form (AGENTS.md, § Concurrent sessions) and its long form (the
+// CONCURRENCY domain of .abcd/rules.json), to naming where the copy goes
+// (iss-2610090642392144). A copy extracted under the local tier's scratch/ sits
+// inside the live worktree; it is not a checkout, so every verb run from it that
+// reads git or the record store resolves upward to the worktree around it and
+// verifies that tree, not the copy. Both forms must say the copy goes outside
+// every working tree and name the two homes that are: the session's scratchpad
+// and a directory under the machine-scoped abcd home (abcdhome.Display). The
+// itd-193 discipline and the users-directory principle, which both forms lean
+// on, are held to the same three phrases.
+func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, "AGENTS.md")
+	var repo rules.RuleSet
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/rules.json")), &repo); err != nil {
+		t.Fatalf("parse .abcd/rules.json: %v", err)
+	}
+
+	const shortHead = "- **A verifier works on a copy**"
+	start := strings.Index(body, shortHead)
+	if start < 0 {
+		t.Fatalf("AGENTS.md has no %q rule", shortHead)
+	}
+	short := body[start+len(shortHead):]
+	if next := strings.Index(short, "\n- "); next >= 0 {
+		short = short[:next]
+	}
+
+	const longHead = "**A verifier works on a copy.**"
+	long := ""
+	for _, r := range repo.Domains["CONCURRENCY"].Rules {
+		if strings.HasPrefix(r, longHead) {
+			long = r
+		}
+	}
+	if long == "" {
+		t.Fatalf("the CONCURRENCY domain of .abcd/rules.json has no rule opening %q", longHead)
+	}
+
+	// The two records both forms lean on say it too: the discipline they cite
+	// (itd-193) and the principle the CONCURRENCY domain links as the stance.
+	// Each is held by the paragraph its anchor falls in.
+	paragraph := func(rel, anchor string) string {
+		for _, p := range strings.Split(readRepoFile(t, root, rel), "\n\n") {
+			if flat := strings.Join(strings.Fields(p), " "); strings.Contains(flat, anchor) {
+				return flat
+			}
+		}
+		t.Fatalf("%s has no paragraph saying %q", rel, anchor)
+		return ""
+	}
+	itd193 := paragraph(".abcd/development/intents/disciplines/itd-193-a-verifier-works-on-a-copy-no-agent.md",
+		"Before reporting, the verifier proves the original is untouched")
+	principle := paragraph(".abcd/development/principles/the-users-directory-is-theirs.md", "a verifier's copy goes")
+
+	for name, text := range map[string]string{
+		"AGENTS.md": short, "the CONCURRENCY domain": long, "itd-193": itd193, "the users-directory principle": principle,
+	} {
+		flat := strings.Join(strings.Fields(text), " ")
+		for _, want := range []string{"outside every working tree", "scratchpad", abcdhome.Display() + "/"} {
+			if !strings.Contains(flat, want) {
+				t.Errorf("%s's verifier-copy rule does not say %q; a copy made inside a worktree is "+
+					"read as that worktree by every verb run from it", name, want)
+			}
+		}
 	}
 }
