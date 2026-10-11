@@ -22,8 +22,8 @@ inbound = outbound statement is the whole of it.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on Linux, with the
   `make fmt-check` format gate, the record-lint, issue-drift and docs-lint
-  steps, and the site-render gate, and runs the suite on macOS in the merge
-  queue: on a pull request `check (macos-latest)` reports without running, and
+  steps, and the site-render gate, and runs the suite on macOS, as one
+  race-enabled pass over the whole module, in the merge queue: on a pull request `check (macos-latest)` reports without running, and
   the queue entry tests the merged tree on macOS; separate jobs run the
   reviews-charter and issue-resolution checks (RS001–RS006), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the

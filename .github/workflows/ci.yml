@@ -363,8 +363,14 @@ jobs:
       # storage (internal/fsutil/flush.go), an F_FULLFSYNC of about 8.8 ms per
       # synced write on macOS that no test asserts anything about. It needs a
       # test binary as well, so nothing built here stops flushing.
+      #
+      # The ubuntu leg tests in two passes, plain over the module and then
+      # race-enabled over ./internal/...; ubuntu runners are not the scarce
+      # ones, and the plain pass reports a failure minutes before the race pass
+      # would. The macOS leg runs one race-enabled pass over the whole module
+      # instead (the last step of this group).
       - name: Test
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
+        if: matrix.os == 'ubuntu-latest'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test ./...
@@ -379,22 +385,38 @@ jobs:
       # is about twice the slowest passing run, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
       # release.yml's verify job it does, while this job's own ceiling, held to
-      # the merge queue's response cap, is the binding one here (see the job
-      # header). The Makefile's preflight recipe and release.yml's verify
-      # job carry the same flag; TestRaceLaneBudgetIsDeclaredAndFitsItsJob
-      # holds all three.
+      # the merge queue's response cap, is the binding one on macOS (see the
+      # job header). The Makefile's preflight recipe and release.yml's verify
+      # job carry the same flag, and so does the macOS step below;
+      # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
-      # The packages named ahead of ./internal/... are the slowest under -race
+      # The packages named ahead of the pattern are the slowest under -race
       # (iss-2609281715083637). go test starts packages in the
       # order its arguments list them, three at a time on the macOS runner, and
       # in import-path order internal/surface/cli started among the last and ran
       # alone as the step's tail. go test runs a package named twice once, so the
-      # set is still exactly ./internal/...; the same test pins that with go list.
+      # set is still exactly the pattern's; the same test pins that with go list.
       - name: Test (race, internal)
-        if: (matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true') || (matrix.os == 'macos-latest' && github.event_name != 'pull_request')
+        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+
+      # The macOS leg's one test pass (iss-2610110938293273): race-enabled, over
+      # the whole module, with the same slowest-first order and the same
+      # -timeout as the race lane above. Two passes cost a median 13.6 minutes
+      # plain plus 23.1 race of a 39.9-minute leg (8 queue runs, 2026-10-11),
+      # and the race pass already ran every internal test, so the plain pass
+      # added only the packages outside internal/ at a third of the leg's time.
+      # The race detector runs every test the plain pass would, so dropping the
+      # plain pass drops no test. It runs straight after vet, so the slowest
+      # packages start at the start of the leg's testing. TestMacOSLegRunsItsSuiteOnlyWhereItLands
+      # holds it to one pass where the leg runs at all, and none on a pull request.
+      - name: Test (race, whole module)
+        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level

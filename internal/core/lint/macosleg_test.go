@@ -21,7 +21,9 @@ import (
 // timeout and were removed, and nothing merged for five hours. The leg now runs
 // its suite on every event but pull_request; on a pull request it is a
 // stand-in that reports `check (macos-latest)` from an ubuntu runner and runs
-// nothing.
+// nothing. Where it does run, it tests in one race-enabled pass over the whole
+// module (iss-2610110938293273), while the ubuntu leg keeps its plain pass and
+// its race lane.
 //
 // The stand-in must still REPORT, because the context is a required check in
 // the ruleset: so the job itself may not be skipped on that event, only its
@@ -143,14 +145,38 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 						if r := actionsexpr.Stringify(runner); r != leg.os {
 							t.Errorf("the %s leg runs on %q on a %s event; want its own runner", leg.os, r, event)
 						}
-						for _, cmd := range []string{"go build ./...", "go vet ./...", "go test "} {
+						for _, cmd := range []string{"go build ./...", "go vet ./..."} {
 							if !runs(cmd) {
 								t.Errorf("the %s leg runs no %q on a %s event", leg.os, cmd, event)
 							}
 						}
-						if (leg.os == "macos-latest" || inert != "true") && !runs("go test -race") {
-							t.Errorf("the %s leg runs no race-enabled test pass on a %s event (inert=%s)",
-								leg.os, event, inert)
+						var passes []string
+						for _, s := range running {
+							for _, l := range strings.Split(s.script(), "\n") {
+								if l = strings.TrimSpace(l); strings.HasPrefix(l, "go test ") {
+									passes = append(passes, l)
+								}
+							}
+						}
+						if leg.os == "macos-latest" {
+							// One race-enabled pass over the whole module
+							// (iss-2610110938293273): a plain pass beside it
+							// reran every test outside internal/ at a third of
+							// the leg's time.
+							if len(passes) != 1 || !strings.HasPrefix(passes[0], "go test -race ") ||
+								!strings.HasSuffix(passes[0], " "+modulePattern) {
+								t.Errorf("the macOS leg runs %d test pass(es) on a %s event: %q; want one "+
+									"`go test -race ... %s`", len(passes), event, passes, modulePattern)
+							}
+							return
+						}
+						if !slices.Contains(passes, "go test ./...") {
+							t.Errorf("the %s leg runs no plain `go test ./...` on a %s event: %q", leg.os, event, passes)
+						}
+						hasRace := slices.ContainsFunc(passes, func(p string) bool { return strings.HasPrefix(p, "go test -race ") })
+						if want := inert != "true"; hasRace != want {
+							t.Errorf("the %s leg's race pass runs=%v on a %s event with inert=%s; want %v",
+								leg.os, hasRace, event, inert, want)
 						}
 					}
 				})

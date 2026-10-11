@@ -176,7 +176,8 @@ its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate — and on macOS on every event but a pull request. On a pull
+site-render gate — and on macOS on every event but a pull request, where it
+builds, vets and tests in one race-enabled pass over the whole module. On a pull
 request `check (macos-latest)` reports its required context from an ubuntu
 runner and runs nothing (every push there has passed `make preflight`);
 the merge-queue entry runs the macOS suite on exactly the tree that lands.
