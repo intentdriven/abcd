@@ -813,6 +813,44 @@ func TestASlugAlikeHeadingIsNotTheExcludedOne(t *testing.T) {
 	}
 }
 
+// TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted: each heading below renders
+// as an excluded one, wrapped in an inline form the reader never sees. The anchor
+// slug caught them by turning every mark into a hyphen; the rendered-text
+// comparison that replaced it (iss-2610101930329211) strips only emphasis and
+// code marks and unwraps only an inline link, so these travelled while the HTML
+// spelling of the same thing (`<s>Audit Notes</s>`) was redacted. Each is the
+// excluded heading, so its section is redacted and the rest of the file travels.
+// The definition a reference link needs sits after the section, where it survives
+// the redaction.
+func TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted(t *testing.T) {
+	const kept = "KEPT-AFTER-THE-SECTION"
+	cases := map[string]string{
+		"a double-tilde strikethrough": "## ~~Audit Notes~~\n\n" + sentinelAuditNotes + "\n",
+		"a single-tilde strikethrough": "## ~Open Questions~\n\n" + sentinelAuditNotes + "\n",
+		"an HTML strikethrough":        "## <s>Audit Notes</s>\n\n" + sentinelAuditNotes + "\n",
+	}
+	for what, section := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-inline-form.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\n"+kept+
+				"\n\n[Audit Notes]: https://example.com/a\n[ref]: https://example.com/r\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			t.Errorf("%s: an excluded heading in an inline form was refused, not redacted: %v", what, err)
+			continue
+		}
+		text := bundleText(res.Bundle)
+		if strings.Contains(text, sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading in an inline form let its section travel", what)
+		}
+		if !strings.Contains(text, kept) {
+			t.Errorf("%s: the redaction took more than the excluded section; the text after it is missing", what)
+		}
+	}
+}
+
 // TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
 // with a Cyrillic A (U+0410) reads as the excluded heading and compared as
 // nothing like it, because every comparison the floor made was over code points,

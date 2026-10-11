@@ -350,13 +350,24 @@ func sameRendering(a, b string) bool {
 	return false
 }
 
-// renderedKey is a rendered title as a reader sees it: the emphasis and code
-// marks the anchor also ignores dropped (site.StripMarks), and every run of
-// white space — a non-breaking space among it, which renders as a plain one —
-// read as a single space. Punctuation stays: a slash or an ampersand is on the
-// page, and a heading carrying one is a different heading.
+// renderedKey is a rendered title as a reader sees it: the emphasis, code and
+// strikethrough marks dropped (stripMarks), and every run of white space — a
+// non-breaking space among it, which renders as a plain one — read as a single
+// space. Punctuation stays: a slash or an ampersand is on the page, and a
+// heading carrying one is a different heading.
 func renderedKey(text string) string {
-	return strings.Join(strings.Fields(site.StripMarks(text)), " ")
+	return strings.Join(strings.Fields(stripMarks(text)), " ")
+}
+
+// stripMarks drops the marks a heading carries without them reaching the page:
+// the emphasis and code marks the anchor also ignores (site.StripMarks), and
+// the tilde that wraps a strikethrough, `~~Audit Notes~~` or `~Audit Notes~`.
+// The tilde is dropped here and not in site.StripMarks because the anchor's
+// slug keeps a tilde as a hyphen (`a~b` is `a-b`), and moving it would move
+// anchors already published. Without it the markdown strikethrough travelled
+// while its HTML spelling, `<s>Audit Notes</s>`, was redacted.
+func stripMarks(text string) string {
+	return strings.ReplaceAll(site.StripMarks(text), "~", "")
 }
 
 // nearExcluded reports whether a heading title is a near-match of an excluded
@@ -413,8 +424,9 @@ func nearExcluded(title, want string) bool {
 // (foldForMatching, the ingest regime's fold — so fullwidth letters and a
 // ligature read as the letters they render), lower-cased, combining marks left
 // over from the normalisation dropped (a mark on a letter no precomposed form
-// carries), and the emphasis and code marks dropped last, so a fullwidth
-// asterisk that normalised to an ASCII one goes with the rest.
+// carries), and the emphasis, code and strikethrough marks dropped last
+// (stripMarks), so a fullwidth asterisk that normalised to an ASCII one goes
+// with the rest.
 func nearKey(text string) string {
 	folded := strings.Map(func(r rune) rune {
 		if unicode.In(r, unicode.Mn, unicode.Me) {
@@ -422,7 +434,7 @@ func nearKey(text string) string {
 		}
 		return r
 	}, strings.ToLower(foldForMatching(text)))
-	return strings.Join(strings.Fields(site.StripMarks(folded)), " ")
+	return strings.Join(strings.Fields(stripMarks(folded)), " ")
 }
 
 // renderedTexts reduces a heading title to the text a reader sees — HTML
