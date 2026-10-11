@@ -44,12 +44,29 @@ func SetupValueQuestion(n int, cwd, key string, choices []string, def string) qu
 	return valueQuestion(n, h, choices, def)
 }
 
+// SetupHelpedQuestion is the n-th question of setup, PromptHelped(h,
+// choices, def) as the shared type: SetupValueQuestion over the help built for
+// this run, its current setting the question's Now and its example quoted
+// after the material.
+func SetupHelpedQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
+	return valueQuestion(n, h, choices, def)
+}
+
+// exampleLead introduces the lines a help's Example quotes, and exampleNone
+// the reason it writes none.
+const (
+	exampleLead = "Here it writes:"
+	exampleNone = "Here it writes nothing: "
+)
+
 // valueQuestion is SetupValueQuestion over the help h.
 //
 // A help that ends on its own question (its About's last sentence asks it)
 // is asked by that question, and a choice whose value is SetupLaterValue is
 // the question's own decide-later answer, with its own meaning, never a
-// second one beside it.
+// second one beside it. A help built for this run carries its current
+// setting, which is the question's Now, and its example: the lines, as a
+// list after the material, or the reason it writes none, closing it.
 func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
 	later := question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],
 		Meaning: "Leaves the value unset, so the install lists it again next time."}
@@ -70,13 +87,26 @@ func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Q
 	if body, own := splitConfirm(about); strings.HasSuffix(about, "?") && len(body) == 1 && own != "" {
 		about, ask = body[0].Text, own
 	}
+	switch {
+	case len(h.Example) > 0:
+		about = strings.TrimSpace(about + " " + exampleLead)
+	case h.ExampleNone != "":
+		about = strings.TrimSpace(about + " " + exampleNone + strings.TrimSuffix(h.ExampleNone, ".") + ".")
+	}
 	var material []question.Block
 	if about != "" {
 		material = []question.Block{{Kind: question.KindParagraph, Text: about}}
 	}
+	if len(h.Example) > 0 {
+		material = append(material, question.Block{Kind: question.KindList, Items: append([]string(nil), h.Example...)})
+	}
 	change := h.ChangeLaterLine()
 	if change == "" {
 		change = question.Default.NotApplicable
+	}
+	now := h.Now
+	if now == "" {
+		now = "not set"
 	}
 	return question.Question{
 		ID:          h.Key,
@@ -85,7 +115,7 @@ func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Q
 		Ask:         ask,
 		Options:     opts,
 		Later:       later,
-		Now:         "not set",
+		Now:         now,
 		ChangeLater: change,
 	}
 }

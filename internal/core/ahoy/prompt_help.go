@@ -38,6 +38,15 @@ type PromptHelp struct {
 	// the question's change-later line, so the material need not repeat it
 	// (iss-2610031236155833).
 	ChangeLater string `json:"change_later,omitempty"`
+	// Now is what holds now, for a question whose current setting differs
+	// from run to run, such as a README part (spc-2610031704338417); "" leaves
+	// the question's own ("not set").
+	Now string `json:"now,omitempty"`
+	// Example is the exact lines answering yes writes in this repository, and
+	// ExampleNone, where it writes none, the reason. Both are per run, read
+	// from the project, and terminal-safe as set.
+	Example     []string `json:"example,omitempty"`
+	ExampleNone string   `json:"example_none,omitempty"`
 }
 
 // YesStillAsksValues is said once, before the first value question, by a run
@@ -256,6 +265,9 @@ func helpFor(key string) (PromptHelp, bool) {
 		return h, true
 	}
 	if h, ok := conventionsRetireHelp(key); ok {
+		return h, true
+	}
+	if h, ok := readmeHelp(key); ok {
 		return h, true
 	}
 	if el, ok := strings.CutPrefix(key, elementPromptPrefix); ok {

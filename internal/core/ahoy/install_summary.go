@@ -291,7 +291,7 @@ var optionalSkippedHelp = map[string]SummaryItem{
 	ReadmeOfferGapID: {
 		What:   "The README question was not asked; abcd keeps no part of README.md current until it is answered.",
 		Why:    "Which parts of README.md abcd keeps current, if any, is the owner's choice, so abcd writes none without an answer.",
-		Action: "To answer it without being asked, pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer it; or, to answer it without being asked, pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 	},
 	ConventionsRetireGapID: {
 		What:   "An agent tool's own conventions file that only repeats AGENTS.md was left in place.",

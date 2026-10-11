@@ -2071,8 +2071,9 @@ var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, StatusLineOffe
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
 // is asked, so a piped answer stream keeps the order it had before they
-// existed.
-var terminalOnlyGapIDs = []string{DrainRuleOfferGapID, ConventionsRetireGapID}
+// existed. The README question has no category to ask (resolveApproval leaves
+// it out everywhere: the question is the consent).
+var terminalOnlyGapIDs = []string{ReadmeOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
@@ -2097,14 +2098,10 @@ func optionalAskable(gaps []Gap, p Prompter) []string {
 }
 
 // optionalAsked reports whether a run that is not --yes puts the optional
-// offer id to p. The terminal-only offers are put only to a person at a
-// terminal. The README question is answered by --readme-parts alone until its
-// question pair is asked (spc-2610031704338417 step 4), so no run asks it yet,
-// and every run that leaves it unanswered reports it.
+// offer id to p. The terminal-only offers, the README question among them
+// (stepReadme), are put only to a person at a terminal.
 func optionalAsked(id string, p Prompter) bool {
 	switch {
-	case id == ReadmeOfferGapID:
-		return false
 	case slices.Contains(terminalOnlyGapIDs, id):
 		return atTerminal(p)
 	}

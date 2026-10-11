@@ -14,6 +14,26 @@ type TerminalPrompter interface {
 	AtTerminal() bool
 }
 
+// HelpedPrompter is a Prompter that can ask a value question with help built
+// for this run: the question's current setting and an example of what an
+// answer writes here, which the static help cannot hold (PromptHelp's Now,
+// Example and ExampleNone). The README pair asks through it where the
+// prompter implements it, and through Prompt, by the help's key, where it
+// does not (spc-2610031704338417).
+type HelpedPrompter interface {
+	Prompter
+	PromptHelped(h PromptHelp, choices []string, def string) string
+}
+
+// promptHelped asks the value question h through p's PromptHelped where p
+// has one, else through Prompt by h's key.
+func promptHelped(p Prompter, h PromptHelp, choices []string, def string) string {
+	if hp, ok := p.(HelpedPrompter); ok {
+		return hp.PromptHelped(h, choices, def)
+	}
+	return p.Prompt(h.Key, choices, def)
+}
+
 // atTerminal reports whether a person is answering p at a terminal.
 func atTerminal(p Prompter) bool {
 	tp, ok := p.(TerminalPrompter)
