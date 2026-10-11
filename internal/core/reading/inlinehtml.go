@@ -326,15 +326,199 @@ func stripHidden(s string, hiddenAt func(string, int, *hiddenHTMLFinders) int) s
 	return b.String()
 }
 
-// hiddenViews returns a title with its hidden raw HTML removed under each
-// reading the floor takes of where that HTML ends: CommonMark's, and a
-// browser's. Neither alone is what every reader sees: CommonMark decides what
-// is raw HTML at all, and a browser decides how much of it is hidden, so a
-// title is the excluded heading if EITHER reading names it.
+// rawTextElements are the elements whose content a browser reads as text up
+// to the element's own end tag, markup and all: script, style, iframe,
+// noembed, noframes and noscript (while scripts run) as raw text, title and
+// textarea as escapable text, xmp, and plaintext, which nothing ends. A walk
+// through hidden content steps over theirs, so a `</template>` written inside
+// a textarea in a template ends nothing.
+var rawTextElements = map[string]bool{
+	"script": true, "style": true, "iframe": true, "noembed": true, "noframes": true,
+	"noscript": true, "title": true, "textarea": true, "xmp": true, "plaintext": true,
+}
+
+// unrenderedElements are the elements whose content a browser does not render,
+// none of them needing an attribute to hide it: template, whose content is
+// never in the document; script, style, title, noembed, noframes and datalist,
+// which the rendering section of HTML sets to display none; iframe, whose
+// content is fallback text no current browser shows; noscript, hidden while
+// scripts run; and video, audio, canvas and object, whose content is fallback
+// shown only where the element itself cannot be. The last are listed although
+// an object with nothing to show does show its fallback: removing content
+// adds a reading and takes none away, so listing an element can only redact
+// more. Not listed, because a browser shows their text: textarea, xmp,
+// plaintext, select and its options, and details, whose summary shows while
+// the rest folds away.
+var unrenderedElements = map[string]bool{
+	"template": true, "script": true, "style": true, "title": true, "noembed": true,
+	"noframes": true, "datalist": true, "iframe": true, "noscript": true,
+	"video": true, "audio": true, "canvas": true, "object": true,
+}
+
+// elementWalk is one title read the way a browser hides its unrendered
+// elements' content (unrenderedElements). Its searches only advance, so it
+// is linear in the title.
+type elementWalk struct {
+	s, lower string
+	q        *quotedTagEnds
+	f        *hiddenHTMLFinders
+	closes   map[string]*terminatorFinder
+}
+
+func newElementWalk(s string) *elementWalk {
+	lower := []byte(s)
+	for i, c := range lower {
+		if 'A' <= c && c <= 'Z' {
+			lower[i] = c + 'a' - 'A'
+		}
+	}
+	return &elementWalk{s: s, lower: string(lower), q: newQuotedTagEnds(s),
+		f: newHiddenHTMLFinders(s), closes: map[string]*terminatorFinder{}}
+}
+
+// tagAt reads the tag at s[i] (tagAt), returning its lower-cased name, whether
+// it closes, and the position just past it, or -1 when no tag begins there.
+func (w *elementWalk) tagAt(i int) (string, bool, int) {
+	end := tagAt(w.s, i, w.q)
+	if end < 0 {
+		return "", false, -1
+	}
+	m := htmlTagOpenRe.FindStringIndex(w.s[i:])
+	from, closing := i+1, w.s[i+1] == '/'
+	if closing {
+		from++
+	}
+	return w.lower[from : i+m[1]-1], closing, end
+}
+
+// rawTextEnd returns the position just past the end tag that closes a
+// raw-text element whose content starts at c, or the end of the title when
+// none does: the browser reads it to the end of the input. The end tag is the
+// element's own name in any case, followed by a space, a slash or a `>`.
+func (w *elementWalk) rawTextEnd(name string, c int) int {
+	f := w.closes[name]
+	if f == nil {
+		f = newTerminatorFinder(w.lower, "</"+name)
+		w.closes[name] = f
+	}
+	for k := f.next(c); k >= 0; k = f.next(k + 1) {
+		b := k + 2 + len(name)
+		if b >= len(w.s) {
+			break
+		}
+		switch w.s[b] {
+		case ' ', '\t', '\n', '\f', '\r', '/', '>':
+			if end := w.q.endFrom(b); end >= 0 {
+				return end
+			}
+			return len(w.s)
+		}
+	}
+	return len(w.s)
+}
+
+// parsedEnd returns the position just past the end tag that closes a parsed
+// unrendered element, a template or a video, whose content starts at c, or
+// the end of the title when none does. Inside it, hidden raw HTML is stepped
+// over (browserHiddenAt), a raw-text element's content too (rawTextEnd), an
+// unrendered element of the same kind nests, and an end tag closes the
+// innermost open element it names, as a browser's parser closes it.
+func (w *elementWalk) parsedEnd(name string, c int) int {
+	stack := []string{name}
+	open := map[string]int{name: 1}
+	for i := c; i < len(w.s); {
+		j := strings.IndexByte(w.s[i:], '<')
+		if j < 0 {
+			break
+		}
+		i += j
+		if end := browserHiddenAt(w.s, i, w.f); end > i {
+			i = end
+			continue
+		}
+		n, closing, end := w.tagAt(i)
+		switch {
+		case end < 0:
+			i++
+			continue
+		case closing && open[n] > 0:
+			for {
+				top := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				open[top]--
+				if top == n {
+					break
+				}
+			}
+			if len(stack) == 0 {
+				return end
+			}
+		case closing:
+		case rawTextElements[n]:
+			end = w.rawTextEnd(n, end)
+		case unrenderedElements[n]:
+			stack = append(stack, n)
+			open[n]++
+		}
+		i = end
+	}
+	return len(w.s)
+}
+
+// browserView is a title as a browser shows it: its hidden raw HTML removed
+// where a browser ends it (browserHiddenAt), and every unrendered element
+// removed with its content (unrenderedElements), each unclosed one to the end
+// of the title.
+func browserView(s string) string {
+	if strings.IndexByte(s, '<') < 0 {
+		return s
+	}
+	w := newElementWalk(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		j := strings.IndexByte(s[i:], '<')
+		if j < 0 {
+			b.WriteString(s[i:])
+			break
+		}
+		b.WriteString(s[i : i+j])
+		i += j
+		if end := browserHiddenAt(s, i, w.f); end > i {
+			i = end
+			continue
+		}
+		if n, closing, end := w.tagAt(i); end > i && !closing && unrenderedElements[n] {
+			if rawTextElements[n] {
+				i = w.rawTextEnd(n, end)
+			} else {
+				i = w.parsedEnd(n, end)
+			}
+			continue
+		}
+		b.WriteByte('<')
+		i++
+	}
+	return b.String()
+}
+
+// hiddenViews returns a title with its hidden markup removed under each
+// reading the floor takes of it. CommonMark decides what is raw HTML at all
+// and a browser decides how much of it is hidden, and the two end a comment,
+// an instruction or a CDATA section in different places; and a browser shows
+// no content for an unrendered element where a sanitizing renderer drops the
+// tag and shows its content. So the title is read three ways — hidden HTML to
+// CommonMark's end, to a browser's end, and as a browser shows it with its
+// unrendered elements' content removed (browserView) — and it is the excluded
+// heading if ANY reading names it.
 func hiddenViews(s string) []string {
-	views := []string{stripHidden(s, commonMarkHiddenAt)}
-	if v := stripHidden(s, browserHiddenAt); !slices.Contains(views, v) {
-		views = append(views, v)
+	var views []string
+	for _, v := range []string{
+		stripHidden(s, commonMarkHiddenAt), stripHidden(s, browserHiddenAt), browserView(s),
+	} {
+		if !slices.Contains(views, v) {
+			views = append(views, v)
+		}
 	}
 	return views
 }

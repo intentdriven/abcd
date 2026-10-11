@@ -130,6 +130,7 @@ func TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel(t *testing.T) {
 		"Audit<?x?> Notes",
 		"<?x?>Audit Notes",
 		"Audit<!X y> Notes",
+		"Audit <!x> Notes",
 		"Audit<![CDATA[>]]> Notes",
 		"<![CDATA[x>y]]>Open Questions",
 	} {
@@ -163,23 +164,73 @@ func TestHiddenRawHTMLIsReadToWhereABrowserEndsIt(t *testing.T) {
 	}
 }
 
+// TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent: a browser
+// renders no content for a template, script, style, title, noscript (while
+// scripts run), noembed, noframes, iframe or datalist element, nor the
+// fallback inside video, audio, canvas and object where the element itself
+// renders, and none of them needs an attribute to hide it. Each title below
+// shows as the excluded heading and compared as `Audit x Notes`, so it
+// travelled (iss-2610101930329211). The title is now also read with such an
+// element's content removed, so it is the excluded heading. A renderer whose
+// sanitizer drops the tag and shows its content reads the other way, and the
+// reading with the content kept is still taken.
+func TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	var titles []string
+	for _, name := range []string{"template", "script", "style", "title", "noscript", "noembed",
+		"noframes", "iframe", "datalist", "video", "audio", "canvas", "object"} {
+		titles = append(titles, "Audit <"+name+">x</"+name+"> Notes")
+	}
+	titles = append(titles,
+		"Audit <SCRIPT>x</Script > Notes",
+		"Audit <script type=\"a>b\">x</script> Notes",
+		"Audit <style/>x</style> Notes",
+		"<script>x</script>Audit Notes",
+		"Audit Notes <script>x",
+		"Audit <template><template></template>x</template> Notes",
+		"Audit <template><textarea></template></textarea>x</template> Notes",
+		"Audit <template><!-- </template> -->x</template> Notes",
+		"Audit <script>x</scripts></script> Notes",
+	)
+	for _, title := range titles {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+	for _, title := range []string{
+		"Audit <textarea>x</textarea> Notes",
+		"Audit <xmp>x</xmp> Notes",
+		"Audit <b>x</b> Notes",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading: a browser shows its content", title, got, want)
+		}
+	}
+}
+
 // TestTheHiddenHTMLReadersStayLinear: the hidden raw HTML pattern kept its
 // search alive past an unclosed comment until a later processing instruction
 // was confirmed, once per pair, so a title of `<!-- <?x?> ` repeated took 4.6 s
 // at 44 KB and grew with the square of its length; and the attribute mask
 // searched the whole remainder for `-->` once per unclosed `<!--`, 21 s over
-// 800 KB. Each terminator search now remembers that it failed.
+// 800 KB. Each terminator search now remembers that it failed, and the walk
+// through unrendered elements only advances, however deep they nest.
 func TestTheHiddenHTMLReadersStayLinear(t *testing.T) {
 	headings := map[string]bool{"Audit Notes": true}
-	unit := "<!-- <?x?> <![CDATA[ <!x "
-	title := strings.Repeat(unit, (MaxFileBytes-64)/len(unit))
-	start := processCPU()
-	namesExcludedHeading(title, headings)
-	if elapsed := processCPU() - start; !raceEnabled && elapsed > 10*time.Second {
-		t.Errorf("namesExcludedHeading took %s of CPU over a %d-byte title of unclosed hidden HTML", elapsed, len(title))
+	for _, unit := range []string{
+		"<!-- <?x?> <![CDATA[ <!x ",
+		"<template><video></audio><script></scripts><b '",
+		"<template></video>",
+	} {
+		title := strings.Repeat(unit, (MaxFileBytes-64)/len(unit))
+		start := processCPU()
+		namesExcludedHeading(title, headings)
+		if elapsed := processCPU() - start; !raceEnabled && elapsed > 10*time.Second {
+			t.Errorf("namesExcludedHeading took %s of CPU over a %d-byte title of %q", elapsed, len(title), unit)
+		}
 	}
 	doc := "# S\n\n" + strings.Repeat("<!--", (MaxFileBytes-64)/4) + "\n"
-	start = processCPU()
+	start := processCPU()
 	maskMarkupData(doc, true)
 	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
 		t.Errorf("the mask took %s of CPU over a %d-byte run of unclosed comments", elapsed, len(doc))

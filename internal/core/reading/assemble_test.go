@@ -1001,6 +1001,23 @@ func TestAnExcludedHeadingBetweenBrowserHiddenHTMLNeverTravels(t *testing.T) {
 	})
 }
 
+// TestAnExcludedHeadingAroundAnUnrenderedElementNeverTravels: a browser
+// renders no content for a template, script, style or noscript element, so
+// each heading below shows as the excluded one and travelled
+// (iss-2610101930329211).
+func TestAnExcludedHeadingAroundAnUnrenderedElementNeverTravels(t *testing.T) {
+	assertHeadingsNeverTravel(t, map[string]string{
+		"a template":           "## Audit <template>x</template> Notes",
+		"a script":             "## Audit <script>x</script> Notes",
+		"a style":              "## Audit <style>x</style> Notes",
+		"a noscript":           "## Audit <noscript>x</noscript> Notes",
+		"a title":              "## Audit <title>x</title> Notes",
+		"an upper-case script": "## Audit <SCRIPT>x</SCRIPT> Notes",
+		"an unclosed script":   "## Audit Notes <script>x",
+		"inside a raw heading": "<h2>Audit <template>x</template> Notes</h2>",
+	})
+}
+
 // TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
 // with a Cyrillic A (U+0410) reads as the excluded heading and compared as
 // nothing like it, because every comparison the floor made was over code points,

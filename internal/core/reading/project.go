@@ -303,11 +303,28 @@ const (
 //     address's at sign, which no excluded heading carries, so it can never
 //     render as one. Beside the excluded words it is refused: the backstop
 //     reads its angle brackets as markup it did not model.
-//   - Markup that hides text from the page without removing it from the
-//     source: `## Audit <span hidden>x</span> Notes` reads as `Audit Notes` and
-//     compares as `Audit x Notes`, so it travels. It did before the rendered-text
-//     comparison too; modelling which attributes hide an element is a renderer's
-//     job, and a CSS class can do the same out of this floor's sight.
+//   - Markup that hides text by an attribute or a style rather than by its
+//     element: `## Audit <span hidden>x</span> Notes` reads as `Audit Notes` and
+//     compares as `Audit x Notes`, so it travels; modelling which attributes
+//     hide an element is a renderer's job, and a CSS class can do the same out
+//     of this floor's sight. An element that hides its content by its name
+//     alone IS read without it (unrenderedElements): template, script, style,
+//     title, noscript, noembed, noframes, iframe and datalist, and the fallback
+//     inside video, audio, canvas and object. Left out, and read with their
+//     content, are textarea, xmp, plaintext and select, whose text a browser
+//     shows; details, which folds its content away under a summary that shows;
+//     and rp, hidden only inside ruby. Inside an unrendered element the walk
+//     follows nesting, end tags and raw text, but not the parser's implied end
+//     tags or a script's escaped `<!--<script>` state, so a title built on
+//     either can read more or less content than a browser hides.
+//   - Foreign content is not modelled: inside svg or math a CDATA section is
+//     text a browser shows, where the floor reads it as hidden.
+//   - Two over-redactions are kept on purpose. A declaration with a lower-case
+//     letter, `## Audit <!x> Notes`, is text under GFM's older rule and hidden
+//     under CommonMark's current one and in every browser, so it is redacted.
+//     A CDATA section is read to `]]>` as well as to a browser's first `>`, so
+//     `## Audit<![CDATA[>]]> Notes`, which a browser shows as `Audit]]> Notes`,
+//     is redacted too. Either costs the author an edit and leaks nothing.
 //   - A heading attribute block, `## Audit Notes {#id}`, is renderer-specific:
 //     CommonMark and GFM show the braces, so the floor reads it as written and
 //     it travels.
@@ -333,8 +350,9 @@ const (
 // The inline forms that render as plain text are reduced in two layers before
 // the comparison. First, the reduction: emphasis, code and strikethrough marks
 // are dropped (stripMarks); the raw HTML a browser never shows, comments,
-// processing instructions, declarations and CDATA sections, is removed
-// under CommonMark's reading of where it ends and a browser's (hiddenViews);
+// processing instructions, declarations and CDATA sections, is removed under
+// CommonMark's reading of where it ends and a browser's, and once more with
+// every unrendered element's content removed as well (hiddenViews);
 // links and images are unwrapped to their text by a scanner
 // that follows the CommonMark inline link grammar, passed until the title
 // stops changing so an image inside a link reduces to its alt text
