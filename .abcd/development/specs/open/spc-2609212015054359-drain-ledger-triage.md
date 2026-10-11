@@ -170,6 +170,14 @@ until the run itself closes it.
   "judgement"`); a no opens the lane; an answer over an issue no longer
   eligible decides nothing, and one over a remedy rewritten since is refused
   and asked again. Every answer is kept in the drain's state and summary.
-- **Remaining:** the counts of scope 8 not yet in the summary (the spend), and
-  the decision-record marker on a trust-rule hand-back (decision 10), and the
-  steps from issues the plan names.
+- **Landed (the summary's remaining counts, step 2): scope 8.** Every move's
+  summary carries `counts`, in text and `--json`: the lanes opened by outcome,
+  the pull requests they opened, the hand-backs by route (promotions, decision
+  records, homes), the rule's flags, the host judgements, the issues passed
+  over, and the spend in agent runs (each verified implementer's receipt and
+  each validator's return across the drain's lanes, the budget check's unit;
+  a lane whose run cannot be read is named, the spend then a floor). A lane
+  done before the drain read it keeps its pull request number, and a drain
+  that ends with no lane in a pull request says so as a normal ending.
+- **Remaining:** the decision-record marker on a trust-rule hand-back
+  (decision 10), and the steps from issues the plan names.

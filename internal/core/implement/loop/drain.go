@@ -190,7 +190,44 @@ type DrainResult struct {
 	NextEligibleAt *time.Time             `json:"next_eligible_at"`
 	Stopped        string                 `json:"stopped,omitempty"`
 	Complete       bool                   `json:"complete"`
-	Next           string                 `json:"next"`
+	// Counts are the drain's totals as this call leaves it (scope 8).
+	Counts DrainCounts `json:"counts"`
+	Next   string      `json:"next"`
+}
+
+// DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
+// the pull requests they opened, its hand-backs by route, the rule's flags,
+// the host judgements, the issues this call passed over, and the spend.
+type DrainCounts struct {
+	LanesOpened int `json:"lanes_opened"`
+	InProgress  int `json:"in_progress"`
+	// PullRequests are the lanes whose landing opened a pull request, done
+	// or not; whether one merged is a person's gate, and not counted.
+	PullRequests    int `json:"pull_requests"`
+	LanesHandedBack int `json:"lanes_handed_back"`
+	// Promotions, DecisionRecords and Homes are the hand-backs the drain
+	// routed, from its lanes and from the host judgement, by route.
+	Promotions      int `json:"promotions"`
+	DecisionRecords int `json:"decision_records"`
+	Homes           int `json:"homes"`
+	// RuleFlags are the rule's hand-backs over the ledger as this call read it.
+	RuleFlags  int        `json:"rule_flags"`
+	Judgements int        `json:"judgements"`
+	Passed     int        `json:"passed"`
+	Spend      DrainSpend `json:"spend"`
+}
+
+// DrainSpend is what the drain's lanes have spent, in agent runs, the unit the
+// budget check estimates a run in: each implementer's receipt the loop
+// verified (the implement stage's, each fix round's, a hand-back's) and each
+// validator's return it parsed a verdict from. No runner reports tokens or
+// money, so neither is counted. Unread names a lane's run whose state could
+// not be read, which makes the counts a floor.
+type DrainSpend struct {
+	AgentRuns    int      `json:"agent_runs"`
+	Implementers int      `json:"implementers"`
+	Validators   int      `json:"validators"`
+	Unread       []string `json:"unread"`
 }
 
 // Drain performs one move of the drain run: it begins a drain when none is in
@@ -274,6 +311,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			res.Judgements = []DrainJudgement{}
 		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
+		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
+		if res.Complete && res.Counts.PullRequests == 0 && res.Counts.LanesOpened > 0 {
+			res.Next += "; no lane ended in a pull request, which is a normal ending: every lane's outcome and hand-back is above"
+		}
 		if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Outcome == DrainLaneInProgress }); i >= 0 {
 			l := st.Lanes[i]
 			res.Lane = &l
@@ -445,12 +486,16 @@ func capPhrase(max int) string {
 // hand-back), a pull request opened (armed or left open), done, or in
 // progress.
 func laneOutcome(run State) (string, int, *HandBack) {
-	if run.Complete() {
-		return DrainLaneDone, 0, nil
-	}
 	i := run.current()
-	if i < 0 {
-		return DrainLaneDone, 0, nil
+	if run.Complete() || i < 0 {
+		// A lane done before the drain read it keeps its pull request.
+		pr := 0
+		for _, l := range run.Lanes {
+			if l.PR > 0 {
+				pr = l.PR
+			}
+		}
+		return DrainLaneDone, pr, nil
 	}
 	l := run.Lanes[i]
 	switch {
@@ -460,6 +505,53 @@ func laneOutcome(run State) (string, int, *HandBack) {
 		return DrainLanePullRequest, l.PR, nil
 	}
 	return DrainLaneInProgress, 0, nil
+}
+
+// drainCounts totals the drain as st holds it (scope 8), with the rule's flags
+// and the issues passed over as this call read them. The spend reads each
+// lane's run; a run whose state cannot be read is named, not refused, since a
+// summary that will not render is worse than one that says it is a floor.
+func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Excluded) DrainCounts {
+	c := DrainCounts{LanesOpened: len(st.Lanes), RuleFlags: len(flags), Judgements: len(st.Judgements), Passed: len(passed),
+		Spend: DrainSpend{Unread: []string{}}}
+	for _, l := range st.Lanes {
+		switch l.Outcome {
+		case DrainLaneInProgress:
+			c.InProgress++
+		case DrainLaneHandedBack:
+			c.LanesHandedBack++
+		}
+		if l.PR > 0 {
+			c.PullRequests++
+		}
+		run, err := ReadState(repoRoot, l.RunID)
+		if err != nil {
+			c.Spend.Unread = append(c.Spend.Unread, l.RunID)
+			continue
+		}
+		for _, rl := range run.Lanes {
+			c.Spend.Implementers += len(rl.Receipts)
+			for _, round := range rl.Validation {
+				for _, v := range round.Validators {
+					if v.Verdict != "" {
+						c.Spend.Validators++
+					}
+				}
+			}
+		}
+	}
+	c.Spend.AgentRuns = c.Spend.Implementers + c.Spend.Validators
+	for _, r := range st.HandBacks {
+		switch r.Route {
+		case RoutePromoted:
+			c.Promotions++
+		case RouteDecisionRecord:
+			c.DecisionRecords++
+		case RouteHome:
+			c.Homes++
+		}
+	}
+	return c
 }
 
 // fieldFlags are the rule's hand-backs over the ledger: each open issue the
