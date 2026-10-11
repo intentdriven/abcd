@@ -71,7 +71,7 @@ const nameKey = "name"
 // An ABSENT manifest is not that case. It contributes no entries, because a repo
 // whose artefact is not a plugin — a binary, an application bundle, a library —
 // declares no plugin surface, and treating the absence as an unreadable payload
-// stopped every caller of the snapshot before it ran, `abcd changelog` included
+// stopped every caller of the snapshot before it ran, the cut preview included
 // (iss-2609100506255436). Where a plugin manifest lives is fixed; whether this
 // artefact has one is a per-repo fact, the same distinction adr-19 already drew
 // for the version location. Nor does absence hide a removal: a manifest that WAS
