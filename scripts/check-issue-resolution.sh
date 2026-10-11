@@ -176,7 +176,11 @@ TRAILER_RE='^Resolves:[[:space:]]+iss-[0-9]+([[:space:]]*,[[:space:]]*iss-[0-9]+
 # admitting them would reopen the omission the rule closes — the same argument
 # that closes the non-vendor values of `Assisted-by:` at two fixed forms, `None`
 # and `abcd:<version>`, in check-attribution.sh. A near-miss therefore reads as what it is: an
-# undeclared mention, refused with the spelling named in the remedy.
+# undeclared mention, refused with the spelling named in the remedy. So does a
+# line in the right spelling that lists an issue beside an id of another family
+# (`Refs: itd-146, iss-999`): the list widens over issue ids only, and the
+# refusal names that near-miss (mixed_family_keyword) rather than leave its
+# author looking for the declaration line the commit appears to carry.
 #
 # It shares TRAILER_RE's id shape rather than restating it, so the two rules
 # cannot drift apart on what an id looks like: the `Resolves:` half of
@@ -454,11 +458,34 @@ mentioned_ids() {
 # pull-request TITLE has no room for a trailer — its declaration lives in the
 # body, and the two halves are judged against one declaration set.
 check_mentions() {
-	local label="$1" text="$2" declared="$3" id
+	local label="$1" text="$2" declared="$3" id kw why
 	for id in $(mentioned_ids "$text"); do
 		grep -qx "$id" <<<"$declared" && continue
-		fail "RS004 $label names $id without declaring its relation to it. Add exactly one declaration line: 'Resolves: $id' if this change fixes it (RS001 then requires the record to enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in the same change), or 'Refs: $id' if it is touched but not fixed (informational; no ledger move required). Those two spellings are the whole vocabulary — 'Ref:', 'See:' and 'Related:' are not declarations."
+		why="."
+		kw="$(mixed_family_keyword "$text" "$id")"
+		if [ -n "$kw" ]; then
+			why=": a $kw: line naming $id beside an id of another family is not a declaration; put the issue ids on a $kw: line of their own."
+		fi
+		fail "RS004 $label names $id without declaring its relation to it$why Add exactly one declaration line: 'Resolves: $id' if this change fixes it (RS001 then requires the record to enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in the same change), or 'Refs: $id' if it is touched but not fixed (informational; no ledger move required). Those two spellings are the whole vocabulary — 'Ref:', 'See:' and 'Related:' are not declarations."
 	done
+}
+
+# mixed_family_keyword names the near-miss DECLARE_RE passes over in silence: a
+# line in the vocabulary's own spelling, `Resolves:` or `Refs:`, that names the
+# undeclared id beside an id of another record family (itd-, adr-, spc-), such
+# as `Refs: itd-146, iss-999`. It prints the keyword the line was written with,
+# or nothing. The rule is unchanged — the id list widens over issue ids only, so
+# such a line declares nothing (iss-2610090849280432) — but without this the
+# refusal asks for a declaration line the commit appears to carry already, and
+# never says why the line it carries did not count. The id is matched whole, so
+# a line naming iss-9990 does not explain a refusal about iss-999.
+mixed_family_keyword() {
+	local text="$1" id="$2"
+	printf '%s\n' "$text" |
+		grep -E '^(Resolves|Refs):[[:space:]]' |
+		grep -E "(^|[^A-Za-z0-9])$id([^0-9]|\$)" |
+		grep -E '(^|[^A-Za-z0-9])(itd|adr|spc)-[0-9]+' |
+		head -n 1 | sed -E 's/^(Resolves|Refs):.*/\1/' || true
 }
 
 # canon_itd prints an intent id in the one spelling the store's filenames use —
