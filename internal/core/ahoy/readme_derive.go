@@ -799,7 +799,8 @@ var charRefRe = regexp.MustCompile(`&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-
 // knows, and leaves an unknown one as written, as the forge's page does. The
 // table's decoder also reads a known name's prefix (`&notanentity;` as `&not`
 // and the rest), so a decoding is taken only when it consumed the whole
-// reference: every entity stands for at most two characters.
+// reference: every entity stands for at most two characters. s is masked
+// (mdrecord.MaskCodeSpans): a reference in a code span is text, never decoded.
 func decodeCharRefs(s string) string {
 	return charRefRe.ReplaceAllStringFunc(s, func(ref string) string {
 		if dec := html.UnescapeString(ref); dec != ref && utf8.RuneCountInString(dec) <= 2 {
@@ -817,14 +818,18 @@ const (
 
 // anchor returns the next heading's anchor and records it as taken, or, when
 // abcd cannot be sure of the anchor, the reason it is not given.
+//
+// A code span is read as the text it renders: a reference or a shortcode in
+// one is text, and the slug is made from the span's content.
 func (s *readmeSlugger) anchor(text string) (string, string) {
-	text = decodeCharRefs(text)
+	masked, unmask := mdrecord.MaskCodeSpans(text)
+	masked = decodeCharRefs(masked)
 	why := ""
-	if emojiShortcodeRe.MatchString(text) {
+	if emojiShortcodeRe.MatchString(masked) {
 		why = readmeAnchorShortcode
-		s.unsure = append(s.unsure, headingSlug(emojiShortcodeRe.ReplaceAllString(text, "")), headingSlug(text))
+		s.unsure = append(s.unsure, headingSlug(unmask(emojiShortcodeRe.ReplaceAllString(masked, ""), true)), headingSlug(unmask(masked, true)))
 	}
-	base := headingSlug(text)
+	base := headingSlug(unmask(masked, true))
 	if why == "" && s.isUnsure(base) {
 		why = readmeAnchorNumbered
 	}
@@ -874,12 +879,18 @@ var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Z
 
 // headingText is a heading's text as the page shows it: an inline link read
 // as its text, and inline HTML tags dropped, which render as markup
-// (iss-2610111850405447). The spaces around a dropped tag are kept.
+// (iss-2610111850405447). The spaces around a dropped tag are kept. A code
+// span shows its text as written, so neither reaches into one; the span is
+// kept with its backticks, which the list shows as code.
 func headingText(src string) string {
-	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(src, "$1"), "")
+	masked, unmask := mdrecord.MaskCodeSpans(src)
+	return unmask(inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), false)
 }
 
-// escapeLinkText keeps a heading's text from closing the link it sits in.
+// escapeLinkText keeps a heading's text from closing the link it sits in. A
+// bracket in a code span closes nothing and a backslash there is literal, so
+// a span is left as written.
 func escapeLinkText(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(s)
+	masked, unmask := mdrecord.MaskCodeSpans(s)
+	return unmask(strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(masked), false)
 }

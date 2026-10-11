@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -31,9 +32,11 @@ var (
 
 // headingSlug is GitHub's heading anchor: the rendered text lower-cased, every
 // character that is not a letter, a mark, a number, a hyphen, an underscore or a
-// space removed, and each space turned into a hyphen.
+// space removed, and each space turned into a hyphen. A link inside a code
+// span is not a link, so the link strip never reaches into one.
 func headingSlug(text string) string {
-	text = inlineLinkTextRe.ReplaceAllString(text, "$1")
+	masked, unmask := mdrecord.MaskCodeSpans(text)
+	text = unmask(inlineLinkTextRe.ReplaceAllString(masked, "$1"), true)
 	var b strings.Builder
 	for _, r := range strings.ToLower(text) {
 		switch {

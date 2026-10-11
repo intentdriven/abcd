@@ -336,7 +336,10 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 // the forge's list, so a heading carrying one is listed without a link, and
 // so is every later heading whose anchor it could have taken or numbered
 // (here `Rocket Launch` and `-Launch`, never the plain `Launch`), each named
-// in a note.
+// in a note. A reference inside a code span is shown as written and is not
+// decoded for the anchor either: `## The `&amp;` entity` anchors
+// #the-amp-entity. A shortcode in a code span is text, never an emoji, so
+// its heading is linked.
 func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
 	readme := strings.Join([]string{
 		"# P",
@@ -357,6 +360,12 @@ func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
 		"",
 		"## Usage",
 		"",
+		"## The `&amp;` entity",
+		"",
+		"## The ``&#35;`` sign",
+		"",
+		"## Run `:rocket:` now",
+		"",
 	}, "\n")
 	root := readmeRepo(t, "", map[string]string{"README.md": readme})
 	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
@@ -369,6 +378,9 @@ func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
 		"- Rocket Launch",
 		"- -Launch",
 		"- [Usage](#usage)",
+		"- [The `&amp;` entity](#the-amp-entity)",
+		"- [The ``&#35;`` sign](#the-35-sign)",
+		"- [Run `:rocket:` now](#run-rocket-now)",
 	}, "\n"))
 	notes := strings.Join(d.Notes, "\n")
 	for _, line := range []string{"line 9", "line 13", "line 15"} {
@@ -386,6 +398,9 @@ func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
 // into the list's text nor into the anchor. The space the tags leave before
 // the text is the forge's too: `## <a name="install"></a> Install` anchors
 // #-install. An autolink is not a tag, and a lone angle bracket is text.
+// A code span shows its text as written, tags, links and all, and its anchor
+// is made from the span's rendered text, one padding space each side dropped;
+// a backtick run no run of its length closes is a literal backtick.
 func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 	readme := strings.Join([]string{
 		"# P",
@@ -398,6 +413,14 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 		"",
 		"## a < b > c",
 		"",
+		"## Use `<kbd>` here",
+		"",
+		"## The `[x](y)` form",
+		"",
+		"## A `<b>tick",
+		"",
+		"## ` <em> ` padded",
+		"",
 	}, "\n")
 	root := readmeRepo(t, "", map[string]string{"README.md": readme})
 	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
@@ -406,6 +429,10 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 		"- [Usage beta](#usage-beta)",
 		"- [OldNew](#oldnew)",
 		"- [a < b > c](#a--b--c)",
+		"- [Use `<kbd>` here](#use-kbd-here)",
+		"- [The `[x](y)` form](#the-xy-form)",
+		"- [A `tick](#a-tick)",
+		"- [` <em> ` padded](#em-padded)",
 	}, "\n"))
 }
 
