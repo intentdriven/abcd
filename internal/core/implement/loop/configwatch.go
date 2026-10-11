@@ -8,16 +8,19 @@ package loop
 // never blank, pin or override them (the abcd-fixes-what-it-adds principle).
 // What the loop adds is a tripwire: the first check of a run records a
 // fingerprint of every repository-level setting that can name a program, and
-// of the hooks directory and info/attributes (and of each lane worktree's own
-// per-worktree settings, which git reads there once extensions.worktreeConfig
-// is set), and every later check, made
-// before the loop's next git step, compares against it. A change stops the
-// step before git starts, naming each changed key or file, until the person
-// has looked and accepts it (`abcd implement step --accept-config-change`).
+// of the hooks directory and info/attributes (and, for each lane worktree,
+// every watched setting git reads there and the hooks directory git runs
+// there), and every later check, made at the start of the loop's next step,
+// compares against it. A change stops the step before it reaches its git,
+// naming each changed key or file, until the person has looked and accepts it
+// (`abcd implement step --accept-config-change`).
 //
 // The fingerprint lives in its own file beside the run's state. It holds
 // salted hashes, never a value: a credential helper's value may carry a
-// secret, so only key names and file paths are ever stored or reported.
+// secret, so only key names and file paths are ever stored or reported. A key
+// name can carry one too (a URL rewrite or a credential context names a URL,
+// which may hold a token), so a subsection that can hold a URL is replaced by
+// a salted-hash token wherever the key is stored or named.
 
 import (
 	"crypto/rand"
@@ -35,6 +38,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -57,15 +61,16 @@ const configFingerprintVersion = 1
 // name a program git starts, or a file that adds more settings.
 const watchedConfig = `^(` +
 	`filter\..+` +
-	`|core\.(hookspath|sshcommand|fsmonitor|pager|editor|worktree)` +
+	`|core\.(hookspath|sshcommand|fsmonitor|pager|editor|worktree|askpass|gitproxy)` +
 	`|extensions\.worktreeconfig` +
 	`|credential\..+` +
-	`|remote\..+\.(uploadpack|receivepack)` +
+	`|remote\..+\.(uploadpack|receivepack|proxy|vcs|url|pushurl)` +
 	`|url\..+\.(insteadof|pushinsteadof)` +
 	`|protocol\.(.+\.)?allow` +
 	`|diff\..+\.(command|textconv)` +
 	`|merge\..+\.driver` +
 	`|gpg\.(.+\.)?program` +
+	`|gpg\.ssh\.defaultkeycommand` +
 	`|include\.path` +
 	`|includeif\..+\.path` +
 	`)$`
@@ -77,18 +82,32 @@ const maxHookEntries = 1024
 // maxFingerprintBytes caps a fingerprint file read.
 const maxFingerprintBytes = 1 << 20
 
+// urlSections are the sections whose subsection is, or can name, a URL (a
+// URL rewrite's base, a credential or http context, an includeIf condition):
+// their subsection is never stored or named as written.
+var urlSections = map[string]bool{"url": true, "credential": true, "http": true, "includeif": true}
+
 // configFingerprint is the tripwire's file. Keys and Files map a watched key
-// name, or a watched file's path, to a salted hash of what it holds;
-// WorktreeKeys maps each lane worktree's path to the watched keys its own
-// per-worktree config sets, hashed the same way. The salt is the file's own,
-// drawn when it is first written.
+// name (its URL subsection hidden, hiddenKey), or a watched file's path, to a
+// salted hash of what it holds; Worktrees holds each lane worktree's own, by
+// its path. The salt is the file's own, drawn when it is first written.
 type configFingerprint struct {
-	SchemaVersion int                          `json:"schema_version"`
-	RecordedAt    time.Time                    `json:"recorded_at"`
-	Salt          string                       `json:"salt"`
-	Keys          map[string]string            `json:"keys"`
-	WorktreeKeys  map[string]map[string]string `json:"worktree_keys"`
-	Files         map[string]string            `json:"files"`
+	SchemaVersion int                            `json:"schema_version"`
+	RecordedAt    time.Time                      `json:"recorded_at"`
+	Salt          string                         `json:"salt"`
+	Keys          map[string]string              `json:"keys"`
+	Worktrees     map[string]worktreeFingerprint `json:"worktrees"`
+	Files         map[string]string              `json:"files"`
+}
+
+// worktreeFingerprint is one lane worktree's part of the fingerprint: every
+// watched key git reads there, whatever its scope (the repository's shared
+// config, a conditional include that applies only there, the worktree's own
+// config), and each entry of the hooks directory git runs there when that is
+// not the checkout's (a relative core.hooksPath names the lane's own copy).
+type worktreeFingerprint struct {
+	Keys  map[string]string `json:"keys"`
+	Hooks map[string]string `json:"hooks"`
 }
 
 // fingerprintRel is the run's fingerprint file, relative to the checkout.
@@ -123,12 +142,13 @@ func writePart(w io.Writer, s string) {
 // takeFingerprint reads the repository at repoRoot as it stands, under salt:
 // every watched key it sets (each key's values, in order, hashed together),
 // every entry of its effective hooks directory, and its info/attributes; and,
-// for each lane worktree in lanes, the watched keys that worktree's own config
-// sets and the hooks directory a core.hooksPath there names. A lane worktree
-// whose config git cannot read is passed over: git cannot run there either.
+// for each lane worktree in lanes, every watched key git reads there and the
+// entries of the hooks directory git runs there, when that is not the
+// checkout's. A lane worktree whose config git cannot read is passed over:
+// git cannot run there either.
 func takeFingerprint(repoRoot string, lanes []string, salt string, now time.Time) (configFingerprint, error) {
 	fp := configFingerprint{SchemaVersion: configFingerprintVersion, RecordedAt: now, Salt: salt,
-		Keys: map[string]string{}, WorktreeKeys: map[string]map[string]string{}, Files: map[string]string{}}
+		Keys: map[string]string{}, Worktrees: map[string]worktreeFingerprint{}, Files: map[string]string{}}
 	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
 	if err != nil {
 		return fp, err
@@ -138,7 +158,8 @@ func takeFingerprint(repoRoot string, lanes []string, salt string, now time.Time
 	if err != nil {
 		return fp, err
 	}
-	hooks := filepath.Join(common, "hooks")
+	defaultHooks := filepath.Join(common, "hooks")
+	hooks := defaultHooks
 	if hooksPath != "" {
 		hooks = expandHooksPath(repoRoot, hooksPath)
 	}
@@ -152,23 +173,25 @@ func takeFingerprint(repoRoot string, lanes []string, salt string, now time.Time
 		if err != nil {
 			continue
 		}
-		own := entries[:0:0]
-		for _, e := range entries {
-			if e.Scope == "worktree" {
-				own = append(own, e)
-			}
+		wt := worktreeFingerprint{Keys: map[string]string{}, Hooks: map[string]string{}}
+		// The hooks directory git runs in the lane: the last core.hooksPath
+		// the lane reads (its own, else the shared one), a relative value
+		// taken under the lane's own working tree, as git takes it there.
+		dir := defaultHooks
+		if p := hashEntries(wt.Keys, salt, entries); p != "" {
+			dir = expandHooksPath(lane, p)
 		}
-		keys := map[string]string{}
-		if p := hashEntries(keys, salt, own); p != "" {
-			hashDir(fp.Files, salt, expandHooksPath(lane, p))
+		if dir != hooks {
+			hashDir(wt.Hooks, salt, dir)
 		}
-		fp.WorktreeKeys[lane] = keys
+		fp.Worktrees[lane] = wt
 	}
 	return fp, nil
 }
 
 // hashEntries hashes each key's values, in the order git reads them, into
-// into, and returns the last core.hooksPath among them (the one git uses).
+// into under the key's stored name (hiddenKey), and returns the last
+// core.hooksPath among them (the one git uses).
 func hashEntries(into map[string]string, salt string, entries []gitutil.ConfigEntry) string {
 	values := map[string][]string{}
 	hooksPath := ""
@@ -183,9 +206,28 @@ func hashEntries(into map[string]string, salt string, entries []gitutil.ConfigEn
 		}
 	}
 	for k, vs := range values {
-		into[k] = saltedHash(salt, vs...)
+		into[hiddenKey(salt, k)] = saltedHash(salt, vs...)
 	}
 	return hooksPath
+}
+
+// hiddenKey is the name a canonical key is stored and named by. A key whose
+// subsection can hold a URL (a section in urlSections, or a subsection with a
+// colon, a slash or an at sign in it) may carry a token in its very name, so
+// its subsection is replaced by a placeholder holding a short salted hash of
+// it: url.<hidden-0123456789abcdef>.insteadof. Two such keys stay apart, and
+// the same key keeps one name under one salt. Any other key is its own name.
+func hiddenKey(salt, key string) string {
+	section, rest, ok := strings.Cut(key, ".")
+	i := strings.LastIndexByte(rest, '.')
+	if !ok || i < 0 {
+		return key
+	}
+	sub, variable := rest[:i], rest[i+1:]
+	if !urlSections[section] && !strings.ContainsAny(sub, ":/@") {
+		return key
+	}
+	return section + ".<hidden-" + saltedHash(salt, "subsection", sub)[:16] + ">." + variable
 }
 
 // laneWorktrees are the run's lane worktrees on disk, other than the checkout:
@@ -272,14 +314,18 @@ func hashFile(into map[string]string, salt, path string) {
 	}
 }
 
-// changes names, in order, each key, each lane worktree's own key and then
-// each file whose hash differs between was and now: added, removed or
+// changes names, in order, each key, each lane worktree's key and hook and
+// then each file whose hash differs between was and now: added, removed or
 // changed. Never a value. A lane worktree that is no longer there (its lane
 // landed or was discarded) is not a change: nothing runs there any more; one
-// that is new is compared against a worktree that set nothing.
-func (was configFingerprint) changes(now configFingerprint) []string {
+// that is new is compared against the checkout as was recorded it
+// (laneBaseline), for what it reads beyond or otherwise than the checkout: a
+// key or hook the checkout has and it lacks starts nothing there. A lane's
+// key whose change the checkout's own keys already name is not named again.
+func (was configFingerprint) changes(repoRoot string, now configFingerprint) []string {
 	var out []string
-	diff := func(a, b map[string]string, name func(string) string) {
+	named := map[string]bool{}
+	diff := func(a, b map[string]string, name func(string) string, skip map[string]bool, removals bool) {
 		var names []string
 		for k := range a {
 			names = append(names, k)
@@ -291,29 +337,79 @@ func (was configFingerprint) changes(now configFingerprint) []string {
 		}
 		slices.Sort(names)
 		for _, k := range names {
+			if skip[k] {
+				continue
+			}
 			old, had := a[k]
 			cur, has := b[k]
+			change := ""
 			switch {
 			case !had:
-				out = append(out, name(k)+" (added)")
+				change = " (added)"
 			case !has:
-				out = append(out, name(k)+" (removed)")
+				if !removals {
+					continue
+				}
+				change = " (removed)"
 			case old != cur:
-				out = append(out, name(k)+" (changed)")
+				change = " (changed)"
+			default:
+				continue
 			}
+			if skip == nil {
+				named[k] = true
+			}
+			out = append(out, name(k)+change)
 		}
 	}
-	diff(was.Keys, now.Keys, func(k string) string { return k })
-	paths := make([]string, 0, len(now.WorktreeKeys))
-	for p := range now.WorktreeKeys {
+	diff(was.Keys, now.Keys, func(k string) string { return k }, nil, true)
+	paths := make([]string, 0, len(now.Worktrees))
+	for p := range now.Worktrees {
 		paths = append(paths, p)
 	}
 	slices.Sort(paths)
 	for _, p := range paths {
+		cur := now.Worktrees[p]
+		base, recorded := was.Worktrees[p]
+		if !recorded {
+			base = was.laneBaseline(repoRoot, p, cur)
+		}
 		in := " in the worktree " + fsutil.RedactHome(p)
-		diff(was.WorktreeKeys[p], now.WorktreeKeys[p], func(k string) string { return k + in })
+		diff(base.Keys, cur.Keys, func(k string) string { return k + in }, named, recorded)
+		diff(base.Hooks, cur.Hooks, fsutil.RedactHome, map[string]bool{}, recorded)
 	}
-	diff(was.Files, now.Files, fsutil.RedactHome)
+	diff(was.Files, now.Files, fsutil.RedactHome, map[string]bool{}, true)
+	return out
+}
+
+// laneBaseline is what a lane worktree the fingerprint does not hold (one
+// made after it was recorded) is compared against: the checkout as recorded.
+// A lane reads the repository's shared config as the checkout does, so its
+// keys are compared with the checkout's; a hook in its own copy of a relative
+// hooks directory is compared with the checkout's file at the same relative
+// path, and any other hook with the checkout's entry at the same path.
+func (was configFingerprint) laneBaseline(repoRoot, lane string, cur worktreeFingerprint) worktreeFingerprint {
+	base := worktreeFingerprint{Keys: was.Keys, Hooks: map[string]string{}}
+	for p := range cur.Hooks {
+		at := p
+		if rel, err := filepath.Rel(lane, p); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			at = filepath.Join(repoRoot, rel)
+		}
+		if h, ok := was.Files[at]; ok {
+			base.Hooks[p] = h
+		}
+	}
+	return base
+}
+
+// nameChanges renders changed lines for anything printed or recorded:
+// each through the canonical refusal redactor, so a secret that reached a
+// name another way than a URL subsection is still sealed.
+func nameChanges(repoRoot string, changed []string) []string {
+	out := make([]string, len(changed))
+	for i, c := range changed {
+		out[i] = scanner.RedactRefusal(repoRoot, c)
+	}
 	return out
 }
 
@@ -340,8 +436,8 @@ func readFingerprint(root *os.Root, runID string) (configFingerprint, bool, erro
 	if fp.Files == nil {
 		fp.Files = map[string]string{}
 	}
-	if fp.WorktreeKeys == nil {
-		fp.WorktreeKeys = map[string]map[string]string{}
+	if fp.Worktrees == nil {
+		fp.Worktrees = map[string]worktreeFingerprint{}
 	}
 	return fp, true, nil
 }
@@ -360,7 +456,7 @@ func writeFingerprint(root *os.Root, runID string, fp configFingerprint) error {
 	return nil
 }
 
-// configTripwire is the check made before a step's git: it takes the run
+// configTripwire is the check made at the start of a step: it takes the run
 // tier's lock and runs configTripwireIn. A call this frame cannot place (a
 // run id of the wrong shape, no tier, no run directory) passes, and the
 // caller's own frame refuses it.
@@ -415,12 +511,12 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 	if err != nil {
 		return nil
 	}
-	changed := was.changes(cur)
+	changed := was.changes(repoRoot, cur)
 	if len(changed) == 0 {
 		return nil
 	}
 	return refuse(StageConfig, "", "",
-		"the repository's git configuration changed during the run: "+strings.Join(changed, ", ")+
+		"the repository's git configuration changed during the run: "+strings.Join(nameChanges(repoRoot, changed), ", ")+
 			"; a setting that names a program runs on the loop's next git step as on your own, so no git step is taken",
 		"look at what changed (`git config --local --list --show-origin`, the hooks directory and info/attributes); "+
 			"once you trust it, run the same `abcd implement step` again with "+AcceptConfigFlag+"; nothing was changed")
@@ -456,7 +552,7 @@ func AcceptConfigChange(repoRoot, runID string, o Options) ([]string, error) {
 			if err != nil {
 				return false, err
 			}
-			accepted = was.changes(again)
+			accepted = nameChanges(repoRoot, was.changes(repoRoot, again))
 		} else if bad != nil {
 			accepted = []string{ConfigFingerprintFileName + " (replaced)"}
 		}

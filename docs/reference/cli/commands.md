@@ -2281,18 +2281,23 @@ probes, what was done, what is left and whether the product thinker's notificati
 pending (notify).
 
 The run tripwire: the repository's git settings that can name a program (filter.*,
-core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.worktree,
-extensions.worktreeConfig, credential.*, a remote's uploadpack and receivepack, url
-rewrites, protocol allow rules, diff and merge drivers, gpg programs, include and
-includeIf paths), each lane worktree's own per-worktree settings, the hooks directory
-and info/attributes are fingerprinted at the run's first check, and checked again before
-every step, discard and restart, before the shared network probe and before a rate-limit
-checkpoint saves a lane aside. They run on the loop's git as on your own, so abcd never
-changes them; a change during the run is refused at the stage config, before git starts,
-naming each changed key or file (never a value), and a checkpoint keeps the lane as it is.
-A run started before the tripwire records its fingerprint at its next check and moves.
+core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.askPass,
+core.gitProxy, core.worktree, extensions.worktreeConfig, credential.*, a remote's url,
+pushurl, proxy, vcs, uploadpack and receivepack, url rewrites, protocol allow rules, diff
+and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf
+paths), every such setting each lane worktree reads and the hooks directory git runs
+there, the hooks directory and info/attributes are fingerprinted at the run's first
+check, and checked again at the start of every step, discard and restart, before the
+shared network probe and before a rate-limit checkpoint saves a lane aside. They run on
+the loop's git as on your own, so abcd never changes them; a change during the run is
+refused at the stage config, before the call reaches its git, naming each changed key or
+file (never a value; a key whose name can hold a URL is named url.<hidden-id>.insteadof),
+and a checkpoint keeps the lane as it is. The check is made when the call starts, not
+together with git: a change made while the call runs is seen by the next one. A run
+started before the tripwire records its fingerprint at its next check and moves.
 --accept-config-change, once you have looked at what changed, records the configuration
-as it stands, names what it accepted on stderr and in the run record, and takes the step.
+as it stands, names what it accepted on stderr, in the result (accepted_config_change) and
+in the run record, and takes the step.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.

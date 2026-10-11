@@ -18,6 +18,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // fingerprintPath is the run's tripwire file.
@@ -348,5 +349,170 @@ func TestACoreWorktreePlantedMidRunStopsTheNextStep(t *testing.T) {
 				t.Fatal("the refused step took no stage")
 			}
 		})
+	}
+}
+
+// laneRun is a run started and stepped once with before applied to the
+// repository first: the fingerprint is recorded and the lane's worktree made.
+// It returns the lane's worktree.
+func laneRun(t *testing.T, before func(repo *gittest.Repo)) (*gittest.Repo, string, string) {
+	t.Helper()
+	repo := briefRepo(t, agentsMarked)
+	if before != nil {
+		before(repo)
+	}
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil || len(st.Lanes) != 1 || st.Lanes[0].Worktree == "" {
+		t.Fatalf("the first step made the lane's worktree: %+v %v", st.Lanes, err)
+	}
+	return repo, start.RunID, st.Lanes[0].Worktree
+}
+
+// notConfigRefused fails the test when err is the tripwire's refusal.
+func notConfigRefused(t *testing.T, err error, what string) {
+	t.Helper()
+	if r, ok := AsRefusal(err); ok && r.Stage == StageConfig {
+		t.Fatalf("%s: %+v", what, r)
+	}
+}
+
+// TestARelativeHooksPathIsWatchedInEachLane: git resolves a relative
+// core.hooksPath against the working tree it runs in, so in a lane it runs the
+// lane's own copy of the hooks. A hook edited in the lane's copy mid-run stops
+// the next step, naming the file; the copy as the lane was made is no change.
+func TestARelativeHooksPathIsWatchedInEachLane(t *testing.T) {
+	repo, runID, lane := laneRun(t, func(repo *gittest.Repo) {
+		repo.Write(".githooks/pre-commit", "#!/bin/sh\nexit 0\n")
+		repo.Commit("hooks")
+		repo.Git("config", "core.hooksPath", ".githooks")
+	})
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+	notConfigRefused(t, err, "the lane's hooks as it was made are no change")
+
+	hook := filepath.Join(lane, ".githooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch hook-ran\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, repo.Root(), runID)
+	_, err = advance(repo.Root(), runID, DefaultStages(), Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "pre-commit") {
+		t.Fatalf("the step is refused naming the lane's hook: %+v", r)
+	}
+	if after := stateBytes(t, repo.Root(), runID); string(after) != string(before) {
+		t.Fatal("the refused step took no stage")
+	}
+}
+
+// TestALaneOnlyIncludeIsWatched: a conditional include that applies only in
+// the lanes adds settings git reads there and not in the checkout; a watched
+// key it gains mid-run stops the next step, naming the key in the worktree.
+func TestALaneOnlyIncludeIsWatched(t *testing.T) {
+	inc := filepath.Join(t.TempDir(), "lane.inc")
+	if err := os.WriteFile(inc, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo, runID, lane := laneRun(t, func(repo *gittest.Repo) {
+		repo.Git("config", "includeIf.gitdir:**/.git/worktrees/**.path", inc)
+	})
+	if err := os.WriteFile(inc, []byte("[core]\n\tsshCommand = touch planted; ssh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := repo.Git("-C", lane, "config", "--get", "core.sshCommand"); got == "" {
+		t.Fatal("the include applies in the lane")
+	}
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "core.sshcommand in the worktree") {
+		t.Fatalf("the step is refused naming the key the lane gained: %+v", r)
+	}
+}
+
+// TestMoreProgramNamingKeysAreWatched: an askpass program, a remote's URL
+// and an ssh signing key command each stop the next step when set mid-run.
+func TestMoreProgramNamingKeysAreWatched(t *testing.T) {
+	for _, tc := range []struct{ key, value, want string }{
+		{"core.askPass", "touch planted", "core.askpass"},
+		{"remote.origin.url", "ext::touch planted", "remote.origin.url"},
+		{"gpg.ssh.defaultKeyCommand", "touch planted", "gpg.ssh.defaultkeycommand"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			repo, runID := startedRun(t)
+			repo.Git("config", tc.key, tc.value)
+			_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+			r := mustRefusal(t, err)
+			if r.Stage != StageConfig || !strings.Contains(r.Reason, tc.want) {
+				t.Fatalf("the step is refused naming %q: %+v", tc.want, r)
+			}
+		})
+	}
+}
+
+// TestAKeyNameNeverCarriesItsSecret: a URL rewrite or a credential context
+// names a URL in the key itself, which may carry a token. The change is still
+// refused and named, by a placeholder and a short id that tells the two keys
+// apart, and the token is in neither the stored fingerprint, the refusal (text
+// and JSON), the accept's answer nor the run's state.
+func TestAKeyNameNeverCarriesItsSecret(t *testing.T) {
+	token, pw := testsecret.Synthetic(61, 32), testsecret.Synthetic(62, 24)
+	repo, runID := startedRun(t)
+	repo.Git("config", "url.https://x-access-token:"+token+"@github.com/.insteadOf", "https://github.com/")
+	repo.Git("config", "credential.https://user:"+pw+"@example.invalid.helper", "store")
+
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "url.<hidden") || !strings.Contains(r.Reason, ".insteadof (added)") ||
+		!strings.Contains(r.Reason, "credential.<hidden") || !strings.Contains(r.Reason, ".helper (added)") {
+		t.Fatalf("the refusal names both keys, hidden: %+v", r)
+	}
+	doc, _ := json.Marshal(r)
+	accepted, err := AcceptConfigChange(repo.Root(), runID, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accepted) != 2 || accepted[0] == accepted[1] {
+		t.Fatalf("the accept names both keys apart: %q", accepted)
+	}
+	stored, _ := os.ReadFile(fingerprintPath(repo, runID))
+	for what, text := range map[string]string{
+		"the refusal": r.Error(), "the refusal's JSON": string(doc), "the stored fingerprint": string(stored),
+		"the accept's answer": strings.Join(accepted, " "), "the run's state": string(stateBytes(t, repo.Root(), runID)),
+	} {
+		if strings.Contains(text, token) || strings.Contains(text, pw) || strings.Contains(text, "x-access-token") {
+			t.Fatalf("%s holds the key's secret:\n%s", what, text)
+		}
+	}
+}
+
+// TestATokenInAnyChangedNameIsSealedWhenNamed: a token in a key name the
+// URL placeholder does not cover (a filter driver's name) is still sealed by
+// the canonical redactor wherever the change is named: the refusal and the
+// accept's answer.
+func TestATokenInAnyChangedNameIsSealedWhenNamed(t *testing.T) {
+	pat := "ghp_" + testsecret.Synthetic(63, 36)
+	repo, runID := startedRun(t)
+	repo.Git("config", "filter."+pat+".clean", "cat")
+
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, ".clean (added)") {
+		t.Fatalf("the change is refused and named: %+v", r)
+	}
+	accepted, err := AcceptConfigChange(repo.Root(), runID, Options{})
+	if err != nil || len(accepted) != 1 {
+		t.Fatalf("the accept names the change: %q %v", accepted, err)
+	}
+	for what, text := range map[string]string{"the refusal": r.Error(), "the accept's answer": accepted[0],
+		"the run's state": string(stateBytes(t, repo.Root(), runID))} {
+		if strings.Contains(text, pat) {
+			t.Fatalf("%s names the token:\n%s", what, text)
+		}
 	}
 }

@@ -480,32 +480,47 @@ The first check of a run records a fingerprint beside its state,
 `.abcd/.work.local/run/<run-id>/config-fingerprint.json`. The fingerprint covers
 every repository-level setting that can name a program (`filter.*`,
 `core.hooksPath`, `core.sshCommand`, `core.fsmonitor`, `core.pager`,
-`core.editor`, `core.worktree`, `extensions.worktreeConfig`, `credential.*`, a
-remote's `uploadpack` and `receivepack`, `url.*.insteadOf` and
-`pushInsteadOf`, `protocol.*.allow`, diff and merge drivers, the gpg programs,
-and `include` and `includeIf` paths), each lane worktree's own per-worktree
-settings, the hooks directory and `info/attributes`. Your global and system
+`core.editor`, `core.askPass`, `core.gitProxy`, `core.worktree`,
+`extensions.worktreeConfig`, `credential.*`, a remote's `url`, `pushurl`,
+`proxy`, `vcs`, `uploadpack` and `receivepack`, `url.*.insteadOf` and
+`pushInsteadOf`, `protocol.*.allow`, diff and merge drivers, the gpg programs
+and `gpg.ssh.defaultKeyCommand`, and `include` and `includeIf` paths), the
+hooks directory and `info/attributes`. For each lane worktree it also covers
+every such setting git reads there, whether from the shared settings, a
+conditional include that applies only there or the worktree's own settings,
+and the hooks directory git runs there: a relative `core.hooksPath` such as
+`.githooks` names the lane's own copy. A lane made after the fingerprint was
+recorded is compared with the checkout as recorded, for any setting or hook it
+adds or holds differently. Your global and system
 settings are your own and are not watched. The file holds salted hashes, never
 a value: a credential helper's value may carry a secret, so only key names and
-file paths are ever stored or reported.
+file paths are ever stored or reported. A key's name can carry a secret too (a
+URL rewrite or a credential context names a URL, which may hold a token), so a
+key whose subsection can hold a URL is stored and named with that subsection
+replaced by a short salted id, as in `url.<hidden-0123456789abcdef>.insteadof`;
+two such keys keep different ids. Every name a refusal or an accept reports
+also passes through the secret scanner's redaction.
 
-The fingerprint is checked again before every `step`, `--discard` and
+The fingerprint is checked again at the start of every `step`, `--discard` and
 `--restart`, before the shared network probe (a step's and
 `implement outage probe`'s), and before a rate-limit checkpoint saves a lane
-aside. A change refuses the call at the stage `config` (exit 2) before git
-starts. The reason names each changed key or file, marked added, removed or
-changed, and the state is left as it was. `outage probe` is refused without
-probing, and a checkpoint keeps the lane, its work and its await as they are,
-naming why under `kept`. A run started before the tripwire existed records its
-fingerprint at its next check and moves on.
+aside. A change refuses the call at the stage `config` (exit 2) before the call
+reaches its git. The reason names each changed key or file, marked added,
+removed or changed, and the state is left as it was. `outage probe` is refused
+without probing, and a checkpoint keeps the lane, its work and its await as
+they are, naming why under `kept`. The check is made when the call starts, not
+together with each git command it runs: a setting changed while a call is
+running is seen by the next call, not by the one already past its check. A run
+started before the tripwire existed records its fingerprint at its next check
+and moves on.
 
 Look at what changed (`git config --local --list --show-origin`, the hooks
 directory, `info/attributes`), then relay the refusal to the person. Accept a
 change only on their word: `step --accept-config-change` records the settings
-as they now stand, names what it accepted on stderr and in the run record, and
-takes the step. The flag goes with `--restart`, `--release` or `--discard` too.
-A lane worktree that has gone (its lane landed or was discarded) is not a
-change.
+as they now stand, names what it accepted on stderr, in the result's
+`accepted_config_change` under `--json` and in the run record, and takes the
+step. The flag goes with `--restart`, `--release` or `--discard` too. A lane
+worktree that has gone (its lane landed or was discarded) is not a change.
 
 ## Check the machine's load
 

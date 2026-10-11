@@ -867,18 +867,23 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"probes, what was done, what is left and whether the product thinker's notification is\n" +
 			"pending (notify).\n\n" +
 			"The run tripwire: the repository's git settings that can name a program (filter.*,\n" +
-			"core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.worktree,\n" +
-			"extensions.worktreeConfig, credential.*, a remote's uploadpack and receivepack, url\n" +
-			"rewrites, protocol allow rules, diff and merge drivers, gpg programs, include and\n" +
-			"includeIf paths), each lane worktree's own per-worktree settings, the hooks directory\n" +
-			"and info/attributes are fingerprinted at the run's first check, and checked again before\n" +
-			"every step, discard and restart, before the shared network probe and before a rate-limit\n" +
-			"checkpoint saves a lane aside. They run on the loop's git as on your own, so abcd never\n" +
-			"changes them; a change during the run is refused at the stage config, before git starts,\n" +
-			"naming each changed key or file (never a value), and a checkpoint keeps the lane as it is.\n" +
-			"A run started before the tripwire records its fingerprint at its next check and moves.\n" +
+			"core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.askPass,\n" +
+			"core.gitProxy, core.worktree, extensions.worktreeConfig, credential.*, a remote's url,\n" +
+			"pushurl, proxy, vcs, uploadpack and receivepack, url rewrites, protocol allow rules, diff\n" +
+			"and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf\n" +
+			"paths), every such setting each lane worktree reads and the hooks directory git runs\n" +
+			"there, the hooks directory and info/attributes are fingerprinted at the run's first\n" +
+			"check, and checked again at the start of every step, discard and restart, before the\n" +
+			"shared network probe and before a rate-limit checkpoint saves a lane aside. They run on\n" +
+			"the loop's git as on your own, so abcd never changes them; a change during the run is\n" +
+			"refused at the stage config, before the call reaches its git, naming each changed key or\n" +
+			"file (never a value; a key whose name can hold a URL is named url.<hidden-id>.insteadof),\n" +
+			"and a checkpoint keeps the lane as it is. The check is made when the call starts, not\n" +
+			"together with git: a change made while the call runs is seen by the next one. A run\n" +
+			"started before the tripwire records its fingerprint at its next check and moves.\n" +
 			"--accept-config-change, once you have looked at what changed, records the configuration\n" +
-			"as it stands, names what it accepted on stderr and in the run record, and takes the step.\n\n" +
+			"as it stands, names what it accepted on stderr, in the result (accepted_config_change) and\n" +
+			"in the run record, and takes the step.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,
@@ -893,6 +898,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			var res loop.StepResult
+			var accepted []string
 			// A --yielded given at all is judged trimmed: a blank one names
 			// no line, and is never read as an agent that died.
 			yieldedSet := cmd.Flags().Changed("yielded")
@@ -910,10 +916,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
 					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
-			case acceptConfig && !acceptConfigChange(cmd, root, id, &err):
+			case acceptConfig && !acceptConfigChange(cmd, root, id, &accepted, &err):
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			case restart != "":
-				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
+				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded, accepted)
 			case release != "":
 				res, err = loop.Release(root, id, release, loop.Options{})
 			case discard != "":
@@ -939,6 +945,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			res = redactStep(res)
+			res.AcceptedConfigChange = accepted
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
 		},
 	}
@@ -952,14 +959,16 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 }
 
 // acceptConfigChange accepts the run's changed git configuration for
-// `implement step --accept-config-change`, naming what it accepted on stderr.
-// It reports false, with *errp set, when the accept is refused.
-func acceptConfigChange(cmd *cobra.Command, root, runID string, errp *error) bool {
+// `implement step --accept-config-change`, naming what it accepted on stderr
+// and in *acceptedp, which the step's result carries. It reports false, with
+// *errp set, when the accept is refused.
+func acceptConfigChange(cmd *cobra.Command, root, runID string, acceptedp *[]string, errp *error) bool {
 	accepted, err := loop.AcceptConfigChange(root, runID, loop.Options{})
 	if err != nil {
 		*errp = err
 		return false
 	}
+	*acceptedp = accepted
 	if len(accepted) > 0 {
 		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize("accepted a change to the repository's git configuration: "+strings.Join(accepted, ", ")))
 	}

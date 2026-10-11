@@ -249,7 +249,11 @@ type StepResult struct {
 	// window early in this call, with the lanes it checkpointed
 	// (ratelimit.go); NextEligibleAt is then the pause's end.
 	RateLimit *RateLimit `json:"rate_limit,omitempty"`
-	Next      string     `json:"next"`
+	// AcceptedConfigChange names each changed git setting or file the call
+	// accepted (`implement step --accept-config-change`) before its step:
+	// names alone, a URL subsection hidden, never a value (configwatch.go).
+	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
+	Next                 string   `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
