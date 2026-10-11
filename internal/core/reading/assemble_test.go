@@ -908,6 +908,44 @@ func TestAnExcludedHeadingBehindAnyValidLinkShapeIsRedacted(t *testing.T) {
 	}
 }
 
+// TestAnExcludedHeadingBehindHiddenOrUnmodelledMarkupNeverTravels: each heading
+// below renders as an excluded heading, or carries its words inside markup the
+// floor does not model, and each travelled (iss-2610101930329211). Processing
+// instructions, declarations and CDATA sections are raw HTML a browser hides;
+// a decoded escape paired with a remnant bracket and erased the backstop's
+// trigger; a misread link spelled with a Cyrillic A compared its letters as
+// written; and an unmodelled `<%...%>` carried no bracket for the backstop to
+// see. Each is redacted or refused through Assemble, never travelling.
+func TestAnExcludedHeadingBehindHiddenOrUnmodelledMarkupNeverTravels(t *testing.T) {
+	cases := map[string]string{
+		"a processing instruction inside":   "## Audit<?x?> Notes",
+		"a leading processing instruction":  "## <?x?>Audit Notes",
+		"a declaration":                     "## Audit<!X y> Notes",
+		"a CDATA section":                   "## Audit<![CDATA[>]]> Notes",
+		"an escaped bracket behind PIs":     "## [<?\\[?>Audit Notes<?]?>](x)",
+		"an escaped bracket behind markup":  "## [<%\\[%>Audit Notes<%]%>](x)",
+		"a Cyrillic A in a misread link":    "## [Аudit Notes<b a=]>](x)",
+		"unmodelled markup inside the word": "## Audit<%x%> Notes",
+	}
+	for what, heading := range cases {
+		root := fixtureRepo(t)
+		writeFile(t, root, ".abcd/development/specs/open/spc-4-hidden.md",
+			"---\nid: spc-4\n---\n\n# A spec\n\n"+heading+"\n\n"+sentinelAuditNotes+"\n\n## Next\n\nKEPT\n")
+		gitCommitAll(t, root)
+
+		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+		if err != nil {
+			if !strings.Contains(err.Error(), "spc-4-hidden.md") {
+				t.Errorf("%s: the refusal does not name the file: %v", what, err)
+			}
+			continue
+		}
+		if strings.Contains(bundleText(res.Bundle), sentinelAuditNotes) {
+			t.Errorf("%s: an excluded heading behind hidden or unmodelled markup let its section travel", what)
+		}
+	}
+}
+
 // TestAConfusableSpellingOfAnExcludedHeadingRefuses: `## Audit Notes` spelled
 // with a Cyrillic A (U+0410) reads as the excluded heading and compared as
 // nothing like it, because every comparison the floor made was over code points,

@@ -117,6 +117,80 @@ func TestTheLinkPassIsLinear(t *testing.T) {
 	}
 }
 
+// TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel: CommonMark passes four
+// raw HTML kinds through that a browser never shows, and the floor stripped
+// only the comment. A processing instruction, a declaration and a CDATA
+// section inside a heading render as nothing, so each title below reads as
+// the excluded heading on the page and travelled (iss-2610101930329211). Each
+// is now stripped where comments are and the title is the same heading.
+func TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	for _, title := range []string{
+		"Audit<?x?> Notes",
+		"<?x?>Audit Notes",
+		"Audit<!X y> Notes",
+		"Audit<![CDATA[>]]> Notes",
+		"<![CDATA[x>y]]>Open Questions",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+}
+
+// TestAnyMarkupRemnantRefusesAnExcludedHeading: the backstop's widened
+// trigger. A title still carrying a bracket or an angle bracket once its links,
+// tags and hidden HTML are reduced holds markup the floor did not model, so it
+// is refused whenever its letters carry an excluded heading's. The bracket
+// presence is judged before backslash escapes are decoded, so a decoded `\[`
+// cannot pair with a remnant `]` and erase what the backstop looks for; a
+// non-ASCII letter stands for any ASCII letter the way nearExcluded reads it,
+// so a misread link spelled with a lookalike is refused too; and the text
+// between an unmodelled `<` and `>` is set aside, so `<%x%>` cannot break the
+// excluded words apart (iss-2610101930329211). The controls show the backstop
+// stays narrow: markup or another script with no excluded words travels.
+func TestAnyMarkupRemnantRefusesAnExcludedHeading(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	for _, title := range []string{
+		"[<?\\[?>Audit Notes<?]?>](x)",
+		"[<%\\[%>Audit Notes<%]%>](x)",
+		"[Аudit Notes<b a=]>](x)",
+		"Audit<%x%> Notes",
+		"Audit<%%> Notes",
+		"<:x:>Open Questions",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got == noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want it refused or redacted", title, got, want)
+		}
+	}
+	for _, title := range []string{
+		"a < b",
+		"a > b and [c]",
+		"x <%y%> z",
+		"Notas de auditoría",
+		"[Новые] факты",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading", title, got, want)
+		}
+	}
+}
+
+// TestUnwrapLinksReportsTheTitleBeforeEscapesAreDecoded: decoding turns a
+// `\[` into a `[` that the next pass can pair with a remnant `]` and unwrap,
+// so the reduced title alone no longer shows the bracket the backstop tests
+// for. unwrapLinks also returns the title at its fixed point before decoding,
+// and the backstop judges remnants there (iss-2610101930329211).
+func TestUnwrapLinksReportsTheTitleBeforeEscapesAreDecoded(t *testing.T) {
+	out, before := unwrapLinks("a\\[b](c)")
+	if out != "ab" {
+		t.Errorf("unwrapLinks reduced to %q, want %q", out, "ab")
+	}
+	if before != "a\\[b](c)" {
+		t.Errorf("unwrapLinks reported %q before decoding, want the title as written", before)
+	}
+}
+
 // TestRenderedTextLeavesAnAutolinkAlone: stripping tags must not eat an autolink,
 // which is a URL a heading may legitimately carry.
 func TestRenderedTextLeavesAnAutolinkAlone(t *testing.T) {

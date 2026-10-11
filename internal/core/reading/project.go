@@ -211,9 +211,17 @@ var (
 	// second question, asked against explicitYAMLKeyRe: a `?` line that pattern
 	// cannot fully read is a key this package cannot resolve.
 	questionLineRe = regexp.MustCompile(`^\s*\?(\s|$)`)
-	// htmlCommentRe and htmlTagRe strip the markup a title can carry without
-	// changing how it reads on the page.
-	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	// htmlHiddenRe and htmlTagRe strip the markup a title can carry without
+	// changing how it reads on the page. htmlHiddenRe is the raw HTML a
+	// renderer passes through and a browser never shows (CommonMark 6.6): a
+	// comment, a processing instruction `<?...?>`, a declaration `<!X ...>` and
+	// a CDATA section `<![CDATA[...]]>`. Stripping only the comment let
+	// `## Audit<?x?> Notes`, which renders as `Audit Notes`, travel.
+	htmlHiddenRe = regexp.MustCompile(`(?s)<!--.*?-->|<\?.*?\?>|<!\[CDATA\[.*?\]\]>|<![A-Za-z][^>]*>`)
+	// angleSpanRe is any `<` to the next `>`, the extent the backstop sets
+	// aside for markup no stripper models (unreadMarkupNames), so `<%x%>`
+	// cannot split the excluded words it sits between.
+	angleSpanRe = regexp.MustCompile(`<[^>]*>`)
 	// Its name is bounded (htmlTagOpen) so an AUTOLINK is left alone: stripping
 	// `<https://x>` turns a heading carrying a URL into a different heading.
 	htmlTagRe = regexp.MustCompile(htmlTagOpen + `(?:\s[^>]*)?/?>`)
@@ -301,7 +309,8 @@ const (
 //   - An autolink, `<https://x>` or `<a@b.c>`, is left as it is written
 //     (htmlTagRe stops short of it). It renders with its scheme's colon or the
 //     address's at sign, which no excluded heading carries, so it can never
-//     render as one.
+//     render as one. Beside the excluded words it is refused: the backstop
+//     reads its angle brackets as markup it did not model.
 //   - Markup that hides text from the page without removing it from the
 //     source: `## Audit <span hidden>x</span> Notes` reads as `Audit Notes` and
 //     compares as `Audit x Notes`, so it travels. It did before the rendered-text
@@ -319,23 +328,33 @@ const (
 //     `]` written inside one ends the label early. What that misreads is
 //     either a title that still carries a bracket, which the backstop below
 //     judges, or one read as the excluded heading and redacted.
-//   - The backstop compares letters as written: a link it could not read,
-//     spelled with a non-ASCII lookalike letter as well, carries no ASCII
-//     `auditnotes` and travels, where the same lookalike in a title with no
-//     brackets is a near-match (nearExcluded) and refused.
+//   - The backstop reads a non-ASCII letter as any ASCII letter but wants one
+//     ASCII letter to agree, so unread markup whose every letter in the
+//     excluded heading's place is a lookalike travels: nearExcluded's residue,
+//     above, carried into the backstop.
+//   - The backstop sets aside only what lies between a `<` and the next `>`.
+//     Letters written inside an unmodelled construct of some other extent
+//     split the excluded words, `## Audit [x Notes`, and the title travels;
+//     such a construct renders its letters unless a renderer hides it.
 //
 // The inline forms that render as plain text are reduced in two layers before
 // the comparison. First, the reduction: emphasis, code and strikethrough marks
-// are dropped (stripMarks); links and images are unwrapped to their text by a
-// scanner that follows the CommonMark inline link grammar, passed until the
-// title stops changing so an image inside a link reduces to its alt text
+// are dropped (stripMarks); the raw HTML a browser never shows, comments,
+// processing instructions, declarations and CDATA sections, is removed
+// (htmlHiddenRe); links and images are unwrapped to their text by a scanner
+// that follows the CommonMark inline link grammar, passed until the title
+// stops changing so an image inside a link reduces to its alt text
 // (unwrapLinks); footnote markers are dropped; backslash escapes and character
-// references decoded; HTML tags and comments removed (renderedTexts). Second,
-// the backstop: a title still carrying a bracket after the reduction holds
-// link syntax the scanner did not read, and it is refused if its letters
-// contain an excluded heading's (unreadLinkNames). The first layer redacts
-// what it reads; the second refuses what it did not, so a link shape the
-// scanner misreads is refused rather than travelling. A heading nested in a
+// references decoded; HTML tags removed (renderedTexts). Second, the
+// backstop: a title still carrying any markup remnant, a bracket or an angle
+// bracket, holds markup the floor did not model, and it is refused if its
+// letters contain an excluded heading's (unreadMarkupNames). The remnant is
+// judged before escapes are decoded, with only the tags htmlTagRe models
+// removed; a non-ASCII letter stands for any ASCII letter as in nearExcluded;
+// and the text between an unmodelled `<` and `>` is set aside. The first
+// layer redacts what it reads; the second refuses what it did not, so a link
+// shape the scanner misreads, an unknown raw HTML kind or a tag shape no
+// stripper models is refused rather than travelling. A heading nested in a
 // blockquote or a list item IS caught: the section scan cannot span it, so
 // the verifier refuses it (nestedHeadingRe, iss-2609251509209801).
 //
@@ -360,7 +379,7 @@ func namesExcludedHeading(title string, headings map[string]bool) (string, headi
 		}
 	}
 	for _, want := range wants {
-		if nearExcluded(title, want) || unreadLinkNames(title, want) {
+		if nearExcluded(title, want) || unreadMarkupNames(title, want) {
 			return want, nearHeading
 		}
 	}
@@ -509,8 +528,8 @@ func nearKey(text string) string {
 	return strings.Join(strings.Fields(stripMarks(folded)), " ")
 }
 
-// renderedTexts reduces a heading title to the text a reader sees — HTML
-// comments and tags removed, footnote markers dropped, link and image wrappers
+// renderedTexts reduces a heading title to the text a reader sees — hidden
+// raw HTML and tags removed, footnote markers dropped, link and image wrappers
 // unwrapped to their label or alt text and backslash escapes decoded
 // (inlineReduced), character references decoded — and returns EVERY reading of
 // it rather than one. The comparison then judges what the page shows rather than what the
@@ -524,8 +543,9 @@ func nearKey(text string) string {
 // first shape and opened the second; replacing every tag with nothing did the
 // reverse. Both readings are returned and the caller refuses on either, which is
 // the doctrine the heading bound already uses: a title read two ways is excluded
-// if EITHER way names an excluded heading. A comment is dropped outright under
-// both, because a comment draws no boundary either way.
+// if EITHER way names an excluded heading. A comment, and the other hidden
+// raw HTML (htmlHiddenRe), is dropped outright under both, because it draws
+// no boundary either way.
 //
 // Decoding is html.UnescapeString, one pass over the whole string. A hand list
 // of entities applied by ranging a map was not merely incomplete — it was
@@ -534,11 +554,12 @@ func nearKey(text string) string {
 // determinism instrument had a coin-flip refusal. One pass also covers the
 // numeric and hex character references a short list could never enumerate.
 func renderedTexts(title string) []string {
-	return readingsOf(inlineReduced(title))
+	reduced, _ := inlineReduced(title)
+	return readingsOf(reduced)
 }
 
 // readingsOf is renderedTexts' second half: the two readings of a title whose
-// comments, footnote markers, links and escapes are already reduced.
+// hidden raw HTML, footnote markers, links and escapes are already reduced.
 func readingsOf(out string) []string {
 	spaced := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, " ")))
 	joined := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, "")))
@@ -548,12 +569,14 @@ func readingsOf(out string) []string {
 	return []string{spaced, joined}
 }
 
-// inlineReduced is a title with its HTML comments removed, its footnote markers
-// dropped, every link and image unwrapped and its backslash escapes decoded
-// (unwrapLinks): the text renderedTexts reads, before tags and character
-// references.
-func inlineReduced(title string) string {
-	out := htmlCommentRe.ReplaceAllString(title, "")
+// inlineReduced is a title with its hidden raw HTML removed (htmlHiddenRe),
+// its footnote markers dropped, every link and image unwrapped and its
+// backslash escapes decoded (unwrapLinks): the text renderedTexts reads,
+// before tags and character references. The second result is the same title
+// before its escapes were decoded, where the backstop (unreadMarkupNames)
+// looks for markup remnants.
+func inlineReduced(title string) (string, string) {
+	out := htmlHiddenRe.ReplaceAllString(title, "")
 	out = mdFootnoteRe.ReplaceAllString(out, "")
 	return unwrapLinks(out)
 }
@@ -562,7 +585,7 @@ func inlineReduced(title string) string {
 // Each pass unwraps one level of nesting, and CommonMark nests an image inside
 // a link and no deeper, so eight is generous. A title nested deeper than the
 // cap keeps its innermost brackets, and the floor's backstop
-// (unreadLinkNames) refuses it if those carry an excluded heading.
+// (unreadMarkupNames) refuses it if those carry an excluded heading.
 const maxLinkPasses = 8
 
 // unwrapLinks reduces every link and image in a title to the text a reader
@@ -579,25 +602,32 @@ const maxLinkPasses = 8
 // fixed point and passing again keeps the older reading of `\[Open Questions\]`,
 // which renders with its brackets and is unwrapped to its label the way a
 // bracketed title with no definition is: the side a floor errs on.
-func unwrapLinks(s string) string {
-	decoded := false
+//
+// The second result is the title at that first fixed point, before decoding.
+// A decoded `\[` is a `[` the next pass may pair with a remnant `]` and
+// unwrap, so the decoded title can show no bracket where the scanner failed
+// to read one; the backstop (unreadMarkupNames) judges remnants here instead.
+func unwrapLinks(s string) (string, string) {
+	decoded, before := false, s
 	for range maxLinkPasses {
 		next, _ := unwrapLinkPass(s)
 		if next == s {
 			if decoded {
-				return s
+				return s, before
 			}
+			before = s
 			next, decoded = mdEscapeRe.ReplaceAllString(s, "$1"), true
 			if next == s {
-				return s
+				return s, before
 			}
 		}
 		s = next
 	}
 	if !decoded {
+		before = s
 		s = mdEscapeRe.ReplaceAllString(s, "$1")
 	}
-	return s
+	return s, before
 }
 
 // unwrapLinkPass makes one left-to-right pass over a title and replaces each
@@ -620,7 +650,7 @@ func unwrapLinks(s string) string {
 // A label followed by an inline tail the scanner cannot read is left as it is
 // written, brackets and all, rather than read as a shortcut. Reading it as a
 // shortcut would take its brackets away and hide from the backstop
-// (unreadLinkNames) a link the scanner failed to read.
+// (unreadMarkupNames) a link the scanner failed to read.
 //
 // The pass is linear in the title by construction. The bracket table is one
 // stack walk; the main walk visits each byte once, jumping past what it
@@ -802,28 +832,39 @@ func isASCIIPunct(c byte) bool {
 	return c < utf8.RuneSelf && (unicode.IsPunct(rune(c)) || unicode.IsSymbol(rune(c)))
 }
 
-// unreadLinkNames is the floor's backstop for link syntax the scanner did not
-// read. A title still carrying a bracket once its links are unwrapped
-// (inlineReduced) or once it is read (renderedTexts) holds link or image
-// syntax the scanner could not follow: malformed, unbalanced, nested past the
-// pass cap, or past the pass budget. Such a title is judged on its letters
-// alone, every other rune dropped and ASCII letters case folded (lettersKey),
-// and it names the excluded heading if those CONTAIN the heading's letters.
+// unreadMarkupNames is the floor's backstop for markup it did not model. A
+// title still carrying a bracket or an angle bracket once its hidden HTML is
+// stripped, its links unwrapped and its HTML tags removed holds markup the
+// floor could not follow: link or image syntax that is malformed, unbalanced,
+// nested past the pass cap or past the pass budget, a raw HTML kind or a tag
+// shape no stripper models, or a construct no one has named yet. Such a title
+// is judged on its letters alone (lettersKey), every other rune dropped and
+// ASCII letters case folded, and it names the excluded heading if those
+// CONTAIN the heading's letters (lettersContain), read once as reduced and
+// once with every `<...>` span set aside (angleSpanRe), so letters inside an
+// unmodelled tag cannot split the excluded words apart.
+//
+// The remnant is looked for where it cannot have been erased: in the title
+// before backslash escapes were decoded (unwrapLinks), with only the tags
+// htmlTagRe models removed, and, for brackets, in each reading after
+// character references are decoded too.
 //
 // It fails closed on purpose. Patching the link pattern one shape at a time
 // failed twice, each time leaving a valid link the pattern misread to compare
-// as some other title and travel. This refuses whatever link syntax the floor
-// did not read and that still carries the excluded words, so the next misread
-// shape is refused rather than leaked. The cost is refusing a heading that
-// carries the words beside a stray bracket, which costs the author an edit.
-func unreadLinkNames(title, want string) bool {
-	key := lettersKey(want)
-	if key == "" {
+// as some other title and travel, and the next two reviews found further
+// unmodelled hiding constructs in raw HTML. This refuses whatever markup the
+// floor did not read and that still carries the excluded words, so the next
+// unmodelled shape is refused rather than leaked. The cost is refusing a
+// heading that carries the words beside a stray bracket or angle bracket,
+// which costs the author an edit.
+func unreadMarkupNames(title, want string) bool {
+	key := []rune(lettersKey(want))
+	if len(key) == 0 {
 		return false
 	}
-	reduced := inlineReduced(title)
+	reduced, before := inlineReduced(title)
 	readings := readingsOf(reduced)
-	unread := strings.ContainsAny(reduced, "[]")
+	unread := strings.ContainsAny(htmlTagRe.ReplaceAllString(before, ""), "[]<>")
 	for _, x := range readings {
 		unread = unread || strings.ContainsAny(x, "[]")
 	}
@@ -831,7 +872,42 @@ func unreadLinkNames(title, want string) bool {
 		return false
 	}
 	for _, x := range readings {
-		if strings.Contains(lettersKey(x), key) {
+		if lettersContain(lettersKey(x), key) ||
+			lettersContain(lettersKey(angleSpanRe.ReplaceAllString(x, "")), key) {
+			return true
+		}
+	}
+	return false
+}
+
+// lettersContain reports whether a title's letters contain an excluded
+// heading's at some position, under nearExcluded's rule: a NON-ASCII letter in
+// the title stands for whatever ASCII letter the heading has there, and at
+// least one ASCII letter must agree. Comparing letters as written let a link
+// the scanner misread, spelled with a Cyrillic A as well, travel where the
+// same lookalike with no link was refused. Its cost is linear in the title
+// times the heading's length, and the heading is the configuration's. The
+// containment is looser than nearExcluded's equal length, so a heading in
+// another script beside one agreeing ASCII letter and a bracket can be
+// refused; that costs the author an edit and leaks nothing.
+func lettersContain(title string, want []rune) bool {
+	a := []rune(title)
+	for i := 0; i+len(want) <= len(a); i++ {
+		agreed, near := false, true
+		for j, w := range want {
+			r := a[i+j]
+			switch {
+			case r == w:
+				agreed = agreed || r < utf8.RuneSelf
+			case r >= utf8.RuneSelf && w < utf8.RuneSelf:
+			default:
+				near = false
+			}
+			if !near {
+				break
+			}
+		}
+		if near && agreed {
 			return true
 		}
 	}
