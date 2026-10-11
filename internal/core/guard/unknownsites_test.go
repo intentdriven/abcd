@@ -105,6 +105,7 @@ var wordReaders = map[string]string{
 	"writerTargets":  "commandSites and isUnknown: no writer is read for a program name the line does not fix",
 	"curlTargets":    "isUnknown on every URL it names; an unknown one is a write the guard cannot place",
 	"cdTarget":       "exempt: reads cd's literal options; its target goes through resolveToken, which refuses a word holding a substitution's output or a variable's value",
+	"autoloadCall":   "isUnknown on every option word: one the line does not fix may be -m or -w, so the operands are read as unfixed",
 	"sourceIndex":    "exempt: reads source's literal `--`; its operand goes through fixedToken, which refuses an unknown word",
 	"applyRedirects": "exempt: reads redirection operators and targets the tokenizer recorded, whose target is marked unfixed (pathWord.ok) where it holds an expansion",
 	"writesOf":       "exempt: reads redirection operators and targets the tokenizer recorded, whose target is marked unfixed (pathWord.ok) where it holds an expansion",

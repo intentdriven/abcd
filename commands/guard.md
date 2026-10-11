@@ -346,7 +346,13 @@ assigned `HOME` (`.bash_profile`, else `.bash_login`, else `.profile`, and
 `.zlogout`), and the other shells' profile (`.profile`, yash's `.yash_profile`)
 and rc file (`.kshrc`, `.mkshrc`, `.yashrc`) under an assigned `HOME`. An
 assignment counts as a prefix, through `env`, or exported earlier
-on the line. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
+on the line. A function file `autoload` (or `functions -u`, `typeset -fu`)
+loads is read too: an operand with a slash is that file, and a name is searched
+in the `FPATH` or `fpath` the line sets, where the first directory holding it
+(as `dir.zwc`, `dir/name.zwc` or `dir/name`) is the file read; a compiled
+`.zwc` file is a **block**, and so is a name or a directory searched before the
+file is found that the line does not fix (`script-unread`). A line that leaves
+`FPATH` as the account set it loads the account's own functions, unseen. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
 classify it: a shell-family shebang, or no shebang and no NUL byte, makes it a
 shell script, read the same way; anything else is a program, allowed unread. A
 relative path resolves against the working directory, and against a `cd` or

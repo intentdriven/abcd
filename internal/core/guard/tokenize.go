@@ -172,6 +172,13 @@ type segment struct {
 	// deep it sits, counted from the text the reading began at.
 	carrier int
 	depth   int
+	// arrayOf names the variable whose array assignment (`fpath=(a b)`) this
+	// command's words are elements of, and arrayAppend records `+=`; "" for
+	// any other command. The words are still read as a command, as before;
+	// the script reading (script.go) also takes them as the variable's value
+	// (iss-2610111600022820).
+	arrayOf     string
+	arrayAppend bool
 }
 
 // redirect is one redirection of a command: the descriptor it names (-1 for
@@ -935,6 +942,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
 				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
+			if n := len(parens); n > 0 && parens[n-1].array != "" {
+				segs[len(segs)-1].arrayOf = parens[n-1].array
+				segs[len(segs)-1].arrayAppend = parens[n-1].arrayAppend
+			}
 			curRedirs, andNext = nil, false
 			toks = nil
 			globs = nil
@@ -1755,6 +1766,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i++
 				continue
 			}
+			// A `(` glued to a `NAME=` or `NAME+=` word opens an array
+			// assignment, whose elements the group's words are.
+			arrayName, arrayAppend := "", false
+			if c == '(' && hasCur && i > 0 && line[i-1] == '=' {
+				w := string(cur)
+				if strings.HasSuffix(w, "+=") {
+					w, arrayAppend = w[:len(w)-2]+"=", true
+				}
+				if isAssignment(w) && strings.IndexByte(w, '=') == len(w)-1 {
+					arrayName = w[:len(w)-1]
+				}
+			}
 			flushSegment()
 			if c == '(' && i+1 < len(line) && line[i+1] == '(' {
 				// The bare arithmetic command `(( … ))` is read as the
@@ -1790,6 +1813,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				frame := parenFrame{kind: kind, pos: i, pipeFrom: pipeFrom, groupIn: groupIn}
 				if kind == parenGroup {
 					frame.groupIn = openGroup()
+					frame.array, frame.arrayAppend = arrayName, arrayAppend
 				}
 				parens = append(parens, frame)
 			case ')', '`':
@@ -2409,6 +2433,10 @@ type parenFrame struct {
 	// groupIn).
 	pipeFrom int
 	groupIn  []feed
+	// array names the variable a `NAME=(` group assigns, and arrayAppend
+	// records `NAME+=(`: the commands emitted inside it are its elements.
+	array       string
+	arrayAppend bool
 }
 
 // groupOpen is what a `{ … }` group's opening word records for its `}` to

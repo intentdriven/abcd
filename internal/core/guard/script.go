@@ -87,7 +87,17 @@ const (
 // trackedVars are the only variables the reading follows: the ones that
 // choose a file a shell reads or where a path resolves. Following no other
 // keeps each state a handful of entries however many a line assigns.
-var trackedVars = map[string]bool{"BASH_ENV": true, "ENV": true, "HOME": true, "ZDOTDIR": true, "PATH": true}
+var trackedVars = map[string]bool{"BASH_ENV": true, "ENV": true, "HOME": true, "ZDOTDIR": true, "PATH": true,
+	"FPATH": true, "fpath": true}
+
+// trackedName is the name a tracked variable is kept under: zsh ties the
+// fpath array to FPATH, so an assignment to either sets both.
+func trackedName(name string) string {
+	if name == "fpath" {
+		return "FPATH"
+	}
+	return name
+}
 
 // Files is the directory a command runs in, and the files the guard has read
 // for it. A front door that checks one command against several registries
@@ -432,7 +442,7 @@ func (st *shellState) env(s segment, site int) map[string]varVal {
 	}
 	for i := 0; i < site && i < len(s.tokens); i++ {
 		if name, v, ok := assignment(s.tokens[i]); ok && trackedVars[name] {
-			out[name] = v
+			out[trackedName(name)] = v
 		}
 	}
 	return out
@@ -675,6 +685,9 @@ func segChangesDir(s segment) bool {
 
 // after is the state the commands after s run in, in s's shell.
 func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir bool) *shellState {
+	if s.arrayOf != "" && trackedVars[s.arrayOf] {
+		return st.withArray(s)
+	}
 	allAssign := len(s.tokens) > 0
 	for _, t := range s.tokens {
 		if !isAssignment(t) {
@@ -689,7 +702,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				if n == st {
 					n = st.clone()
 				}
-				n.vars[name] = v
+				n.vars[trackedName(name)] = v
 			}
 		}
 		return n
@@ -738,6 +751,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				if !trackedVars[nm] {
 					continue
 				}
+				nm = trackedName(nm)
 				if ok {
 					n.vars[nm] = v
 				}
@@ -752,13 +766,51 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 		case name == "unset":
 			n := out.clone()
 			for _, w := range args {
-				delete(n.vars, w)
-				delete(n.exported, w)
+				delete(n.vars, trackedName(w))
+				delete(n.exported, trackedName(w))
 			}
 			out = n
 		}
 	}
 	return out
+}
+
+// withArray is the state after a command whose words are elements of a
+// tracked array assignment (`fpath=(a b)`): the `NAME=` word before it set
+// the value empty, and each element is added in order, joined as the tied
+// scalar joins them. An element the line does not fix, or one holding the
+// separator, is kept as unknownText, so a search reaching it stops there; a
+// `+=` onto a value the line did not set is the account's value, unknown,
+// followed by the elements.
+func (st *shellState) withArray(s segment) *shellState {
+	name := trackedName(s.arrayOf)
+	elems := make([]string, 0, len(s.tokens))
+	for i := range s.tokens {
+		w, ok := fixedToken(s, i)
+		if !ok || strings.ContainsRune(w, ':') {
+			w = unknownText
+		}
+		elems = append(elems, w)
+	}
+	n := st.clone()
+	prev, set := n.vars[name]
+	switch {
+	case !set && s.arrayAppend:
+		prev = varVal{text: unknownText, ok: true}
+	case !set:
+		prev = varVal{ok: true}
+	case !prev.ok:
+		prev = varVal{text: unknownText, ok: true}
+	}
+	text := strings.Join(elems, ":")
+	switch {
+	case prev.text != "" && text != "":
+		text = prev.text + ":" + text
+	case prev.text != "":
+		text = prev.text
+	}
+	n.vars[name] = varVal{text: text, ok: true}
+	return n
 }
 
 // cdTarget is the state after a `cd`/`pushd` at site: its target, when it
@@ -874,7 +926,8 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			continue
 		}
 		name := strings.ToLower(path.Base(tok))
-		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") {
+		first, opaque, autoload := autoloadCall(s, a.idx, name)
+		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") && !autoload {
 			continue
 		}
 		// The bound holds before any lookup: a line naming thousands of
@@ -898,6 +951,10 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 					rc.note("abcd guard: `%s %s` names no file the shell can find, so there was nothing to read; if the shell reaches it, it refuses it.", tok, w)
 				}
 			}
+		case autoload:
+			ts, ss := autoloadTargets(rc, s, st, a.idx, first, opaque, env)
+			out = append(out, ts...)
+			sigs = append(sigs, ss...)
 		case strings.Contains(tok, "/"):
 			if p, ok := st.resolveToken(rc, s, a.idx); ok {
 				out = append(out, readTarget{path: p, shown: tok, kind: targetDirect, env: env, startupEnv: true})
@@ -905,6 +962,114 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 		}
 	}
 	return out, sigs
+}
+
+// autoloadCall reports whether the command at site marks functions to be
+// loaded from their files, as zsh's and ksh's `autoload` does, and so do
+// `functions -u` and `typeset -fu` (declare is typeset's other name): the
+// index of its first operand, and whether its operands are not plain names
+// (-m patterns, -w compiled files).
+func autoloadCall(s segment, site int, name string) (first int, opaque, ok bool) {
+	var f, u bool
+	switch name {
+	case "autoload":
+		f, u = true, true
+	case "functions":
+		f = true
+	case "typeset", "declare":
+	default:
+		return 0, false, false
+	}
+	i := site + 1
+	for ; i < len(s.tokens); i++ {
+		t := s.tokens[i]
+		if t == "--" {
+			i++
+			break
+		}
+		if len(t) < 2 || (t[0] != '-' && t[0] != '+') {
+			break
+		}
+		if isUnknown(t) || strings.ContainsRune(t, varMark) {
+			// An option the line does not fix may be any of them.
+			opaque = true
+			continue
+		}
+		for _, c := range t[1:] {
+			switch c {
+			case 'f':
+				f = true
+			case 'u':
+				u = true
+			case 'm', 'w':
+				opaque = true
+			}
+		}
+	}
+	return i, opaque, f && u
+}
+
+// autoloadTargets is the function file each operand of an autoload at site
+// loads. An operand with a slash is that file. A name is searched in the
+// FPATH the line set — the first directory holding it, as a compiled
+// `dir.zwc` or `dir/name.zwc` or as `dir/name` — and where the line leaves
+// FPATH as the account set it, the file is the account's own and stays
+// unseen, as its startup files do. Where the line set FPATH but does not fix
+// a name, or a directory searched before the file is found, what loads is
+// not a file the guard can read, and that blocks (iss-2610111600022820).
+func autoloadTargets(rc *readCtx, s segment, st *shellState, site, first int, opaque bool, env map[string]varVal) ([]readTarget, []payloadSignal) {
+	fp, lineSet := st.vars["FPATH"]
+	for i := 0; i < site && i < len(s.tokens); i++ {
+		if name, v, ok := assignment(s.tokens[i]); ok && trackedName(name) == "FPATH" {
+			fp, lineSet = v, true
+		}
+	}
+	unfixed := []payloadSignal{autoloadUnfixedSignal()}
+	var out []readTarget
+	for i := first; i < len(s.tokens); i++ {
+		w, fixed := fixedToken(s, i)
+		switch {
+		case fixed && strings.Contains(w, "/"):
+			if p, ok := st.resolveToken(rc, s, i); ok {
+				out = append(out, readTarget{path: p, shown: "the function file autoload loads (" + w + ")", kind: targetScript, sourced: true, env: env})
+			} else if lineSet {
+				return nil, unfixed
+			}
+			continue
+		case !lineSet:
+			continue // the account's own FPATH
+		case !fixed || opaque || !fp.ok:
+			return nil, unfixed
+		}
+		var dirs []string
+		if fp.text != "" {
+			dirs = strings.Split(fp.text, ":")
+		}
+		if len(dirs) > maxScriptTargets {
+			return nil, unfixed
+		}
+		for _, d := range dirs {
+			if d == "" || isUnknown(d) || strings.ContainsRune(d, varMark) {
+				return nil, unfixed
+			}
+			dir, ok := st.resolve(rc, d, strings.HasPrefix(d, "~"))
+			if !ok {
+				return nil, unfixed
+			}
+			p, found := "", false
+			for _, c := range []string{dir + ".zwc", filepath.Join(dir, w+".zwc"), filepath.Join(dir, w)} {
+				if fi, err := rc.files.stat(c, false); err == nil && fi.Mode().IsRegular() {
+					p, found = c, true
+					break
+				}
+			}
+			if found {
+				out = append(out, readTarget{path: p, shown: "the function file autoload " + w + " loads (" + p + ")", kind: targetScript, sourced: true, env: env})
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 // sourceIndex is the token index of a `source` at site's file operand, or -1.
@@ -1508,6 +1673,17 @@ func startupExpandedSignal(varName string) payloadSignal {
 		reason: "This command hands a shell " + varName + " holding a substitution or a variable, which the shell " +
 			"expands before it reads the file: a substitution there runs, and the file it names is not one the guard can read.",
 		successor: "Set " + varName + " to the startup file's fixed path, or source the file in the command string instead.",
+	}
+}
+
+// autoloadUnfixedSignal is the block for an autoload whose function file the
+// line does not fix: a name, or a directory searched before the file is found.
+func autoloadUnfixedSignal() payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command autoloads a function from an FPATH the line sets, but the line does not fix the name " +
+			"or a directory searched for it, so the file the shell loads and runs is not one the guard can read.",
+		successor: "Set FPATH (or fpath) to fixed directories and autoload a fixed name, or source the function file by its path.",
 	}
 }
 
