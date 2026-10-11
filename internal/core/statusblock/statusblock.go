@@ -29,6 +29,14 @@
 // returns each such intent to the list the gate places it in, and leaves a
 // head (criterion 3).
 //
+// A run started for an issue (`abcd build <iss-N>`, every drain lane) is looked
+// up in the issue ledger rather than the intent corpus: its rows carry the
+// issue's one-line summary marked as an issue (KindIssue). A lane leaves Now
+// once its pull request has merged or its branch is gone, though the state file
+// still shows it at its land stage until the loop's next step sees the merge
+// (iss-2610090824041378); the head still passes over its intent, as the pick
+// does over a run in progress.
+//
 // The package reads the state file through a LaneReader, and the peers through
 // a PeerReader, its caller supplies rather than importing the implement loop:
 // the loop's own imports reach the site renderer, which renders this block, so
@@ -42,11 +50,18 @@
 package statusblock
 
 import (
+	"errors"
 	"fmt"
+	"os/exec"
+	"path"
+	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -55,6 +70,10 @@ import (
 // `abcd build next` (itd-2609211116005482), the readiest first by the pick's
 // score and the oldest among equals.
 const OrderPick = "pick"
+
+// KindIssue marks a Now row whose run was started for an issue rather than an
+// intent (`abcd build <iss-N>`, every drain lane).
+const KindIssue = "issue"
 
 // Block is the three lists. Each is non-nil, so --json carries [] rather than
 // null for an empty one.
@@ -73,6 +92,9 @@ type Row struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Bucket string `json:"bucket"`
+	// Kind is KindIssue on the row of a run started for an issue, whose Bucket
+	// is then the ledger folder the issue sits in; empty on an intent's row.
+	Kind string `json:"kind,omitempty"`
 	// Target is the release a planned intent names as the one it must land by
 	// (`target_release`: `next` or vX.Y.Z, itd-2609212103572513 criterion 4),
 	// empty when it names none. A draft shows none: a target is a promise about
@@ -290,8 +312,16 @@ func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 				}
 				r.SpecID = judgedSpec(store, res)
 			}
+		} else if issueID(s.Intent) {
+			r = issueRow(repoRoot, s.Intent)
 		}
 		for _, lane := range s.Lanes {
+			// A lane whose pull request merged, or whose branch is gone, is no
+			// longer building, though the state file still shows it at its land
+			// stage until the loop's next step sees the merge.
+			if landed(repoRoot, lane) {
+				continue
+			}
 			lr := r
 			l := lane
 			l.InFlight = inFlight(repoRoot, store, r.SpecID, l.Branch)
@@ -334,6 +364,78 @@ func inFlight(repoRoot string, store spec.Store, specID, branch string) bool {
 	}
 	_, err := gitutil.ResolveCommit(repoRoot, "refs/heads/"+branch)
 	return err == nil
+}
+
+// stageLand is the lane stage that pushes the lane's branch and opens its
+// pull request: the one stage at which a branch on the default branch means
+// the pull request merged, rather than a branch freshly cut at the default tip.
+const stageLand = "land"
+
+// landed reports whether a lane has left the build though the state file still
+// shows it: its recorded branch is gone, or the lane is at its land stage and
+// its branch's tip is on the default branch as last fetched (the pull request
+// merged). It reads only local refs, never the forge. A lane with no branch
+// yet, and a lane git cannot answer for, have not landed.
+func landed(repoRoot string, l Lane) bool {
+	if l.Branch == "" || !gitutil.RefIsSafe(l.Branch) {
+		return false
+	}
+	tip, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+l.Branch+"^{commit}", "--")
+	if err != nil {
+		// rev-parse --verify --quiet exits 1, saying nothing, for a ref that
+		// names no commit; any other failure is git unable to answer.
+		var ee *exec.ExitError
+		return errors.As(err, &ee) && ee.ExitCode() == 1
+	}
+	if l.Stage != stageLand || !gitutil.IsFullSHA(tip) {
+		return false
+	}
+	def := gitutil.DefaultRef(repoRoot)
+	if def == "" {
+		return false
+	}
+	on, err := gitutil.IsAncestor(repoRoot, tip, def)
+	return err == nil && on
+}
+
+// issueID reports whether id names an issue record (iss-N).
+func issueID(id string) bool {
+	return strings.HasPrefix(id, "iss-")
+}
+
+// maxIssueTitle caps an issue row's summary, the cap the build gives an
+// issue lane's step title: an issue's first body line is often a paragraph.
+const maxIssueTitle = 120
+
+// issueRow is the row of a run started for an issue: the issue's one-line
+// summary (its first non-blank body line) marked as an issue, and the ledger
+// folder it sits in. An issue the ledger does not hold, or holds in a record
+// its reader refuses, is shown by its id: the board names the lane either way,
+// and the ledger's own gates report the record.
+func issueRow(repoRoot, id string) Row {
+	r := Row{ID: id, Kind: KindIssue, Title: KindIssue + ": " + id}
+	rel, ok, err := recordid.LookupOne(repoRoot, id)
+	if err != nil || !ok {
+		return r
+	}
+	status := path.Base(path.Dir(rel))
+	_, body, refusal, claims := issuerecord.Judge(filepath.Join(repoRoot, filepath.FromSlash(rel)), status)
+	if refusal != nil || !claims {
+		return r
+	}
+	r.Bucket = status
+	for _, line := range strings.Split(body, "\n") {
+		t := strings.Join(strings.Fields(line), " ")
+		if t == "" {
+			continue
+		}
+		if rs := []rune(t); len(rs) > maxIssueTitle {
+			t = string(rs[:maxIssueTitle]) + "…"
+		}
+		r.Title = KindIssue + ": " + t
+		break
+	}
+	return r
 }
 
 // sortByID orders intents oldest first by record id (intent.IDOlder, the
