@@ -478,8 +478,9 @@ func lifeboatPathFor(section Section) string {
 }
 
 // briefSectionDoc renders one grounded/partial brief section as a citation map:
-// its status, the tier and confidence, and the evidence it was grounded from.
-// It is deterministic and cites every source — never synthesised prose.
+// its status, the tier and confidence, why a partial is partial (the reason the
+// coverage report carries), and the evidence it was grounded from. It is
+// deterministic and cites every source — never synthesised prose.
 func briefSectionDoc(s SectionCoverage) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", s.Name)
@@ -488,6 +489,13 @@ func briefSectionDoc(s SectionCoverage) []byte {
 		fmt.Fprintf(&b, " (%s, %s confidence)", s.Tier, s.Confidence)
 	}
 	b.WriteString("\n\n")
+	// The reason names repository paths, which a hostile repository controls, so
+	// it is cleaned like every other untrusted field the lifeboat writes.
+	if s.Status == StatusPartial {
+		if r := mdInline(s.Reason); r != "" {
+			fmt.Fprintf(&b, "Why partial: %s\n\n", r)
+		}
+	}
 	if len(s.Evidence) > 0 {
 		b.WriteString("Grounded from:\n\n")
 		ev := append([]string(nil), s.Evidence...)

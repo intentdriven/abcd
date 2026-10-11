@@ -137,7 +137,7 @@ a section of its own.
 ├── _provenance.json                    # the lifeboat marker and re-pack gate key, written last
 ├── coverage.json                       # per-section status (grounded|partial|blank), evidence, what was searched
 ├── coverage.md                         # rendered
-├── brief/                              # the brief, section by section, grounded from the source
+├── brief/                              # the brief, section by section, grounded from the source; a partial one says why
 │   ├── 01-product/ … 06-delivery/
 │   └── glossary/
 ├── graveyard/                          # what the project tried and abandoned

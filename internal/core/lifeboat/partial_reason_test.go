@@ -108,3 +108,41 @@ func TestPartialIsBuiltOnlyThroughTheConstructor(t *testing.T) {
 		}
 	}
 }
+
+// TestPackSectionFileStatesWhyPartial carries the reason contract into the
+// pack: each partial section's brief file in the lifeboat says why it is
+// partial, as coverage.json and the rendered report do, and a grounded one
+// says nothing of the kind (iss-2610072347247487).
+func TestPackSectionFileStatesWhyPartial(t *testing.T) {
+	sawPartial := false
+	for name, dir := range partialReasonFixtures(t) {
+		cov, err := Probe(dir)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		lb, err := Plan(dir)
+		if err != nil {
+			t.Fatalf("%s: plan: %v", name, err)
+		}
+		for _, s := range cov.Sections {
+			leaf, ok := briefLeaf(s.Name)
+			if !ok || s.Status == StatusBlank {
+				continue
+			}
+			md := string(planFile(t, lb, "brief/"+leaf).Content)
+			if s.Status != StatusPartial {
+				if strings.Contains(md, "Why partial:") {
+					t.Errorf("%s: grounded %s's brief file states a partial reason:\n%s", name, s.Name, md)
+				}
+				continue
+			}
+			sawPartial = true
+			if want := "Why partial: " + mdInline(s.Reason); !strings.Contains(md, want) {
+				t.Errorf("%s: partial %s's brief file does not state its reason %q:\n%s", name, s.Name, s.Reason, md)
+			}
+		}
+	}
+	if !sawPartial {
+		t.Fatal("no fixture packed a partial section; the contract was not exercised")
+	}
+}
