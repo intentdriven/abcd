@@ -362,12 +362,17 @@ relative path resolves against the working directory, and against a `cd` or
 `pushd` earlier on the line only when its target exists and the script is
 chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
-is. A `cd` or `pushd` with a second operand, or with an option the reader does
-not know (other than `-L`, `-P`, `-q` and `-s`; bash's `-e` and `-@` and
-`pushd -n` included), leaves the directory unknown: zsh reads either as its
-substitution form, replacing the first word in the current directory's path
-with the second, where bash enters the operand or, for `pushd -n`, stays put,
-and the reader does not know which shell runs the line. A `..` in a path resolves the way the kernel opens it, against the directory
+is. bash and zsh read some `cd` and `pushd` forms differently, and the reader
+does not know which shell runs the line, so it reads the scripts after such a
+`cd` in the directory each reading enters, and blocks on a hazard in any of
+them. With bash's `-e` or `-@`, bash enters the operand; with `pushd -n`, bash
+stays put; with a second operand, bash refuses the `cd`. zsh reads a second
+operand, or an option word it does not take (`-e`, `-@`, `-n`), as its
+substitution form: it replaces the first occurrence of the first word in the
+current directory's path with the second and enters the result where that
+directory exists. Only where neither reading names a directory is the
+directory unknown, and an option neither shell takes (other than `-L`, `-P`,
+`-e`, `-@`, `-q`, `-s` and `pushd -n`) leaves it unknown too. A `..` in a path resolves the way the kernel opens it, against the directory
 a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
 link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
 zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while

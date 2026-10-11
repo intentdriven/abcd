@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -294,7 +295,8 @@ type scriptRun struct {
 // directory (dirOK false where it cannot say), a `cd` the next commands run
 // in only while each is chained after it with `&&`, the variables the line
 // set and which of them are exported, and the descriptors the line opened on
-// files.
+// files. A cd bash and zsh read differently can leave the shell in one of
+// several directories; the reading then carries one state for each.
 type shellState struct {
 	dir      string
 	dirOK    bool
@@ -304,8 +306,10 @@ type shellState struct {
 	fds      map[int]fdFile
 }
 
+// pendingCD is a cd the next commands run after: dirs is every directory it
+// can enter, one per reading of it that fixes one.
 type pendingCD struct {
-	dir   string
+	dirs  []string
 	chain int
 }
 
@@ -340,20 +344,26 @@ func (st *shellState) clone() *shellState {
 	return &n
 }
 
-// at is the state a segment runs in: a pending cd holds for a command chained
-// after it with `&&`, and once the chain breaks the directory is unknown for
-// the rest of the text — never the one the shell would be in had the cd failed.
-func (st *shellState) at(s segment) *shellState {
+// at is every state a segment can run in: a pending cd holds for a command
+// chained after it with `&&`, one state for each directory it can enter, and
+// once the chain breaks the directory is unknown for the rest of the text —
+// never the one the shell would be in had the cd failed.
+func (st *shellState) at(s segment) []*shellState {
 	if st.cd == nil {
-		return st
+		return []*shellState{st}
+	}
+	if s.chain == st.cd.chain && s.afterAnd {
+		out := make([]*shellState, 0, len(st.cd.dirs))
+		for _, d := range st.cd.dirs {
+			n := st.clone()
+			n.dir, n.dirOK = d, true
+			out = append(out, n)
+		}
+		return out
 	}
 	n := st.clone()
-	if s.chain == st.cd.chain && s.afterAnd {
-		n.dir, n.dirOK = st.cd.dir, true
-		return n
-	}
 	n.dir, n.dirOK, n.cd = "", false, nil
-	return n
+	return []*shellState{n}
 }
 
 // unresolved returns st with its directory unknown.
@@ -582,12 +592,37 @@ type writeTarget struct {
 	ok   bool
 }
 
-// scriptSeg is the reading's record of one segment: the state it runs in,
-// its place on the line, and the files it writes.
+// scriptSeg is the reading's record of one segment: every state it can run
+// in, its place on the line, and the files it writes.
 type scriptSeg struct {
-	state  *shellState
+	states []*shellState
 	order  []int
 	writes []writeTarget
+}
+
+// maxShellStates bounds the states one shell's commands are read in. A line
+// whose cds the shells read differently, one after another, multiplies them;
+// past the bound the directory is unknown and the guard warns through the
+// budget's signal.
+const maxShellStates = 16
+
+// distinctStates drops a state equal to an earlier one: two readings that
+// land in the same directory are read once.
+func distinctStates(sts []*shellState) []*shellState {
+	out := sts[:0:0]
+	for _, st := range sts {
+		dup := false
+		for _, o := range out {
+			if reflect.DeepEqual(o, st) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, st)
+		}
+	}
+	return out
 }
 
 // earlier reports whether a runs before b on the line: a command before
@@ -625,59 +660,91 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
 	}
 
-	// The state each segment runs in, walked in order within each shell: the
-	// text's own commands from top, and a string's commands from the state
-	// its carrier hands its child shell.
-	scopes := map[int]*shellState{}
+	// The states each segment runs in, walked in order within each shell:
+	// the text's own commands from top, and a string's commands from the
+	// states its carrier hands its child shell.
+	var signals []payloadSignal
+	scopes := map[int][]*shellState{}
 	for i, s := range segs {
-		st, ok := scopes[s.carrier]
+		sts, ok := scopes[s.carrier]
 		if !ok {
 			if s.carrier == 0 || s.carrier-1 >= i {
-				st = top
+				sts = []*shellState{top}
 			} else {
 				c := s.carrier - 1
-				cs := recs[c].state
 				site := lastSite(segs[c])
-				st = childState(cs, cs.env(segs[c], site))
-				cs.applyRedirects(rc, st.fds, segs[c].redirects)
-				if s.fromFixedOutput || isEvalCarrier(segs[c]) {
-					// Another reading of the carrier, or a string eval runs in
-					// the carrier's own shell.
-					st = cs.clone()
-					st.cd = nil
+				sts = nil
+				for _, cs := range recs[c].states {
+					st := childState(cs, cs.env(segs[c], site))
+					cs.applyRedirects(rc, st.fds, segs[c].redirects)
+					if s.fromFixedOutput || isEvalCarrier(segs[c]) {
+						// Another reading of the carrier, or a string eval runs
+						// in the carrier's own shell.
+						st = cs.clone()
+						st.cd = nil
+					}
+					sts = append(sts, st)
 				}
 			}
 		}
-		st = st.at(s)
-		recs[i].state = st
+		var here []*shellState
+		for _, st := range sts {
+			here = append(here, st.at(s)...)
+		}
+		here = distinctStates(here)
+		if len(here) > maxShellStates {
+			signals = append(signals, rc.budgetSignal()...)
+			here = []*shellState{here[0].unresolved()}
+		}
+		recs[i].states = here
 		if s.carrier > 0 && s.carrier-1 < i {
 			recs[i].order = append(append([]int(nil), recs[s.carrier-1].order...), i)
 		} else {
 			recs[i].order = []int{i}
 		}
-		scopes[s.carrier] = r.after(rc, st, s, dirChangeBelow[i])
+		next := make([]*shellState, len(here))
+		for j, st := range here {
+			next[j] = r.after(rc, st, s, dirChangeBelow[i])
+		}
+		scopes[s.carrier] = next
 	}
 
-	// The targets each segment points a shell at, and only then the writes:
-	// most lines run no script, and pay for nothing more.
+	// The targets each segment points a shell at, in every state it can run
+	// in, and only then the writes: most lines run no script, and pay for
+	// nothing more.
 	type pending struct {
 		seg int
+		st  *shellState
 		t   readTarget
 	}
 	var targets []pending
-	var signals []payloadSignal
 	for i, s := range segs {
-		ts, sigs := r.targetsOf(rc, s, recs[i].state)
-		signals = append(signals, sigs...)
-		for _, t := range ts {
-			targets = append(targets, pending{seg: i, t: t})
+		var seen []readTarget
+		var raised []payloadSignal
+		for _, st := range recs[i].states {
+			ts, sigs := r.targetsOf(rc, s, st)
+			for _, sig := range sigs {
+				if !containsSignal(raised, sig) {
+					raised = append(raised, sig)
+				}
+			}
+			for _, t := range ts {
+				if containsTarget(seen, t) {
+					continue
+				}
+				seen = append(seen, t)
+				targets = append(targets, pending{seg: i, st: st, t: t})
+			}
 		}
+		signals = append(signals, raised...)
 	}
 	if len(targets) == 0 {
 		return signals
 	}
 	for i, s := range segs {
-		recs[i].writes = writesOf(rc, s, recs[i].state)
+		for _, st := range recs[i].states {
+			recs[i].writes = append(recs[i].writes, writesOf(rc, s, st)...)
+		}
 	}
 	for _, p := range targets {
 		if rc.nTargets >= maxScriptTargets {
@@ -693,9 +760,31 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				before = append(before, recs[j].writes...)
 			}
 		}
-		signals = append(signals, r.readTarget(rc, segs[p.seg], recs[p.seg].state, p.t, before)...)
+		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before)...)
 	}
 	return signals
+}
+
+// containsSignal reports whether sigs holds sig, so a verdict two states of
+// one segment raise alike is reported once.
+func containsSignal(sigs []payloadSignal, sig payloadSignal) bool {
+	for _, o := range sigs {
+		if reflect.DeepEqual(o, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsTarget reports whether ts holds t, so a file two states of one
+// segment name alike is read once.
+func containsTarget(ts []readTarget, t readTarget) bool {
+	for _, o := range ts {
+		if reflect.DeepEqual(o, t) {
+			return true
+		}
+	}
+	return false
 }
 
 // lastSite is the last place the segment's command can sit.
@@ -856,47 +945,76 @@ func (st *shellState) withArray(s segment) *shellState {
 	return n
 }
 
-// cdTarget is the state after a `cd`/`pushd` at site: its target, when it
-// exists as a directory now, holds for the commands chained after it with
-// `&&`; any other cd leaves the directory unknown.
+// cdTarget is the state after a `cd`/`pushd` at site: every directory a
+// reading of it enters (bash's and zsh's, cdOperand), where it exists as a
+// directory now, holds for the commands chained after it with `&&`, and the
+// scripts they name are read in each; a cd no reading fixes a directory for
+// leaves the directory unknown.
 func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
-	i, physical, ok := cdOperand(s, site)
 	n := st.unresolved()
-	if !ok {
-		return n
-	}
-	if c := cdpathLookup(rc, st, s, site); c.searches {
-		// The one directory the search can enter, or not one the guard can
-		// name (targetsOf blocks it).
-		if c.dir != "" {
-			n.cd = &pendingCD{dir: c.dir, chain: s.chain}
+	c := cdOperand(s, site)
+	var dirs []string
+	add := func(d string, ok bool) {
+		if ok && d != "" && !containsString(dirs, d) {
+			dirs = append(dirs, d)
 		}
-		return n
 	}
-	if i < len(s.tokens) {
-		if w, fixed := fixedToken(s, i); fixed && w != "-" && !strings.HasPrefix(w, "+") {
-			if target, ok := st.cdLands(rc, w, strings.HasPrefix(w, "~"), physical); ok {
-				n.cd = &pendingCD{dir: target, chain: s.chain}
-			}
+	for _, e := range c.enters {
+		add(st.cdEnters(rc, s, site, e))
+	}
+	if c.stays {
+		add(st.dir, st.dirOK)
+	}
+	if c.subst != nil {
+		add(st.cdSubstitutes(rc, s, *c.subst))
+	}
+	if len(dirs) > 0 {
+		n.cd = &pendingCD{dirs: dirs, chain: s.chain}
+	}
+	return n
+}
+
+// cdEnters is the directory a cd reading e enters by name: the one its
+// CDPATH search can enter (targetsOf blocks one that is not one the guard can
+// name), the operand, or HOME where there is none.
+func (st *shellState) cdEnters(rc *readCtx, s segment, site int, e cdEnter) (string, bool) {
+	if c := cdpathLookup(rc, st, s, site, e); c.searches {
+		return c.dir, c.dir != ""
+	}
+	if e.i < len(s.tokens) {
+		w, fixed := fixedToken(s, e.i)
+		if !fixed || w == "-" || strings.HasPrefix(w, "+") {
+			return "", false
 		}
-		return n
+		return st.cdLands(rc, w, strings.HasPrefix(w, "~"), e.physical)
 	}
 	target, ok := st.home(rc)
 	if !ok || target == "" {
-		return n
+		return "", false
 	}
 	if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
-		return n
+		return "", false
 	}
-	if physical {
+	if e.physical {
 		real, err := filepath.EvalSymlinks(target)
 		if err != nil {
-			return n
+			return "", false
 		}
 		target = real
 	}
-	n.cd = &pendingCD{dir: filepath.Clean(target), chain: s.chain}
-	return n
+	return filepath.Clean(target), true
+}
+
+// cdSubstitutes is the directory zsh's substitution form enters: the current
+// directory's path with the first occurrence of one word replaced by the
+// other, where that names a directory.
+func (st *shellState) cdSubstitutes(rc *readCtx, s segment, c cdSubst) (string, bool) {
+	from, ok1 := fixedToken(s, c.from)
+	to, ok2 := fixedToken(s, c.to)
+	if !ok1 || !ok2 || from == "" || !st.dirOK || !strings.Contains(st.dir, from) {
+		return "", false
+	}
+	return st.cdLands(rc, strings.Replace(st.dir, from, to, 1), false, c.physical)
 }
 
 // cdLands is the directory a `cd` to word enters, or ok false where it names
@@ -932,19 +1050,48 @@ func (st *shellState) cdLands(rc *readCtx, word string, tilde, physical bool) (s
 	return filepath.Clean(target), true
 }
 
-// cdOperand is the index of the operand of the `cd`/`pushd` at site, past
-// its options, and whether they ask for the physical directory (`-P`, the
-// last of `-L` and `-P` deciding). zsh's -q and -s are options too. ok is
-// false where the directory the cd enters is not one the reader can name
-// without knowing which shell runs it, and the reader never knows: zsh reads
-// a second operand, or an option word it does not take (bash's -e and -@,
-// pushd's -n), as the substitution form, replacing the first word in the
-// current directory's path with the second, where bash enters the operand or,
-// for pushd -n, stays put. Any other word starting with `-` may be an option
-// that changes what the cd does, so it too leaves the operand unfixed rather
-// than read as a directory.
-func cdOperand(s segment, site int) (i int, physical, ok bool) {
-	i = site + 1
+// cdEnter is a reading of a `cd`/`pushd` that enters the operand at i, or
+// HOME where i is past the last word, physically or logically.
+type cdEnter struct {
+	i        int
+	physical bool
+}
+
+// cdSubst is zsh's substitution form of a `cd`/`pushd`: the word at from in
+// the current directory's path replaced by the word at to.
+type cdSubst struct {
+	from, to int
+	physical bool
+}
+
+// cdReadings is what a `cd`/`pushd` does in bash and in zsh, which read some
+// forms differently; the guard does not know which shell runs the line, so it
+// takes every reading. enters are the readings that enter a directory by
+// name, stays is bash's pushd -n, which stays put, and subst is zsh's
+// substitution form. None of them is set where no reading is one the reader
+// can name.
+type cdReadings struct {
+	enters []cdEnter
+	stays  bool
+	subst  *cdSubst
+}
+
+// cdOperand reads the options and operands of the `cd`/`pushd` at site the
+// way each shell does. bash takes -L, -P (the last of the two deciding), -e
+// and -@, pushd -n too, refuses any other option and a second operand, and
+// enters its operand, or stays put for pushd -n. zsh takes -L, -P, -q and -s;
+// at the first word it does not take as an option its operands start, and
+// two operands are the substitution form, one is the directory entered, and
+// more are refused. A word starting with `-` neither shell's letters spell
+// may be an option that changes what the cd does, so no reading is taken.
+func cdOperand(s segment, site int) cdReadings {
+	bashLetters := "LPe@"
+	if strings.ToLower(path.Base(s.tokens[site])) == "pushd" {
+		bashLetters += "n"
+	}
+	bashOK, stays, bashPhysical, zshPhysical := true, false, false, false
+	zshFirst := -1
+	i := site + 1
 	for ; i < len(s.tokens); i++ {
 		t := s.tokens[i]
 		if t == "--" {
@@ -954,22 +1101,48 @@ func cdOperand(s segment, site int) (i int, physical, ok bool) {
 		if len(t) < 2 || t[0] != '-' {
 			break
 		}
-		if strings.Trim(t[1:], "LPqs") != "" {
-			return i, false, false
+		if strings.Trim(t[1:], "LPe@qsn") != "" {
+			return cdReadings{}
+		}
+		if strings.Trim(t[1:], bashLetters) != "" {
+			bashOK = false
+		}
+		zshOption := zshFirst < 0 && strings.Trim(t[1:], "LPqs") == ""
+		if zshFirst < 0 && !zshOption {
+			zshFirst = i
 		}
 		for _, c := range t[1:] {
 			switch c {
-			case 'L':
-				physical = false
-			case 'P':
-				physical = true
+			case 'L', 'P':
+				bashPhysical = c == 'P'
+				if zshOption {
+					zshPhysical = c == 'P'
+				}
+			case 'n':
+				stays = true
 			}
 		}
 	}
-	if i+1 < len(s.tokens) {
-		return i, false, false
+	var r cdReadings
+	if bashOK && len(s.tokens)-i <= 1 {
+		if stays {
+			r.stays = true
+		} else {
+			r.enters = append(r.enters, cdEnter{i: i, physical: bashPhysical})
+		}
 	}
-	return i, physical, true
+	if zshFirst < 0 {
+		zshFirst = i
+	}
+	switch len(s.tokens) - zshFirst {
+	case 0, 1:
+		if e := (cdEnter{i: zshFirst, physical: zshPhysical}); len(r.enters) == 0 || r.enters[0] != e {
+			r.enters = append(r.enters, e)
+		}
+	case 2:
+		r.subst = &cdSubst{from: zshFirst, to: zshFirst + 1, physical: zshPhysical}
+	}
+	return r
 }
 
 // cdpathSearch is what the CDPATH search of a `cd`/`pushd` comes to.
@@ -995,14 +1168,10 @@ type cdpathSearch struct {
 // unless `.` is an entry. Where exactly one candidate exists both enter it,
 // and that is dir; none, two, more entries than maxScriptTargets, or an entry
 // or a current directory the line does not fix, leave dir empty, and the cd
-// blocks (iss-2610111600031244, iss-2610111749083184).
-func cdpathLookup(rc *readCtx, st *shellState, s segment, site int) cdpathSearch {
-	i, physical, ok := cdOperand(s, site)
-	if !ok {
-		// A second operand, or an option the reader does not know, leaves
-		// the directory unknown whatever CDPATH holds.
-		return cdpathSearch{}
-	}
+// blocks (iss-2610111600031244, iss-2610111749083184). e is the reading of
+// the cd that enters its operand by name (cdOperand).
+func cdpathLookup(rc *readCtx, st *shellState, s segment, site int, e cdEnter) cdpathSearch {
+	i, physical := e.i, e.physical
 	w, fixed := fixedToken(s, i)
 	if !fixed {
 		// No operand goes HOME; one the line does not fix leaves the
@@ -1145,8 +1314,15 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 		}
 		name := strings.ToLower(path.Base(tok))
 		if name == "cd" || name == "pushd" {
-			if c := cdpathLookup(rc, st, s, a.idx); c.searches && c.dir == "" {
-				sigs = append(sigs, cdpathSignal(c.fromEnv))
+			blocked := false
+			for _, e := range cdOperand(s, a.idx).enters {
+				if c := cdpathLookup(rc, st, s, a.idx, e); c.searches && c.dir == "" {
+					sigs = append(sigs, cdpathSignal(c.fromEnv))
+					blocked = true
+					break
+				}
+			}
+			if blocked {
 				continue
 			}
 		}

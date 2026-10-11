@@ -3,6 +3,7 @@ package guard
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -195,11 +196,10 @@ func TestCDPATHBlockNamesWhereCDPATHCameFrom(t *testing.T) {
 	}
 }
 
-// TestCdOptionsBeforeTheOperand: zsh's `cd -q` and `-s` are options; any
-// other word starting with `-` that the reader does not know, pushd's `-n`
-// included (zsh reads it as the substitution form), leaves the operand
-// unfixed, never read as a directory name (iss-2610111749093946,
-// iss-2610111809142536).
+// TestCdOptionsBeforeTheOperand: zsh's `cd -q` and `-s` are options, and
+// pushd's `-n` stays put in bash; a word starting with `-` that the reader
+// does not know leaves the operand unfixed, never read as a directory name
+// (iss-2610111749093946, iss-2610111809142536).
 func TestCdOptionsBeforeTheOperand(t *testing.T) {
 	dir := scriptTree(t, map[string]string{
 		"s.sh":           hazardLine,
@@ -216,11 +216,12 @@ func TestCdOptionsBeforeTheOperand(t *testing.T) {
 		{`cd {d} && cd -qP sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`cd {d} && cd -q -- sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`cd {d}/empty && CDPATH={d}/cdpok cd -q sub && bash s.sh`, VerdictAllow, ""},
-		// pushd -n stays put in bash and is the substitution form in zsh:
-		// neither the directory beside it nor its operand is read.
-		{`cd {d}/stay && pushd -n sub && bash s.sh`, VerdictAllow, ""},
-		{`cd {d}/stay && CDPATH={d}/cdpok pushd -n sub && bash s.sh`, VerdictAllow, ""},
-		// An option the reader does not know: the directory is unknown, and
+		// pushd -n stays put in bash, so the script beside it is read; zsh's
+		// substitution form finds no `-n` in the path and enters nothing.
+		{`cd {d}/stay && pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/stay && CDPATH={d}/cdpok pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		// An option neither shell takes, or one only zsh would substitute
+		// where the path holds no such word: the directory is unknown, and
 		// the word is never searched for or entered.
 		{`cd {d} && cd -x && bash s.sh`, VerdictAllow, ""},
 		{`cd {d} && cd -n sub && bash s.sh`, VerdictAllow, ""},
@@ -254,9 +255,10 @@ func TestSourcePathPrefixIsSearched(t *testing.T) {
 	})
 }
 
-// dirAfter is the directory the reader takes the last command of line to run
-// in, started in dir, and whether it fixes one at all.
-func dirAfter(t *testing.T, dir, line string) (string, bool) {
+// dirsAfter is every directory the reader takes the last command of line to
+// run in, started in dir, relative to dir and sorted; empty where it fixes
+// none.
+func dirsAfter(t *testing.T, dir, line string) []string {
 	t.Helper()
 	segs, err := tokenize(line)
 	if err != nil || len(segs) == 0 {
@@ -264,65 +266,118 @@ func dirAfter(t *testing.T, dir, line string) (string, bool) {
 	}
 	rc := newReadCtx(NewFiles(dir))
 	r := Defaults()
-	st := &shellState{dir: dir, dirOK: true, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
+	states := []*shellState{{dir: dir, dirOK: true, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}}
 	for i, s := range segs {
-		st = st.at(s)
+		var next []*shellState
+		for _, st := range states {
+			next = append(next, st.at(s)...)
+		}
+		states = next
 		if i == len(segs)-1 {
 			break
 		}
-		st = r.after(rc, st, s, false)
-	}
-	return st.dir, st.dirOK
-}
-
-// TestCdSubstitutionFormLeavesTheDirectoryUnknown: zsh reads a cd or pushd
-// with two operands, or with an option word it does not take, as the
-// substitution form: it replaces the first word in the current directory's
-// path with the second and enters the result. bash enters the operand, or
-// stays put for pushd -n. The reader does not know which shell runs the line,
-// so the directory after it is unknown, never the one either reading names
-// (iss-2610111809142536).
-func TestCdSubstitutionFormLeavesTheDirectoryUnknown(t *testing.T) {
-	dir := scriptTree(t, map[string]string{
-		"with-n/dir/s.sh":        "echo benign",
-		"with-n/dir/sub/s.sh":    "echo benign",
-		"with-n/dir/with-n/s.sh": "echo benign",
-		"withsub/dir/s.sh":       hazardLine,
-		"with-e/dir/sub/s.sh":    "echo benign",
-		"with-@/dir/sub/s.sh":    "echo benign",
-	})
-	for _, line := range []string{
-		`cd {d}/with-n/dir && pushd -n sub && bash s.sh`,
-		`cd {d}/with-n/dir && pushd -n -- sub && bash s.sh`,
-		`cd {d}/with-n/dir && cd with-n withsub && bash s.sh`,
-		`cd {d}/with-n/dir && cd -q with-n withsub && bash s.sh`,
-		`cd {d}/with-n/dir && pushd with-n withsub && bash s.sh`,
-		`cd {d}/with-e/dir && cd -e sub && bash s.sh`,
-		`cd {d}/with-@/dir && cd -@ sub && bash s.sh`,
-		`cd {d}/with-e/dir && cd -eP sub && bash s.sh`,
-		`cd {d}/with-n/dir && CDPATH={d}/with-n/dir pushd -n sub && bash s.sh`,
-	} {
-		cmd := strings.ReplaceAll(line, "{d}", dir)
-		if got, ok := dirAfter(t, dir, cmd); ok {
-			t.Errorf("%s\n  runs its last command in %s; want the directory unknown", line, got)
+		for j, st := range states {
+			states[j] = r.after(rc, st, s, false)
 		}
 	}
-	// The forms both shells read alike still fix the directory.
+	var dirs []string
+	for _, st := range states {
+		if st.dirOK {
+			rel, err := filepath.Rel(dir, st.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dirs = append(dirs, filepath.ToSlash(rel))
+		}
+	}
+	sort.Strings(dirs)
+	return dirs
+}
+
+// TestCdReadsEveryShellsDirectory: zsh reads a cd or pushd with two
+// operands, or with an option word it does not take, as the substitution
+// form: it replaces the first occurrence of the first word in the current
+// directory's path with the second and enters the result. bash enters the
+// operand instead, stays put for pushd -n, and refuses a second operand. The
+// reader does not know which shell runs the line, so it reads the scripts
+// after such a cd in every directory either reading fixes, and leaves the
+// directory unknown only where neither fixes one (iss-2610111809142536).
+func TestCdReadsEveryShellsDirectory(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"with-n/dir/s.sh":     "echo benign",
+		"with-n/dir/sub/s.sh": "echo benign",
+		"withsub/dir/s.sh":    "echo benign",
+		"with-e/dir/sub/s.sh": "echo benign",
+		"with-@/dir/sub/s.sh": "echo benign",
+	})
+	if strings.Contains(dir, "-n") || strings.Contains(dir, "-e") || strings.Contains(dir, "-@") {
+		t.Skipf("the temporary directory %s holds a word the cases substitute", dir)
+	}
 	for line, want := range map[string]string{
+		// pushd -n: bash stays, zsh swaps `-n` in the path for `sub`.
+		`cd {d}/with-n/dir && pushd -n sub && bash s.sh`:                       "with-n/dir withsub/dir",
+		`cd {d}/with-n/dir && CDPATH={d}/with-n/dir pushd -n sub && bash s.sh`: "with-n/dir withsub/dir",
+		// zsh takes `--` after `-n` as a third operand, and refuses it.
+		`cd {d}/with-n/dir && pushd -n -- sub && bash s.sh`: "with-n/dir",
+		// Two operands: bash refuses them, zsh substitutes.
+		`cd {d}/with-n/dir && cd with-n withsub && bash s.sh`:    "withsub/dir",
+		`cd {d}/with-n/dir && cd -q with-n withsub && bash s.sh`: "withsub/dir",
+		`cd {d}/with-n/dir && pushd with-n withsub && bash s.sh`: "withsub/dir",
+		// bash's -e and -@ enter the operand; zsh substitutes the option word.
+		`cd {d}/with-e/dir && cd -e sub && bash s.sh`:  "with-e/dir/sub withsub/dir",
+		`cd {d}/with-@/dir && cd -@ sub && bash s.sh`:  "with-@/dir/sub withsub/dir",
+		`cd {d}/with-e/dir && cd -eP sub && bash s.sh`: "with-e/dir/sub",
+		// The forms both shells read alike fix one directory.
 		`cd {d}/with-n/dir && cd sub && bash s.sh`:       "with-n/dir/sub",
 		`cd {d}/with-n/dir && cd -q sub && bash s.sh`:    "with-n/dir/sub",
 		`cd {d}/with-n/dir && cd -P -- sub && bash s.sh`: "with-n/dir/sub",
 		`cd {d}/with-n/dir && pushd sub && bash s.sh`:    "with-n/dir/sub",
+		// Neither reading fixes a directory: it is unknown.
+		`cd {d}/with-n/dir && cd nowhere withsub && bash s.sh`: "",
+		`cd {d}/with-n/dir && cd -e nowhere && bash s.sh`:      "",
+		`cd {d}/with-n/dir && cd -- a b && bash s.sh`:          "",
 	} {
 		cmd := strings.ReplaceAll(line, "{d}", dir)
-		if got, ok := dirAfter(t, dir, cmd); !ok || got != filepath.Join(dir, want) {
-			t.Errorf("%s\n  runs its last command in %q (fixed %v); want %s", line, got, ok, want)
+		if got := strings.Join(dirsAfter(t, dir, cmd), " "); got != want {
+			t.Errorf("%s\n  runs its last command in %q; want %q", line, got, want)
 		}
 	}
-	// Through the whole check: the benign file is never read as the one the
-	// line runs, and the hazard zsh would run is not claimed read either.
+	// Through the whole check: a benign file in every directory either
+	// reading fixes allows.
 	runScriptCases(t, dir, []scriptCase{
 		{`cd {d}/with-n/dir && pushd -n sub && bash s.sh`, VerdictAllow, ""},
-		{`cd {d}/withsub/dir && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/with-e/dir && cd -e sub && bash s.sh`, VerdictAllow, ""},
 	})
+}
+
+// TestCdHazardInEitherReadingBlocks: a hazard in the directory either
+// shell's reading of the cd enters blocks the line (iss-2610111809142536).
+func TestCdHazardInEitherReadingBlocks(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"zsh's reading": {
+			"with-n/dir/s.sh":     "echo benign",
+			"with-n/dir/sub/s.sh": "echo benign",
+			"withsub/dir/s.sh":    hazardLine,
+			"base/s.sh":           "echo benign",
+			"base/sub/s.sh":       hazardLine,
+		},
+		"bash's reading": {
+			"with-n/dir/s.sh":     hazardLine,
+			"with-n/dir/sub/s.sh": "echo benign",
+			"withsub/dir/s.sh":    "echo benign",
+			"base/s.sh":           "echo benign",
+			"base/sub/s.sh":       hazardLine,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := scriptTree(t, files)
+			if strings.Contains(dir, "-n") || strings.Contains(dir, "-e") {
+				t.Skipf("the temporary directory %s holds a word the cases substitute", dir)
+			}
+			runScriptCases(t, dir, []scriptCase{
+				{`cd {d}/with-n/dir && pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+				{`cd {d}/base && cd -e sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+			})
+		})
+	}
 }
