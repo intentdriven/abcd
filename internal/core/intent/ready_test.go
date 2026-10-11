@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
 const (
@@ -880,6 +881,97 @@ func TestReadyRemediesNameTheProductThinker(t *testing.T) {
 	} {
 		if !strings.Contains(remedy, "the product thinker") {
 			t.Errorf("remedy %q does not name the product thinker", remedy)
+		}
+	}
+}
+
+// TestReadyWithQuestionsAddsTheBuildsOpenQuestionsCheck is
+// iss-2610101610446956: the verb's verdict is Ready's eight rows and then the
+// build's open-questions row, gating, so a record READY by the eight that
+// still asks a question is NOT READY, and the row says what StartChecksIn's
+// open_questions row says (the one statement of the check).
+func TestReadyWithQuestionsAddsTheBuildsOpenQuestionsCheck(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
+	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
+
+	green, err := ReadyWithQuestions(root, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !green.Ready || len(green.Checks) != 9 || green.Checks[8].Name != CheckOpenQuestions || !green.Checks[8].OK {
+		t.Fatalf("a record asking nothing stays READY with a passing ninth open_questions row: %+v", green)
+	}
+
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
+		plannedLinked("itd-10", "alpha", "spc-1")+"\n## Open Questions\n\n- Which runner?\n")
+	plain, err := Ready(root, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plain.Ready {
+		t.Fatalf("precondition: Ready's eight rows pass the record: %+v", plain.Checks)
+	}
+	res, err := ReadyWithQuestions(root, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ready {
+		t.Fatal("an open question must withhold READY: the build refuses the record at check (open_questions)")
+	}
+	oq := checkByName(t, res, CheckOpenQuestions)
+	if oq.OK || oq.Advisory || !strings.Contains(oq.Detail, "Which runner?") {
+		t.Fatalf("open_questions = %+v, want a gating failure naming the question", oq)
+	}
+	corpus, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := spec.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := StartChecksIn(root, corpus, store, plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := start.Rows[0]; b.Name != StartCheckOpenQuestions || b.OK != oq.OK || b.Detail != oq.Detail || b.Remedy != oq.Remedy {
+		t.Fatalf("the verb's row %+v disagrees with the build's %+v", oq, b)
+	}
+}
+
+// TestReadyWithQuestionsExemptsBucketsNeverBuilt: a shipped, superseded or
+// discipline record is never built, so its leftover questions name no work;
+// the row reports not applicable and the bucket row carries the verdict.
+func TestReadyWithQuestionsExemptsBucketsNeverBuilt(t *testing.T) {
+	for _, dir := range []string{shippedDir, supersededDir, disciplinesDir} {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, dir+"/itd-10-alpha.md",
+				plannedLinked("itd-10", "alpha", "spc-1")+"\n## Open Questions\n\n- Which runner?\n")
+			res, err := ReadyWithQuestions(root, "itd-10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oq := checkByName(t, res, CheckOpenQuestions)
+			if !oq.OK || oq.Remedy != "" || !strings.Contains(oq.Detail, "not applicable") {
+				t.Fatalf("open_questions = %+v, want not applicable", oq)
+			}
+			if res.Ready {
+				t.Fatal("the bucket row still withholds READY")
+			}
+		})
+	}
+}
+
+// TestReadyWithQuestionsFaultsAsReady: a malformed or unknown id is Ready's
+// structural fault, unchanged.
+func TestReadyWithQuestionsFaultsAsReady(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+	for _, id := range []string{"itd-999", "bogus"} {
+		if _, err := ReadyWithQuestions(root, id); err == nil {
+			t.Fatalf("%s: want a fault", id)
 		}
 	}
 }
