@@ -160,6 +160,22 @@
       "evidence": "retention is computed only by the preview (internal/core/launch/dryrun.go:139, called from cli.go:416) and by launch.Ship (ship.go:88), which 'has no production caller' (ship.go:56-57); the ship verb's path is launch.RenderPayload (internal/surface/cli/ship.go:140) and PrecheckPayload's gate list carries no retention (render.go:235-247)",
       "commit": "9d57917c82820f07ba4ed54e242c9fc63930b73c",
       "applied": "2026-10-05T00:04:19Z"
+    },
+    {
+      "chapter": "05-intent.md",
+      "sentence": "**Bare-command-as-help is a common abcd convention, not a universal one** — many commands in the surface set (the enumeration lives in the [surfaces README](README.md)) show a status board when invoked without args, while others print a plain block instead: `version` renders a version/install/vintage/staleness block, and the `docs`/`history`/`disembark` cobra parents print help or usage with no board. Suggested-next-actions is a design target rather than a shipped guarantee on every bare invocation. It provides discoverability without forcing the user to remember subcommand names.",
+      "replacement": "**Bare-command-as-help is a common abcd convention, not a universal one** — many commands in the surface set (the enumeration lives in the [surfaces README](README.md)) show a status board when invoked without args, while others print a plain block instead: the root's version flag renders a version/install/vintage/staleness block, and the `docs`/`history`/`disembark` cobra parents print help or usage with no board. Suggested-next-actions is a design target rather than a shipped guarantee on every bare invocation. It provides discoverability without forcing the user to remember subcommand names.",
+      "evidence": "internal/surface/cli/staleusage.go:100",
+      "commit": "7def7acb298da9e5adbe41af45d801ca76be9294",
+      "applied": "2026-10-11T16:01:16Z"
+    },
+    {
+      "chapter": "08-abcd.md",
+      "sentence": "does: `consult` and `ingest` run as host-side markdown over the sources corpus,",
+      "replacement": "does: the library page's consulting and registering steps run as host-side markdown over the sources corpus,",
+      "evidence": "internal/surface/cli/source.go:642",
+      "commit": "7def7acb298da9e5adbe41af45d801ca76be9294",
+      "applied": "2026-10-11T16:01:16Z"
     }
   ]
 }
