@@ -33,12 +33,28 @@
 // A failure never weakens the guard below the installed release: a build
 // that is missing, running, failed, or not runnable leaves Resolve naming no
 // binary, the hook runs the installed release, and a note says why on stderr.
+// The PreToolUse shim adds the run-time half: a dogfood guard that answers
+// exit 1, which is a warn or "NOT CHECKED", or that dies, hands the same
+// command to the installed release, whose deny stands.
+//
+// The build is the reviewed commit or nothing: the export is checked blob by
+// blob against the commit's tree (verifyExport), because `git archive`
+// honours repository-local attributes anyone who can commit in the checkout
+// can write. What this does not defend is the account itself: the store, like
+// the plugin root the installed release lives in, is protected by being this
+// uid's alone, and a process running as that uid can replace either binary or
+// move refs/remotes/origin/* by hand. The rung is no weaker there than the
+// installed release already is.
 package dogfood
 
 import (
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"os/exec"
@@ -333,8 +349,9 @@ func building(storeAbs string) bool {
 // Build makes the build of c.Commit, unless one is already there, and returns
 // its path. It holds the store's lock for the whole export and build, so two
 // hooks firing at once cannot race it: the second gets ErrBuildRunning at
-// once. The source is a clean export of the commit (`git archive`) into a
-// fresh directory under the store, never the working tree, and the finished
+// once. The source is a clean export of the commit (`git archive`, checked
+// against the commit's tree) into a fresh directory under the store, never the
+// working tree, and the finished
 // binary is moved into place by one rename, so a reader sees no build or a
 // whole one. A failure leaves a marker beside the log that Resolve reads.
 func Build(home string, c Checkout) (string, error) {
@@ -394,6 +411,9 @@ func build(storeAbs string, c Checkout) (string, error) {
 	if err := export(ctx, c.Repo, c.Commit, src, logf); err != nil {
 		return "", fmt.Errorf("exporting %s: %w", short(c.Commit), err)
 	}
+	if err := verifyExport(c.Repo, c.Commit, src); err != nil {
+		return "", fmt.Errorf("exporting %s: %w", short(c.Commit), err)
+	}
 	if err := goBuild(ctx, src, filepath.Join(out, BinaryName), logf); err != nil {
 		return "", fmt.Errorf("building %s: %w", short(c.Commit), err)
 	}
@@ -406,9 +426,16 @@ func build(storeAbs string, c Checkout) (string, error) {
 }
 
 // export writes the tree of commit, read from the repository at repo, into
-// dst: `git archive` piped into `tar`, under the isolated git environment.
+// dst: `git archive` piped into `tar`, under the isolated git environment,
+// with every content filter the repository configures blanked
+// (gitutil.FilterOverrides), so no program the repository names runs.
 func export(ctx context.Context, repo, commit, dst string, log io.Writer) error {
-	git := exec.CommandContext(ctx, "git", append(gitutil.ExecPins(), "-C", repo, "archive", "--format=tar", commit)...)
+	filters, err := gitutil.FilterOverrides(repo)
+	if err != nil {
+		return fmt.Errorf("reading the repository's content filters: %w", err)
+	}
+	args := append(append(gitutil.ExecPins(), filters...), "-C", repo, "archive", "--format=tar", commit)
+	git := exec.CommandContext(ctx, "git", args...)
 	git.Env = gitutil.IsolatedEnv()
 	git.Stderr = log
 	tar := exec.CommandContext(ctx, "tar", "-x", "-f", "-", "-C", dst)
@@ -430,6 +457,114 @@ func export(ctx context.Context, repo, commit, dst string, log io.Writer) error 
 		return fmt.Errorf("tar: %w", terr)
 	}
 	return nil
+}
+
+// maxTreeListing caps `git ls-tree -r` of the commit being verified.
+const maxTreeListing = 64 << 20
+
+// verifyExport proves the export in dst is the tree of commit and nothing
+// else: every blob of the commit is present with the content the commit
+// records (its object id recomputed from the exported bytes, a symlink's from
+// its target), and nothing is present that the commit does not hold. `git
+// archive` honours attributes, and repository-local ones
+// (.git/info/attributes, core.attributesFile) are writable by anyone who can
+// commit in the checkout: export-ignore drops a file, export-subst and eol
+// rewrite one. The reviewed commit is what is built, or nothing is.
+func verifyExport(repo, commit, dst string) error {
+	newHash, ok := objectHash(commit)
+	if !ok {
+		return errors.New("the commit is not a full object name")
+	}
+	out, err := gitutil.RunCapped(repo, maxTreeListing, "ls-tree", "-r", "-z", "--full-tree", commit)
+	if err != nil {
+		return fmt.Errorf("listing the commit's tree: %w", err)
+	}
+	type entry struct{ mode, oid string }
+	want := map[string]entry{}
+	for _, rec := range strings.Split(out, "\x00") {
+		if rec == "" {
+			continue
+		}
+		meta, p, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(meta)
+		if !ok || len(f) != 3 {
+			return fmt.Errorf("unreadable tree entry %q", rec)
+		}
+		if f[1] != "blob" {
+			continue // a submodule's commit: archive writes no content for it
+		}
+		want[p] = entry{mode: f[0], oid: f[2]}
+	}
+	seen := 0
+	err = filepath.WalkDir(dst, func(abs string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dst, abs)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		e, ok := want[rel]
+		if !ok {
+			return fmt.Errorf("the export holds %s, which the commit does not", rel)
+		}
+		var body []byte
+		if e.mode == "120000" {
+			if d.Type()&os.ModeSymlink == 0 {
+				return fmt.Errorf("the export's %s is not the symlink the commit records", rel)
+			}
+			target, err := os.Readlink(abs)
+			if err != nil {
+				return err
+			}
+			body = []byte(target)
+		} else {
+			if !d.Type().IsRegular() {
+				return fmt.Errorf("the export's %s is not the regular file the commit records", rel)
+			}
+			if body, err = os.ReadFile(abs); err != nil {
+				return err
+			}
+		}
+		h := newHash()
+		fmt.Fprintf(h, "blob %d\x00", len(body))
+		h.Write(body)
+		if hex.EncodeToString(h.Sum(nil)) != e.oid {
+			return fmt.Errorf("the export's %s differs from the commit (a repository attribute or filter changed it)", rel)
+		}
+		seen++
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if seen != len(want) {
+		var missing []string
+		for p := range want {
+			if _, err := os.Lstat(filepath.Join(dst, filepath.FromSlash(p))); err != nil {
+				missing = append(missing, p)
+			}
+		}
+		sort.Strings(missing)
+		return fmt.Errorf("the export is missing %s, which the commit holds (a repository attribute dropped it)", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// objectHash is the hash git names objects with in a repository whose
+// object names are as long as name: SHA-1 for 40 hex digits, SHA-256 for 64.
+func objectHash(name string) (func() hash.Hash, bool) {
+	switch len(name) {
+	case 40:
+		return sha1.New, true
+	case 64:
+		return sha256.New, true
+	}
+	return nil, false
 }
 
 // goModVersionRe reads the `go <version>` line of go.mod, as the Makefile's

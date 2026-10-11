@@ -662,9 +662,14 @@ fetched, and a `git fetch origin` moves it. One function in
 ```
 
 A build is a clean export of the commit (`git archive` into a fresh directory
-under the store) built by `go build -trimpath ./cmd/abcd` on the toolchain the
-commit's `go.mod` declares, moved into place by one rename. The store keeps
-the three most recent builds of a repository.
+under the store, the repository's content filters blanked) built by
+`go build -trimpath ./cmd/abcd` on the toolchain the commit's `go.mod` declares,
+moved into place by one rename. Before it is built the export is checked blob by
+blob against the commit's tree, because `git archive` honours repository-local
+attributes (`.git/info/attributes`) that anyone who can commit in the checkout
+can write: an `export-ignore` that drops a file of the reviewed commit, or an
+attribute that rewrites one, fails the build rather than build something else.
+The store keeps the three most recent builds of a repository.
 
 **A hook never waits for a build, and never runs weaker than the release.** Each
 hook shim resolves the installed binary as before; when the list exists it asks
@@ -675,9 +680,18 @@ hooks firing at once start one build, and the installed release runs until it
 is ready. A build that is running, failed or missing, a tip that cannot be
 resolved, and a list that is refused all leave the installed release running,
 each said on stderr; a failed build is retried after 30 minutes or when the tip
-moves, and `hook dogfood-build` retries it at once. A dogfood guard that dies
-rather than give a verdict hands the same command to the installed release,
-with a line saying so. A machine with no list pays one file test per hook.
+moves, and `hook dogfood-build` retries it at once. A dogfood guard that
+answers exit 1, which is a warn or "NOT CHECKED", hands the same command to the
+installed release, whose deny stands; one that dies rather than answer does the
+same, with a line saying so. A machine with no list pays one file test per hook.
+
+**What the rung does not defend is the account.** The store, like the plugin
+root the installed release lives in, is protected by being this uid's alone, so
+a process running as that uid can replace either binary, or move
+`refs/remotes/origin/*` by hand (`git update-ref`, a fetch into it from another
+URL). The rung is no weaker there than the installed release already is; what
+it closes is the path an agent's ordinary work takes, a commit or an
+uncommitted change in the checkout.
 
 ## The two `.abcd/` scopes
 

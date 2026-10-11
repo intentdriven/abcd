@@ -392,3 +392,28 @@ func TestUntrustedListIsIgnoredLoudly(t *testing.T) {
 		}
 	})
 }
+
+// TestExportIsTheCommitExactly: repository-local attributes an agent can
+// write (.git/info/attributes) must not shape the build. An export-ignore on a
+// file of the reviewed commit, which would build the binary without it, makes
+// the build refuse rather than build something other than the commit.
+func TestExportIsTheCommitExactly(t *testing.T) {
+	f := newFixture(t, "github.com/intentdriven/abcd")
+	f.list(t, f.checkout)
+	main := "package main\n\nimport \"fmt\"\n\nvar marker = \"unguarded\"\n\nfunc main() { fmt.Println(marker) }\n"
+	write(t, filepath.Join(f.upstream, "cmd", "abcd", "guard.go"), "package main\n\nfunc init() { marker = \"guarded\" }\n")
+	git(t, f.upstream, "add", ".")
+	f.land(t, main)
+	write(t, filepath.Join(f.checkout, ".git", "info", "attributes"), "cmd/abcd/guard.go export-ignore\n")
+	p := Resolve(f.home, f.checkout)
+	if p.Checkout == nil {
+		t.Fatalf("Resolve = %+v", p)
+	}
+	bin, err := Build(f.home, *p.Checkout)
+	if err == nil {
+		t.Fatalf("Build with an export-ignore over a reviewed file succeeded; the build at %s prints %q", bin, run(t, bin))
+	}
+	if !strings.Contains(err.Error(), "cmd/abcd/guard.go") {
+		t.Fatalf("Build error %q does not name the file the export dropped", err)
+	}
+}
