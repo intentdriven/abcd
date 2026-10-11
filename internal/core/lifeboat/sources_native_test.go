@@ -207,9 +207,9 @@ func TestNativeInvariantsGround(t *testing.T) {
 	}
 }
 
-// TestNativePersonasBlank holds the deliberately-hard case: with no personas file
-// in the fixture, "product/personas" returns a blank naming what it searched and
-// the question a human must answer — never grounded.
+// TestNativePersonasBlank holds the human-owned case: with no personas file in
+// the fixture, "product/personas" returns a blank naming what it searched and the
+// question a human must answer.
 func TestNativePersonasBlank(t *testing.T) {
 	ctx, err := newSourceContext(nativeTierFixture(t))
 	if err != nil {
@@ -314,5 +314,61 @@ func TestNativeEvidenceSectionsGroundFromTheirBriefFiles(t *testing.T) {
 	ev := nativeSourceForSection(t, "evidence/open-questions").Probe(sctx)
 	if ev.Status != StatusPartial || ev.Reason == "" {
 		t.Errorf("stub open-questions = %s (reason %q), want partial with a reason", ev.Status, ev.Reason)
+	}
+}
+
+// TestNativeConstraintAndPersonaSectionsGroundFromTheirBriefFiles: the
+// invariants, naming and personas adapters read the section's own brief file,
+// as the evidence adapters do — an authored file grounds the section even when
+// the record holds no conventions router, glossary or other signal, and a stub
+// one alone is partial and says why (iss-2610072347247487).
+func TestNativeConstraintAndPersonaSectionsGroundFromTheirBriefFiles(t *testing.T) {
+	prose := "This section is authored by the project, not scaffolded. It states what " +
+		"the team holds fixed and who the work is for, each with the reason it was " +
+		"settled that way, so a reader can pick the work up without reconstructing " +
+		"it from history or asking the people who wrote it.\n"
+	files := map[Section]string{
+		"constraints/invariants": ".abcd/development/brief/02-constraints/03-invariants.md",
+		"constraints/naming":     ".abcd/development/brief/02-constraints/04-naming.md",
+		"product/personas":       ".abcd/development/brief/01-product/05-personas.md",
+	}
+
+	authored := map[string]string{}
+	stubbed := map[string]string{}
+	for _, file := range files {
+		authored[file] = "# Section\n\n" + prose
+		stubbed[file] = "# Section\n\nTODO.\n"
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, authored)
+	ctx, err := newSourceContext(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+	stub := t.TempDir()
+	writeTree(t, stub, stubbed)
+	sctx, err := newSourceContext(stub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sctx.Close()
+
+	for section, file := range files {
+		ev := nativeSourceForSection(t, section).Probe(ctx)
+		if ev.Status != StatusGrounded {
+			t.Errorf("%s = %s with an authored %s, want grounded", section, ev.Status, file)
+		}
+		if !containsSource(ev.Sources, file) {
+			t.Errorf("%s evidence = %v, want %s cited", section, ev.Sources, file)
+		}
+
+		ev = nativeSourceForSection(t, section).Probe(sctx)
+		if ev.Status != StatusPartial || ev.Reason == "" {
+			t.Errorf("stub %s = %s (reason %q), want partial with a reason", section, ev.Status, ev.Reason)
+		}
+		if !containsSource(ev.Sources, file+" (stub)") {
+			t.Errorf("stub %s evidence = %v, want %s cited as a stub", section, ev.Sources, file)
+		}
 	}
 }

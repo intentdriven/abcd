@@ -212,7 +212,8 @@ func requireStandingAcceptance(issuesRoot, item, id, ground string) (string, err
 // admissions/<run>/. It must be called under the ledger lock, with ground
 // already redacted, folded and held to the floor.
 func writeAdmissionLocked(repoRoot, issuesRoot string, head itemHead, ground string) (string, string, error) {
-	id, err := minter.Mint(issueschema.AdmissionFamily)
+	runDir := filepath.Join(issuesRoot, issueschema.AdmissionsDir, head.run)
+	id, err := mintRecordID(issueschema.AdmissionFamily, func(id string) string { return filepath.Join(runDir, id+".md") })
 	if err != nil {
 		return "", "", err
 	}
@@ -227,7 +228,7 @@ func writeAdmissionLocked(repoRoot, issuesRoot string, head itemHead, ground str
 	if err := ensureFamilyDir(issuesRoot, issueschema.AdmissionsDir, head.run); err != nil {
 		return "", "", err
 	}
-	path := filepath.Join(issuesRoot, issueschema.AdmissionsDir, head.run, id+".md")
+	path := filepath.Join(runDir, id+".md")
 	if err := refuseExistingRecord(path, id); err != nil {
 		return "", "", err
 	}

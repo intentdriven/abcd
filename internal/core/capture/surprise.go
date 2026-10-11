@@ -80,7 +80,8 @@ func Surprise(req SurpriseRequest) (SurpriseResult, error) {
 		if err := resolveSurpriseOccasion(repoRoot, occasion); err != nil {
 			return err
 		}
-		id, err := minter.Mint(issueschema.SurpriseFamily)
+		dir := filepath.Join(issuesRoot, issueschema.SurprisesDir)
+		id, err := mintRecordID(issueschema.SurpriseFamily, func(id string) string { return filepath.Join(dir, id+".md") })
 		if err != nil {
 			return err
 		}
@@ -92,7 +93,6 @@ func Surprise(req SurpriseRequest) (SurpriseResult, error) {
 		if err != nil {
 			return err
 		}
-		dir := filepath.Join(issuesRoot, issueschema.SurprisesDir)
 		if err := safeMkdirLeaf(dir); err != nil {
 			return err
 		}
