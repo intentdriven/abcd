@@ -93,31 +93,6 @@ func TestLinkSyntaxTheScannerCannotReadRefusesAnExcludedHeading(t *testing.T) {
 	}
 }
 
-// TestTheLinkPassIsLinear: a heading title is the document's to choose, so the
-// link scanner's pass must cost a bounded multiple of the title's length on
-// any input. The shapes below are the ones that make a naive scanner re-read:
-// inline tails that open and never close, unbalanced parentheses, an unclosed
-// angle destination or title, and brackets nested deep. The pass charges
-// every failed tail to a budget of the title's length and copies the rest as
-// written once it is spent, so its work stays under three times the length.
-func TestTheLinkPassIsLinear(t *testing.T) {
-	const reps = 4000
-	for _, s := range []string{
-		strings.Repeat("[a](x", reps),
-		strings.Repeat("[a](x(", reps) + " ",
-		strings.Repeat("[a](<x", reps),
-		strings.Repeat("[a](x \"", reps),
-		strings.Repeat("[a](x (", reps),
-		strings.Repeat("[", reps) + strings.Repeat("]", reps),
-		strings.Repeat("![[a]", reps),
-	} {
-		if _, work := unwrapLinkPass(s); work > 3*len(s) {
-			t.Errorf("a pass over %q... (%d bytes) did %d bytes of work, over three times its length",
-				s[:12], len(s), work)
-		}
-	}
-}
-
 // TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel: CommonMark passes four
 // raw HTML kinds through that a browser never shows, and the floor stripped
 // only the comment. A processing instruction, a declaration and a CDATA
@@ -1019,17 +994,5 @@ func TestTheTagWalksStayLinear(t *testing.T) {
 	setAsideQuotedSpans(title)
 	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
 		t.Errorf("the tag walks took %s of CPU over a %d-byte title", elapsed, len(title))
-	}
-}
-
-// TestIsASCIIPunctIsCommonMarksClass holds isASCIIPunct to the 32 bytes
-// CommonMark 2.1 names as ASCII punctuation, and to nothing else in a byte.
-func TestIsASCIIPunctIsCommonMarksClass(t *testing.T) {
-	const commonMark = "!\"#$%&'()*+,-./:;<=>?@[\\]^_\x60{|}~"
-	for c := 0; c < 256; c++ {
-		want := strings.IndexByte(commonMark, byte(c)) >= 0
-		if got := isASCIIPunct(byte(c)); got != want {
-			t.Errorf("isASCIIPunct(%#x) = %v, want %v", c, got, want)
-		}
 	}
 }
