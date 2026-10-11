@@ -126,11 +126,11 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 // configures, whether an attribute or merge.default selects it, is replaced
 // by the built-in text merge (gitutil.MergeDriverOverrides), so the merge
 // starts no merge driver the repository names and its result is git's own
-// (iss-2610090821510097). It is otherwise the repository's own merge: the
-// content filters the repository configures run as they would on the person's
-// own `git merge` (on the files the merge writes, and when merge.renormalize is
-// on), and are left as the repository set them (abcd-fixes-what-it-adds). A
-// driver name the override cannot carry refuses the merge before it starts.
+// (iss-2610090821510097). The content filters the repository configures are
+// not replaced: they run as they would on the person's own `git merge` (on the
+// files the merge writes, and when merge.renormalize is on), and are left as
+// the repository set them (abcd-fixes-what-it-adds). A driver name the
+// override cannot carry refuses the merge before it starts.
 func syncMerge(dir, msg, merged string) error {
 	drivers, err := gitutil.MergeDriverOverrides(dir)
 	if err != nil {
