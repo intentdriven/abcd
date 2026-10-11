@@ -156,6 +156,15 @@ what it did in `next`:
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
   opens the next lane.
+- **It finishes merged lanes.** Every move, before it reads the window clock,
+  takes the landing's last step for each issue lane in the checkout parked at
+  land whose pushed head is now on the default branch: the lane's worktree and
+  branch are removed and the lane is done, during a pause included, since the
+  cleanup does no new work. The lane may be this drain's, an ended drain's, or
+  one `abcd build <iss-N>` started. The default branch is fetched once, and
+  only while such a lane is parked; a lane whose head is not on it is left as
+  it is. A lane the landing will not finish (its branch moved past what
+  landed, a worktree with changes) is named in `next` and the move goes on.
 - **It pauses.** At the end of the drain's working window it writes
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
@@ -213,7 +222,10 @@ drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
 for an answer over an issue that left the eligible set before it was taken;
 `flags` are the rule's
 hand-backs; `passed` names an eligible issue this move did not take, with why;
-`dispositions` is the plan; `next_eligible_at`, `stopped` (`cap`, `empty` or
+`dispositions` is the plan; `finished` lists the merged lanes this move took
+the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
+the landing's line, or why it did not finish the lane when `done` is `false`);
+`next_eligible_at`, `stopped` (`cap`, `empty` or
 `outage`) and `complete` say whether it paused or ended; `counts` totals the
 drain as it stands: `lanes_opened`, `in_progress`, `pull_requests` (the lanes
 whose landing opened one; a merge is a person's gate and is not counted),
@@ -227,8 +239,8 @@ that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
 
 Tell the user any loosened floors first, then what this move did (the
-judgement asked or taken, the lane opened, the hand-back routed, the pause or
-the end), then every hand-back with its route and what it wrote, then the
+judgement asked or taken, the merged lanes finished, the lane opened, the
+hand-back routed, the pause or the end), then every hand-back with its route and what it wrote, then the
 counts and the spend, then `next`. Do not plan a promoted draft or write
 a flagged decision: those are a person's.
 
