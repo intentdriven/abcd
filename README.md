@@ -122,6 +122,7 @@ view for the product thinker
 ● building: nothing right now
 ○ next: nothing is ready
 • no more ready, nothing parked
+abcd v0.13.4
 ```
 
 `abcd --view facilitator` shows the full board: the repository, the record, the work tiers, the presence line and every intent with its spec.
