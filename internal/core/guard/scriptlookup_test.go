@@ -195,11 +195,11 @@ func TestCDPATHBlockNamesWhereCDPATHCameFrom(t *testing.T) {
 	}
 }
 
-// TestCdOptionsBeforeTheOperand: zsh's `cd -q` and `-s` are options, and so
-// is pushd's `-n`, which adds the operand to the stack without changing
-// directory; any other word starting with `-` that the reader does not know
-// leaves the operand unfixed, never read as a directory name
-// (iss-2610111749093946).
+// TestCdOptionsBeforeTheOperand: zsh's `cd -q` and `-s` are options; any
+// other word starting with `-` that the reader does not know, pushd's `-n`
+// included (zsh reads it as the substitution form), leaves the operand
+// unfixed, never read as a directory name (iss-2610111749093946,
+// iss-2610111809142536).
 func TestCdOptionsBeforeTheOperand(t *testing.T) {
 	dir := scriptTree(t, map[string]string{
 		"s.sh":           hazardLine,
@@ -216,9 +216,10 @@ func TestCdOptionsBeforeTheOperand(t *testing.T) {
 		{`cd {d} && cd -qP sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`cd {d} && cd -q -- sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`cd {d}/empty && CDPATH={d}/cdpok cd -q sub && bash s.sh`, VerdictAllow, ""},
-		// pushd -n stays where it is: the script beside it is the one run.
-		{`cd {d}/stay && pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
-		{`cd {d}/stay && CDPATH={d}/cdpok pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		// pushd -n stays put in bash and is the substitution form in zsh:
+		// neither the directory beside it nor its operand is read.
+		{`cd {d}/stay && pushd -n sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/stay && CDPATH={d}/cdpok pushd -n sub && bash s.sh`, VerdictAllow, ""},
 		// An option the reader does not know: the directory is unknown, and
 		// the word is never searched for or entered.
 		{`cd {d} && cd -x && bash s.sh`, VerdictAllow, ""},
@@ -250,5 +251,78 @@ func TestSourcePathPrefixIsSearched(t *testing.T) {
 
 		{`source p.sh`, VerdictAllow, ""},
 		{`PATH={d}/none source p.sh`, VerdictAllow, ""},
+	})
+}
+
+// dirAfter is the directory the reader takes the last command of line to run
+// in, started in dir, and whether it fixes one at all.
+func dirAfter(t *testing.T, dir, line string) (string, bool) {
+	t.Helper()
+	segs, err := tokenize(line)
+	if err != nil || len(segs) == 0 {
+		t.Fatalf("tokenize(%q): %v", line, err)
+	}
+	rc := newReadCtx(NewFiles(dir))
+	r := Defaults()
+	st := &shellState{dir: dir, dirOK: true, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
+	for i, s := range segs {
+		st = st.at(s)
+		if i == len(segs)-1 {
+			break
+		}
+		st = r.after(rc, st, s, false)
+	}
+	return st.dir, st.dirOK
+}
+
+// TestCdSubstitutionFormLeavesTheDirectoryUnknown: zsh reads a cd or pushd
+// with two operands, or with an option word it does not take, as the
+// substitution form: it replaces the first word in the current directory's
+// path with the second and enters the result. bash enters the operand, or
+// stays put for pushd -n. The reader does not know which shell runs the line,
+// so the directory after it is unknown, never the one either reading names
+// (iss-2610111809142536).
+func TestCdSubstitutionFormLeavesTheDirectoryUnknown(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"with-n/dir/s.sh":        "echo benign",
+		"with-n/dir/sub/s.sh":    "echo benign",
+		"with-n/dir/with-n/s.sh": "echo benign",
+		"withsub/dir/s.sh":       hazardLine,
+		"with-e/dir/sub/s.sh":    "echo benign",
+		"with-@/dir/sub/s.sh":    "echo benign",
+	})
+	for _, line := range []string{
+		`cd {d}/with-n/dir && pushd -n sub && bash s.sh`,
+		`cd {d}/with-n/dir && pushd -n -- sub && bash s.sh`,
+		`cd {d}/with-n/dir && cd with-n withsub && bash s.sh`,
+		`cd {d}/with-n/dir && cd -q with-n withsub && bash s.sh`,
+		`cd {d}/with-n/dir && pushd with-n withsub && bash s.sh`,
+		`cd {d}/with-e/dir && cd -e sub && bash s.sh`,
+		`cd {d}/with-@/dir && cd -@ sub && bash s.sh`,
+		`cd {d}/with-e/dir && cd -eP sub && bash s.sh`,
+		`cd {d}/with-n/dir && CDPATH={d}/with-n/dir pushd -n sub && bash s.sh`,
+	} {
+		cmd := strings.ReplaceAll(line, "{d}", dir)
+		if got, ok := dirAfter(t, dir, cmd); ok {
+			t.Errorf("%s\n  runs its last command in %s; want the directory unknown", line, got)
+		}
+	}
+	// The forms both shells read alike still fix the directory.
+	for line, want := range map[string]string{
+		`cd {d}/with-n/dir && cd sub && bash s.sh`:       "with-n/dir/sub",
+		`cd {d}/with-n/dir && cd -q sub && bash s.sh`:    "with-n/dir/sub",
+		`cd {d}/with-n/dir && cd -P -- sub && bash s.sh`: "with-n/dir/sub",
+		`cd {d}/with-n/dir && pushd sub && bash s.sh`:    "with-n/dir/sub",
+	} {
+		cmd := strings.ReplaceAll(line, "{d}", dir)
+		if got, ok := dirAfter(t, dir, cmd); !ok || got != filepath.Join(dir, want) {
+			t.Errorf("%s\n  runs its last command in %q (fixed %v); want %s", line, got, ok, want)
+		}
+	}
+	// Through the whole check: the benign file is never read as the one the
+	// line runs, and the hazard zsh would run is not claimed read either.
+	runScriptCases(t, dir, []scriptCase{
+		{`cd {d}/with-n/dir && pushd -n sub && bash s.sh`, VerdictAllow, ""},
+		{`cd {d}/withsub/dir && bash s.sh`, VerdictBlock, scriptHazardEntryID},
 	})
 }

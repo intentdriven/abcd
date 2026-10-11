@@ -362,17 +362,21 @@ relative path resolves against the working directory, and against a `cd` or
 `pushd` earlier on the line only when its target exists and the script is
 chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
-is. `pushd -n` changes no directory, and a `cd` option the reader does not know
-(other than `-L`, `-P`, `-e`, `-@`, `-q` and `-s`) leaves the directory
-unknown. A `..` in a path resolves the way the kernel opens it, against the directory
+is. A `cd` or `pushd` with a second operand, or with an option the reader does
+not know (other than `-L`, `-P`, `-q` and `-s`; bash's `-e` and `-@` and
+`pushd -n` included), leaves the directory unknown: zsh reads either as its
+substitution form, replacing the first word in the current directory's path
+with the second, where bash enters the operand or, for `pushd -n`, stays put,
+and the reader does not know which shell runs the line. A `..` in a path resolves the way the kernel opens it, against the directory
 a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
 link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
 zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while
 `CDPATH` is set on the line or in the environment the check runs in enters the
 one directory holding the operand when exactly one exists among the current
 directory and each `CDPATH` entry, and the scripts after it are read there;
-where two exist, or an entry or the current directory is not fixed by the line,
-it is a **block** (`script-unread`) whose reason says whether the line set
+where none or two exist, `CDPATH` holds more entries than the guard looks
+through, or an entry or the current directory is not fixed by the line, it is
+a **block** (`script-unread`) whose reason says whether the line set
 `CDPATH` or the environment exported it: name the directory as `./sub` or by
 its absolute path. The verdicts:
 

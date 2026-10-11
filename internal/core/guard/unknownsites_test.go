@@ -106,7 +106,7 @@ var wordReaders = map[string]string{
 	"curlTargets":    "isUnknown on every URL it names; an unknown one is a write the guard cannot place",
 	"cdTarget":       "exempt: reads cd's literal `-` and `+N` operands and its options through cdOperand; its target goes through fixedToken, which refuses a word holding a substitution's output or a variable's value, and only then through resolveIn (by cdLands), or through cdpathLookup, which reads it the same way",
 	"autoloadCall":   "isUnknown on every option word: one the line does not fix may be -m or -w, so the operands are read as unfixed",
-	"cdOperand":      "exempt: reads cd's literal -L/-P/-e/-@/-q/-s and pushd's -n options; any other word starting with a dash, one holding a mark included, leaves the operand unfixed, and a word holding a mark without one is taken as the operand, which goes through fixedToken",
+	"cdOperand":      "exempt: reads cd's literal -L/-P/-q/-s options; any other word starting with a dash, one holding a mark included, and any word after the operand leave the operand unfixed, and a word holding a mark without one is taken as the operand, which goes through fixedToken",
 	"cdpathLookup":   "exempt: reads the cd operand only through fixedToken, which refuses an unknown word, and leaves such a word to the unknown directory it already makes; a CDPATH entry holding a mark keeps the block",
 	"sourceIndex":    "exempt: reads source's literal `--`; its operand goes through fixedToken, which refuses an unknown word",
 	"applyRedirects": "exempt: reads redirection operators and targets the tokenizer recorded, whose target is marked unfixed (pathWord.ok) where it holds an expansion",

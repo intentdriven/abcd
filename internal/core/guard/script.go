@@ -860,10 +860,7 @@ func (st *shellState) withArray(s segment) *shellState {
 // exists as a directory now, holds for the commands chained after it with
 // `&&`; any other cd leaves the directory unknown.
 func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
-	i, physical, stays, ok := cdOperand(s, site)
-	if ok && stays {
-		return st
-	}
+	i, physical, ok := cdOperand(s, site)
 	n := st.unresolved()
 	if !ok {
 		return n
@@ -937,16 +934,16 @@ func (st *shellState) cdLands(rc *readCtx, word string, tilde, physical bool) (s
 
 // cdOperand is the index of the operand of the `cd`/`pushd` at site, past
 // its options, and whether they ask for the physical directory (`-P`, the
-// last of `-L` and `-P` deciding). bash's -e and -@ and zsh's -q and -s are
-// options too, and pushd's -n, which adds the operand to the stack without
-// changing directory, sets stays. ok is false where a word starting with `-`
-// is not an option the reader knows: it may be one that changes what the cd
-// does, so the operand is unfixed rather than that word read as a directory.
-func cdOperand(s segment, site int) (i int, physical, stays, ok bool) {
-	letters := "LPe@qs"
-	if strings.ToLower(path.Base(s.tokens[site])) == "pushd" {
-		letters += "n"
-	}
+// last of `-L` and `-P` deciding). zsh's -q and -s are options too. ok is
+// false where the directory the cd enters is not one the reader can name
+// without knowing which shell runs it, and the reader never knows: zsh reads
+// a second operand, or an option word it does not take (bash's -e and -@,
+// pushd's -n), as the substitution form, replacing the first word in the
+// current directory's path with the second, where bash enters the operand or,
+// for pushd -n, stays put. Any other word starting with `-` may be an option
+// that changes what the cd does, so it too leaves the operand unfixed rather
+// than read as a directory.
+func cdOperand(s segment, site int) (i int, physical, ok bool) {
 	i = site + 1
 	for ; i < len(s.tokens); i++ {
 		t := s.tokens[i]
@@ -957,8 +954,8 @@ func cdOperand(s segment, site int) (i int, physical, stays, ok bool) {
 		if len(t) < 2 || t[0] != '-' {
 			break
 		}
-		if strings.Trim(t[1:], letters) != "" {
-			return i, false, false, false
+		if strings.Trim(t[1:], "LPqs") != "" {
+			return i, false, false
 		}
 		for _, c := range t[1:] {
 			switch c {
@@ -966,12 +963,13 @@ func cdOperand(s segment, site int) (i int, physical, stays, ok bool) {
 				physical = false
 			case 'P':
 				physical = true
-			case 'n':
-				stays = true
 			}
 		}
 	}
-	return i, physical, stays, true
+	if i+1 < len(s.tokens) {
+		return i, false, false
+	}
+	return i, physical, true
 }
 
 // cdpathSearch is what the CDPATH search of a `cd`/`pushd` comes to.
@@ -995,14 +993,14 @@ type cdpathSearch struct {
 // bash tries the CDPATH entries (an empty or `.` entry is the current
 // directory) and then the current directory, zsh the current directory first
 // unless `.` is an entry. Where exactly one candidate exists both enter it,
-// and that is dir; two, or an entry or a current directory the line does not
-// fix, leave dir empty, and the cd blocks (iss-2610111600031244,
-// iss-2610111749083184).
+// and that is dir; none, two, more entries than maxScriptTargets, or an entry
+// or a current directory the line does not fix, leave dir empty, and the cd
+// blocks (iss-2610111600031244, iss-2610111749083184).
 func cdpathLookup(rc *readCtx, st *shellState, s segment, site int) cdpathSearch {
-	i, physical, stays, ok := cdOperand(s, site)
-	if stays || !ok {
-		// pushd -n changes no directory; an option the reader does not
-		// know leaves the directory unknown whatever CDPATH holds.
+	i, physical, ok := cdOperand(s, site)
+	if !ok {
+		// A second operand, or an option the reader does not know, leaves
+		// the directory unknown whatever CDPATH holds.
 		return cdpathSearch{}
 	}
 	w, fixed := fixedToken(s, i)
@@ -1956,7 +1954,8 @@ func cdpathSignal(fromEnv bool) payloadSignal {
 	return payloadSignal{
 		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
 		reason: "This command changes directory by a name the shell searches CDPATH for, and " + where +
-			" offers more than one directory holding it, or one the line does not fix, so the directory the " +
+			" offers no directory holding it, more than one, more entries than the guard looks through, or one the line " +
+			"does not fix, so the directory the " +
 			"commands after it run in, and the scripts they name, are not ones the guard can read.",
 		successor: successor,
 	}
