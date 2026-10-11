@@ -155,11 +155,8 @@ func TestExclusionWithoutAReasonIsAConfigFault(t *testing.T) {
 	}
 }
 
-// iss-2610111600051340: an exclusion fragment matched anywhere in the path as
-// a substring, so a one-letter fragment passed the punctuation refusal and
-// left out nearly every file, a secret's file among them, while one other
-// scanned file kept the zero-coverage sentinel quiet. A single-character
-// fragment is a config fault like a punctuation-only one.
+// iss-2610111600051340: a single-character exclusion fragment is a config
+// fault, like a punctuation-only one.
 func TestSingleCharacterExclusionIsAConfigFault(t *testing.T) {
 	for name, frag := range map[string]string{"letter": "e", "digit": "7", "letter with slash": "e/"} {
 		t.Run(name, func(t *testing.T) {

@@ -8,15 +8,12 @@ import (
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// iss-2610111600065621: the armed bump check counted any added diff line
-// starting "+prompt_version:" as a bump, so an edit that also added a body
-// line of that shape, or one trailing space to the frontmatter line, passed at
-// an unchanged version. A bump is the parsed frontmatter version differing on
+// iss-2610111600065621: a bump is the parsed frontmatter version differing on
 // the two sides of the range.
 const ruthlessRel = "agents/ruthless-reviewer.md"
 
 // unbumpedVariants are prompt texts that change the file and leave the parsed
-// prompt_version at 0.2.0 while the diff still adds a "+prompt_version:" line.
+// prompt_version at 0.2.0.
 var unbumpedVariants = map[string]string{
 	"a body line": "---\nname: ruthless-reviewer\n" + conformingAgent + "---\n\n# ruthless-reviewer\n\nA changed prompt body.\nprompt_version: 0.2.0\n",
 	"a trailing space": "---\nname: ruthless-reviewer\n" + strings.Replace(conformingAgent,
