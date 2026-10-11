@@ -894,6 +894,42 @@ git -C "$d" commit -qm "refactor: tidy the ground around iss-999 and iss-998
 Refs: iss-999, iss-998"
 expect pass "$d" "RS004 a comma-separated Refs: list declares every id on the line" -- commits main HEAD
 
+# The list widens over ISSUE ids only: a `Refs:` line naming an issue beside an
+# id of another family is not a declaration, and the vocabulary stays that way
+# (iss-2610090849280432). What the refusal owes the author is the reason. The
+# line reads like a declaration, so a refusal asking for "exactly one
+# declaration line" sends the reader looking for a line the commit appears to
+# carry already; it must say the line was passed over because of its company.
+d="$(newrepo rs004-refs-mixed-family)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: record the parser ground
+
+Refs: itd-2610090831227812, iss-999, itd-146"
+expect_refusal_naming "$d" "RS004 a Refs: line mixing an issue with an intent names why it is passed over" \
+	"RS004.*a Refs: line naming iss-999 beside an id of another family is not a declaration; put the issue ids on a Refs: line of their own" -- commits main HEAD
+
+# The same company on a `Resolves:` line names the keyword the author wrote.
+d="$(newrepo rs004-resolves-mixed-family)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: the parser hole
+
+Resolves: iss-999, adr-12"
+expect_refusal_naming "$d" "RS004 a Resolves: line mixing an issue with an ADR names why it is passed over" \
+	"RS004.*a Resolves: line naming iss-999 beside an id of another family is not a declaration; put the issue ids on a Resolves: line of their own" -- commits main HEAD
+
+# The diagnosis is the mixed line's alone: a near-miss spelling has no company
+# to blame, and a refusal blaming one would send its reader to the wrong fix.
+d="$(newrepo rs004-near-miss-not-mixed)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "refactor: tidy the parser
+
+Ref: iss-999, itd-146"
+expect_refusal_not_naming "$d" "RS004 a near-miss spelling is not blamed on its company" \
+	"beside an id of another family" -- commits main HEAD
+
 # The list form must not become an escape from RS001: every id a `Resolves:`
 # line names is a declared resolution, so every one of them must move. RS001
 # reads the whole line for that reason, not just its first id — a rule that read
