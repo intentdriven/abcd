@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -87,12 +89,17 @@ func deriveReadmeParts(root string, s readmeSettings) []readmeDerived {
 		if !chosen[name] {
 			continue
 		}
+		src.notes = nil
 		body, addrs, reason := src.derive(name)
 		d := readmeDerived{Name: name}
 		if reason != "" {
 			d.Reason = name + " omitted: " + reason
 		} else {
-			d.Body, d.Reason, d.Notes = checks.run(name, body, addrs)
+			var checked []string
+			d.Body, d.Reason, checked = checks.run(name, body, addrs)
+			if d.Reason == "" {
+				d.Notes = append(src.notes, checked...)
+			}
 		}
 		derived = append(derived, d)
 	}
@@ -108,6 +115,10 @@ type readmeSource struct {
 	originRead bool
 	origin     forgeRemote
 	originWhy  string
+
+	// notes is what deriving the current part noted without omitting it (a
+	// contents entry listed without a link); deriveReadmeParts takes them.
+	notes []string
 }
 
 func (r *readmeSource) derive(name string) (body string, addrs []readmeAddr, reason string) {
@@ -559,14 +570,16 @@ func (r *readmeSource) contents() (string, string) {
 			}
 		}
 	}
-	seen := readmeSlugger{}
+	seen := newReadmeSlugger()
 	var out []string
 	hasH2 := false
 	// heading numbers every heading the page renders and lists the live
 	// level-two and level-three ones outside every part. slugText is what
-	// the forge makes the anchor from; text is what the list shows.
+	// the forge makes the anchor from; text is what the list shows. A heading
+	// whose anchor abcd cannot be sure of is listed without a link, and a
+	// note says which and why.
 	heading := func(i, level int, slugText, text string) {
-		slug := seen.anchor(slugText)
+		slug, why := seen.anchor(slugText)
 		if inPart[i] || text == "" || (level != 2 && level != 3) {
 			return
 		}
@@ -575,6 +588,11 @@ func (r *readmeSource) contents() (string, string) {
 			indent = "  "
 		} else {
 			hasH2 = true
+		}
+		if why != "" {
+			out = append(out, indent+"- "+escapeLinkText(text))
+			r.notes = append(r.notes, fmt.Sprintf("contents part: the heading at line %d is listed without a link: %s", i+1, why))
+			return
 		}
 		out = append(out, indent+"- ["+escapeLinkText(text)+"](#"+slug+")")
 	}
@@ -680,21 +698,83 @@ func readmeUnreadReason(err error) string {
 // slug already taken takes the next number its own base has not handed out
 // and no heading already owns, so `Install`, `Install-1`, `Install` anchor
 // #install, #install-1 and #install-2. It counts per base slug.
-type readmeSlugger map[string]int
+//
+// It also keeps the bases it cannot be sure of. The forge makes an anchor
+// from the text it renders (iss-2610111850237083): a character reference is
+// decoded first, which abcd does as the forge does, but an emoji shortcode
+// becomes an emoji, dropped from the anchor, only when the forge knows its
+// name, and abcd holds no copy of the forge's list. A heading carrying one
+// has one of two anchors, and so does every later heading whose anchor it
+// could have taken or numbered: each of those bases, and any base numbered
+// from one, is unsure.
+type readmeSlugger struct {
+	taken  map[string]int
+	unsure []string
+}
 
-// anchor returns the next heading's anchor and records it as taken.
-func (s readmeSlugger) anchor(text string) string {
+func newReadmeSlugger() *readmeSlugger { return &readmeSlugger{taken: map[string]int{}} }
+
+// emojiShortcodeRe is a shortcode the forge may render as an emoji.
+var emojiShortcodeRe = regexp.MustCompile(`:[a-z0-9_+-]+:`)
+
+// charRefRe is a character reference as the forge decodes one: a named,
+// decimal or hexadecimal reference ending in a semicolon.
+var charRefRe = regexp.MustCompile(`&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});`)
+
+// decodeCharRefs decodes every character reference the HTML entity table
+// knows, and leaves an unknown one as written, as the forge's page does. The
+// table's decoder also reads a known name's prefix (`&notanentity;` as `&not`
+// and the rest), so a decoding is taken only when it consumed the whole
+// reference: every entity stands for at most two characters.
+func decodeCharRefs(s string) string {
+	return charRefRe.ReplaceAllStringFunc(s, func(ref string) string {
+		if dec := html.UnescapeString(ref); dec != ref && utf8.RuneCountInString(dec) <= 2 {
+			return dec
+		}
+		return ref
+	})
+}
+
+// Why a heading is listed without a link.
+const (
+	readmeAnchorShortcode = "it carries an emoji shortcode, and which anchor the forge gives it depends on whether the forge knows the shortcode, which abcd cannot tell"
+	readmeAnchorNumbered  = "its anchor depends on how the forge anchors an earlier heading carrying an emoji shortcode"
+)
+
+// anchor returns the next heading's anchor and records it as taken, or, when
+// abcd cannot be sure of the anchor, the reason it is not given.
+func (s *readmeSlugger) anchor(text string) (string, string) {
+	text = decodeCharRefs(text)
+	why := ""
+	if emojiShortcodeRe.MatchString(text) {
+		why = readmeAnchorShortcode
+		s.unsure = append(s.unsure, headingSlug(emojiShortcodeRe.ReplaceAllString(text, "")), headingSlug(text))
+	}
 	base := headingSlug(text)
+	if why == "" && s.isUnsure(base) {
+		why = readmeAnchorNumbered
+	}
 	slug := base
 	for {
-		if _, taken := s[slug]; !taken {
+		if _, taken := s.taken[slug]; !taken {
 			break
 		}
-		s[base]++
-		slug = fmt.Sprintf("%s-%d", base, s[base])
+		s.taken[base]++
+		slug = fmt.Sprintf("%s-%d", base, s.taken[base])
 	}
-	s[slug] = 0
-	return slug
+	s.taken[slug] = 0
+	return slug, why
+}
+
+// isUnsure reports whether base is, or is numbered from, a base abcd cannot
+// be sure of.
+func (s *readmeSlugger) isUnsure(base string) bool {
+	for _, u := range s.unsure {
+		if base == u || strings.HasPrefix(base, u+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 // headingSlug is the forge's heading anchor: lower case, every character but

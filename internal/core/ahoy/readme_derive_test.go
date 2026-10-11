@@ -327,6 +327,60 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 	}
 }
 
+// TestContentsAnchorsSlugTheRenderedText: the forge makes a heading's anchor
+// from the text it renders, not from the markdown source
+// (iss-2610111850237083). An HTML entity is decoded before the slug is made,
+// so `## A &amp; B` links #a--b, as the forge has it; the list shows the
+// entity as written, which renders the same. An emoji shortcode renders as
+// an emoji only when the forge knows its name, which abcd cannot tell without
+// the forge's list, so a heading carrying one is listed without a link, and
+// so is every later heading whose anchor it could have taken or numbered
+// (here `Rocket Launch` and `-Launch`, never the plain `Launch`), each named
+// in a note.
+func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		"## A &amp; B",
+		"",
+		"## Caf&eacute; &#35;1",
+		"",
+		"## Not &notanentity; here",
+		"",
+		"## :rocket: Launch",
+		"",
+		"## Launch",
+		"",
+		"## Rocket Launch",
+		"",
+		"## -Launch",
+		"",
+		"## Usage",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [A &amp; B](#a--b)",
+		"- [Caf&eacute; &#35;1](#café-1)",
+		"- [Not &notanentity; here](#not-notanentity-here)",
+		"- :rocket: Launch",
+		"- [Launch](#launch)",
+		"- Rocket Launch",
+		"- -Launch",
+		"- [Usage](#usage)",
+	}, "\n"))
+	notes := strings.Join(d.Notes, "\n")
+	for _, line := range []string{"line 9", "line 13", "line 15"} {
+		if !strings.Contains(notes, line) {
+			t.Errorf("no note names the unlinked heading at %s; notes %q", line, d.Notes)
+		}
+	}
+	if !strings.Contains(notes, "emoji shortcode") {
+		t.Errorf("the notes do not say why a heading is unlinked: %q", d.Notes)
+	}
+}
+
 // TestBadgePartsNeedPublicAndForge: the release and build badges are derived
 // only where the owner declared the project public and the origin is on
 // github.com; the build badge also needs one workflow it can name. The
