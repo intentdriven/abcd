@@ -212,6 +212,16 @@ quiet	rm -rf ${X%%/*}
 quiet	rm -rf ${name//[^a-z]/}
 quiet	rm -rf ${X/foo/$HOME}
 
+# --- block: stopping whatever holds a port or a file -------------------------
+# iss-2609262259360005, ruling AS: a kill by the holder blocks as a kill by name.
+block	fuser -k 8080/tcp
+block	kill $(lsof -t -i :8080)
+block	lsof -ti:8080 | xargs kill -9
+
+# --- quiet: looking at who holds it ------------------------------------------
+quiet	lsof -i :8080
+quiet	fuser -v 8080/tcp
+
 # --- fp: accepted false positives, and the exact shape they take ------------
 fp	rg git push --force docs/
 fp	grep -rn gh repo delete .
