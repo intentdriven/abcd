@@ -259,7 +259,7 @@ func TestSupersededRootNoteIsSanitised(t *testing.T) {
 // carrying the note says to relay it as abcd printed it, names what the
 // sanitising removed, and forbids reconstructing the names.
 func TestCommandPagesRelayTheNoteAsPrinted(t *testing.T) {
-	for _, page := range []string{"version.md", "ahoy.md"} {
+	for _, page := range []string{"abcd.md", "ahoy.md"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "commands", page))
 		if err != nil {
 			t.Fatal(err)

@@ -348,7 +348,8 @@ func NewRootCommand() *cobra.Command {
 			// plugin page relays it, and a reader that needs the path already
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
+			ver := core.NewVersion()
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -363,7 +364,7 @@ func NewRootCommand() *cobra.Command {
 				ASCII: !term.UTF8Locale(os.Getenv),
 			}
 			return render(cmd.OutOrStdout(), asJSON, bo, func(w io.Writer) {
-				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo)}, frame) {
+				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo), Version: ver}, frame) {
 					fmt.Fprintln(w, l)
 				}
 			})

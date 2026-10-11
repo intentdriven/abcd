@@ -21,7 +21,7 @@ action in that moment. adr-38 admits it as a tier of its own: provisioning
 completes a chosen update, it never discovers one.
 
 The check is a flag of this verb (itd-2609212130136102): it prints the
-version report [`12-version.md`](12-version.md) describes, fetches the latest
+version report [`08-abcd.md`](08-abcd.md#what-the-version-flag-reports) describes, fetches the latest
 release's tag once, compares, and names its source, swapping nothing and taking
 no tag. When an update is available, its `next:` line names the command to type,
 chosen by the same on-disk classification this verb dispatches on, so the check
@@ -161,7 +161,7 @@ documented shape, never a broken receipt.
 
 - Plugin command: [`commands/update.md`](../../../../commands/update.md)
 - Intent / spec: [itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md) / [spc-32](../../specs/closed/spc-32-abcd-update-completes-a-chosen-update-in.md)
-- Staleness check it completes: [`12-version.md`](12-version.md)
+- Staleness check it completes: [`08-abcd.md` § The version](08-abcd.md#the-version)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

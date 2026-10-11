@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/textwidth"
 )
@@ -72,7 +73,9 @@ func TestBoardWrapsEveryRowAtTheWindowWidth(t *testing.T) {
 			if n := textwidth.Columns(l); n > cols {
 				t.Errorf("at %d columns a line takes %d:\n%q\nin\n%s", cols, n, l, text)
 			}
-			if l != "" && !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "abcd — ") && l != "view for the facilitator" {
+			// The label, the directory and the version line are the three
+			// rows drawn at column 0 (spc-2610100613109045, decision 4).
+			if l != "" && !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "abcd — ") && l != "view for the facilitator" && l != "abcd "+core.Version {
 				t.Errorf("at %d columns a line starts at column 0:\n%q\nin\n%s", cols, l, text)
 			}
 		}
