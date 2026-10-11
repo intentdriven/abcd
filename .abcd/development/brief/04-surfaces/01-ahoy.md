@@ -1212,6 +1212,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
+| `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |
 | `--visibility` | string |

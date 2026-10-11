@@ -259,8 +259,9 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	// The model-tier routing offers are optional too (itd-2609170822093401): a
 	// table is accepted only on an answer, so --yes names them as well; and so
 	// is the drain eligibility record (ruling BX2), which decides what an
-	// unattended agent may change.
-	want := "git_identity.unpinned oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
+	// unattended agent may change; and so is the README question
+	// (spc-2610031704338417), which only the owner answers.
+	want := "git_identity.unpinned readme.offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
 	if strings.Join(res.OptionalSkipped, " ") != want {
 		t.Fatalf("optional_skipped = %v, want [%s]\n%s", res.OptionalSkipped, want, jsonOut)
 	}
