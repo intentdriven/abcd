@@ -229,8 +229,16 @@ var (
 	// reference is not asked: a bracketed title with none renders with its
 	// brackets, and reading it as its label too redacts it, which is the side
 	// a floor errs on. Unwrapping the inline form alone let the three reference
-	// forms of an excluded heading travel.
-	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?`)
+	// forms of an excluded heading travel. An image, `![alt](src)` and its
+	// reference forms, is unwrapped to its alt text the same way: the heading a
+	// screen reader announces and a page without images shows.
+	mdLinkRe = regexp.MustCompile(`!?\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])?`)
+	// mdFootnoteRe matches a footnote marker, `[^1]`, which renders as a
+	// superscript after the heading it marks rather than as part of its title.
+	mdFootnoteRe = regexp.MustCompile(`\[\^[^\]]*\]`)
+	// mdEscapeRe matches a backslash escape, a backslash before ASCII
+	// punctuation (CommonMark 2.4), which renders as the punctuation alone.
+	mdEscapeRe = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 	// explicitYAMLKeyRe matches YAML's explicit-key form, `? origin`.
 	explicitYAMLKeyRe = regexp.MustCompile(`^\s*\?\s+["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*$`)
 	// flowKeyRe matches a key inside a flow mapping, at top level or nested, and
@@ -292,15 +300,34 @@ const (
 	nearHeading
 )
 
-// What this floor does NOT see, disclosed rather than claimed: a title whose
-// every letter is a non-ASCII lookalike, with no ASCII letter left in the
-// excluded heading's place, is not a near-match (nearExcluded says why), and a
-// title spelled with ASCII lookalikes — a digit one for an l, `rn` for an m — is
-// an ordinary different title. Both are residue and are not caught. Nor is a
-// title that adds or changes punctuation (`## Audit Notes:`, `## Open/Questions`):
-// it renders as a different heading and travels. A heading nested in a
-// blockquote or a list item IS caught: the section scan cannot span it, so the
-// verifier refuses it (nestedHeadingRe, iss-2609251509209801).
+// What this floor does NOT see, disclosed rather than claimed:
+//
+//   - A title whose every letter is a non-ASCII lookalike, with no ASCII letter
+//     left in the excluded heading's place, is not a near-match (nearExcluded
+//     says why), and a title spelled with ASCII lookalikes — a digit one for an
+//     l, `rn` for an m — is an ordinary different title. Neither is caught.
+//   - A title that adds or changes punctuation (`## Audit Notes:`,
+//     `## Open/Questions`) renders as a different heading and travels.
+//   - An autolink, `<https://x>` or `<a@b.c>`, is left as it is written
+//     (htmlTagRe stops short of it). It renders with its scheme's colon or the
+//     address's at sign, which no excluded heading carries, so it can never
+//     render as one.
+//   - Markup that hides text from the page without removing it from the
+//     source: `## Audit <span hidden>x</span> Notes` reads as `Audit Notes` and
+//     compares as `Audit x Notes`, so it travels. It did before the rendered-text
+//     comparison too; modelling which attributes hide an element is a renderer's
+//     job, and a CSS class can do the same out of this floor's sight.
+//   - A heading attribute block, `## Audit Notes {#id}`, is renderer-specific:
+//     CommonMark and GFM show the braces, so the floor reads it as written and
+//     it travels.
+//
+// Every other inline form that renders as plain text is reduced before the
+// comparison: emphasis, code and strikethrough marks are dropped (stripMarks),
+// links and images unwrapped to their text, footnote markers dropped, backslash
+// escapes and character references decoded, HTML tags and comments removed
+// (renderedTexts). A heading nested in a blockquote or a list item IS caught:
+// the section scan cannot span it, so the verifier refuses it (nestedHeadingRe,
+// iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
 // ones, under the ONE equality this floor uses: an ASCII case fold or the same
@@ -473,9 +500,11 @@ func nearKey(text string) string {
 }
 
 // renderedTexts reduces a heading title to the text a reader sees — HTML
-// comments and tags removed, link wrappers unwrapped to their label, character
-// references decoded — and returns EVERY reading of it rather than one. The
-// slug then compares what the page shows rather than what the source spells.
+// comments and tags removed, backslash escapes decoded, footnote markers
+// dropped, link and image wrappers unwrapped to their label or alt text,
+// character references decoded — and returns EVERY reading of it rather than
+// one. The comparison then judges what the page shows rather than what the
+// source spells.
 //
 // A removed tag has two readings and neither is the title on its own. `<br>` is
 // a line break and `</em>` closes a word, so dropping either without the
@@ -496,6 +525,8 @@ func nearKey(text string) string {
 // numeric and hex character references a short list could never enumerate.
 func renderedTexts(title string) []string {
 	out := htmlCommentRe.ReplaceAllString(title, "")
+	out = mdEscapeRe.ReplaceAllString(out, "$1")
+	out = mdFootnoteRe.ReplaceAllString(out, "")
 	out = mdLinkRe.ReplaceAllString(out, "$1")
 	spaced := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, " ")))
 	joined := strings.TrimSpace(html.UnescapeString(htmlTagRe.ReplaceAllString(out, "")))

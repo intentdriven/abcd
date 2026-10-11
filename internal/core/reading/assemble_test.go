@@ -817,11 +817,13 @@ func TestASlugAlikeHeadingIsNotTheExcludedOne(t *testing.T) {
 // as an excluded one, wrapped in an inline form the reader never sees. The anchor
 // slug caught them by turning every mark into a hyphen; the rendered-text
 // comparison that replaced it (iss-2610101930329211) strips only emphasis and
-// code marks and unwraps only an inline link, so these travelled while the HTML
-// spelling of the same thing (`<s>Audit Notes</s>`) was redacted. Each is the
-// excluded heading, so its section is redacted and the rest of the file travels.
-// The definition a reference link needs sits after the section, where it survives
-// the redaction.
+// code marks and unwraps only an inline link, so a strikethrough, a reference
+// link, an image and an escaped mark travelled while the HTML spelling of the
+// same thing (`<s>Audit Notes</s>`) was redacted; a footnote marker travelled
+// under either comparison. Each is the excluded heading, so its
+// section is redacted and the rest of the file travels. The definitions a
+// reference and a footnote need sit after the section, where they survive the
+// redaction.
 func TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted(t *testing.T) {
 	const kept = "KEPT-AFTER-THE-SECTION"
 	cases := map[string]string{
@@ -834,12 +836,22 @@ func TestMarkdownSpellingsOfAnExcludedHeadingAreRedacted(t *testing.T) {
 		// No definition names this label, so a renderer shows the brackets. It
 		// is redacted all the same: that is the side to err on.
 		"a bracketed title with no definition": "## [Open Questions]\n\n" + sentinelAuditNotes + "\n",
+		// An image's alt text is the heading a screen reader announces and a page
+		// without images shows.
+		"an inline image":   "## ![Audit Notes](a.png)\n\n" + sentinelAuditNotes + "\n",
+		"a reference image": "## ![Audit Notes][ref]\n\n" + sentinelAuditNotes + "\n",
+		// An escaped mark renders as the mark, and a mark is dropped from the
+		// comparison whether it renders or not, as an unpaired `*` already is.
+		"escaped emphasis marks": "## \\*Audit Notes\\*\n\n" + sentinelAuditNotes + "\n",
+		"escaped brackets":       "## \\[Open Questions\\]\n\n" + sentinelAuditNotes + "\n",
+		// A footnote marker renders as a superscript after the heading it marks.
+		"a footnote marker": "## Audit Notes[^1]\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, section := range cases {
 		root := fixtureRepo(t)
 		writeFile(t, root, ".abcd/development/specs/open/spc-4-inline-form.md",
 			"---\nid: spc-4\n---\n\n# A spec\n\n"+section+"\n## Next\n\n"+kept+
-				"\n\n[Audit Notes]: https://example.com/a\n[ref]: https://example.com/r\n")
+				"\n\n[Audit Notes]: https://example.com/a\n[ref]: https://example.com/r\n[^1]: A note.\n")
 		gitCommitAll(t, root)
 
 		res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
