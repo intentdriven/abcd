@@ -99,7 +99,7 @@ run as its own peer.
 When the argument is `next`, let the run choose the intent:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n> | --until-empty] --json
 ```
 
 The candidates are the planned intents that pass every check above, judged by
@@ -134,18 +134,58 @@ most recent conjecture.
 The payload carries `candidates` (each with its `score` parts and `total`),
 `excluded` (each planned intent a check excluded, with the `check` and the
 `reason`), `pick` (`chosen`, `runner_up`, `tie_broken_by_age`, `rule`,
-`falsifier`), `entry` (the reason's text) and `start`, the run as
-`build <itd-N>` reports it. Tell the user which intent was picked and why, then
-drive the run as below.
+`falsifier`), `entry` (the reason's text), `start`, the run as
+`build <itd-N>` reports it, `series` (below; `null` for a single pick) and
+`next`, the move to make. Tell the user which intent was picked and why, then
+drive the run as below. The run record (`implement record`) carries the pick
+as `pick`: the same score table, rule, runner-up and falsifier, the
+exclusions, and `falsified` with `falsified_by` once a lane of the run is
+handed back after its fix rounds.
+
+### One pick, or a series
+
+By default `build next` makes one pick, and nothing picks again once that
+intent is delivered. `--max <n>` (above 1) or `--until-empty` begins a
+**series** instead, kept in `.abcd/.work.local/run/next.json`. The series moves
+one step per invocation, and while it is in progress every `build next`, with or
+without the flags, continues it:
+
+- while the last pick's run is in progress, the call picks nothing: `pick` and
+  `start` are `null`, and `next` names the run to drive with `implement step`;
+- once that run is delivered (complete) or its lane stops (handed back, or its
+  run directory removed), the call picks again among the rest, writing that
+  pick's reason onto its intent the same way. An intent the series has already
+  picked is excluded at the check `series`;
+- the series picks only inside the pace rule's window: once the window has
+  elapsed it writes `next_eligible_at` (now plus the pause) and picks nothing
+  before that time; with no pause the next window opens at once. Every run the
+  series starts runs on the pace flags it began with;
+- at `--max` picks, or with no candidate left, the series ends, exit 0:
+  `series.stopped` is `cap` or `empty`, `series.complete` is true, and an
+  emptied series names each exclusion. The next `build next` is a single pick
+  again.
+
+`series` carries `state` (the file), `started` (this call began it), `max`,
+`until_empty`, `pace`, `window_started_at`, `next_eligible_at`, `picks` (each
+`intent`, `run_id`, `picked_at`, `outcome`: `in-progress`, `delivered`,
+`handed-back` or `removed`, and `falsified`), `stopped`, `ended_at` and
+`complete`. So to build until nothing is left: run `build next --until-empty`,
+drive the run it starts to delivery or hand-back, then run `build next` again,
+and repeat until `series.complete` is true.
 
 Refusals, each writing nothing:
 
-- no candidate: refused at the `pick` stage, exit 2; `refusal.excluded` names
-  every planned intent and the check that excluded it. Tell the user each one
-  and do not work around it.
-- `--max` above 1 or `--until-empty`: refused at the `pick` stage, exit 2.
-  Picking again under the pace rule is not built in this abcd: run
-  `build next` once per pick.
+- no candidate for a single pick or a series' first: refused at the `pick`
+  stage, exit 2; `refusal.excluded` names every planned intent and the check
+  that excluded it. Tell the user each one and do not work around it.
+- a negative `--max`, or `--max` with `--until-empty`: refused at the `pick`
+  stage, exit 2.
+- while a series is in progress, a count other than the one it began with:
+  refused at the `pick` stage, exit 2; run `build next` without a count. A
+  pace flag naming another pace than the series' is refused at the `pace`
+  stage.
+- another `build next` moving the series at the same time: exit 3; back off
+  and retry.
 - the picked intent already has a run in progress: refused at the `pick` stage,
   exit 3; resume that run with `implement step`.
 - a refusal of `build <itd-N>` itself (the pace, the claim stage) comes as that

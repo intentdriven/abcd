@@ -12,9 +12,9 @@ package loop
 // (lane.go, pickCommit), a record-only commit the receipt verifier does not
 // count as the implementer's (receipt.go).
 //
-// One pick per invocation: continuing under the pace rule (`--max`,
-// `--until-empty`, criterion 5) is not built in this abcd, and asking for it
-// is refused by name.
+// One pick by default; `--max <n>` and `--until-empty` begin a series that
+// picks again once each pick is delivered or its lane stops, under the pace
+// rule (criterion 5, nextseries.go).
 
 import (
 	"fmt"
@@ -74,12 +74,17 @@ type NextOptions struct {
 }
 
 // NextResult is what Next returns: the candidate set, the pick, the entry it
-// writes, and the run it started.
+// writes, and the run it started; Pick and Start are nil when a series' move
+// picked nothing (its last pick is in progress, its window has elapsed, or it
+// ended). Series is the series the call moved, nil for the default single
+// pick; Next is the move to make.
 type NextResult struct {
 	CandidateSet
-	Pick  intent.Pick `json:"pick"`
-	Entry string      `json:"entry"`
-	Start StartResult `json:"start"`
+	Pick   *intent.Pick  `json:"pick"`
+	Entry  string        `json:"entry"`
+	Start  *StartResult  `json:"start"`
+	Series *SeriesResult `json:"series"`
+	Next   string        `json:"next"`
 }
 
 // candidates judges every planned intent with the pre-start checks and scores
@@ -169,37 +174,76 @@ func readiness(repoRoot string, corpus intent.Corpus, store spec.Store, id, spec
 	return intent.ReadinessIn(repoRoot, store, it, specID)
 }
 
-// Next picks the readiest planned intent and starts its run. A run count past
-// one is refused (criterion 5 is not built here); an empty candidate set is
-// refused naming every excluded intent and its check, and writes nothing.
-// The pick's entry is checked against the grounds writer's own gate before
-// the run starts, so a pick never starts a run whose reason it cannot write.
+// Next picks the readiest planned intent and starts its run. An empty
+// candidate set is refused naming every excluded intent and its check, and
+// writes nothing. With --max above 1 or --until-empty it begins a series
+// (nextseries.go); while a series is in progress every call continues it, and
+// a count other than the series' own is refused. The pick's entry is checked
+// against the grounds writer's own gate before the run starts, so a pick never
+// starts a run whose reason it cannot write.
 func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
-	if n.UntilEmpty || n.Max > 1 {
-		asked := fmt.Sprintf("--max %d", n.Max)
-		if n.UntilEmpty {
-			asked = "--until-empty"
-		}
-		return NextResult{}, refuse(StagePick, "", "", asked+" asks for more than one pick, and picking again under the pace rule (criterion 5 of itd-2609211116005482) is not built in this abcd",
-			"run `abcd build next` once per pick; each run picks one intent")
-	}
-	if n.Max < 0 {
+	switch {
+	case n.Max < 0:
 		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d is not a run count", n.Max), "give --max a whole number of picks, 1 or more")
+	case n.UntilEmpty && n.Max > 0:
+		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d and --until-empty name two run counts", n.Max),
+			"give one: --max <n> stops after n picks, --until-empty when no candidate is left")
+	}
+	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
+	if err != nil {
+		return NextResult{}, err
 	}
 	if err := tierPresent(repoRoot); err != nil {
 		return NextResult{}, err
 	}
-	set, err := candidates(repoRoot, o.Session)
+	if _, live, err := readSeries(repoRoot); err != nil {
+		return NextResult{}, err
+	} else if live {
+		return continueSeries(repoRoot, o, n, flags)
+	}
+	if n.many() {
+		return beginSeries(repoRoot, o, n, flags)
+	}
+	set, p, ok, err := choose(repoRoot, o, nil)
 	if err != nil {
 		return NextResult{}, err
 	}
-	p, ok := intent.Choose(set.Candidates)
 	if !ok {
-		ref := refuse(StagePick, "", "", noCandidateReason(set.Excluded),
-			"settle what each exclusion names (`abcd build <itd-N>` shows every check of one), or plan an intent")
-		ref.Excluded = set.Excluded
-		return NextResult{}, ref
+		return NextResult{}, emptyRefusal(set)
 	}
+	res, err := startPick(repoRoot, o, set, p)
+	if err != nil {
+		return NextResult{}, err
+	}
+	res.Next = res.Start.Next
+	return res, nil
+}
+
+// choose reads the candidate set, less every intent the series has picked
+// when ser is not nil, and takes the readiest; ok is false when none is left.
+func choose(repoRoot string, o Options, ser *NextSeries) (CandidateSet, intent.Pick, bool, error) {
+	set, err := candidates(repoRoot, o.Session)
+	if err != nil {
+		return set, intent.Pick{}, false, err
+	}
+	if ser != nil {
+		set = ser.exclude(set)
+	}
+	p, ok := intent.Choose(set.Candidates)
+	return set, p, ok, nil
+}
+
+// emptyRefusal is the refusal of a pick with no candidate.
+func emptyRefusal(set CandidateSet) error {
+	ref := refuse(StagePick, "", "", noCandidateReason(set.Excluded),
+		"settle what each exclusion names (`abcd build <itd-N>` shows every check of one), or plan an intent")
+	ref.Excluded = set.Excluded
+	return ref
+}
+
+// startPick starts the run `abcd build <itd-N>` would start for the pick's
+// chosen intent, with the pick and its reason in the run's state.
+func startPick(repoRoot string, o Options, set CandidateSet, p intent.Pick) (NextResult, error) {
 	// The entry's gate, asked of the text as it will be written but for the
 	// run id, which is minted when the run is created and has one shape.
 	if _, err := grounds.New(grounds.Pursued, intent.PickEntryText("run-0000000000000000", o.now(), p)); err != nil {
@@ -210,7 +254,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 	if err != nil {
 		return NextResult{}, err
 	}
-	res := NextResult{CandidateSet: set, Pick: p, Start: started}
+	res := NextResult{CandidateSet: set, Pick: &p, Start: &started}
 	if st, err := ReadState(repoRoot, started.RunID); err == nil && st.Pick != nil {
 		res.Entry = st.Pick.Entry
 	}

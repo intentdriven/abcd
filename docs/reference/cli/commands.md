@@ -358,24 +358,37 @@ Git LFS needs. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
-One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace
-rule, are refused: that half of the verb is not built in this abcd. --session, --pace,
+One pick by default, and nothing picks again once it is delivered. --max <n> (above 1) or
+--until-empty begins a series instead, kept in .abcd/.work.local/run/next.json: one move
+per invocation, and while a series is in progress every `abcd build next` continues it. A
+move reads what the series' last pick has come to. While its run is in progress it picks
+nothing and names the run to drive with `abcd implement step`. Once the run is delivered
+(complete) or its lane stops (handed back, or its run directory removed), it picks again
+among the rest, less every intent the series has picked (excluded at the check `series`),
+writing that pick's reason the same way, until --max picks are made or no candidate is
+left; either ends the series, exit 0, naming why and each exclusion. The series picks only
+inside the pace rule's window: once the window has elapsed it writes next_eligible_at (now
+plus the pause) and picks nothing before then; with no pause the next window opens at once.
+Every run the series starts runs on the pace flags it began with. --session, --pace,
 --sub-agents and --fix-rounds are `abcd build`'s own. A lane handed back after its fix
-rounds falsifies the pick: the run record says so, and the intent's entry is not edited.
+rounds falsifies the pick: the run record (`abcd implement record`) carries the pick's
+score table and says so, and the intent's entry is not edited.
 
-No candidate is refused, naming each excluded intent and the check that excluded it, and
-nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in
-progress or the run state is locked.
+No candidate for a first pick is refused, naming each excluded intent and the check that
+excluded it, and nothing is written. Refused too, writing nothing: a negative --max,
+--max with --until-empty, and, while a series is in progress, a count or pace other than
+the one it began with. Exit 2 on a refusal, exit 3 when the chosen intent's run is already
+in progress or the run state or the series is locked.
 
 **Flags:**
 
 ```
       --fix-rounds string   the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer
-      --max int             how many picks to make; only 1 is built, and more is refused
+      --max int             how many picks to make, one at a time under the pace rule; above 1 begins a series (default one pick)
       --pace string         the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --session string      the host session's id in the shared run state; the new run claims the picked intent for it
       --sub-agents string   the new run's ceiling on lanes and validators alive at once; wins over every configured layer
-      --until-empty         pick until no candidate is left; not built, and refused
+      --until-empty         pick one at a time under the pace rule until no candidate is left; begins a series
 ```
 
 ### `abcd capture`
@@ -2025,8 +2038,9 @@ receipts the loop verified with the model each runner reported, every verdict th
 recorded from a validator's return, the captures each lane fixed, its pull request and
 what its landing did, the route that ran each receipt's or return's agent when a runner
 ran it, every fallback from a routed runner to the host with its count per runner and
-per role, the transcripts captured into the history store, and the record's
-lines. Read-only unless --transcript is given.
+per role, the transcripts captured into the history store, the pick a run `abcd build
+next` started from (its score table, and whether a lane handed back after its fix rounds
+met its falsifier), and the record's lines. Read-only unless --transcript is given.
 
 --transcript <path>, repeatable, captures each transcript into the history store as
 `abcd history capture <path>` does, one capture per path, and records it in the run's

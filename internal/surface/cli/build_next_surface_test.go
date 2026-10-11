@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestBuildNextPicksAndCarriesTheReasonInJSON is itd-2609211116005482's
@@ -85,8 +88,136 @@ func TestBuildNextRefusalCarriesEveryExclusion(t *testing.T) {
 		t.Fatalf("the text refusal names each exclusion: %d %q", code, errOut)
 	}
 	code, _, errOut = implementCLI(t, "build", "next", "--until-empty")
-	if code != 2 || !strings.Contains(errOut, "criterion 5") {
-		t.Fatalf("--until-empty is refused by name: %d %q", code, errOut)
+	if code != 2 || !strings.Contains(errOut, "itd-10 (hold") {
+		t.Fatalf("a series' first pick with no candidate is refused the same way: %d %q", code, errOut)
 	}
 	runDirAbsent(t, repo.Root())
+}
+
+// secondBuildIntent adds itd-11, a candidate scored below itd-10.
+func secondBuildIntent(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
+	repo.Write(".abcd/development/intents/planned/itd-11-beta.md",
+		strings.NewReplacer("itd-10", "itd-11", "alpha", "beta", "spc-1", "spc-2", "- Given x, when y, then z.", "- The page states the flags.").Replace(buildIntent()))
+	repo.Write(".abcd/development/specs/open/spc-2-beta.md", "---\nid: spc-2\nslug: beta\nintent: itd-11\n---\n# beta\n\n## Summary\n\nWritten.\n")
+	repo.Commit("a second intent")
+}
+
+// TestBuildNextMaxCarriesTheSeriesInJSON is criteria 5 and 10 at the front
+// door: --max begins a series whose state, count and picks are in the
+// payload; a call while the pick's lane is in progress picks nothing, carries
+// a null pick and start, and names the run to drive; the text form says the
+// same.
+func TestBuildNextMaxCarriesTheSeriesInJSON(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+
+	type series struct {
+		State   string `json:"state"`
+		Started bool   `json:"started"`
+		Max     int    `json:"max"`
+		Picks   []struct {
+			Intent  string `json:"intent"`
+			RunID   string `json:"run_id"`
+			Outcome string `json:"outcome"`
+		} `json:"picks"`
+		Complete bool `json:"complete"`
+	}
+	var first struct {
+		Pick *struct {
+			Chosen struct {
+				ID string `json:"id"`
+			} `json:"chosen"`
+		} `json:"pick"`
+		Start *struct {
+			RunID string `json:"run_id"`
+		} `json:"start"`
+		Series *series `json:"series"`
+		Next   string  `json:"next"`
+	}
+	out := mustImplement(t, "build", "next", "--max", "2", "--json")
+	if err := json.Unmarshal([]byte(out), &first); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if first.Pick == nil || first.Pick.Chosen.ID != "itd-10" || first.Start == nil || first.Series == nil ||
+		first.Series.State != loop.NextSeriesRel || !first.Series.Started || first.Series.Max != 2 || len(first.Series.Picks) != 1 ||
+		first.Series.Picks[0].RunID != first.Start.RunID || first.Series.Picks[0].Outcome != "in-progress" ||
+		!strings.Contains(first.Next, "the series picks again") {
+		t.Fatalf("--max begins a series carried in the payload: %s", out)
+	}
+
+	out = mustImplement(t, "build", "next", "--json")
+	var waiting map[string]any
+	if err := json.Unmarshal([]byte(out), &waiting); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if waiting["pick"] != nil || waiting["start"] != nil || waiting["series"] == nil ||
+		!strings.Contains(waiting["next"].(string), "implement step --run "+first.Start.RunID) {
+		t.Fatalf("a call while the pick is in progress picks nothing and names the run: %s", out)
+	}
+	text := mustImplement(t, "build", "next")
+	for _, want := range []string{"build next: no pick", "series:", "--max 2", "itd-10 " + first.Start.RunID + " in-progress", "next: drive itd-10"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the text form names %q:\n%s", want, text)
+		}
+	}
+
+	ref := refusalDocs(t, 2, "build", "next", "--until-empty", "--json")
+	if ref["stage"] != "pick" || !strings.Contains(ref["reason"].(string), "--max 2") {
+		t.Fatalf("a live series keeps its count, refused in the payload: %v", ref)
+	}
+}
+
+// TestBuildNextRefusesTwoCounts: --max and --until-empty together are refused
+// at the pick, exit 2, writing nothing.
+func TestBuildNextRefusesTwoCounts(t *testing.T) {
+	repo := buildRepo(t)
+	ref := refusalDocs(t, 2, "build", "next", "--max", "3", "--until-empty", "--json")
+	if ref["stage"] != "pick" || !strings.Contains(ref["reason"].(string), "two run counts") {
+		t.Fatalf("two counts are refused at the pick: %v", ref)
+	}
+	runDirAbsent(t, repo.Root())
+}
+
+// TestImplementRecordCarriesThePick is criterion 6 at the front door: the run
+// record of a picked run carries the pick's score table and whether its
+// falsifier was met, in --json and in the text.
+func TestImplementRecordCarriesThePick(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	var res struct {
+		Start struct {
+			RunID string `json:"run_id"`
+		} `json:"start"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	out := mustImplement(t, "implement", "record", "--run", res.Start.RunID, "--json")
+	var rec struct {
+		Pick *struct {
+			Candidates []struct {
+				ID    string `json:"id"`
+				Score struct {
+					Total int `json:"total"`
+				} `json:"score"`
+			} `json:"candidates"`
+			Falsifier string `json:"falsifier"`
+			Falsified *bool  `json:"falsified"`
+			Entry     string `json:"entry"`
+		} `json:"pick"`
+	}
+	if err := json.Unmarshal([]byte(out), &rec); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if rec.Pick == nil || len(rec.Pick.Candidates) != 2 || rec.Pick.Candidates[0].ID != "itd-10" || rec.Pick.Falsifier == "" ||
+		rec.Pick.Falsified == nil || *rec.Pick.Falsified || !strings.HasPrefix(rec.Pick.Entry, "picked by run "+res.Start.RunID) {
+		t.Fatalf("the record carries the pick's score table and its falsifier: %s", out)
+	}
+	text := mustImplement(t, "implement", "record", "--run", res.Start.RunID)
+	for _, want := range []string{"pick:    itd-10 from 2 candidate(s); falsifier not met", "itd-10  100", "itd-11  0"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the text record names %q:\n%s", want, text)
+		}
+	}
 }
