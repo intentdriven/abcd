@@ -428,6 +428,12 @@ type BanlistHealth struct {
 	// Meaningful only where abcd owns the hooks: pinning the EOL of a directory whose
 	// contents are someone else's is not abcd's call.
 	HookEOLPinned bool `json:"hook_eol_pinned"`
+	// HookRetiredVerb reports an abcd-owned pre-commit hook that still runs the
+	// sources refresh as `source sync-banlist`, the spelling the verb had before
+	// it became library (spc-2610100613109045, decision 13). A binary without
+	// that verb makes the hook skip the refresh with one stderr line, so the
+	// confidential-name block stops being refreshed with no other sign.
+	HookRetiredVerb bool `json:"hook_retired_verb"`
 	// PublicConfigIgnored is git's verdict on the config's PATH, whether or not a
 	// file is there yet. It is what makes the absent-family gap honest: writing a
 	// config into a path git ignores delivers no enforcement, so abcd does not offer
@@ -497,6 +503,7 @@ func detectBanlistHealth(cwd string) BanlistHealth {
 	h.MergeHook = classifyGuardHook(root, GuardMergeHookRelPath)
 	h.PublicFamily = classifyPublicFamily(cwd, root, ign.public)
 	h.HookEOLPinned = gitattributesPinsHookEOL(cwd, root)
+	h.HookRetiredVerb = h.Hook == HookInstalled && hookNamesRetiredVerb(root)
 	sum, serr := banlist.SummarisePrivate(cwd)
 	if serr != nil {
 		// A store that exists and cannot be read for what it is: present, and health
@@ -630,6 +637,17 @@ func detectBanlistScaffold(h BanlistHealth) []Gap {
 			Title:      "the committed guard is not pinned to LF",
 			Detail:     gitattributesRelPath + " does not carry `" + guardEOLAttribute + "`, so a clone with core.autocrlf=true rewrites the guard to CRLF and its shebang stops resolving — the hook silently stops running.",
 			FixHint:    "ahoy install appends the attribute line (it never rewrites the rest of the file).",
+			Required:   true,
+			Resolvable: true,
+		})
+	}
+	if h.HookRetiredVerb {
+		gaps = append(gaps, Gap{
+			ID: hookRetiredVerbGapID, Category: SafeAutocreate, Scope: "repo",
+			Title: "the committed guard runs the sources refresh under its retired name",
+			Detail: GuardHookRelPath + " runs `" + retiredRefreshVerb + "`, and the verb is now `" + refreshVerb +
+				"`: a binary without the old name makes the hook skip the refresh with one stderr line, so the confidential-name block stops being refreshed.",
+			FixHint:    "ahoy install rewrites `" + retiredRefreshVerb + "` to `" + refreshVerb + "` in the hook and leaves every other line as it is.",
 			Required:   true,
 			Resolvable: true,
 		})
@@ -912,6 +930,9 @@ func (a *applyCtx) stepBanlist() {
 	if guardOwned {
 		a.pinHookEOL(root)
 	}
+	if guardOwned && a.has(hookRetiredVerbGapID) {
+		a.rewriteRetiredVerb(root)
+	}
 	if a.has("banlist.private_stub_missing") && storePathIsSafe(a.cwd) {
 		// 0700/0600: the directory holding private patterns is no more readable than
 		// the patterns are, matching the store the banlist verbs write.
@@ -1031,4 +1052,38 @@ func (a *applyCtx) createContained(kind writeKind, root *os.Root, rel string, da
 	}
 	a.note(kind, filepath.Join(a.cwd, filepath.FromSlash(rel)))
 	return true
+}
+
+// The sources refresh the guard runs, under the name the verb has and the one it
+// had before memory and source became library (spc-2610100613109045,
+// decision 13). hookRetiredVerbGapID is the gap an abcd-owned hook raises while
+// it still runs the old name.
+const (
+	refreshVerb          = "library sync-banlist"
+	retiredRefreshVerb   = "source sync-banlist"
+	hookRetiredVerbGapID = "banlist.hook_retired_verb"
+)
+
+// hookNamesRetiredVerb reports whether the pre-commit hook still names the
+// retired refresh. It reads through the containment root, as classifyHook does.
+func hookNamesRetiredVerb(root *os.Root) bool {
+	data, err := fsutil.ReadGuardedInRoot(root, GuardHookRelPath, maxAhoyFileBytes)
+	return err == nil && bytes.Contains(data, []byte(retiredRefreshVerb))
+}
+
+// rewriteRetiredVerb replaces the retired refresh spelling in abcd's own hook
+// and changes nothing else: the hook is committed and may carry lines the
+// maintainer added, so it is edited in place rather than re-seeded from the
+// template. It re-reads the hook and re-checks the marker before writing, so a
+// hook that changed hands since detection is left alone.
+func (a *applyCtx) rewriteRetiredVerb(root *os.Root) {
+	data, err := fsutil.ReadGuardedInRoot(root, GuardHookRelPath, maxAhoyFileBytes)
+	if err != nil || !guardHookMarkerRe.Match(data) || !bytes.Contains(data, []byte(retiredRefreshVerb)) {
+		return
+	}
+	out := bytes.ReplaceAll(data, []byte(retiredRefreshVerb), []byte(refreshVerb))
+	if err := fsutil.WriteFileAtomicPreserveModeInRoot(root, GuardHookRelPath, out); err != nil {
+		return
+	}
+	a.note(writeNameGuard, filepath.Join(a.cwd, filepath.FromSlash(GuardHookRelPath)))
 }
