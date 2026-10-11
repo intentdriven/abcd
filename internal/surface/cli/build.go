@@ -733,8 +733,9 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 
 func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	var runID, release, discard, restart, yielded string
+	var acceptConfig bool
 	cmd := &cobra.Command{
-		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]]",
+		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change]",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
 			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
@@ -865,6 +866,19 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"up on the outage, every call is refused at the stage outage, naming since when, the\n" +
 			"probes, what was done, what is left and whether the product thinker's notification is\n" +
 			"pending (notify).\n\n" +
+			"The run tripwire: the repository's git settings that can name a program (filter.*,\n" +
+			"core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.worktree,\n" +
+			"extensions.worktreeConfig, credential.*, a remote's uploadpack and receivepack, url\n" +
+			"rewrites, protocol allow rules, diff and merge drivers, gpg programs, include and\n" +
+			"includeIf paths), each lane worktree's own per-worktree settings, the hooks directory\n" +
+			"and info/attributes are fingerprinted at the run's first check, and checked again before\n" +
+			"every step, discard and restart, before the shared network probe and before a rate-limit\n" +
+			"checkpoint saves a lane aside. They run on the loop's git as on your own, so abcd never\n" +
+			"changes them; a change during the run is refused at the stage config, before git starts,\n" +
+			"naming each changed key or file (never a value), and a checkpoint keeps the lane as it is.\n" +
+			"A run started before the tripwire records its fingerprint at its next check and moves.\n" +
+			"--accept-config-change, once you have looked at what changed, records the configuration\n" +
+			"as it stands, names what it accepted on stderr and in the run record, and takes the step.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,
@@ -893,11 +907,13 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			case yieldedSet && yielded == "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
 					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
-			case restart != "":
-				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
 					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
+			case acceptConfig && !acceptConfigChange(cmd, root, id, &err):
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			case restart != "":
+				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
 			case release != "":
 				res, err = loop.Release(root, id, release, loop.Options{})
 			case discard != "":
@@ -931,7 +947,23 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
+	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")
 	return cmd
+}
+
+// acceptConfigChange accepts the run's changed git configuration for
+// `implement step --accept-config-change`, naming what it accepted on stderr.
+// It reports false, with *errp set, when the accept is refused.
+func acceptConfigChange(cmd *cobra.Command, root, runID string, errp *error) bool {
+	accepted, err := loop.AcceptConfigChange(root, runID, loop.Options{})
+	if err != nil {
+		*errp = err
+		return false
+	}
+	if len(accepted) > 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize("accepted a change to the repository's git configuration: "+strings.Join(accepted, ", ")))
+	}
+	return true
 }
 
 func newImplementReceiptCommand(asJSON *bool) *cobra.Command {

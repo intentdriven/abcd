@@ -201,7 +201,7 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
@@ -466,6 +466,46 @@ transcript stored without the scanner coverage the repository armed (gitleaks
 configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
 block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
+
+## Stop when the repository's git settings change
+
+A program the repository's own git settings name (a content filter, a hook, a
+transport or credential helper, a diff or merge driver, a signing program) runs
+on the loop's git steps exactly as it runs on your own `git add` or
+`git fetch`. abcd leaves those settings as the repository set them and never
+switches any of them off. What it adds is a **run tripwire**: it notices when
+they change during a run and stops before its next git step.
+
+The first check of a run records a fingerprint beside its state,
+`.abcd/.work.local/run/<run-id>/config-fingerprint.json`. The fingerprint covers
+every repository-level setting that can name a program (`filter.*`,
+`core.hooksPath`, `core.sshCommand`, `core.fsmonitor`, `core.pager`,
+`core.editor`, `core.worktree`, `extensions.worktreeConfig`, `credential.*`, a
+remote's `uploadpack` and `receivepack`, `url.*.insteadOf` and
+`pushInsteadOf`, `protocol.*.allow`, diff and merge drivers, the gpg programs,
+and `include` and `includeIf` paths), each lane worktree's own per-worktree
+settings, the hooks directory and `info/attributes`. Your global and system
+settings are your own and are not watched. The file holds salted hashes, never
+a value: a credential helper's value may carry a secret, so only key names and
+file paths are ever stored or reported.
+
+The fingerprint is checked again before every `step`, `--discard` and
+`--restart`, before the shared network probe (a step's and
+`implement outage probe`'s), and before a rate-limit checkpoint saves a lane
+aside. A change refuses the call at the stage `config` (exit 2) before git
+starts. The reason names each changed key or file, marked added, removed or
+changed, and the state is left as it was. `outage probe` is refused without
+probing, and a checkpoint keeps the lane, its work and its await as they are,
+naming why under `kept`. A run started before the tripwire existed records its
+fingerprint at its next check and moves on.
+
+Look at what changed (`git config --local --list --show-origin`, the hooks
+directory, `info/attributes`), then relay the refusal to the person. Accept a
+change only on their word: `step --accept-config-change` records the settings
+as they now stand, names what it accepted on stderr and in the run record, and
+takes the step. The flag goes with `--restart`, `--release` or `--discard` too.
+A lane worktree that has gone (its lane landed or was discarded) is not a
+change.
 
 ## Check the machine's load
 

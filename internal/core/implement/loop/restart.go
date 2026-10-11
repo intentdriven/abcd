@@ -235,6 +235,14 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		}
 		aw := lane.Awaits[k]
 		now := o.now()
+		// The save aside and the reset run git in the lane's worktree: the
+		// run tripwire is checked first.
+		if err := configTripwireIn(repoRoot, root, st.RunID); err != nil {
+			if r, ok := AsRefusal(err); ok {
+				r.Lane = laneID
+			}
+			return false, err
+		}
 		aside, err := saveAside(repoRoot, root, st.RunID, lane, aw, why, true, now)
 		if err != nil {
 			return false, err

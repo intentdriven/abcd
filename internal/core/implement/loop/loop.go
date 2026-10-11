@@ -616,6 +616,11 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool) (StepResult, error) {
+	// The run tripwire (configwatch.go) comes before anything that may start
+	// git: a program-naming setting changed during the run stops the call.
+	if err := configTripwire(repoRoot, runID); err != nil {
+		return StepResult{}, err
+	}
 	g, err := outageFor(repoRoot, runID, o)
 	if err != nil {
 		return StepResult{}, err

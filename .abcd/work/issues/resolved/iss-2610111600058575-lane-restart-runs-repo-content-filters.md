@@ -1,0 +1,31 @@
+---
+schema_version: 1
+id: "iss-2610111600058575"
+slug: "lane-restart-runs-repo-content-filters"
+severity: "minor"
+category: "security"
+source: "agent-finding"
+found_during: "private security report, filed 2026-10-10"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "internal/core/implement/loop/restart.go"
+remedy: "Under abcd-fixes-what-it-adds this is not abcd's vulnerability (a filter or hook planted in the shared git config also runs on the person's own plain git add and commit, tested 2026-10-11), so lane git steps keep running the repository's own settings; abcd helps prevent it with a run tripwire: at run start record a fingerprint of every config key that can name a program (filter.*, core.hooksPath, core.sshCommand, core.fsmonitor, credential.*, remote.*.uploadpack and receivepack, url.*.insteadOf, protocol.*.allow, diff and merge drivers, gpg programs, include and includeIf paths) and of the hooks directory and info/attributes, recompute it before each git step abcd runs during the run (lane steps, restart, checkpoint, the outage probe, the landing push), and on any change stop with a refusal naming what changed until the person accepts it; prove with tests that a key planted mid-run stops the next step before git starts, an unchanged repository sees nothing, and acceptance resumes the run; a private security report and a private security report are then closed as not a vulnerability in abcd"
+resolution: "Built the run tripwire (internal/core/implement/loop/configwatch.go): the run's first check records a salted-hash fingerprint, beside its state, of every repository-level git setting that can name a program (filter, hooks path, ssh command, fsmonitor, pager, editor, core.worktree, extensions.worktreeConfig, credential, upload-pack and receive-pack, url rewrites, protocol allow rules, diff and merge drivers, gpg programs, include paths), each lane worktree's own per-worktree settings, the hooks directory and info/attributes, read through gitutil.RepoConfig. It is checked again before every implement step, discard and restart, before the shared network probe (a step's and implement outage probe's) and before a rate-limit checkpoint saves a lane aside. A change stops the call at the stage config before git starts, naming changed key names and file paths only, never a value; implement step --accept-config-change records the settings as they stand once the person has looked. The repository's own settings keep running unchanged. Proved by internal/core/implement/loop/configwatch_test.go (a planted filter stops a restart and the filter never runs; a new hook file, core.hooksPath and core.worktree in the shared or per-worktree config stop the next step; a run without a fingerprint records one and proceeds; an unchanged repository sees nothing; accepting resumes the run; a credential helper value never appears in the refusal, the stored file or the run record; the probe is stopped after a remote upload-pack is planted; a rate-limit checkpoint keeps the lane) and internal/surface/cli/implement_configwatch_test.go (the refusal, the accept flag and the outage probe through the CLI)."
+impact: additive
+---
+
+`abcd implement step --restart` snapshots the lane worktree with `read-tree` and `add -A`, then runs `reset --hard` and `clean -fd`, all without `FilterOverrides`, so a clean or smudge filter the lane's `.gitattributes` and git config name runs as the operator. The rate-limit checkpoint calls the same `saveAside` with reset for an implementer.
+
+A private security report, handled in this release; its advisory is published or closed with the release.
+
+Evidence (main 3d171421a): `snapshot` and `saveAside` (internal/core/implement/loop/restart.go) pass no filter override; `saveAside` is also reached from internal/core/implement/loop/ratelimit.go:157. No caller under internal/core/implement uses `gitutil.FilterOverrides`. Confirmed by reading the code at that commit; not re-run.
+
+Tension to settle: commit 142a73056 documents that the pick's record commit and a sync's merge deliberately run the repository's content filters in the lane worktree, as Git LFS needs, because the implementer already runs the repository's own code there. Blanking filters on restart (the advisory's fix) contradicts that stance and would leave LFS pointer files after `reset --hard`; keeping them makes this advisory a documented residual rather than a defect.
+
+## Ruling 2026-10-11
+
+The product thinker ruled option A+ with the LFS exception, recorded in a draft decision record, since withdrawn. The class is wider than the advisory: the pick's records commit and a sync's merge run content filters on purpose (commit 142a73056), and the landing's records commit runs every repository hook (`hookedGit`, internal/core/implement/loop/land.go), so a fix to restart alone would leave the planted program running at the next pick, sync or landing. The ruled fix closes all three routes, keeps a filter whose values are exactly git-lfs's standard commands, and moves the commit-msg outbound check in-process. Measured on a scratch `--local` git-lfs repository: with filters blanked and no exception, a sync of a main that changed an LFS file and an add of an edited LFS file both fail (exit 128); ordinary changes succeed; a planted pre-commit hook does not run with hooks off.
+
+## Assessed under abcd-fixes-what-it-adds (2026-10-11)
+
+Would it exist without abcd? Yes. A program named in the checkout's shared git settings (a content filter, a hook, a transport helper) runs on the person's own plain git commands with no abcd involved; tested 2026-10-11 by planting a filter and a hook from inside a lane and running a plain `git add` and `git commit` in the main checkout, and both ran. So it is not abcd's vulnerability, and switching those settings off for abcd alone would change how the repository works (large-file storage, its own hooks, its login and ssh helpers) while removing nothing an attacker can do. What abcd can do without changing anything is notice: the run tripwire stops abcd's next git step when those settings change during a run, and names the change. The earlier draft decision to blank filters and hooks in lane steps was withdrawn the same day.
