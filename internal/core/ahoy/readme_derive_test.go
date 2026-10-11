@@ -212,6 +212,62 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 		wantBody(t, d, "- [Install](#install)\n- [Install-1](#install-1)\n- [Install](#install-2)\n- [Install](#install-3)")
 	})
 
+	// A setext heading is a heading: one underlined with hyphens is level two
+	// and listed; one underlined with equals signs is level one, not listed,
+	// and both are counted when the forge numbers a repeated anchor. A line
+	// of hyphens after a blank line, a list item or indented code is a rule,
+	// not an underline.
+	t.Run("setext headings", func(t *testing.T) {
+		readme := strings.Join([]string{
+			"Project",
+			"=======",
+			"",
+			"Install",
+			"-------",
+			"",
+			"## Install",
+			"",
+			"Usage",
+			"===",
+			"",
+			"## Usage",
+			"",
+			"A heading over",
+			"  two lines",
+			"---",
+			"",
+			"a paragraph",
+			"",
+			"---",
+			"",
+			"- a list item",
+			"---",
+			"",
+			"    indented code",
+			"---",
+			"",
+			"> a quotation",
+			"---",
+			"",
+			readmePart("links", "Inside a part\n---"),
+			"",
+			"   Indented, still a heading   ",
+			"   ---   ",
+		}, "\n")
+		root := readmeRepo(t, "", map[string]string{"README.md": readme})
+		d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+		wantBody(t, d, strings.Join([]string{
+			"- [Install](#install)",
+			"- [Install](#install-1)",
+			"- [Usage](#usage-1)",
+			"- [A heading over two lines](#a-heading-overtwo-lines)",
+			"- [Indented, still a heading](#indented-still-a-heading)",
+		}, "\n"))
+
+		only := readmeRepo(t, "", map[string]string{"README.md": "Project\n=======\n\nInstall\n-------\n"})
+		wantBody(t, derivedPart(t, deriveReadmeParts(only, readmeSettings{Parts: []string{"contents"}}), "contents"), "- [Install](#install)")
+	})
+
 	// A bare carriage return ends a line, as it does on the forge's page: the
 	// text after one is not part of the heading before it, and a heading
 	// after one is a heading. CRLF endings read as one line ending.

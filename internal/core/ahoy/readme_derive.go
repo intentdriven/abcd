@@ -512,14 +512,27 @@ var (
 	atxHeadingRe = regexp.MustCompile(`^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$`)
 	// inlineLinkRe is an inline link, read as its text, as the page renders it.
 	inlineLinkRe = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
+	// setextUnderlineRe underlines the paragraph above it into a setext
+	// heading: equals signs for level one, hyphens for level two.
+	setextUnderlineRe = regexp.MustCompile(`^ {0,3}(=+|-+)[ \t]*$`)
+	// thematicBreakRe is a rule: three or more of one of *, - or _, spaced
+	// or not. After a paragraph a run of bare hyphens is an underline instead.
+	thematicBreakRe = regexp.MustCompile(`^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$`)
+	// blockStartRe opens a list item, a quotation or an HTML block, none of
+	// which is a top-level paragraph an underline could make a heading.
+	blockStartRe = regexp.MustCompile(`^ {0,3}(?:[-+*](?:[ \t]|$)|[0-9]{1,9}[.)](?:[ \t]|$)|>|<[A-Za-z/!?])`)
+	// indentedCodeRe is a line indented as code where no paragraph is open.
+	indentedCodeRe = regexp.MustCompile(`^(?: {4}| {0,3}\t)`)
 )
 
 const noLevelTwoHeading = "the README has no level-two heading"
 
 // contents lists the README's live level-two and level-three headings outside
-// every part. A heading counts where mdrecord.Mask leaves the line live (not
-// in a code fence or an HTML comment) and outside a leading frontmatter
-// block. Anchors follow the forge's slug rule, numbered across every heading
+// every part, ATX (`## Install`) and setext (`Install` underlined with
+// hyphens) alike. A heading counts where mdrecord.Mask leaves the line live
+// (not in a code fence or an HTML comment) and outside a leading frontmatter
+// block. The setext reading is the top-level one: a heading inside a list
+// item or a quotation is not read. Anchors follow the forge's slug rule, numbered across every heading
 // the page renders, so a repeated heading links to the one it names.
 func (r *readmeSource) contents() (string, string) {
 	data, err := readInRoot(r.root, "README.md")
@@ -549,19 +562,13 @@ func (r *readmeSource) contents() (string, string) {
 	seen := readmeSlugger{}
 	var out []string
 	hasH2 := false
-	for i, ln := range lines {
-		if skip[i] || mask[i] != 0 {
-			continue
-		}
-		m := atxHeadingRe.FindStringSubmatch(ln)
-		if m == nil {
-			continue
-		}
-		text := strings.TrimSpace(inlineLinkRe.ReplaceAllString(m[2], "$1"))
-		slug := seen.anchor(text)
-		level := len(m[1])
+	// heading numbers every heading the page renders and lists the live
+	// level-two and level-three ones outside every part. slugText is what
+	// the forge makes the anchor from; text is what the list shows.
+	heading := func(i, level int, slugText, text string) {
+		slug := seen.anchor(slugText)
 		if inPart[i] || text == "" || (level != 2 && level != 3) {
-			continue
+			return
 		}
 		indent := ""
 		if level == 3 {
@@ -570,6 +577,60 @@ func (r *readmeSource) contents() (string, string) {
 			hasH2 = true
 		}
 		out = append(out, indent+"- ["+escapeLinkText(text)+"](#"+slug+")")
+	}
+	// A setext heading is the paragraph its underline ends, so the open
+	// paragraph's lines are kept, with the line it began on; inBlock is a
+	// list item, a quotation or an HTML block, whose lines open no top-level
+	// paragraph until a blank line ends it.
+	var para []string
+	paraAt := -1
+	inBlock := false
+	for i, ln := range lines {
+		if skip[i] || mask[i] != 0 {
+			para, inBlock = nil, false
+			continue
+		}
+		if m := atxHeadingRe.FindStringSubmatch(ln); m != nil {
+			para, inBlock = nil, false
+			text := strings.TrimSpace(inlineLinkRe.ReplaceAllString(m[2], "$1"))
+			heading(i, len(m[1]), text, text)
+			continue
+		}
+		blank := strings.TrimSpace(ln) == ""
+		if para != nil {
+			if m := setextUnderlineRe.FindStringSubmatch(ln); m != nil {
+				level := 2
+				if m[1][0] == '=' {
+					level = 1
+				}
+				// The forge's page keeps the line break between a heading's
+				// lines, which its anchor drops; the list shows a space.
+				joined := inlineLinkRe.ReplaceAllString(strings.Join(para, "\n"), "$1")
+				heading(paraAt, level, joined, strings.ReplaceAll(joined, "\n", " "))
+				para = nil
+				continue
+			}
+			switch {
+			case blank:
+				para = nil
+			case thematicBreakRe.MatchString(ln):
+				para = nil
+			case blockStartRe.MatchString(ln):
+				para, inBlock = nil, true
+			default:
+				para = append(para, strings.TrimSpace(ln))
+			}
+			continue
+		}
+		switch {
+		case blank:
+			inBlock = false
+		case inBlock, indentedCodeRe.MatchString(ln), thematicBreakRe.MatchString(ln):
+		case blockStartRe.MatchString(ln):
+			inBlock = true
+		default:
+			para, paraAt = []string{strings.TrimSpace(ln)}, i
+		}
 	}
 	if !hasH2 {
 		return "", noLevelTwoHeading
