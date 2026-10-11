@@ -152,10 +152,11 @@ thinker placed every verb on 2026-10-09 by who types it: a command a person
 needs to do their job is a person's, and only a command no person types is
 listed with the agents (itd-2610090831227812; its spec's verb audit cites each
 ruling). Neither the help nor the plugin menu caps the person's list, and the
-two list the same commands: the command pages whose `block:` is `people` are the
-verbs this help lists under the person's groups. `rules` and `spec` sit with the
-agents, their lines naming `commands/ahoy.md` and `commands/intent.md`; the
-marker block's `abcd rules` still runs, because the verb is listed, not removed.
+two list the same commands: the command pages whose `block:` is `people` that
+back a verb are the verbs this help lists under the person's groups. `rules`
+and `spec` sit with the agents, their lines naming `commands/ahoy.md` and
+`commands/intent.md`; the marker block's `abcd rules` still runs, because the
+verb is listed, not removed.
 
 It is gated like every other surface claim. The committed command-tree snapshot
 records each visible top-level verb's group and each listed entry's block, so a

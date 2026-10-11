@@ -129,7 +129,10 @@ The approach, in plain words:
   (spec-moves-with-the-surface).
 - **The record that cannot be tested is captured live.** The host's menu
   rendering is not visible to a test, so a live session captures the menu
-  before step 1 and after the last step, and the captures are attached here.
+  as it stood before step 1 and after the last step, and the captures are
+  attached here. Both are taken in step 8's session with the person: the
+  before capture from a checkout of step 1's base commit, 314e9c3ce, since
+  step 1 was built by an agent with no live host session to capture in.
 
 How each acceptance criterion is met, numbered A1 to A13 in the order the
 intent lists them:
@@ -142,7 +145,7 @@ intent lists them:
 | A4, a typed hidden name gets the host's refusal | Step 8's live capture. |
 | A5, a test fails on a page whose block and key disagree | Step 1, `TestCommandPagesMatchTheMenu`. |
 | A6, the table names every page, and only merged pages leave | This section; the steps delete only the six pages above. |
-| A7, before and after captures attached | Step 1 takes the before capture; step 8 the after. |
+| A7, before and after captures attached | Step 8's live session takes both: the before capture from step 1's base commit, 314e9c3ce, and the after capture at the merged tip. |
 | A8, the docs set the library beside memory notes | Waits on open question 12, for the product thinker. Step 7 builds everything else, and the close waits on the answer. |
 | A9, the board shows the version and the retired `/abcd:version` is gone | Step 2. |
 | A10, launch previews the changelog and `changelog` is gone | Step 3. |
@@ -537,7 +540,7 @@ it:
 1. The menu follows the ruling: agents' pages are hidden, and the eight verbs that change sides move
    - packages: commands (the frontmatter of all thirty-five pages), internal/core/launch (the exported page-frontmatter reader), internal/surface/cli (helpgroups.go, helpgroups_test.go, consolidate_test.go, a new menu test file), .abcd/development/release/surface.json, docs/reference/cli/commands.md, .abcd/development/brief/04-surfaces/README.md (the help table and its paragraph), .abcd/development/brief/02-constraints/04-naming.md where it states the cap
    - tests: TestCommandPagesMatchTheMenu with its synthetic negative control, and TestPluginPersonListEqualsTheCLIs, each watched fail before the frontmatter and placement edits; TestPersonsListHoldsAtMostFifteenVerbs, TestPersonVerbsCountsEveryListedVerb and TestRulesAndSpecKeepTheirPlaces retired, each with its ruling in the commit; TestRootHelpListsThePersonsGroups (internal/surface/cli/helpgroups_test.go) rewritten to the new table, since it hardcodes the person's groups (Records with spec, Checks with lint, Release with reflect) and names reading among the agent verbs, so this step breaks it; TestCommandPagesDeclareTheirBlock, TestPlacementChangesNoInvocation and TestPeopleBlockIsTheSameUnderBothHelps pass; the snapshot and reference regenerated with go generate ./internal/surface/cli
-   - before the change: take the BEFORE capture in a live host session at the step's base commit (what `/abcd:` lists, and what typing `/abcd:scribe` answers), and add it to this spec under a `## Live captures` heading after the Steps section, in the step's own pull request (A7)
+   - the BEFORE capture (what `/abcd:` lists, and what typing `/abcd:scribe` answers) is deferred to step 8's live session, taken from a checkout of this step's base commit, 314e9c3ce, and added to this spec under a `## Live captures` heading after the Steps section in step 8's pull request (A7): this step was built by an agent with no live host session
    - placements per decisions 1 to 3: ideate under Records, reading and lab under Checks, dashboard under Set-up; rules names commands/ahoy.md and spec names commands/intent.md; TestRulesAndSpecKeepTheirPlaces retires because P4 supersedes itd-146's criterion
    - drain.md's frontmatter gains the key only; its body belongs to the itd-82 lane, so coordinate the order of the two edits
    - per decision 14: consult.md, ingest.md, prepare-this-repo.md and version.md, which carry no `block:` today, each gain `block: people` and no `user-invocable` key; steps 2, 4 and 6 delete them
@@ -576,8 +579,8 @@ it:
    - the ban's line count, measured at 9d990d87f with the entry applied to a scratch copy of the config: 53 lines under .abcd/development, outside the exempt paths, name a retired slash spelling with neither allow word on the line. Eight were this spec's, which now carry the word. Thirty-eight sit in the chapters and paragraphs steps 2 to 6 delete, fold or rewrite (12-version.md 2, 13-consult.md 6, 14-ingest.md 9, 15-prepare-this-repo.md 6, 33-source.md 3, 04-surfaces/README.md 9, 05-internals/08-skills.md 3), and those steps must leave none behind in what they write. That leaves seven lines in six files for step 7, and it edits six of them: 16-lint.md's opening paragraph (one line) and two lines of 03-configuration.md's section "The two `.abcd/` scopes" are forward-looking and name the successor; script-first-mvp.md's live-instance paragraph (one line) names the successor or says the pages retired; the intent's A9 line (77) and the draft's line 84 gain the word. The seventh, itd-147's audit-evidence line 271, is a verbatim quote the evidence-line pattern covers with no edit. A line steps 2 to 6 add or leave is theirs to fix; record-lint names it
    - builds everything except A8, which waits on open question 12; the ban follows decision 11
 8. The live captures, the doc-fidelity review and the close
-   - packages: this spec (the AFTER capture under Live captures), .abcd/development/intents (the intent moves to shipped by the close), .abcd/work/issues (iss-2610090831317531 resolved, if it is still open)
-   - tests: the AFTER capture in a live host session at the merged tip: what `/abcd:` lists (the fifteen, A1); typing `/abcd:guard` in full gets the host's refusal (A4); an agent asked in plain words runs `/abcd:guard` and it behaves as before (A2); a docs review recorded for HEAD with go run ./cmd/abcd docs fidelity record; then go run ./cmd/abcd spec close spc-2610100613109045 with a `Delivers: itd-2610090831227812` trailer (the intent already declares `impact: breaking`, so no --impact is passed)
+   - packages: this spec (the BEFORE and AFTER captures under Live captures), .abcd/development/intents (the intent moves to shipped by the close), .abcd/work/issues (iss-2610090831317531 resolved, if it is still open)
+   - tests: the BEFORE capture in a live host session at a checkout of 314e9c3ce, step 1's base (what `/abcd:` lists, and what typing `/abcd:scribe` answers); the AFTER capture at the merged tip: what `/abcd:` lists (the fifteen, A1); typing `/abcd:guard` in full gets the host's refusal (A4); an agent asked in plain words runs `/abcd:guard` and it behaves as before (A2); a docs review recorded for HEAD with go run ./cmd/abcd docs fidelity record; then go run ./cmd/abcd spec close spc-2610100613109045 with a `Delivers: itd-2610090831227812` trailer (the intent already declares `impact: breaking`, so no --impact is passed)
    - the live session is the only evidence for A1, A2 and A4 at the host; script output does not stand in for it
    - waits on the product thinker's answer to open question 12 and the A8 work it decides
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -22,11 +23,18 @@ import (
 // command off the person's menu and refuses it when a person types it.
 const userInvocableKey = "user-invocable"
 
+// hiddenLine is the one spelling of the key an agents page carries: the bare
+// line, unquoted and uncommented. The field reader unquotes a value, so a
+// quoted "false" reads the same through it; the host's own reader is not held
+// to that, so the page is held to the line itself.
+var hiddenLine = regexp.MustCompile(`(?m)^user-invocable: false[ \t]*$`)
+
 // pageMenuDefects names every page, keyed by its name under commands/, whose
 // frontmatter disagrees with the menu: a page declares `block:` as `people` or
 // `agents`; a people page carries no user-invocable key; an agents page carries
-// `user-invocable: false` and nothing else in that key. Each defect names the
-// page. The result is sorted, so a failure reads the same on every run.
+// the bare line `user-invocable: false` and nothing else in that key. Each
+// defect names the page. The result is sorted, so a failure reads the same on
+// every run.
 func pageMenuDefects(pages map[string]string) []string {
 	names := make([]string, 0, len(pages))
 	for name := range pages {
@@ -36,7 +44,7 @@ func pageMenuDefects(pages map[string]string) []string {
 	var out []string
 	for _, name := range names {
 		page := pluginCommandsDir + "/" + name + ".md"
-		fields, _, err := launch.PageFieldsForTest(pages[name])
+		fields, body, err := launch.PageFieldsForTest(pages[name])
 		if err != nil {
 			out = append(out, fmt.Sprintf("%s: its frontmatter cannot be read: %v", page, err))
 			continue
@@ -53,6 +61,8 @@ func pageMenuDefects(pages map[string]string) []string {
 			out = append(out, fmt.Sprintf("%s says `block: agents` but carries no `%s: false`, so the host lists it on the person's menu", page, userInvocableKey))
 		case block == blockAgents && key != "false":
 			out = append(out, fmt.Sprintf("%s says `block: agents` but `%s: %s`; an agent's page carries `%s: false` and nothing else", page, userInvocableKey, key, userInvocableKey))
+		case block == blockAgents && !hiddenLine.MatchString(strings.TrimSuffix(pages[name], body)):
+			out = append(out, fmt.Sprintf("%s says `block: agents` but its key is not the line `%s: false`; the host reads that line as written, so it carries no quotes and no comment", page, userInvocableKey))
 		case block == blockAgents:
 		default:
 			out = append(out, fmt.Sprintf("%s says `block: %s`; a page is `people` or `agents`", page, block))
@@ -91,6 +101,8 @@ func TestPageMenuDefectsNamesEachDefect(t *testing.T) {
 		"keyed-person": "---\nname: keyed-person\nblock: people\nuser-invocable: false\n---\n",
 		"bare-agent":   "---\nname: bare-agent\nblock: agents\n---\n",
 		"true-agent":   "---\nname: true-agent\nblock: agents\nuser-invocable: true\n---\n",
+		"quoted-agent": "---\nname: quoted-agent\nblock: agents\nuser-invocable: \"false\"\n---\n",
+		"noted-agent":  "---\nname: noted-agent\nblock: agents\nuser-invocable: false # hidden\n---\n",
 		"unclosed":     "---\nname: unclosed\nblock: people\n",
 	}
 	want := map[string]string{
@@ -100,6 +112,8 @@ func TestPageMenuDefectsNamesEachDefect(t *testing.T) {
 		"keyed-person": "a person's page carries no such key",
 		"bare-agent":   "carries no `user-invocable: false`",
 		"true-agent":   "`user-invocable: true`",
+		"quoted-agent": "not the line `user-invocable: false`",
+		"noted-agent":  "not the line `user-invocable: false`",
 		"unclosed":     "never closed",
 	}
 	got := pageMenuDefects(pages)
