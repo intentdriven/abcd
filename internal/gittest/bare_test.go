@@ -18,8 +18,9 @@ import (
 )
 
 // maintenanceOff is the repository config every fixture repository carries,
-// written out here rather than read from the helper so the test pins the
-// settings themselves, not whatever list the helper happens to hold.
+// written out here rather than read from the helper so the tests pin the
+// settings themselves, not whatever list the helper happens to hold. It is the
+// one copy: the NewRepo test and the bare-repository test both read it.
 var maintenanceOff = map[string]string{
 	"gc.auto":          "0",
 	"gc.autodetach":    "false",
