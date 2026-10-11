@@ -200,6 +200,18 @@
         "^  - capture promote refuses an item identifier that carries no disposition, and stamps promoted_to / origin on success$",
         "^  - the lint reads the join from both ends — .* an item whose promoted_to names some other record$"
       ]
+    },
+    {
+      "id": "retired-plugin-pages",
+      "pattern": "/abcd:(consult|ingest|prepare-this-repo|version|source)\\b",
+      "message": "a retired plugin page (itd-2610090831227812): the version shows on the board, prepare-this-repo is ahoy install, and consult, ingest and source are library",
+      "severity": "blocker",
+      "successor": "/abcd:abcd (version), /abcd:ahoy install (prepare-this-repo), /abcd:library (consult, ingest, source)",
+      "allow_context": [
+        "historical",
+        "retire",
+        "^ +evidence: [^ ]+:[0-9]+ — \""
+      ]
     }
   ],
   "rules": {
