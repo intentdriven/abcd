@@ -526,7 +526,7 @@ func (r *readmeSource) contents() (string, string) {
 	if err != nil {
 		return "", readmeUnreadReason(err)
 	}
-	lines, starts, _ := markerLines(data)
+	lines, starts := readmePageLines(data)
 	mask := mdrecord.Mask(lines)
 	skip := make([]bool, len(lines))
 	if loc := frontmatterRe.FindIndex(data); loc != nil {
@@ -534,10 +534,16 @@ func (r *readmeSource) contents() (string, string) {
 			skip[i] = starts[i] < loc[1]
 		}
 	}
+	// The parts are where the writer finds them; a page line is in one when
+	// it starts inside the part's bytes.
 	inPart := make([]bool, len(lines))
-	for _, p := range parseReadmeParts(data).parts {
-		for i := p.Begin; i <= p.End; i++ {
-			inPart[i] = true
+	doc := parseReadmeParts(data)
+	for _, p := range doc.parts {
+		from, to := doc.starts[p.Begin], doc.ends[p.End]
+		for i := range lines {
+			if starts[i] >= from && starts[i] < to {
+				inPart[i] = true
+			}
 		}
 	}
 	seen := readmeSlugger{}
@@ -569,6 +575,29 @@ func (r *readmeSource) contents() (string, string) {
 		return "", noLevelTwoHeading
 	}
 	return strings.Join(out, "\n"), ""
+}
+
+// readmePageLines splits the README at every line ending the forge's page
+// reads, CRLF, LF and a bare CR, returning each line without its ending and
+// the byte offset it starts at. markerLines, the writer's reading, ends a
+// line at LF only, so a bare CR would otherwise carry the text after it into
+// the heading before it, and hide a heading that follows it.
+func readmePageLines(data []byte) (lines []string, starts []int) {
+	for off := 0; off < len(data); {
+		i := bytes.IndexAny(data[off:], "\r\n")
+		starts = append(starts, off)
+		if i < 0 {
+			lines = append(lines, string(data[off:]))
+			break
+		}
+		lines = append(lines, string(data[off:off+i]))
+		next := off + i + 1
+		if data[off+i] == '\r' && next < len(data) && data[next] == '\n' {
+			next++
+		}
+		off = next
+	}
+	return lines, starts
 }
 
 // readmeUnreadReason says why the contents part has no README to read. Only

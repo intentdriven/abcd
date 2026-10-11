@@ -212,6 +212,16 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 		wantBody(t, d, "- [Install](#install)\n- [Install-1](#install-1)\n- [Install](#install-2)\n- [Install](#install-3)")
 	})
 
+	// A bare carriage return ends a line, as it does on the forge's page: the
+	// text after one is not part of the heading before it, and a heading
+	// after one is a heading. CRLF endings read as one line ending.
+	t.Run("a bare carriage return", func(t *testing.T) {
+		readme := "# P\r\n\r\n## Install\rnot a heading\r\n\r\nintro\r## Usage\n"
+		root := readmeRepo(t, "", map[string]string{"README.md": readme})
+		d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+		wantBody(t, d, "- [Install](#install)\n- [Usage](#usage)")
+	})
+
 	// A README abcd cannot read is reported as unread, never as one with no
 	// level-two heading: each of these holds one.
 	unreadable := map[string]struct {
