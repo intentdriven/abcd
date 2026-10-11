@@ -126,7 +126,7 @@ here too.
 Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
-does: `consult` and `ingest` run as host-side markdown over the sources corpus,
+does: the library page's consulting and registering steps run as host-side markdown over the sources corpus,
 and reach the binary only through the `library` verb, which makes every write to
 the corpus. The install's preparation workflow, on the ahoy page, is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
