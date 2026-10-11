@@ -3987,7 +3987,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if len(res.OptionalSkipped) > 0 {
 					label := "optional, not covered by --yes"
 					if !yes {
-						label = "optional, asked only at a terminal"
+						label = "optional, not asked in this run"
 					}
 					fmt.Fprintf(w, "  %s: %s\n", label, strings.Join(res.OptionalSkipped, ", "))
 					for _, id := range res.OptionalSkipped {

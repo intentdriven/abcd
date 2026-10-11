@@ -55,3 +55,28 @@ func TestAhoyInstallReadmePartsFlag(t *testing.T) {
 		t.Errorf("uninstall does not say what it did with README.md:\n%s", out)
 	}
 }
+
+// TestAhoyInstallReadmeOfferLabelIsTrue: a run without --yes reports the
+// README question under optional work it left, and the label over that list
+// is true of every id in it. "asked only at a terminal" was false of the
+// README question, which no run asks until its question pair is built
+// (spc-2610031704338417 step 4), at a terminal or off one.
+func TestAhoyInstallReadmeOfferLabelIsTrue(t *testing.T) {
+	hermeticRepo(t)
+	out, err := runCLIPipedStdin(t, strings.Repeat("y\n", 40), "ahoy", "install", "--adopt",
+		"--visibility", "private", "--docs-target", "agents_md",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false")
+	if err != nil {
+		t.Fatalf("install: %v\n%s", err, out)
+	}
+	s := string(out)
+	if !strings.Contains(s, "readme.offered") {
+		t.Fatalf("the README question is not reported as left:\n%s", s)
+	}
+	if strings.Contains(s, "asked only at a terminal:") {
+		t.Errorf("the label says the README question is asked at a terminal, which no run does yet:\n%s", s)
+	}
+	if !strings.Contains(s, "optional, not asked in this run: ") {
+		t.Errorf("no label says the optional work was not asked:\n%s", s)
+	}
+}
