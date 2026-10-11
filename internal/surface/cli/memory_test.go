@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/memnote"
+	"github.com/intentdriven/abcd/internal/core/rules"
 )
 
 // memoryFixture is a repository with a root commit as the working directory
@@ -295,6 +297,33 @@ func TestMemoryAddRefusesAMissingTitleRecallOrWriter(t *testing.T) {
 		if exitCode(err) != 2 {
 			t.Errorf("without --%s: exit %d, want 2:\n%s", name, exitCode(err), out)
 		}
+	}
+	if _, err := os.Stat(abcdhome.Path(home, "memory.json")); !os.IsNotExist(err) {
+		t.Error("a refused add wrote the machine layer")
+	}
+}
+
+// A root the resolver refuses is named on stderr before the verb's own
+// refusal: rules.Resolution's notes are a front door's to print, and a memory
+// verb that dropped them left a no-root-commit refusal with no word of why the
+// repository was not used.
+func TestMemoryAddPrintsTheOwnershipRefusalBeforeItsOwn(t *testing.T) {
+	home, repo := memoryFixture(t)
+	sub := mustMkdirAll(t, filepath.Join(repo, "pkg"))
+	t.Chdir(sub)
+	gitRefusesOwnership(t, sub)
+	t.Cleanup(rules.SwapOwnerUIDForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil }))
+
+	var so, se bytes.Buffer
+	code := run([]string{"memory", "add", "--title", "The tests need the race flag",
+		"--recall", "test", "--recall", "race", "--by", "Example:model-1"}, strings.NewReader(raceBody), &so, &se)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstdout:\n%s\nstderr:\n%s", code, so.String(), se.String())
+	}
+	stderr := se.String()
+	refused, noRoot := strings.Index(stderr, "REFUSED"), strings.Index(stderr, "no root commit")
+	if refused < 0 || noRoot < 0 || refused > noRoot {
+		t.Errorf("stderr must name the refused root before the no-root-commit refusal:\n%s", stderr)
 	}
 	if _, err := os.Stat(abcdhome.Path(home, "memory.json")); !os.IsNotExist(err) {
 		t.Error("a refused add wrote the machine layer")

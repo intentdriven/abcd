@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/memnote"
-	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -142,13 +141,16 @@ func reachOf(n memnote.Note, root string) string {
 }
 
 // memoryWhere is the home and the repository root a memory verb works from.
-func memoryWhere() (home, repoRoot string, err error) {
+// The root is resolved through rulesRoot, which prints the resolution's notes
+// to w: a refused foreign-uid root is named there, before any refusal of the
+// verb's own (rules.Resolution).
+func memoryWhere(w io.Writer) (home, repoRoot string, err error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", "", err
 	}
 	home, _ = os.UserHomeDir()
-	return home, rules.ResolveRoot(cwd), nil
+	return home, rulesRoot(cwd, w), nil
 }
 
 // memoryRefusal maps the core's refusals: a malformed field, the gate, no
@@ -184,7 +186,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			"Exit 2 on a refusal, with nothing written.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			home, repoRoot, err := memoryWhere()
+			home, repoRoot, err := memoryWhere(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -230,7 +232,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			"a private name, a session shaped like a link — with nothing written.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			home, repoRoot, err := memoryWhere()
+			home, repoRoot, err := memoryWhere(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -279,7 +281,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			"it, when and in which session, its origin, and its reach (this repository,\n" +
 			"everywhere, another repository, or the project's file). Read-only.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			home, repoRoot, err := memoryWhere()
+			home, repoRoot, err := memoryWhere(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -313,7 +315,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			"removed by editing that file in a reviewed change, and is refused here.\n\n" +
 			"Exit 2 on a refusal, with nothing written.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			home, repoRoot, err := memoryWhere()
+			home, repoRoot, err := memoryWhere(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
