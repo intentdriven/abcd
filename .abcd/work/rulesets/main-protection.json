@@ -55,9 +55,9 @@
     },
     {
       "parameters": {
-        "check_response_timeout_minutes": 45,
+        "check_response_timeout_minutes": 90,
         "grouping_strategy": "ALLGREEN",
-        "max_entries_to_build": 5,
+        "max_entries_to_build": 4,
         "max_entries_to_merge": 5,
         "merge_method": "MERGE",
         "min_entries_to_merge": 1,
