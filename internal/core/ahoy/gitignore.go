@@ -11,11 +11,16 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// Canonical .gitignore fence markers and the do-not-hand-edit header.
+// Canonical .gitignore fence markers and the do-not-hand-edit header. The
+// header is plain ASCII (iss-2610020704163406): an adopting repository whose
+// writing rules ban non-ASCII bytes cannot edit a managed line. Detection reads
+// only the fences and the entries, never the comment, so a block an earlier
+// install wrote with the old em-dash header is the same block, not drift; the
+// next apply that rewrites the block rewrites its header too.
 const (
 	gitignoreBegin  = "# BEGIN ABCD"
 	gitignoreEnd    = "# END ABCD"
-	gitignoreHeader = "# abcd-managed block — do not hand-edit. Run /abcd:ahoy to refresh."
+	gitignoreHeader = "# abcd-managed block, do not hand-edit; run /abcd:ahoy to refresh."
 )
 
 // gitignoreMaxBytes caps how large a .gitignore we will round-trip.
