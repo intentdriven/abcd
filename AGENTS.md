@@ -173,15 +173,27 @@ this case is never reached by following the ladder literally
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
 
-CI (`.github/workflows/ci.yml`) runs its `check` job on macOS + Linux — build,
-vet, test and the race-enabled internal tests on both, with the `make
-fmt-check` format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate on the Linux leg alone. Separate jobs run the reviews-charter check
+CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
+build, vet, test and the race-enabled internal tests, with the `make fmt-check`
+format gate, the record-lint, issue-drift and docs-lint steps and the
+site-render gate — and on macOS on every event but a pull request, where it
+builds, vets and tests in one race-enabled pass over the whole module. On a pull
+request `check (macos-latest)` reports its required context from an ubuntu
+runner and runs nothing (every push there has passed `make preflight`);
+the merge-queue entry runs the macOS suite on exactly the tree that lands.
+The workflow triggers on pull requests, merge-queue entries, a nightly
+schedule and by hand, never on a push to `main`: every commit there is a
+merge result its queue entry already tested, and the nightly run checks the
+default branch and saves its Go build cache for the runs that follow. On
+every merge-queue event `.github/workflows/queue-sweep.yml` cancels the runs
+of entries the queue has already dropped, and only those whose queue ref is
+gone; it is not a required check.
+Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
 (`make smoke`). A
-fail-closed classifier stands the macOS leg, the race lane and the `zizmor`,
+fail-closed classifier stands the race lane and the `zizmor`,
 `govulncheck` and smoke jobs down on a pull request confined to `docs/`,
 `.abcd/development/`, `.abcd/work/`, the root prose files and the
 community-health files in `.github/`; the Linux unit lane, the format gate and

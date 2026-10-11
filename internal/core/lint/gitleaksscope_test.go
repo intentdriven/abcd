@@ -20,9 +20,10 @@ import (
 //
 // The step's own script is run against a fake gitleaks that records its
 // arguments. On a pull request the scan is the pull request's own range,
-// base..HEAD. On a push or a merge-queue entry it is the full history
-// reachable from HEAD — the history that lands — which keeps the full-history
-// property without walking other refs. A pull request whose base cannot be
+// base..HEAD. On a merge-queue entry it is the full history reachable from
+// HEAD — the history that lands — which keeps the full-history property
+// without walking other refs, and on the nightly or a dispatched run it is the
+// full history of the branch tip the run checks. A pull request whose base cannot be
 // resolved scans wider (HEAD), never narrower, and says so.
 func TestGitleaksScansOnlyTheHistoryThisRunWouldLand(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
@@ -42,7 +43,8 @@ func TestGitleaksScansOnlyTheHistoryThisRunWouldLand(t *testing.T) {
 		scope string
 	}{
 		{"pull_request", map[string]string{"EVENT_NAME": "pull_request", "BASE_SHA": base}, base + "..HEAD"},
-		{"push", map[string]string{"EVENT_NAME": "push", "BASE_SHA": ""}, "HEAD"},
+		{"schedule", map[string]string{"EVENT_NAME": "schedule", "BASE_SHA": ""}, "HEAD"},
+		{"workflow_dispatch", map[string]string{"EVENT_NAME": "workflow_dispatch", "BASE_SHA": ""}, "HEAD"},
 		{"merge_group", map[string]string{"EVENT_NAME": "merge_group", "BASE_SHA": ""}, "HEAD"},
 		{"pull_request, base absent from the checkout", map[string]string{
 			"EVENT_NAME": "pull_request", "BASE_SHA": strings.Repeat("ab", 20)}, "HEAD"},
