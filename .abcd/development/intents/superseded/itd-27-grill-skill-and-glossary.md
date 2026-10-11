@@ -127,5 +127,5 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 - Extended by: `itd-42` (coherence-aware grill) — adds a brief- and sibling-coherence tier to the grill this intent built; glossary-aware mode is kept verbatim.
 
 [pocock-grill-with-docs]: https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md "Pocock /grill-with-docs (MIT) — inline-CONTEXT.md update pattern"
-[pocock-to-prd]: https://github.com/mattpocock/skills "Pocock /to-prd (MIT) — Problem/Solution/`User Stories`/Implementation Decisions/Testing Decisions/Out of Scope/Further Notes template; silent post-conversation synthesis. Adapted from the skills/engineering/to-prd/SKILL.md path as of May 2026; the repository's current HEAD does not carry that path, so the link targets the repository"
+[pocock-to-prd]: https://github.com/mattpocock/skills/blob/c5a4a8c2e966e28628f56d1bfef07f401d399df0/skills/engineering/to-prd/SKILL.md "Pocock /to-prd (MIT) — Problem/Solution/`User Stories`/Implementation Decisions/Testing Decisions/Out of Scope/Further Notes template; silent post-conversation synthesis. Linked at the last upstream commit that held skills/engineering/to-prd/SKILL.md, before the skill was merged into to-spec and to-tickets on 2026-07-08"
 [ears]: https://alistairmavin.com/ears/ "Mavin EARS — Easy Approach to Requirements Syntax"
