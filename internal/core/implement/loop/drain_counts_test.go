@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The summary's counts (itd-82 scope 8, spc-2609212015054359 step 2): the
@@ -108,5 +109,31 @@ func TestASpendWhoseRunCannotBeReadIsNamed(t *testing.T) {
 	c := drainCounts(repo.Root(), st, nil, nil)
 	if len(c.Spend.Unread) != 1 || c.Spend.Unread[0] != "run-0000000000000001" || c.PullRequests != 1 {
 		t.Fatalf("an unreadable run is named in the spend: %+v", c)
+	}
+}
+
+// TestADrainStoppedOnAnOutageWithALaneInProgressClaimsNoNormalEnding: a drain
+// the run's outage give-up stops while its lane is still in progress has no
+// pull request, but its lane has not ended, so its next move does not call the
+// stop a normal ending.
+func TestADrainStoppedOnAnOutageWithALaneInProgressClaimsNoNormalEnding(t *testing.T) {
+	repo := drainRepo(t)
+	c := &clock{t: time.Date(2026, 10, 9, 9, 0, 0, 0, time.UTC)}
+	o := Options{Now: c.now}
+	first := drainToLane(t, repo, o, DrainOptions{})
+	if first.Start == nil {
+		t.Fatalf("the drain opens its first lane: %+v", first)
+	}
+	giveUp(t, joinShared(t, repo.Root(), c.now), "host-a", func(d time.Duration) { c.t = c.t.Add(d) })
+
+	res, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stopped != DrainStoppedOutage || res.Counts.InProgress != 1 || res.Counts.PullRequests != 0 {
+		t.Fatalf("the drain stops on the outage with its lane in progress: %+v", res.Counts)
+	}
+	if strings.Contains(res.Next, "normal ending") || strings.Contains(res.Next, "no lane ended in a pull request") {
+		t.Errorf("a drain stopped with a lane in progress does not call it a normal ending: %s", res.Next)
 	}
 }

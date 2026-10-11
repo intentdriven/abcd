@@ -178,6 +178,7 @@ until the run itself closes it.
   each validator's return across the drain's lanes, the budget check's unit;
   a lane whose run cannot be read is named, the spend then a floor). A lane
   done before the drain read it keeps its pull request number, and a drain
-  that ends with no lane in a pull request says so as a normal ending.
+  that ends with every lane ended and none in a pull request says so as a
+  normal ending (one stopped with a lane still in progress does not).
 - **Remaining:** the decision-record marker on a trust-rule hand-back
   (decision 10), and the steps from issues the plan names.

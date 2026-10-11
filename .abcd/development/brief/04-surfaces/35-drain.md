@@ -272,8 +272,9 @@ hand-back's) and each validator's return it read a verdict from. No runner
 reports tokens or money, so neither is counted. A lane whose run state cannot
 be read is named in the spend, which is then a floor, rather than refusing the
 summary. A merge is a person's gate, so the drain counts the pull requests its
-lanes opened, not the ones merged; a drain that ends with no lane in a pull
-request says so as a normal ending and exits 0.
+lanes opened, not the ones merged; a drain that ends with every lane ended and
+none in a pull request says so as a normal ending and exits 0, and one that
+stops with a lane still in progress (an outage give-up) claims no such ending.
 
 ## The trust boundary
 

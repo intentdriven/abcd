@@ -312,7 +312,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
-		if res.Complete && res.Counts.PullRequests == 0 && res.Counts.LanesOpened > 0 {
+		// The normal ending is claimed only once every lane has ended: an
+		// outage stop is taken before the lane in progress is read, so a
+		// drain can stop with a lane still mid-flight.
+		if res.Complete && res.Counts.PullRequests == 0 && res.Counts.LanesOpened > 0 && res.Counts.InProgress == 0 {
 			res.Next += "; no lane ended in a pull request, which is a normal ending: every lane's outcome and hand-back is above"
 		}
 		if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Outcome == DrainLaneInProgress }); i >= 0 {

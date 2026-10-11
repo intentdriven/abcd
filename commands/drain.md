@@ -223,7 +223,8 @@ sum of `implementers`, each implementer's receipt the loop verified, and
 `validators`, each validator's return it read a verdict from, the unit the
 budget check counts in; `unread` names a lane's run whose state could not be
 read, which makes the spend a floor); `next` is the one move to make. A drain
-that ends with no lane in a pull request says so in `next` as a normal ending.
+that ends with every lane ended and none in a pull request says so in `next` as
+a normal ending; one that stops with a lane still in progress does not.
 
 Tell the user any loosened floors first, then what this move did (the
 judgement asked or taken, the lane opened, the hand-back routed, the pause or
