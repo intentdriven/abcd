@@ -14,12 +14,12 @@ person's command named `library`
 ([itd-2610090831227812](../../intents/planned/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md)).
 Under [adr-40](../../decisions/adrs/0040-review-audit-lint-are-three-verbs.md) neither old name survives as
 an alias. Every sub-verb kept its name (decision 7), so the memory store's
-`ingest`, which distils a source into pages, sits beside the corpus's `add`,
-which registers a document. The host-delegated pages
+ingest, which distils a source into pages, sits beside the corpus's add, which
+registers a document. The host-delegated pages
 [`/abcd:consult`](13-consult.md) and [`/abcd:ingest`](14-ingest.md) carry the
 corpus's judgement (what to search for, which class a document is, which
-keywords matter) and call these verbs for every write; the page named `ingest`
-means the corpus's `add`, not the memory store's `ingest`.
+keywords matter) and call these verbs for every write; the page named ingest
+means the corpus's add, not the memory store's ingest (iss-2610110233253365).
 
 ## Sub-verbs
 
@@ -43,8 +43,9 @@ means the corpus's `add`, not the memory store's `ingest`.
 | `lint` | lint | shipped |
 | `sync-banlist` | — | shipped |
 
-`add`, `cite-check`, `declassify`, `init`, `ledger` and `sync-banlist` act on the
-sources corpus; `ask`, `ingest` and `lint` act on the memory store.
+Six of the verbs act on the sources corpus: creating it, adding a source,
+declassifying one, the ledger, the banlist sync and the scan. Three act on the
+memory store: ingesting a source, asking a question and the store lint.
 
 ## Bare `abcd library`
 
@@ -52,15 +53,15 @@ Bare `abcd library` is read-only and renders both stores: the corpus (where it
 is, how many sources sit in each class, the ledgers and their line counts, and
 any entry whose folder and metadata disagree) and the checkout's memory store
 (below). A store that cannot be read is one line saying why and naming what
-would create it: `abcd library init` for a missing corpus, a checkout for the
-memory store. The command refuses, exit 2, only when neither can be read
+would create it: the corpus's creating verb for a missing corpus, a checkout
+for the memory store. The command refuses, exit 2, only when neither can be read
 (decision 8). So inside a checkout with no corpus it renders the memory store
 and a line about the corpus, and outside every checkout with a corpus it
-renders the corpus and a line about the memory store. The `--json` envelope
+renders the corpus and a line about the memory store. The JSON envelope
 carries `corpus` and `memory`, each null when that store could not be read, with
 `corpus_note` or `memory_note` saying why. The corpus is the default one under
-the user-level home, `~/.abcd.noindex/sources`, unless `--corpus` names another
-directory.
+the user-level home, `~/.abcd.noindex/sources`, unless the invocation names
+another directory.
 
 ## The sources corpus
 
@@ -240,7 +241,7 @@ surface contract: what the user types and what happens.
 > ids in this repo's own store. So in this section the store an id belongs to is
 > read from the sentence around it, never from the number.
 
-**The store every memory verb addresses is the checkout's, resolved from the working directory and never taken to be it.** The front door asks [`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go) before it builds a request — the same resolution `capture`, `decide` and `spec` address their stores through: git's toplevel where git will name one, and a refusal in the two remaining states rather than a guess (a repo-shaped tree git will not answer for, and no repository above at all). So a render from a package directory reports the checkout's pages instead of `store not present`, an ingest lands in the checkout's substrate instead of laying a second one beneath the caller, and outside a checkout `ingest`, `ask` and `lint` exit **2** having read nothing and written nothing. It deliberately does not fall through to a marker walk, which would accept any directory carrying the name (iss-2609090947359464). A memory store found **below** the checkout root, on the chain between the caller and it, is named on stderr and left untouched — the deposit an unresolved front door leaves behind, reported to the person standing over it rather than stepped over in silence.
+**The store every memory verb addresses is the checkout's, resolved from the working directory and never taken to be it.** The front door asks [`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go) before it builds a request — the same resolution `capture`, `decide` and `spec` address their stores through: git's toplevel where git will name one, and a refusal in the two remaining states rather than a guess (a repo-shaped tree git will not answer for, and no repository above at all). So a render from a package directory reports the checkout's pages instead of `store not present`, an ingest lands in the checkout's substrate instead of laying a second one beneath the caller, and outside a checkout every memory verb but the bare render exits **2** having read nothing and written nothing. It deliberately does not fall through to a marker walk, which would accept any directory carrying the name (iss-2609090947359464). A memory store found **below** the checkout root, on the chain between the caller and it, is named on stderr and left untouched — the deposit an unresolved front door leaves behind, reported to the person standing over it rather than stepped over in silence.
 
 **Its half of bare `abcd library`** renders the store's state and nothing else: how many
 pages there are by class, when the last ingest happened, the recent
