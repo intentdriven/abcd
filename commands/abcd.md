@@ -102,7 +102,11 @@ alone: its rows are in the JSON and on the site's Status page. Now is every
 intent a build run has in a lane (each row's `lane` names the run, the lane,
 its next stage and the role it waits on, its `branch` once cut, and
 `in_flight` while that branch exists and the spec is open), then the intent
-marked `next_up`; Next
+marked `next_up`. A run started for an issue shows the issue's one-line
+summary as its title, prefixed `issue: `, with `kind` `issue` and its ledger
+folder as `bucket`; a lane whose pull request has merged (at its land stage,
+its branch's tip on the default branch as last fetched) or whose branch is
+gone leaves Now. Next
 is every other planned intent the readiness gate reports READY, since the
 `next_up` intent is listed under Now alone; Later is every
 planned intent the gate refuses, its `failing_checks` named, then the drafts.
