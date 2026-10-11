@@ -1,11 +1,20 @@
 name: ci
 
-# Checks on every pull request and on every push to the default branch. Branch
-# work is covered by the pull_request trigger alone, so a PR push runs the matrix
-# once; the default-branch push keeps the merged tip checked. The check job
-# builds, vets and tests on macOS and Linux, with race-enabled internal tests on
-# both and the `make fmt-check` format gate, record-lint, the issue-drift check,
-# docs-lint and the site-render gate on the ubuntu leg alone. Separate jobs run full-history
+# Checks on every pull request, on every merge-queue entry, nightly on the
+# default branch, and on demand. Branch work is covered by the pull_request
+# trigger alone, so a PR push runs the matrix once, and the merge-queue entry
+# runs the full gate on exactly the tree that lands. There is no push trigger:
+# with the queue, every commit on the default branch is a merge result its
+# queue entry already tested, so a push run repeated that run in full
+# (iss-2610110938294826). The nightly run keeps the default branch itself
+# checked against what changes outside the tree (runner images, the advisory
+# databases) and saves its Go build cache (see the check job). The check job
+# builds, vets and tests on Linux on every event, with race-enabled internal
+# tests and the `make fmt-check` format gate, record-lint, the issue-drift check,
+# docs-lint and the site-render gate on that leg. The macOS leg runs the suite
+# on every event but a pull request: in the merge queue it tests exactly the
+# tree that lands, and on a pull request it reports its required context
+# without taking a macOS runner (see the check job). Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, and the
 # cold-reading evals.
@@ -24,10 +33,11 @@ name: ci
 #     context still reports on every pull request; `paths:` filtering would leave
 #     one permanently pending and wedge the merge.
 #
-# What an inert change skips is the SECOND copy of the work and the lanes that
-# only a source change can move: the macOS leg, the race lane, the smoke harness,
-# and the workflow audit (anything under .github/ is not inert, so the audit
-# still runs on every change it could be auditing).
+# What an inert change skips is the lanes that only a source change can move:
+# the race lane, the smoke harness, and the workflow audit (anything under
+# .github/ is not inert, so the audit still runs on every change it could be
+# auditing). The macOS leg runs no suite on any pull request, inert or not, so
+# the classifier has nothing to stand down there.
 #
 # What it does not skip, besides the ubuntu unit lane, is the cold-reading evals.
 # Their subject is the allowlist itself — the record and the docs are the material
@@ -41,42 +51,56 @@ name: ci
 # default branch. Alongside it the record gates are `go run` invocations of this
 # module, so a record-only change compiles most of the module either way.
 on:
-  push:
-    branches: [main]
   pull_request:
   # Merge-queue entries run the full gate on the would-be merge result. The
-  # changes classifier below already treats any non-pull_request event as never
-  # inert, so a merge_group run executes everything.
+  # changes classifier below treats any non-pull_request event as never inert,
+  # so a merge_group run executes everything; so do the two below.
   merge_group:
+  # Nightly on the default branch, at an off-peak minute (02:41 UTC) that is
+  # not the top of an hour, when scheduled runs pile up. A scheduled run carries
+  # no base commit, so the range-scoped gates announce that they did not run and
+  # every tree-shaped gate runs in full.
+  schedule:
+    - cron: "41 2 * * *"
+  # By hand, on any branch: the same full run as the nightly one.
+  workflow_dispatch:
 
-# One group per ref, so a new push to a PR supersedes the run still in flight for
-# it. Default-branch pushes all share a single group, so the cancel expression —
-# not the group key — is what keeps a merge from being cancelled mid-run by the
-# merge behind it.
+# A pull request's runs share one group per ref, so a new push to it supersedes
+# the run still in flight for its previous revision. Every other event's run is
+# a group of its own, keyed on its run id, and is never cancelled by
+# concurrency. The expressions name the one event that may be cancelled rather
+# than the events that may not, so an event added later falls on the safe side.
 #
-# A MERGE-QUEUE run is exempt from both halves, and that exemption is load-bearing
-# rather than tidy (iss-2609020716560392). A queue entry runs on a temporary ref,
+# A MERGE-QUEUE run being exempt is load-bearing rather than tidy
+# (iss-2609020716560392). A queue entry runs on a temporary ref,
 # `refs/heads/gh-readonly-queue/main/pr-N-<base sha>`, which is never the default
-# branch — so the ref comparison alone armed cancellation there, and GitHub reads
-# a cancelled required check as a FAILED one: it drops the entry and disarms
-# auto-merge with nothing said on the pull request. One PR was removed four times
-# in a night this way.
+# branch — so a cancel expression that excused only the default branch armed
+# cancellation there, and GitHub reads a cancelled required check as a FAILED
+# one: it drops the entry and disarms auto-merge with nothing said on the pull
+# request. One PR was removed four times in a night this way. Both halves hold
+# it:
 #
-# Both halves move, because each closes a different window:
+#   - The cancel expression is true on pull_request alone. Keying on the event
+#     rather than on the ref's prefix says what is meant, and holds if GitHub
+#     ever reshapes the queue ref.
+#   - The group key is the run id on every other event, so a queue run shares
+#     its group with nothing at all. `cancel-in-progress: false` is not enough on
+#     its own: a run held PENDING on a busy group is cancelled outright when a
+#     third run arrives, and a re-queued entry at the same base sha carries the
+#     same ref as the run still finishing for its ejected predecessor.
+#     Unique-per-run is what removes that collision instead of ranking it. Same
+#     shape as attribution.yml, which falls through to github.run_id for the
+#     same reason. A nightly run and a dispatched one on the default branch
+#     share a ref, and the same key keeps either from cancelling the other.
 #
-#   - The cancel expression now excuses the merge_group event by name. Keying on
-#     the event rather than on the ref's prefix says what is meant, and holds if
-#     GitHub ever reshapes the queue ref.
-#   - The group key is the run id on that event, so a queue run shares its group
-#     with nothing at all. `cancel-in-progress: false` is not enough on its own:
-#     a run held PENDING on a busy group is cancelled outright when a third run
-#     arrives, and a re-queued entry at the same base sha carries the same ref as
-#     the run still finishing for its ejected predecessor. Unique-per-run is what
-#     removes that collision instead of ranking it. Same shape as attribution.yml,
-#     which falls through to github.run_id for the same reason.
+# Concurrency therefore never cancels a queue run, and a run whose entry the
+# queue has already dropped runs on to its end unless something else cancels
+# it. queue-sweep.yml does, on every merge_group event: it cancels a run only
+# once its queue ref is proven gone, so a live entry's run is never touched
+# (iss-2610110613372021).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && github.run_id || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'merge_group' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -212,11 +236,27 @@ jobs:
           printf '%s\n' "$reason" | sed 's/^/  /'
 
   # Build + vet + test on both host OSes. Race-enabled unit tests catch data
-  # races the plain `go test` would miss. On an inert change the macos leg and
-  # the race lane stand down, while the ubuntu leg builds, vets, tests and runs
-  # the record gates as usual. The macos leg is gated step by step rather than
-  # dropped from the matrix, so `check (macos-latest)` keeps reporting a
-  # conclusion instead of a required context that never arrives.
+  # races the plain `go test` would miss. On an inert change the race lane
+  # stands down, while the ubuntu leg builds, vets, tests and runs the record
+  # gates as usual.
+  #
+  # The macOS leg is the scarcest runner this account has (five jobs at once)
+  # and the slowest leg, so it runs where its answer is about what lands: on a
+  # merge-queue entry, which tests the would-be merge, and on every event that
+  # is not a pull request (iss-2610110938282654). Every push to a pull request
+  # has already passed the local preflight (the pre-push hook refuses a commit
+  # without its receipt), so a pull-request macOS run repeated a local run, on
+  # the developer's machine, while queue entries waited for a slot. On a
+  # pull_request event the leg is a STAND-IN: `runs-on` sends it to an ubuntu
+  # runner and every step but the one that says so is gated off, so it takes no
+  # macOS runner and runs no suite. It is gated step by step rather than skipped
+  # at the job, because `check (macos-latest)` is a required context in the
+  # ruleset (.abcd/work/rulesets/main-protection.json): a job skipped at its
+  # `if:` or dropped from the matrix reports a skipped conclusion or nothing,
+  # and either can hold a required check pending. A job whose steps are all
+  # skipped concludes success under its own context name, which the matrix
+  # value keeps. TestMacOSLegRunsItsSuiteOnlyWhereItLands evaluates every
+  # step's condition and the runner expression per leg and event.
   #
   # `!cancelled()` rather than the implicit `success()`: a classifier that fails
   # for its own reasons — a flaky checkout, the timeout — must not skip this job.
@@ -237,9 +277,9 @@ jobs:
     # well inside 30 minutes and keeps that ceiling. The race step's -timeout lifts go test's 10m
     # per-package default, so a slow package runs on to this ceiling instead of
     # failing at ten minutes. The step names its slowest packages first, so they
-    # start with the step, about 9m into the macOS leg, rather than behind every
-    # faster package; a hang in one of them fails at the package timeout, with a
-    # goroutine dump, before this ceiling cancels the job.
+    # start with the step rather than behind every faster package; a hang in one
+    # of them fails at the package timeout, with a goroutine dump, before this
+    # ceiling cancels the job.
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
@@ -248,15 +288,26 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    # The macOS leg's stand-in on a pull request runs on ubuntu; every other
+    # leg and event runs on the matrix's own runner.
+    runs-on: ${{ (matrix.os == 'macos-latest' && github.event_name == 'pull_request') && 'ubuntu-latest' || matrix.os }}
     steps:
+      # The one step the macOS leg runs on a pull request. It runs nothing, and
+      # says where the macOS suite runs instead.
+      - name: Stand in for the macOS suite on a pull request
+        if: matrix.os == 'macos-latest' && github.event_name == 'pull_request'
+        run: |
+          msg="check (macos-latest) runs the macOS suite in the merge queue, on the tree that lands, and on every event that is not a pull request. On a pull request it reports this context without taking a macOS runner, so this run tested nothing on macOS."
+          echo "::notice title=macOS suite runs in the merge queue::${msg}"
+          printf '### macOS suite runs in the merge queue\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+
       # The clock for the warning step at the end of the job. It is the first
-      # step, so the time the runner spent before it (queueing, set-up) is not
-      # counted, and the elapsed time the warning reads is a lower bound on
-      # what the merge queue's clock shows.
+      # step that runs on the macOS leg, so the time the runner spent before it
+      # (queueing, set-up) is not counted, and the elapsed time the warning
+      # reads is a lower bound on what the merge queue's clock shows.
       - name: Record the job's start
         id: started
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         run: echo "epoch=$(date +%s)" >>"$GITHUB_OUTPUT"
 
       # Full history: the record-lint step below arms `-agent-diff` against the
@@ -264,15 +315,24 @@ jobs:
       # base, neither of which a depth-1 clone holds — with the default shallow
       # checkout the arm was unreachable and the step fell back in silence.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         with:
           fetch-depth: 0
           persist-credentials: false
 
       # The ubuntu leg always needs a toolchain, because it always builds and
-      # tests. The macos leg needs one only when it is the second opinion on a
-      # source change.
+      # tests; the macOS leg needs one wherever it runs its suite.
+      #
+      # setup-go caches the module and build caches by default, keyed on the
+      # runner's OS and architecture, the toolchain and go.sum, and saves them
+      # at the end of a run whose key missed. A pull-request or merge-queue run
+      # can restore a cache saved on the default branch but not one saved on
+      # another pull request's ref, so the default branch's cache is the one
+      # every leg starts warm from. With no push trigger, the nightly run is
+      # what saves it on the default branch, for both runners, after each change
+      # to go.sum or the toolchain, and what keeps it from ageing out.
       - name: Set up Go
-        if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # The go directive in go.mod is the ONLY place the toolchain is written,
@@ -296,22 +356,27 @@ jobs:
         run: make fmt-check
 
       # Unconditional on ubuntu, because tests assert against the live record;
-      # the macos leg is the cross-platform second opinion a record change does
-      # not need.
+      # on macOS it runs wherever the leg runs its suite.
       - name: Build
-        if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         run: go build ./...
 
       - name: Vet
-        if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
+        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         run: go vet ./...
 
       # ABCD_TEST_SKIP_FLUSH lets the test binaries skip the flush to stable
       # storage (internal/fsutil/flush.go), an F_FULLFSYNC of about 8.8 ms per
       # synced write on macOS that no test asserts anything about. It needs a
       # test binary as well, so nothing built here stops flushing.
+      #
+      # The ubuntu leg tests in two passes, plain over the module and then
+      # race-enabled over ./internal/...; ubuntu runners are not the scarce
+      # ones, and the plain pass reports a failure minutes before the race pass
+      # would. The macOS leg runs one race-enabled pass over the whole module
+      # instead (the last step of this group).
       - name: Test
-        if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
+        if: matrix.os == 'ubuntu-latest'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test ./...
@@ -326,22 +391,38 @@ jobs:
       # is about twice the slowest passing run, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
       # release.yml's verify job it does, while this job's own ceiling, held to
-      # the merge queue's response cap, is the binding one here (see the job
-      # header). The Makefile's preflight recipe and release.yml's verify
-      # job carry the same flag; TestRaceLaneBudgetIsDeclaredAndFitsItsJob
-      # holds all three.
+      # the merge queue's response cap, is the binding one on macOS (see the
+      # job header). The Makefile's preflight recipe and release.yml's verify
+      # job carry the same flag, and so does the macOS step below;
+      # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
-      # The packages named ahead of ./internal/... are the slowest under -race
+      # The packages named ahead of the pattern are the slowest under -race
       # (iss-2609281715083637). go test starts packages in the
       # order its arguments list them, three at a time on the macOS runner, and
       # in import-path order internal/surface/cli started among the last and ran
       # alone as the step's tail. go test runs a package named twice once, so the
-      # set is still exactly ./internal/...; the same test pins that with go list.
+      # set is still exactly the pattern's; the same test pins that with go list.
       - name: Test (race, internal)
-        if: needs.changes.outputs.inert != 'true'
+        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+
+      # The macOS leg's one test pass (iss-2610110938293273): race-enabled, over
+      # the whole module, with the same slowest-first order and the same
+      # -timeout as the race lane above. Two passes cost a median 13.6 minutes
+      # plain plus 23.1 race of a 39.9-minute leg (8 queue runs, 2026-10-11),
+      # and the race pass already ran every internal test, so the plain pass
+      # added only the packages outside internal/ at a third of the leg's time.
+      # The race detector runs every test the plain pass would, so dropping the
+      # plain pass drops no test. It runs straight after vet, so the slowest
+      # packages start at the start of the leg's testing. TestMacOSLegRunsItsSuiteOnlyWhereItLands
+      # holds it to one pass where the leg runs at all, and none on a pull request.
+      - name: Test (race, whole module)
+        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
@@ -352,37 +433,31 @@ jobs:
       #
       # THE FALLBACK CHAIN, argued once here for the three range-scoped gates
       # that share it (this step, and the RS001/RS002 and DA001-DA004 steps in
-      # the record-lint job). Each event this workflow triggers on names its base
-      # in a different field, and the chain must cover all three or a gate goes
-      # quiet on the event it does not cover — which is what happened to the
-      # merge queue (iss-2609091258115663). `merge_group.base_sha` is the base
-      # the queue entry was formed against, and reaching it matters more than the
-      # other two rungs: the queue entry is the run that actually GATES the
-      # merge, and the only run that sees the final base after a competing pull
-      # request merged ahead of it, which is exactly the race a range check
-      # exists to catch.
+      # the record-lint job). The two events that gate a merge name their base
+      # in different fields, and the chain must cover both or a gate goes quiet
+      # on the event it does not cover — which is what happened to the merge
+      # queue (iss-2609091258115663). `merge_group.base_sha` is the base the
+      # queue entry was formed against, and reaching it matters most: the queue
+      # entry is the run that actually GATES the merge, and the only run that
+      # sees the final base after a competing pull request merged ahead of it,
+      # which is exactly the race a range check exists to catch. The two fields
+      # are mutually exclusive — no event carries both — so the order states
+      # precedence rather than selecting between live values.
       #
-      # The three fields are mutually exclusive — no event carries two — so the
-      # order cannot change which value is picked on any real run, and it states
-      # precedence rather than selecting between live values. It is written
-      # weakest-last all the same: `github.event.before` is the ONLY rung that
-      # can be present and wrong, because a force-push leaves it as the
-      # all-zeroes placeholder or a rewritten sha that resolves to nothing. The
-      # other two always name a real commit. A rung that can yield garbage never
-      # pre-empts one that yields a fact, and the pull-request rung stays first
-      # so the pull_request and push paths resolve exactly what they resolved
-      # before — the change is purely additive.
-      #
-      # The base can therefore still be unusable, and this step handles that
-      # rather than assuming it away: the guard falls back to the unarmed run
-      # rather than failing, and every tree-shaped rule (the agent-prompt
-      # frontmatter, the canary, the changelog entry) runs either way. The
-      # fallback is loud: a downgrade nobody can see is a gate nobody knows is
-      # off.
+      # The nightly schedule and a dispatched run carry no base at all: they
+      # check a branch tip, not a change, so the chain resolves to the empty
+      # string there and each range gate announces that it did not run. Neither
+      # field can name a commit this checkout lacks on the events that carry it,
+      # but the step still probes rather than assuming: an empty or unusable
+      # base falls back to the unarmed run rather than failing, and every
+      # tree-shaped rule (the agent-prompt frontmatter, the canary, the
+      # changelog entry) runs either way. The fallback is loud, as a warning on
+      # the two events that should always name a base and a notice on the ones
+      # that never do: a downgrade nobody can see is a gate nobody knows is off.
       - name: Record-lint (drift gate)
         if: matrix.os == 'ubuntu-latest'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
           if [ -n "${BASE_SHA:-}" ] &&
@@ -390,7 +465,11 @@ jobs:
             git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
             go run ./cmd/record-lint -agent-diff "${BASE_SHA}...HEAD"
           else
-            echo "::warning::record-lint ran unarmed: no base commit for -agent-diff (BASE_SHA='${BASE_SHA:-}'), so agent_contract's unbumped-edit check did not run"
+            case "${GITHUB_EVENT_NAME:-}" in
+              pull_request | merge_group) level=warning ;;
+              *) level=notice ;;
+            esac
+            echo "::${level}::record-lint ran unarmed on this ${GITHUB_EVENT_NAME:-unnamed} run: no base commit for -agent-diff (BASE_SHA='${BASE_SHA:-}'), so agent_contract's unbumped-edit check did not run"
             go run ./cmd/record-lint
           fi
 
@@ -440,7 +519,7 @@ jobs:
       # TestCheckJobWarnsBeforeTheQueueCap pins the threshold below the leg's
       # ceiling.
       - name: Warn when the check nears the queue's cap
-        if: always() && matrix.os == 'macos-latest'
+        if: always() && matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
@@ -462,8 +541,8 @@ jobs:
           fi
 
   # Secrets never land in history: the history each run would land is scanned —
-  # a pull request's own commits, and the full history of the pushed or queued
-  # commit — never every ref the checkout fetched. Run as a
+  # a pull request's own commits, and the full history of the queued or
+  # checked commit — never every ref the checkout fetched. Run as a
   # pinned, checksum-verified CLI (no PR-comment / SARIF GitHub-API integration),
   # so it works on a private repo and survives the private->public flip. A
   # non-zero exit means gitleaks found a secret.
@@ -496,9 +575,10 @@ jobs:
       # fetch-depth: 0 fetches every remote branch, and a bare `gitleaks git .`
       # walks `git log --all`, so a secret on a stale branch whose pull request
       # had closed failed every open pull request until the branch was deleted.
-      # A pull request scans its own range, base..HEAD; a push to the default
-      # branch or a merge-queue entry scans everything reachable from HEAD, which
-      # is the full history of what lands. A pull request whose base cannot be
+      # A pull request scans its own range, base..HEAD; a merge-queue entry
+      # scans everything reachable from HEAD, which is the full history of what
+      # lands, and so does the nightly or dispatched run, the full history of
+      # the branch it checks. A pull request whose base cannot be
       # resolved scans wider, never narrower, and says so. Event data reaches the
       # script through env only (injection-safe).
       - name: Scan the history this run would land
@@ -602,10 +682,10 @@ jobs:
       # commit half of the record-mention rule (iss-2609100507421759): a message
       # that names an iss-N declares `Resolves:` or `Refs:`. Its pull-request
       # half lives in attribution.yml, the one workflow that re-runs on an
-      # `edited` title or body. On a push to main the
-      # base is the previous tip, so the range is the merge that just landed; on
-      # a merge-queue entry it is the base the entry was formed against, so the
-      # range is the would-be merge. That last rung is the one this check needs
+      # `edited` title or body. On a merge-queue entry the base is the one the
+      # entry was formed against, so the range is the would-be merge; the
+      # nightly and dispatched runs name no base, and the step says it skipped
+      # the range checks. That last rung is the one this check needs
       # most and the one it lacked (iss-2609091258115663): a pull request whose
       # base was clean when it was armed could merge a resolution that a
       # competitor made terminal while it waited, because the only run that
@@ -613,10 +693,14 @@ jobs:
       # itself. The chain's order is argued at the record-lint step above.
       - name: Declared resolutions and deliveries move the record, mentions declare themselves (RS001/RS002/RS004/RS005)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            echo "issue-resolution: no usable base ref for this event — range checks skipped, RS003 above still ran."
+            case "${GITHUB_EVENT_NAME:-}" in
+              pull_request | merge_group) level=warning ;;
+              *) level=notice ;;
+            esac
+            echo "::${level} title=issue-resolution range checks skipped::the ${GITHUB_EVENT_NAME:-unnamed} event names no usable base ref, so RS001/RS002/RS004/RS005 did not run; RS003 above still ran."
             exit 0
           fi
           bash scripts/check-issue-resolution.sh commits "$BASE_SHA" HEAD
@@ -650,7 +734,7 @@ jobs:
       # the all-zeroes placeholder and refusing a sha that resolves to nothing.
       - name: Decisions ledger is append-only (DA001-DA004)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD
 
   # Self-discovering smoke harness (evals/): builds the binary, walks the Cobra
@@ -660,8 +744,9 @@ jobs:
   # harness is behind the `smoke` build tag. What it walks is the command tree,
   # which only a source change moves. The read-only verbs also read the live
   # record, which an inert change can edit — a record-only panic surfaces one
-  # hop later, on the push-to-main run (non-inert by classification) and again
-  # in the release verify job, an accepted latency trade.
+  # hop later, on the merge-queue run (non-inert by classification), which
+  # gates the merge, and again in the release verify job, an accepted latency
+  # trade.
   smoke:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.inert != 'true' }}
@@ -728,8 +813,8 @@ jobs:
 
   # The one supply-chain vector unreadable by eye: a dependency swap. Diffs the
   # PR's dependency changes against the advisory databases and fails on a known
-  # vulnerability. pull_request only — the action reads the PR's diff, which a
-  # merge_group or push event does not carry — and NOT a required check, so it
+  # vulnerability. pull_request only — the action reads the PR's diff, which no
+  # other event carries — and NOT a required check, so it
   # can never wedge the queue.
   dependency-review:
     if: github.event_name == 'pull_request'

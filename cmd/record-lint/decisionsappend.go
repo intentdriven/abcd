@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -34,7 +35,16 @@ func runDecisionsAppend(args []string, root string, stdout, stderr io.Writer) in
 		return 2
 	}
 	if rep.Skipped != "" {
-		fmt.Fprintln(stdout, "decisions-append:", rep.Skipped)
+		// On a GitHub Actions runner the skip is an annotation, so it reaches
+		// the run's summary rather than only the step log: a scheduled or
+		// dispatched run names no base, and a range check that did not run must
+		// say so where it is read. The skip text is sanitised and single-line,
+		// so nothing in it can open a second workflow command.
+		prefix := ""
+		if os.Getenv("GITHUB_ACTIONS") == "true" {
+			prefix = "::notice title=decisions-append skipped::"
+		}
+		fmt.Fprintln(stdout, prefix+"decisions-append:", rep.Skipped)
 		return 0
 	}
 	rng := termsafe.Sanitize(rep.Base + ".." + rep.Head)

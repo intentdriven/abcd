@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -20,7 +21,9 @@ import (
 const (
 	mergeGroupBaseSHA  = "9f1b7c4e2a6d8035b1e4c7a92f6d0b3e8c5a1d7f"
 	pullRequestBaseSHA = "3e5d9a1c7f2b4086d3a5c9e1b7f4d2a6c8e0b5d9"
-	pushBeforeSHA      = "7c2a4e6b8d0f1937a5c3e9b1d7f5a2c4e6b8d0f2"
+	// A push's `before`. ci.yml does not trigger on push; attribution.yml does
+	// (attributionlanding_test.go).
+	pushBeforeSHA = "7c2a4e6b8d0f1937a5c3e9b1d7f5a2c4e6b8d0f2"
 	// What GitHub puts in `before` when a push has no predecessor to name — a
 	// branch created by the push, or a force-push whose old tip it declines to
 	// cite. It is a well-formed sha that resolves to nothing, which is why the
@@ -30,8 +33,10 @@ const (
 
 // TestEveryRangeScopedGateResolvesABaseOnEveryEvent holds ci.yml's range-scoped
 // gates to one property: on every event the workflow triggers on, the step's
-// BASE_SHA expression resolves to the base that event actually carries
-// (iss-2609091258115663).
+// BASE_SHA expression resolves to the base that event actually carries, and to
+// nothing on an event that carries none (iss-2609091258115663,
+// iss-2610110938294826). The events are the workflow's own `on:` keys: a
+// trigger this test holds no context for fails it.
 //
 // The defect it closes was silent and it disarmed the run that matters most.
 // Three steps derived their base as `github.event.pull_request.base.sha ||
@@ -78,10 +83,10 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 	// One context per event ci.yml triggers on. Each names only what that event
 	// carries; every other base field is null, the way GitHub resolves a
 	// property its payload does not hold. The whole `github.event.merge_group.*`
-	// subtree is cleared for the two non-queue events rather than only the field
-	// in today's chain: a context that leaves a sibling field populated would
-	// let a chain reaching for the WRONG merge-group field pass on a push, which
-	// is the shape of the defect this test exists for.
+	// subtree is cleared for the non-queue events rather than only the field in
+	// today's chain: a context that leaves a sibling field populated would let
+	// a chain reaching for the WRONG merge-group field pass, which is the shape
+	// of the defect this test exists for.
 	pullRequest := withoutSubtree(contextFor(map[string]any{
 		"github.event_name":                  "pull_request",
 		"github.ref":                         "refs/pull/620/merge",
@@ -92,27 +97,17 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 		"github.event.pull_request.base.sha": pullRequestBaseSHA,
 		"github.event.before":                nil,
 	}), "github.event.merge_group.")
-	defaultBranchPush := withoutSubtree(contextFor(map[string]any{
-		"github.event_name":                "push",
-		"github.ref":                       "refs/heads/main",
-		"github.ref_name":                  "main",
-		"github.event.pull_request.number": nil,
-		"github.event.before":              pushBeforeSHA,
-	}), "github.event.merge_group.")
-	// A force-push, where `before` is the one rung that can be PRESENT and
-	// unusable. GitHub either cites the rewritten tip — a sha no longer
-	// reachable from anything — or the all-zeroes placeholder. The zeroes case
-	// is the one an expression can see, and the assertion is that the chain
-	// still yields it rather than papering over it with another event's field:
-	// refusing a bad base is the step's job, and it can only do it if the bad
-	// base reaches it.
-	forcePush := withoutSubtree(contextFor(map[string]any{
-		"github.event_name":                "push",
-		"github.ref":                       "refs/heads/main",
-		"github.ref_name":                  "main",
-		"github.event.pull_request.number": nil,
-		"github.event.before":              absentSHA,
-	}), "github.event.merge_group.")
+	// The nightly and a dispatched run check the default branch's tip, not a
+	// change, and their payloads name no base.
+	branchTip := func(event string) map[string]any {
+		return withoutSubtree(contextFor(map[string]any{
+			"github.event_name":                event,
+			"github.ref":                       "refs/heads/main",
+			"github.ref_name":                  "main",
+			"github.event.pull_request.number": nil,
+			"github.event.before":              nil,
+		}), "github.event.merge_group.")
+	}
 
 	events := []struct {
 		name string
@@ -125,11 +120,20 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 				"one that sees the base a competing pull request left behind"},
 		{"pull_request", pullRequest, pullRequestBaseSHA,
 			"the pull request's base, which these gates have always resolved and must keep resolving"},
-		{"push", defaultBranchPush, pushBeforeSHA,
-			"the previous tip of the default branch, so the range is the merge that just landed"},
-		{"push (force-push, no predecessor)", forcePush, absentSHA,
-			"the all-zeroes placeholder, handed through UNCHANGED so the step's own guard is what " +
-				"refuses it; a chain that swallowed it would run the gate against a base that does not exist"},
+		{"schedule", branchTip("schedule"), "",
+			"nothing: the nightly run names no base, so the step must take its announced no-base branch"},
+		{"workflow_dispatch", branchTip("workflow_dispatch"), "",
+			"nothing: a dispatched run names no base, so the step must take its announced no-base branch"},
+	}
+	var covered []string
+	for _, ev := range events {
+		covered = append(covered, ev.name)
+	}
+	for _, trigger := range workflowTriggers(workflow) {
+		if !slices.Contains(covered, trigger) {
+			t.Errorf("%s triggers on %s, and this test holds no context for it; add one naming "+
+				"the base that event carries, or nothing", rel, trigger)
+		}
 	}
 
 	declaring, inScope, exempt := 0, 0, 0
@@ -169,17 +173,16 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 					rel, step.envLine["BASE_SHA"], step.name, ev.name, raw, actionsexpr.Stringify(got), ev.want, ev.why)
 			}
 
-			// The chain hands the all-zeroes placeholder straight through (the
-			// force-push case above), so every step must refuse a base rather
-			// than assume the expression only ever yields a good one. Either
-			// shape counts: comparing against the placeholder, or asking git
-			// whether the commit exists.
+			// The chain yields nothing on two of the events above, and a base
+			// can still name a commit the checkout lacks, so every step must
+			// refuse a base rather than assume the expression only ever yields
+			// a good one. Either shape counts: comparing against the
+			// placeholder, or asking git whether the commit exists.
 			if !strings.Contains(step.body, absentSHA) && !strings.Contains(step.body, "git cat-file -e") &&
 				!delegatesBaseGuard(step.body) {
 				t.Errorf("%s line %d, step %q accepts whatever BASE_SHA holds without refusing an "+
-					"unusable base.\n\nA force-push leaves `github.event.before` as the all-zeroes "+
-					"placeholder or a rewritten sha that resolves to nothing, and the expression "+
-					"passes it through by design. Guard on %q, or probe with `git cat-file -e`, "+
+					"unusable base.\n\nThe nightly and dispatched runs hand it the empty string by "+
+					"design. Guard on an empty value and on %q, or probe with `git cat-file -e`, "+
 					"before handing it to a range.", rel, step.line, step.name, absentSHA)
 			}
 		})
