@@ -32,6 +32,27 @@ func TestNumericCharacterReferenceIsRecognised(t *testing.T) {
 	}
 }
 
+// TestTheCaseFoldIsASCIIOnly: Unicode simple case folding takes the long s
+// (U+017F) to an s and the Kelvin sign (U+212A) to a k, so a title spelled with
+// either was the excluded heading and silently redacted, although it renders
+// differently. Only an ASCII case difference is the same heading; these are
+// near-matches, which every verifier path refuses.
+func TestTheCaseFoldIsASCIIOnly(t *testing.T) {
+	cases := []struct{ title, want string }{
+		{"Open Queſtions", "Open Questions"},
+		{"Kept Notes", "Kept Notes"},
+		{"Kept ſCOPE", "kept scope"},
+	}
+	for _, c := range cases {
+		if _, got := namesExcludedHeading(c.title, map[string]bool{c.want: true}); got != nearHeading {
+			t.Errorf("namesExcludedHeading(%q, %q) = %v, want nearHeading", c.title, c.want, got)
+		}
+	}
+	if _, got := namesExcludedHeading("OPEN questions", map[string]bool{"Open Questions": true}); got != sameHeading {
+		t.Errorf("an ASCII case variant is no longer the same heading: %v", got)
+	}
+}
+
 // TestRenderedTextLeavesAnAutolinkAlone: stripping tags must not eat an autolink,
 // which is a URL a heading may legitimately carry.
 func TestRenderedTextLeavesAnAutolinkAlone(t *testing.T) {

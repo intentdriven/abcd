@@ -877,6 +877,10 @@ func TestAConfusableSpellingOfAnExcludedHeadingRefuses(t *testing.T) {
 		"a zero-width space inside a word":  "## Au\u200bdit Notes\n\n" + sentinelAuditNotes + "\n",
 		"a combining mark on a letter":      "## Au\u0300dit Notes\n\n" + sentinelAuditNotes + "\n",
 		"a Cyrillic O in a different title": "## \u041epen Questions\n\n" + sentinelAuditNotes + "\n",
+		// Unicode simple case folding takes the long s (U+017F) to an s, so a
+		// fold that was not ASCII-only redacted this silently although it
+		// renders differently.
+		"a long s for an s": "## Open Que\u017ftions\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, section := range refused {
 		root := fixtureRepo(t)

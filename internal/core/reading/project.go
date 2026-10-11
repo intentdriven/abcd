@@ -303,7 +303,7 @@ const (
 // verifier refuses it (nestedHeadingRe, iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
-// ones, under the ONE equality this floor uses: a case fold or the same
+// ones, under the ONE equality this floor uses: an ASCII case fold or the same
 // rendering (sameHeading), else a near-match (nearHeading). It exists so the
 // redactor and every refusal path — the section scan, the indented ATX line, the
 // setext underline, the raw HTML heading — cannot drift apart on what "the same
@@ -318,7 +318,7 @@ const (
 func namesExcludedHeading(title string, headings map[string]bool) (string, headingMatch) {
 	wants := slices.Sorted(maps.Keys(headings))
 	for _, want := range wants {
-		if strings.EqualFold(title, want) || sameRendering(title, want) {
+		if asciiEqualFold(title, want) || sameRendering(title, want) {
 			return want, sameHeading
 		}
 	}
@@ -335,7 +335,8 @@ func namesExcludedHeading(title string, headings map[string]bool) (string, headi
 // non-breaking space differ in bytes and are the same heading to every reader,
 // so a byte comparison is the wrong test for what the floor is trying to name.
 //
-// The comparison is the rendered text itself (renderedKey), under a case fold.
+// The comparison is the rendered text itself (renderedKey), under an ASCII case
+// fold (asciiEqualFold).
 // It was once the site's anchor slug, which is COARSER than "renders the same":
 // the slug collapses every run of non-alphanumerics to a hyphen, so
 // `## Open/Questions` and `## Audit & Notes` slugged onto excluded headings they
@@ -348,12 +349,40 @@ func sameRendering(a, b string) bool {
 			continue
 		}
 		for _, y := range renderedTexts(b) {
-			if strings.EqualFold(key, renderedKey(y)) {
+			if asciiEqualFold(key, renderedKey(y)) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// asciiEqualFold reports whether two titles are equal once ASCII letters are
+// case folded, and every other byte compared as it is. strings.EqualFold is
+// Unicode simple folding, which takes the long s (U+017F) to an s and the
+// Kelvin sign (U+212A) to a k, so `## Open Queſtions` was the excluded heading
+// and silently redacted although it renders differently; strings.ToLower is no
+// better, since it maps the Kelvin sign to an ASCII k. Under an ASCII-only fold
+// such a title is a near-match (nearExcluded), which is refused and named. A
+// non-ASCII case difference falls the same way, and an excluded heading is
+// ASCII.
+func asciiEqualFold(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range len(a) {
+		x, y := a[i], b[i]
+		if 'A' <= x && x <= 'Z' {
+			x += 'a' - 'A'
+		}
+		if 'A' <= y && y <= 'Z' {
+			y += 'a' - 'A'
+		}
+		if x != y {
+			return false
+		}
+	}
+	return true
 }
 
 // renderedKey is a rendered title as a reader sees it: the emphasis, code and
