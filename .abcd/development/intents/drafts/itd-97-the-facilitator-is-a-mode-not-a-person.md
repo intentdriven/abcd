@@ -96,6 +96,14 @@ sign-off, irreversible actions) stay human in both modes
   and does not proceed until adoption.
 - **Given** a session starts in either mode, **when** the status board
   renders, **then** it names the active mode.
+- **Given** the technical facilitator is set to human (duo), **when** an agent
+  would arm auto-merge on a pull request or add it to the merge queue, **then**
+  that is refused as a hard rule, whoever asks, and the pull request waits for
+  a human to merge it. (The first gate declared in both modes; proposed by the
+  product thinker, 2026-10-11.)
+- **Given** the technical facilitator is set to auto (solo), **when** a pull
+  request's required checks and gates pass, **then** auto-merge is armed on it
+  automatically, with no one asked.
 
 ## Open Questions
 
@@ -109,6 +117,20 @@ sign-off, irreversible actions) stay human in both modes
   equivalent to a temporary drop to duo?
 - **Does solo v1 require the run seam**, or can it operate in-session
   (host-delegated) first, per script-first MVP?
+- **Is merging an "irreversible action"?** The fourth criterion keeps
+  irreversible actions with the product thinker in both modes. If merging a
+  pull request counts as one, an auto facilitator could not merge either,
+  which contradicts the auto-merge gate the product thinker proposed. Settle
+  which actions stay the product thinker's, and whether a revertable merge is
+  among them.
+- **How the hard rule is enforced.** A gate an agent can talk its way past is
+  not a hard rule: the guard registry could refuse `gh pr merge --auto` and an
+  enqueue while the facilitator is human, which needs the guard to read the
+  facilitator setting.
+
+## Decisions
+
+- 2026-10-11: the product thinker proposed a toggle that automates the technical facilitator's role, set to human or auto, with auto-merge as the first example: always refused as a hard rule while the facilitator is human, so a human merges; armed automatically when it is auto. Shown that this draft already covers the switch, they chose "Add to the draft" over a new intent, so the example lands here as this intent's first two-mode gate, and other facilitator responsibilities follow the same pattern (adr-2609151528057260: every gate declares its behaviour in both modes). "human" and "auto" are the product thinker's names for duo and solo.
 
 ## Audit Notes
 
