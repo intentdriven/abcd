@@ -89,6 +89,11 @@ const (
 	// readmePartUnclosed: an opening fence with no closing fence, or a closing
 	// fence with no opening fence. The whole write is refused, naming the line.
 	readmePartUnclosed readmePartState = "unclosed"
+	// readmePartUnknown: a well-formed part whose name is not in the fixed
+	// order, such as one a later abcd wrote. This abcd cannot tell whether it
+	// is still wanted, so a write and a removal alike name it and its line,
+	// and leave it, whether or not its body matches its hash.
+	readmePartUnknown readmePartState = "not one this abcd writes"
 )
 
 // readmePartAction is what a write or a removal did with one part.
@@ -285,8 +290,10 @@ func (d readmeDoc) spanBytes(content []byte, p readmePartSpan) (start, end int) 
 // part is kept, a stale one rewritten where it stands, an absent one placed,
 // and a part present but not wanted removed. A part edited by hand is left,
 // wanted or not, and the others are still written. A duplicated or unclosed
-// fence refuses everything and returns content unchanged. A want naming a
-// part outside the fixed order, or naming one twice, is the caller's error.
+// fence refuses everything and returns content unchanged. A part whose name
+// is not in the fixed order is left, and named, as an edited one is. A want
+// naming a part outside the fixed order, or naming one twice, is the caller's
+// error.
 func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmePartsResult, error) {
 	fresh := map[string]string{}
 	for _, w := range want {
@@ -331,6 +338,9 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 		o := readmePartOutcome{Name: p.Name}
 		start, end := doc.spanBytes(out, p)
 		switch {
+		case readmePartIndex(p.Name) < 0:
+			o.State, o.Action, o.Lines = readmePartUnknown, readmeActionLeft, []int{p.Begin + 1}
+			o.Note = fmt.Sprintf("%s part at line %d is not one this abcd writes; left as it is", p.Name, p.Begin+1)
 		case !p.hashMatches():
 			o.State, o.Action, o.Lines = readmePartEdited, readmeActionLeft, []int{p.Begin + 1}
 			o.Note = fmt.Sprintf("%s part edited by hand at line %d; left as it is", p.Name, p.Begin+1)
