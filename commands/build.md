@@ -166,7 +166,7 @@ run starts, each from the highest layer that sets it:
 2. `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
    `pace.fix_rounds` in the repository's `.abcd/config.json`;
 3. the same keys in `~/.abcd.noindex/config.json`, for every checkout on the machine;
-4. the bundled 120/300 with 2 sub-agents and 3 fix rounds.
+4. the bundled 120/0 (no pause) with 2 sub-agents and 3 fix rounds.
 
 The payload's `pace` carries each number as `value`, `layer` (`flag`, `repo`,
 `machine` or `bundled`) and `origin` (the flag as typed, or the file), and the

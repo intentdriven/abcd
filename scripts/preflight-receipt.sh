@@ -119,7 +119,7 @@ mint() {
 	# listing is safe to word-split.
 	# shellcheck disable=SC2012
 	ls -t "$receipts_rel" | tail -n +"$((keep + 1))" | while IFS= read -r old; do
-		rm -f "$receipts_rel/$old"
+		rm -f "${receipts_rel:?}/$old"
 	done
 	echo "preflight: push receipt minted for ${now_head:0:12} — a push of that commit passes the pre-push gate."
 }

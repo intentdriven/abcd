@@ -62,7 +62,7 @@ it, exactly as the intent store's quoted-text create does.
 
 The id is `adr-<yymmddHHMMSS><rrrr>` — the twelve-digit UTC second stamp and the
 four-digit uniform suffix every other minting family draws through
-`recordid.Minter` ([adr-45](../../decisions/adrs/0045-record-ids-are-timestamp-numeric-and-capture-stable.md),
+`recordid.Minter` ([adr-45](../../decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md),
 mechanics per spc-33). The mint reads **no maximum**: not the store's, not the
 citations'. That is the property the family was moved for. A hand-numbered
 ordinal is allocated by reading the directory, so two branches deciding on the

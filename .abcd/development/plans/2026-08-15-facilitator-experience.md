@@ -40,9 +40,9 @@ string it blocks on. Auto-merge never inherited; authorised per cycle.
 
 Ordering and item specs unchanged from that plan:
 
-1. **[iss-163](../../work/issues/resolved/iss-163-the-ahoy-install-config-prompts-are-unexplainable-to-a-first.md)**
+1. **[iss-163](../../work/issues/resolved/iss-163-the-ahoy-install-config-prompts-are.md)**
    — canonical per-choice help text lives in core; the foundation item.
-2. **[iss-164](../../work/issues/resolved/iss-164-the-ahoy-install-completion-summary-is-written-for-abcd-s-im.md)**
+2. **[iss-164](../../work/issues/resolved/iss-164-the-ahoy-install-completion-summary-is.md)**
    (blocked by iss-163) — persona-readable result summaries.
 3. **[itd-63](../intents/shipped/itd-63-setup-wizard-explains-installs.md)**
    — the intent frame A1/A2 deliver into. Lifecycle first: planned but
@@ -57,17 +57,17 @@ Ordering and item specs unchanged from that plan:
 5. **[itd-112](../intents/shipped/itd-112-bare-abcd-opens-with-a-generated-banner.md)**
    — a bare `abcd` opens with a generated object-style banner from the
    canonical identity block. Draft (quoted-text seed): grill before plan.
-6. **[iss-168](../../work/issues/resolved/iss-168-abcd-s-presence-should-be-visible-in-the-host-harness-s-stat.md)**
+6. **[iss-168](../../work/issues/resolved/iss-168-abcd-s-presence-should-be-visible-in-the.md)**
    — abcd's presence in the host status line, under the
    basics-built-in/SOTA-delegated stance; committed prose stays
    host-agnostic per the docs-lint rules.
-7. **[iss-216](../../work/issues/open/iss-216-install-instructions-need-a-getting-started-page-once-more-t.md)**
+7. **[iss-216](../../work/issues/open/iss-216-install-instructions-need-a-getting.md)**
    — a getting-started page and a host version floor, due once more than one
    harness is supported; also the anchor for Workstream D's tutorial.
 
 ## Workstream C — interaction polish
 
-8. **[itd-110](../intents/superseded/itd-110-the-grill-interview-renders-with-clear-structure-and-colour.md)**
+8. **[itd-110](../intents/superseded/itd-110-the-grill-interview-renders-with-clear.md)**
    — the grill interview renders with structure and colour. Draft seed:
    needs expansion, then grill.
 9. **[iss-230](../../work/issues/open/iss-230-one-tap-micro-prompt-channel.md)**

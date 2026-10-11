@@ -185,7 +185,7 @@ binding detail.
 - The launch documentation states adr-19's polarity directly: only the release
   view is versioned, the render leaves the source view's manifests untouched, and
   the anti-drift note points here.
-- [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md) amends this decision: the source view's catalog names one
+- [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s.md) amends this decision: the source view's catalog names one
   release by archive address and digest, rewritten by every ship, so it is no
   longer release-neutral. Its version keys stay ABSENT, and R2/R3 are proven in
   the staged payload rather than in the published archive, which leaves the

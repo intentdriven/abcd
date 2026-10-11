@@ -197,3 +197,58 @@ func TestLintEngineFaultExitsTwo(t *testing.T) {
 		t.Fatalf("engine-fault exit = %d, want 2 (must not land on the tri-state's exit-1 'warnings only')\nstdout:%s\nstderr:%s", code, stdout.String(), stderr.String())
 	}
 }
+
+// TestLintSurfacesDocsTargetRefusal is the reporter's reproduction
+// (iss-2610100649479892): CLAUDE.md retired while .abcd/docs-lint.json still
+// names it in roots. `abcd lint docs` refuses; bare `abcd lint` once reported
+// "findings": [] at exit 0 over it, so the name check checked nothing,
+// silently. It must exit 2 with an error finding naming the target and its
+// refusal, in both renders.
+func TestLintSurfacesDocsTargetRefusal(t *testing.T) {
+	repo := lintRepo(t, true)
+	for rel, body := range map[string]string{
+		"README.md": "# readme\n",
+		".abcd/docs-lint.json": `{"roots": ["CLAUDE.md", "README.md"], ` +
+			`"rules": {"links_resolve": {"enabled": true, "severity": "blocker"}}}`,
+	} {
+		if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(repo)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"lint", "--json"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstdout:%s\nstderr:%s", code, stdout.String(), stderr.String())
+	}
+	var res struct {
+		Findings []struct {
+			RuleID   string `json:"ruleId"`
+			Severity string `json:"severity"`
+			Message  string `json:"message"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("stdout not JSON: %v\n%s", err, stdout.String())
+	}
+	found := false
+	for _, f := range res.Findings {
+		if f.RuleID == "docs-currency" && f.Severity == "error" &&
+			strings.Contains(f.Message, "abcd lint docs") && strings.Contains(f.Message, `"CLAUDE.md" does not exist`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no docs-currency error naming the docs target's refusal:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"lint"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("human render exit = %d, want 2\n%s", code, stdout.String())
+	}
+	if out := stdout.String(); strings.Contains(out, "conforms") || !strings.Contains(out, "abcd lint docs") {
+		t.Errorf("human render does not name the docs target's refusal:\n%s", out)
+	}
+}

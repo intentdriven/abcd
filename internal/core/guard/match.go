@@ -358,7 +358,7 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 		tally(len(s.tokens))
 		// glob reports, per TOKEN index, whether bash would expand that token.
 		glob := func(i int) bool { return !noglob && s.globAt(i) }
-		m := newEntryMatcher(p, s.tokens, s.spelled, glob)
+		m := newEntryMatcher(p, s.tokens, s.spelled, s.varLead, glob)
 		for _, a := range group {
 			if m.matchesAfter(a.idx) && argsFed(p, s, a.idx) {
 				hit = true
@@ -580,14 +580,16 @@ type entryMatcher struct {
 // a value (`git -$(x) /tmp push`); a word that may print nothing both is and is
 // not an operand (`git $(true) push`). The subcommands, the count, the prefix
 // and the path are all met by one reading. spelled is the segment's
-// segment.spelled, which only the arg_values clause reads (writtenMatches).
-func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, glob func(int) bool) entryMatcher {
+// segment.spelled, which only the arg_values clause reads (writtenMatches),
+// and varLead the segment's segment.varLead, which only the arg_shapes
+// clause reads (ShapeUnguardedVariablePath).
+func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, varLead map[int]bool, glob func(int) bool) entryMatcher {
 	n := len(tokens)
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
-		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues,
+		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues, shapes: p.ArgShapes,
 	}
-	m := entryMatcher{accept: operandAcceptance(tokens, spelled, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
+	m := entryMatcher{accept: operandAcceptance(tokens, spelled, varLead, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
 	m.nextStop[n] = n
 	for i := n - 1; i >= 0; i-- {
 		m.nextStop[i] = m.nextStop[i+1]

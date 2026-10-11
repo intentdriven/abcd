@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,11 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
+
+// rateLimitPause is the pause these runs are started with. The bundled pause
+// is zero, and a zero pause would let the step after a rate limit start
+// straight away, so the window's early end is pinned to a pause of its own.
+const rateLimitPause = 300
 
 // claudeImplementer routes the implementer alone to the claude runner.
 const claudeImplementer = `{"roles":{"implementer":{"runner":"claude"}},"runner":{"claude":{}}}`
@@ -30,7 +36,7 @@ const claudeImplementer = `{"roles":{"implementer":{"runner":"claude"}},"runner"
 // and lane-1's commit.
 func rateLimitedPair(t *testing.T) (*parFixture, StepResult, string) {
 	t.Helper()
-	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("3")})
+	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{Pace: strp(fmt.Sprintf("%d/%d", BundledWorkMinutes, rateLimitPause)), SubAgents: strp("3")})
 	f.stepUntil(t, "lane-1's implementer is out and lane-2 is at its implement stage", func(st State) bool {
 		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && st.Lanes[1].Stage == StageImplement && len(st.Lanes[1].Awaits) == 0
 	})
@@ -74,7 +80,7 @@ func entries(st State, stage string) map[string][]string {
 
 func TestARateLimitMidLaneCheckpointsEveryLaneAndEndsTheWindow(t *testing.T) {
 	f, res, head1 := rateLimitedPair(t)
-	until := f.now.Add(BundledPauseMinutes * time.Minute)
+	until := f.now.Add(rateLimitPause * time.Minute)
 
 	// The window ends early, for the whole run, with the response named.
 	if res.NextEligibleAt == nil || !res.NextEligibleAt.Equal(until) {

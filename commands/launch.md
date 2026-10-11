@@ -494,7 +494,9 @@ the issue ledger, and they are the two most easily skipped lines in the report:
 
 **What refuses.** An issue record that entered the ledger *since the anchor tag*,
 is graded `major` or `critical`, and is still in `open/`, refuses the cut under
-the refusal kind `unfixed-finding`. A refused cut carries **no derived version**,
+the refusal kind `unfixed-finding`. That kind is not about grades alone: an open
+issue record that differs from HEAD refuses under it too, at any severity (see
+*An uncommitted open record* below). A refused cut carries **no derived version**,
 so nothing downstream has a release to make. A record whose `severity` is
 missing, misspelled, or outside the ledger's enum refuses too: it has not been
 judged, and "not judged" must not read as "not serious".
@@ -512,8 +514,11 @@ reads the ledger at HEAD, so it cannot judge a finding captured, regraded,
 deferred or removed in the working tree: whenever any issue record under
 `.abcd/work/issues/open/` differs from HEAD — added, edited, deleted or only
 staged, at any severity — the cut refuses and the `reason` names every path.
-`--allow-dirty` never waives it, because the gate would still read HEAD. Commit
-the records (or discard the change) and run again.
+That covers an uncommitted edit, an uncommitted waiver and an uncommitted
+regrade alike. When an unfixed or deleted finding is present too, the refusal
+names those findings and the `findings:` line names the uncommitted paths, so
+one run names every reason. `--allow-dirty` never waives it, because the gate
+would still read HEAD. Commit the records (or discard the change) and run again.
 
 The anchor is what bounds it. Records that already existed at the last tag are
 the standing backlog and are never this cut's to answer; only what this cycle

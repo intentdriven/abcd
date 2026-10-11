@@ -30,9 +30,9 @@ Two capabilities that were planned inside this spec are separately delivered
 and separately specced, because the landing order delivered them as independent
 steps: recovering transcripts already on disk and repairing the composite
 records is
-[itd-2609091718566731](../../intents/shipped/itd-2609091718566731-transcripts-already-on-disk-are-recovered-into-the-right-rep.md),
+[itd-2609091718566731](../../intents/shipped/itd-2609091718566731-transcripts-already-on-disk-are.md),
 and rendering a session as one artefact with telemetry is
-[itd-2609091718595846](../../intents/shipped/itd-2609091718595846-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md).
+[itd-2609091718595846](../../intents/shipped/itd-2609091718595846-any-captured-session-can-be-handed-to-an.md).
 Both consume the record schema and the fail-closed `Capture` this spec settles,
 so this spec is where that material stays.
 
