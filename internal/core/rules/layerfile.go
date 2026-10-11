@@ -84,8 +84,31 @@ func ReadUserLayerFile(home, rel, what, holds string, limit int64) (data []byte,
 	if home == "" || !filepath.IsAbs(home) {
 		return nil, false, nil
 	}
-	shown := "~/" + rel
 	data, refusal, err := fsutil.ReadHomeDeclaration(home, rel, limit)
+	return userLayerResult(rel, what, holds, limit, data, refusal, err)
+}
+
+// ReadUserLayerFileIn is ReadUserLayerFile over the directory of rel that the
+// caller already holds open, dir (fsutil.EnsureHomeScope's or OpenHomeScope's
+// root for path.Dir(rel)): the file is read relative to that descriptor
+// through fsutil.ReadHomeDeclarationDenyingIn rather than by walking home
+// again. A writer that writes through dir re-reads through it, so a same-uid
+// rename of the directory between its walk and the read cannot make it read
+// one directory and write another (iss-2609290300313698). Every guard on the
+// file, and every refusal's wording, is ReadUserLayerFile's; the directory
+// itself was judged by the walk that opened dir.
+func ReadUserLayerFileIn(dir *os.Root, home, rel, what, holds string, limit int64) (data []byte, ok bool, err error) {
+	if home == "" || !filepath.IsAbs(home) {
+		return nil, false, nil
+	}
+	data, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, rel, limit, 0)
+	return userLayerResult(rel, what, holds, limit, data, refusal, err)
+}
+
+// userLayerResult judges one guarded read of the user scope's file rel and
+// words its refusal, for ReadUserLayerFile and ReadUserLayerFileIn alike.
+func userLayerResult(rel, what, holds string, limit int64, data []byte, refusal fsutil.DeclarationRefusal, err error) ([]byte, bool, error) {
+	shown := "~/" + rel
 	// Absent is the lstat's answer, so a permission error here is a HOME or
 	// ~/.abcd.noindex this uid cannot search, never the file's own mode: that reads as
 	// no user layer, as it does for the sibling home-scoped declarations

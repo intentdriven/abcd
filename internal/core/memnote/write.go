@@ -18,11 +18,14 @@ import (
 //
 // A write creates and opens ~/.abcd.noindex in one walk relative to home's
 // descriptor (fsutil.EnsureHomeScope, which refuses a symlinked scope), takes
-// an exclusive flock on that directory (fsutil.WithDirLock, so no lock file is
-// left beside the notes), re-reads the file under the lock through the guarded
-// read, applies the change, and writes through fsutil.WriteFileAtomicInRoot at
-// 0600 — so two agents writing at once both land, and a file the read refuses
-// is never overwritten.
+// an exclusive flock on the directory at that path (fsutil.WithDirLock, which
+// opens it O_NOFOLLOW and leaves no lock file beside the notes), re-reads the
+// file under the lock through the guarded read relative to the descriptor the
+// walk opened (readMachineIn), applies the change, and writes through that
+// same descriptor with fsutil.WriteFileAtomicInRoot at 0600 — so two agents
+// writing at once both land, a file the read refuses is never overwritten, and
+// the file re-read is the file replaced even if the directory is renamed after
+// the walk.
 
 // AddRequest is one note to write. Session "" records the session as unknown.
 type AddRequest struct {
@@ -57,6 +60,12 @@ var (
 	rootCommit = gitutil.RootCommit
 	minter     = recordid.Minter{}
 )
+
+// machineScopeOpened runs once the write has opened ~/.abcd.noindex and before
+// it takes the lock. It does nothing in production; it is a var so a detector
+// can rename the directory inside that window, which a real race cannot be
+// relied on to hit.
+var machineScopeOpened = func() {}
 
 // lockTimeout bounds the wait for another writer of the machine layer.
 var lockTimeout = 10 * time.Second
@@ -167,8 +176,9 @@ func withMachineLayer(home string, change func(*File) error) error {
 		return fmt.Errorf("memory: %s could not be created, so nothing was written", abcdhome.Display())
 	}
 	defer dir.Close()
+	machineScopeOpened()
 	err = fsutil.WithDirLock(abcdhome.Path(home), lockTimeout, func() error {
-		f, present, err := ReadMachine(home)
+		f, present, err := readMachineIn(dir, home)
 		if err != nil {
 			return err
 		}

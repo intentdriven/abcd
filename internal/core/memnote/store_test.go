@@ -417,3 +417,56 @@ func TestMintedIDIsTheMemFamily(t *testing.T) {
 		t.Fatalf("Mint(%q) = %q, %v", Family, id, err)
 	}
 }
+
+// The re-read under the lock goes through the directory the write writes
+// through. A same-account rename of ~/.abcd.noindex between the write's walk and
+// its lock, with an empty directory left at the name, must not make the write
+// read the empty one and replace the old directory's notes with a one-note
+// file (the class iss-2609290300313698 fixed for the credential index). The
+// read through the descriptor finds the old file, and the shared guarded read
+// (fsutil.ReadHomeDeclarationDenyingIn) then refuses it, because it confirms
+// the owner by path as well and the path no longer reaches that file: so the
+// write fails closed, and both directories are left as they were.
+func TestWriteReadsUnderTheLockThroughTheDirectoryItWrites(t *testing.T) {
+	home, repo := fixture(t)
+	first, err := Add(addReq(home, repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := abcdhome.Path(home)
+	moved := scope + ".moved"
+	prev := machineScopeOpened
+	machineScopeOpened = func() {
+		if err := os.Rename(scope, moved); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(scope, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { machineScopeOpened = prev })
+	req := addReq(home, repo)
+	req.Title = "A second lesson"
+	_, addErr := Add(req)
+	data, err := os.ReadFile(filepath.Join(moved, "memory.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Notes []struct {
+			ID string `json:"id"`
+		} `json:"notes"`
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Notes) != 1 || f.Notes[0].ID != first.ID {
+		t.Fatalf("the directory written through holds %d note(s), want only the first, untouched: %s", len(f.Notes), data)
+	}
+	if addErr == nil {
+		t.Error("the write landed although the file it re-read is no longer the one at its path")
+	}
+	if _, err := os.Stat(filepath.Join(scope, "memory.json")); !os.IsNotExist(err) {
+		t.Errorf("the directory now at the name gained a memory.json (stat err %v)", err)
+	}
+}

@@ -2,6 +2,7 @@ package memnote
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -31,6 +32,20 @@ const maxFileBytes = 256 * 1024
 // naming the file in tilde form.
 func ReadMachine(home string) (f File, present bool, err error) {
 	data, ok, err := rules.ReadUserLayerFile(home, MachineRelPath, "memory", "notes", maxFileBytes)
+	return machineResult(data, ok, err)
+}
+
+// readMachineIn is ReadMachine through dir, ~/.abcd.noindex as the write's walk
+// opened it (rules.ReadUserLayerFileIn): the write re-reads the file under its
+// lock through the directory it then writes through, never by walking home
+// again.
+func readMachineIn(dir *os.Root, home string) (f File, present bool, err error) {
+	data, ok, err := rules.ReadUserLayerFileIn(dir, home, MachineRelPath, "memory", "notes", maxFileBytes)
+	return machineResult(data, ok, err)
+}
+
+// machineResult parses one guarded read of the machine layer.
+func machineResult(data []byte, ok bool, err error) (f File, present bool, _ error) {
 	if err != nil || !ok {
 		return File{}, false, err
 	}
