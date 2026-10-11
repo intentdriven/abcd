@@ -603,9 +603,27 @@ func (r *readmeSource) contents() (string, string) {
 	var para []string
 	paraAt := -1
 	inBlock := false
+	// htmlBlock is the HTML block the line is in, nil outside one: every line of
+	// one is HTML to the forge, a heading's included (iss-2610111851312171).
+	var htmlBlock *readmeHTMLBlock
 	for i, ln := range lines {
 		if skip[i] || mask[i] != 0 {
 			para, inBlock = nil, false
+			continue
+		}
+		blank := strings.TrimSpace(ln) == ""
+		if htmlBlock != nil {
+			if htmlBlock.ends(ln, blank) {
+				htmlBlock = nil
+				inBlock = false
+			}
+			continue
+		}
+		if b := openReadmeHTMLBlock(ln, para != nil); b != nil {
+			para, inBlock = nil, false
+			if !b.ends(ln, false) {
+				htmlBlock = b
+			}
 			continue
 		}
 		if m := atxHeadingRe.FindStringSubmatch(ln); m != nil {
@@ -616,7 +634,6 @@ func (r *readmeSource) contents() (string, string) {
 			heading(i, len(m[1]), text, strings.TrimSpace(text))
 			continue
 		}
-		blank := strings.TrimSpace(ln) == ""
 		if para != nil {
 			if m := setextUnderlineRe.FindStringSubmatch(ln); m != nil {
 				level := 2
@@ -656,6 +673,62 @@ func (r *readmeSource) contents() (string, string) {
 		return "", noLevelTwoHeading
 	}
 	return strings.Join(out, "\n"), ""
+}
+
+// readmeHTMLBlock is an open HTML block, as the forge's markdown reads one: a
+// block opened by a pre, script, style or textarea tag, or by `<?`, `<!X` or
+// `<![CDATA[`, ends at the line holding its end mark; any other ends at the
+// first blank line.
+type readmeHTMLBlock struct{ end *regexp.Regexp }
+
+// ends reports whether the block ends at this line (a blank line that ends a
+// block is not part of it, and is no heading either way).
+func (b *readmeHTMLBlock) ends(ln string, blank bool) bool {
+	if b.end == nil {
+		return blank
+	}
+	return b.end.MatchString(ln)
+}
+
+// The HTML block starts, after up to three spaces of indent.
+var (
+	htmlRawBlockRe   = regexp.MustCompile(`(?i)^ {0,3}<(?:pre|script|style|textarea)(?:[ \t>]|$)`)
+	htmlRawBlockEnd  = regexp.MustCompile(`(?i)</(?:pre|script|style|textarea)>`)
+	htmlPIBlockRe    = regexp.MustCompile(`^ {0,3}<\?`)
+	htmlPIBlockEnd   = regexp.MustCompile(`\?>`)
+	htmlCDATABlockRe = regexp.MustCompile(`^ {0,3}<!\[CDATA\[`)
+	htmlCDATAEnd     = regexp.MustCompile(`\]\]>`)
+	htmlDeclBlockRe  = regexp.MustCompile(`^ {0,3}<![A-Za-z]`)
+	htmlDeclBlockEnd = regexp.MustCompile(`>`)
+	// htmlTagBlockRe opens a block on one of the block-level tag names,
+	// opening or closing, which may interrupt a paragraph.
+	htmlTagBlockRe = regexp.MustCompile(`(?i)^ {0,3}</?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t>]|/>|$)`)
+	// htmlLoneTagRe is any other complete tag alone on its line, which opens
+	// a block only outside a paragraph.
+	htmlLoneTagRe = regexp.MustCompile(`^ {0,3}(?:` + inlineTagRe.String() + `)[ \t]*$`)
+)
+
+// openReadmeHTMLBlock is the HTML block ln opens, or nil. inPara says a
+// paragraph is open, which a lone tag of another name cannot interrupt.
+func openReadmeHTMLBlock(ln string, inPara bool) *readmeHTMLBlock {
+	switch {
+	case htmlRawBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlRawBlockEnd}
+	case strings.HasPrefix(strings.TrimLeft(ln, " "), "<!--"):
+		// A comment is mdrecord.Mask's; it never reaches here masked out.
+		return nil
+	case htmlPIBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlPIBlockEnd}
+	case htmlCDATABlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlCDATAEnd}
+	case htmlDeclBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlDeclBlockEnd}
+	case htmlTagBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{}
+	case !inPara && htmlLoneTagRe.MatchString(ln):
+		return &readmeHTMLBlock{}
+	}
+	return nil
 }
 
 // readmePageLines splits the README at every line ending the forge's page

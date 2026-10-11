@@ -409,6 +409,54 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 	}, "\n"))
 }
 
+// TestContentsSkipsHeadingsInsideHTMLBlocks: a line inside an HTML block is
+// HTML to the forge, so a heading written there renders as text and has no
+// anchor (iss-2610111851312171). A block such as a div ends at the first
+// blank line, and a heading after it is a heading; a pre block ends at its
+// closing tag, blank lines or not. A tag alone on a line opens a block too,
+// but not in the middle of a paragraph, where it is inline HTML.
+func TestContentsSkipsHeadingsInsideHTMLBlocks(t *testing.T) {
+	readme := strings.Join([]string{
+		`<div align="center">`,
+		"## Inside a div",
+		"</div>",
+		"",
+		"<details>",
+		"<summary>More</summary>",
+		"",
+		"## After the blank line",
+		"",
+		"</details>",
+		"",
+		"<pre>",
+		"",
+		"## Inside a pre",
+		"</pre>",
+		"",
+		"<span>",
+		"## Inside a tag alone on its line",
+		"</span>",
+		"",
+		"a paragraph",
+		"<span>",
+		"## After inline HTML",
+		"",
+		"<DIV>",
+		"Setext inside",
+		"---",
+		"",
+		"## Last",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [After the blank line](#after-the-blank-line)",
+		"- [After inline HTML](#after-inline-html)",
+		"- [Last](#last)",
+	}, "\n"))
+}
+
 // TestBadgePartsNeedPublicAndForge: the release and build badges are derived
 // only where the owner declared the project public and the origin is on
 // github.com; the build badge also needs one workflow it can name. The
