@@ -61,7 +61,7 @@ environment every abcd subprocess gets, its own output discarded.
 Armed with no gitleaks binary installed is one state with one consequence per
 consumer. A release (`launch`) and a lifeboat (`disembark pack`) refuse on it,
 the privacy lint reports it as an error, and the write paths — transcript
-capture, issue capture, memory ingest — write with the native scanner and name
+capture, issue capture, the memory store's ingest — write with the native scanner and name
 the gap in their receipt. A gitleaks run that fails, a report the scanner cannot
 place, or a configured path the adapter refuses degrades the scanner instead:
 every consumer treats that as it treats a broken `pii.json`.

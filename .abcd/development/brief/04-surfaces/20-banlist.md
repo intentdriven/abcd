@@ -131,7 +131,7 @@ maintains them inside a fenced generated block in the same file, refusing a lega
 store that carries entries and leaving every line outside its block untouched. So
 a hand-added private entry and the corpus sync write into one store without either
 clobbering the other, and a hand-written key that collides with one the sync owns
-is refused rather than overwritten. See [`33-source.md`](33-source.md) for the
+is refused rather than overwritten. See [`07-library.md`](07-library.md) for the
 corpus side of that contract.
 
 Leading and trailing ASCII spaces and tabs are stripped, and so are a trailing
@@ -332,7 +332,7 @@ pattern, and a guard is only ever asked about what git asks it about.
 - Intent: [`itd-74`](../../intents/shipped/itd-74-name-banlist.md)
 - Public-layer gate: [`10-docs.md`](10-docs.md)
 - Install surface: [`01-ahoy.md`](01-ahoy.md)
-- The corpus writer that shares the private store: [`13-consult.md`](13-consult.md)
+- The corpus writer that shares the private store: [`07-library.md`](07-library.md)
 - The visibility fence and its tracked-tier narrowing:
   [`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)
 

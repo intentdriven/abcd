@@ -504,8 +504,9 @@ across the read and the write as the provider block's write holds
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
 [the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
-phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/abcd:ingest` and
-`/abcd:consult` read (abcd never creates that one, and both verbs say so and stop
+phase too: the shipped memory store is repo-scope), and the `sources/` corpus
+`/abcd:library` reads and writes (abcd never creates that one unasked: only its
+explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
 are pulled in. **Never the design record.** The same inventory is drawn as a tree
@@ -914,7 +915,7 @@ Two artefacts are absent from this table by construction rather than by exceptio
   user-scope and the lifeboat is out-of-tree output, so no gitignore rule applies
   to either under any visibility.
 
-¹ New projects use `.abcd/memory/`, the substrate `abcd memory` curates. The
+¹ New projects use `.abcd/memory/`, the substrate `abcd library` curates through its memory verbs. The
 root-level `memory/` is the legacy snapshot pattern some existing projects
 maintain by hand; abcd respects it if present and never writes to it.
 
@@ -942,7 +943,7 @@ clone carries, because it is out-of-tree output.
 
 **Memory locations to keep straight.** Curated memory exists at both scopes, and
 there is one non-abcd location alongside them: the repo-scope `.abcd/memory/` is
-the **primary** store, holding the curated summaries `abcd memory ingest` writes
+the **primary** store, holding the curated summaries `abcd library ingest` writes
 and the canonical input for principle distillation; the user-scope `~/.abcd.noindex/memory/` is a
 **later phase**, which will hold personal preferences and cross-project
 principles with no single repo home (nothing in the binary resolves it today);

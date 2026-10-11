@@ -10,7 +10,7 @@ import (
 
 // TestMemoryIngestKeepOriginalPartialFailure proves the iss-30 fix is wired to
 // the CLI surface: when --keep-original fails after the pages are durably
-// written, `abcd memory ingest` reports the successful ingest with a warning,
+// written, `abcd library ingest` reports the successful ingest with a warning,
 // exits non-zero, and leaks no absolute path. The failure is forced by making
 // the kept-originals directory a regular file.
 func TestMemoryIngestKeepOriginalPartialFailure(t *testing.T) {
@@ -37,7 +37,7 @@ func TestMemoryIngestKeepOriginalPartialFailure(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"memory", "ingest", src, "--keep-original", "--pages-json", pages}, &stdout, &stderr)
+	code := Run([]string{"library", "ingest", src, "--keep-original", "--pages-json", pages}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("expected a non-zero exit when --keep-original fails\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
 	}

@@ -11,7 +11,7 @@ record, so an exemption is a decision rather than an omission.
 
 | Path / command | Meaning |
 |---|---|
-| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install`, `uninstall` and `remote apply` are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
+| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install`, `uninstall`, `connect`, `remote apply` and `credential` (with `--home`) are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
 | `/abcd:disembark` | leave the ship → pack a lifeboat for the journey |
 | `/abcd:embark` | board a new ship → unpack the lifeboat |
 | `/abcd:launch` | put the (cleaned) ship to sea publicly |
@@ -52,10 +52,11 @@ The exemptions carrying a rationale of their own:
   board.
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
-adds meaning: `banlist`, `changelog`, `consult`, `decide`, `docs`, `guard`,
-`history`, `ideate`, `identity`, `ingest`, `lint`, `memory`,
-`prepare-this-repo`, `reading`, `rules`, `site`, `spec`, and `update`. They
-are registered here so the exemption is on the record.
+adds meaning: `banlist`, `build`, `dashboard`, `decide`, `docs`, `drain`,
+`guard`, `history`, `hook`, `ideate`, `identity`, `implement`, `inbox`, `lab`,
+`library`, `lint`, `mode`, `peers`, `reading`, `report`, `rules`, `scribe`,
+`site`, `spec`, `statusline`, and `update`. They are registered here so the
+exemption is on the record.
 
 **Reserved meta-development commands** (later phases; named now to prevent
 collisions):
@@ -97,10 +98,11 @@ are **forbidden** at design time rather than argued about in review. Lint code
 held by review.
 
 **Conformance is partial, and the gap is the shipped surface's rather than the
-discipline's.** Several parents print usage with no state, two verbs refuse
-instead of rendering, and `history` breaks the rule from both ends at once: bare
-`abcd history` renders nothing while `history list` and `history show` exist,
-which is exactly the shape the rule forbids. The one enumeration of where the
+discipline's.** Several parents print usage with no state, three verbs
+(`launch`, `decide` and `build`) refuse instead of rendering, and `history`
+breaks the rule from both ends at once: bare `abcd history` renders nothing
+while `history list` and `history show` exist, which is exactly the shape the
+rule forbids. The one enumeration of where the
 convention holds and where it does not lives in
 [`../04-surfaces/README.md`](../04-surfaces/README.md#bare-invocation); the
 per-verb inventory of registered sub-verbs is the machine-checked `## Sub-verbs`
@@ -179,7 +181,7 @@ Two things to read the table with:
 | Lifecycle classes ∈ `{regenerable, append-only, compounding-curated}` | Artefact lifecycle taxonomy | `05-internals/04-universal-patterns.md § 8` |
 | Review verdicts ∈ `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` | Carmack-style review verdicts | `05-internals/01-agents.md § Verdict-tag protocol` |
 | Criterion verdicts ∈ `{MET, MET_WITH_CONCERNS, NOT_MET, INCONCLUSIVE}` | Per-criterion intent acceptance | itd-1 |
-| `task_classes` (capability_scope tokens) ∈ `{oracle_review, intent_audit, spec_planning, code_rescue, principle_distillation, lifeboat_packing, audit, lint, surface_render, cross_document_audit, cold_reading}` | Closed enum, agent frontmatter, PR-to-extend. `cold_reading` names the four blind reading positions (itd-184): reusing `cross_document_audit` would name them as audits, and an audit judges against a standard, which is precisely the licence a widening reading does not hold. `oracle_review` names review work that reaches a model through the adr-25 **oracle seam** — the seam keeps its name even where the verb that consumes it does not (`disembark review`, spc-30), so the token survived that rename unchanged. This table is the source of truth today: the binary carries no `task_classes` schema and no cross-check test reads the field (iss-265). | itd-5 extension (idea-4) — lean ~10 tokens drawn from current abcd surfaces |
+| `task_classes` (capability_scope tokens) ∈ `{oracle_review, intent_audit, spec_planning, code_rescue, principle_distillation, lifeboat_packing, audit, lint, surface_render, cross_document_audit, cold_reading, intent_consistency}` | Closed enum, agent frontmatter, PR-to-extend. `intent_consistency` names the intent auditor's cross-document role, which reads the brief and the intents together for contradictions (`agents/intent-auditor.md`). `cold_reading` names the four blind reading positions (itd-184): reusing `cross_document_audit` would name them as audits, and an audit judges against a standard, which is precisely the licence a widening reading does not hold. `oracle_review` names review work that reaches a model through the adr-25 **oracle seam** — the seam keeps its name even where the verb that consumes it does not (`disembark review`, spc-30), so the token survived that rename unchanged. This table is the source of truth for the values: the binary carries no `task_classes` schema, and record-lint's agent contract (`internal/core/lint/agentcontract.go`) checks only that an agent reading untrusted input declares the field, never which values it holds (iss-265). | itd-5 extension (idea-4) — lean ~10 tokens drawn from current abcd surfaces |
 | `frozen_content_hash` | **(predecessor vocabulary; superseded by the native spec store, [`../../specs/README.md`](../../specs/README.md))** SHA-256 hex string written to PRD frontmatter by `/abcd:intent plan` at freeze time. Non-self-referential: provenance fields included, operational fields excluded. Recipe documented in `prd.schema.json`. | spc-3 (predecessor store), task .5 |
 | `intent_source_hash` | **(predecessor vocabulary; superseded by the native spec store, [`../../specs/README.md`](../../specs/README.md))** SHA-256 hex string computed over the parent intent's body + stable frontmatter. Written by grill skill as `grilled_intent_hash`; copied to PRD as `source_intent_hash`. Recipe documented in `prd.schema.json`. | spc-3 (predecessor store), task .5 |
 | `planning_attempt_id` | **(predecessor vocabulary; superseded by the native spec store, [`../../specs/README.md`](../../specs/README.md))** UUIDv4 written to PRD frontmatter and the durable attempt journal by `/abcd:intent plan`. Used by GR004 to detect stale planning attempts. | spc-3 (predecessor store), task .5 |

@@ -46,7 +46,7 @@ func TestMemoryIngestSanitizesLicence(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"memory", "ingest", src, "--pages-json", pages}, &stdout, &stderr)
+	code := Run([]string{"library", "ingest", src, "--pages-json", pages}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected a clean ingest\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
 	}

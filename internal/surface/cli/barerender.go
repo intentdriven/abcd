@@ -43,9 +43,6 @@ var bareRenderExceptions = map[string]string{
 		"a terminal and refuses (exit 2) anywhere else",
 	"scribe": "a parent whose sub-verbs act on a named reading run or on a scribe's " +
 		"returned output; with no operand it has no state of its own to render, so bare prints its sub-verbs",
-	"source": "its state is the user-level corpus, not the repository: with a corpus bare " +
-		"renders it read-only, and with none, this test's isolated home included, it refuses " +
-		"(exit 3) naming `abcd source init`",
 	"statusline": "its row belongs to a managed repository: there bare renders it with or " +
 		"without the payload (TestStatuslineEmptyStdinStillRendersTheBadge), and anywhere else, " +
 		"this test's scratch repository included, abcd has no row and bare prints nothing of " +

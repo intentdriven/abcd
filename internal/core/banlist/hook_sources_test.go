@@ -82,7 +82,7 @@ func makeCorpusDir(t *testing.T) {
 // repository's copy builds.
 type refresher struct{ sh, gocode string }
 
-const countLine = "abcd source sync-banlist — 1 confidential source, 1 pattern in .abcd/.work.local/private-names.txt (rewrote the block)"
+const countLine = "abcd library sync-banlist — 1 confidential source, 1 pattern in .abcd/.work.local/private-names.txt (rewrote the block)"
 
 const writeEntrySh = "printf '# abcd-banlist: keyed\\nsources/conf2026a/title widgetworks\\n' > .abcd/.work.local/private-names.txt; echo '" + countLine + "'"
 
@@ -97,12 +97,12 @@ var (
 	// the real one's does) and refuses the refresh.
 	failsNamingAKey = refresher{
 		sh: `case "$*" in *--help*) echo '      --refresh   the refresh mode'; exit 0 ;; esac
-echo 'abcd source sync-banlist: the corpus disagrees on conf2026a (nothing written)' >&2; exit 2`,
+echo 'abcd library sync-banlist: the corpus disagrees on conf2026a (nothing written)' >&2; exit 2`,
 		gocode: `if strings.Contains(strings.Join(os.Args, " "), "--help") {
 		os.Stdout.WriteString("      --refresh   the guard's mode\n")
 		return
 	}
-	os.Stderr.WriteString("abcd source sync-banlist: the corpus disagrees on conf2026a (nothing written)\n")
+	os.Stderr.WriteString("abcd library sync-banlist: the corpus disagrees on conf2026a (nothing written)\n")
 	os.Exit(2)`,
 	}
 )
@@ -225,7 +225,7 @@ func TestPreCommitHook_NeverRunsAnInstalledAbcd(t *testing.T) {
 }
 
 // TestPreCommitHook_RefreshesTheSourcesBlockBeforeChecking is AC3 at the guard: the
-// copy's own binary runs `source sync-banlist --refresh` BEFORE the store is read,
+// copy's own binary runs `library sync-banlist --refresh` BEFORE the store is read,
 // so an entry the refresh writes is enforced on this very commit, and the binary's
 // one-line count is relayed, so a refresh that wrote fewer patterns is visible.
 func TestPreCommitHook_RefreshesTheSourcesBlockBeforeChecking(t *testing.T) {
@@ -239,7 +239,7 @@ func TestPreCommitHook_RefreshesTheSourcesBlockBeforeChecking(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the guard did not run its refresh binary\n%s", out)
 			}
-			if strings.TrimSpace(string(got)) != "source sync-banlist --refresh" {
+			if strings.TrimSpace(string(got)) != "library sync-banlist --refresh" {
 				t.Fatalf("the guard ran the binary with %q", got)
 			}
 			if !blocked || !strings.Contains(out, "sources/conf2026a/title") {
@@ -262,7 +262,7 @@ func TestPreCommitHook_AFailedRefreshIsRelayedAndTheStoreStillGuards(t *testing.
 			r := newGuardRepo(t, hook, privateFormatDecl+"\nhand-key widgetworks\n")
 			failsNamingAKey.install(t, r, name)
 			blocked, out := commitNote(r, "note.md", "the widgetworks draft\n")
-			if !strings.Contains(out, "pre-commit: abcd source sync-banlist: the corpus disagrees on conf2026a") {
+			if !strings.Contains(out, "pre-commit: abcd library sync-banlist: the corpus disagrees on conf2026a") {
 				t.Fatalf("the refresh's refusal was not relayed\n%s", out)
 			}
 			if !strings.Contains(out, "checked as it stands") {
@@ -318,7 +318,7 @@ func TestPreCommitHook_TemplateRefusesAnUnusableOptIn(t *testing.T) {
 }
 
 // TestPreCommitHook_TemplateNamesABinaryWithoutTheVerbOnce: an opted-in binary that
-// predates the source verb is ONE line naming the remedy — never a "refresh failed"
+// predates the library verb is ONE line naming the remedy — never a "refresh failed"
 // warning, which on every commit would teach the committer to ignore it.
 func TestPreCommitHook_TemplateNamesABinaryWithoutTheVerbOnce(t *testing.T) {
 	hook := guardCopies(t)["template"]
@@ -334,7 +334,7 @@ echo 'abcd: unknown flag: --refresh' >&2; exit 1`}
 	if strings.Contains(out, "failed") || strings.Contains(out, "unknown flag") {
 		t.Fatalf("a binary without the verb reads as a failure\n%s", out)
 	}
-	if strings.Count(out, "has no 'source sync-banlist --refresh'") != 1 {
+	if strings.Count(out, "has no 'library sync-banlist --refresh'") != 1 {
 		t.Fatalf("a binary without the verb is not one remedy line\n%s", out)
 	}
 }

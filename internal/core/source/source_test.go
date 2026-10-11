@@ -566,7 +566,7 @@ func TestInitRefusesInsideAnotherRepository(t *testing.T) {
 // TestTheRepositoryGuardRefreshesWithItsOwnBuild is AC3 through this repository's
 // real guard, end to end (iss-2609252007414882): a clone whose hooks path is this
 // checkout's .githooks builds ./cmd/abcd from the checkout and runs ITS
-// `source sync-banlist --refresh`, so a source added to the corpus after the last
+// `library sync-banlist --refresh`, so a source added to the corpus after the last
 // by-hand sync is banned on the very next commit, and the build's one-line count
 // is relayed. No installed abcd is involved: the only abcd this test can reach is
 // the one the hook builds.
@@ -620,7 +620,7 @@ func TestTheRepositoryGuardRefreshesWithItsOwnBuild(t *testing.T) {
 	if err == nil {
 		t.Fatalf("the guard let a source added after the last sync through:\n%s", out)
 	}
-	if !strings.Contains(string(out), "pre-commit: abcd source sync-banlist — 2 confidential sources") {
+	if !strings.Contains(string(out), "pre-commit: abcd library sync-banlist — 2 confidential sources") {
 		t.Errorf("the refresh's count line was not relayed:\n%s", out)
 	}
 	if !strings.Contains(string(out), "sources/conf2026b/title") {

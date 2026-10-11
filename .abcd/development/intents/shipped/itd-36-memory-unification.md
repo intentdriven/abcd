@@ -38,7 +38,7 @@ There's a real gap: **per-project durable knowledge has multiple legitimate upst
 
 ## What's In Scope
 
-- **`/abcd:memory` command** with sub-verbs `ingest` / `ask` / `lint`. Bare invocation renders state per the universal bare-command-as-render discipline. Surface contract: [`04-surfaces/07-memory.md`](../../brief/04-surfaces/07-memory.md). Substrate spec: [`05-internals/07-memory.md`](../../brief/05-internals/07-memory.md).
+- **`/abcd:memory` command** with sub-verbs `ingest` / `ask` / `lint`. Bare invocation renders state per the universal bare-command-as-render discipline. Surface contract: [`04-surfaces/07-library.md`](../../brief/04-surfaces/07-library.md), the memory verbs having merged into `/abcd:library` (itd-2610090831227812). Substrate spec: [`05-internals/07-memory.md`](../../brief/05-internals/07-memory.md).
 - **Schema extension on `.abcd/memory/`** (NOT migration): three new conventional sibling files (`index.md` generated catalog, `log.md` append-only ingest history, `contradictions.md` curator-surfaced register) plus typed `source:` frontmatter on every memory page. Existing flat-named pages preserved; schema extends in place.
 - **Typed `source:` frontmatter** with closed-enum source-class taxonomy: `session_memory` / `external_pdf` / `external_transcript` / `external_article` / `oracle_review` / `work_notes` / `issue_ledger` / `dredge_synthesis` / `spec_modification_grammar` / `modification_grammar`. Every external source carries `citation` + `licence` + `source_hash` + `ingested_at`.
 - **Default-no-originals + `--keep-original`**: ingest reads → distils → discards by default; flag opts into storage at `.abcd/memory/sources/<sha256>.<ext>`; the lifeboat licence gate refuses to surface `sources/` files without an explicit allowlist entry.
@@ -205,7 +205,7 @@ Gap audit:
 - Full assessment in a local working note (unmigrated), with 5-round review trail (chat `adversarial-review-llm-w-4970CE`); pre-review framings preserved in chat record.
 - [`05-internals/07-memory.md`](../../brief/05-internals/07-memory.md) — substrate spec (page-class enum, source classes, curator behaviour, lifecycle class).
 - [`05-internals/09-provenance-substrate.md`](../../brief/05-internals/09-provenance-substrate.md) — provenance/licence subsystem shared with itd-26 loot.
-- [`04-surfaces/07-memory.md`](../../brief/04-surfaces/07-memory.md) — surface contract for `/abcd:memory`.
+- [`04-surfaces/07-library.md`](../../brief/04-surfaces/07-library.md) — surface contract for `/abcd:memory`, now the memory verbs of `/abcd:library`.
 - [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory) — pattern source.
 - [`itd-1-acceptance-gates.md`](../disciplines/itd-1-acceptance-gates.md) — companion discipline; this intent's acceptance criteria conform to its Given-When-Then shape.
 - [`itd-37-modification-grammar.md`](../disciplines/itd-37-modification-grammar.md) — companion discipline; ships alongside itd-36 (page-classes `spec_modification_grammar` + `modification_grammar` are part of itd-36's source-class enum).

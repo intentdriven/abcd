@@ -1,8 +1,6 @@
 package ahoy
 
 import (
-	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -28,7 +26,7 @@ var stateBullet = regexp.MustCompile("^\\s*- `([a-z]+)`")
 // above it.
 var numberedStep = regexp.MustCompile(`^\s*\d+\.\s`)
 
-// hooksPathAdviceFaults returns what the prepare-this-repo page gets wrong about
+// hooksPathAdviceFaults returns what the ahoy page gets wrong about
 // arming the committed hooks, one sentence each; none means the page sets a local
 // core.hooksPath only in the unarmed branch and leaves a foreign one alone.
 //
@@ -81,18 +79,15 @@ func hooksPathAdviceFaults(page string) []string {
 	return faults
 }
 
-// TestPrepareThisRepoArmsHooksOnlyWhenUnarmed is iss-2610080546210831's detector.
-// The page's commit-gates step told every prepared repository to run
+// TestAhoyPageArmsHooksOnlyWhenUnarmed is iss-2610080546210831's detector. The
+// preparation workflow's commit-gates step, on the prepare-this-repo page until
+// it folded into the ahoy page's install section (spc-2610100613109045, step 4), told every prepared repository to run
 // `git config core.hooksPath .githooks` with no condition, which shadows a global
 // hooks dispatcher: the exact advice ahoy refuses to give when hooks_path reads
 // foreign. The page must key the command on the state ahoy reports.
-func TestPrepareThisRepoArmsHooksOnlyWhenUnarmed(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "commands", "prepare-this-repo.md"))
-	if err != nil {
-		t.Fatalf("cannot read the prepare-this-repo page: %v", err)
-	}
-	for _, f := range hooksPathAdviceFaults(string(data)) {
-		t.Errorf("commands/prepare-this-repo.md: %s", f)
+func TestAhoyPageArmsHooksOnlyWhenUnarmed(t *testing.T) {
+	for _, f := range hooksPathAdviceFaults(readAhoyPage(t)) {
+		t.Errorf("commands/ahoy.md: %s", f)
 	}
 }
 
@@ -108,7 +103,7 @@ func TestPrepareHooksPathFieldIsWhatAhoyEmits(t *testing.T) {
 		return strings.Split(f.Tag.Get("json"), ",")[0]
 	}
 	if got := tag(DetectionResult{}, "Banlist") + "." + tag(BanlistHealth{}, "HooksPath"); got != "banlist.hooks_path" {
-		t.Errorf("ahoy --json carries the hooks path state at %q; the prepare-this-repo page reads banlist.hooks_path", got)
+		t.Errorf("ahoy --json carries the hooks path state at %q; the ahoy page reads banlist.hooks_path", got)
 	}
 }
 

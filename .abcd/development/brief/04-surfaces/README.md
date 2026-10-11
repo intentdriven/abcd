@@ -19,14 +19,11 @@ are wiring rather than user-facing surface are listed separately under
 | 4 | `/abcd:launch` | shipped | Preview what a release would ship, and cut one by deriving its version and changelog from the record | [`04-launch.md`](04-launch.md) |
 | 5 | `/abcd:intent` | shipped | Say what you want to build as a press release, and find out whether it is ready to implement | [`05-intent.md`](05-intent.md) |
 | 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
-| 7 | `/abcd:memory` | shipped | Curate what the project knows from outside sources, and query it | [`07-memory.md`](07-memory.md) |
+| 7 | `/abcd:library` | shipped | Keep the documents you consult and the cited pages distilled from what the project reads, record what each source changed, and ban the confidential ones' names at commit time | [`07-library.md`](07-library.md) |
 | 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`](08-abcd.md) |
 | 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
-| 13 | `/abcd:consult` | shipped | Ask the local sources corpus what prior work says, and record what it changed | [`13-consult.md`](13-consult.md) |
-| 14 | `/abcd:ingest` | shipped | Put a document or URL into the sources corpus with its reference metadata | [`14-ingest.md`](14-ingest.md) |
-| 15 | `/abcd:prepare-this-repo` | shipped | Bring an owned repo up to abcd's conventions (interim bridge until abcd manages repos directly) | [`15-prepare-this-repo.md`](15-prepare-this-repo.md) |
 | 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
@@ -44,7 +41,6 @@ are wiring rather than user-facing surface are listed separately under
 | 30 | `/abcd:inbox` | shipped | Read the reports managed repositories filed, and promote one to a capture that names the sender only by its root-commit key | [`30-inbox.md`](30-inbox.md) |
 | 31 | `/abcd:lab` | shipped | Run a lab against a pinned snapshot of the repository and harvest what it found, with the evidence kept out of the repository | [`31-lab.md`](31-lab.md) |
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
-| 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
 | 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
 | 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
@@ -61,7 +57,7 @@ exempt from the file check.
 The reverse sweep reaches those two directories and no others. The prompt files
 under `agents/`, which a harness registers as invocable agents, are checked in
 neither direction: nothing asserts that one has a row here, and nothing notices
-when one is added or removed (iss-110).
+when one is added or removed. iss-2610110456358519 tracks that gap.
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
 file in this directory carries a `## Sub-verbs` table recording, per verb, its
@@ -71,10 +67,13 @@ the table with its header alone, so an empty table is a recorded fact rather tha
 a missing one, and a file without the table is a finding whatever its verb
 registers. The rule checks each table against the committed command-tree
 snapshot in both directions: a `shipped` row must be registered, a `staged` row
-must not be, a registered sub-command must have a row, and a sub-command-bearing
-verb cannot lack a file entirely. Host-delegated surfaces and the bare command are
-exempt from that comparison by explicit configuration, never silently, and from
-nothing else: their tables are still required and format-checked.
+must not be, a registered sub-command must have a row unless it sits in a hidden
+subtree (`launch smoke-pages` and `dashboard serve` today; `loadSnapshotSubVerbs`
+in `internal/core/lint/subverbs.go`), and a sub-command-bearing verb cannot lack
+a file entirely. The bare command, and any host-delegated
+surface (a page with no verb; the list is empty today), are exempt from that
+comparison by explicit configuration, never silently, and from nothing else:
+their tables are still required and format-checked.
 Operator-internal verbs are absent from this registry by design.
 
 The surface-grain `Status` enum stays two-valued: there is no `partial`, because
@@ -137,17 +136,20 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `memory`, `source` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `library` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
 carry no adr-40 bucket meaning. `version` is the root's `--version` flag
 (itd-2609212130136102), not a verb, so it is in neither block, and bare `abcd`
-shows the installed version as the board's last line (itd-2610090831227812). The product
+shows the installed version as the board's last line (itd-2610090831227812).
+`changelog` is in neither block either: it merged into `launch` as its preview,
+and `abcd launch --dry-run` renders the cut it showed beside the bundle report
+(itd-2610090831227812). The product
 thinker placed every verb on 2026-10-09 by who types it: a command a person
 needs to do their job is a person's, and only a command no person types is
 listed with the agents (itd-2610090831227812; its spec's verb audit cites each
@@ -188,10 +190,20 @@ command-tree snapshot records it, `go generate ./internal/surface/cli` writes
 the pages' descriptions from it, and the generated CLI reference carries it,
 which puts it under the docs lint.
 
+A page that carries a host workflow its bare verb does not describe adds one
+"use when" clause after the sentence in its `description:` and nowhere else,
+because the host chooses which page to load from that description. The clauses
+are declared in one map in `internal/surface/cli/sentences.go`, keyed by page
+name, each one line opening "Use when", at most 300 characters. Two pages
+declare one: `library`, which carries the register and consult workflows, and
+`ahoy`, whose `install` carries the repository preparation. A page outside the
+map has the bare sentence as its description.
+
 It is gated. A test in `internal/surface/cli` walks every visible command and
 fails naming the verb and the defect when a sentence is missing, lacks a clause,
 runs past the cap, or differs between the manifest, the command list, the help
-and the page; a synthetic tree proves it names each defect. A reworded sentence
+and the page (the page's declared use-when clause aside); a synthetic tree
+proves it names each defect. A reworded sentence
 is not a break: the surface diff never reads it, because it changes no
 invocation. Adding a verb therefore adds its sentence to the manifest in the
 same change, and the regeneration carries it to every place it appears.
@@ -213,10 +225,7 @@ starts a run for; the run's state renders through `abcd implement status`. Bare
 `abcd reflect` prints its usage, because its one operand is the cut release
 whose retrospective seed it renders. Bare
 `abcd drain` is the run itself, one move per invocation, so it is not a render;
-what a drain would do renders through its dry run. Bare
-`abcd source` renders the corpus under the user-level home rather than anything
-in the repository, so where there is no corpus it refuses naming `abcd source
-init`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+what a drain would do renders through its dry run. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
@@ -240,7 +249,6 @@ verb the binary registers apart from the framework's own `help`.
 
 | Verb | What it is | Delivered by |
 |---|---|---|
-| `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
 | `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
@@ -307,11 +315,15 @@ present the result: the markdown is the surface, the binary is the engine. Those
 commands stay thin — they call `abcd <verb> --json` and format the result, and
 never reimplement behaviour that belongs in the core.
 
-The three host-delegated commands named below are the exception, and are
-configured as such rather than being silently different: `/abcd:consult`,
-`/abcd:ingest` and `/abcd:prepare-this-repo` back onto no verb of their own, so
-`consult.md` and `ingest.md` invoke the binary nowhere at all and carry the
-workflow itself, and `prepare-this-repo.md` calls other verbs on the way through.
+Every page but the bare board backs a verb of its own name. Some carry a
+workflow the host drives around the binary as well: the library page's
+consulting and registering steps (search the corpus, read a document first,
+choose its class and key) run in the host agent around the corpus verbs, and
+the preparation workflow that brings an owned repository up to the conventions
+runs from `ahoy.md`'s install section, around the binary's install. The two
+host-delegated pages that once backed no verb, one for consulting the corpus
+and one for registering a document, retired into the library page
+(itd-2610090831227812).
 
 The directory is **flat**, and that is load-bearing rather than tidiness. A
 harness maps each `commands/` subdirectory to an extra namespace segment, so a
@@ -321,10 +333,10 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
+`abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`.
+`intent`, `lab`, `launch`, `library`, `lint`, `mode`, `peers`,
+`reading`, `reflect`, `report`, `scribe`, `site`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -342,11 +354,13 @@ the only reliable fix is a home outside the auto-discovery root.
 ## No skills
 
 **abcd ships zero skills** — the `/abcd:` surface is commands only, and there is
-no `skills/` directory in the tree. `/abcd:consult`, `/abcd:ingest` and
-`/abcd:prepare-this-repo` were once shipped as skills and are commands: each
-mutates state — the sources corpus, its ledger, the target repo — which the
-boundary rule makes command-shaped. They are **host-delegated** commands, with a
-command page and no Go verb, so the workflow runs in the host agent. The
+no `skills/` directory in the tree. Three workflows once shipped as skills, and
+each mutates state, which the boundary rule makes command-shaped. Consulting
+the sources corpus and registering a document in it write the corpus and its
+ledger; they became host-delegated command pages and then retired into the
+library page, whose verbs make every write (itd-2610090831227812). The third,
+the preparation of a target repo, mutates that repo; its page retired into the
+install section of `ahoy.md` (itd-2610090831227812). The
 skill/command boundary is documented in
 [`05-internals/08-skills.md`](../05-internals/08-skills.md).
 
@@ -359,9 +373,12 @@ sub-verb.
 
 Most plugin agents under [`agents/`](../../../../agents) serve a verb, which
 builds their input or validates what they return, and the chapter of that verb
-documents them. Four serve no verb, and no command page calls on them: the host
-agent invokes each directly, when its `description` or abcd's asking rules say
-to, and reads the report itself. In the binary they are roster entries: the bundled model-tier
+documents them. Four serve no verb: the host agent invokes each directly, when
+its `description`, a command page or abcd's asking rules say to, and reads the
+report itself. Three of the four are called on by name. `build.md` and the
+implement loop's validator roles dispatch the two reviewers, and `guard.md` and
+`intent.md` send a question through the question drafter. Only
+`sota-researcher` is named by no command page. In the binary they are roster entries: the bundled model-tier
 proposal the `oracle-routing` offer of [`01-ahoy.md`](01-ahoy.md) renders places
 the two reviewers at `frontier`, and the researcher and the question drafter at
 `economy`. Each prompt declares `reads_untrusted_input: true`,
@@ -410,7 +427,7 @@ abcd keeps two kinds of remembered material, and they do different jobs. The **l
 | How it comes back | The person asks ("what do my sources say about pacing?") and gets answers that cite the item they came from | Brought into a session automatically when a prompt matches the words the note was saved with |
 | Where it can go | Into a decision as a cited source; a confidential item is never named in anything public | Into the project's record, when a note is promoted so that every agent receives it |
 
-A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The library merges what the sources, memory, consult and ingest pages hold today (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
+A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The `library` command holds what the `source` and `memory` commands held, and the pages for consulting the corpus and registering a document folded into its page (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
 
 ## Where to find related design
 

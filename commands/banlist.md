@@ -125,7 +125,7 @@ becomes line 1 and every whole-line pattern keeps its exact bytes under the key 
 guard already names it by, `entry-<its line>`, so nothing it matches changes.
 Comments and blank lines survive. `migrated` is false when the store was already
 keyed, and nothing is written then. Report the entry count; the binary prints no
-pattern, and neither should you. `abcd source sync-banlist` and the pre-commit
+pattern, and neither should you. `abcd library sync-banlist` and the pre-commit
 guard's refresh of the sources block both name this command for a legacy store.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

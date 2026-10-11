@@ -96,7 +96,7 @@ abcd already covers Mapping (press release + acceptance criteria) and Justificat
 
 ## The project is a growing system
 
-abcd is itself a growing system that shows the symptoms of all growing systems: surface count grows (the user-facing command design target — `/abcd:ahoy`, `/abcd:disembark`, `/abcd:embark`, `/abcd:launch`, `/abcd:intent`, `/abcd:capture`, `/abcd:memory` — plus many sub-verbs); agent count grows (the catalog already lists more than a dozen agents, several with multiple roles each — see [`05-internals/01-agents.md`](../05-internals/01-agents.md)); cross-cutting concerns proliferate (the active roster in [`intents/disciplines/`](../../intents/disciplines/) keeps growing); internal vocabulary grows (`lifeboat`, `voyage`, `logbook`, `discipline`, `kind`, `surface_history`, `page class`, `source class`, `quotation budget`, …). Every term adds expressive power AND opacity for newcomers.
+abcd is itself a growing system that shows the symptoms of all growing systems: surface count grows (the user-facing command design target — `/abcd:ahoy`, `/abcd:disembark`, `/abcd:embark`, `/abcd:launch`, `/abcd:intent`, `/abcd:capture`, `/abcd:library` — plus many sub-verbs); agent count grows (the catalog already lists more than a dozen agents, several with multiple roles each — see [`05-internals/01-agents.md`](../05-internals/01-agents.md)); cross-cutting concerns proliferate (the active roster in [`intents/disciplines/`](../../intents/disciplines/) keeps growing); internal vocabulary grows (`lifeboat`, `voyage`, `logbook`, `discipline`, `kind`, `surface_history`, `page class`, `source class`, `quotation budget`, …). Every term adds expressive power AND opacity for newcomers.
 
 Three failure modes the brief actively guards against:
 

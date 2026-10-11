@@ -114,7 +114,7 @@ func TestAttributionHookIsOptInAndIdempotent(t *testing.T) {
 	})
 
 	t.Run("opting in on an already-installed repo", func(t *testing.T) {
-		// The exact two-step sequence prepare-this-repo's adopt phase prescribes:
+		// The exact two-step sequence the ahoy page's adopt phase prescribes:
 		// scaffold the commit gates, then opt into attribution. On the second run
 		// there is no other safe-autocreate gap open, so a step keyed on the
 		// CATEGORY's approval writes nothing — the flag becomes a silent no-op in the

@@ -59,15 +59,20 @@ func writeMemoryPage(t *testing.T, root, name string) {
 	}
 }
 
-// memoryBoard runs bare `memory --json` and returns the rendered status.
+// memoryBoard runs bare `library --json` and returns its memory half.
 func memoryBoard(t *testing.T) memory.BareStatus {
 	t.Helper()
-	var st memory.BareStatus
-	out := runCLI(t, "memory", "--json")
-	if err := json.Unmarshal(out, &st); err != nil {
-		t.Fatalf("memory --json: not JSON: %v\n%s", err, out)
+	var env struct {
+		Memory *memory.BareStatus `json:"memory"`
 	}
-	return st
+	out := runCLI(t, "library", "--json")
+	if err := json.Unmarshal(out, &env); err != nil {
+		t.Fatalf("library --json: not JSON: %v\n%s", err, out)
+	}
+	if env.Memory == nil {
+		t.Fatalf("library --json carries no memory half:\n%s", out)
+	}
+	return *env.Memory
 }
 
 // ingestOperands writes a source file and the distiller payload `memory ingest`
@@ -103,10 +108,10 @@ func TestMemoryFromSubdirectoryReportsTheCheckoutStore(t *testing.T) {
 	t.Chdir(sub)
 	st := memoryBoard(t)
 	if !st.StorePresent {
-		t.Errorf("`abcd memory` from a subdirectory reports the store absent; the checkout's store is right there")
+		t.Errorf("`abcd library` from a subdirectory reports the store absent; the checkout's store is right there")
 	}
 	if st.Pages != 1 {
-		t.Errorf("`abcd memory` from a subdirectory reports %d page(s), want 1 — it addressed a store that is not the checkout's", st.Pages)
+		t.Errorf("`abcd library` from a subdirectory reports %d page(s), want 1 — it addressed a store that is not the checkout's", st.Pages)
 	}
 }
 
@@ -119,9 +124,9 @@ func TestMemoryIngestFromSubdirectoryWritesIntoTheCheckoutStore(t *testing.T) {
 	src, pages := ingestOperands(t, repo)
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "memory", "ingest", src, "--pages-json", pages)
+	out, err := runCLIErr(t, "library", "ingest", src, "--pages-json", pages)
 	if err != nil {
-		t.Fatalf("`abcd memory ingest` from a subdirectory: %v\n%s", err, out)
+		t.Fatalf("`abcd library ingest` from a subdirectory: %v\n%s", err, out)
 	}
 	if _, statErr := os.Stat(filepath.Join(repo, filepath.FromSlash(memory.RelDir), "topic_auth_tokens.md")); statErr != nil {
 		t.Errorf("the ingested page is not in the checkout's memory store: %v", statErr)
@@ -139,7 +144,7 @@ func TestMemoryAskFileBackFromSubdirectoryWritesIntoTheCheckoutStore(t *testing.
 	// A filed-back answer cites the pages it was synthesised from, so the store
 	// is seeded through a real ingest at the root rather than by hand.
 	src, pages := ingestOperands(t, repo)
-	if out, err := runCLIErr(t, "memory", "ingest", src, "--pages-json", pages); err != nil {
+	if out, err := runCLIErr(t, "library", "ingest", src, "--pages-json", pages); err != nil {
 		t.Fatalf("seeding ingest: %v\n%s", err, out)
 	}
 	page := filepath.Join(repo, "answer.json")
@@ -149,9 +154,9 @@ func TestMemoryAskFileBackFromSubdirectoryWritesIntoTheCheckoutStore(t *testing.
 	}
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "memory", "ask", "what does the auth rotation page say", "--file-back", "--page-json", page)
+	out, err := runCLIErr(t, "library", "ask", "what does the auth rotation page say", "--file-back", "--page-json", page)
 	if err != nil {
-		t.Fatalf("`abcd memory ask --file-back` from a subdirectory: %v\n%s", err, out)
+		t.Fatalf("`abcd library ask --file-back` from a subdirectory: %v\n%s", err, out)
 	}
 	if _, statErr := os.Stat(filepath.Join(repo, filepath.FromSlash(memory.RelDir), "topic_auth_answer.md")); statErr != nil {
 		t.Errorf("the filed-back page is not in the checkout's memory store: %v", statErr)
@@ -171,12 +176,12 @@ func TestMemoryLintFromSubdirectoryReadsAndReportsInsideTheCheckout(t *testing.T
 		StorePath string `json:"store_path"`
 		ReportDir string `json:"report_dir"`
 	}
-	out, err := runCLIErr(t, "memory", "lint", "--json")
+	out, err := runCLIErr(t, "library", "lint", "--json")
 	if err != nil {
-		t.Fatalf("`abcd memory lint` from a subdirectory: %v\n%s", err, out)
+		t.Fatalf("`abcd library lint` from a subdirectory: %v\n%s", err, out)
 	}
 	if jerr := json.Unmarshal(out, &res); jerr != nil {
-		t.Fatalf("memory lint --json: not JSON: %v\n%s", jerr, out)
+		t.Fatalf("library lint --json: not JSON: %v\n%s", jerr, out)
 	}
 	// Both are reported relative to the checkout (iss-81), so the run log is
 	// found by joining report_dir onto the checkout's root: a lint rooted at
@@ -205,9 +210,9 @@ func TestMemoryOutsideAnyRepositoryRefuses(t *testing.T) {
 	src, pages := ingestOperands(t, plain)
 
 	for _, args := range [][]string{
-		{"memory"},
-		{"memory", "ingest", src, "--pages-json", pages},
-		{"memory", "lint"},
+		{"library"},
+		{"library", "ingest", src, "--pages-json", pages},
+		{"library", "lint"},
 	} {
 		out, err := runCLIErr(t, args...)
 		if err == nil {
@@ -240,7 +245,7 @@ func TestMemoryRefusesARepoShapedTreeGitWillNotAnswerFor(t *testing.T) {
 	}
 	t.Chdir(planted)
 
-	out, err := runCLIErr(t, "memory")
+	out, err := runCLIErr(t, "library")
 	if err == nil {
 		t.Fatalf("a repo-shaped tree git will not answer for was accepted as a root:\n%s", out)
 	}
@@ -262,10 +267,10 @@ func TestMemoryFromTheCheckoutRootIsUnchanged(t *testing.T) {
 
 	st := memoryBoard(t)
 	if !st.StorePresent {
-		t.Fatalf("`abcd memory` at the checkout root reports the store absent")
+		t.Fatalf("`abcd library` at the checkout root reports the store absent")
 	}
 	if st.Pages != 2 {
-		t.Fatalf("`abcd memory` at the checkout root reports %d page(s), want 2", st.Pages)
+		t.Fatalf("`abcd library` at the checkout root reports %d page(s), want 2", st.Pages)
 	}
 }
 
@@ -280,7 +285,7 @@ func TestMemoryReportsAStrayMemoryStoreBelowTheCheckoutRoot(t *testing.T) {
 	orphan := filepath.Join(sub, filepath.FromSlash(memory.RelDir), "topic_auth_orphan.md")
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "memory")
+	out, err := runCLIErr(t, "library")
 	if err != nil {
 		t.Fatalf("memory: %v\n%s", err, out)
 	}

@@ -68,7 +68,7 @@ func newBanlistMigrateCommand(asJSON *bool) *cobra.Command {
 			"'# abcd-banlist: keyed' first line, every line a whole-line pattern) to the keyed\n" +
 			"format: the declaration becomes line 1, and each pattern keeps its exact bytes under\n" +
 			"the key the guard already names it by, entry-<its line>. Comments and blank lines\n" +
-			"survive. add, remove and `abcd source sync-banlist` refuse a legacy store with entries\n" +
+			"survive. add, remove and `abcd library sync-banlist` refuse a legacy store with entries\n" +
 			"until it is migrated. A keyed store is left alone. No pattern is printed.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

@@ -98,28 +98,37 @@ func TestLaunchShipIgnoresDirtOutsideTheRecords(t *testing.T) {
 	}
 }
 
-// TestChangelogPreviewReportsUncommittedRecords: the preview is a status render
-// that always exits 0 and reports a refused cut as information, so it carries
-// the same refusal — loudly, as REFUSED with the paths — rather than a cut that
-// silently leaves the record out.
-func TestChangelogPreviewReportsUncommittedRecords(t *testing.T) {
+// TestLaunchDryRunReportsUncommittedRecords: the preview is a status render
+// that reports a refused cut as information and keeps its own exit, so it
+// carries the same refusal — loudly, as REFUSED with the paths — rather than a
+// cut that silently leaves the record out.
+func TestLaunchDryRunReportsUncommittedRecords(t *testing.T) {
 	r := shipWithUncommittedClose(t)
+	r.Write(".abcd/config/artefact.json", `{"kind": "plugin"}`+"\n")
+	r.Write(".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "CHANGELOG.md"]}`+"\n")
 
-	out, err := shipIn(t, r, "changelog")
+	out, err := shipIn(t, r, "launch", "--dry-run")
 	if code := exitCodeOf(err); code != 0 {
-		t.Fatalf("exit = %d, want 0\n%s", code, out)
+		t.Fatalf("exit = %d, want 0\n%s\n%v", code, out, err)
 	}
+	cut := cutSection(t, out)
 	for _, want := range []string{"REFUSED", "uncommitted-records", uncommittedIntent} {
-		if !strings.Contains(string(out), want) {
+		if !strings.Contains(cut, want) {
 			t.Errorf("preview does not mention %q:\n%s", want, out)
 		}
 	}
 
-	out, err = shipIn(t, r, "changelog", "--json")
+	out, err = shipIn(t, r, "launch", "--dry-run", "--json")
 	if code := exitCodeOf(err); code != 0 {
 		t.Fatalf("--json exit = %d, want 0\n%s", code, out)
 	}
-	if got := decodeCut(t, out); got.Ready || len(got.Refusals) != 1 || got.Refusals[0].Kind != "uncommitted-records" {
+	var preview struct {
+		Cut *cutJSON `json:"cut"`
+	}
+	if err := json.Unmarshal(out, &preview); err != nil || preview.Cut == nil {
+		t.Fatalf("launch --dry-run --json carries no cut (%v):\n%s", err, out)
+	}
+	if got := *preview.Cut; got.Ready || len(got.Refusals) != 1 || got.Refusals[0].Kind != "uncommitted-records" {
 		t.Errorf("ready=%v refusals=%+v, want the uncommitted-records refusal", got.Ready, got.Refusals)
 	}
 }

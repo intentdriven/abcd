@@ -9,7 +9,8 @@ order.
 It is **read-only** but for one target: bare and every other target perform
 zero writes, and the site target renders the site into its output directory when
 that directory holds no `index.html`, and gates what it rendered
-([`22-site.md`](22-site.md)). Remediation stays with `/abcd:prepare-this-repo`
+([`22-site.md`](22-site.md)). Remediation stays with the install's preparation
+workflow ([`01-ahoy.md`](01-ahoy.md#preparing-a-repository-the-host-run-half-of-the-install))
 and the technical facilitator. It answers a different
 question from `/abcd:ahoy`: `ahoy` reports whether the *tool* is installed and
 configured for a repo; `lint` reports whether the *repo* conforms. Two
@@ -173,7 +174,7 @@ new dependency.
 - Plugin command: [`commands/lint.md`](../../../../commands/lint.md)
 - Design record: [`plans/2026-07-13-abcd-audit-verb.md`](../../plans/2026-07-13-abcd-audit-verb.md)
 - Intent: [`itd-85`](../../intents/drafts/itd-85-audit-verb.md)
-- Onboarding consumer: [`15-prepare-this-repo.md`](15-prepare-this-repo.md)
+- Onboarding consumer: [`01-ahoy.md`](01-ahoy.md#preparing-a-repository-the-host-run-half-of-the-install)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

@@ -12,6 +12,16 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-11 (itd-2610090831227812 — the changelog verb retires into the launch preview)
+
+### release-changelog-composer 0.4.3
+
+PATCH: the read-only preview the definition names as a source of the cut is
+now the `cut` member of `abcd launch --dry-run --json`, since `abcd changelog`
+retired into the launch preview (spc-2610100613109045, step 3). The cut's
+shape and every rule for composing from it are unchanged. Unmeasured, in the
+`0.x` band.
+
 ## 2026-10-10 (iss-2610091942156774 — sub-agents are taught the rm the guard refuses)
 
 ### cold-reading-comparative 0.1.4

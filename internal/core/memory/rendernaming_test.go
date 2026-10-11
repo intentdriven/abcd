@@ -11,7 +11,7 @@ import (
 )
 
 // TestRendersNameTheBinaryNotAFrontDoor is the iss-44 detector for the third
-// parity instance: plain-CLI `abcd memory ask` output headed as a plugin slash
+// parity instance: plain-CLI `abcd library ask` output headed as a plugin slash
 // command. internal/core is transport-agnostic — the same bytes are rendered
 // through the plugin surface, the bare CLI, and any later transport — so a
 // render that spells a slash command tells two of those three callers something
@@ -48,7 +48,7 @@ func TestRendersNameTheBinaryNotAFrontDoor(t *testing.T) {
 				}
 				t.Errorf("%s:%d names the `/abcd:` plugin surface in a rendered string, from the "+
 					"transport-agnostic core:\n\t%s\nRenders spell the binary invocation "+
-					"(`abcd memory ask`), so the same bytes stay true whichever front door produced "+
+					"(`abcd library ask`), so the same bytes stay true whichever front door produced "+
 					"them (iss-44).", name, fset.Position(lit.Pos()).Line, text)
 				return true
 			})

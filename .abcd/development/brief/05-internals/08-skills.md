@@ -7,18 +7,23 @@ makes the call at design time, and records where abcd came out.
 
 **abcd ships zero skills.** The `/abcd:` namespace is commands only, and there is
 no `skills/` directory in the tree. The three workflows once shipped as skills —
-`consult`, `ingest`, and `prepare-this-repo` — are commands, because each mutates
-state: the sources corpus, its ledger, the target repo. They live at
-`commands/<name>.md` with chapters [`13-consult.md`](../04-surfaces/13-consult.md),
-[`14-ingest.md`](../04-surfaces/14-ingest.md), and
-[`15-prepare-this-repo.md`](../04-surfaces/15-prepare-this-repo.md).
+consulting the sources corpus, registering a document in it, and the
+preparation of a target repo — are commands, because each mutates state: the
+sources corpus, its ledger, the target repo. Consulting and registering run from
+`commands/library.md`, around the corpus verbs, with their chapter
+[`07-library.md`](../04-surfaces/07-library.md#consulting-and-registering-the-host-run-half);
+the preparation runs from the install section of `commands/ahoy.md`, its chapter
+[`01-ahoy.md`](../04-surfaces/01-ahoy.md#preparing-a-repository-the-host-run-half-of-the-install).
 
 The plugin carries two further surface kinds this choice does not cover, because
 neither is something a person invokes by name: the agent prompts under `agents/`,
 which verbs and reviewers dispatch ([`01-agents.md`](01-agents.md)), and the hook
-entrypoints under `hooks/`. The release payload declares all four kinds. Only
-commands and skills compete for the same slash-invoked namespace, and that
-competition is what this page decides.
+entrypoints under `hooks/`. The release payload
+(`.abcd/config/launch-payload.json`) declares three of the four kinds — commands,
+agents and hooks — and no skills directory, as
+[If a skill is ever added](#if-a-skill-is-ever-added) explains. Only commands and
+skills compete for the same slash-invoked namespace, and that competition is
+what this page decides.
 
 ## Skill vs command — the criterion
 
@@ -63,21 +68,23 @@ output, any artefact mutation, any state change makes it a command.
   carries the one enumeration of where it holds and where a parent prints usage
   instead.
 
-Most of abcd's commands are **binary-backed**: a Go verb plus a `commands/` file.
-Three are **host-delegated** — `/abcd:consult`, `/abcd:ingest` and
-`/abcd:prepare-this-repo` — with a command page and no Go verb, so the workflow
-runs in the host agent, and they have no bare-status render and no sub-verbs. That
-is the shape a command takes when its work is host-delegated rather than owned by
-the transport-agnostic core.
+Every abcd command is **binary-backed**: a Go verb plus a `commands/` file. A
+**host-delegated** command — a command page with no Go verb, whose whole workflow
+runs in the host agent — is a shape the record gates still recognise (the
+`host_delegated` list in `.abcd/record-lint.json`, empty today), and the last
+two pages of that shape, for consulting the corpus and registering a document,
+folded into the library page (itd-2610090831227812).
 
 The mapping between command pages and binary verbs is one-to-one in neither
 direction, and both exceptions are deliberate. Five verbs have a Go verb and no
-command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. Three
-command pages carry no Go verb of their own name: the host-delegated three above.
-Two of those three call no part of the binary at all; `/abcd:prepare-this-repo`
-is the exception, running the binary's audit, install and identity verbs as steps
-inside a workflow the host drives. See
-[`04-surfaces/`](../04-surfaces) for per-command detail.
+command page: `completion`, `hook`, `rules`, `spec`, and `statusline`, besides
+the framework's own `help`. One command page carries no Go verb of its own name:
+`abcd.md`, the bare board, which is the root itself. A page that backs a verb
+can still carry a workflow the host drives: the library page's consulting and
+registering steps run around the corpus verbs, and the ahoy page's install
+section prepares a repository by running the binary's audit, install and
+identity verbs as steps. See [`04-surfaces/`](../04-surfaces) for per-command
+detail.
 
 ## Skills are not in `04-surfaces/`
 

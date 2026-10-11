@@ -11,7 +11,7 @@ import (
 // repository, because they run the binary — but the ruling covers the markers,
 // not abcd's own record ids. An adopter's repository holds none of abcd's
 // records, so an id or a path into abcd's design record is abcd-internal content
-// that resolves to nothing there, and prepare-this-repo's acceptance keeps it out
+// that resolves to nothing there, and the preparation workflow's acceptance keeps it out
 // of every committed artefact.
 func TestScaffoldedGuardHooksCiteNoAbcdRecord(t *testing.T) {
 	recordID := regexp.MustCompile(`\b(itd|spc|iss|adr|rcp|rfc)-[0-9]+\b`)

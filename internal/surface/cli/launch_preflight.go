@@ -7,7 +7,44 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/release"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
+
+// launchPreview is what `abcd launch --dry-run` reports: the bundle report and,
+// beside it, the release cut the next `launch ship` would make — its derived
+// version, deciding impact, records, guard verdict and findings
+// (spc-2610100613109045, decision 5; the preview that was `abcd changelog`).
+// The report is embedded so its JSON shape is unchanged; the cut is an
+// addition to it. The cut is the deterministic emit and nothing more: no prose
+// is composed and no agent runs in a preview.
+type launchPreview struct {
+	launch.DryRunReport
+	// Cut is the cut the release would make, present whenever it could be
+	// read. A refused cut is information here, as it was in the changelog
+	// verb, and changes no exit code the dry run gives.
+	Cut *release.Cut `json:"cut,omitempty"`
+	// CutError says why the cut could not be read, in place of Cut. It
+	// refuses nothing either: the dry run's verdict is the bundle's.
+	CutError string `json:"cut_error,omitempty"`
+}
+
+// previewCut reads the cut the dry run renders. It is read from the checkout
+// root, as `launch ship` reads it, so a dry run from a subdirectory reports
+// the same records, baseline and anchor tag as one from the root
+// (iss-2609251713073532). A cut that cannot be read is returned as the reason,
+// already path-scrubbed, never as an error.
+func previewCut(cwd string) (*release.Cut, string) {
+	root, err := gitutil.CheckoutRoot(cwd, "the release record")
+	if err != nil {
+		return nil, scrubPaths(err)
+	}
+	cut, err := emitCut(root)
+	if err != nil {
+		return nil, scrubPaths(err)
+	}
+	return &cut, ""
+}
 
 // noLaunchPayloadGuidance is what a repository that declares kind plugin but
 // no launch payload is told (iss-2608270559313719). A plugin's bundle is its

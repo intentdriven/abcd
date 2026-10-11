@@ -39,7 +39,7 @@ func TestJSONErrorEnvelopeNoAbsolutePathLeak(t *testing.T) {
 	}{
 		{
 			name: "memory ask --page-json missing file",
-			args: []string{"memory", "ask", "q", "--file-back", "--page-json", absMissing, "--json"},
+			args: []string{"library", "ask", "q", "--file-back", "--page-json", absMissing, "--json"},
 			base: "page.json",
 		},
 	}
@@ -206,7 +206,7 @@ func TestMemoryIngestSuccessEnvelopeNoAbsolutePathLeak(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"memory", "ingest", src, "--pages-json", pages, "--json"}, &stdout, &stderr)
+	code := Run([]string{"library", "ingest", src, "--pages-json", pages, "--json"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected a zero exit; code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -276,7 +276,7 @@ func TestMemoryIngestErrorNoAbsolutePathLeakOutsideRoots(t *testing.T) {
 	missing := filepath.Join(outside, "secret-notes.txt")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"memory", "ingest", missing, "--json"}, &stdout, &stderr)
+	code := Run([]string{"library", "ingest", missing, "--json"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("expected a non-zero exit for a missing source; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}

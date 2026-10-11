@@ -478,7 +478,7 @@ if [ -n "$primary_banlist" ]; then
 fi
 
 # --- itd-76: refresh the sources corpus's generated block ----------------------
-# The user-level sources corpus (`abcd source`) projects every confidential
+# The user-level sources corpus (`abcd library`) projects every confidential
 # source's title and aliases (and, where an entry opts in, its authors) into a
 # generated block of this working tree's private store. The block is refreshed
 # HERE, after the store has passed the tampering refusals above and before it is
@@ -489,7 +489,7 @@ fi
 #   * no corpus — CI, a fresh clone, every machine that never made one;
 #   * no private store in this working tree — the refresh updates a store, it never
 #     creates one, because creating it writes every confidential title into this
-#     repository's local tier, which is the person's act (`abcd source
+#     repository's local tier, which is the person's act (`abcd library
 #     sync-banlist`, by hand), not a side effect of a commit;
 #   * a legacy store — named with its migration on the first commit that meets it
 #     and not again, because a line printed on every commit is a line the
@@ -503,13 +503,13 @@ fi
 # The binary is THIS checkout's own ./cmd/abcd, built the way .githooks/commit-msg
 # builds it, and never an installed abcd: in a source checkout an installed abcd is
 # whatever was last released, stale by construction and possibly without the
-# `source` verb at all. The corpus location is the default one; relocating the
+# `library` verb at all. The corpus location is the default one; relocating the
 # user-level home is a separate design (itd-77).
 sources_corpus="${HOME:-}/.abcd.noindex/sources"
 sources_noticed="$banlist_dir/sources-legacy-noticed"
 
 # sources_relay runs one refresh binary and relays what it says, prefixed. A binary
-# that has no `source sync-banlist --refresh` is ONE line naming the remedy, not a
+# that has no `library sync-banlist --refresh` is ONE line naming the remedy, not a
 # failure, and its own error text is not relayed.
 sources_relay() {
   _bin="$1"
@@ -517,13 +517,13 @@ sources_relay() {
   _rc=0
   _out=$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
-    "$_bin" source sync-banlist --refresh 2>&1) || _rc=$?
+    "$_bin" library sync-banlist --refresh 2>&1) || _rc=$?
   if [ "$_rc" -ne 0 ]; then
-    _help=$("$_bin" source sync-banlist --help 2>&1 || true)
+    _help=$("$_bin" library sync-banlist --help 2>&1 || true)
     case $_help in
       *--refresh*) ;;
       *)
-        echo "pre-commit: $_what has no 'source sync-banlist --refresh', so the sources banlist block was not refreshed (skipped)" >&2
+        echo "pre-commit: $_what has no 'library sync-banlist --refresh', so the sources banlist block was not refreshed (skipped)" >&2
         return 0
         ;;
     esac
@@ -592,7 +592,7 @@ sources_refresh() {
 if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
   echo "pre-commit: no sources corpus at ~/.abcd.noindex/sources — generated banlist block not refreshed (skipped)" >&2
 elif [ ! -f "$banlist" ]; then
-  echo "pre-commit: this working tree has no private store at $banlist, and the sources refresh never creates one; run 'abcd source sync-banlist' here to opt in (skipped)" >&2
+  echo "pre-commit: this working tree has no private store at $banlist, and the sources refresh never creates one; run 'abcd library sync-banlist' here to opt in (skipped)" >&2
 else
   sources_first=""
   IFS= read -r sources_first < "$banlist" || true

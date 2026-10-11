@@ -17,12 +17,13 @@ func TestJSONCollectionsAreEmptyArraysNotNull(t *testing.T) {
 		name   string
 		args   []string
 		fields []string
+		within string // the envelope field holding the collections, "" for the top level
 	}{
-		{"capture", []string{"capture", "--json"}, []string{"recent_open"}},
-		{"capture-list", []string{"capture", "list", "--open", "--json"}, []string{"issues", "skipped"}},
-		{"spec", []string{"spec", "--json"}, []string{"specs"}},
-		{"intent", []string{"intent", "--json"}, []string{"linked", "intents"}},
-		{"memory", []string{"memory", "--json"}, []string{"by_class", "contradictions", "drift"}},
+		{"capture", []string{"capture", "--json"}, []string{"recent_open"}, ""},
+		{"capture-list", []string{"capture", "list", "--open", "--json"}, []string{"issues", "skipped"}, ""},
+		{"spec", []string{"spec", "--json"}, []string{"specs"}, ""},
+		{"intent", []string{"intent", "--json"}, []string{"linked", "intents"}, ""},
+		{"library", []string{"library", "--json"}, []string{"by_class", "contradictions", "drift"}, "memory"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -33,6 +34,13 @@ func TestJSONCollectionsAreEmptyArraysNotNull(t *testing.T) {
 			var obj map[string]json.RawMessage
 			if err := json.Unmarshal(stdout.Bytes(), &obj); err != nil {
 				t.Fatalf("%v output not a JSON object: %v\n%s", tc.args, err, stdout.String())
+			}
+			if tc.within != "" {
+				inner := obj[tc.within]
+				obj = nil
+				if err := json.Unmarshal(inner, &obj); err != nil || obj == nil {
+					t.Fatalf("%v: field %q is not a JSON object: %s", tc.args, tc.within, inner)
+				}
 			}
 			for _, f := range tc.fields {
 				raw, ok := obj[f]

@@ -1,5 +1,6 @@
 // Package release is the transport-agnostic composition of a release cut: the
-// deterministic half of `abcd launch ship` and the whole of `abcd changelog`.
+// deterministic half of `abcd launch ship`, and the cut `abcd launch --dry-run`
+// previews.
 //
 // It is a composition, not a new domain. The version arithmetic, the record
 // set-difference, the tag anchor and the surface guardrail all live in

@@ -147,6 +147,14 @@ func TestPageMenuDefectsNamesEachDefect(t *testing.T) {
 // board is the bare root and no listed verb. Each failure names the verb on one
 // list and not the other.
 func TestPluginPersonListEqualsTheCLIs(t *testing.T) {
+	// Step 6 of spc-2610100613109045 folded the last host-delegated pages
+	// (consult and ingest) into the library page, so every page but the board
+	// backs a verb, and the set this comparison skips holds the board alone.
+	for name := range pagesWithNoVerb {
+		if name != dispatcherPage {
+			t.Errorf("pagesWithNoVerb names %q; after the library fold it holds only the board (%s)", name, dispatcherPage)
+		}
+	}
 	help, _ := executedHelp(t, "--help")
 	cli := map[string]bool{}
 	for _, v := range personVerbs(help) {
