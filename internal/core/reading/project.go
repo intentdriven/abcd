@@ -796,9 +796,10 @@ func skipLinkSpace(s string, i int) int {
 }
 
 // isASCIIPunct reports whether a byte is ASCII punctuation, the class a
-// backslash escapes (CommonMark 2.4, mdEscapeRe).
+// backslash escapes (CommonMark 2.4, mdEscapeRe). Below 0x80 the union of
+// Unicode's punctuation and symbol classes is exactly those 32 bytes.
 func isASCIIPunct(c byte) bool {
-	return '!' <= c && c <= '/' || ':' <= c && c <= '@' || '[' <= c && c <= '`' || '{' <= c && c <= '~'
+	return c < utf8.RuneSelf && (unicode.IsPunct(rune(c)) || unicode.IsSymbol(rune(c)))
 }
 
 // unreadLinkNames is the floor's backstop for link syntax the scanner did not

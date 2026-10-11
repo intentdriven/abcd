@@ -714,3 +714,15 @@ func TestOpensTagIsHTMLTagResRule(t *testing.T) {
 		}
 	}
 }
+
+// TestIsASCIIPunctIsCommonMarksClass holds isASCIIPunct to the 32 bytes
+// CommonMark 2.1 names as ASCII punctuation, and to nothing else in a byte.
+func TestIsASCIIPunctIsCommonMarksClass(t *testing.T) {
+	const commonMark = "!\"#$%&'()*+,-./:;<=>?@[\\]^_\x60{|}~"
+	for c := 0; c < 256; c++ {
+		want := strings.IndexByte(commonMark, byte(c)) >= 0
+		if got := isASCIIPunct(byte(c)); got != want {
+			t.Errorf("isASCIIPunct(%#x) = %v, want %v", c, got, want)
+		}
+	}
+}
