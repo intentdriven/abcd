@@ -52,7 +52,7 @@ func TestMalformedLimitsFallBackWhole(t *testing.T) {
 		name, file, class string
 		line              int
 	}{
-		{"unknown key", "extreme-load 50\nstray-mins 12\n", `unknown key "stray-mins" (known: stray-minutes, extreme-load)`, 2},
+		{"unknown key", "extreme-load 50\nstray-mins 12\n", `unknown key "stray-mins" (known: stray-minutes, extreme-load, wait-load)`, 2},
 		{"repeated key", "stray-minutes 12\nstray-minutes 13\n", "stray-minutes is given twice", 2},
 		{"non-numeric", "stray-minutes 12\nextreme-load lots" + secret + "\n", "the value of extreme-load is not a number", 2},
 		{"fraction for minutes", "stray-minutes 1.5\n", "the value of stray-minutes is not a whole number", 1},
@@ -84,5 +84,27 @@ func TestMalformedLimitsFallBackWhole(t *testing.T) {
 	_, fault := ParseLimits([]byte("\x1b[31m"+strings.Repeat("k", 60)+" 1\n"), 16)
 	if fault == nil || strings.ContainsRune(fault.Class, 0x1b) || strings.Contains(fault.Class, strings.Repeat("k", 33)) {
 		t.Fatalf("hostile key echoed raw: %+v", fault)
+	}
+}
+
+// TestWaitLoadDefaultsToTheCoreCountAndReadsItsKey: the waiter's limit is the
+// online core count unless the settings file sets wait-load, and a bad value
+// is a fault like any other key's.
+func TestWaitLoadDefaultsToTheCoreCountAndReadsItsKey(t *testing.T) {
+	if l := DefaultLimits(16); l.WaitLoad != 16 || l.WaitFromFile {
+		t.Fatalf("DefaultLimits(16) = %+v, want wait-load 16 from the default", l)
+	}
+	l, fault := ParseLimits([]byte("wait-load 24\n"), 16)
+	if fault != nil || l.WaitLoad != 24 || !l.WaitFromFile || l.StrayFromFile || l.ExtremeFromFile {
+		t.Fatalf("limits = %+v, fault %v", l, fault)
+	}
+	for file, class := range map[string]string{
+		"wait-load 0\n":    "wait-load is out of range (above 0, at most 100000)",
+		"wait-load many\n": "the value of wait-load is not a number",
+		"wait-lod 3\n":     `unknown key "wait-lod" (known: stray-minutes, extreme-load, wait-load)`,
+	} {
+		if _, fault := ParseLimits([]byte(file), 16); fault == nil || fault.Class != class {
+			t.Errorf("%q: fault %v, want %q", file, fault, class)
+		}
 	}
 }

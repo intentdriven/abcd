@@ -1760,9 +1760,9 @@ abcd implement leave --session s-example
 
 #### `abcd implement load`
 
-Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.
+Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.
 
-**Usage:** `abcd implement load --site preflight|eval-harness [flags]`
+**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] [flags]`
 
 Read the machine's load averages and process table once and warn when a program
 outside the running work has used nearly all the CPU it could get for longer than
@@ -1772,8 +1772,8 @@ one-minute load, and never more than one core. A lifetime CPU share of at least 
 of it makes a stray, so forty busy loops on 16 cores, each at 0.4 of a core, are all
 strays, as one loop at a full core of an idle machine is. Your programs and other
 accounts' are judged alike. `make preflight` runs it first, and the eval harness runs
-it once at its start; it never runs once per test package. It never refuses, never
-waits and never stops anything, and it exits 0 on every status: ok, warning, skipped
+it once at its start; it never runs once per test package. Without --wait it never
+refuses, never waits and never stops anything, and it exits 0 on every status: ok, warning, skipped
 (in CI, where the line says why) and unchecked (a platform other than macOS and
 Linux, or a read that failed).
 
@@ -1793,12 +1793,38 @@ never creates. `#` starts a comment; every other line is `<key> <value>`:
 Either key may be omitted. The defaults are 30 minutes and four times the online
 core count. The file must be a regular file you own that nobody else can write, at
 most 4 KiB; a file that is not, or that holds an unknown key, a repeated key or a
-value out of range, is reported loudly and both defaults are used.
+value out of range, is reported loudly and every default is used.
+
+With --wait it waits for capacity instead of warning, and it is the one waiter
+concurrent sessions gate a preflight or a race run with, in place of a hand-written
+loop. It blocks until the one-minute load average is below the wait limit
+(`wait-load <load>` in the same file; by default the online core count, so the
+work it admits, which can fill every core by itself, starts with cores idle) and
+no other `go test -race` run is live. A race run is a process executing go whose
+go command is `test` with -race, read from its arguments, never from a pattern
+over a command line, and the waiter's own process and ancestors are never one: a
+hand-written `pgrep -f "go test -race"` matched its own shell and never opened.
+It reads the machine every 15s, prints one line when it starts waiting and
+nothing more until it opens, and gives up after --timeout (30m0s by default),
+exiting 1 and naming what it was still waiting on. --json reports what it waited
+on and for how long.
+
+One waiter opens at a time. The one that opens takes a machine-wide hold,
+`~/.abcd.noindex/load-wait.json`, and every other waiter stays shut while it is in force.
+Without a command the hold lasts 2m0s, long enough for the load average to show
+the work admitted. With a command after `--` (`abcd implement load --wait -- make
+preflight`) the waiter runs it once the gate opens and exits with its exit code;
+the hold lasts until the command has started its own race run, the command exits,
+or 20m0s pass, and a hold whose waiter has died, or whose pid now belongs to
+another process (a different start time), is reclaimed by the next waiter. A
+symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 **Flags:**
 
 ```
-      --site string   where the check runs: preflight | eval-harness
+      --site string        where the check runs: preflight | eval-harness
+      --timeout duration   with --wait, give up after this long and exit 1 (default 30m0s)
+      --wait               wait until the load is below the wait limit and no other go test -race run is live
 ```
 
 **Example:**

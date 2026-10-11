@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,11 +19,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// loadReader and loadSelf are the verb's two seams onto the real machine; tests
-// swap them so no test depends on the machine's actual load.
+// loadReader, loadSelf, loadArgsReader and the clock are the verb's seams onto
+// the real machine; tests swap them so no test depends on the machine's actual
+// load, and no wait sleeps.
 var (
-	loadReader = machineload.Read
-	loadSelf   = func() machineload.Self { return machineload.Self{} }
+	loadReader     = machineload.Read
+	loadSelf       = func() machineload.Self { return machineload.Self{} }
+	loadArgsReader = machineload.ReadArgs
+	loadNow        = time.Now
+	loadSleep      = time.Sleep
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -30,8 +36,10 @@ var (
 // logic of its own. It exits 0 on every status: it warns, never refuses.
 func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	var site string
+	var wait bool
+	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use: "load --site preflight|eval-harness",
+		Use: "load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...]",
 		Long: "Read the machine's load averages and process table once and warn when a program\n" +
 			"outside the running work has used nearly all the CPU it could get for longer than\n" +
 			"the stray limit, or when the one-minute load average is above the extreme limit.\n" +
@@ -40,8 +48,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"of it makes a stray, so forty busy loops on 16 cores, each at 0.4 of a core, are all\n" +
 			"strays, as one loop at a full core of an idle machine is. Your programs and other\n" +
 			"accounts' are judged alike. `make preflight` runs it first, and the eval harness runs\n" +
-			"it once at its start; it never runs once per test package. It never refuses, never\n" +
-			"waits and never stops anything, and it exits 0 on every status: ok, warning, skipped\n" +
+			"it once at its start; it never runs once per test package. Without --wait it never\n" +
+			"refuses, never waits and never stops anything, and it exits 0 on every status: ok, warning, skipped\n" +
 			"(in CI, where the line says why) and unchecked (a platform other than macOS and\n" +
 			"Linux, or a read that failed).\n\n" +
 			"Your own strays are named with their pid, process group, age and CPU share, with\n" +
@@ -57,9 +65,54 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"Either key may be omitted. The defaults are 30 minutes and four times the online\n" +
 			"core count. The file must be a regular file you own that nobody else can write, at\n" +
 			"most 4 KiB; a file that is not, or that holds an unknown key, a repeated key or a\n" +
-			"value out of range, is reported loudly and both defaults are used.",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+			"value out of range, is reported loudly and every default is used.\n\n" +
+			"With --wait it waits for capacity instead of warning, and it is the one waiter\n" +
+			"concurrent sessions gate a preflight or a race run with, in place of a hand-written\n" +
+			"loop. It blocks until the one-minute load average is below the wait limit\n" +
+			"(`wait-load <load>` in the same file; by default the online core count, so the\n" +
+			"work it admits, which can fill every core by itself, starts with cores idle) and\n" +
+			"no other `go test -race` run is live. A race run is a process executing go whose\n" +
+			"go command is `test` with -race, read from its arguments, never from a pattern\n" +
+			"over a command line, and the waiter's own process and ancestors are never one: a\n" +
+			"hand-written `pgrep -f \"go test -race\"` matched its own shell and never opened.\n" +
+			"It reads the machine every " + implement.WaitPollInterval.String() + ", prints one line when it starts waiting and\n" +
+			"nothing more until it opens, and gives up after --timeout (" + implement.WaitDefaultTimeout.String() + " by default),\n" +
+			"exiting 1 and naming what it was still waiting on. --json reports what it waited\n" +
+			"on and for how long.\n\n" +
+			"One waiter opens at a time. The one that opens takes a machine-wide hold,\n" +
+			"`" + abcdhome.Display(implement.WaitHoldFileName) + "`, and every other waiter stays shut while it is in force.\n" +
+			"Without a command the hold lasts " + implement.WaitSettle.String() + ", long enough for the load average to show\n" +
+			"the work admitted. With a command after `--` (`abcd implement load --wait -- make\n" +
+			"preflight`) the waiter runs it once the gate opens and exits with its exit code;\n" +
+			"the hold lasts until the command has started its own race run, the command exits,\n" +
+			"or " + implement.WaitCommandCap.String() + " pass, and a hold whose waiter has died, or whose pid now belongs to\n" +
+			"another process (a different start time), is reclaimed by the next waiter. A\n" +
+			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return nil
+			}
+			if !wait {
+				return &exitError{Code: 2, Msg: "abcd implement load: a command to run is given only with --wait, after `--` (nothing checked)"}
+			}
+			if cmd.ArgsLenAtDash() != 0 {
+				return &exitError{Code: 2, Msg: "abcd implement load: the command to run goes after `--`: abcd implement load --wait -- <command> (nothing waited for)"}
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if wait {
+				if cmd.Flags().Changed("site") {
+					return &exitError{Code: 2, Msg: "abcd implement load: --wait takes no --site; the site names where the warning runs (nothing waited for)"}
+				}
+				if timeout < 0 {
+					return &exitError{Code: 2, Msg: "abcd implement load: --timeout must not be negative (nothing waited for)"}
+				}
+				return runLoadWait(cmd, *asJSON, timeout, args)
+			}
+			if cmd.Flags().Changed("timeout") {
+				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait (nothing checked)"}
+			}
 			if !slices.Contains(implement.LoadSites(), site) {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site %q is not one of: %s (nothing checked)",
 					site, strings.Join(implement.LoadSites(), ", "))}
@@ -75,7 +128,138 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&site, "site", "", "where the check runs: "+enumHelp(implement.LoadSites()))
+	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
+	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait, give up after this long and exit 1")
 	return cmd
+}
+
+// runLoadWait is `implement load --wait`: it formats implement.WaitLoad's
+// result, and in the command form runs the command once the gate opens and
+// releases the hold when it exits.
+func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, command []string) error {
+	out := cmd.OutOrStdout()
+	req := implement.WaitRequest{
+		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
+		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0,
+	}
+	if !asJSON {
+		req.OnWait = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
+	}
+	res, err := implement.WaitLoad(req)
+	if err != nil {
+		return &exitError{Code: 1, Msg: "abcd implement load --wait: " + err.Error()}
+	}
+	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
+		return err
+	}
+	if res.Status == implement.WaitTimedOut {
+		return &exitError{Code: 1}
+	}
+	if len(command) == 0 {
+		return nil
+	}
+	code, runErr := runGated(cmd, command)
+	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
+		home, _ := os.UserHomeDir()
+		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load --wait: the hold %s could not be released (%v); it lapses once this process is gone\n",
+				abcdhome.Display(implement.WaitHoldFileName), err)
+		}
+	}
+	if runErr != nil {
+		return &exitError{Code: 127, Msg: "abcd implement load --wait: the command could not be started: " + runErr.Error()}
+	}
+	if code != 0 {
+		return &exitError{Code: code}
+	}
+	return nil
+}
+
+// runGated runs the gated command with the verb's own streams and returns its
+// exit code; the error is a command that could not be started.
+func runGated(cmd *cobra.Command, command []string) (int, error) {
+	c := exec.Command(command[0], command[1:]...)
+	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+	err := c.Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return 0, nil
+	case errors.As(err, &exit):
+		if code := exit.ExitCode(); code > 0 {
+			return code, nil
+		}
+		return 1, nil
+	default:
+		return 0, err
+	}
+}
+
+// renderLoadWait writes the waiter's closing line.
+func renderLoadWait(w io.Writer, res implement.WaitResult) {
+	waited := (time.Duration(res.WaitedS * float64(time.Second))).Round(time.Second)
+	switch res.Status {
+	case implement.WaitSkipped, implement.WaitUnchecked:
+		fmt.Fprintf(w, "load gate open without waiting: %s\n", res.Reason)
+	case implement.WaitTimedOut:
+		fmt.Fprintf(w, "load gate still shut after %s: %s\n", waited, waitConditions(res))
+	case implement.WaitOpen:
+		hold := ""
+		if h := res.Hold; h != nil {
+			if h.Form == implement.HoldCommand {
+				hold = fmt.Sprintf("held until the command starts its own race run or exits, at most %s", h.Until.Sub(h.Opened).Round(time.Second))
+			} else {
+				hold = fmt.Sprintf("held for %s", h.Until.Sub(h.Opened).Round(time.Second))
+			}
+		}
+		fmt.Fprintf(w, "load gate open after %s: load %.1f is below %s (%s), and no other go test -race run is live; %s, so one waiter starts at a time\n",
+			waited, res.Load, num(res.WaitLoad), waitLimitText(res), hold)
+	}
+	if res.Malformed != "" {
+		fmt.Fprintf(w, "LOAD CHECK SETTINGS UNUSABLE: %s: %s; the wait limit took its default\n", implement.LimitsFileDisplay, res.Malformed)
+	}
+}
+
+// waitConditions names what holds the gate shut.
+func waitConditions(res implement.WaitResult) string {
+	var parts []string
+	for _, c := range res.Still {
+		switch c {
+		case implement.WaitOnLoad:
+			parts = append(parts, fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res)))
+		case implement.WaitOnRaceRun:
+			pids := make([]string, len(res.RaceRuns))
+			for i, p := range res.RaceRuns {
+				pids[i] = strconv.Itoa(p)
+			}
+			what := "a go test -race run is live (pid "
+			if len(pids) > 1 {
+				what = fmt.Sprintf("%d go test -race runs are live (pids ", len(pids))
+			}
+			parts = append(parts, what+strings.Join(pids, ", ")+")")
+		case implement.WaitOnLock:
+			if h := res.Holder; h != nil {
+				parts = append(parts, fmt.Sprintf("another waiter holds the gate (pid %d, until %s at the latest)", h.PID, h.Until.Local().Format("15:04:05")))
+			} else {
+				parts = append(parts, "another waiter is taking the gate")
+			}
+		case implement.WaitOnUnreadable:
+			why := "the machine's load or process table could not be read"
+			if res.Reason != "" {
+				why += " (" + res.Reason + ")"
+			}
+			parts = append(parts, why)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// waitLimitText says where the wait limit came from.
+func waitLimitText(res implement.WaitResult) string {
+	if res.LimitSource == implement.LimitsFile {
+		return "set in " + implement.LimitsFileDisplay
+	}
+	return fmt.Sprintf("%d online cores", res.Cores)
 }
 
 // renderLoad writes the check's report.
@@ -85,7 +269,7 @@ func renderLoad(w io.Writer, res implement.LoadResult) {
 		if strings.HasPrefix(res.Limits.Malformed, "line ") {
 			sep = " "
 		}
-		fmt.Fprintf(w, "LOAD CHECK SETTINGS UNUSABLE: %s%s%s; using the defaults for both limits: %d min, load %s (%d x %s)\n",
+		fmt.Fprintf(w, "LOAD CHECK SETTINGS UNUSABLE: %s%s%s; using the defaults for every limit: %d min, load %s (%d x %s)\n",
 			implement.LimitsFileDisplay, sep, res.Limits.Malformed, res.Limits.StrayMinutes,
 			num(res.Limits.ExtremeLoad), machineload.DefaultExtremeFactor, coresText(res))
 	}

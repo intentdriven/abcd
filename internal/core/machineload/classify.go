@@ -126,16 +126,12 @@ func Classify(snap Snapshot, lim Limits, self Self) Verdict {
 	}
 
 	// The invocation and its ancestors, and their groups.
-	ancestry := map[int]bool{}
+	ancestry := Ancestry(snap.Procs, self.PID)
 	callerGroups := map[int]bool{}
-	for pid, hops := self.PID, 0; pid > 0 && !ancestry[pid] && hops < 4096; hops++ {
-		ancestry[pid] = true
-		p, ok := byPID[pid]
-		if !ok {
-			break
+	for pid := range ancestry {
+		if p, ok := byPID[pid]; ok {
+			callerGroups[p.PGID] = true
 		}
-		callerGroups[p.PGID] = true
-		pid = p.PPID
 	}
 
 	var own []OwnStray

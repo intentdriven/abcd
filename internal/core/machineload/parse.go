@@ -339,3 +339,53 @@ func effectiveUID(status []byte) (uint32, bool) {
 	}
 	return 0, false
 }
+
+// parseDarwinArgs reads `/bin/ps -o pid=,args= -p <pids>`: a pid, then the
+// process's argv joined by single spaces. ps cannot say where one argument ends
+// and the next begins, so the words are split on whitespace, and the program's
+// own words are dropped through the first whose base name is go (an install path
+// with a space in it is several words). The waiter asks only about processes the
+// kernel records as executing go, and reads only the subcommand and whether an
+// exact -race word follows it, so a split argument can add words but never turn
+// another subcommand into `test`. A line that does not start with a pid is
+// skipped.
+func parseDarwinArgs(out []byte) map[int][]string {
+	got := map[int][]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		words := strings.Fields(line)
+		if len(words) < 2 {
+			continue
+		}
+		pid, err := strconv.Atoi(words[0])
+		if err != nil || pid <= 0 {
+			continue
+		}
+		argv := words[1:]
+		cut := 1
+		for i, w := range argv {
+			if path.Base(w) == GoProgram {
+				cut = i + 1
+				break
+			}
+		}
+		got[pid] = append([]string{}, argv[cut:]...)
+	}
+	return got
+}
+
+// readCmdlines reads /proc/<pid>/cmdline for each pid: the exact argv,
+// NUL-separated, with the program dropped. A process gone between the listing
+// and the read, or one whose cmdline is empty (a kernel thread, a zombie), is
+// skipped.
+func readCmdlines(proc fs.FS, pids []int) map[int][]string {
+	got := map[int][]string{}
+	for _, pid := range pids {
+		raw, err := fs.ReadFile(proc, strconv.Itoa(pid)+"/cmdline")
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		argv := strings.Split(strings.TrimSuffix(string(raw), "\x00"), "\x00")
+		got[pid] = append([]string{}, argv[1:]...)
+	}
+	return got
+}
