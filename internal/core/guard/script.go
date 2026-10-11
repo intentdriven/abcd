@@ -88,13 +88,17 @@ const (
 // choose a file a shell reads or where a path resolves. Following no other
 // keeps each state a handful of entries however many a line assigns.
 var trackedVars = map[string]bool{"BASH_ENV": true, "ENV": true, "HOME": true, "ZDOTDIR": true, "PATH": true,
-	"FPATH": true, "fpath": true}
+	"FPATH": true, "fpath": true, "CDPATH": true, "cdpath": true}
 
 // trackedName is the name a tracked variable is kept under: zsh ties the
-// fpath array to FPATH, so an assignment to either sets both.
+// fpath array to FPATH and cdpath to CDPATH, so an assignment to either of a
+// pair sets both.
 func trackedName(name string) string {
-	if name == "fpath" {
+	switch name {
+	case "fpath":
 		return "FPATH"
+	case "cdpath":
+		return "CDPATH"
 	}
 	return name
 }
@@ -106,6 +110,9 @@ type Files struct {
 	dir  string
 	home string
 	path string
+	// cdpath is CDPATH in the environment the check runs in, which a `cd`
+	// searches unless the line sets its own.
+	cdpath string
 
 	mu    sync.Mutex
 	cache map[string]fileRead
@@ -156,7 +163,7 @@ func NewFiles(dir string) *Files {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = ""
 	}
-	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cache: map[string]fileRead{}, stats: map[string]statResult{}}
+	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cdpath: os.Getenv("CDPATH"), cache: map[string]fileRead{}, stats: map[string]statResult{}}
 }
 
 // ReadingFrom returns r reading the files a command names from f.
@@ -368,6 +375,13 @@ func (st *shellState) home(rc *readCtx) (string, bool) {
 // resolve makes word an absolute, clean path the way the shell opens it, or
 // reports that the line does not fix one.
 func (st *shellState) resolve(rc *readCtx, word string, tilde bool) (string, bool) {
+	return st.resolveIn(rc, word, tilde, false)
+}
+
+// resolveIn is resolve, or with logical set the path `cd -L` computes: a `..`
+// drops the name before it, as bash does to the operand before it changes
+// directory.
+func (st *shellState) resolveIn(rc *readCtx, word string, tilde, logical bool) (string, bool) {
 	if word == "" {
 		return "", false
 	}
@@ -381,13 +395,42 @@ func (st *shellState) resolve(rc *readCtx, word string, tilde bool) (string, boo
 		}
 		word = fsutil.ExpandTilde(word, home)
 	}
-	if filepath.IsAbs(word) {
+	if !filepath.IsAbs(word) {
+		if !st.dirOK || st.dir == "" {
+			return "", false
+		}
+		word = st.dir + string(filepath.Separator) + word
+	}
+	if logical {
 		return filepath.Clean(word), true
 	}
-	if !st.dirOK || st.dir == "" {
+	return physicalPath(word)
+}
+
+// physicalPath cleans p the way the kernel opens it. A `..` is resolved
+// against the directory the path has reached, symlinks followed, never by
+// dropping the name before it: after `cd link` (logical or not), `../s.sh`
+// is the file beside the link's target (iss-2610111600031244). A path with
+// no `..` cleans lexically, which names the same file. ok is false where a
+// directory before the last `..` does not exist, so no file is there.
+func physicalPath(p string) (string, bool) {
+	parts := strings.Split(p, string(filepath.Separator))
+	last := -1
+	for i, c := range parts {
+		if c == ".." {
+			last = i
+		}
+	}
+	if last < 0 {
+		return filepath.Clean(p), true
+	}
+	// filepath.EvalSymlinks walks the unclean path one name at a time and
+	// takes a `..` from the directory it has resolved to, as the kernel does.
+	real, err := filepath.EvalSymlinks(strings.Join(parts[:last+1], string(filepath.Separator)))
+	if err != nil {
 		return "", false
 	}
-	return filepath.Join(st.dir, word), true
+	return filepath.Join(append([]string{real}, parts[last+1:]...)...), true
 }
 
 // resolveToken resolves token i of s, which the tokenizer has already
@@ -817,17 +860,11 @@ func (st *shellState) withArray(s segment) *shellState {
 // exists as a directory now, holds for the commands chained after it with
 // `&&`; any other cd leaves the directory unknown.
 func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
-	i := site + 1
-	for ; i < len(s.tokens); i++ {
-		t := s.tokens[i]
-		if t == "--" {
-			i++
-			break
-		}
-		if t == "-L" || t == "-P" || t == "-e" || t == "-@" || t == "-LP" || t == "-PL" {
-			continue
-		}
-		break
+	i, physical := cdOperand(s, site)
+	n := st.unresolved()
+	if cdSearchesCDPATH(rc, st, s, site) {
+		// The directory is one of CDPATH's, or not (targetsOf blocks it).
+		return n
 	}
 	var target string
 	var ok bool
@@ -835,18 +872,95 @@ func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 		target, ok = st.home(rc)
 	} else if s.tokens[i] == "-" || strings.HasPrefix(s.tokens[i], "+") {
 		ok = false
-	} else {
-		target, ok = st.resolveToken(rc, s, i)
+	} else if w, fixed := fixedToken(s, i); fixed {
+		// bash's `cd -L` drops a `..` with the name before it, and falls
+		// back to the physical path when that names no directory; `-P`
+		// resolves it physically, and the directory it lands in is the
+		// physical one (iss-2610111600031244).
+		tilde := strings.HasPrefix(w, "~")
+		if !physical {
+			target, ok = st.resolveIn(rc, w, tilde, true)
+			if fi, err := os.Stat(target); ok && (err != nil || !fi.IsDir()) {
+				physical = true
+			}
+		}
+		if physical {
+			target, ok = st.resolveIn(rc, w, tilde, false)
+		}
 	}
-	n := st.unresolved()
 	if !ok || target == "" {
 		return n
 	}
 	if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
 		return n
 	}
+	if physical {
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			return n
+		}
+		target = real
+	}
 	n.cd = &pendingCD{dir: filepath.Clean(target), chain: s.chain}
 	return n
+}
+
+// cdOperand is the index of the operand of the `cd`/`pushd` at site, past
+// its options, and whether they ask for the physical directory (`-P`, the
+// last of `-L` and `-P` deciding).
+func cdOperand(s segment, site int) (i int, physical bool) {
+	i = site + 1
+	for ; i < len(s.tokens); i++ {
+		t := s.tokens[i]
+		if t == "--" {
+			i++
+			break
+		}
+		if len(t) < 2 || t[0] != '-' || strings.Trim(t[1:], "LPe@") != "" {
+			break
+		}
+		for _, c := range t[1:] {
+			switch c {
+			case 'L':
+				physical = false
+			case 'P':
+				physical = true
+			}
+		}
+	}
+	return i, physical
+}
+
+// cdSearchesCDPATH reports whether the `cd`/`pushd` at site searches CDPATH:
+// its operand is not absolute and does not start with `./` or `../` (nor is
+// `.` or `..`), and CDPATH — as the line set it, a prefix on the cd
+// included, else as the environment the check runs in holds it — is not
+// empty. zsh's cdpath is the same variable. The shell then enters the first
+// CDPATH directory holding the operand, bash and zsh in different orders, so
+// the directory is not one the guard can name, and the cd blocks
+// (iss-2610111600031244).
+func cdSearchesCDPATH(rc *readCtx, st *shellState, s segment, site int) bool {
+	i, _ := cdOperand(s, site)
+	w, fixed := fixedToken(s, i)
+	if !fixed {
+		// No operand goes HOME; one the line does not fix leaves the
+		// directory unknown whatever CDPATH holds.
+		return false
+	}
+	if w == "-" || strings.HasPrefix(w, "+") || strings.HasPrefix(w, "/") || strings.HasPrefix(w, "~") ||
+		w == "." || w == ".." || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../") {
+		return false
+	}
+	v, set := st.vars["CDPATH"]
+	for j := 0; j < site && j < len(s.tokens); j++ {
+		if name, pv, ok := assignment(s.tokens[j]); ok && trackedName(name) == "CDPATH" {
+			v, set = pv, true
+		}
+	}
+	if !set {
+		return rc.files.cdpath != ""
+	}
+	return !v.ok || v.text != ""
 }
 
 // sourcedChangesDir reports whether the file a `source` at site reads holds a
@@ -926,6 +1040,10 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			continue
 		}
 		name := strings.ToLower(path.Base(tok))
+		if (name == "cd" || name == "pushd") && cdSearchesCDPATH(rc, st, s, a.idx) {
+			sigs = append(sigs, cdpathSignal())
+			continue
+		}
 		first, opaque, autoload := autoloadCall(s, a.idx, name)
 		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") && !autoload {
 			continue
@@ -944,7 +1062,12 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			out = append(out, ts...)
 			sigs = append(sigs, ss...)
 		case name == "source" || name == ".":
-			if p, ok := sourcePath(rc, st, s, a.idx); ok {
+			p, ok, unfixed := sourceLookup(rc, st, s, a.idx)
+			if unfixed {
+				sigs = append(sigs, sourcePathUnfixedSignal())
+				continue
+			}
+			if ok {
 				out = append(out, readTarget{path: p, shown: sourceWord(s, a.idx), kind: targetScript, sourced: true, env: env})
 			} else if w := sourceWord(s, a.idx); w != "" && !strings.Contains(w, "/") {
 				if _, fixed := fixedToken(s, sourceIndex(s, a.idx)); fixed && !scriptIsStream(w, s.stdinStream) {
@@ -1096,44 +1219,76 @@ func sourceWord(s segment, site int) string {
 // directory. ok is false where the line does not fix the word, where it is a
 // stream (the stream refusal reads it), or where no file is found by search.
 func sourcePath(rc *readCtx, st *shellState, s segment, site int) (string, bool) {
+	p, ok, _ := sourceLookup(rc, st, s, site)
+	return p, ok
+}
+
+// sourceLookup is sourcePath, and whether the search ran into a PATH entry
+// the line does not fix. A `PATH=` prefix on the `source` itself is the PATH
+// its search reads (iss-2610111600031244), and there an entry the line does
+// not fix — a variable, or a relative entry where the working directory is
+// unknown — means the file the shell finds is not one the guard can name.
+func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, ok, unfixed bool) {
 	i := sourceIndex(s, site)
 	w, ok := fixedToken(s, i)
 	if !ok || scriptIsStream(w, s.stdinStream) {
-		return "", false
+		return "", false, false
 	}
 	if strings.Contains(w, "/") || strings.HasPrefix(w, "~") {
-		return st.resolveToken(rc, s, i)
+		p, ok := st.resolveToken(rc, s, i)
+		return p, ok, false
 	}
-	return searchPath(rc, st, w, true)
+	pv, set := st.vars["PATH"]
+	prefix := false
+	for j := 0; j < site && j < len(s.tokens); j++ {
+		if name, v, isAssign := assignment(s.tokens[j]); isAssign && name == "PATH" {
+			pv, set, prefix = v, true, true
+		}
+	}
+	return searchPath(rc, st, pv, set, w, true, prefix)
 }
 
-// searchPath finds a bare name on PATH, as the line set it or as the
-// account's, and then, for `source`, in the working directory.
-func searchPath(rc *readCtx, st *shellState, name string, thenCwd bool) (string, bool) {
+// searchPath finds a bare name on PATH — pv when set, as the line set it,
+// else the account's — and then, for `source`, in the working directory. An
+// empty entry is the working directory, and a relative entry resolves
+// against it, as the shell's search does. With strict, an entry the line
+// does not fix stops the search and is reported (unfixed); without, the
+// search skips it, as it always has.
+func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, thenCwd, strict bool) (string, bool, bool) {
 	pathVar := rc.files.path
-	if v, ok := st.vars["PATH"]; ok {
-		if !v.ok {
-			return "", false
+	if set {
+		if !pv.ok {
+			return "", false, strict
 		}
-		pathVar = v.text
+		pathVar = pv.text
 	}
 	for _, d := range filepath.SplitList(pathVar) {
-		if d == "" || !filepath.IsAbs(d) {
-			continue
+		if d == "" {
+			d = "."
 		}
 		p := filepath.Join(d, name)
+		if !filepath.IsAbs(d) {
+			q, ok := st.resolve(rc, p, false)
+			if !ok {
+				if strict {
+					return "", false, true
+				}
+				continue
+			}
+			p = q
+		}
 		if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
-			return p, true
+			return p, true, false
 		}
 	}
 	if thenCwd {
 		if p, ok := st.resolve(rc, name, false); ok {
 			if _, err := rc.files.stat(p, false); err == nil {
-				return p, true
+				return p, true, false
 			}
 		}
 	}
-	return "", false
+	return "", false, false
 }
 
 // shellCall is how a shell-family shell reads its arguments.
@@ -1383,7 +1538,10 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 		default:
 			if p, ok := st.resolveToken(rc, s, idx); ok {
 				if _, err := rc.files.stat(p, true); err != nil && !strings.Contains(w, "/") {
-					if q, found := searchPath(rc, st, w, false); found {
+					// bash searches the PATH it was handed: a prefix on it
+					// included.
+					pv, set := env["PATH"]
+					if q, found, _ := searchPath(rc, st, pv, set, w, false, false); found {
 						p = q
 					}
 				}
@@ -1673,6 +1831,28 @@ func startupExpandedSignal(varName string) payloadSignal {
 		reason: "This command hands a shell " + varName + " holding a substitution or a variable, which the shell " +
 			"expands before it reads the file: a substitution there runs, and the file it names is not one the guard can read.",
 		successor: "Set " + varName + " to the startup file's fixed path, or source the file in the command string instead.",
+	}
+}
+
+// cdpathSignal is the block for a `cd` that searches CDPATH: the directory
+// the commands after it run in is not one the guard can name.
+func cdpathSignal() payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command changes directory by a name the shell searches CDPATH for, so the directory the " +
+			"commands after it run in, and the scripts they name, are not ones the guard can read.",
+		successor: "Name the directory as an absolute path or with a leading ./ (cd ./sub), which the shell does not search CDPATH for.",
+	}
+}
+
+// sourcePathUnfixedSignal is the block for a `source` whose own PATH prefix
+// holds an entry the line does not fix.
+func sourcePathUnfixedSignal() payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command sources a file by name through a PATH it sets, and an entry of that PATH is not fixed " +
+			"by the line, so the file the shell finds is not one the guard can read.",
+		successor: "Source the file by its path (source ./lib.sh), or set PATH to fixed absolute directories.",
 	}
 }
 

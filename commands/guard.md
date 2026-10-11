@@ -334,7 +334,10 @@ does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
-`PATH` and then in the working directory when it has no slash), the file a
+`PATH` and then in the working directory when it has no slash; a `PATH=` prefix
+on the `source` itself is the `PATH` searched, a relative or empty entry resolving
+against the working directory, and an entry of that prefix the line does not fix
+is a **block**, `script-unread`), the file a
 redirection makes a shell's standard input when it has no `-c` string and no
 script (`bash < s.sh`, `bash -s < s.sh`, `exec 3< s.sh; bash <&3`), and the
 startup files the line selects — `BASH_ENV=f`, `ENV=f` on an interactive shell
@@ -359,7 +362,13 @@ relative path resolves against the working directory, and against a `cd` or
 `pushd` earlier on the line only when its target exists and the script is
 chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
-is. The verdicts:
+is. A `..` in a path resolves the way the kernel opens it, against the directory
+a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
+link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
+zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while
+`CDPATH` is set on the line or in the environment the check runs in is a
+**block** (`script-unread`): name the directory as `./sub` or by its absolute
+path. The verdicts:
 
 - a registry blocker at command position in the script is a **block**
   (`script-runs-hazard`), naming the script, the line and the entry, and so is
