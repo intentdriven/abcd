@@ -29,6 +29,11 @@ Search your scripts, hooks, and CI workflows for each spelling in the left-hand
 column, change it to the right-hand one, and run the changed command once to
 see it answer.
 
+A release after v0.14.0 reuses the name `memory` for a different job, the
+agents' memory notes, so from that release `abcd memory` and `/abcd:memory`
+run instead of refusing. Change those spellings to `library` rather than
+waiting for the refusal to find them; the memory store stays under `library`.
+
 ## Move memory and source commands under library
 
 `abcd library` holds two stores under one command: Your sources corpus and the
