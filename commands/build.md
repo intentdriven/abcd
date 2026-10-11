@@ -184,8 +184,20 @@ Refusals, each writing nothing:
   refused at the `pick` stage, exit 2; run `build next` without a count. A
   pace flag naming another pace than the series' is refused at the `pace`
   stage.
-- another `build next` moving the series at the same time: exit 3; back off
-  and retry.
+- another `build next` moving the series at the same time, one that began a
+  series while this call picked, or a series that ended while this call waited
+  for it: exit 3; back off and run `build next` again.
+- `.abcd/.work.local/run/next.json` that cannot be read as the series' state
+  (not a regular file in a real directory, or past its size cap), that does not
+  parse as it (malformed JSON, an unknown or repeated field, another
+  `schema_version`), that names no run count a series takes, or that names a
+  pick that is not an intent and a run, or whose `outcome` is not one the
+  series writes: refused at the `pick` stage, exit 2, on every `build next`
+  until the file is restored or removed. `build next` is its only writer: tell
+  the user, and do not edit it to get past the refusal.
+- the pick's reason refused by the grounds writer's own gate, asked before the
+  run starts: refused at the `pick` stage, exit 2. The reason is computed, so
+  this is a defect in abcd: tell the user and file it with `abcd report`.
 - the picked intent already has a run in progress: refused at the `pick` stage,
   exit 3; resume that run with `implement step`.
 - a refusal of `build <itd-N>` itself (the pace, the claim stage) comes as that

@@ -266,8 +266,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"No candidate for a first pick is refused, naming each excluded intent and the check that\n" +
 			"excluded it, and nothing is written. Refused too, writing nothing: a negative --max,\n" +
 			"--max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
-			"the one it began with. Exit 2 on a refusal, exit 3 when the chosen intent's run is already\n" +
-			"in progress or the run state or the series is locked.",
+			"the one it began with, and, until it is restored or removed, a series state that cannot be\n" +
+			"read, does not parse, or names a count, a pick or an outcome the series never writes; and a\n" +
+			"pick whose reason the grounds writer's gate refuses, a defect to report. Exit 2 on a\n" +
+			"refusal, exit 3 when the chosen intent's run is already in progress or the run state or\n" +
+			"the series is locked.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd build next"
