@@ -12,7 +12,7 @@ The scope this brief covers is the intents on the lifecycle shelves: what has sh
 - `/abcd:launch` — public promotion — see [`04-surfaces/04-launch.md`](../04-surfaces/04-launch.md)
 - `/abcd:intent` — press-release intent capture — see [`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md)
 - `/abcd:capture` — issue ledger — see [`04-surfaces/06-capture.md`](../04-surfaces/06-capture.md)
-- `/abcd:memory` — multi-upstream curated knowledge substrate (per itd-36) — see [`05-internals/07-memory.md`](../05-internals/07-memory.md)
+- `/abcd:library` — the sources corpus (per itd-76) and the multi-upstream curated memory store (per itd-36), two stores under one command (itd-2610090831227812) — see [`04-surfaces/07-library.md`](../04-surfaces/07-library.md) and [`05-internals/07-memory.md`](../05-internals/07-memory.md)
 - `/abcd` — top-level where-am-i status board (per itd-20) — see [`04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md)
 - `/abcd:reflect` — release retrospective, a design target (itd-24, planned) — see [`04-surfaces/09-reflect.md`](../04-surfaces/09-reflect.md)
 

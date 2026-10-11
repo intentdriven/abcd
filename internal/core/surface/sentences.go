@@ -293,6 +293,27 @@ var sentences = map[string]string{
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 
+	"abcd library": "Render the sources corpus and the checkout's memory store, read-only: " +
+		"Writes nothing; refuses only when neither store can be read.",
+	"abcd library add": "Register a source under its class folder, with its entry and text: " +
+		"Writes the corpus and commits it; refuses without one of --confidential or --public.",
+	"abcd library ask": "Query memory and synthesise a cited answer: " +
+		"Writes a memory page only with --file-back; refuses outside a git checkout.",
+	"abcd library cite-check": "Scan text for confidential sources and report each hit by key only: " +
+		"Writes nothing; refuses without a corpus, and exits 1 on a hit.",
+	"abcd library declassify": "Move a published confidential source to public/ in one visible commit: " +
+		"Writes the corpus and commits it; refuses a key that is not confidential.",
+	"abcd library ingest": "Distil a local file or an https source into cited memory pages: " +
+		"Writes the pages; refuses a URL that is not https.",
+	"abcd library init": "Create an empty sources corpus, a git repository with no remote: " +
+		"Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
+	"abcd library ledger": "Append an influence line to this repository's ledger, or flip one to cited: " +
+		"Writes one ledger line; refuses a flip for a source that is not public and citable.",
+	"abcd library lint": "Health-check the whole memory store: " +
+		"Writes a lint report; refuses a store with a blocker finding.",
+	"abcd library sync-banlist": "Project confidential titles and aliases into the private banlist: " +
+		"Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
+
 	"abcd lint": "Check this repository against the conventions, every target but outbound: " +
 		"Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
 	"abcd lint docs": "Lint the docs for change-narration, broken links, citations, and stray root markdown: " +
@@ -303,15 +324,6 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a text carrying either with exit 1.",
 	"abcd lint site": "Gate the built website, rendering it first when absent: " +
 		"Writes only inside the output directory; refuses a site failing any gate with exit 1.",
-
-	"abcd memory": "Render the memory store's status: " +
-		"Writes nothing; refuses outside a git checkout.",
-	"abcd memory ask": "Query memory and synthesise a cited answer: " +
-		"Writes a memory page only with --file-back; refuses outside a git checkout.",
-	"abcd memory ingest": "Distil a local file or an https source into cited memory pages: " +
-		"Writes the pages; refuses a URL that is not https.",
-	"abcd memory lint": "Health-check the whole memory store: " +
-		"Writes a lint report; refuses a store with a blocker finding.",
 
 	"abcd mode": "Print or set whose answer the agent loop is waiting on: " +
 		"Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
@@ -352,21 +364,6 @@ var sentences = map[string]string{
 		"Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.",
 	"abcd site setup": "Take the website from this checkout to a live address: " +
 		"Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
-
-	"abcd source": "Render the sources corpus and its ledgers, read-only: " +
-		"Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.",
-	"abcd source add": "Register a source under its class folder, with its entry and text: " +
-		"Writes the corpus and commits it; refuses without one of --confidential or --public.",
-	"abcd source cite-check": "Scan text for confidential sources and report each hit by key only: " +
-		"Writes nothing; refuses without a corpus, and exits 1 on a hit.",
-	"abcd source declassify": "Move a published confidential source to public/ in one visible commit: " +
-		"Writes the corpus and commits it; refuses a key that is not confidential.",
-	"abcd source init": "Create an empty sources corpus, a git repository with no remote: " +
-		"Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
-	"abcd source ledger": "Append an influence line to this repository's ledger, or flip one to cited: " +
-		"Writes one ledger line; refuses a flip for a source that is not public and citable.",
-	"abcd source sync-banlist": "Project confidential titles and aliases into the private banlist: " +
-		"Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
 
 	"abcd spec": "Render the spec store's status: " +
 		"Writes nothing; refuses outside a git checkout.",

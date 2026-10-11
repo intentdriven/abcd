@@ -201,7 +201,7 @@ func loadCorpus(dir string) (*Corpus, error) {
 		return nil, err
 	}
 	if fi, err := os.Lstat(filepath.Join(dir, ".git")); err != nil || !fi.IsDir() {
-		return nil, fmt.Errorf("%w: the corpus directory is not a git repository (run `abcd source init` on an empty location)", ErrCorpusInvalid)
+		return nil, fmt.Errorf("%w: the corpus directory is not a git repository (run `abcd library init` on an empty location)", ErrCorpusInvalid)
 	}
 	data, err := fsutil.ReadGuarded(filepath.Join(dir, SourcesFile), maxSourcesBytes)
 	if err != nil {
@@ -376,7 +376,7 @@ is ever committed to a project repository (adr-41).
 - ledger/<repo>.jsonl   append-only influence records, one file per repository
 
 The folder a source sits in IS its classification. Maintain the corpus with
-` + "`abcd source`" + ` (add, declassify, ledger, sync-banlist, cite-check); a hand
+` + "`abcd library`" + ` (add, declassify, ledger, sync-banlist, cite-check); a hand
 edit that leaves an entry and its folder disagreeing is refused by every step that
 derives a ban from the corpus until it is repaired.
 

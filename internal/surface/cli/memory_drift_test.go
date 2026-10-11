@@ -22,12 +22,12 @@ func TestMemoryBoardPrintsItsDriftOnTheTextRender(t *testing.T) {
 	if len(st.Drift) == 0 {
 		t.Fatalf("fixture drift: a store with no index.md reports no drift in --json: %+v", st)
 	}
-	text := string(runCLI(t, "memory"))
+	text := string(runCLI(t, "library"))
 	for _, line := range st.Drift {
 		if !strings.Contains(text, line) {
 			t.Errorf("the text board omits the drift line the JSON carries, %q:\n%s", line, text)
 		}
-		if !strings.Contains(line, "abcd memory ingest") {
+		if !strings.Contains(line, "abcd library ingest") {
 			t.Errorf("drift line %q does not name the verb that heals it", line)
 		}
 	}
@@ -40,15 +40,15 @@ func TestMemoryBoardPrintsItsDriftOnTheTextRender(t *testing.T) {
 func TestMemoryBoardIsQuietAboutDriftWhenTheStoreIsCurrent(t *testing.T) {
 	repo, _ := memoryStoreFixture(t)
 	src, pages := ingestOperands(t, repo)
-	if out, err := runCLIErr(t, "memory", "ingest", src, "--pages-json", pages); err != nil {
-		t.Fatalf("memory ingest: %v\n%s", err, out)
+	if out, err := runCLIErr(t, "library", "ingest", src, "--pages-json", pages); err != nil {
+		t.Fatalf("library ingest: %v\n%s", err, out)
 	}
 
 	st := memoryBoard(t)
 	if len(st.Drift) != 0 {
 		t.Fatalf("a store an ingest just re-rendered reports drift in --json: %q", st.Drift)
 	}
-	if text := string(runCLI(t, "memory")); strings.Contains(text, "stale") {
+	if text := string(runCLI(t, "library")); strings.Contains(text, "stale") {
 		t.Errorf("a current store's text board reports staleness:\n%s", text)
 	}
 }

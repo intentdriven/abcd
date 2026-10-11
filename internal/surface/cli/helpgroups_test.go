@@ -87,7 +87,7 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 	// spc-2610100613109045's audit) and the spec's decision 1 on the groups.
 	for group, want := range map[string][]string{
 		"Set-up:":      {"ahoy", "completion", "dashboard", "help", "update"},
-		"Records:":     {"build", "capture", "decide", "ideate", "intent", "memory", "source"},
+		"Records:":     {"build", "capture", "decide", "ideate", "intent", "library"},
 		"Checks:":      {"lab", "reading"},
 		"Portability:": {"disembark", "embark"},
 		"Release:":     {"launch"},

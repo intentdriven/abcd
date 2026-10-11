@@ -10,10 +10,11 @@ A local-only corpus at `~/.abcd.noindex/sources/` holds source documents (workin
 papers, private-repo notes, PDFs, books) the agent may **consult** but must
 never **cite** publicly. Metadata lives in `sources.json` (CSL-JSON; the
 `custom` block carries `confidential`, `permission_status`, `keywords`,
-`aliases`, `ban_authors`). Every write goes through the `abcd source` verbs
-(`/abcd:source`); reading is plain search. First run
-`"${CLAUDE_PLUGIN_ROOT}/abcd" source --json`: exit 3 means there is no corpus —
-say so and stop, because this command never creates it.
+`aliases`, `ban_authors`). Every write goes through the `abcd library` verbs
+(`/abcd:library`); reading is plain search. First run
+`"${CLAUDE_PLUGIN_ROOT}/abcd" library --json`: a null `corpus`, whose
+`corpus_note` says so, means there is no corpus — say so and stop, because this
+command never creates it.
 
 ## Hard rule (overrides convenience, always)
 
@@ -52,7 +53,7 @@ contradicts it, supplies a method, or shapes background understanding — not
 mere incidental reading), record ONE line:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" source ledger --decision "<DECISIONS.md date | ADR id | intent id | free text>" \
+"${CLAUDE_PLUGIN_ROOT}/abcd" library ledger --decision "<DECISIONS.md date | ADR id | intent id | free text>" \
   --claim "<what was decided/claimed>" --source <CSL key> \
   --influence supports|contradicts|method|background \
   [--locator "<pp./§>"] [--used-in <repo-relative path>]... --json
@@ -75,17 +76,17 @@ decision, and the line number, so they can decide about citing.
 ## Guard wiring
 
 - The repository's committed pre-commit guard runs
-  `abcd source sync-banlist --refresh` on every commit (in a managed
+  `abcd library sync-banlist --refresh` on every commit (in a managed
   repository, once the clone opts in with
   `git config --local abcd.sourcesBinary /absolute/path/to/abcd`), which
   regenerates a fenced block of confidential titles and aliases in the untracked
   `.abcd/.work.local/private-names.txt` when that store already exists;
   leakage is then blocked mechanically, not just by this command's rule. The
   first sync in a repository, and the one after adding or declassifying a
-  source, is `"${CLAUDE_PLUGIN_ROOT}/abcd" source sync-banlist`, run by hand so
+  source, is `"${CLAUDE_PLUGIN_ROOT}/abcd" library sync-banlist`, run by hand so
   the block is current before the next commit.
 - Before any document that drew on confidential material is committed, posted,
-  or otherwise shared, run `"${CLAUDE_PLUGIN_ROOT}/abcd" source cite-check <file>`
+  or otherwise shared, run `"${CLAUDE_PLUGIN_ROOT}/abcd" library cite-check <file>`
   (exit 1 = a confidential identifier is present; its report names only the
   CSL key, the field and the position, so the report itself is safe to relay).
   It runs the same matcher as the guard, and it covers literal strings only.

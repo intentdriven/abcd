@@ -586,8 +586,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))
-	root.AddCommand(newSourceCommand(&asJSON))
-	root.AddCommand(newMemoryCommand(&asJSON))
+	root.AddCommand(newLibraryCommand(&asJSON))
 	root.AddCommand(newRulesCommand(&asJSON))
 	root.AddCommand(newHookCommand(&asJSON))
 	root.AddCommand(newHistoryCommand(&asJSON))
@@ -6158,61 +6157,50 @@ func memoryStoreRoot(cmd *cobra.Command) (string, error) {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, "the memory store")
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd memory: " + err.Error() + " (nothing read, nothing written)"}
+		return "", &exitError{Code: 2, Msg: "abcd library: " + err.Error() + " (nothing read, nothing written)"}
 	}
 	for _, note := range strayStoreNotes(cwd, root, memory.RelDir, "memory store") {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: %s\n", termsafe.Sanitize(note))
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd library: %s\n", termsafe.Sanitize(note))
 	}
 	return root, nil
 }
 
-// newMemoryCommand builds the `memory` sub-tree over internal/core/memory. Bare
-// `memory` renders read-only store status; ingest/ask/lint are the mutating and
-// diagnostic verbs (04-surfaces/07). The distiller (ingest) and synthesizer
-// (ask) are host-delegated seams: the .5 skill emits validated DistilledPage
-// JSON, which this surface feeds through --pages-json / --page-json.
-func newMemoryCommand(asJSON *bool) *cobra.Command {
-	memoryCmd := &cobra.Command{
-		Use:  "memory",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			repoRoot, err := memoryStoreRoot(cmd)
-			if err != nil {
-				return err
-			}
-			st, err := memory.Bare(repoRoot)
-			if err != nil {
-				return err
-			}
-			return render(cmd.OutOrStdout(), *asJSON, st, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd memory — %d page(s)", st.Pages)
-				if !st.StorePresent {
-					fmt.Fprintf(w, " (store not present)")
-				}
-				fmt.Fprintln(w)
-				for _, c := range st.ByClass {
-					// Class labels come from page frontmatter; contradiction/headroom lines
-					// are read verbatim from repo files — all untrusted terminal output.
-					fmt.Fprintf(w, "  %s: %d\n", termsafe.Sanitize(c.Class), c.Count)
-				}
-				if st.LastIngest != "" {
-					fmt.Fprintf(w, "  last ingest: %s\n", termsafe.Sanitize(st.LastIngest))
-				}
-				// Drift is the board's one call to action, and it is printed in the
-				// words the JSON carries (iss-2609091647582259).
-				for _, line := range st.Drift {
-					fmt.Fprintf(w, "  %s\n", line)
-				}
-				for _, line := range st.Contradictions {
-					fmt.Fprintf(w, "  contradiction: %s\n", termsafe.Sanitize(line))
-				}
-				for _, line := range st.Headroom {
-					fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(line))
-				}
-			})
-		},
+// renderMemoryStatus is the memory half of bare `library`: the read-only status
+// of the checkout's store (04-surfaces/07-library.md).
+func renderMemoryStatus(w io.Writer, st memory.BareStatus) {
+	fmt.Fprintf(w, "  memory: %d page(s)", st.Pages)
+	if !st.StorePresent {
+		fmt.Fprintf(w, " (store not present)")
 	}
+	fmt.Fprintln(w)
+	for _, c := range st.ByClass {
+		// Class labels come from page frontmatter; contradiction/headroom lines
+		// are read verbatim from repo files — all untrusted terminal output.
+		fmt.Fprintf(w, "    %s: %d\n", termsafe.Sanitize(c.Class), c.Count)
+	}
+	if st.LastIngest != "" {
+		fmt.Fprintf(w, "    last ingest: %s\n", termsafe.Sanitize(st.LastIngest))
+	}
+	// Drift is the board's one call to action, and it is printed in the
+	// words the JSON carries (iss-2609091647582259).
+	for _, line := range st.Drift {
+		fmt.Fprintf(w, "    %s\n", line)
+	}
+	for _, line := range st.Contradictions {
+		fmt.Fprintf(w, "    contradiction: %s\n", termsafe.Sanitize(line))
+	}
+	for _, line := range st.Headroom {
+		fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(line))
+	}
+}
 
+// addMemorySubcommands puts the memory store's verbs under `library`, over
+// internal/core/memory: ingest/ask/lint are the mutating and diagnostic verbs
+// (04-surfaces/07-library.md), and the store's status is half of bare
+// `library`. The distiller (ingest) and synthesizer (ask) are host-delegated
+// seams: the host emits validated DistilledPage JSON, which this surface feeds
+// through --pages-json / --page-json.
+func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	// ingest <path-or-https-url> [--keep-original] [--pages-json <file|->]
 	var pagesJSON string
 	var keepOriginalFlag bool
@@ -6234,7 +6222,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd memory ingest — %s\n", res.Status)
+				fmt.Fprintf(w, "abcd library ingest — %s\n", res.Status)
 				fmt.Fprintf(w, "  content hash: %s\n", res.ContentHash)
 				// The licence is free text lifted verbatim from the ingested
 				// source's bytes (an SPDX line or an HTTP License: header), not a
@@ -6265,7 +6253,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 	}
 	ingestCmd.Flags().BoolVar(&keepOriginalFlag, "keep-original", false, "store the original at .abcd/memory/sources/<sha256>.<ext>")
 	ingestCmd.Flags().StringVar(&pagesJSON, "pages-json", "", "DistilledPage JSON array (file path, or - for stdin)")
-	memoryCmd.AddCommand(ingestCmd)
+	lib.AddCommand(ingestCmd)
 
 	// ask <question> [--top-n N] [--file-back] [--page-json <file|->]
 	var topN int
@@ -6303,10 +6291,10 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 	askCmd.Flags().IntVar(&topN, "top-n", 0, "retrieval depth (0 uses the pinned default)")
 	askCmd.Flags().BoolVar(&fileBack, "file-back", false, "file the synthesised answer back as a new memory page")
 	askCmd.Flags().StringVar(&pageJSON, "page-json", "", "the answer page dict as JSON (file path, or - for stdin)")
-	memoryCmd.AddCommand(askCmd)
+	lib.AddCommand(askCmd)
 
 	// lint — full-store curator health-check; blockers exit nonzero.
-	memoryCmd.AddCommand(&cobra.Command{
+	lib.AddCommand(&cobra.Command{
 		Use:  "lint",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -6319,7 +6307,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd memory lint — %d blocker(s), %d warning(s), %d info(s)\n",
+				fmt.Fprintf(w, "abcd library lint — %d blocker(s), %d warning(s), %d info(s)\n",
 					res.Summary.Blockers, res.Summary.Warnings, res.Summary.Infos)
 				for _, f := range res.Findings {
 					fmt.Fprintf(w, "  %s [%s] %s:%d %s\n", f.Code, f.Severity, termsafe.Sanitize(f.File), f.Line, termsafe.Sanitize(f.Message))
@@ -6335,8 +6323,6 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 	})
-
-	return memoryCmd
 }
 
 // pagesJSONDistiller is the ingest transport seam: it lazily reads the
@@ -6658,7 +6644,7 @@ func newErrorEnvelope(msg string, code int) errorEnvelope {
 // working directory is redacted first so a path under it reads "./…", not "~/…".
 //
 // This is NOT a universal absolute-path scrub: a verb that echoes a user-supplied
-// absolute path lying outside both roots (e.g. `memory ingest /tmp/x`) still
+// absolute path lying outside both roots (e.g. `library ingest /tmp/x`) still
 // surfaces it — that path carries no developer identity, and sanitising such
 // verb-level echoes is tracked separately (iss-81). Scrubbing here rather than by
 // regex is deliberate: this error surface also carries URLs (fetch failures) that

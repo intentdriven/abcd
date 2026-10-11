@@ -12,8 +12,8 @@ the read side and the provenance recorder.
 
 It is a **host-delegated command**: a markdown workflow that runs in the host
 agent. There is no top-level `abcd ingest` verb, no bare-status render, and no
-CLI flags of its own. The write it ends in is the source verb's add
-([`33-source.md`](33-source.md)), which stores and classifies what the host hands
+CLI flags of its own. The write it ends in is the library verb's add
+([`07-library.md`](07-library.md)), which stores and classifies what the host hands
 it and fetches and converts nothing.
 
 
@@ -71,7 +71,7 @@ five steps.
    inherits the class by location, record an influence edge if a live decision
    motivated the ingest, and tell the user the key and class.
 
-If the corpus is absent (`abcd source` exits 3), the command says so and stops.
+If the corpus is absent (bare `abcd library` renders no corpus, only a line saying so), the command says so and stops.
 It never creates it.
 
 ## Confidentiality contract
@@ -111,7 +111,7 @@ contract.
 
 - Plugin command: [`commands/ingest.md`](../../../../commands/ingest.md)
 - Read side of the same corpus: [`13-consult.md`](13-consult.md)
-- The verb behind the write, and the corpus contract: [`33-source.md`](33-source.md)
+- The verb behind the write, and the corpus contract: [`07-library.md`](07-library.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

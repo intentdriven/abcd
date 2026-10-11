@@ -15,8 +15,8 @@ It is **host-delegated**: the workflow runs in the host agent from
 [`commands/consult.md`](../../../../commands/consult.md), and there is no
 `abcd consult` verb and no bare-status render of its own. Reading the corpus is
 plain search with `grep` and file reads; every write — a ledger line, the
-banlist sync, the pre-share scan — goes through the `abcd source` verbs
-([`33-source.md`](33-source.md)).
+banlist sync, the pre-share scan — goes through the `abcd library` corpus verbs
+([`07-library.md`](07-library.md)).
 
 ## Sub-verbs
 
@@ -43,7 +43,7 @@ The corpus lives at `~/.abcd.noindex/sources/`, each source held as a folder
 `<class>/<key>/` under `confidential/` or `public/`. **The path IS the
 classification**: any hit under `confidential/` falls under the hard rule
 below. Metadata lives in `sources.json` as CSL-JSON. If the corpus is absent
-(`abcd source` exits 3), the command says so and stops; it never creates it.
+(bare `abcd library` renders no corpus, only a line saying so), the command says so and stops; it never creates it.
 
 ## Flow
 
@@ -80,11 +80,11 @@ discussed freely there.
 
 ## Guard wiring
 
-The rule is backed mechanically rather than trusted alone, by the `abcd source`
-verbs. `sync-banlist` maintains a generated block in the repo's untracked
+The rule is backed mechanically rather than trusted alone, by the `abcd library`
+corpus verbs. `sync-banlist` maintains a generated block in the repo's untracked
 `.abcd/.work.local/private-names.txt`, which the repo's committed pre-commit guard
 refreshes on every commit, where that store already exists and the guard can run
-the verb (see [`33-source.md`](33-source.md)), and then enforces. `cite-check` scans a document before
+the verb (see [`07-library.md`](07-library.md)), and then enforces. `cite-check` scans a document before
 it is shared and exits non-zero when a confidential identifier is present, naming
 only the key, so the report itself is safe to relay. Both read the same
 projection of the corpus through the same matcher as the guard, so a scan and a
@@ -102,7 +102,7 @@ absence of complaint.
 the banlist verb's private layer (itd-74 / spc-20). The sources sync owns one
 fenced block in it and rewrites only that block, so hand-added and verb-added
 lines outside the fence survive every sync. See [`20-banlist.md`](20-banlist.md)
-for the store itself and [`33-source.md`](33-source.md) for the projection.
+for the store itself and [`07-library.md`](07-library.md) for the projection.
 
 **The mechanical layer is narrower than the hard rule, deliberately.** Patterns
 are derived from every confidential entry's title and aliases always, and from
@@ -139,13 +139,13 @@ names.
 
 `/abcd:consult` is the read-and-record side of the sources system;
 [`/abcd:ingest`](14-ingest.md) is the write side that adds a source; and
-[`/abcd:source`](33-source.md) is the binary both call. The three share the
+[`/abcd:library`](07-library.md) is the binary both call. The three share the
 corpus and its ledger.
 
 ## References
 
 - Plugin command: [`commands/consult.md`](../../../../commands/consult.md)
-- The verbs behind every write, and the store's schema: [`33-source.md`](33-source.md)
+- The verbs behind every write, and the store's schema: [`07-library.md`](07-library.md)
 - Write side of the same corpus: [`14-ingest.md`](14-ingest.md)
 - The banlist store the guard wiring shares: [`20-banlist.md`](20-banlist.md)
 - The trust boundary the hard rule restates:

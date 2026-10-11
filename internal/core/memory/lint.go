@@ -15,7 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// lint.go — the `abcd memory lint` verb (fn-39): a full-store curator
+// lint.go — the `abcd library lint` verb (fn-39): a full-store curator
 // health-check. Page-local checks (MR001/MS001/MS002/ML001/MQ001/MQ003) per
 // typed page, a residue pass (MR001) over the sources registry and the text
 // kept-originals, plus a corpus pass (MQ002 + per-source MQ003) that rebuilds
@@ -717,7 +717,7 @@ func findingsToMaps(findings []Finding) []any {
 
 // LintReportHeading heads the run-log report, on the same rule as
 // AskReportHeading: core names the binary invocation, never one front door.
-const LintReportHeading = "abcd memory lint"
+const LintReportHeading = "abcd library lint"
 
 // renderLintReportMD renders report.md, the local-tier file an operator opens in
 // a pager or a markdown viewer. Every free-text field — the store path, each

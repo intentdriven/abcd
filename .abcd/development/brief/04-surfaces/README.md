@@ -19,7 +19,7 @@ are wiring rather than user-facing surface are listed separately under
 | 4 | `/abcd:launch` | shipped | Preview what a release would ship, and cut one by deriving its version and changelog from the record | [`04-launch.md`](04-launch.md) |
 | 5 | `/abcd:intent` | shipped | Say what you want to build as a press release, and find out whether it is ready to implement | [`05-intent.md`](05-intent.md) |
 | 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
-| 7 | `/abcd:memory` | shipped | Curate what the project knows from outside sources, and query it | [`07-memory.md`](07-memory.md) |
+| 7 | `/abcd:library` | shipped | Keep the documents you consult and the cited pages distilled from what the project reads, record what each source changed, and ban the confidential ones' names at commit time | [`07-library.md`](07-library.md) |
 | 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`](08-abcd.md) |
 | 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
@@ -43,7 +43,6 @@ are wiring rather than user-facing surface are listed separately under
 | 30 | `/abcd:inbox` | shipped | Read the reports managed repositories filed, and promote one to a capture that names the sender only by its root-commit key | [`30-inbox.md`](30-inbox.md) |
 | 31 | `/abcd:lab` | shipped | Run a lab against a pinned snapshot of the repository and harvest what it found, with the evidence kept out of the repository | [`31-lab.md`](31-lab.md) |
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
-| 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
 | 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
 | 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
@@ -136,7 +135,7 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `memory`, `source` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `library` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
@@ -215,10 +214,7 @@ starts a run for; the run's state renders through `abcd implement status`. Bare
 `abcd reflect` prints its usage, because its one operand is the cut release
 whose retrospective seed it renders. Bare
 `abcd drain` is the run itself, one move per invocation, so it is not a render;
-what a drain would do renders through its dry run. Bare
-`abcd source` renders the corpus under the user-level home rather than anything
-in the repository, so where there is no corpus it refuses naming `abcd source
-init`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+what a drain would do renders through its dry run. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
@@ -325,8 +321,8 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 <!-- index: commands -->
 `abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`.
+`ingest`, `intent`, `lab`, `launch`, `library`, `lint`, `mode`, `peers`,
+`reading`, `reflect`, `report`, `scribe`, `site`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -414,7 +410,7 @@ abcd keeps two kinds of remembered material, and they do different jobs. The **l
 | How it comes back | The person asks ("what do my sources say about pacing?") and gets answers that cite the item they came from | Brought into a session automatically when a prompt matches the words the note was saved with |
 | Where it can go | Into a decision as a cited source; a confidential item is never named in anything public | Into the project's record, when a note is promoted so that every agent receives it |
 
-A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The library merges what the sources, memory, consult and ingest pages hold today (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
+A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The `library` command holds what the `source` and `memory` commands held, and the consult and ingest pages fold into it next (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
 
 ## Where to find related design
 

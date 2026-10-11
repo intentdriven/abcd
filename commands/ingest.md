@@ -8,12 +8,13 @@ block: people
 # Ingest a source
 
 Register a URL or local document in the corpus at `~/.abcd.noindex/sources/`. The
-`abcd source add` verb does the deterministic half (store, classify, commit);
+`abcd library add` verb does the deterministic half (store, classify, commit);
 you do the judgment half (fetching, converting, clean metadata, real keywords,
 confidentiality, quality check). abcd fetches and converts nothing. The
 confidentiality hard rule from `/abcd:consult` applies here in full. First run
-`"${CLAUDE_PLUGIN_ROOT}/abcd" source --json`: exit 3 means there is no corpus —
-say so and stop, because this command never creates it.
+`"${CLAUDE_PLUGIN_ROOT}/abcd" library --json`: a null `corpus`, whose
+`corpus_note` says so, means there is no corpus — say so and stop, because this
+command never creates it.
 
 ## 1. Read the document first
 
@@ -65,7 +66,7 @@ Two rules hold for author names:
 ## 3. Register
 
 ```sh
-"${CLAUDE_PLUGIN_ROOT}/abcd" source add [file] --key <key> --confidential|--public \
+"${CLAUDE_PLUGIN_ROOT}/abcd" library add [file] --key <key> --confidential|--public \
   --type <csl-type> [--year YYYY] [--venue <venue>] [--url <url>] \
   [--permission <status>] [--ban-authors] [--text <extracted.md>] \
   --meta <meta.json> --json
@@ -82,7 +83,7 @@ Two rules hold for author names:
   read the piece: topics, named tools/techniques, the claims it makes. Never
   generic filler ("AI", "software").
 
-There is no one-argument quick path, and none is assumed here: `source add`
+There is no one-argument quick path, and none is assumed here: `library add`
 with explicit flags is the registrar's front door, and the better one anyway,
 since you have just read the source and hold metadata a bare fetch could not
 recover.
@@ -99,14 +100,14 @@ the verb does not make). If the source is webloc/link-only there is no body
 
 ## 5. Close out
 
-- Confidential ingest → run `"${CLAUDE_PLUGIN_ROOT}/abcd" source sync-banlist`
+- Confidential ingest → run `"${CLAUDE_PLUGIN_ROOT}/abcd" library sync-banlist`
   in every guarded repo the session touches (a guard that refreshes the block
   does so on the next commit, but only a store that already exists).
 - If the user wants a summary or review kept: write it to the source's own
   folder (`summary.md`, notes as siblings) — derived artifacts inherit the
   source's class by location, never anywhere else.
 - If the ingest was motivated by a live decision, record the influence edge in
-  the ledger per `/abcd:consult` (`abcd source ledger`).
+  the ledger per `/abcd:consult` (`abcd library ledger`).
 - Tell the user the key and class you registered.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

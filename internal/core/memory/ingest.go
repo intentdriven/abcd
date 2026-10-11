@@ -26,7 +26,7 @@ import (
 // -> discard/keep-original. Every pre-dispatch failure raises before the single
 // WritePages call — no orphan registry row, no partial page.
 
-const ingestedBy = "abcd memory ingest"
+const ingestedBy = "abcd library ingest"
 
 const (
 	maxFetchBytes       = 10 * 1024 * 1024
@@ -729,7 +729,7 @@ func acquireSource(repoRoot, source string, fetcher Fetcher, pdf PDFExtractor) (
 	// admission rule belongs to the core either way.
 	if scheme := remoteScheme(source); scheme != "" && !isURL(source) {
 		return sourceMaterial{}, newIngestError(
-			"refusing to fetch %s: memory ingest requires https, not %s — a plaintext source, and the licence header the store copies into its provenance, can be rewritten in transit",
+			"refusing to fetch %s: library ingest requires https, not %s — a plaintext source, and the licence header the store copies into its provenance, can be rewritten in transit",
 			redactedSource(source), scheme)
 	}
 	if isURL(source) {

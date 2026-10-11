@@ -40,7 +40,7 @@ abcd never fetches implicitly (adr-38): the network is touched only when the
 caller runs a command whose documented job includes a remote call. The release
 origin is reached by `update --check`, `update`, and `launch --dry-run
 --fetch-baseline` or `launch ship --fetch-baseline`; a cited source by `docs
-cite refresh`; a URL by `memory ingest <url>`; a provider's verification call by
+cite refresh`; a URL by `library ingest <url>`; a provider's verification call by
 `ahoy connect` and `ahoy credential <name> --home`; a model provider by a
 delegating verb routed to one (`reading ingest --dispatch` among them); the
 site host and GitHub by `site setup`; and GitHub, through `gh` or `git`, by

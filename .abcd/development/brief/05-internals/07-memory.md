@@ -48,9 +48,9 @@ Every memory page declares its source class via typed `source:` frontmatter. The
 | `source.class` | Upstream | Mutability |
 |---|---|---|
 | `session_memory` | Vendor session memory (Claude / opencode / future), distilled by the `internal/core/memory` adapter via `dev-sync memory` | Re-distilled on each sync; lossy upstream |
-| `external_pdf` | User-ingested PDF via `/abcd:memory ingest <path>` | Immutable post-ingest (original NOT stored unless `--keep-original`) |
-| `external_transcript` | User-ingested transcript via `/abcd:memory ingest <path>` | Immutable post-ingest |
-| `external_article` | User-ingested article (URL or local) via `/abcd:memory ingest <path-or-url>` | Immutable post-ingest |
+| `external_pdf` | User-ingested PDF via `/abcd:library ingest <path>` | Immutable post-ingest (original NOT stored unless `--keep-original`) |
+| `external_transcript` | User-ingested transcript via `/abcd:library ingest <path>` | Immutable post-ingest |
+| `external_article` | User-ingested article (URL or local) via `/abcd:library ingest <path-or-url>` | Immutable post-ingest |
 | `oracle_review` | Synced from `.abcd/work/reviews/` (RepoPrompt / codex review artefacts) | Immutable post-sync |
 | `work_notes` | Curated from working notes in `.abcd/work/` (shared, committed) | User-mutable upstream |
 | `issue_ledger` | Synthesised entries from the `.abcd/work/issues/` ledger (per itd-4 capture) | Immutable post-create |
@@ -102,18 +102,18 @@ recall: [<keyword>, ...]
 
 `source.weighting_note` nests under `source:`, is required exactly when a page mixes ≥ 2 source classes, and never appears on a single-source page.
 
-`recall` is the retrieval key (per itd-39): the prompt-router hook keyword-matches incoming prompts against it. `principle-distiller` populates `recall` at curation time from the page's domain and salient terms; absent or empty `recall` means the page is reachable only via `/abcd:memory ask`, never auto-injected.
+`recall` is the retrieval key (per itd-39): the prompt-router hook keyword-matches incoming prompts against it. `principle-distiller` populates `recall` at curation time from the page's domain and salient terms; absent or empty `recall` means the page is reachable only via `/abcd:library ask`, never auto-injected.
 
 **Curator rules** (enforced by `principle-distiller` + lint):
 
-- Pages with single-source-class synthesis are flagged as **low cross-validation** (advisory, lint code `MS001`; not blocking). Surfaces in `/abcd:memory lint` (spc-39).
+- Pages with single-source-class synthesis are flagged as **low cross-validation** (advisory, lint code `MS001`; not blocking). Surfaces in `/abcd:library lint` (spc-39).
 - Pages mixing source classes (e.g., `session_memory` + `external_pdf`) require a `weighting_note` field acknowledging the asymmetric trust gradient between class types. Lint blocks (lint code `MS002`) until the note is added.
 - Pages with `class: external_*` without a `licence` field block at lint (lint code `ML001`). `unknown` is acceptable — must be explicit.
 - Stored text carrying a secret or identity span the write-time store redactor would refuse or rewrite blocks at lint (lint code `MR001`) — pages, `.sources_index.json` and text kept-originals alike. Page names — each page file's and each registry back-link's — are judged by the write side's own filename verdict (`filenameHardFailKinds`: the name, its type/domain/slug components and every underscore suffix, at the hard-fail bar alone), because `_` is a word character and a token embedded in a name has no boundary the free-text scan can anchor on. A back-link that is a well-formed page name is kept out of the registry's free-text scan, as the write side keeps it out of the leaf walk, so a prose-shaped name the hostname heuristic happens to match is not reported as network residue. Lint names the kind and the line, never the span, and never rewrites the store; the operator repairs.
 
 ## 4. Default-no-originals + `--keep-original`
 
-`/abcd:memory ingest <path>` reads the source, distils into typed entity/topic pages with citation frontmatter, and **discards the original by default**. Source path + hash recorded for re-ingest only.
+`/abcd:library ingest <path>` reads the source, distils into typed entity/topic pages with citation frontmatter, and **discards the original by default**. Source path + hash recorded for re-ingest only.
 
 `--keep-original` flag opts the user into storing the original at `.abcd/memory/sources/<sha256>.<ext>`. The spc-38 restrictive-licence gate refuses to publish anything under `.abcd/memory/sources/` unless an explicit allowlist entry is written. Per adr-28 this gate is the **lifeboat's** (`/abcd:disembark`), NOT the launch payload's: `04-launch.md § 2` excludes the entire `.abcd/` namespace from the public launch payload wholesale, so launch never publishes `.abcd/memory/sources/` and is not the gate's consumer. At launch the gate is future/inert; its real consumer is the lifeboat, the surface that publishes curated project memory/provenance (adr-35).
 
@@ -151,22 +151,22 @@ total_source_coverage_pct(source_hash) =
 |---|---|---|
 | Existing memory pages | `.abcd/memory/<type>_<domain>_<slug>.md` | Read for cross-source dedup (topic-hash) |
 | Vendor session memory | `internal/core/memory` adapter (Claude / opencode) | Distill into `session_memory` pages (existing behaviour, unchanged) |
-| External sources (new at itd-36) | `/abcd:memory ingest` invocations | Distill into typed `external_*` pages with citation frontmatter |
+| External sources (new at itd-36) | `/abcd:library ingest` invocations | Distill into typed `external_*` pages with citation frontmatter |
 | `spec_modification_grammar` (new at itd-37) | A spec's `## Modification Grammar` section at spec completion | Append per-spec page; run domain-curator pass to update `modification_grammar_<domain>.md` |
 | `dredge_synthesis` (itd-25, a draft intent) | `/abcd:dredge synth` runs | Write synthesised entries to memory with `source.class: dredge_synthesis` |
 
 **The agent count stays at 15** (per itd-31 precedent: agent count grows by user-facing responsibility, not by audit subtype). `principle-distiller` gains role responsibilities, not agent peers. Soft-cap risk acknowledged: if the third role ever burst coherence, fork the curator role into a sibling agent.
 
-## 7. `/abcd:memory` command
+## 7. The memory verbs of `/abcd:library`
 
 User-facing surface (per itd-36):
 
 | Verb | Behaviour |
 |---|---|
-| Bare `/abcd:memory` | Status + help + render of current memory state (page count by class, last-ingest timestamp, recent contradictions). Per the [bare-command-as-render discipline](../02-constraints/04-naming.md). Quotation-budget headroom renders per external source READ-ONLY from the spc-39 `.coverage_index.json`: a fingerprint-fresh index shows per-source warn/block headroom, fingerprint drift shows a "stale — run /abcd:memory lint" hint, an absent index an info line, and a malformed index/crawl failure a non-fatal "headroom unavailable" line. The bare render never rebuilds or mutates the index (the `lint` sub-verb is the sole writer). |
-| `/abcd:memory ingest <path-or-https-url>` | Read external source, distil into typed pages with citation, append to log. A remote source must be https (admission and every redirect hop), the posture of `abcd update`; a credential the URL carries — basic-auth userinfo or a credential-shaped query key — is stripped before the fetched address becomes the stored origin and title, and masked in every fetch-failure message (the transport's own `*url.Error` is unwrapped to its cause, so it cannot re-print the address behind the mask). Default: do NOT store original. Flag: `--keep-original` (opt-in storage; the lifeboat licence-gate allowlist is required before a kept original could ever publish — via `/abcd:disembark`, not launch; adr-28). |
-| `/abcd:memory ask <question>` | Query memory by domain + class; synthesise answer with citations; optionally file result back. |
-| `/abcd:memory lint` **(spc-39)** | Full-store curator health-check: ALWAYS crawls the whole repo store (the cumulative `MQ002` needs the full corpus), runs the `MQ`/`MS`/`ML`/`MR` family (`MQ001`/`MQ002`/`MQ003` quotation budgets + coverage, `MS001`/`MS002` source-class advisories, `ML001` missing licences, `MR001` secret or identity residue in stored text), rebuilds the regenerable `.coverage_index.json`, and writes its run report to `.abcd/.work.local/logs/memory/lint-<ts>/report.{json,md}` in the gitignored local-ephemeral tier, per the iss-36 and iss-56 adjudication resolved as iss-73. Mutates NO memory-store state — the coverage index + that report are its only writes. Exit: blockers → nonzero; warn-only → exit 0 (curator advisory; the recorded divergence from the standalone grammar, see [`06-lint.md §2`](06-lint.md#2-severity-model)). **Not part of spc-39:** contradiction surfacing is RENDERED by spc-38's reconciliation into `contradictions.md` (surfaced by the bare render, not lint-coded), and orphan/stale-claim audits are DEFERRED to a later intent — `lint` runs neither. |
+| Bare `/abcd:library` (its memory half) | Render of current memory state, beside the sources corpus (page count by class, last-ingest timestamp, recent contradictions). Per the [bare-command-as-render discipline](../02-constraints/04-naming.md). Quotation-budget headroom renders per external source READ-ONLY from the spc-39 `.coverage_index.json`: a fingerprint-fresh index shows per-source warn/block headroom, fingerprint drift shows a "stale — run `abcd library lint`" hint, an absent index an info line, and a malformed index/crawl failure a non-fatal "headroom unavailable" line. The bare render never rebuilds or mutates the index (the `lint` sub-verb is the sole writer). |
+| `/abcd:library ingest <path-or-https-url>` | Read external source, distil into typed pages with citation, append to log. A remote source must be https (admission and every redirect hop), the posture of `abcd update`; a credential the URL carries — basic-auth userinfo or a credential-shaped query key — is stripped before the fetched address becomes the stored origin and title, and masked in every fetch-failure message (the transport's own `*url.Error` is unwrapped to its cause, so it cannot re-print the address behind the mask). Default: do NOT store original. Flag: `--keep-original` (opt-in storage; the lifeboat licence-gate allowlist is required before a kept original could ever publish — via `/abcd:disembark`, not launch; adr-28). |
+| `/abcd:library ask <question>` | Query memory by domain + class; synthesise answer with citations; optionally file result back. |
+| `/abcd:library lint` **(spc-39)** | Full-store curator health-check: ALWAYS crawls the whole repo store (the cumulative `MQ002` needs the full corpus), runs the `MQ`/`MS`/`ML`/`MR` family (`MQ001`/`MQ002`/`MQ003` quotation budgets + coverage, `MS001`/`MS002` source-class advisories, `ML001` missing licences, `MR001` secret or identity residue in stored text), rebuilds the regenerable `.coverage_index.json`, and writes its run report to `.abcd/.work.local/logs/memory/lint-<ts>/report.{json,md}` in the gitignored local-ephemeral tier, per the iss-36 and iss-56 adjudication resolved as iss-73. Mutates NO memory-store state — the coverage index + that report are its only writes. Exit: blockers → nonzero; warn-only → exit 0 (curator advisory; the recorded divergence from the standalone grammar, see [`06-lint.md §2`](06-lint.md#2-severity-model)). **Not part of spc-39:** contradiction surfacing is RENDERED by spc-38's reconciliation into `contradictions.md` (surfaced by the bare render, not lint-coded), and orphan/stale-claim audits are DEFERRED to a later intent — `lint` runs neither. |
 
 ## 8. Cross-cutting integration
 
@@ -194,7 +194,7 @@ This is what makes "memory never overflows" an enforced property rather than a h
 
 **Per-prompt, not sticky.** Consistent with itd-3, recall is independent per prompt — no cross-prompt "pin this page" mode in scope. A session-sticky mode is a later candidate (see itd-39 Open Questions).
 
-**Diagnostic (a design target; not built).** `abcd memory recall [keyword]` would show which pages a prompt or keyword surfaces and in which bracket — explainability, per the bare-command-as-render discipline. The shipped surface carries `ingest`, `ask` and `lint` and nothing else.
+**Diagnostic (a design target; not built).** A `recall [keyword]` sub-verb of `abcd library` would show which pages a prompt or keyword surfaces and in which bracket — explainability, per the bare-command-as-render discipline. The shipped surface carries `ingest`, `ask` and `lint` and nothing else.
 
 See [`../../intents/drafts/itd-39-scope-aware-memory-retrieval.md`](../../intents/drafts/itd-39-scope-aware-memory-retrieval.md) for the full intent, acceptance criteria, and the architectural-audit reconciliation with itd-3's global-rules rejection.
 

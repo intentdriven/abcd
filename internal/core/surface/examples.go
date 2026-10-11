@@ -96,8 +96,10 @@ var examples = map[string]string{
 	"abcd launch archive":   "abcd launch archive --out dist",
 	"abcd launch manifests": "abcd launch manifests --tree public",
 
-	"abcd memory ask":    `abcd memory ask "why do record ids carry a timestamp?"`,
-	"abcd memory ingest": "abcd memory ingest https://example.com/paper.pdf",
+	"abcd library ask":        `abcd library ask "why do record ids carry a timestamp?"`,
+	"abcd library cite-check": "abcd library cite-check draft.md",
+	"abcd library declassify": "abcd library declassify example-paper-2026",
+	"abcd library ingest":     "abcd library ingest https://example.com/paper.pdf",
 
 	"abcd reading assemble": "abcd reading assemble --position widening --target HEAD",
 	"abcd reading ingest":   "abcd reading ingest --reading-json reading.json",
@@ -108,9 +110,6 @@ var examples = map[string]string{
 
 	"abcd scribe assemble": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
 	"abcd scribe ingest":   "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",
-
-	"abcd source cite-check": "abcd source cite-check draft.md",
-	"abcd source declassify": "abcd source declassify example-paper-2026",
 
 	"abcd spec close": "abcd spec close spc-2609010000000001",
 }

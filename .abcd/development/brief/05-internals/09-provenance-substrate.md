@@ -1,6 +1,6 @@
 # Provenance / Licence Substrate
 
-A separable plumbing layer used by both `/abcd:memory ingest` (per itd-36) and `/abcd:loot` (a draft intent, itd-26). Owns: licence detection, citation generation, source-hash registry, the restrictive-licence publish gate (per adr-28 the gate's consumer is the lifeboat `/abcd:disembark`, future/inert at launch — see § 4).
+A separable plumbing layer used by both `/abcd:library ingest` (per itd-36) and `/abcd:loot` (a draft intent, itd-26). Owns: licence detection, citation generation, source-hash registry, the restrictive-licence publish gate (per adr-28 the gate's consumer is the lifeboat `/abcd:disembark`, future/inert at launch — see § 4).
 
 ## Why it exists as a separate component doc
 
@@ -8,7 +8,7 @@ Without explicit separation, the failure mode is: memory ingest ships with a "te
 
 Two consumers, distinct verbs, one substrate (per the surface-vs-substrate principle established in idea-1 R4):
 
-- **`/abcd:memory ingest`** (itd-36) — knowledge upstreams.
+- **`/abcd:library ingest`** (itd-36) — knowledge upstreams.
 - **`/abcd:loot`** (a draft intent, itd-26) — code vendoring.
 
 User moments differ; underlying licence-tracking machinery is the same.
@@ -27,7 +27,7 @@ Steps 2–3 run only when the detector is given a `source_root` directory (`dete
 
 A single identifier is matched case-insensitively and stored in canonical SPDX casing via a small local canonical-ID map; an ID outside the map is stored verbatim and flagged `unrecognised`. Compound expressions (`MIT OR Apache-2.0`, `... WITH <exception>`) are stored verbatim, never split; `classify_licence_expression` is the single classifier (`permissive | restrictive | unknown | unrecognised` — any restrictive token anywhere makes the expression restrictive) that the publish-gate policy layers on top of.
 
-**`unknown` is acceptable but must be explicit.** The substrate never silently labels an unknown licence as a permissive default. Lint code `ML001` (spc-39 — the substrate writes `licence: unknown`; spc-39 lints it) blocks on missing licence field; `unknown` value passes the lint but surfaces in `/abcd:memory lint` and `/abcd:loot lint` as a flag for human review.
+**`unknown` is acceptable but must be explicit.** The substrate never silently labels an unknown licence as a permissive default. Lint code `ML001` (spc-39 — the substrate writes `licence: unknown`; spc-39 lints it) blocks on missing licence field; `unknown` value passes the lint but surfaces in `/abcd:library lint` and `/abcd:loot lint` as a flag for human review.
 
 ## 2. Citation generation
 
@@ -45,7 +45,7 @@ citation:
   ingested_by: "<abcd command + flags>"
 ```
 
-Citation is read-only after creation; updates require a new ingest pass: `/abcd:memory ingest <path-or-https-url>` run again on the source, which takes no reingest flag (`/abcd:loot`, a draft intent, has no verb). A reingest of changed content produces a new hash → a new registry entry; a reingest of identical content is a registry hit (counters bump, see § 3) — neither overwrites the prior citation.
+Citation is read-only after creation; updates require a new ingest pass: `/abcd:library ingest <path-or-https-url>` run again on the source, which takes no reingest flag (`/abcd:loot`, a draft intent, has no verb). A reingest of changed content produces a new hash → a new registry entry; a reingest of identical content is a registry hit (counters bump, see § 3) — neither overwrites the prior citation.
 
 ## 3. Source-hash registry
 
@@ -76,7 +76,7 @@ Citation is read-only after creation; updates require a new ingest pass: `/abcd:
 
 **Why per-content-hash, not per-URL.** Two URLs may serve the same content; same URL may serve different content over time. Hash is the stable identity. Re-ingest of the same content produces same hash → updates `last_ingest` + bumps `ingest_count`; does NOT add a duplicate entry and never drops the durable `source_token_count`/`token_count_version` fields.
 
-**Cross-consumer sharing:** memory ingest and loot share one `sources_index.json`. Shared fields (`origin`, `licence`, `source_token_count`, `token_count_version`, counters) live at the top level of each hash entry; a `consumers` map holds one key per producing verb (`memory`, `loot`), each carrying its OWN `class`/`citation`/`ingested_at`/`pages`. A source that is loot-vendored (code) AND memory-ingested (documentation/notes about that code) yields ONE entry with BOTH keys present — memory never inherits loot's citation, and vice versa. The per-consumer `pages` list lets a re-ingest registry hit name its memory pages without a crawl. Every leaf a memory write introduces into this file (an origin, a licence, a consumer's citation) passes through the store redactor before it is written, and so does every KEY it introduces — a key carrying a secret span is refused rather than rewritten, since renaming a key renames the field the reader looks up. The one exclusion is each consumer's `pages` list: those are page filenames the store RESOLVES (an unnamed page is pruned), their charset is already bounded by the page-name grammar, and rewriting one would unlink a file that keeps its real name. `/abcd:memory lint` scans the file as stored (`MR001`).
+**Cross-consumer sharing:** memory ingest and loot share one `sources_index.json`. Shared fields (`origin`, `licence`, `source_token_count`, `token_count_version`, counters) live at the top level of each hash entry; a `consumers` map holds one key per producing verb (`memory`, `loot`), each carrying its OWN `class`/`citation`/`ingested_at`/`pages`. A source that is loot-vendored (code) AND memory-ingested (documentation/notes about that code) yields ONE entry with BOTH keys present — memory never inherits loot's citation, and vice versa. The per-consumer `pages` list lets a re-ingest registry hit name its memory pages without a crawl. Every leaf a memory write introduces into this file (an origin, a licence, a consumer's citation) passes through the store redactor before it is written, and so does every KEY it introduces — a key carrying a secret span is refused rather than rewritten, since renaming a key renames the field the reader looks up. The one exclusion is each consumer's `pages` list: those are page filenames the store RESOLVES (an unnamed page is pruned), their charset is already bounded by the page-name grammar, and rewriting one would unlink a file that keeps its real name. `/abcd:library lint` scans the file as stored (`MR001`).
 
 ## 4. Restrictive-licence publish gate (lifeboat consumer; future/inert at launch)
 
@@ -96,16 +96,16 @@ The gate's substrate integration (consumed by the lifeboat, not launch):
 
 Lint codes referenced below (`ML*`, `MQ*`) ship with spc-39 (the write/lint split, ADR-13) — spc-38's substrate writes `licence: unknown` explicitly; spc-39 lints it.
 
-- **Given** an external source with a declared SPDX licence visible to the detector (an in-file `SPDX-License-Identifier:` header; or a `LICENSE` file / package manifest when the ingest provides a `source_root` — see § 1), **when** the user runs `/abcd:memory ingest <path>`, **then** the resulting memory page(s) carry `source.licence: <spdx-id>` AND a registry entry exists at `.abcd/memory/.sources_index.json[<sha256>]` whose `consumers` map contains the `memory` key.
+- **Given** an external source with a declared SPDX licence visible to the detector (an in-file `SPDX-License-Identifier:` header; or a `LICENSE` file / package manifest when the ingest provides a `source_root` — see § 1), **when** the user runs `/abcd:library ingest <path>`, **then** the resulting memory page(s) carry `source.licence: <spdx-id>` AND a registry entry exists at `.abcd/memory/.sources_index.json[<sha256>]` whose `consumers` map contains the `memory` key.
 - **Given** an external source with no declared licence, **when** ingest runs, **then** the page carries `source.licence: unknown` (explicit) AND lint code `ML001` (spc-39) does NOT fire (unknown is acceptable; missing-field would be the violation).
-- **Given** the same source content ingested by both `/abcd:memory ingest` (as documentation) and `/abcd:loot` (as code), **when** both have run, **then** the registry has ONE entry with `ingest_count: 2` whose `consumers` map holds BOTH the `memory` and `loot` keys, each with its own `class`/`citation`/`ingested_at`/`pages`.
+- **Given** the same source content ingested by both `/abcd:library ingest` (as documentation) and `/abcd:loot` (as code), **when** both have run, **then** the registry has ONE entry with `ingest_count: 2` whose `consumers` map holds BOTH the `memory` and `loot` keys, each with its own `class`/`citation`/`ingested_at`/`pages`.
 - **Given** a gated payload (the lifeboat consumer's, per adr-28 — NOT the launch publish payload) includes a file with `citation.licence: GPL-3.0` AND the project is being published as MIT, **when** the gate runs, **then** it refuses with a licence-mismatch error AND lists the offending file + its citation. Override via `--accept-licence-risk` logs the override. (At launch the gate is future/inert; the launch dry-run renders no verdict of it.)
 - **Given** itd-36 ships with the substrate but itd-26 hasn't shipped, **when** the substrate code is exercised, **then** all citation/licence/registry behaviour works for memory ingest AND the substrate is verified to handle the loot-future case via mock invocations in test fixtures (substrate is separable; memory ingest doesn't depend on loot existing).
 
 ## 6. Composition with adjacent surfaces
 
 - **`internal/core/memory` adapter** ([`02-adapters.md`](02-adapters.md)) reads vendor session memory and writes session-memory-class pages. Does NOT consume the provenance substrate (session memory is internal, not external).
-- **`/abcd:memory ingest`** (this substrate's primary consumer) consumes for: licence detection on every external source, citation generation on every page, registry update on every ingest.
+- **`/abcd:library ingest`** (this substrate's primary consumer) consumes for: licence detection on every external source, citation generation on every page, registry update on every ingest.
 - **`/abcd:loot`** (the later consumer) consumes for: licence detection on vendored repos, citation generation in `.abcd/development/loot/<source>.md`, registry update on every vendor pass.
 - **`/abcd:disembark` (lifeboat)** is the gate's real consumer (adr-28): it reads the registry for restrictive-licence enforcement over the curated memory/provenance it publishes; does not write to it. At launch the gate is future/inert — `/abcd:launch` excludes `.abcd/` wholesale and is not the gate's consumer (the launch dry-run renders no verdict of it either).
 

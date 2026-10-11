@@ -105,10 +105,10 @@ func Bare(repoRoot string) (BareStatus, error) {
 		// sentence names the verb that heals it (every ingest reconciles the
 		// index and the register before it writes).
 		if stale["index.md"] {
-			status.Drift = append(status.Drift, "the index is stale — run `abcd memory ingest` to rebuild it")
+			status.Drift = append(status.Drift, "the index is stale — run `abcd library ingest` to rebuild it")
 		}
 		if stale["contradictions.md"] {
-			status.Drift = append(status.Drift, "the contradictions register is stale — run `abcd memory ingest` to rebuild it")
+			status.Drift = append(status.Drift, "the contradictions register is stale — run `abcd library ingest` to rebuild it")
 		}
 	}
 
@@ -167,18 +167,18 @@ func bareHeadroomLines(store *storeHandle) []string {
 
 	raw, err := store.read(coverageIndexName, maxRegistryBytes)
 	if err != nil {
-		return []string{header + " coverage index not built yet — run `abcd memory lint`"}
+		return []string{header + " coverage index not built yet — run `abcd library lint`"}
 	}
 	var stored map[string]any
 	if json.Unmarshal(raw, &stored) != nil {
-		return []string{header + " headroom unavailable — run `abcd memory lint`"}
+		return []string{header + " headroom unavailable — run `abcd library lint`"}
 	}
 	storedFP, okFP := stored["fingerprint"].(string)
 	sources, okSrc := stored["sources"].(map[string]any)
 	unavailable, okUn := stored["unavailable"].(map[string]any)
 	budgetBlock, okBud := stored["quotation_budget"].(map[string]any)
 	if !okFP || !okSrc || !okUn || !okBud {
-		return []string{header + " headroom unavailable — run `abcd memory lint`"}
+		return []string{header + " headroom unavailable — run `abcd library lint`"}
 	}
 
 	// Read-only crawl over the same typed pages the lint crawls.
@@ -199,7 +199,7 @@ func bareHeadroomLines(store *storeHandle) []string {
 	}
 	currentFP := computeFingerprint(pages, registry, referenced, budget)
 	if currentFP != storedFP {
-		return []string{header + " coverage index stale — run `abcd memory lint`"}
+		return []string{header + " coverage index stale — run `abcd library lint`"}
 	}
 	if len(sources) == 0 && len(unavailable) == 0 {
 		return []string{header + " no external-source coverage yet"}
@@ -226,12 +226,12 @@ func bareHeadroomLines(store *storeHandle) []string {
 	for _, sh := range srcKeys {
 		cov, ok := sources[sh].(map[string]any)
 		if !ok {
-			return []string{header + " headroom unavailable — run `abcd memory lint`"}
+			return []string{header + " headroom unavailable — run `abcd library lint`"}
 		}
 		covTotal, okT := num(cov["coverage_total"])
 		covUnamb, okU := num(cov["coverage_unambiguous"])
 		if !okT || !okU {
-			return []string{header + " headroom unavailable — run `abcd memory lint`"}
+			return []string{header + " headroom unavailable — run `abcd library lint`"}
 		}
 		lines = append(lines, fmt.Sprintf("  %s: warn %s, block %s",
 			short12(sh), fmtSignedPct(warnPct-covTotal), fmtSignedPct(blockPct-covUnamb)))

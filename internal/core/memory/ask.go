@@ -23,7 +23,7 @@ const AskTopN = 5
 
 var askFilterRe = regexp.MustCompile(`(?i)\b(class|domain):([A-Za-z0-9_-]+)`)
 
-const filedBy = "abcd memory ask --file-back"
+const filedBy = "abcd library ask --file-back"
 
 // AskCitation carries the per-source provenance facts of one matched page.
 // Fields are "" when absent (a legacy / backfilled page), never invented.
@@ -272,12 +272,12 @@ func queryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 }
 
 // AskReportHeading heads every ask render. It is the BINARY invocation, not the
-// `/abcd:memory ask` slash command, because this is core: the same bytes are
+// `/abcd:library ask` slash command, because this is core: the same bytes are
 // rendered whether the caller came through the plugin surface, the bare CLI, or
 // a later transport, and a heading naming one front door is a falsehood in the
-// other two (iss-44). A reader who ran `abcd memory ask` in a terminal must not
+// other two (iss-44). A reader who ran `abcd library ask` in a terminal must not
 // be told they invoked a plugin command they may not even have installed.
-const AskReportHeading = "abcd memory ask"
+const AskReportHeading = "abcd library ask"
 
 // citationTruncatedMarker ends a citation JSON cut at the page-value cap. The
 // cap cuts mid-JSON, so the cut is said out loud rather than left to read as

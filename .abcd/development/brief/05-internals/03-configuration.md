@@ -914,7 +914,7 @@ Two artefacts are absent from this table by construction rather than by exceptio
   user-scope and the lifeboat is out-of-tree output, so no gitignore rule applies
   to either under any visibility.
 
-¹ New projects use `.abcd/memory/`, the substrate `abcd memory` curates. The
+¹ New projects use `.abcd/memory/`, the substrate `abcd library` curates through its memory verbs. The
 root-level `memory/` is the legacy snapshot pattern some existing projects
 maintain by hand; abcd respects it if present and never writes to it.
 
@@ -942,7 +942,7 @@ clone carries, because it is out-of-tree output.
 
 **Memory locations to keep straight.** Curated memory exists at both scopes, and
 there is one non-abcd location alongside them: the repo-scope `.abcd/memory/` is
-the **primary** store, holding the curated summaries `abcd memory ingest` writes
+the **primary** store, holding the curated summaries `abcd library ingest` writes
 and the canonical input for principle distillation; the user-scope `~/.abcd.noindex/memory/` is a
 **later phase**, which will hold personal preferences and cross-project
 principles with no single repo home (nothing in the binary resolves it today);

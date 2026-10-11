@@ -1,9 +1,11 @@
 package cli
 
-// source.go is the front door onto internal/core/source — the personal sources
-// corpus and its provenance ledger (itd-76, spc-31).
+// source.go is the `library` front door (itd-2610090831227812): onto
+// internal/core/source — the personal sources corpus and its provenance ledger
+// (itd-76, spc-31) — and, through addMemorySubcommands in cli.go, onto the
+// checkout's memory store. The two stores stay unconnected under the one verb.
 //
-// Exit codes: 0 done; 1 cite-check found a confidential source in the text; 2 a
+// Exit codes for the corpus verbs: 0 done; 1 cite-check found a confidential source in the text; 2 a
 // refusal (a bad operand, a failed gate, a corpus that disagrees with itself);
 // 3 there is no corpus at the configured location — the distinct no-corpus code
 // every verb but `init` returns, so a script can tell "nothing to check against"
@@ -25,6 +27,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/core/memory"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -39,88 +42,141 @@ const maxScanBytes = 64 << 20
 func sourceCorpusDir(flag string) (string, error) {
 	if flag != "" {
 		if !strings.HasPrefix(flag, "/") {
-			return "", &exitError{Code: 2, Msg: "abcd source: --corpus must be an absolute path"}
+			return "", &exitError{Code: 2, Msg: "abcd library: --corpus must be an absolute path"}
 		}
 		return flag, nil
 	}
 	dir, err := source.DefaultDir()
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd source: " + err.Error()}
+		return "", &exitError{Code: 2, Msg: "abcd library: " + err.Error()}
 	}
 	return dir, nil
 }
 
 // sourceError maps a core error to the verb's exit code and one line. The
 // corpus directory keeps RedactHome, not fsutil.DisplayPath: it is the store the
-// person names with --corpus or creates with `source init`, and a base name
+// person names with --corpus or creates with `library init`, and a base name
 // would not say where to create or find it.
 func sourceError(verb, dir string, err error) error {
 	if errors.Is(err, source.ErrNoCorpus) {
-		return &exitError{Code: 3, Msg: fmt.Sprintf("abcd source %s: no sources corpus at %s — nothing read or written (create one with `abcd source init`)",
+		return &exitError{Code: 3, Msg: fmt.Sprintf("abcd library %s: no sources corpus at %s — nothing read or written (create one with `abcd library init`)",
 			verb, fsutil.RedactHome(dir))}
 	}
-	return &exitError{Code: 2, Msg: "abcd source " + verb + ": " + termsafe.Sanitize(scrubPaths(err))}
+	return &exitError{Code: 2, Msg: "abcd library " + verb + ": " + termsafe.Sanitize(scrubPaths(err))}
 }
 
-// newSourceCommand builds the `source` verb.
-func newSourceCommand(asJSON *bool) *cobra.Command {
+// libraryStatus is bare `library`'s envelope: each half, or the one line saying
+// why it could not be read and what would create it (spc-2610100613109045,
+// decision 8). A half that reads has no note; a half that does not is null.
+type libraryStatus struct {
+	Corpus     *source.StatusReport `json:"corpus"`
+	CorpusNote string               `json:"corpus_note,omitempty"`
+	Memory     *memory.BareStatus   `json:"memory"`
+	MemoryNote string               `json:"memory_note,omitempty"`
+}
+
+// newLibraryCommand builds the `library` verb: the user-level sources corpus and
+// the checkout's memory store, one person's command over two stores that stay
+// unconnected (itd-2610090831227812, P4). Every sub-verb keeps the name it had
+// under `source` or `memory` (decision 7).
+func newLibraryCommand(asJSON *bool) *cobra.Command {
 	var corpusFlag string
 	cmd := &cobra.Command{
-		Use: "source",
-		Long: "The personal sources corpus: documents you may consult, a CSL-JSON bibliography, and one\n" +
+		Use: "library",
+		Long: "Two stores under one verb, never connected to each other.\n\n" +
+			"The personal sources corpus: documents you may consult, a CSL-JSON bibliography, and one\n" +
 			"append-only influence ledger per repository, in a local-only git repository with no\n" +
 			"remote (" + abcdhome.Display("sources") + " by default; --corpus names another). The folder a source sits\n" +
-			"in — confidential/<key>/ or public/<key>/ — is its classification.\n\n" +
+			"in — confidential/<key>/ or public/<key>/ — is its classification. Its verbs are init,\n" +
+			"add, declassify, ledger, sync-banlist and cite-check.\n\n" +
 			"Consult freely, cite deliberately: confidential entries are projected into this\n" +
 			"repository's untracked private banlist (sync-banlist), which the committed pre-commit\n" +
 			"guard refreshes and enforces; cite-check clears text before it leaves the machine; and\n" +
 			"a ledger line becomes a public citation only when the source permits it AND a person\n" +
-			"flips the line (adr-41). No output names a confidential source except by key.\n\n" +
-			"Bare `abcd source` is read-only. Exit 3 when there is no corpus, on every verb but init.",
+			"flips the line (adr-41). No output names a confidential source except by key. Every\n" +
+			"corpus verb but init exits 3 when there is no corpus.\n\n" +
+			"The checkout's memory store (.abcd/memory/): cited pages distilled from a source with\n" +
+			"ingest, queried with ask, and health-checked with lint. Its verbs refuse outside a\n" +
+			"checkout.\n\n" +
+			"Bare `abcd library` is read-only and renders both: a store that cannot be read is one\n" +
+			"line naming what would create it, and the verb refuses only when neither can be read.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := sourceCorpusDir(corpusFlag)
 			if err != nil {
 				return err
 			}
-			st, err := source.Status(dir)
-			if err != nil {
-				return sourceError("status", dir, err)
+			var st libraryStatus
+			// The corpus half. A corpus that is absent or that disagrees with
+			// itself is one line; the reason is the core's, already free of a
+			// confidential string.
+			switch cs, cerr := source.Status(dir); {
+			case cerr == nil && cs.Present:
+				cs.Dir = fsutil.RedactHome(cs.Dir)
+				st.Corpus = &cs
+			case cerr == nil || errors.Is(cerr, source.ErrNoCorpus):
+				st.CorpusNote = fmt.Sprintf("no sources corpus at %s — create one with `abcd library init`", fsutil.RedactHome(dir))
+			default:
+				st.CorpusNote = "the sources corpus cannot be read: " + termsafe.Sanitize(scrubPaths(cerr))
 			}
-			if !st.Present {
-				return sourceError("status", dir, source.ErrNoCorpus)
+			// The memory half. Outside a checkout there is no store to read.
+			if repoRoot, merr := memoryStoreRoot(cmd); merr != nil {
+				st.MemoryNote = "no memory store here: " + strings.TrimPrefix(merr.Error(), "abcd library: ")
+			} else if ms, merr := memory.Bare(repoRoot); merr != nil {
+				st.MemoryNote = "the memory store cannot be read: " + termsafe.Sanitize(scrubPaths(merr))
+			} else {
+				st.Memory = &ms
 			}
-			st.Dir = fsutil.RedactHome(st.Dir)
-			return render(cmd.OutOrStdout(), *asJSON, st, func(w io.Writer) { renderSourceStatus(w, st) })
+			if st.Corpus == nil && st.Memory == nil {
+				return &exitError{Code: 2, Msg: "abcd library: neither store can be read — " + st.CorpusNote + "; " + st.MemoryNote}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, st, func(w io.Writer) { renderLibraryStatus(w, st) })
 		},
 	}
-	cmd.PersistentFlags().StringVar(&corpusFlag, "corpus", "", "the corpus directory (absolute; default "+abcdhome.Display("sources")+")")
+	cmd.PersistentFlags().StringVar(&corpusFlag, "corpus", "", "the sources corpus directory (absolute; default "+abcdhome.Display("sources")+")")
 	cmd.AddCommand(newSourceInitCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceAddCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceDeclassifyCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceLedgerCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceSyncBanlistCommand(asJSON, &corpusFlag))
 	cmd.AddCommand(newSourceCiteCheckCommand(asJSON, &corpusFlag))
+	addMemorySubcommands(cmd, asJSON)
 	return cmd
 }
 
+// renderLibraryStatus is bare `library`'s text: the corpus half, then the
+// memory half, each either rendered or one line.
+func renderLibraryStatus(w io.Writer, st libraryStatus) {
+	fmt.Fprintln(w, "abcd library")
+	if st.Corpus != nil {
+		renderSourceStatus(w, *st.Corpus)
+	} else {
+		fmt.Fprintf(w, "  corpus: %s\n", st.CorpusNote)
+	}
+	if st.Memory != nil {
+		renderMemoryStatus(w, *st.Memory)
+	} else {
+		fmt.Fprintf(w, "  memory: %s\n", st.MemoryNote)
+	}
+}
+
 func renderSourceStatus(w io.Writer, st source.StatusReport) {
-	fmt.Fprintf(w, "abcd source — corpus at %s\n", st.Dir)
-	fmt.Fprintf(w, "  sources:  %d confidential, %d public\n", st.Confidential, st.Public)
+	fmt.Fprintf(w, "  corpus: %s\n", st.Dir)
+	fmt.Fprintf(w, "    sources:  %d confidential, %d public\n", st.Confidential, st.Public)
 	if len(st.Ledgers) == 0 {
-		fmt.Fprintln(w, "  ledgers:  none")
+		fmt.Fprintln(w, "    ledgers:  none")
 	}
 	for _, l := range st.Ledgers {
-		fmt.Fprintf(w, "  ledger:   %s (%d line%s)\n", l.Repo, l.Lines, pluralS(l.Lines))
+		fmt.Fprintf(w, "    ledger:   %s (%d line%s)\n", l.Repo, l.Lines, pluralS(l.Lines))
 	}
 	if len(st.Problems) == 0 {
-		fmt.Fprintln(w, "  problems: none")
+		fmt.Fprintln(w, "    problems: none")
 	}
 	for _, p := range st.Problems {
-		fmt.Fprintf(w, "  problem:  %s — %s\n", termsafe.Sanitize(p.Key), termsafe.Sanitize(p.Reason))
+		fmt.Fprintf(w, "    problem:  %s — %s\n", termsafe.Sanitize(p.Key), termsafe.Sanitize(p.Reason))
 	}
 	if st.Remotes > 0 {
-		fmt.Fprintf(w, "  WARNING:  the corpus repository has %d remote(s); documents and ledgers never leave this machine (adr-41) — remove it\n", st.Remotes)
+		fmt.Fprintf(w, "    WARNING:  the corpus repository has %d remote(s); documents and ledgers never leave this machine (adr-41) — remove it\n", st.Remotes)
 	}
 }
 
@@ -142,7 +198,7 @@ func newSourceInitCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			}
 			st.Dir = fsutil.RedactHome(st.Dir)
 			return render(cmd.OutOrStdout(), *asJSON, st, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd source init — corpus created at %s (a git repository with no remote)\n", st.Dir)
+				fmt.Fprintf(w, "abcd library init — corpus created at %s (a git repository with no remote)\n", st.Dir)
 			})
 		},
 	}
@@ -193,7 +249,7 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			class := ""
 			switch {
 			case confidential && public:
-				return &exitError{Code: 2, Msg: "abcd source add: --confidential and --public are exclusive"}
+				return &exitError{Code: 2, Msg: "abcd library add: --confidential and --public are exclusive"}
 			case confidential:
 				class = source.ClassConfidential
 			case public:
@@ -210,7 +266,7 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			if meta != "" {
 				m, err := readSourceMeta(cmd, meta)
 				if err != nil {
-					return &exitError{Code: 2, Msg: "abcd source add: " + err.Error()}
+					return &exitError{Code: 2, Msg: "abcd library add: " + err.Error()}
 				}
 				if m.Title != "" {
 					req.Title = m.Title
@@ -224,12 +280,12 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 				return sourceError("add", dir, err)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd source add — %s registered %s (%s), committed in the corpus\n", res.Key, res.Class, res.Permission)
+				fmt.Fprintf(w, "abcd library add — %s registered %s (%s), committed in the corpus\n", res.Key, res.Class, res.Permission)
 				for _, f := range res.Files {
 					fmt.Fprintf(w, "  %s\n", f)
 				}
 				if res.Class == source.ClassConfidential {
-					fmt.Fprintln(w, "  next: abcd source sync-banlist, in every repository you work in")
+					fmt.Fprintln(w, "  next: abcd library sync-banlist, in every repository you work in")
 				}
 			})
 		},
@@ -306,8 +362,8 @@ func newSourceDeclassifyCommand(asJSON *bool, corpusFlag *string) *cobra.Command
 				return sourceError("declassify", dir, err)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd source declassify — %s moved to %s (%s), committed in the corpus\n", res.Key, res.Folder, res.Permission)
-				fmt.Fprintln(w, "  next: abcd source sync-banlist, in every repository you work in")
+				fmt.Fprintf(w, "abcd library declassify — %s moved to %s (%s), committed in the corpus\n", res.Key, res.Folder, res.Permission)
+				fmt.Fprintln(w, "  next: abcd library sync-banlist, in every repository you work in")
 			})
 		},
 	}
@@ -328,11 +384,11 @@ func ledgerRepo(flag string) (string, error) {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, "the ledger's repository")
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd source ledger: " + err.Error() + " (or name the ledger with --repo)"}
+		return "", &exitError{Code: 2, Msg: "abcd library ledger: " + err.Error() + " (or name the ledger with --repo)"}
 	}
 	sha := gitutil.RootCommit(root)
 	if !gitutil.IsFullSHA(sha) {
-		return "", &exitError{Code: 2, Msg: "abcd source ledger: this checkout has no commit to name its ledger by; name it with --repo"}
+		return "", &exitError{Code: 2, Msg: "abcd library ledger: this checkout has no commit to name its ledger by; name it with --repo"}
 	}
 	return sha[:12], nil
 }
@@ -375,7 +431,7 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 					lines = []source.AppendResult{}
 				}
 				return render(cmd.OutOrStdout(), *asJSON, lines, func(w io.Writer) {
-					fmt.Fprintf(w, "abcd source ledger — %s, %d line%s\n", r, len(lines), pluralS(len(lines)))
+					fmt.Fprintf(w, "abcd library ledger — %s, %d line%s\n", r, len(lines), pluralS(len(lines)))
 					for _, l := range lines {
 						mark := ""
 						switch {
@@ -394,7 +450,7 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 					return sourceError("ledger", dir, err)
 				}
 				return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-					fmt.Fprintf(w, "abcd source ledger — line %d cites line %d publicly (%s), committed in the corpus\n", res.Line, flip, res.Record.SourceKey)
+					fmt.Fprintf(w, "abcd library ledger — line %d cites line %d publicly (%s), committed in the corpus\n", res.Line, flip, res.Record.SourceKey)
 				})
 			}
 			res, err := source.Append(source.AppendRequest{Corpus: dir, Repo: r, DecisionRef: decision, Claim: claim,
@@ -403,9 +459,9 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 				return sourceError("ledger", dir, err)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd source ledger — line %d: %s → %s (%s), committed in the corpus\n",
+				fmt.Fprintf(w, "abcd library ledger — line %d: %s → %s (%s), committed in the corpus\n",
 					res.Line, res.Record.SourceKey, termsafe.Sanitize(res.Record.DecisionRef), res.Record.Influence)
-				fmt.Fprintln(w, "  cited_publicly: false — citing it is the person's call (abcd source ledger --flip)")
+				fmt.Fprintln(w, "  cited_publicly: false — citing it is the person's call (abcd library ledger --flip)")
 			})
 		},
 	}
@@ -449,21 +505,21 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 			}
 			root, err := gitutil.CheckoutRoot(cwd, "the private banlist")
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd source sync-banlist: " + err.Error() + " (nothing written)"}
+				return &exitError{Code: 2, Msg: "abcd library sync-banlist: " + err.Error() + " (nothing written)"}
 			}
 			res, err := source.SyncBanlist(dir, root, source.SyncOptions{Refresh: refresh})
 			if refresh && errors.Is(err, source.ErrNoCorpus) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: no sources corpus at %s — generated banlist block not refreshed (skipped)\n",
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd library sync-banlist: no sources corpus at %s — generated banlist block not refreshed (skipped)\n",
 					fsutil.RedactHome(dir))
 				return nil
 			}
 			if refresh && errors.Is(err, banlist.ErrNoStore) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: no private store at %s — the refresh never creates one; run `abcd source sync-banlist` to opt this repository in (skipped)\n",
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd library sync-banlist: no private store at %s — the refresh never creates one; run `abcd library sync-banlist` to opt this repository in (skipped)\n",
 					banlist.PrivateRelPath)
 				return nil
 			}
 			if refresh && errors.Is(err, banlist.ErrLegacyStore) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: %s predates the keyed format — migrate it once with `abcd banlist migrate` (not refreshed)\n",
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd library sync-banlist: %s predates the keyed format — migrate it once with `abcd banlist migrate` (not refreshed)\n",
 					banlist.PrivateRelPath)
 				return nil
 			}
@@ -478,7 +534,7 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 				case res.Block.Changed:
 					state = "rewrote the block"
 				}
-				fmt.Fprintf(w, "abcd source sync-banlist — %d confidential source%s, %d pattern%s in %s (%s)\n",
+				fmt.Fprintf(w, "abcd library sync-banlist — %d confidential source%s, %d pattern%s in %s (%s)\n",
 					res.Sources, pluralS(res.Sources), res.Block.Entries, pluralS(res.Block.Entries), res.Block.Path, state)
 			})
 		},
@@ -512,7 +568,7 @@ func newSourceCiteCheckCommand(asJSON *bool, corpusFlag *string) *cobra.Command 
 				text, err = fsutil.ReadGuarded(args[0], maxScanBytes)
 			}
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd source cite-check: the text cannot be read (absent, oversize, or not a regular file)"}
+				return &exitError{Code: 2, Msg: "abcd library cite-check: the text cannot be read (absent, oversize, or not a regular file)"}
 			}
 			rep, err := source.CiteCheck(dir, text)
 			if err != nil {
@@ -520,10 +576,10 @@ func newSourceCiteCheckCommand(asJSON *bool, corpusFlag *string) *cobra.Command 
 			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
 				if rep.Clean() {
-					fmt.Fprintf(w, "abcd source cite-check — clean against %d confidential source%s\n", rep.Sources, pluralS(rep.Sources))
+					fmt.Fprintf(w, "abcd library cite-check — clean against %d confidential source%s\n", rep.Sources, pluralS(rep.Sources))
 					return
 				}
-				fmt.Fprintf(w, "abcd source cite-check — %d finding%s (the matched text is withheld)\n", len(rep.Findings), pluralS(len(rep.Findings)))
+				fmt.Fprintf(w, "abcd library cite-check — %d finding%s (the matched text is withheld)\n", len(rep.Findings), pluralS(len(rep.Findings)))
 				for _, f := range rep.Findings {
 					fmt.Fprintf(w, "  %s  %s  line %d, at byte %d of the text\n", f.Source, f.Field, f.Line, f.Offset)
 				}
@@ -538,18 +594,24 @@ func newSourceCiteCheckCommand(asJSON *bool, corpusFlag *string) *cobra.Command 
 	}
 }
 
+// memorySubVerbs are library's sub-verbs over the memory store, which handles no
+// confidential corpus string, so their flag errors keep cobra's wording.
+var memorySubVerbs = map[string]bool{"ingest": true, "ask": true, "lint": true}
+
 // applySourceFlagErrors withholds the offending token from a flag-parse failure on
-// the source verbs, as the banlist verbs do: an argument read as a flag may be a
-// confidential title or alias, and cobra's own message quotes it. It runs after the
-// tree-wide usage tagging, which would otherwise replace it.
+// bare library and its corpus verbs, as the banlist verbs do: an argument read as a
+// flag may be a confidential title or alias, and cobra's own message quotes it. It
+// runs after the tree-wide usage tagging, which would otherwise replace it.
 func applySourceFlagErrors(root *cobra.Command) {
 	for _, cmd := range root.Commands() {
-		if cmd.Name() != "source" {
+		if cmd.Name() != "library" {
 			continue
 		}
 		cmd.SetFlagErrorFunc(sourceFlagError)
 		for _, sub := range cmd.Commands() {
-			sub.SetFlagErrorFunc(sourceFlagError)
+			if !memorySubVerbs[sub.Name()] {
+				sub.SetFlagErrorFunc(sourceFlagError)
+			}
 		}
 	}
 }
