@@ -103,7 +103,7 @@ aspiration of the 2026-10-09 menu ruling, met but not gated.
 ## Summary
 
 This spec delivers
-[itd-2610090831227812](../../intents/planned/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md):
+[itd-2610090831227812](../../intents/shipped/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md):
 a person who types `/abcd:` sees the fifteen commands people use, and the
 fifteen only agents run are hidden but keep their names. `abcd --help` lists
 the same commands. Four commands about sources become `library`, and three
@@ -146,7 +146,7 @@ intent lists them:
 | A5, a test fails on a page whose block and key disagree | Step 1, `TestCommandPagesMatchTheMenu`. |
 | A6, the table names every page, and only merged pages leave | This section; the steps delete only the six pages above. |
 | A7, before and after captures attached | Step 8's live session takes both: the before capture from step 1's base commit, 314e9c3ce, and the after capture at the merged tip. |
-| A8, the docs set the library beside memory notes | Waits on open question 12, for the product thinker. Step 7 builds everything else, and the close waits on the answer. |
+| A8, the docs set the library beside memory notes | Moved to itd-2610091918433290 by the product thinker's answer to open question 12 (2026-10-11, "Wait for memory notes"); it is no longer this intent's criterion. |
 | A9, the board shows the version and the retired `/abcd:version` is gone | Step 2. |
 | A10, launch previews the changelog and `changelog` is gone | Step 3. |
 | A11, `ahoy install` does what prepare-this-repo did | Step 4. |
@@ -584,7 +584,17 @@ it:
    - packages: this spec (the BEFORE and AFTER captures under Live captures), .abcd/development/intents (the intent moves to shipped by the close), .abcd/work/issues (iss-2610090831317531 resolved, if it is still open)
    - tests: the BEFORE capture in a live host session at a checkout of 314e9c3ce, step 1's base (what `/abcd:` lists, and what typing `/abcd:scribe` answers); the AFTER capture at the merged tip: what `/abcd:` lists (the fifteen, A1); typing `/abcd:guard` in full gets the host's refusal (A4); an agent asked in plain words runs `/abcd:guard` and it behaves as before (A2); a docs review recorded for HEAD with go run ./cmd/abcd docs fidelity record; then go run ./cmd/abcd spec close spc-2610100613109045 with a `Delivers: itd-2610090831227812` trailer (the intent already declares `impact: breaking`, so no --impact is passed)
    - the live session is the only evidence for A1, A2 and A4 at the host; script output does not stand in for it
-   - waits on the product thinker's answer to open question 12 and the A8 work it decides
+   - open question 12 answered 2026-10-11: A8 moved to itd-2610091918433290, so the close carries no A8 work
+
+## Live captures
+
+Taken 2026-10-11 in live host sessions (Claude Code v2.1.296); the screenshots are kept in the coordinating checkout's local tier.
+
+- **Before** (the installed published plugin, abcd 0.13.4, released before step 1): typing `/abcd:` opened the host's command list, and the agents' command `/abcd:scribe` was listed to the person ("Assemble a ledger scribe's context and ingest what it transcribed"); typing `/abcd:scribe` in full ran it and loaded its page.
+- **After** (a session started with `claude --plugin-dir .` from a detached checkout of main at 3d171421a, steps 1 to 7 merged):
+  - A4: typing `/abcd:guard` in full was refused by the host: "This skill can only be invoked by Claude, not directly by users. Ask Claude to use the "abcd:guard" skill for you."
+  - A2: asked in plain words to run abcd's guard check on `git status`, the agent loaded the guard and ran it ("The guard returned allow for git status, exit code 0").
+  - A1: `/abcd:vers` matched no command (no retired page, and no installed 0.13.4 loaded alongside); `/abcd:libr` offered `/abcd:library` with its use-when text; `/abcd:scr` offered `/abcd:capture` and `/abcd:reading` and not `/abcd:scribe`. A hidden page is absent from what the person browses and from partial matches. The host does show a hidden command once its full name is typed (`/abcd:guard` appeared as the single suggestion), and Enter is then refused, as A4 records.
 
 ## Footprint
 
@@ -659,18 +669,9 @@ day. Each ruling is folded into the design and the step it affects.
   folds into `ahoy install`, a person's command; and version keeps its current
   visibility on the menu until step 2 retires it.
 
+- 2026-10-11, the product thinker: open question 12 is answered "Wait for memory notes". The docs comparison of the library and memory notes (A8) moves to itd-2610091918433290, which carries it as its own criterion, because memory notes are a draft with nothing built and the docs describe only what ships.
+
 ## Open Questions
 
-12. **Which docs page carries the library-and-memory comparison, and how it
-    speaks of memory notes** (step 7's A8 part, and the close in step 8). This
-    one stays open for the product thinker. Accepted criterion A8 asks the
-    user-facing docs to set the library beside memory notes, but memory notes
-    are a draft intent with nothing built, and the docs describe only what
-    ships, in the present tense. Step 7 builds everything except A8, and the
-    close waits on this answer.
-    - (a) A new `docs/explanation/` page, which says memory notes are coming
-      and names no command for them until they ship.
-    - (b) A section of `docs/reference/terminology.md`, worded the same way.
-    - (c) Wait: ship the library half now, and add the comparison when
-      itd-2610091918433290 ships memory notes (A8 would then move to that
-      intent).
+None open. Open question 12 was answered on 2026-10-11 (Decisions, product thinker).
+

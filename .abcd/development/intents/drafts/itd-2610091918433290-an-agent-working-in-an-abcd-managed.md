@@ -49,3 +49,4 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 ## Decisions
 
 - 2026-10-09: the product thinker chose to manage memory notes through abcd's own rules loader rather than a separate recall path or the host's memory files (answer: "yes, file it as A"), after the verb-split interview freed the name `memory` by merging the sources and memory commands into `library`; `/abcd:memory` is an agent's command.
+- 2026-10-11: the product thinker moved the docs comparison of the library and memory notes here from the verb split (itd-2610090831227812, its spec's open question 12): this intent's acceptance criterion carries it alone, written when memory notes ship.

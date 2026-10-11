@@ -11,7 +11,7 @@ memory page into the corpus (spc-2610100613109045, decision 10).
 The command merges the two that came before it, `source` and `memory`, under
 the product thinker's ruling of 2026-10-09 that the sources commands become one
 person's command named `library`
-([itd-2610090831227812](../../intents/planned/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md)).
+([itd-2610090831227812](../../intents/shipped/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md)).
 Under [adr-40](../../decisions/adrs/0040-review-audit-lint-are-three-verbs.md) neither old name survives as
 an alias. Every sub-verb kept its name (decision 7), so the memory store's
 ingest, which distils a source into pages, sits beside the corpus's add, which
@@ -483,7 +483,7 @@ meaningful.
 - [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md): provenance and licence subsystem
 - Consuming intents: [itd-76](../../intents/shipped/itd-76-source-provenance-ledger.md) (the corpus),
   [itd-36](../../intents/shipped/itd-36-memory-unification.md) (the memory store), and
-  [itd-2610090831227812](../../intents/planned/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md) (the merge)
+  [itd-2610090831227812](../../intents/shipped/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md) (the merge)
 - [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory): pattern source for the memory store
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
