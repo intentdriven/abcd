@@ -54,13 +54,15 @@ flags.
   resulting gaps. Through the plugin page it is also how a repository is
   prepared to abcd's working conventions, a workflow the host agent runs around
   that binary step (below).
-- **Uninstall** is reversible removal: the marker block, abcd's own `PATH`
-  entry where abcd owns it, and the provenance record that proves that
-  ownership. It leaves `.abcd/` entirely intact, never mutates the hook
-  manifest, and a later install re-installs cleanly. It finds the entry by
-  scanning `PATH`, so an entry that was installed into a directory `PATH` does
-  not carry is removed by naming that directory again, the same bin directory
-  the install was given.
+- **Uninstall** is reversible removal: the marker block, abcd's README parts
+  (and a README.md abcd created, once nothing but blank lines remains), abcd's
+  own `PATH` entry where abcd owns it, and the provenance record that proves
+  that ownership. It leaves `.abcd/` intact but for clearing `readme.created`
+  from `.abcd/config.json` once the README.md that record vouches for is gone,
+  never mutates the hook manifest, and a later install re-installs cleanly.
+  It finds the entry by scanning `PATH`, so an entry that was installed into a
+  directory `PATH` does not carry is removed by naming that directory again,
+  the same bin directory the install was given.
 - **The dry run** renders the detection envelope as JSON and mutates nothing.
 - **The doctor** runs the full detection pass plus a read-only audit pass. Its
   distinct contribution is the audit, and its distinct value in the text render

@@ -514,3 +514,97 @@ func TestReadmeOfferKeepsPipedAnswerOrder(t *testing.T) {
 		t.Errorf("optional_skipped = %v, want it to name %s", res.OptionalSkipped, ReadmeOfferGapID)
 	}
 }
+
+// TestReadmeCreatedRecordDiesWithTheFile: readme.created vouches for the one
+// README.md abcd made, so a run that finds README.md gone clears it, and a
+// later README.md, which is the owner's, is never deleted on its word. The
+// reviewer's probe: abcd creates README.md, the owner answers none (the file
+// is left blank, abcd's own), deletes it, and later writes a placeholder
+// holding a newline; uninstall keeps the placeholder, provided an abcd run
+// saw the file gone in between, an install here, an uninstall below.
+func TestReadmeCreatedRecordDiesWithTheFile(t *testing.T) {
+	links := readmePart("links", "- [Changelog](CHANGELOG.md)")
+	createThenNone := func(t *testing.T) (string, string) {
+		t.Helper()
+		setupHermetic(t)
+		repo := installedRepo(t)
+		writeFixture(t, repo, "CHANGELOG.md", "# Changelog\n", 0o644)
+		o := installOpts()
+		o.ReadmeParts = "links"
+		readmeInstall(t, repo, o)
+		path := filepath.Join(repo, "README.md")
+		if got := readReadme(t, path); got != links+"\n" || storedReadme(t, repo)["created"] != true {
+			t.Fatalf("precondition: README.md = %q, readme = %v", got, storedReadme(t, repo))
+		}
+		o.ReadmeParts = "none"
+		readmeInstall(t, repo, o)
+		if got := readReadme(t, path); strings.TrimSpace(got) != "" || storedReadme(t, repo)["created"] != true {
+			t.Fatalf("precondition: after none, README.md = %q, readme = %v", got, storedReadme(t, repo))
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		return repo, path
+	}
+
+	t.Run("an install that finds README.md gone clears the record", func(t *testing.T) {
+		repo, path := createThenNone(t)
+		readmeInstall(t, repo, installOpts())
+		if _, ok := storedReadme(t, repo)["created"]; ok {
+			t.Fatalf("readme.created outlived the file after an install: %v", storedReadme(t, repo))
+		}
+		writeFixture(t, repo, "README.md", "\n", 0o644)
+		receipt, err := Uninstall(repo, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("the owner's placeholder README.md was deleted: %v (receipt %+v)", err, receipt.Readme)
+		}
+		if string(got) != "\n" || receipt.Readme.Deleted {
+			t.Errorf("README.md = %q, receipt %+v; want the placeholder kept", got, receipt.Readme)
+		}
+	})
+
+	t.Run("an uninstall that finds README.md gone clears the record", func(t *testing.T) {
+		repo, _ := createThenNone(t)
+		receipt, err := Uninstall(repo, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if receipt.Readme.Note != "no README.md" {
+			t.Errorf("receipt note = %q", receipt.Readme.Note)
+		}
+		if _, ok := storedReadme(t, repo)["created"]; ok {
+			t.Errorf("readme.created outlived the file after an uninstall: %v", storedReadme(t, repo))
+		}
+	})
+}
+
+// TestUninstallSaysWhenTheCreatedRecordStands: uninstall deletes a README.md
+// abcd made and emptied, then clears readme.created; a record it could not
+// clear is said in the receipt's note, never dropped.
+func TestUninstallSaysWhenTheCreatedRecordStands(t *testing.T) {
+	setupHermetic(t)
+	repo := installedRepo(t)
+	writeFixture(t, repo, "CHANGELOG.md", "# Changelog\n", 0o644)
+	o := installOpts()
+	o.ReadmeParts = "links"
+	readmeInstall(t, repo, o)
+	dir := filepath.Dir(configPath(repo))
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	receipt, err := Uninstall(repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Readme.Deleted {
+		t.Fatalf("receipt = %+v, want README.md deleted", receipt.Readme)
+	}
+	if want := "README.md, which abcd created, deleted; the record that abcd created it was not cleared"; !strings.Contains(receipt.Readme.Note, want) {
+		t.Errorf("receipt note = %q, want it to say %q", receipt.Readme.Note, want)
+	}
+}

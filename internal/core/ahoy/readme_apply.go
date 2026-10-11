@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -87,7 +88,6 @@ type readmeAnswer struct {
 	storedBad string // why a stored readme.parts cannot be read; "" when it can
 	flag      []string
 	flagSet   bool
-	created   bool
 	vis       string
 }
 
@@ -109,7 +109,6 @@ func loadReadmeAnswer(cwd, flag string) (readmeAnswer, error) {
 	}
 	sub := subMap(cfg, "readme")
 	a.vis, _ = stringVal(subMap(cfg, "repo"), "visibility")
-	a.created, _ = boolVal(sub, "created")
 	v, ok := sub["parts"]
 	if !ok {
 		return a, nil
@@ -196,14 +195,15 @@ func readmeDerive(cwd string, parts []string, vis string) ([]readmeDerived, []re
 
 // readmeWouldChange reports whether setup has README work to do in an
 // otherwise current repository: a --readme-parts value that differs from the
-// stored answer, or a chosen part that would be written, rewritten or removed.
+// stored answer, a readme.created whose file is gone, or a chosen part that
+// would be written, rewritten or removed.
 // It plans without writing.
 func readmeWouldChange(cwd string, opts InstallOptions) bool {
 	ans, err := loadReadmeAnswer(cwd, opts.ReadmeParts)
 	if err != nil {
 		return false
 	}
-	if ans.flagChanges() {
+	if ans.flagChanges() || readmeRecordOutlivesFile(cwd) {
 		return true
 	}
 	parts, ok := ans.parts()
@@ -277,6 +277,7 @@ func (a *applyCtx) stepReadme() {
 		a.refuseMalformedConfig(err)
 		return
 	}
+	a.forgetGoneReadme()
 	if ans.flagChanges() && !a.storeReadmeParts(ans) {
 		return
 	}
@@ -362,6 +363,35 @@ func (a *applyCtx) recordReadmeCreated(created bool) {
 	}
 }
 
+// forgetGoneReadme clears readme.created when README.md is gone. The record
+// vouches for the one file abcd made; a README.md written after it is the
+// owner's, which uninstall must never delete on its word.
+func (a *applyCtx) forgetGoneReadme() {
+	if !readmeRecordOutlivesFile(a.cwd) {
+		return
+	}
+	if err := setReadmeCreated(a.cwd, false); err != nil {
+		a.refuse("README.md, which abcd created, is gone, but " + readmeRecordStands(err) + ", so uninstall would delete a blank README.md written in its place")
+		return
+	}
+	a.note(writeSettings, configPath(a.cwd))
+}
+
+// readmeRecordOutlivesFile reports whether readme.created is recorded while
+// README.md is gone.
+func readmeRecordOutlivesFile(cwd string) bool {
+	if !readmeCreatedByAbcd(cwd) {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(cwd, readmeFileName))
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// readmeRecordStands says that readme.created could not be cleared, and why.
+func readmeRecordStands(err error) string {
+	return "the record that abcd created it was not cleared: " + errText(err)
+}
+
 // setReadmeCreated sets readme.created, or removes it, under the config's
 // lock.
 func setReadmeCreated(cwd string, created bool) error {
@@ -406,12 +436,19 @@ type ReadmePartLeft struct {
 // whatever the stored answer says, leaves and names the others, and deletes a
 // README.md abcd created once nothing but blank lines remains. A duplicated
 // or unclosed mark leaves the file untouched and names the line; an owner's
-// README.md holding no part is never written.
+// README.md holding no part is never written. Once the file abcd created is
+// gone, deleted here or found gone, readme.created is cleared from
+// .abcd/config.json, and a record that cannot be cleared is said in the note.
 func uninstallReadme(cwd string) ReadmeReceipt {
 	r := ReadmeReceipt{Removed: []string{}, Left: []ReadmePartLeft{}}
 	path := filepath.Join(cwd, readmeFileName)
 	if _, err := os.Lstat(path); os.IsNotExist(err) {
 		r.Note = "no README.md"
+		if readmeCreatedByAbcd(cwd) {
+			if err := setReadmeCreated(cwd, false); err != nil {
+				r.Note += "; " + readmeRecordStands(err)
+			}
+		}
 		return r
 	}
 	res, err := removeReadmeParts(path)
@@ -450,7 +487,9 @@ func uninstallReadme(cwd string) ReadmeReceipt {
 			words = append(words, "README.md, which abcd created, deleted")
 			// The record vouched for a file that is gone; left, it would vouch
 			// for the next README.md, which is the owner's.
-			_ = setReadmeCreated(cwd, false)
+			if err := setReadmeCreated(cwd, false); err != nil {
+				words = append(words, readmeRecordStands(err))
+			}
 		}
 	}
 	if len(words) == 0 {

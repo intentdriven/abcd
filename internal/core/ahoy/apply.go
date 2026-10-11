@@ -1870,10 +1870,13 @@ func (a *applyCtx) stepVersionStamp() {
 	a.note(writeSetupRecord, configPath(a.cwd))
 }
 
-// Uninstall removes the marker block and the owned PATH entry (the spc-35 owned
-// copy plus its provenance record, or a legacy pinned symlink) only. It never
-// mutates hooks.json or the .abcd/ namespace, and leaves the download cache to
-// the harness's own uninstall.
+// Uninstall removes the marker block, abcd's README parts, abcd's status line
+// (handed back to the command it replaced) and the owned PATH entry (the
+// spc-35 owned copy plus its provenance record, or a legacy pinned symlink)
+// only. It never mutates hooks.json, and leaves the download cache to the
+// harness's own uninstall. Its one write in the .abcd/ namespace is
+// clearing readme.created from .abcd/config.json once the README.md that
+// record vouches for is gone (uninstallReadme); nothing else there is touched.
 //
 // binDir names the directory to look in, for the one case detection cannot
 // derive: an install placed by `--bin-dir` in a directory that is not on PATH is
