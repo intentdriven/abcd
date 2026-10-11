@@ -201,6 +201,11 @@ func TestSpellingSetsStayLinear(t *testing.T) {
 		{"payload defaults", func(n int) string {
 			return `sh -c "rm -rf ` + strings.Repeat("${A:-/}${B:-~} x ", n/18) + `"`
 		}},
+		// A site that can print nothing is written out for its lead too
+		// (emptyLead), which must stay inside the same bar.
+		{"payload alternatives", func(n int) string {
+			return `sh -c "rm -rf ` + strings.Repeat("${A:+/}${B:+~} x ", n/18) + `"`
+		}},
 	}
 	for _, s := range shapes {
 		t.Run(s.name, func(t *testing.T) {

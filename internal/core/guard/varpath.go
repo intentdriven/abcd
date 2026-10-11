@@ -255,6 +255,41 @@ type leadSource struct {
 	sites []varSite
 }
 
+// emptyLead is how leadSpelling writes the empty text a site can print: a
+// reference that can be empty (`$_` is, at the top of a fresh shell,
+// emptyable), so the string's re-read leads with a variable where the
+// enclosing shell's expansion printed nothing (`sh -c "rm -rf ${X:+x}/y"`
+// hands the string `rm -rf /y`, iss-2610110025455728). Only varLead reads
+// it; the arg_values compare reads the empty text.
+const emptyLead = "${_}"
+
+// emptyOpensPath reports whether a site of sites can print the empty text
+// where a `/` follows it, which leadSpelling writes as emptyLead. It only
+// spares a string the second writing out, since the string's re-read decides
+// the lead, so it reads loosely: past a quote the string's shell takes off
+// (`bash -c "rm -rf \"${X:+x}\"/y"`), and whatever precedes the site. A site
+// that prints nothing where no `/` follows (`rm -f ${X:+--force} /tmp/a`,
+// `${X:+x}${Y:+z}/y` is read at Y) is not, so a string holding only such
+// sites is not written out again.
+func emptyOpensPath(word []byte, sites []varSite) bool {
+	for k, s := range sites {
+		if s.transform || capped(s.texts) || !slices.Contains(s.texts, "") {
+			continue
+		}
+		p := s.at + max(s.width, 1)
+		for p < len(word) && !(k+1 < len(sites) && sites[k+1].at == p) {
+			if c := word[p]; c != '"' && c != '\'' && c != '\\' && c != unknownMark {
+				break
+			}
+			p++
+		}
+		if p < len(word) && word[p] == '/' {
+			return true
+		}
+	}
+	return false
+}
+
 // spellsGuards reports whether leadSpelling would write any of sites
 // otherwise than spellWritten does.
 func spellsGuards(sites []varSite) bool {
@@ -314,23 +349,32 @@ func emptiedInside(t string, guarded []string) bool {
 // that can be empty, so `sh -c "rm -rf ${X:?}/y"` would read as the very
 // shape its `:?` rules out (iss-2610100938485695); here it is written as
 // `${X:?}`, which the re-read reads as guarded, as the enclosing shell did.
-// A site that can also print the empty text keeps its texts: the string
-// written out with that text holds no variable to lead with, and only the
-// `${X}` spelling still says the site can leave the `/` first (`${X:-}`).
+// A site that can also print the empty text keeps its `${X}`, and writes
+// the empty text as emptyLead: the string written out with nothing there
+// holds no variable to lead with, although the enclosing shell's expansion
+// leaves the `/` first (`${X:-}`, `${X:+x}`).
 func leadSpelling(src leadSource) []string {
 	lead := slices.Clone(src.sites)
 	for k, s := range src.sites {
-		if !respelled(s) {
-			continue
-		}
-		texts := make([]string, len(s.texts))
-		for n, t := range s.texts {
-			for _, g := range s.guarded {
-				t = strings.ReplaceAll(t, g, strings.TrimSuffix(g, "}")+":?}")
+		switch {
+		case respelled(s):
+			texts := make([]string, len(s.texts))
+			for n, t := range s.texts {
+				for _, g := range s.guarded {
+					t = strings.ReplaceAll(t, g, strings.TrimSuffix(g, "}")+":?}")
+				}
+				texts[n] = t
 			}
-			texts[n] = t
+			lead[k].texts = texts
+		case !capped(s.texts) && slices.Contains(s.texts, ""):
+			texts := slices.Clone(s.texts)
+			for n, t := range texts {
+				if t == "" {
+					texts[n] = emptyLead
+				}
+			}
+			lead[k].texts = texts
 		}
-		lead[k].texts = texts
 	}
 	return spellWritten(src.word, lead, nil)
 }

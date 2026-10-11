@@ -237,3 +237,29 @@ func TestRmDefaultThatSplitsAwayIsNoGuard(t *testing.T) {
 		{`rm -rf ${X:-/tmp}/y`, VerdictAllow, ""},
 	})
 }
+
+// TestRmEmptyTextInAShellStringLeads — iss-2610110025455728. The enclosing
+// shell expands an alternative to nothing when its variable is unset, so
+// `sh -c "rm -rf ${X:+x}/y"` hands the string `rm -rf /y`, as the direct
+// `rm -rf ${X:+x}/y` deletes `/y`. A text a site in the string can print
+// empty leads the word as the variable would; one that cannot, or that no `/`
+// follows, does not.
+func TestRmEmptyTextInAShellStringLeads(t *testing.T) {
+	const id = "rm-unguarded-variable-path"
+	runVerdictCases(t, []verdictCase{
+		{`sh -c "rm -rf ${X:+x}/y"`, VerdictBlock, id},
+		{`bash -c "rm -rf \"${X:+x}\"/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:+x}${Y:+z}/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:+x}/y" _`, VerdictBlock, id},
+		// A default the enclosing shell writes as an escaped reference ends
+		// at its first `}`, so the string reads `${Y}/y` across the brace
+		// the enclosing word holds as text.
+		{`sh -c "rm -rf ${X:-\${Y}}/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:-\${Y:-}}/y"`, VerdictBlock, id},
+		{`sh -c "rm -rf ${X:-\${HOME}}/y"`, VerdictAllow, ""},
+		{`sh -c "rm -rf ${X:?}${Y:+z}/y"`, VerdictAllow, ""},
+		{`sh -c "rm -rf ./${X:+x}/y"`, VerdictAllow, ""},
+		{`sh -c "rm -f ${X:+--force} /tmp/a"`, VerdictAllow, ""},
+		{`sh -c "echo ${X:+x}"`, VerdictAllow, ""},
+	})
+}

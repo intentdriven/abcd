@@ -109,9 +109,10 @@ type segment struct {
 	// word does.
 	varLead map[int]bool
 	// leadFrom records, per token index, a spelled word holding a value a
-	// guard keeps from being empty, as the word and its sites, from which
-	// only a payload re-read's varLead spells it again (leadSpelling in
-	// varpath.go, spellPayload). nil when no word does.
+	// guard keeps from being empty or a site whose empty text leaves a `/`
+	// first (emptyOpensPath in varpath.go), as the word and its sites, from which only a payload re-read's varLead spells
+	// it again (leadSpelling in varpath.go, spellPayload). nil when no word
+	// does.
 	leadFrom map[int]leadSource
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
@@ -812,7 +813,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			spells[len(toks)] = spellWritten(cur, curVarAt, nil)
 			markIFSSplit(curVarAt)
 			markVarLead(cur, curVarAt)
-			if spellsGuards(curVarAt) {
+			if spellsGuards(curVarAt) || emptyOpensPath(cur, curVarAt) {
 				if leadFrom == nil {
 					leadFrom = map[int]leadSource{}
 				}
