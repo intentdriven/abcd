@@ -678,6 +678,14 @@ in `abcd rules` and in the hook's diagnostic, and `"source": "user"`, `"repo"`
 or `"bundled"` in `abcd rules --json`. A disabled set names every file whose kill
 switch is set.
 
+**An override's words render as text.** Each rule an override domain carries is
+rendered inside a tilde fence under its bullet, one tilde longer than the
+longest run of tildes or backticks in the rule and never shorter than three, so
+a reader that renders the block as markdown shows the rule as written: a `#`
+line, a `===` underline or an `<h2>` in it cannot become a heading that wears
+no override label (iss-2609020219265817). A bundled domain's rules are abcd's
+own and keep their markdown.
+
 **Known limitation.** Replacement is per field, so a user or repo layer cannot
 add one rule to a bundled domain's list: it restates the list. A third layer
 makes that grain more visible; finer-grained merging, detecting a repo file that
@@ -780,7 +788,7 @@ iss-2608261550580260):
 
 ```json
 {
-  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
              "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
