@@ -41,7 +41,9 @@ inbound = outbound statement is the whole of it.
   `.abcd/work/`, the root prose files, and this guide and the security policy
   beside it in `.github/` stands the race lane and the `zizmor`, `govulncheck`
   and smoke lanes down while it is in review; the queue run is not
-  a pull-request event, so the full set gates the merge either way.
+  a pull-request event, so the full set gates the merge either way. CI does
+  not run again on the push the merge makes to `main`; a nightly run checks
+  `main` instead.
 - **Publish surface reviews.** Paths listed in
   [`.github/CODEOWNERS`](CODEOWNERS) ship behaviour to installed users
   (plugin hooks and commands, agent prompts, workflows, gates and build

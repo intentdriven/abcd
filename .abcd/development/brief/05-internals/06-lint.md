@@ -43,9 +43,9 @@ Three gates are armed today; the finer-grained tiers below them are design targe
 
 **Armed today.** All three run on every relevant change:
 
-- **`make record-lint`** runs `cmd/record-lint` over the design record, and CI runs the same job on every push. It fails the build on any `blocker` finding.
+- **`make record-lint`** runs `cmd/record-lint` over the design record, and CI runs it on every pull request, every merge-queue entry and the nightly run of the default branch. It fails the build on any `blocker` finding.
 - **`make docs-lint`** runs `abcd lint docs` over `docs/` and the repo root, and CI runs it on the Linux leg. It fails on change-narration in a doc body, a broken relative link, a stray root markdown file, or any other `blocker`-severity rule.
-- **`make lint-decisions`** runs `cmd/record-lint decisions-append` over the commits a change adds, and CI's `record-lint` job runs it over the pull request's, merge-queue entry's or push's range. It fails on any DA001–DA004 finding, and refuses (exit 2) a range it cannot judge. Its exit grammar is its own (§1), not the tri-state below.
+- **`make lint-decisions`** runs `cmd/record-lint decisions-append` over the commits a change adds, and CI's `record-lint` job runs it over the pull request's or the merge-queue entry's range; the nightly and dispatched runs name no base, so there it announces that it skipped. It fails on any DA001–DA004 finding, and refuses (exit 2) a range it cannot judge. Its exit grammar is its own (§1), not the tri-state below.
 
 The two tree gates read git-tracked bytes through `internal/core/lint` and honour the severity model in §2. Their exit code follows the standalone tri-state grammar — **blocker → 2, warn → 1, clean → 0** (an error dominates a warning; the tri-state lives in `internal/core/repolint`) — so a CI job that branches on the exit code treats any non-zero value as failure.
 

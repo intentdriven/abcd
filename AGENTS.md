@@ -180,6 +180,10 @@ site-render gate — and on macOS on every event but a pull request. On a pull
 request `check (macos-latest)` reports its required context from an ubuntu
 runner and runs nothing (every push there has passed `make preflight`);
 the merge-queue entry runs the macOS suite on exactly the tree that lands.
+The workflow triggers on pull requests, merge-queue entries, a nightly
+schedule and by hand, never on a push to `main`: every commit there is a
+merge result its queue entry already tested, and the nightly run checks the
+default branch and saves its Go build cache for the runs that follow.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
