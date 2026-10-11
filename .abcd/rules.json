@@ -158,6 +158,25 @@
         "**A revert or cherry-pick takes its trailer from one command:** `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`. `git revert`, `git cherry-pick` and a squash compose their own message and write no `Assisted-by:`, so the gate refuses them; the committed `.githooks/prepare-commit-msg` hook writes the trailer from the `abcd.assistedBy` key and from nowhere else. Unset, it writes nothing, and it never writes `None`. Set the key for the one command, never as a standing `git config abcd.assistedBy`: a standing key also stamps every `-m`/`-F` commit, every `--amend` and every cherry-pick, which is a false disclosure for work no model touched.",
         "**Outward-facing text carries no session URL and no tool footer, and is re-read after it is created.** A pull-request body, an issue, a comment, a commit message and a release note are public the moment they exist, and a forge keeps the pre-edit revision of whatever was posted \u2014 so scrubbing later is not a remedy. Two things leak here: a live agent-session URL, and a tool's own \"generated with\" attribution footer, which overrides the `Assisted-by:` convention above. Both are banned in public text. **After creating any PR, issue or comment, re-read what was actually created and strip either shape from it** \u2014 the harness appends them outside the model's own output, so text that left clean can arrive dirty. The policy is a value, not just this paragraph (`scanner.OutboundPolicy`): the scanner's canonical pattern set carries the class into every store-before-commit redactor, `abcd lint`'s privacy rule refuses either shape in any committed file, and the `harness_leak` lint rule refuses it in the record and the docs. One definition, three wired surfaces (itd-152). A commit message is judged by the check-direction front door onto the same policy, `abcd lint outbound`, twice: the committed `.githooks/commit-msg` hook refuses either shape before the commit exists, and the attribution gate in CI judges every commit message of a pull request and its body again. A fourth exists as a primitive with no front door: `scanner.ScrubOutbound` sanitises one outbound artefact and is covered by tests, but no command or plugin verb calls it, because `spc-45` deliberately scopes a forge client out. The three wired surfaces judge text that is already committed or already stored, so none of them reaches a forge artefact: until the primitive is wired, the protection at posting time is the re-read-and-strip step above, performed by whoever posts."
       ]
+    },
+    "SECURITY": {
+      "recall": [
+        "security",
+        "vulnerability",
+        "vulnerabilities",
+        "advisory",
+        "advisories",
+        "ghsa",
+        "cve",
+        "cwe",
+        "exploit",
+        "threat"
+      ],
+      "rules": [
+        "Assess every security finding against .abcd/development/principles/abcd-fixes-what-it-adds.md before proposing a fix: would it exist without abcd? If not, abcd added it and fixes it. If it would, it is not abcd's vulnerability: abcd helps prevent it only where that changes nothing about how the repository works, and otherwise the finding is closed (wontfix, or the advisory closed) with that reason, never fixed by default.",
+        "A security fix never changes how a repository works on its own: its hooks, content filters, large-file storage, merge tools and remote transport stay as the repository set them. A fix that needs one of those changed is not proposed; say plainly that the finding cannot be fixed within the rule.",
+        "Record the answer on the finding: each security record and each advisory triage names whether the route exists without abcd (prove it with a scratch test where it is not obvious) and which side of the rule that puts it on."
+      ]
     }
   },
   "schema_version": 1
