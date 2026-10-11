@@ -11,12 +11,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
@@ -511,6 +513,112 @@ func TestATokenInAnyChangedNameIsSealedWhenNamed(t *testing.T) {
 	}
 	for what, text := range map[string]string{"the refusal": r.Error(), "the accept's answer": accepted[0],
 		"the run's state": string(stateBytes(t, repo.Root(), runID))} {
+		if strings.Contains(text, pat) {
+			t.Fatalf("%s names the token:\n%s", what, text)
+		}
+	}
+}
+
+// TestALiveLaneReplacedByASymlinkIsAChange: the loop's lane steps run git at
+// a live lane's worktree path whatever stands there now. A lane directory
+// moved aside and replaced by a symlink to the moved copy, whose hooks were
+// edited, stops the next step at the configuration stage, naming the lane's
+// path; the state is as it was.
+func TestALiveLaneReplacedByASymlinkIsAChange(t *testing.T) {
+	repo, runID, lane := laneRun(t, func(repo *gittest.Repo) {
+		repo.Write(".githooks/pre-commit", "#!/bin/sh\nexit 0\n")
+		repo.Commit("hooks")
+		repo.Git("config", "core.hooksPath", ".githooks")
+	})
+	moved := filepath.Join(t.TempDir(), "moved")
+	if err := os.Rename(lane, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moved, ".githooks", "pre-commit"), []byte("#!/bin/sh\ntouch hook-ran\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, lane); err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, repo.Root(), runID)
+
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "the worktree "+fsutil.RedactHome(lane)+" (changed)") {
+		t.Fatalf("the step is refused naming the lane's path: %+v", r)
+	}
+	if after := stateBytes(t, repo.Root(), runID); string(after) != string(before) {
+		t.Fatal("the refused step took no stage")
+	}
+}
+
+// TestARemovedLaneIsAChangeOnlyWhileItIsLive: a live lane's worktree that is
+// no longer there is named gone, since the loop still runs git at its path; a
+// lane that landed or was discarded runs nothing, so its worktree's removal
+// is no change.
+func TestARemovedLaneIsAChangeOnlyWhileItIsLive(t *testing.T) {
+	repo, runID, lane := laneRun(t, nil)
+	// An accept with nothing changed records the fingerprint as it stands,
+	// the lane's worktree with it.
+	if accepted, err := AcceptConfigChange(repo.Root(), runID, Options{}); err != nil || len(accepted) != 0 {
+		t.Fatalf("nothing changed, nothing is accepted: %q %v", accepted, err)
+	}
+	root, err := os.OpenRoot(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	was, ok, err := readFingerprint(root, runID)
+	if err != nil || !ok {
+		t.Fatalf("the run recorded its fingerprint: %v", err)
+	}
+	if _, recorded := was.Worktrees[filepath.Clean(lane)]; !recorded {
+		t.Fatalf("the fingerprint holds the lane: %+v", was.Worktrees)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(lane); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		stage Stage
+		want  []string
+	}{
+		{st.Lanes[0].Stage, []string{"the worktree " + fsutil.RedactHome(filepath.Clean(lane)) + " (gone)"}},
+		{StageDone, nil},
+		{StageDiscarded, nil},
+	} {
+		s := st
+		s.Lanes = slices.Clone(st.Lanes)
+		s.Lanes[0].Stage = tc.stage
+		cur, err := takeFingerprint(repo.Root(), laneWorktrees(repo.Root(), s), was.Salt, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := was.changes(repo.Root(), cur); !slices.Equal(got, tc.want) {
+			t.Fatalf("a lane at %s removed: %q, want %q", tc.stage, got, tc.want)
+		}
+	}
+}
+
+// TestGitsErrorTextIsSealedInTheRefusal: git echoes a value it cannot parse
+// in its error, and a value may carry a secret; an accept refused because the
+// configuration cannot be read names git's error through the canonical
+// redactor, so the token is in neither the refusal's text nor its JSON.
+func TestGitsErrorTextIsSealedInTheRefusal(t *testing.T) {
+	pat := "ghp_" + testsecret.Synthetic(64, 36)
+	repo, runID := startedRun(t)
+	repo.Git("config", "extensions.worktreeConfig", pat)
+
+	_, err := AcceptConfigChange(repo.Root(), runID, Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageConfig || !strings.Contains(r.Reason, "cannot be read") {
+		t.Fatalf("the accept is refused, the configuration unreadable: %+v", r)
+	}
+	doc, _ := json.Marshal(r)
+	for what, text := range map[string]string{"the refusal": r.Error(), "the refusal's JSON": string(doc)} {
 		if strings.Contains(text, pat) {
 			t.Fatalf("%s names the token:\n%s", what, text)
 		}

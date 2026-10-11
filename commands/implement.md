@@ -520,7 +520,10 @@ change only on their word: `step --accept-config-change` records the settings
 as they now stand, names what it accepted on stderr, in the result's
 `accepted_config_change` under `--json` and in the run record, and takes the
 step. The flag goes with `--restart`, `--release` or `--discard` too. A lane
-worktree that has gone (its lane landed or was discarded) is not a change.
+worktree that has gone is not a change once its lane landed or was discarded.
+While its lane is still in progress the loop still runs git at that path, so a
+worktree that is no longer there is named gone, and a path that stops being a
+real directory (a symlink in its place, say) is named changed.
 
 ## Check the machine's load
 

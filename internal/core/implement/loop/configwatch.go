@@ -91,6 +91,8 @@ var urlSections = map[string]bool{"url": true, "credential": true, "http": true,
 // name (its URL subsection hidden, hiddenKey), or a watched file's path, to a
 // salted hash of what it holds; Worktrees holds each lane worktree's own, by
 // its path. The salt is the file's own, drawn when it is first written.
+// live, never stored, holds the paths of the lanes still in progress when the
+// fingerprint was taken: the lanes the loop still runs git in.
 type configFingerprint struct {
 	SchemaVersion int                            `json:"schema_version"`
 	RecordedAt    time.Time                      `json:"recorded_at"`
@@ -98,6 +100,7 @@ type configFingerprint struct {
 	Keys          map[string]string              `json:"keys"`
 	Worktrees     map[string]worktreeFingerprint `json:"worktrees"`
 	Files         map[string]string              `json:"files"`
+	live          map[string]bool
 }
 
 // worktreeFingerprint is one lane worktree's part of the fingerprint: every
@@ -105,9 +108,21 @@ type configFingerprint struct {
 // config, a conditional include that applies only there, the worktree's own
 // config), and each entry of the hooks directory git runs there when that is
 // not the checkout's (a relative core.hooksPath names the lane's own copy).
+// Dir is set when a live lane's path is there but is not a real directory (a
+// symlink, by its target, or another kind of file): git still runs at that
+// path, so what stands there is part of the fingerprint. A real directory
+// leaves it empty.
 type worktreeFingerprint struct {
 	Keys  map[string]string `json:"keys"`
 	Hooks map[string]string `json:"hooks"`
+	Dir   string            `json:"dir,omitempty"`
+}
+
+// laneDir is one lane worktree the fingerprint reads: its path, and whether
+// its lane is still in progress (its stage neither done nor discarded).
+type laneDir struct {
+	Path string
+	Live bool
 }
 
 // fingerprintRel is the run's fingerprint file, relative to the checkout.
@@ -145,10 +160,13 @@ func writePart(w io.Writer, s string) {
 // for each lane worktree in lanes, every watched key git reads there and the
 // entries of the hooks directory git runs there, when that is not the
 // checkout's. A lane worktree whose config git cannot read is passed over:
-// git cannot run there either.
-func takeFingerprint(repoRoot string, lanes []string, salt string, now time.Time) (configFingerprint, error) {
+// git cannot run there either. A live lane's path that is there but is not a
+// real directory is recorded as what stands there (laneDirKind), whether or
+// not git reads a config through it.
+func takeFingerprint(repoRoot string, lanes []laneDir, salt string, now time.Time) (configFingerprint, error) {
 	fp := configFingerprint{SchemaVersion: configFingerprintVersion, RecordedAt: now, Salt: salt,
-		Keys: map[string]string{}, Worktrees: map[string]worktreeFingerprint{}, Files: map[string]string{}}
+		Keys: map[string]string{}, Worktrees: map[string]worktreeFingerprint{}, Files: map[string]string{},
+		live: map[string]bool{}}
 	entries, err := gitutil.RepoConfig(repoRoot, watchedConfig)
 	if err != nil {
 		return fp, err
@@ -165,15 +183,23 @@ func takeFingerprint(repoRoot string, lanes []string, salt string, now time.Time
 	}
 	hashDir(fp.Files, salt, hooks)
 	hashFile(fp.Files, salt, filepath.Join(common, "info", "attributes"))
-	for _, lane := range lanes {
+	for _, ld := range lanes {
+		lane := ld.Path
+		wt := worktreeFingerprint{Keys: map[string]string{}, Hooks: map[string]string{}}
+		if ld.Live {
+			fp.live[lane] = true
+			wt.Dir = laneDirKind(salt, lane)
+		}
 		entries, err := gitutil.RepoConfig(lane, watchedConfig)
 		if errors.Is(err, gitutil.ErrConfigCap) {
 			return fp, err
 		}
 		if err != nil {
+			if wt.Dir != "" {
+				fp.Worktrees[lane] = wt
+			}
 			continue
 		}
-		wt := worktreeFingerprint{Keys: map[string]string{}, Hooks: map[string]string{}}
 		// The hooks directory git runs in the lane: the last core.hooksPath
 		// the lane reads (its own, else the shared one), a relative value
 		// taken under the lane's own working tree, as git takes it there.
@@ -230,16 +256,43 @@ func hiddenKey(salt, key string) string {
 	return section + ".<hidden-" + saltedHash(salt, "subsection", sub)[:16] + ">." + variable
 }
 
-// laneWorktrees are the run's lane worktrees on disk, other than the checkout:
-// the linked worktrees the loop's lane steps run git in.
-func laneWorktrees(repoRoot string, st State) []string {
-	var out []string
+// laneWorktrees are the run's lane worktrees, other than the checkout: the
+// linked worktrees the loop's lane steps run git in. A lane still in progress
+// is listed whatever stands at its path, since its steps still run git there;
+// a lane that landed or was discarded only while its worktree is a real
+// directory on disk.
+func laneWorktrees(repoRoot string, st State) []laneDir {
+	var out []laneDir
 	for _, l := range st.Lanes {
-		if l.Worktree != "" && fsutil.IsRealDir(l.Worktree) && !samePath(repoRoot, l.Worktree, repoRoot) {
-			out = append(out, filepath.Clean(l.Worktree))
+		if l.Worktree == "" || samePath(repoRoot, l.Worktree, repoRoot) {
+			continue
+		}
+		live := l.Stage != StageDone && l.Stage != StageDiscarded
+		if live || fsutil.IsRealDir(l.Worktree) {
+			out = append(out, laneDir{Path: filepath.Clean(l.Worktree), Live: live})
 		}
 	}
 	return out
+}
+
+// laneDirKind is what stands at a live lane's path, when that is not a real
+// directory: a symlink by its target, anything else by its kind, a path that
+// cannot be examined as such. A real directory, or nothing there, is empty.
+func laneDirKind(salt, path string) string {
+	fi, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return ""
+	case err != nil:
+		return saltedHash(salt, "lane path", "unreadable")
+	case fi.Mode()&fs.ModeSymlink != 0:
+		target, _ := os.Readlink(path)
+		return saltedHash(salt, "lane path", "symlink", target)
+	case fi.IsDir():
+		return ""
+	default:
+		return saltedHash(salt, "lane path", "kind", fi.Mode().Type().String())
+	}
 }
 
 // expandHooksPath is where git looks for hooks under a core.hooksPath value:
@@ -316,9 +369,12 @@ func hashFile(into map[string]string, salt, path string) {
 
 // changes names, in order, each key, each lane worktree's key and hook and
 // then each file whose hash differs between was and now: added, removed or
-// changed. Never a value. A lane worktree that is no longer there (its lane
-// landed or was discarded) is not a change: nothing runs there any more; one
-// that is new is compared against the checkout as was recorded it
+// changed. Never a value. A lane worktree that is no longer read is not a
+// change when its lane landed or was discarded: nothing runs there any more;
+// while its lane is in progress it is named gone, since the loop still runs
+// git at its path. A live lane's path that became, or stopped being, other
+// than a real directory is named changed. A lane worktree that is new is
+// compared against the checkout as was recorded it
 // (laneBaseline), for what it reads beyond or otherwise than the checkout: a
 // key or hook the checkout has and it lacks starts nothing there. A lane's
 // key whose change the checkout's own keys already name is not named again.
@@ -375,8 +431,21 @@ func (was configFingerprint) changes(repoRoot string, now configFingerprint) []s
 			base = was.laneBaseline(repoRoot, p, cur)
 		}
 		in := " in the worktree " + fsutil.RedactHome(p)
+		if base.Dir != cur.Dir {
+			out = append(out, "the worktree "+fsutil.RedactHome(p)+" (changed)")
+		}
 		diff(base.Keys, cur.Keys, func(k string) string { return k + in }, named, recorded)
 		diff(base.Hooks, cur.Hooks, fsutil.RedactHome, map[string]bool{}, recorded)
+	}
+	gone := make([]string, 0, len(was.Worktrees))
+	for p := range was.Worktrees {
+		if _, read := now.Worktrees[p]; !read && now.live[p] {
+			gone = append(gone, p)
+		}
+	}
+	slices.Sort(gone)
+	for _, p := range gone {
+		out = append(out, "the worktree "+fsutil.RedactHome(p)+" (gone)")
 	}
 	diff(was.Files, now.Files, fsutil.RedactHome, map[string]bool{}, true)
 	return out
@@ -505,7 +574,7 @@ func configTripwireIn(repoRoot string, root *os.Root, runID string) error {
 	}
 	cur, err := takeFingerprint(repoRoot, lanes, was.Salt, now)
 	if errors.Is(err, gitutil.ErrConfigCap) {
-		return refuse(StageConfig, "", "", "the repository's git configuration is too large to read whole, so whether it changed during the run cannot be told: "+fsutil.RedactHome(err.Error()),
+		return refuse(StageConfig, "", "", "the repository's git configuration is too large to read whole, so whether it changed during the run cannot be told: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
 			"look at the repository's git configuration (`git config --local --list --show-origin`); nothing was changed")
 	}
 	if err != nil {
@@ -544,7 +613,7 @@ func AcceptConfigChange(repoRoot, runID string, o Options) ([]string, error) {
 		lanes := laneWorktrees(repoRoot, *st)
 		cur, err := takeFingerprint(repoRoot, lanes, salt, now)
 		if err != nil {
-			return false, refuse(StageConfig, "", "", "the repository's git configuration cannot be read, so there is nothing to accept: "+fsutil.RedactHome(err.Error()),
+			return false, refuse(StageConfig, "", "", "the repository's git configuration cannot be read, so there is nothing to accept: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
 				"settle what git reports, then accept again; nothing was changed")
 		}
 		if ok {
