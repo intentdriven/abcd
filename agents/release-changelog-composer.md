@@ -1,7 +1,7 @@
 ---
 name: release-changelog-composer
 description: Compose the prose of one release cut from the records that shipped in it — the changelog lines and the release page, every line and headline citing the record id it reports, so the binary can prove both documents describe exactly the cut. Host-delegated; feeds `abcd launch ship --changelog-json`.
-prompt_version: 0.4.2
+prompt_version: 0.4.3
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]

@@ -373,10 +373,11 @@ first, the `/abcd:<page>` invocation for the rest — and never sends the reader
 to rebuild or update. Neither is a `status` or `show` sub-verb under a record
 verb (`capture`, `intent`, `spec`): the refusal names the record dispatcher,
 `abcd <record-id>`, which answers that question. A name retired with no
-alias (`version`, whose page retired when the board took the version, and
-`prepare-this-repo`, whose page retired into the install) is
-answered with what replaced it, and never as a stale binary. Failing that evidence, the disk-only vintage the version flag
-renders stands in. When neither says anything, the framework's line stands
+alias (`version`, whose page retired when the board took the version,
+`changelog`, which the launch preview replaced, and `prepare-this-repo`,
+whose page retired into the install) is answered with what replaced it, and
+never as a stale binary. Failing that evidence, the disk-only vintage the
+version flag renders stands in. When neither says anything, the framework's line stands
 byte-for-byte. The exit code, the stream and the JSON envelope are the
 framework's own.
 
