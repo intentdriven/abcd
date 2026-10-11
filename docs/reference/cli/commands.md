@@ -1819,8 +1819,10 @@ Without a command the hold lasts 2m0s, long enough for the load average to show
 the work admitted. With a command after `--` (`abcd implement load --wait -- make
 preflight`) the waiter runs it once the gate opens and exits with its exit code;
 the hold lasts until the command has started its own race run, the command exits,
-or 20m0s pass, and a hold whose waiter has died, or whose pid now belongs to
-another process (a different start time), is reclaimed by the next waiter. A
+or 20 minutes pass, and a hold whose waiter has died, or whose pid now
+belongs to another process (a different start time), is reclaimed by the next
+waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the
+waiter waits for it to exit, exits with its code and releases the hold. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 **Flags:**

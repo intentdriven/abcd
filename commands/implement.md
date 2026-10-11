@@ -532,8 +532,10 @@ work straight after it opens. Prefer the command form,
 opens, exits with the command's exit code, and holds the gate until the
 command has started its own race run, the command exits, or 20 minutes pass. A
 hold whose waiter has died, or whose pid now belongs to another process, is
-reclaimed by the next waiter. A symlinked `~/.abcd.noindex` is refused. Relay a
-timeout as printed; do not loop around it.
+reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to
+the command, and the waiter waits for it to exit before it exits and releases
+the hold, so the command is never left running without its waiter. A symlinked
+`~/.abcd.noindex` is refused. Relay a timeout as printed; do not loop around it.
 
 ## Wait out a lost connection
 

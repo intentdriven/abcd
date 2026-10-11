@@ -7,9 +7,11 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"os/signal"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -89,8 +91,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"the work admitted. With a command after `--` (`abcd implement load --wait -- make\n" +
 			"preflight`) the waiter runs it once the gate opens and exits with its exit code;\n" +
 			"the hold lasts until the command has started its own race run, the command exits,\n" +
-			"or " + implement.WaitCommandCap.String() + " pass, and a hold whose waiter has died, or whose pid now belongs to\n" +
-			"another process (a different start time), is reclaimed by the next waiter. A\n" +
+			"or " + strconv.Itoa(int(implement.WaitCommandCap.Minutes())) + " minutes pass, and a hold whose waiter has died, or whose pid now\n" +
+			"belongs to another process (a different start time), is reclaimed by the next\n" +
+			"waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the\n" +
+			"waiter waits for it to exit, exits with its code and releases the hold. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -180,11 +184,32 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, command
 }
 
 // runGated runs the gated command with the verb's own streams and returns its
-// exit code; the error is a command that could not be started.
+// exit code; the error is a command that could not be started. A SIGINT or
+// SIGTERM to the waiter is forwarded to the command, and the waiter goes on
+// waiting for it: a waiter that died first would orphan the command, whose
+// hold then reads as a dead holder's, and the next waiter would be admitted
+// beside the orphan. The caller releases the hold once this returns.
 func runGated(cmd *cobra.Command, command []string) (int, error) {
 	c := exec.Command(command[0], command[1:]...)
 	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
-	err := c.Run()
+	sigs := make(chan os.Signal, 2)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	if err := c.Start(); err != nil {
+		return 0, err
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+	var err error
+wait:
+	for {
+		select {
+		case sig := <-sigs:
+			_ = c.Process.Signal(sig)
+		case err = <-done:
+			break wait
+		}
+	}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
