@@ -396,8 +396,7 @@
       "snapshot": ".abcd/development/release/surface.json",
       "host_delegated": [
         "consult",
-        "ingest",
-        "prepare-this-repo"
+        "ingest"
       ],
       "operator_internal": [
         "spec",

@@ -1,19 +1,10 @@
 package ahoy
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
-
-// onboardingArtefacts are the committed files the adopt phase reads and applies
-// from. Every asset one of them names must resolve from inside this record or from
-// the binary; a path outside both is a template only the machine that wrote it has.
-var onboardingArtefacts = []string{
-	filepath.Join("..", "..", "..", "commands", "prepare-this-repo.md"),
-}
 
 // machineLocalRefs returns the 1-based line numbers of every machine-local path
 // reference in data: a home-relative `~/` path, or the private templates directory
@@ -43,15 +34,14 @@ func machineLocalRefs(data []byte) []int {
 // did nothing at all, and the adoption silently degraded against loud-staging.
 // Every asset it applies now resolves from this record or from the binary.
 func TestOnboardingIsSelfContained(t *testing.T) {
-	for _, rel := range onboardingArtefacts {
-		data, err := os.ReadFile(rel)
-		if err != nil {
-			t.Fatalf("cannot read onboarding artefact %s: %v", rel, err)
-		}
-		if hits := machineLocalRefs(data); len(hits) > 0 {
-			t.Errorf("%s references a machine-local path on line(s) %v; every adopt-phase asset must resolve "+
-				"from this record or from the binary, never from a path only one machine has", rel, hits)
-		}
+	// The preparation workflow on the ahoy page is what the adopt phase reads and
+	// applies from. Every asset it names must resolve from inside this record or
+	// from the binary; a path outside both is a template only the machine that
+	// wrote it has. The page's later account of the binary install names the
+	// binary's own user-scope paths, which are not assets the workflow applies.
+	if hits := machineLocalRefs([]byte(preparationWorkflow(t))); len(hits) > 0 {
+		t.Errorf("%s's preparation workflow references a machine-local path on line(s) %v (counted from the install heading); "+
+			"every adopt-phase asset must resolve from this record or from the binary, never from a path only one machine has", ahoyPage, hits)
 	}
 }
 
@@ -121,13 +111,14 @@ func toolFileInstructions(page string) []string {
 	return hits
 }
 
-// TestPrepareThisRepoScaffoldsNoToolConventionsFile is the page half of
-// itd-2610030814013772's A1 (spc-2610031156364295, step 6): prepare-this-repo
-// creates AGENTS.md and no tool's own conventions file, link or copy, since
+// TestAhoyPageScaffoldsNoToolConventionsFile is the page half of
+// itd-2610030814013772's A1 (spc-2610031156364295, step 6): the preparation
+// workflow, which folded into the ahoy page's install section
+// (spc-2610100613109045, step 4), creates AGENTS.md and no tool's own conventions file, link or copy, since
 // AGENTS.md is the one conventions file abcd writes
 // (adr-2610030814023326). The detector is watched fire first on the shapes the
 // page once carried, so an emptied scan cannot leave the gate green.
-func TestPrepareThisRepoScaffoldsNoToolConventionsFile(t *testing.T) {
+func TestAhoyPageScaffoldsNoToolConventionsFile(t *testing.T) {
 	for _, bad := range []string{
 		"3. **AGENTS.md.** Merge into the repo's `AGENTS.md`\n   (create it if absent, with `CLAUDE.md` as a symlink to it):\n",
 		"Then run `ln -s AGENTS.md GEMINI.md` so Gemini CLI reads it.\n",
@@ -164,13 +155,8 @@ func TestPrepareThisRepoScaffoldsNoToolConventionsFile(t *testing.T) {
 		}
 	}
 
-	rel := filepath.Join("..", "..", "..", "commands", "prepare-this-repo.md")
-	data, err := os.ReadFile(rel)
-	if err != nil {
-		t.Fatalf("cannot read %s: %v", rel, err)
-	}
-	for _, hit := range toolFileInstructions(string(data)) {
+	for _, hit := range toolFileInstructions(readAhoyPage(t)) {
 		t.Errorf("%s instructs making a tool's own conventions file; it creates AGENTS.md and no other, "+
-			"link or copy (adr-2610030814023326):\n  %s", rel, hit)
+			"link or copy (adr-2610030814023326):\n  %s", ahoyPage, hit)
 	}
 }

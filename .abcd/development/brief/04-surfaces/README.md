@@ -26,7 +26,6 @@ are wiring rather than user-facing surface are listed separately under
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
 | 13 | `/abcd:consult` | shipped | Ask the local sources corpus what prior work says, and record what it changed | [`13-consult.md`](13-consult.md) |
 | 14 | `/abcd:ingest` | shipped | Put a document or URL into the sources corpus with its reference metadata | [`14-ingest.md`](14-ingest.md) |
-| 15 | `/abcd:prepare-this-repo` | shipped | Bring an owned repo up to abcd's conventions (interim bridge until abcd manages repos directly) | [`15-prepare-this-repo.md`](15-prepare-this-repo.md) |
 | 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
@@ -309,11 +308,12 @@ present the result: the markdown is the surface, the binary is the engine. Those
 commands stay thin — they call `abcd <verb> --json` and format the result, and
 never reimplement behaviour that belongs in the core.
 
-The three host-delegated commands named below are the exception, and are
-configured as such rather than being silently different: `/abcd:consult`,
-`/abcd:ingest` and `/abcd:prepare-this-repo` back onto no verb of their own, so
-`consult.md` and `ingest.md` invoke the binary nowhere at all and carry the
-workflow itself, and `prepare-this-repo.md` calls other verbs on the way through.
+The two host-delegated commands named below are the exception, and are
+configured as such rather than being silently different: `/abcd:consult` and
+`/abcd:ingest` back onto no verb of their own, and carry the workflow itself.
+The preparation workflow that brings an owned repository up to the conventions
+runs in the host agent too, but from `ahoy.md`'s install section, around the
+binary's install, so it backs a verb.
 
 The directory is **flat**, and that is load-bearing rather than tidiness. A
 harness maps each `commands/` subdirectory to an extra namespace segment, so a
@@ -326,7 +326,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`.
+`reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -344,11 +344,13 @@ the only reliable fix is a home outside the auto-discovery root.
 ## No skills
 
 **abcd ships zero skills** — the `/abcd:` surface is commands only, and there is
-no `skills/` directory in the tree. `/abcd:consult`, `/abcd:ingest` and
-`/abcd:prepare-this-repo` were once shipped as skills and are commands: each
-mutates state — the sources corpus, its ledger, the target repo — which the
-boundary rule makes command-shaped. They are **host-delegated** commands, with a
-command page and no Go verb, so the workflow runs in the host agent. The
+no `skills/` directory in the tree. `/abcd:consult` and `/abcd:ingest` were
+once shipped as skills and are commands: each mutates state — the sources
+corpus and its ledger — which the boundary rule makes command-shaped. They are
+**host-delegated** commands, with a command page and no Go verb, so the
+workflow runs in the host agent. The third workflow once shipped as a skill,
+the preparation of a target repo, mutates that repo; its page retired into the
+install section of `ahoy.md` (itd-2610090831227812). The
 skill/command boundary is documented in
 [`05-internals/08-skills.md`](../05-internals/08-skills.md).
 

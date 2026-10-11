@@ -168,7 +168,7 @@ type RuleConfig struct {
 	// grain unarmed (the pre-spc-27 surface-grain check only).
 	Snapshot string `json:"snapshot"`
 	// HostDelegated lists surfaces whose workflow runs in the host agent with
-	// no Go verb (consult, ingest, prepare-this-repo): their sub-verb tables
+	// no Go verb (consult, ingest): their sub-verb tables
 	// are format-checked only, never compared to the cobra tree. Explicit
 	// config, never a hard-coded skip — an unlisted surface gets the full
 	// comparison.

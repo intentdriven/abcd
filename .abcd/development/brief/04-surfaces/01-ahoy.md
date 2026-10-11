@@ -50,7 +50,9 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
 
 - **Install** installs or updates abcd in this repo, covering first install
   and upgrade alike. It runs the detection pass, then an apply pass over the
-  resulting gaps.
+  resulting gaps. Through the plugin page it is also how a repository is
+  prepared to abcd's working conventions, a workflow the host agent runs around
+  that binary step (below).
 - **Uninstall** is reversible removal: the marker block, abcd's own `PATH`
   entry where abcd owns it, and the provenance record that proves that
   ownership. It leaves `.abcd/` entirely intact, never mutates the hook
@@ -238,6 +240,126 @@ value for a name already kept, and the secret scanner reads the index's bytes
 before they are written, refusing any finding. A value is read from stdin only,
 and never printed, logged or written to a record; a call's record names the
 credential it used.
+
+## Preparing a repository: the host-run half of the install
+
+Take a repository you own and bring it up to abcd's working conventions in one
+sitting: the install's plugin page audits first, shows you the gap report, and
+only then adopts the three-tier `.abcd/` layout, a working-conventions section
+in `AGENTS.md`, an identity block, and the commit gates. What you get back is a
+repo a fresh agent session can build and test from `AGENTS.md` alone. What it
+costs you is a sign-off at each phase, which is the point: nothing is adopted
+before you have seen what it would change.
+
+This half was its own plugin page until the product thinker's ruling of
+2026-10-09 folded it into the install (itd-2610090831227812): the retired
+page's name is gone with no alias, and typing it at a shell gets a note naming
+the install instead. The fold is page-only. The binary's install is
+unchanged and gains no refusal: it checks no ownership, so the workflow's first
+phase does, as before, and a refusal in the binary would break installs that
+work today. A repository already prepared, its three tiers in place and its
+`AGENTS.md` carrying the working-conventions markers, needs only the binary's
+apply pass.
+
+The workflow is an **interim bridge**. abcd cannot yet manage repositories
+directly, so the page does by hand what the CLI will later take over, in a
+shape the CLI can adopt without unpicking. It runs in the host agent from the
+install section of [`commands/ahoy.md`](../../../../commands/ahoy.md), always
+on the current repository.
+
+### What the preparation does
+
+- **Refuses on repos the user does not own.** The first phase checks the origin
+  remote and stops entirely: no audit, no writes. Imposing these conventions on
+  a third-party repo would interfere with its own development principles.
+- **Audits before it touches anything.** It produces a gap report covering
+  existing structure, documentation shape, decision and working-state hygiene,
+  principles followed or violated, and privacy, and presents it before adopting
+  anything. A tool's own conventions file it finds, one an agent tool reads in
+  place of `AGENTS.md`, is named as setup names it, as holding the owner's words
+  or as only repeating `AGENTS.md`, and the report points at setup's offer to
+  retire the second kind rather than acting on it.
+- **Adopts the conventions.** The three-tier layout; a merged, never
+  overwritten, `AGENTS.md` carrying verified repo facts plus a marked
+  working-conventions block; a registered identity block; and the commit gates.
+  `AGENTS.md` is the one conventions file it writes: it makes no other tool's
+  conventions file, as a link or as a copy
+  ([adr-2610030814023326](../../decisions/adrs/2610030814023326-agents-md-is-the-one-conventions-file.md)).
+
+### Where the binary does the work
+
+The workflow is markdown, but three of its steps are the binary's, so the
+result does not depend on an agent's memory of what a convention looks like.
+
+The JSON form of `abcd lint` supplies the engine-backed conformance core,
+read-only, which the workflow then supplements with the structural and
+principles judgement the binary does not make. The identity verb's initialiser
+records the identity block: the markdown itself, which stays the source of
+truth, plus `.abcd/positioning.json`, the pointer recording where that block
+lives and which surfaces render from it. The install's apply pass is the adopt
+phase's workhorse, and it does more than write the commit gates: everything
+this chapter describes, from the repo's settings file to the copy of the binary
+on `PATH`, lands in that one run. It runs a second time, with the attribution
+flag, where the user opts in: that run installs the committed
+`prepare-commit-msg` prompt asking every commit to declare whether a tool
+assisted it, and the choice is recorded, so a later install without the flag
+keeps the hook. The identity verb's render is the follow-on surface and writes
+nothing: it proposes a correction as a diff, and adopting it is always the
+product thinker's move.
+
+### The flow
+
+Four phases, each gated on the one before.
+
+0. **Refuse unless owned.** Origin-remote ownership check; stop if it fails.
+1. **Orient.** Read the abcd record from the plugin root: the three-tier
+   README, the brief, principles, ADRs, intents, the `docs/` Diátaxis rules, and
+   the lint configs as patterns.
+2. **Conformance lint.** Run `abcd lint` in its JSON form, supplement it, write
+   the gap report to the target's `.abcd/.work.local/scratch/`, and present it
+   before any change.
+3. **Adopt.** Create the three tiers with a repo-specific `CONTEXT.md`; migrate
+   a historical `.work/` layout at the repo root if one is found, proposing the
+   mapping and waiting for sign-off, and never leaving a repo with both homes;
+   merge into `AGENTS.md`; scaffold the commit gates through the apply pass;
+   register the identity block, adopting one the repo already carries rather
+   than re-interviewing; and, only where the user says the repo requires AI
+   disclosure, install the attribution hook.
+
+A committed hook is not a running hook until git is pointed at it, once per
+clone, and the page keys that step on the hooks-path state detection reports:
+it arms an unarmed clone, leaves a foreign hooks dispatcher alone, and does
+nothing in an armed one. A declined config change is reported as
+scaffolded-but-unarmed rather than passed over silently.
+
+When abcd's own record has conflicting sources, the workflow trusts a fixed
+authority order: `AGENTS.md`, then `work/CONTEXT.md`'s live-constraints section,
+then ratified ADRs, then everything else read for understanding only.
+
+### The preparation's boundaries
+
+- **Nameless, self-contained output.** The working-conventions block written
+  into `AGENTS.md` never mentions abcd, the page, or any private repository:
+  the conventions read as the repo's own, between dated markers so later tooling
+  can find and replace them. The paths it states into the `.abcd/` layout are
+  the one trace of the tool, and the adopter accepts that namespace by adopting
+  the layout. The apply pass leaves the conventions files nameless as well
+  (below).
+- **Never commit downstream assets.** Anything tooling will later provide
+  (persona data, lint-config JSON copied in by hand, content copied from the
+  abcd record) is applied, not copied. Only content about the target repository
+  is committed. The config files the apply pass seeds, `.abcd/docs-lint.json`
+  among them, are not downstream assets: each is the repository's own once it is
+  written, and the gates read it on every commit, so it is committed.
+- **Privacy.** A `private-names.txt`, if present, is read-only context for the
+  audit and never reproduced in any committed or published artefact.
+- **No secret-pattern hooks.** No hook the workflow scaffolds carries a
+  secret-pattern set or an absolute-path check. Absolute-path detection is the
+  binary's own `privacy-hygiene` lint rule, which the audit phase already runs.
+- **Self-contained.** Every asset the adopt phase applies resolves from the
+  abcd record or from the binary, never from a path only one machine has: a
+  step reaching for one would silently do nothing on any other machine
+  (itd-162).
 
 ## What abcd manages — repos and `~/.abcd.noindex/`
 
@@ -827,7 +949,7 @@ both values, each with the one explanation `RetiredDocsTarget` holds, naming
 setting to `agents_md` or `skip` runs as any target change does and takes the
 block out of CLAUDE.md. The name-guard
 hooks and the ignore fence are the one sanctioned mention of abcd outside
-`.abcd/` (ruled 2026-09-23; see prepare-this-repo). Every name-guard
+`.abcd/` (ruled 2026-09-23; see the preparation's boundaries above). Every name-guard
 write is create-if-absent **and** contained: paths resolve through an `os.Root` opened
 at the repo, so a symlink committed at the hooks directory or at the local tier
 cannot land an artefact outside it. The private stub is written only where git
@@ -982,6 +1104,27 @@ byte-identical to a fresh install save for the setup date.
   committer that is a machine identity, **when** detection runs, **then** the
   divergence is reported as its own gap, and with no terminal the install asks
   nothing, writes nothing and says so.
+
+- **Given** a repo the user does not own, **when** they ask the plugin page
+  to install, **then** the preparation stops at the ownership phase with no
+  audit and no writes.
+- **Given** an owned repo, **when** the preparation runs, **then** a gap report
+  exists under `.abcd/.work.local/scratch/` and was presented before anything
+  was adopted.
+- **Given** sign-off, **when** it adopts, **then** the three-tier layout exists
+  with a repo-specific `CONTEXT.md`, `AGENTS.md` carries verified repo facts and
+  the marked nameless working-conventions section, the done-test passes (a fresh
+  agent can build and test from `AGENTS.md` alone), and any historical `.work/`
+  layout is fully migrated or fully left alone.
+- **Given** sign-off, **when** it adopts, **then** one identity block is
+  recorded and registered, adopted where the repo already had one and
+  interviewed only where it did not, and the lint's identity report shows every
+  rendered surface against it.
+- **Given** the adoption completes, **then** nothing from `private-names.txt`
+  and no abcd-internal content appears in any committed artefact, with one
+  sanctioned exception (ruled 2026-09-23): the name-guard hooks
+  (`.githooks/pre-commit`, `.githooks/pre-merge-commit`) and the `.gitignore`
+  fence name abcd, and cite none of its record ids.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

@@ -128,7 +128,7 @@ is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
 does: `consult` and `ingest` run as host-side markdown over the sources corpus,
 and reach the binary only through the `source` verb, which makes every write to
-the corpus. `prepare-this-repo` is the mixed
+the corpus. The install's preparation workflow, on the ahoy page, is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
 too and writes — the identity verb's initialiser records the repo's identity
 block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
@@ -367,13 +367,14 @@ command surface beside the resolved plugin root documents the very verb or flag
 that was refused, the line says the binary predates it and names the remedy for
 where the binary sits. A page that documents no verb is not that evidence: the
 dispatcher page `abcd.md` documents the bare call, and the host-delegated pages
-(`consult`, `ingest`, `prepare-this-repo`) run in the host agent, so the line
+(`consult`, `ingest`) run in the host agent, so the line
 for one of those tokens says what it is instead — `abcd <record-id>` for the
 first, the `/abcd:<page>` invocation for the rest — and never sends the reader
 to rebuild or update. Neither is a `status` or `show` sub-verb under a record
 verb (`capture`, `intent`, `spec`): the refusal names the record dispatcher,
 `abcd <record-id>`, which answers that question. A name retired with no
-alias (`version`, whose page retired when the board took the version) is
+alias (`version`, whose page retired when the board took the version, and
+`prepare-this-repo`, whose page retired into the install) is
 answered with what replaced it, and never as a stale binary. Failing that evidence, the disk-only vintage the version flag
 renders stands in. When neither says anything, the framework's line stands
 byte-for-byte. The exit code, the stream and the JSON envelope are the

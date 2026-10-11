@@ -114,7 +114,7 @@ The [install guide](docs/how-to/install.md) covers building from source and what
 
 ### Setup
 
-In a plugin session, inside a repository you own, `/abcd:prepare-this-repo` audits the tree and adopts the working conventions: The three-tier `.abcd/` layout, an `AGENTS.md` router, and the commit gates. Bare `/abcd` (or `abcd` from a terminal) then shows where you are; the status board is read-only, so it is safe on any tree:
+In a plugin session, inside a repository you own, `/abcd:ahoy install` audits the tree and adopts the working conventions: The three-tier `.abcd/` layout, an `AGENTS.md` router, and the commit gates. Bare `/abcd` (or `abcd` from a terminal) then shows where you are; the status board is read-only, so it is safe on any tree:
 
 ```text
 $ abcd

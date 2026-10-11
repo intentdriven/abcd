@@ -511,11 +511,17 @@ func bootstrapShSingleQuote(s string) string {
 // rather than searching for the good form is deliberate: a text may hold the
 // runnable instruction AND still leave the unrunnable one standing beside it,
 // and only an every-occurrence check sees the second one.
+//
+// The plugin's slash command, `/abcd:ahoy install`, is not a shell invocation:
+// the host runs it in a plugin session, and its page resolves the binary
+// through the plugin root before PATH, so it runs in the very state this
+// check guards. It is the person's route into a repository's preparation
+// (spc-2610100613109045, step 4), so it is not counted.
 func bootstrapEveryInvocationIsPathQualified(body, prefix string) []string {
 	parts := strings.Split(body, "ahoy install")
 	var bad []string
 	for _, before := range parts[:len(parts)-1] {
-		if strings.HasSuffix(before, prefix) {
+		if strings.HasSuffix(before, prefix) || strings.HasSuffix(before, "/abcd:") {
 			continue
 		}
 		if len(before) > 80 {

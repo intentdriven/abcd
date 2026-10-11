@@ -81,10 +81,9 @@ const dispatcherPage = "abcd"
 // this set, so a new host-delegated page is added here or the parity check
 // reads its missing verb as drift.
 var pagesWithNoVerb = map[string]string{
-	dispatcherPage:      "`abcd` is the binary itself, not one of its commands — the page /abcd:abcd documents the bare call; did you mean `abcd <record-id>` (or bare `abcd` for the status board)?",
-	"consult":           "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
-	"ingest":            "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
-	"prepare-this-repo": "`prepare-this-repo` has no binary verb — it runs in the host agent; invoke it as /abcd:prepare-this-repo",
+	dispatcherPage: "`abcd` is the binary itself, not one of its commands — the page /abcd:abcd documents the bare call; did you mean `abcd <record-id>` (or bare `abcd` for the status board)?",
+	"consult":      "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
+	"ingest":       "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
 }
 
 // retiredTokens are top-level tokens whose page or verb was retired with no
@@ -93,8 +92,9 @@ var pagesWithNoVerb = map[string]string{
 // does not know a retired name is never called stale for it. A token here has
 // no page, so it is not in pagesWithNoVerb.
 var retiredTokens = map[string]string{
-	"changelog": "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
-	"version":   "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
+	"prepare-this-repo": "`prepare-this-repo` folded into ahoy install: run /abcd:ahoy install, which prepares the repository in the host agent around the binary's `abcd ahoy install`",
+	"changelog":         "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
+	"version":           "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
 }
 
 // maxCommandPageBytes caps a command-page read; the pages are a few KiB.
