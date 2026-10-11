@@ -1084,8 +1084,10 @@ type cdReadings struct {
 // taken as entered. zsh takes -L, -P, -q and -s;
 // at the first word it does not take as an option its operands start, and
 // two operands are the substitution form, one is the directory entered, and
-// more are refused. A word starting with `-` neither shell's letters spell
-// may be an option that changes what the cd does, so no reading is taken.
+// more are refused. A word starting with `-` with a letter neither shell
+// takes is refused by bash and is zsh's first operand where no earlier word
+// was, so with one more word after zsh's first operand it is the
+// substitution form, and otherwise no reading is taken.
 func cdOperand(s segment, site int) cdReadings {
 	bashLetters := "LPe@"
 	if strings.ToLower(path.Base(s.tokens[site])) == "pushd" {
@@ -1104,7 +1106,13 @@ func cdOperand(s segment, site int) cdReadings {
 			break
 		}
 		if strings.Trim(t[1:], "LPe@qsn") != "" {
-			return cdReadings{}
+			if zshFirst < 0 {
+				zshFirst = i
+			}
+			if len(s.tokens)-zshFirst != 2 {
+				return cdReadings{}
+			}
+			return cdReadings{subst: &cdSubst{from: zshFirst, to: zshFirst + 1, physical: zshPhysical}}
 		}
 		if strings.Trim(t[1:], bashLetters) != "" {
 			bashOK = false

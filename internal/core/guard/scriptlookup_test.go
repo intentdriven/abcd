@@ -220,9 +220,9 @@ func TestCdOptionsBeforeTheOperand(t *testing.T) {
 		// substitution form finds no `-n` in the path and enters nothing.
 		{`cd {d}/stay && pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`cd {d}/stay && CDPATH={d}/cdpok pushd -n sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
-		// An option neither shell takes, or one only zsh would substitute
-		// where the path holds no such word: the directory is unknown, and
-		// the word is never searched for or entered.
+		// An option neither shell takes, alone or before an operand zsh
+		// would substitute where the path holds no such word: the directory
+		// is unknown, and the word is never searched for or entered.
 		{`cd {d} && cd -x && bash s.sh`, VerdictAllow, ""},
 		{`cd {d} && cd -n sub && bash s.sh`, VerdictAllow, ""},
 		{`cd {d}/empty && CDPATH={d}/cdpok cd -x sub && bash s.sh`, VerdictAllow, ""},
@@ -375,6 +375,49 @@ func TestCdTwoOperandsBashEntersTheFirst(t *testing.T) {
 		`cd {d} && cd a b && bash s.sh`:       "a",
 		`cd {d} && cd -- a b && bash s.sh`:    "a",
 		`cd {d} && cd nowhere b && bash s.sh`: "",
+	} {
+		cmd := strings.ReplaceAll(line, "{d}", dir)
+		if got := strings.Join(dirsAfter(t, dir, cmd), " "); got != want {
+			t.Errorf("%s\n  runs its last command in %q; want %q", line, got, want)
+		}
+	}
+}
+
+// TestCdUnknownOptionWordSubstitutes: an option word with a letter neither
+// shell takes is refused by bash and is the first operand to zsh, so with one
+// operand after it zsh reads the cd as its substitution form, and the
+// scripts after it are read in the directory that names
+// (iss-2610111851225403).
+func TestCdUnknownOptionWordSubstitutes(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"with-x/dir/s.sh":  "echo benign",
+		"with-qx/dir/s.sh": "echo benign",
+		"withsub/dir/s.sh": hazardLine,
+		"base/s.sh":        "echo benign",
+	})
+	if strings.Contains(dir, "-x") || strings.Contains(dir, "-qx") || strings.Contains(dir, "-e") {
+		t.Skipf("the temporary directory %s holds a word the cases substitute", dir)
+	}
+	runScriptCases(t, dir, []scriptCase{
+		{`cd {d}/with-x/dir && cd -x sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/with-qx/dir && cd -qx sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/with-x/dir && pushd -x sub && bash s.sh`, VerdictBlock, scriptHazardEntryID},
+		// The control: the path holds no `-x`, so no reading names a
+		// directory.
+		{`cd {d}/base && cd -x sub && bash s.sh`, VerdictAllow, ""},
+	})
+	for line, want := range map[string]string{
+		`cd {d}/with-x/dir && cd -x sub && bash s.sh`:    "withsub/dir",
+		`cd {d}/with-qx/dir && cd -qx sub && bash s.sh`:  "withsub/dir",
+		`cd {d}/with-x/dir && cd -q -x sub && bash s.sh`: "withsub/dir",
+		// zsh takes `-e` as its first operand and `-x` as its second.
+		`cd {d}/with-x/dir && cd -e -x && bash s.sh`: "",
+		// One word or three after it: zsh refuses or the word is a
+		// directory name the reader does not enter.
+		`cd {d}/with-x/dir && cd -x && bash s.sh`:        "",
+		`cd {d}/with-x/dir && cd -x -- sub && bash s.sh`: "",
+		`cd {d}/with-x/dir && cd -x sub b && bash s.sh`:  "",
+		`cd {d}/base && cd -x sub && bash s.sh`:          "",
 	} {
 		cmd := strings.ReplaceAll(line, "{d}", dir)
 		if got := strings.Join(dirsAfter(t, dir, cmd), " "); got != want {
