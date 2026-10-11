@@ -406,10 +406,10 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  that write holds .config.json.lock beside it
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
-  sources/                       the local sources corpus the source verb maintains and
-                                 /abcd:ingest and /abcd:consult read. Created only by
-                                 its explicit init: absent means every other verb and
-                                 both commands say so and stop
+  sources/                       the local sources corpus the library verb maintains
+                                 and /abcd:library reads. Created only by its explicit
+                                 init: absent means every other corpus verb and the
+                                 page say so and stop
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)

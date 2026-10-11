@@ -27,8 +27,8 @@ where iteration is cheap; permanence happens where the contract is proven.
 wrapper, banlist projection, cite guard) proved the per-source-folder +
 CSL-JSON + append-only-ledger contract as bash before any Go verb exists; its
 absorption into the core is iss-27, converging with the itd-36 provenance
-substrate. The `/abcd:consult` and `/abcd:ingest` skills front it per the
-bounds above.
+substrate. The consult and ingest skills that fronted it became command pages
+and then retired into `/abcd:library`, which fronts it per the bounds above.
 
 **Promotion.** This principle is the capability-specific instance of the
 MVP → tool edge of the ladder in this directory's [README](README.md): the

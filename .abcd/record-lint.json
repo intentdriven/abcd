@@ -394,10 +394,7 @@
       "skills_dir": "skills",
       "registry": ".abcd/development/brief/04-surfaces/README.md",
       "snapshot": ".abcd/development/release/surface.json",
-      "host_delegated": [
-        "consult",
-        "ingest"
-      ],
+      "host_delegated": [],
       "operator_internal": [
         "spec",
         "rules",

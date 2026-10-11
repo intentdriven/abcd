@@ -81,7 +81,7 @@ planning interview walks each one.
   ingest page states "abcd fetches and converts nothing" today, and adr-38 bars
   an implicit fetch.
 - **The consult verb's name**: a sub-verb of `abcd source`, or its own top-level
-  verb beside the `/abcd:consult` page.
+  verb beside the `/abcd:consult` page (since retired into `/abcd:library`).
 - **The backfill's home**: the six entries live in a person's own corpus, not in
   this repository, so the backfill may be a documented act rather than a
   criterion the build can meet.

@@ -15,11 +15,13 @@ person's command named `library`
 Under [adr-40](../../decisions/adrs/0040-review-audit-lint-are-three-verbs.md) neither old name survives as
 an alias. Every sub-verb kept its name (decision 7), so the memory store's
 ingest, which distils a source into pages, sits beside the corpus's add, which
-registers a document. The host-delegated pages
-[`/abcd:consult`](13-consult.md) and [`/abcd:ingest`](14-ingest.md) carry the
-corpus's judgement (what to search for, which class a document is, which
-keywords matter) and call these verbs for every write; the page named ingest
-means the corpus's add, not the memory store's ingest (iss-2610110233253365).
+registers a document. The two host-delegated pages that carried the corpus's
+judgement, one for consulting it and one for registering a document, retired
+into the command page in step 6 of spc-2610100613109045, with their chapters
+folded into this one ([Consulting and registering](#consulting-and-registering-the-host-run-half)).
+The page says plainly that the corpus's add is what registers a document and
+that the memory store's ingest registers nothing, because the retired page that
+registered a document carried the name ingest (iss-2610110233253365).
 
 ## Sub-verbs
 
@@ -221,6 +223,79 @@ too: a corpus with no remote survives the loss of its disk only through the
 person's own backups and offline `git bundle` snapshots, which abcd documents and
 cannot perform.
 
+## Consulting and registering: the host-run half
+
+The binary makes every write to the corpus; the command page carries the
+judgement around it, run by the host agent. This section is what the retired
+consulting and registering pages held.
+
+### Consulting
+
+Bring private reading into a design decision without risking it into a commit.
+The host searches the corpus with plain search and file reads, trying keywords,
+author surnames and keys, and discusses what it finds with the person freely.
+The path is the classification: any hit under the confidential folder falls
+under the hard rule below. If nothing relevant surfaces it says so and pads
+with nothing: an empty answer is an answer, and inventing relevance is how a
+consultation stops being evidence. If the corpus is absent the host says so and
+stops; it never creates one.
+
+When a source genuinely shapes a decision, the host records the influence
+through the ledger and tells the person which key was recorded against which
+decision and the line number. That step is what turns the second gate of a
+public citation into something a person can operate: the citation flag is only
+ever flipped by the person, and they cannot decide about a ledger line they were
+never told exists.
+
+### The hard rule
+
+For any entry marked confidential, never write its title, authors, aliases, or
+any identifying string into anything tracked by git or sent anywhere external:
+commits, pull-request and issue text, docs, code comments, published artefacts.
+This covers **identifying paraphrase** too. The mechanical guards catch literal
+strings only, so this rule is the paraphrase layer. Refer generically ("a
+working paper on X"). Conversation with the person is exempt.
+
+The mechanical layer is narrower than the rule, deliberately. Patterns come
+from every confidential entry's title and aliases always, and from full author
+names only where that entry opts in. Authors are inside the rule
+unconditionally, so on an entry that has not opted in the names are held by the
+rule and the reader applying it, and by no mechanical check at all.
+
+### Registering a document
+
+Hand over a link or a document and get it into the corpus as a real, findable
+source: clean reference metadata, keywords worth searching on, a class, and a
+stored text body someone can read later. The corpus's add does the deterministic
+half (store the document and its text under the class folder, write the entry,
+commit the corpus); the host does the judgement half, fetching and converting
+included, in five steps.
+
+1. **Read the document first**, then extract the exact title, authors, year,
+   venue, canonical URL and CSL type. A name given by initials is resolved
+   through the entry's own DOI or URL before it is caveated, and a name that has
+   changed since publication is recorded as the publisher now gives it.
+2. **Decide class and key.** The class is the person's to give (A13): web
+   content is usually public, and the person's own unpublished work, internal or
+   NDA material, AI-generated content and a private repository's documentation
+   are signals for private. Those signals shape the question the host puts
+   through its question tool; they never answer it, and the add asks at a
+   terminal and refuses off one when no class is given. A public key is
+   `<authorfamily><year><distinctiveword>`; a private key is opaque, because the
+   key is the one handle every refusal and scan prints. A private entry whose
+   natural title reads like ordinary prose is registered under a distinctive
+   title, since the title becomes a banned phrase.
+3. **Register** through the corpus's add, the identifying strings in a metadata
+   file rather than on the command line. A URL alone registers a metadata stub,
+   and there is no one-argument quick path.
+4. **Quality-check the extraction.** Inspect the stored text for a sane word
+   count and real prose, and repair the known failure modes by hand rather than
+   leaving a stub that reads as a source.
+5. **Close out.** Sync the banlist into every guarded repository the session
+   touched, keep any derived summary inside the source's own folder so it
+   inherits the class by location, record an influence if a live decision
+   motivated the addition, and tell the person the key and class.
+
 ## The memory store
 
 Keep what a project learns from the things it reads, in a form that is still
@@ -366,7 +441,22 @@ meaningful.
   the document and its extracted text land under `confidential/<key>/`.
 - **Given** a consulted source that shaped a decision, **when** the influence is
   recorded, **then** one line is appended with `cited_publicly` false, and a
-  correction is another new line.
+  correction is another new line, and the person is told in conversation which
+  key was recorded against which decision.
+- **Given** a present corpus, **when** a search returns a hit in the
+  confidential folder, **then** the source is read and discussed freely with the
+  person and no identifying string from it reaches a tracked file or any
+  external destination; a search that surfaces nothing says so and pads with
+  nothing.
+- **Given** an item added with no class, **when** the add runs at a terminal,
+  **then** it asks whether the item is private or public, naming what each
+  means, and files it as answered; off a terminal it refuses naming the two
+  answers and writes nothing; an item added as private or public is not asked
+  about (A13).
+- **Given** a public URL the person hands over, **when** it is registered,
+  **then** the entry has a `<authorfamily><year>word` key, clean metadata, 5–10
+  real keywords, and a stored text body that passes the word-count and prose
+  check.
 - **Given** confidential entries in the corpus, **when** a commit runs in a
   managed repository, **then** the guard refreshes the generated block (titles
   and aliases always, authors only under `ban_authors`) and refuses a commit
@@ -385,8 +475,6 @@ meaningful.
 ## References
 
 - Plugin command: [`commands/library.md`](../../../../commands/library.md)
-- The host-delegated halves of the corpus: [`13-consult.md`](13-consult.md),
-  [`14-ingest.md`](14-ingest.md)
 - The private banlist layer the guard shares: [`20-banlist.md`](20-banlist.md)
 - The corpus's trust boundary: [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md),
   brief invariant 9

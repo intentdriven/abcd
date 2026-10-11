@@ -150,3 +150,45 @@ func TestRetiredPrepareThisRepoTokenNamesWhatReplacedIt(t *testing.T) {
 		}
 	}
 }
+
+// TestRetiredConsultAndIngestTokensNameTheLibrary is the consult and ingest
+// half of spc-2610100613109045's old-names rule (step 6): both pages folded
+// into the library page, so `abcd consult` and `abcd ingest`, never verbs, are
+// still unknown commands, and each note names the library rather than the
+// retired page. The ingest note says plainly that `library add` registers a
+// document and `library ingest` does not (iss-2610110233253365), so no reader
+// takes the memory store's ingest for the retired page's job.
+func TestRetiredConsultAndIngestTokensNameTheLibrary(t *testing.T) {
+	for _, tc := range []struct {
+		token string
+		want  []string
+	}{
+		{"consult", []string{"/abcd:library", "library ledger"}},
+		{"ingest", []string{"/abcd:library", "abcd library add", "registers a document", "abcd library ingest"}},
+	} {
+		t.Run(tc.token, func(t *testing.T) {
+			if _, ok := pagesWithNoVerb[tc.token]; ok {
+				t.Fatalf("pagesWithNoVerb still names %s, whose page folded into the library page", tc.token)
+			}
+			root := stalePluginRoot(t)
+			setExecutable(t, filepath.Join(root, "abcd"))
+			code, stdout, stderr := runMain(t, tc.token)
+			if code != 2 || stdout != "" {
+				t.Fatalf("`abcd %s` exit = %d, stdout %q; want exit 2 and an empty stdout", tc.token, code, stdout)
+			}
+			if !strings.Contains(stderr, "unknown command") {
+				t.Errorf("`abcd %s` is not refused as an unknown command:\n%s", tc.token, stderr)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("the refusal does not name %q:\n%s", want, stderr)
+				}
+			}
+			for _, not := range []string{"/abcd:" + tc.token, "predates", "make build", "abcd update"} {
+				if strings.Contains(stderr, not) {
+					t.Errorf("the refusal names %q:\n%s", not, stderr)
+				}
+			}
+		})
+	}
+}

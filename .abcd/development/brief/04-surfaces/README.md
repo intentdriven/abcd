@@ -24,8 +24,6 @@ are wiring rather than user-facing surface are listed separately under
 | 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
-| 13 | `/abcd:consult` | shipped | Ask the local sources corpus what prior work says, and record what it changed | [`13-consult.md`](13-consult.md) |
-| 14 | `/abcd:ingest` | shipped | Put a document or URL into the sources corpus with its reference metadata | [`14-ingest.md`](14-ingest.md) |
 | 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
 | 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
 | 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
@@ -70,9 +68,10 @@ a missing one, and a file without the table is a finding whatever its verb
 registers. The rule checks each table against the committed command-tree
 snapshot in both directions: a `shipped` row must be registered, a `staged` row
 must not be, a registered sub-command must have a row, and a sub-command-bearing
-verb cannot lack a file entirely. Host-delegated surfaces and the bare command are
-exempt from that comparison by explicit configuration, never silently, and from
-nothing else: their tables are still required and format-checked.
+verb cannot lack a file entirely. The bare command, and any host-delegated
+surface (a page with no verb; the list is empty today), are exempt from that
+comparison by explicit configuration, never silently, and from nothing else:
+their tables are still required and format-checked.
 Operator-internal verbs are absent from this registry by design.
 
 The surface-grain `Status` enum stays two-valued: there is no `partial`, because
@@ -304,12 +303,15 @@ present the result: the markdown is the surface, the binary is the engine. Those
 commands stay thin — they call `abcd <verb> --json` and format the result, and
 never reimplement behaviour that belongs in the core.
 
-The two host-delegated commands named below are the exception, and are
-configured as such rather than being silently different: `/abcd:consult` and
-`/abcd:ingest` back onto no verb of their own, and carry the workflow itself.
-The preparation workflow that brings an owned repository up to the conventions
-runs in the host agent too, but from `ahoy.md`'s install section, around the
-binary's install, so it backs a verb.
+Every page but the bare board backs a verb of its own name. Some carry a
+workflow the host drives around the binary as well: the library page's
+consulting and registering steps (search the corpus, read a document first,
+choose its class and key) run in the host agent around the corpus verbs, and
+the preparation workflow that brings an owned repository up to the conventions
+runs from `ahoy.md`'s install section, around the binary's install. The two
+host-delegated pages that once backed no verb, one for consulting the corpus
+and one for registering a document, retired into the library page
+(itd-2610090831227812).
 
 The directory is **flat**, and that is load-bearing rather than tidiness. A
 harness maps each `commands/` subdirectory to an extra namespace segment, so a
@@ -319,9 +321,9 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
+`abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`ingest`, `intent`, `lab`, `launch`, `library`, `lint`, `mode`, `peers`,
+`intent`, `lab`, `launch`, `library`, `lint`, `mode`, `peers`,
 `reading`, `reflect`, `report`, `scribe`, `site`, `update`.
 <!-- /index -->
 
@@ -340,11 +342,11 @@ the only reliable fix is a home outside the auto-discovery root.
 ## No skills
 
 **abcd ships zero skills** — the `/abcd:` surface is commands only, and there is
-no `skills/` directory in the tree. `/abcd:consult` and `/abcd:ingest` were
-once shipped as skills and are commands: each mutates state — the sources
-corpus and its ledger — which the boundary rule makes command-shaped. They are
-**host-delegated** commands, with a command page and no Go verb, so the
-workflow runs in the host agent. The third workflow once shipped as a skill,
+no `skills/` directory in the tree. Three workflows once shipped as skills, and
+each mutates state, which the boundary rule makes command-shaped. Consulting
+the sources corpus and registering a document in it write the corpus and its
+ledger; they became host-delegated command pages and then retired into the
+library page, whose verbs make every write (itd-2610090831227812). The third,
 the preparation of a target repo, mutates that repo; its page retired into the
 install section of `ahoy.md` (itd-2610090831227812). The
 skill/command boundary is documented in
@@ -410,7 +412,7 @@ abcd keeps two kinds of remembered material, and they do different jobs. The **l
 | How it comes back | The person asks ("what do my sources say about pacing?") and gets answers that cite the item they came from | Brought into a session automatically when a prompt matches the words the note was saved with |
 | Where it can go | Into a decision as a cited source; a confidential item is never named in anything public | Into the project's record, when a note is promoted so that every agent receives it |
 
-A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The `library` command holds what the `source` and `memory` commands held, and the consult and ingest pages fold into it next (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
+A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The `library` command holds what the `source` and `memory` commands held, and the pages for consulting the corpus and registering a document folded into its page (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
 
 ## Where to find related design
 

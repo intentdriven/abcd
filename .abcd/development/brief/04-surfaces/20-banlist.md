@@ -332,7 +332,7 @@ pattern, and a guard is only ever asked about what git asks it about.
 - Intent: [`itd-74`](../../intents/shipped/itd-74-name-banlist.md)
 - Public-layer gate: [`10-docs.md`](10-docs.md)
 - Install surface: [`01-ahoy.md`](01-ahoy.md)
-- The corpus writer that shares the private store: [`13-consult.md`](13-consult.md)
+- The corpus writer that shares the private store: [`07-library.md`](07-library.md)
 - The visibility fence and its tracked-tier narrowing:
   [`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)
 

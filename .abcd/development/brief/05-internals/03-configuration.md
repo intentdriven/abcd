@@ -504,8 +504,9 @@ across the read and the write as the provider block's write holds
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
 [the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
-phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/abcd:ingest` and
-`/abcd:consult` read (abcd never creates that one, and both verbs say so and stop
+phase too: the shipped memory store is repo-scope), and the `sources/` corpus
+`/abcd:library` reads and writes (abcd never creates that one unasked: only its
+explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
 are pulled in. **Never the design record.** The same inventory is drawn as a tree

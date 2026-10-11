@@ -73,17 +73,16 @@ var (
 const dispatcherPage = "abcd"
 
 // pagesWithNoVerb are the command pages that document no binary verb, each
-// with what the token is instead: the dispatcher page, and the host-delegated
-// pages whose whole workflow runs in the host agent. A page existing for one
-// of these tokens proves nothing about the binary's age, so staleUsageNote
-// names what the token is rather than calling an up-to-date binary stale
-// (iss-2609200953255336, iss-2609240519471816). The surface-parity test reads
-// this set, so a new host-delegated page is added here or the parity check
-// reads its missing verb as drift.
+// with what the token is instead. Since the last host-delegated pages folded
+// into the library page (spc-2610100613109045 step 6), only the dispatcher
+// page is one. A page existing for one of these tokens proves nothing about
+// the binary's age, so staleUsageNote names what the token is rather than
+// calling an up-to-date binary stale (iss-2609200953255336,
+// iss-2609240519471816). The surface-parity test reads this set, so a new
+// page with no verb is added here or the parity check reads its missing verb
+// as drift.
 var pagesWithNoVerb = map[string]string{
 	dispatcherPage: "`abcd` is the binary itself, not one of its commands — the page /abcd:abcd documents the bare call; did you mean `abcd <record-id>` (or bare `abcd` for the status board)?",
-	"consult":      "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
-	"ingest":       "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
 }
 
 // retiredTokens are top-level tokens whose page or verb was retired with no
@@ -92,6 +91,8 @@ var pagesWithNoVerb = map[string]string{
 // does not know a retired name is never called stale for it. A token here has
 // no page, so it is not in pagesWithNoVerb.
 var retiredTokens = map[string]string{
+	"consult":           "`consult` folded into the library page: run /abcd:library, which searches the sources corpus in the host agent and records an influence with `abcd library ledger`",
+	"ingest":            "`ingest` folded into the library page: run /abcd:library, where `abcd library add` registers a document in the sources corpus; `abcd library ingest` distils a source into memory pages and registers nothing",
 	"prepare-this-repo": "`prepare-this-repo` folded into ahoy install: run /abcd:ahoy install, which prepares the repository in the host agent around the binary's `abcd ahoy install`",
 	"changelog":         "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
 	"memory":            "`memory` merged into the library verb: run `abcd library` for the memory store's status beside the sources corpus, and `abcd library ingest`, `ask` or `lint` for the store's verbs",
