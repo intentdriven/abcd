@@ -228,6 +228,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		res.WaitedS = now().Sub(start).Seconds()
 		if done {
+			// What held an earlier look shut is history (WaitedOn), not the
+			// state of a gate that has now opened.
+			res.Still = nil
 			return res, nil
 		}
 		res.Still = shut

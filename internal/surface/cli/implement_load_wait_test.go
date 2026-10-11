@@ -104,6 +104,15 @@ func TestImplementLoadWaitJSON(t *testing.T) {
 	if res.Status != implement.WaitOpen || res.WaitedS != 15 || len(res.WaitedOn) != 1 || res.WaitedOn[0] != implement.WaitOnLoad || res.Hold == nil {
 		t.Fatalf("result = %+v", res)
 	}
+	// An open after a wait carries nothing still shut: the last shut look's
+	// conditions are history, in waited_on, not the gate's state.
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if still, ok := raw["still"]; ok {
+		t.Fatalf("an open gate reports still %v:\n%s", still, out)
+	}
 }
 
 // TestImplementLoadWaitRunsTheCommandAndReleases: the command form runs its
