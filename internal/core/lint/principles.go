@@ -117,9 +117,6 @@ var (
 		`|<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*>` +
 		`|<[^\s<>@]+@[^\s<>@]+>` +
 		`|(?i:\b(?:https?|ftp)://|\bwww\.)[^\s<>]*`)
-	// statementLabelledLinkRe is the two link shapes that carry a label: an
-	// inline link and a full or collapsed reference link.
-	statementLabelledLinkRe = regexp.MustCompile(`\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])`)
 	// principleTitleRe is an ATX H1; principleTitleCloseRe is its optional
 	// closing sequence, which is not part of the title.
 	principleTitleRe      = regexp.MustCompile(`^#[ \t]+(.*)$`)
@@ -227,11 +224,29 @@ func PrincipleLinkIn(text string) (string, bool) {
 	return m, m != ""
 }
 
-// UnwrapPrincipleLinks replaces every labelled link with its label, on the
-// renderedTexts precedent: the target is a citation and the label is prose.
+// maxPrincipleLinkPasses caps the passes UnwrapPrincipleLinks makes. Each
+// unwraps one level of nesting, and CommonMark nests an image inside a link
+// and no deeper.
+const maxPrincipleLinkPasses = 8
+
+// UnwrapPrincipleLinks replaces every labelled link and image with its label
+// or alt text, on the renderedTexts precedent: the target is a citation and
+// the label is prose. It reads through the inline link scanner the reading
+// floor uses (mdrecord.UnwrapLinkPass), passed until the text stops changing,
+// so a destination holding parentheses, an angle-bracketed destination and a
+// title are read whole; a pattern that ended the destination at its first `)`
+// left the rest of the address in the projected statement. A shortcut
+// reference is left as written: without its definition it is literal text.
 // What it cannot unwrap, a link with no label, it leaves for PrincipleLinkIn.
 func UnwrapPrincipleLinks(text string) string {
-	return statementLabelledLinkRe.ReplaceAllString(text, "$1")
+	for range maxPrincipleLinkPasses {
+		next, _ := mdrecord.UnwrapLinkPass(text, false)
+		if next == text {
+			break
+		}
+		text = next
+	}
+	return text
 }
 
 // principleRules names the four rules in dispatch order.

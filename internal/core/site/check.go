@@ -712,7 +712,7 @@ func sourcedTexts(uses []textUse) map[string]bool {
 // identitySpan is the data-src the Identity block's text carries elsewhere on
 // the page, so a title finding points at the same place a hero finding does.
 func (c *checker) identitySpan() string {
-	return c.manifest.Identity.File + "#" + Slug(c.manifest.Identity.Heading)
+	return c.manifest.Identity.File + "#" + slug(c.manifest.Identity.Heading)
 }
 
 // elementPath renders a text node's position as its ancestor chain, so a

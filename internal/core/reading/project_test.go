@@ -1,6 +1,7 @@
 package reading
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -29,6 +30,277 @@ func TestNumericCharacterReferenceIsRecognised(t *testing.T) {
 		if !sameRendering(probe, "Audit Notes") {
 			t.Errorf("%q does not read as the excluded heading", probe)
 		}
+	}
+}
+
+// TestTheCaseFoldIsASCIIOnly: Unicode simple case folding takes the long s
+// (U+017F) to an s and the Kelvin sign (U+212A) to a k, so a title spelled with
+// either was the excluded heading and silently redacted, although it renders
+// differently. Only an ASCII case difference is the same heading; these are
+// near-matches, which every verifier path refuses.
+func TestTheCaseFoldIsASCIIOnly(t *testing.T) {
+	cases := []struct{ title, want string }{
+		{"Open Queſtions", "Open Questions"},
+		{"Kept Notes", "Kept Notes"},
+		{"Kept ſCOPE", "kept scope"},
+	}
+	for _, c := range cases {
+		if _, got := namesExcludedHeading(c.title, map[string]bool{c.want: true}); got != nearHeading {
+			t.Errorf("namesExcludedHeading(%q, %q) = %v, want nearHeading", c.title, c.want, got)
+		}
+	}
+	if _, got := namesExcludedHeading("OPEN questions", map[string]bool{"Open Questions": true}); got != sameHeading {
+		t.Errorf("an ASCII case variant is no longer the same heading: %v", got)
+	}
+}
+
+// TestLinkSyntaxTheScannerCannotReadRefusesAnExcludedHeading: the floor's second
+// layer. A title the link scanner leaves with link or image syntax in it is
+// one the floor has not read, so it is refused whenever its letters still
+// carry an excluded heading's, whatever the rest of it says. Each title below
+// is malformed, unbalanced or nested past the pass cap, and each travelled
+// under the link pattern, which unwrapped what it could and compared the rest
+// (iss-2610101930329211). The controls show the layer is narrow: a link the
+// scanner reads is the same heading and redacted, and a title with brackets
+// or another language and no excluded words travels.
+func TestLinkSyntaxTheScannerCannotReadRefusesAnExcludedHeading(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	refused := []string{
+		"[Audit Notes](a b c",
+		"[Audit Notes(x)",
+		"Audit Notes]",
+		"[[Audit Notes]",
+		"[Open Questions](x \"unclosed title)",
+		"[![Audit Notes](a.png)](x y z)",
+		strings.Repeat("[", 10) + "Audit Notes" + strings.Repeat("]", 10),
+		"[A]udit Notes](x)",
+		// Many unreadable tails spend the pass's budget, and the valid link
+		// after them is left as written rather than read.
+		strings.Repeat("[a](x(", 200) + " [Audit Notes](https://x)",
+	}
+	for _, title := range refused {
+		if want, got := namesExcludedHeading(title, headings); got != nearHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want nearHeading", title, got, want)
+		}
+	}
+	if _, got := namesExcludedHeading("[Audit Notes](https://x)", headings); got != sameHeading {
+		t.Errorf("a plain inline link is no longer the same heading: %v", got)
+	}
+	for _, title := range []string{"Notas de auditor\u00eda", "See [the guide](https://x) for notes", "[Release notes](a b", "Notes [1] and audits]"} {
+		if want, got := namesExcludedHeading(title, headings); got != noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading", title, got, want)
+		}
+	}
+}
+
+// TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel: CommonMark passes four
+// raw HTML kinds through that a browser never shows, and the floor stripped
+// only the comment. A processing instruction, a declaration and a CDATA
+// section inside a heading render as nothing, so each title below reads as
+// the excluded heading on the page and travelled (iss-2610101930329211). Each
+// is now stripped where comments are and the title is the same heading.
+func TestHiddenRawHTMLNeverLetsAnExcludedHeadingTravel(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	for _, title := range []string{
+		"Audit<?x?> Notes",
+		"<?x?>Audit Notes",
+		"Audit<!X y> Notes",
+		"Audit <!x> Notes",
+		"Audit<![CDATA[>]]> Notes",
+		"<![CDATA[x>y]]>Open Questions",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+}
+
+// TestHiddenRawHTMLIsReadToWhereABrowserEndsIt: CommonMark decides what raw
+// HTML a title carries and a browser decides how much of it is hidden, and the
+// two disagree on where it ends. A comment may be `<!-->` or `<!--->` alone
+// (CommonMark 0.31 and every browser), and a browser also ends one at `--!>`;
+// it ends a processing instruction, a declaration and, outside SVG and MathML,
+// a CDATA section at the first `>`. The floor read each to CommonMark's end, so
+// the visible `Notes` between two of them was stripped with them, the title
+// compared as `Audit`, and the section travelled (iss-2610101930329211). The
+// title is now also read the way a browser hides it.
+func TestHiddenRawHTMLIsReadToWhereABrowserEndsIt(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, title := range []string{
+		"Audit <!-->Notes<!-- -->",
+		"Audit <!--->Notes<!-- -->",
+		"Audit <!-- --!>Notes<!-- -->",
+		"Audit <?x>Notes<?y?>",
+		"Audit <![CDATA[x>Notes<![CDATA[y]]>",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+}
+
+// TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent: a browser
+// renders no content for a template, script, style, title, noscript (while
+// scripts run), noembed, noframes, iframe or datalist element, nor the
+// fallback inside video, audio, canvas and object where the element itself
+// renders, and none of them needs an attribute to hide it. Each title below
+// shows as the excluded heading and compared as `Audit x Notes`, so it
+// travelled (iss-2610101930329211). The title is now also read with such an
+// element's content removed, so it is the excluded heading. A renderer whose
+// sanitizer drops the tag and shows its content reads the other way, and the
+// reading with the content kept is still taken.
+func TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	var titles []string
+	for _, name := range []string{"template", "script", "style", "title", "noscript", "noembed",
+		"noframes", "iframe", "datalist", "video", "audio", "canvas", "object", "rp"} {
+		titles = append(titles, "Audit <"+name+">x</"+name+"> Notes")
+	}
+	titles = append(titles,
+		"Audit <SCRIPT>x</Script > Notes",
+		"Audit <script type=\"a>b\">x</script> Notes",
+		"Audit <style/>x</style> Notes",
+		"<script>x</script>Audit Notes",
+		"Audit Notes <script>x",
+		"Audit <template><template></template>x</template> Notes",
+		"Audit <template><textarea></template></textarea>x</template> Notes",
+		"Audit <template><!-- </template> -->x</template> Notes",
+		"Audit <script>x</scripts></script> Notes",
+		"Audit <ruby><rp>x</rp></ruby> Notes",
+	)
+	for _, title := range titles {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+	for _, title := range []string{
+		"Audit <textarea>x</textarea> Notes",
+		"Audit <xmp>x</xmp> Notes",
+		"Audit <b>x</b> Notes",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading: a browser shows its content", title, got, want)
+		}
+	}
+}
+
+// TestTheHiddenHTMLReadersStayLinear: the hidden raw HTML pattern kept its
+// search alive past an unclosed comment until a later processing instruction
+// was confirmed, once per pair, so a title of `<!-- <?x?> ` repeated took 4.6 s
+// at 44 KB and grew with the square of its length; and the attribute mask
+// searched the whole remainder for `-->` once per unclosed `<!--`, 21 s over
+// 800 KB. Each terminator search now remembers that it failed, and the walk
+// through unrendered elements only advances, however deep they nest.
+func TestTheHiddenHTMLReadersStayLinear(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, unit := range []string{
+		"<!-- <?x?> <![CDATA[ <!x ",
+		"<template><video></audio><script></scripts><b '",
+		"<template></video>",
+	} {
+		title := strings.Repeat(unit, (MaxFileBytes-64)/len(unit))
+		start := processCPU()
+		namesExcludedHeading(title, headings)
+		if elapsed := processCPU() - start; !raceEnabled && elapsed > 10*time.Second {
+			t.Errorf("namesExcludedHeading took %s of CPU over a %d-byte title of %q", elapsed, len(title), unit)
+		}
+	}
+	doc := "# S\n\n" + strings.Repeat("<!--", (MaxFileBytes-64)/4) + "\n"
+	start := processCPU()
+	maskMarkupData(doc, true)
+	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
+		t.Errorf("the mask took %s of CPU over a %d-byte run of unclosed comments", elapsed, len(doc))
+	}
+}
+
+// TestAnyMarkupRemnantRefusesAnExcludedHeading: the backstop's widened
+// trigger. A title still carrying a bracket or an angle bracket once its links,
+// tags and hidden HTML are reduced holds markup the floor did not model, so it
+// is refused whenever its letters carry an excluded heading's. The bracket
+// presence is judged before backslash escapes are decoded, so a decoded `\[`
+// cannot pair with a remnant `]` and erase what the backstop looks for; a
+// non-ASCII letter stands for any ASCII letter the way nearExcluded reads it,
+// so a misread link spelled with a lookalike is refused too; and the text
+// between an unmodelled `<` and `>` is set aside, so `<%x%>` cannot break the
+// excluded words apart (iss-2610101930329211). The controls show the backstop
+// stays narrow: markup or another script with no excluded words travels.
+func TestAnyMarkupRemnantRefusesAnExcludedHeading(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	for _, title := range []string{
+		"[<?\\[?>Audit Notes<?]?>](x)",
+		"[<%\\[%>Audit Notes<%]%>](x)",
+		"[Аudit Notes<b a=]>](x)",
+		"Audit<%x%> Notes",
+		"Audit<%%> Notes",
+		"<:x:>Open Questions",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got == noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want it refused or redacted", title, got, want)
+		}
+	}
+	for _, title := range []string{
+		"a < b",
+		"a > b and [c]",
+		"x <%y%> z",
+		"Notas de auditoría",
+		"[Новые] факты",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want noHeading", title, got, want)
+		}
+	}
+}
+
+// TestAQuotedAttributeValueDoesNotEndATag: CommonMark and every browser read a
+// `>` inside a quoted attribute value as part of the value, so each tag below
+// ends at the `>` after its closing quote and the title renders as the excluded
+// heading. The tag stripper ended a tag at the first `>`, so `x">` stayed in the
+// reduced title and the section travelled (iss-2610101930329211). Each is now
+// stripped whole and the title is the same heading.
+func TestAQuotedAttributeValueDoesNotEndATag(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true, "Open Questions": true}
+	for _, title := range []string{
+		"Audit <b title=\">x\"> Notes",
+		"Audit <b title='>x'> Notes",
+		"Audit <b class=\"a\" title=\">x\" data-y='<z>' hidden> Notes",
+		"Audit <b title=\">x\">Notes</b>",
+		"<span title=\"a>b\">Open</span> Questions",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want sameHeading", title, got, want)
+		}
+	}
+}
+
+// TestTheBackstopSetsAsideAQuotedAngleSpanWhole: the backstop sets aside each
+// `<...>` span of markup no stripper models, so letters inside it cannot split
+// the excluded words. A span ending at the first `>` stopped inside a quoted
+// value, `<x:y a=">z">`, and left `z` between them, so the title travelled. The
+// span is now also read past a quoted `>`.
+func TestTheBackstopSetsAsideAQuotedAngleSpanWhole(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, title := range []string{
+		"Audit<x:y a=\">z\"> Notes",
+		"Audit<x:y a='>z'> Notes",
+	} {
+		if want, got := namesExcludedHeading(title, headings); got == noHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v (%q), want it refused or redacted", title, got, want)
+		}
+	}
+}
+
+// TestUnwrapLinksReportsTheTitleBeforeEscapesAreDecoded: decoding turns a
+// `\[` into a `[` that the next pass can pair with a remnant `]` and unwrap,
+// so the reduced title alone no longer shows the bracket the backstop tests
+// for. unwrapLinks also returns the title at its fixed point before decoding,
+// and the backstop judges remnants there (iss-2610101930329211).
+func TestUnwrapLinksReportsTheTitleBeforeEscapesAreDecoded(t *testing.T) {
+	out, before := unwrapLinks("a\\[b](c)")
+	if out != "ab" {
+		t.Errorf("unwrapLinks reduced to %q, want %q", out, "ab")
+	}
+	if before != "a\\[b](c)" {
+		t.Errorf("unwrapLinks reported %q before decoding, want the title as written", before)
 	}
 }
 
@@ -611,21 +883,145 @@ func TestTheEscapedKeyRefusalStatesOnlyWhatItKnows(t *testing.T) {
 	}
 }
 
-// TestOpensTagIsHTMLTagResRule is iss-2608301251394412: the attribute walk's
-// opensTag and the title stripper's htmlTagRe are one definition of what opens
-// a tag, so on any input the pattern can read to its `>`, the walk opens exactly
-// where the pattern matches. The hand-written copy took a `<` and a letter for
-// a tag, so it opened on an autolink its own comment said opens nothing.
-func TestOpensTagIsHTMLTagResRule(t *testing.T) {
+// TestOpensTagIsTheStrippersRule is iss-2608301251394412: the attribute walk's
+// opensTag and the title stripper (stripTags) are one definition of what opens
+// a tag, so on any input the stripper can read to its `>`, the walk opens
+// exactly where the stripper finds a tag. The hand-written copy took a `<` and
+// a letter for a tag, so it opened on an autolink its own comment said opens
+// nothing.
+func TestOpensTagIsTheStrippersRule(t *testing.T) {
 	for _, s := range []string{
 		"<h2>", "</h2>", "<h2 id=\"a\">", "<br/>", "<br />", "<my-tag>", "<a\nhref=\"x\">",
 		"<https://example.com>", "<mailto:someone@example.com>", "<h2:x>",
-		"< h2>", "<2>", "<-x>", "<>", "</>", "a < b >",
+		"< h2>", "<2>", "<-x>", "<>", "</>", "a < b >", "<b title=\">x\">",
 	} {
-		loc := htmlTagRe.FindStringIndex(s)
-		want := loc != nil && loc[0] == 0
+		want := tagAt(s, 0, newQuotedTagEnds(s)) >= 0
 		if got := opensTag(s, 0); got != want {
-			t.Errorf("opensTag(%q) = %v, htmlTagRe matches at 0 = %v", s, got, want)
+			t.Errorf("opensTag(%q) = %v, stripTags finds a tag at 0 = %v", s, got, want)
+		}
+	}
+}
+
+// htmlTagSpecRe is the tag grammar stripTags walks, spelled as the pattern it
+// replaced: a bounded name, then optionally a space and attributes whose
+// quoted values are read whole, then an optional slash and the `>`. It lives
+// here because the pattern is quadratic on a title of tags that open a quote
+// and never close it, and the walk is not (TestTheTagWalksStayLinear).
+var htmlTagSpecRe = regexp.MustCompile(htmlTagOpen + `(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?/?>`)
+
+// angleQuotedSpecRe is the extent setAsideQuotedSpans walks, as a pattern.
+var angleQuotedSpecRe = regexp.MustCompile(`<(?:[^>"']|"[^"]*"|'[^']*')*>`)
+
+// TestTheTagWalksAreTheirPatterns holds stripTags and setAsideQuotedSpans to
+// the patterns they spell out, on the shapes that make either one choose: quoted
+// `>` bytes, quotes never closed, nested and adjacent openers, autolinks, and
+// every short string over the bytes that matter.
+func TestTheTagWalksAreTheirPatterns(t *testing.T) {
+	inputs := []string{
+		"Audit <b title=\">x\"> Notes", "<b a='>' c=\"'\">x", "<b \"><i>", "<b '><i>'>",
+		"<b ' <i> ' <b ' <i> ' <b '", "<a href=x>y</a>", "<https://x> <b>", "<br/><br />",
+		"<x:y a=\">z\">", "<<b>>", "</b x=\">\">", "<b/x>", "<b\n\"a\nb\"\n>",
+	}
+	alphabet := []string{"<", ">", "\"", "'", "b", " ", "/", "x"}
+	var grow func(prefix string, depth int)
+	grow = func(prefix string, depth int) {
+		inputs = append(inputs, prefix)
+		if depth == 0 {
+			return
+		}
+		for _, a := range alphabet {
+			grow(prefix+a, depth-1)
+		}
+	}
+	grow("", 6)
+	for _, s := range inputs {
+		for _, repl := range []string{"", " "} {
+			if got, want := stripTags(s, repl), htmlTagSpecRe.ReplaceAllString(s, repl); got != want {
+				t.Fatalf("stripTags(%q, %q) = %q, the pattern gives %q", s, repl, got, want)
+			}
+		}
+		if got, want := setAsideQuotedSpans(s), angleQuotedSpecRe.ReplaceAllString(s, ""); got != want {
+			t.Fatalf("setAsideQuotedSpans(%q) = %q, the pattern gives %q", s, got, want)
+		}
+	}
+}
+
+// commonMarkHiddenSpecRe and browserHiddenSpecRe are the extents stripHidden
+// walks under each reading (hiddenViews), spelled as patterns. They live here
+// because the patterns are quadratic on a title of unclosed openers
+// (TestTheHiddenHTMLReadersStayLinear).
+var (
+	commonMarkHiddenSpecRe = regexp.MustCompile(`(?s)<!---?>|<!--.*?-->|<\?.*?\?>|<!\[CDATA\[.*?\]\]>|<![A-Za-z][^>]*>`)
+	browserHiddenSpecRe    = regexp.MustCompile(`(?s)<!---?>|<!--.*?(?:-->|--!>|\z)|<\?[^>]*(?:>|\z)|<![^>]*(?:>|\z)`)
+)
+
+// TestTheHiddenHTMLWalksAreTheirPatterns holds stripHidden, under each
+// reading, to the pattern it spells out, over every short string of the pieces
+// hidden raw HTML is made of.
+func TestTheHiddenHTMLWalksAreTheirPatterns(t *testing.T) {
+	pieces := []string{"<!--", "-->", "--!>", "<?", "?>", "<![CDATA[", "]]>", "<!", ">", "-", "x"}
+	inputs := []string{"Audit <!-->Notes<!-- -->", "<!-- a\nb -->", "<!X y>", "<!x>", "<!>"}
+	var grow func(prefix string, depth int)
+	grow = func(prefix string, depth int) {
+		inputs = append(inputs, prefix)
+		if depth == 0 {
+			return
+		}
+		for _, p := range pieces {
+			grow(prefix+p, depth-1)
+		}
+	}
+	grow("", 4)
+	for _, s := range inputs {
+		if got, want := stripHidden(s, commonMarkHiddenAt), commonMarkHiddenSpecRe.ReplaceAllString(s, ""); got != want {
+			t.Fatalf("stripHidden(%q, CommonMark) = %q, the pattern gives %q", s, got, want)
+		}
+		if got, want := stripHidden(s, browserHiddenAt), browserHiddenSpecRe.ReplaceAllString(s, ""); got != want {
+			t.Fatalf("stripHidden(%q, browser) = %q, the pattern gives %q", s, got, want)
+		}
+	}
+}
+
+// TestTheTagWalksStayLinear: a title of tags that each open a quote and close
+// it only on the next tag, ending on one never closed, kept the pattern's
+// search alive to the end of the title once per tag. Measured as patterns, a
+// 90 KB title took 10 s; the walks remember each quote's answer and take
+// milliseconds at the size cap.
+func TestTheTagWalksStayLinear(t *testing.T) {
+	n := (MaxFileBytes - 64) / len("<b ' <i> ' ")
+	title := strings.Repeat("<b ' <i> ' ", n) + "<b '"
+	start := processCPU()
+	stripTags(title, " ")
+	setAsideQuotedSpans(title)
+	if elapsed := processCPU() - start; !raceEnabled && elapsed > 5*time.Second {
+		t.Errorf("the tag walks took %s of CPU over a %d-byte title", elapsed, len(title))
+	}
+}
+
+// TestAnEndTagABrowserIgnoresNeverShowsHiddenContent holds the walk to fail
+// closed where it does not model the parser: an element it does not know,
+// opened inside an unrendered one, can leave the parser ignoring the
+// unrendered element's end tag (an audio end tag while a div is open is
+// dropped), so the content after it stays hidden. The walk then reads the
+// unrendered element to the end of the title, which redacts or refuses and
+// never lets the section travel. A void element opens nothing, so a video's
+// source still closes as written.
+func TestAnEndTagABrowserIgnoresNeverShowsHiddenContent(t *testing.T) {
+	headings := map[string]bool{"Audit Notes": true}
+	for _, title := range []string{
+		"Audit <audio><div></audio>x</div></audio> Notes",
+		"Audit <video><p></video>x</p></video> Notes",
+	} {
+		if _, got := namesExcludedHeading(title, headings); got == noHeading {
+			t.Errorf("namesExcludedHeading(%q) = noHeading; the hidden content must never travel", title)
+		}
+	}
+	for _, title := range []string{
+		"Audit <video><source src=a.mp4></video> Notes",
+		"Audit <audio><track src=a.vtt><br></audio> Notes",
+	} {
+		if _, got := namesExcludedHeading(title, headings); got != sameHeading {
+			t.Errorf("namesExcludedHeading(%q) = %v, want sameHeading: a void element opens nothing", title, got)
 		}
 	}
 }
