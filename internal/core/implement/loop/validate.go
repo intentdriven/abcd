@@ -923,12 +923,20 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	var r StepResult
 	err = retryContended(func() error {
 		var rerr error
-		r, rerr = receipt(repoRoot, runID, aw.Receipt, steps, o, &route)
+		r, rerr = reviewReceipt(repoRoot, runID, aw.Receipt, steps, o, &route)
 		return rerr
 	})
 	if err != nil {
-		if _, ok := AsRefusal(err); !ok {
+		refusal, ok := AsRefusal(err)
+		if !ok {
 			return res, err
+		}
+		if refusal.Contention {
+			// Another invocation held the run's lock past the retries: the
+			// verifier never read the return, which stands where it was placed
+			// for a hand-back.
+			return res, contend(refusal.Stage, refusal.Check, res.Lane, refusal.Reason,
+				fmt.Sprintf("the %s route's return stands at %s; hand it back with `abcd implement receipt %s`", rr.Name, aw.Receipt, aw.Receipt))
 		}
 		// The verifier refused what the route returned: the return is taken
 		// back off the path, so the host's agent writes there afresh, and the
@@ -941,6 +949,10 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	r.Route = &route
 	return r, nil
 }
+
+// reviewReceipt hands the route's placed return back through the receipt;
+// a variable so a test can stand in for a receipt that fails.
+var reviewReceipt = receipt
 
 // reasonInterrupted is the fallback's reason for a step interrupted while the
 // route worked: the person's interrupt, or a host's command timeout.

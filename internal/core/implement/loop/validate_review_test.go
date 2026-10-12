@@ -533,3 +533,36 @@ func TestTheRequestCarriesGitsOwnDiffAndTheReport(t *testing.T) {
 		t.Fatalf("the request carries the implementer's report:\n%s", sent[0])
 	}
 }
+
+// TestABusyLockLeavesThePlacedReturnStanding: a receipt refused because
+// another invocation held the run's lock past the retries is not the
+// verifier rejecting the route's return. The return stays where it was
+// placed, no fallback is recorded, and the refusal says to hand the return
+// back.
+func TestABusyLockLeavesThePlacedReturnStanding(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	busy := 0
+	prev := reviewReceipt
+	reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+		busy++
+		return StepResult{}, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	t.Cleanup(func() { reviewReceipt = prev })
+	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+	r, ok := AsRefusal(err)
+	if !ok || !r.Contention || !strings.Contains(r.Remedy, "abcd implement receipt "+aw.Receipt) {
+		t.Fatalf("a busy lock is refused as contention, naming the hand-back: %v", err)
+	}
+	if busy != lockRetries {
+		t.Fatalf("the receipt is retried %d times: %d", lockRetries, busy)
+	}
+	if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err != nil || string(b) != reviewerReturn("SHIP") {
+		t.Fatalf("the placed return stands: %q %v", b, err)
+	}
+	st, _ := ReadState(repo.Root(), id)
+	if len(st.Fallbacks) != 0 || st.Lanes[0].awaiting() == nil {
+		t.Fatalf("no fallback is recorded and the review still awaits its hand-back: %+v", st.Fallbacks)
+	}
+}
