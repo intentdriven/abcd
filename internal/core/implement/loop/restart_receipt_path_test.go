@@ -41,6 +41,7 @@ func TestARestartRefusesAReceiptOutsideTheLanesDirectory(t *testing.T) {
 		laneDir + "/ASIDE/20261012T000000Z/receipt.json",
 		laneDir + "/a\u017fide/20261012T000000Z/receipt.json",
 		laneDir + "/ASIDE.JSON",
+		laneDir + `/..\..\..\..\..\planted.txt`,
 	} {
 		t.Run(receipt, func(t *testing.T) {
 			err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {

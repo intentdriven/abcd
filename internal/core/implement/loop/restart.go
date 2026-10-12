@@ -499,7 +499,7 @@ func laneOwnReceipt(repoRoot, runID, laneID, receipt string) error {
 		return err
 	}
 	clean := path.Clean(receipt)
-	bad := clean != receipt || !strings.HasPrefix(clean, dir+"/")
+	bad := clean != receipt || !fsutil.ValidRelPath(clean) || !strings.HasPrefix(clean, dir+"/")
 	if !bad {
 		// Names are compared folded, as a case-insensitive filesystem (the Mac's
 		// default) resolves them: `ASIDE/` is the asides and `Changes.patch` the
