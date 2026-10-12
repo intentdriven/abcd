@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core"
@@ -315,33 +316,62 @@ func synopsisCarriesFlag(body string, s usageSkew) bool {
 		head += `\s*` + regexp.QuoteMeta(strings.Join(s.known, " "))
 	}
 	invocation := regexp.MustCompile(head + `(?:\s|$)`)
-	flag := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])` + regexp.QuoteMeta(s.flag) + `(?:[^A-Za-z0-9-]|$)`)
+	flag := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])(` + regexp.QuoteMeta(s.flag) + `)(?:[^A-Za-z0-9-]|$)`)
 	fenced := false
-	held := "" // a synopsis wrapped with trailing backslashes, joined so far
+	// A synopsis wrapped with trailing backslashes, joined so far; a builder,
+	// because recopying the joined text per wrapped line is quadratic too.
+	var held strings.Builder
 	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
-			fenced, held = !fenced, ""
+			fenced = !fenced
+			held.Reset()
 			continue
 		}
 		if !fenced {
 			continue
 		}
 		if cont, wrapped := strings.CutSuffix(strings.TrimRight(line, " \t"), `\`); wrapped {
-			held += cont + " "
+			held.WriteString(cont)
+			held.WriteByte(' ')
 			continue
 		}
-		line, held = held+line, ""
-		for _, loc := range invocation.FindAllStringIndex(line, -1) {
-			rest := line[loc[1]:]
-			if next := strings.Fields(rest); s.subVerbs && len(next) > 0 && verbShape.MatchString(next[0]) {
+		if held.Len() > 0 {
+			held.WriteString(line)
+			line = held.String()
+			held.Reset()
+		}
+		invocations := invocation.FindAllStringIndex(line, -1)
+		if len(invocations) == 0 {
+			continue
+		}
+		// One pass over the line for each pattern, never one per invocation: a
+		// page repeating an invocation along one line would otherwise rescan
+		// the rest of it each time. The flag counts after an invocation when
+		// its last occurrence starts at or past the invocation's end.
+		last := -1
+		for _, m := range flag.FindAllStringSubmatchIndex(line, -1) {
+			last = m[2]
+		}
+		for _, loc := range invocations {
+			if s.subVerbs && verbShape.MatchString(leadingField(line[loc[1]:])) {
 				continue
 			}
-			if flag.MatchString(rest) {
+			if last >= loc[1] {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// leadingField is strings.Fields(s)[0] (or ""), reading only as far as it —
+// archive.go's firstField splits the whole string, the rescan this avoids.
+func leadingField(s string) string {
+	s = strings.TrimLeftFunc(s, unicode.IsSpace)
+	if end := strings.IndexFunc(s, unicode.IsSpace); end >= 0 {
+		return s[:end]
+	}
+	return s
 }
 
 func commandPagePath(pluginRoot, verb string) string {

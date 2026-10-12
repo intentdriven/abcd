@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -457,4 +458,33 @@ func flagIn(args []string) string {
 		}
 	}
 	return ""
+}
+
+// A command page is read whole on an error path (up to maxCommandPageBytes),
+// so the synopsis scan must stay linear in it. One fenced line of repeated
+// invocations once rescanned the rest of the line per invocation (about two
+// minutes at the cap for a leaf command), and a run of backslash-wrapped lines
+// recopied the joined text per line (0.7s); each now takes milliseconds. The
+// bound is CPU time, which load cannot inflate, and it is not asserted under
+// -race, whose instrumentation multiplies a linear scan's cost tenfold.
+func TestSynopsisScanIsLinearInThePage(t *testing.T) {
+	const size = maxCommandPageBytes
+	fence := func(line string) string { return "```bash\n" + line + "\n```\n" }
+	for _, tc := range []struct {
+		name string
+		body string
+		skew usageSkew
+	}{
+		{"one line of leaf invocations", fence(strings.Repeat("abcd lint ", size/10)), usageSkew{known: []string{"lint"}, flag: "--frob"}},
+		{"one line of invocations with sub-verbs", fence(strings.Repeat("abcd build ", size/11)), usageSkew{known: []string{"build"}, flag: "--frob", subVerbs: true}},
+		{"a run of wrapped lines", fence(strings.Repeat("x \\\n", size/4) + "abcd lint"), usageSkew{known: []string{"lint"}, flag: "--frob"}},
+	} {
+		start := processCPU()
+		if synopsisCarriesFlag(tc.body, tc.skew) {
+			t.Errorf("%s: no line names --frob, yet it was found", tc.name)
+		}
+		if took := processCPU() - start; !raceEnabled && took > 250*time.Millisecond {
+			t.Errorf("%s: a %d KiB page took %v of CPU to scan; the scan is not linear in the page", tc.name, len(tc.body)>>10, took)
+		}
+	}
 }
