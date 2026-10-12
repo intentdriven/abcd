@@ -1009,6 +1009,17 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 	return out
 }
 
+// CapPrompt is prompt cut to the bytes the loader scans (maxPromptBytes), so
+// a huge pasted prompt cannot blow up matching. Every reader of a prompt —
+// Inject, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
+// through it, so a word past the cap matches nowhere.
+func CapPrompt(prompt string) string {
+	if len(prompt) > maxPromptBytes {
+		return prompt[:maxPromptBytes]
+	}
+	return prompt
+}
+
 // TermMatcher is the loader's term rule, exported so a memory note's recall
 // word hits on exactly the prompts a domain's recall word does
 // (spc-2610111627213138, "One recall for notes and pages"): it indexes prompt
@@ -1016,9 +1027,7 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 // the match a domain's every recall word and alias is judged by (word
 // boundary, stems, multi-word phrases). One function, never a copy.
 func TermMatcher(prompt string) func(term string) bool {
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
+	prompt = CapPrompt(prompt)
 	idx := indexPrompt(prompt)
 	return idx.termHit
 }
@@ -1028,9 +1037,7 @@ func TermMatcher(prompt string) func(term string) bool {
 // alias that hits, in the order the domain declares them. It says nothing of
 // state or the kill switch; Match decides whether d is injected at all.
 func Hits(d ResolvedDomain, prompt string) []string {
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
+	prompt = CapPrompt(prompt)
 	if parseStarCommands(prompt)[d.Name] {
 		return []string{"*" + d.Name}
 	}

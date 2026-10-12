@@ -95,3 +95,45 @@ func TestRulesAndNotesShareOneTurnBudget(t *testing.T) {
 		t.Fatalf("the omitted note was recorded on the turn it was left out: recalled %v", next.Recalled)
 	}
 }
+
+// TestRulesPromptCapsThePromptLikeTheHook (F5): `rules --prompt` scans the
+// same leading bytes of a prompt the hook does, so a recall word that lies
+// only past the cap matches no domain in the diagnostic, as it injects none
+// in the hook.
+func TestRulesPromptCapsThePromptLikeTheHook(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	writeRepoRules(t, repo, widgetsRules)
+	prompt := strings.Repeat("x ", 64<<10) + "a widget"
+	if len(rules.CapPrompt(prompt)) >= len(prompt)-len("a widget") {
+		t.Fatalf("the prompt does not run past the cap")
+	}
+
+	jout, stderr, err := runCLISplit(t, "rules", "--prompt", prompt, "--json")
+	if err != nil {
+		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+	}
+	var env struct {
+		Domains []struct {
+			Name string `json:"name"`
+		} `json:"domains"`
+	}
+	if err := json.Unmarshal([]byte(jout), &env); err != nil {
+		t.Fatalf("rules --prompt --json is not one document: %v\n%s", err, jout)
+	}
+	for _, d := range env.Domains {
+		if d.Name == "WIDGETS" {
+			t.Fatalf("a recall word past the prompt cap matched WIDGETS: %+v", env.Domains)
+		}
+	}
+	// The hook, for the same prompt, injects nothing for it either.
+	hook, _ := recallRouterJSON(t, "cap-session", repo, prompt)
+	if slices.Contains(hook.Injected, "WIDGETS") {
+		t.Fatalf("the hook matched past the cap: %v", hook.Injected)
+	}
+	// And within the cap the word does match, so the test is not vacuous.
+	jout, _, _ = runCLISplit(t, "rules", "--prompt", "a widget", "--json")
+	if !strings.Contains(jout, `"WIDGETS"`) {
+		t.Fatalf("a widget prompt within the cap did not match WIDGETS:\n%s", jout)
+	}
+}

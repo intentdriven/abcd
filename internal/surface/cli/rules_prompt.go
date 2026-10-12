@@ -127,6 +127,8 @@ func rulesPrompt(rs rules.RuleSet, root, prompt string) rulesPromptView {
 	if rs.Disabled {
 		return v
 	}
+	// The hook's own cap, so a word past it matches here no more than there.
+	prompt = rules.CapPrompt(prompt)
 	res := rules.Inject(rs, prompt, rules.SessionState{}, 0)
 	injected := map[string]bool{}
 	for _, name := range res.Injected {
