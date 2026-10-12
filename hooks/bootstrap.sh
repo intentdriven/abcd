@@ -520,6 +520,103 @@ path_entry_owned() {
 	[ -n "$(find "$path_entry" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]
 }
 
+# The newest-release mark (iss-2609151847117977): ~/.abcd.noindex/release-mark
+# names the newest release this machine has installed or verified. This script
+# raises it whenever it provisions a release it verified against the published
+# manifest, and `abcd update` records it whenever it installs or verifies one.
+# The cache attestation pins a binary hash, so on its own it keeps vouching for
+# a release long after a newer one was installed; the mark is the monotonic
+# check that tells the two apart. A release older than the mark is refused
+# here, whether the latest release fell back below it (a publisher withdrew the
+# newer one) or the cache holds an older release than the mark: going back is
+# the person's choice, made with `abcd update <tag>`, which names the tag and
+# records it as the mark. The mark is read only as the attestation is, from a
+# regular file this account owns that no one else can write; anything else
+# reads as no mark. A tag either side cannot parse is never called older.
+release_mark=''
+[ -n "$home_dir" ] && release_mark="$home_dir/.abcd.noindex/release-mark"
+mark_tag=''
+mark_note=''
+
+# tag_parts prints MAJOR MINOR PATCH and a pre-release flag for a vX.Y.Z[-pre]
+# tag, and nothing for anything else.
+tag_parts() {
+	printf '%s\n' "$1" | sed -n 's/^v\{0,1\}\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)$/\1 \2 \3 release/p; s/^v\{0,1\}\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)-[0-9A-Za-z.-]\{1,\}$/\1 \2 \3 pre/p'
+}
+
+# tag_older succeeds when release tag $1 is older than release tag $2.
+tag_older() {
+	_to_a=$(tag_parts "$1")
+	_to_b=$(tag_parts "$2")
+	[ -n "$_to_a" ] && [ -n "$_to_b" ] || return 1
+	# tag_parts prints exactly four space-separated fields, split here by
+	# parameter expansion alone.
+	_a1=${_to_a%% *}
+	_ar=${_to_a#* }
+	_a2=${_ar%% *}
+	_as=${_ar#* }
+	_a3=${_as%% *}
+	_ap=${_as#* }
+	_b1=${_to_b%% *}
+	_br=${_to_b#* }
+	_b2=${_br%% *}
+	_bs=${_br#* }
+	_b3=${_bs%% *}
+	_bp=${_bs#* }
+	[ "$_a1" -lt "$_b1" ] && return 0
+	[ "$_a1" -gt "$_b1" ] && return 1
+	[ "$_a2" -lt "$_b2" ] && return 0
+	[ "$_a2" -gt "$_b2" ] && return 1
+	[ "$_a3" -lt "$_b3" ] && return 0
+	[ "$_a3" -gt "$_b3" ] && return 1
+	[ "$_ap" = pre ] && [ "$_bp" = release ]
+}
+
+if [ -n "$release_mark" ] && [ -n "$(find "$release_mark" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]; then
+	mark_tag=$(meta_field "$release_mark" release_tag)
+	[ -n "$(tag_parts "$mark_tag")" ] || mark_tag=''
+fi
+
+# refuse_older refuses a release older than the mark. It is not say_refusal:
+# that text promises a retry with network access fixes it, and nothing a later
+# session fetches can, because the mark is a choice only the person lowers.
+refuse_older() {
+	terminal=yes
+	printf 'abcd bootstrap: %s is older than %s, the newest release this machine has installed or verified, so it was not installed: %s. An older release replaces a newer one only on your say-so. To go back to %s on purpose, run `abcd update %s`, which installs it and records it as the newest release; the next session then provisions this plugin root.\n\nUntil then the abcd binary is not installed in the plugin root, so the abcd hooks cannot run and the shell-hazard guard is inactive.\n' \
+		"$(safe "$1")" "$(safe "$mark_tag")" "$(safe "$2")" "$(safe "$1")" "$(safe "$1")" >&2
+	exit 1
+}
+
+# raise_mark records $1 as the newest release when it is newer than the mark
+# (or there is none), written whole into a mktemp sibling and renamed in, mode
+# 0600, as the attestation is. A failure is said on the notice, never silent.
+raise_mark() {
+	[ -n "$(tag_parts "$1")" ] || return 0
+	if [ -n "$mark_tag" ] && ! tag_older "$mark_tag" "$1"; then
+		return 0
+	fi
+	if [ -z "$home_dir" ]; then
+		mark_note=" (the newest-release mark could not be recorded because $home_refusal)"
+		return 0
+	fi
+	_rm_dir="$home_dir/.abcd.noindex"
+	_rm_tmp=''
+	if [ -e "$release_mark" ] && [ ! -f "$release_mark" ]; then
+		mark_note=' (the newest-release mark could not be recorded because its path is occupied by something that is not a regular file)'
+	elif mkdir -p -m 0700 "$_rm_dir" 2>/dev/null &&
+		_rm_tmp=$(mktemp "$_rm_dir/.release-mark.XXXXXX" 2>/dev/null) &&
+		[ -n "$_rm_tmp" ] &&
+		printf 'release_tag=%s\n' "$(printf '%s' "$1" | tr -d '\000-\037\177')" > "$_rm_tmp" 2>/dev/null &&
+		chmod 0600 "$_rm_tmp" 2>/dev/null &&
+		mv -f "$_rm_tmp" "$release_mark" 2>/dev/null; then
+		mark_tag="$1"
+	else
+		[ -n "$_rm_tmp" ] && rm -f "$_rm_tmp" 2>/dev/null
+		mark_note=' (the newest-release mark could not be recorded, so a later session cannot tell this release from an older one it attested)'
+	fi
+	return 0
+}
+
 # 4. Concurrency lock. mkdir is atomic on POSIX, so the loser of the race is the
 #    process whose mkdir fails; it exits quietly rather than racing the winner.
 #    In cache mode the lock lives in the DATA dir, because per-root locks cannot
@@ -628,6 +725,12 @@ if command -v curl >/dev/null 2>&1; then
 	resolved_tag=$(printf '%s\n' "$redirect" | sed -n 's|.*/releases/tag/\([^/?#]*\).*|\1|p')
 fi
 
+# A latest release older than the mark is a publisher withdrawal (or a fall
+# back the person did not choose): refused before anything is fetched.
+if [ -n "$resolved_tag" ] && [ -n "$mark_tag" ] && tag_older "$resolved_tag" "$mark_tag"; then
+	refuse_older "$resolved_tag" "the latest published release has fallen back below it, so the publisher may have withdrawn $mark_tag"
+fi
+
 # Decide whether the cache is trusted, and on what evidence. A cached artefact
 # and its co-located binary-meta are equally same-UID-writable, so re-hashing
 # the artefact against that record proves only corruption, never tamper: an
@@ -703,6 +806,10 @@ stamp_note=''
 attest_note=''
 update_lead=''
 update_record=''
+
+if [ -n "$use_cache" ] && [ -n "$mark_tag" ] && tag_older "$cached_tag" "$mark_tag"; then
+	refuse_older "$cached_tag" "the plugin cache holds that older release, and a cached release older than the mark is not promoted"
+fi
 
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
@@ -1000,6 +1107,7 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 				{
 					printf 'data_dir=%s\n' "$attest_data_dir"
 					printf 'binary_sha256=%s\n' "$expected_sha"
+					printf 'release_tag=%s\n' "$(printf '%s' "$release_tag" | tr -d '\000-\037\177')"
 					printf 'cache_trust=manifest\n'
 					printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 				} > "$attest_tmp" 2>/dev/null &&
@@ -1009,7 +1117,16 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 			else
 				[ -n "$attest_tmp" ] && rm -f "$attest_tmp" 2>/dev/null
 				attest_tmp=''
-				attest_note=' (the cache attestation could not be written, so `ahoy install` will not promote this cache to an owned PATH copy)'
+				# The earlier attestation is REMOVED, never left: it vouches for
+				# whatever release was attested before this one, and leaving it
+				# would let that older release's bytes be promoted after this
+				# run installed a newer one (iss-2609151847117977).
+				rm -f "$attest_path" 2>/dev/null
+				if [ -e "$attest_path" ] || [ -L "$attest_path" ]; then
+					attest_note=' (the cache attestation could not be written, and the earlier one could not be removed either, so it may still vouch for an older release: remove ~/.abcd.noindex/cache-attestation by hand)'
+				else
+					attest_note=' (the cache attestation could not be written, and the earlier one was removed so it cannot vouch for an older release; `ahoy install` will not promote this cache to an owned PATH copy)'
+				fi
 			fi
 		fi
 	fi
@@ -1087,6 +1204,12 @@ if path_entry_owned; then
 	fi
 fi
 
+# A release this run verified against the published manifest raises the mark;
+# an offline cache hit verified nothing and leaves it as it is.
+if [ -z "$use_cache" ] || [ "$cache_trust" = manifest ]; then
+	raise_mark "$release_tag"
+fi
+
 # The one place PATH setup is suggested; the PATH entry itself stays owned by
 # ahoy. This prints once per plugin root, because every later session takes the
 # fast path above.
@@ -1104,5 +1227,5 @@ fi
 #
 # The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
 # the reason given there: this string is printed to be pasted into a shell.
-notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$update_lead" "$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$degrade_note" "$binary_quoted")"
+notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$update_lead" "$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$mark_note" "$degrade_note" "$binary_quoted")"

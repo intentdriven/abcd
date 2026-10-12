@@ -306,7 +306,11 @@ on `PATH`, lands in that one run. It runs a second time, with the attribution
 flag, where the user opts in: that run installs the committed
 `prepare-commit-msg` prompt asking every commit to declare whether a tool
 assisted it, and the choice is recorded, so a later install without the flag
-keeps the hook. The identity verb's render is the follow-on surface and writes
+keeps the hook. The outbound flag is the same kind of opt-in: it installs the
+committed `commit-msg` gate that refuses a live agent-session URL or a tool
+attribution footer in a commit message, running only the abcd binary the clone
+names in `git config --local abcd.binary` and letting the commit through with
+one warning when there is none (iss-2609250834251447). The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 
@@ -442,8 +446,14 @@ earlier version wrote wider is narrowed when abcd next writes it
   cache-attestation              the bootstrap's record that the plugin data
                                  directory's cached binary matched the published
                                  release manifest, written only after that check
-                                 passed; install promotes the cache to the owned
-                                 PATH copy only when the record agrees
+                                 passed, naming the release; install promotes
+                                 the cache to the owned PATH copy only when the
+                                 record agrees and its release is no older than
+                                 release-mark
+  release-mark                   the newest release this machine has installed or
+                                 verified, raised by the bootstrap and recorded by
+                                 `abcd update`; lowered only by `abcd update <tag>`
+                                 naming an older tag (iss-2609151847117977)
   trusted-roots                  foreign-uid configuration roots the caller vouches for
   local-transcript-roots         checkouts whose transcripts are pulled in to
                                  <repo>/.abcd/.work.local/transcripts/ instead
@@ -461,7 +471,7 @@ are caller-controlled and line-oriented. `trusted-roots` and
 `local-transcript-roots` are the two that widen what a session will trust, so
 each is honoured only when it is a regular file this uid owns that no one else
 can write, and a file failing either test is ignored with one line saying which
-test it failed. `path-entry` and `cache-attestation` are held to the same test,
+test it failed. `path-entry`, `cache-attestation` and `release-mark` are held to the same test,
 by the install verb and by the hook shims that consult `path-entry`, and a record
 failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
@@ -1214,6 +1224,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
+| `--outbound-hook` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |

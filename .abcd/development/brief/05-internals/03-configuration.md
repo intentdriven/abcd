@@ -2,8 +2,9 @@
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
---attribution` writes one more key, and four further keys can be hand-set and
-are read but never written. Beyond those nine, the binary reads only keys a
+--attribution` and `ahoy install --outbound-hook` write one more key each, and
+four further keys can be hand-set and are read but never written. Beyond those
+ten, the binary reads only keys a
 person opts into: the provider adapter's `oracle` keys and the interview's list
 style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
@@ -19,10 +20,11 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Nine keys plus a `meta` block. Install asks about visibility, the docs target,
+Ten keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`. The remaining four —
+`attribution.hook` is written by `ahoy install --attribution`, and
+`outbound.hook` by `ahoy install --outbound-hook`. The remaining four —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, and the filing-time match's threshold and compared fields —
 are hand-set: the binary reads them and never writes them.
@@ -58,6 +60,10 @@ are hand-set: the binary reads them and never writes them.
   "attribution": {
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
                                         //   declare whether a tool assisted it
+  },
+  "outbound": {
+    "hook": true                        // the committed commit-msg gate refusing a session URL or a tool
+                                        //   footer; runs only the abcd `git config --local abcd.binary` names
   },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
@@ -546,7 +552,7 @@ the old paths until setup runs in that project again.
 
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `path-entry`, `cache-attestation`, `config.json`,
+`local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
 `credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
@@ -678,6 +684,14 @@ in `abcd rules` and in the hook's diagnostic, and `"source": "user"`, `"repo"`
 or `"bundled"` in `abcd rules --json`. A disabled set names every file whose kill
 switch is set.
 
+**An override's words render as text.** Each rule an override domain carries is
+rendered inside a tilde fence under its bullet, one tilde longer than the
+longest run of tildes or backticks in the rule and never shorter than three, so
+a reader that renders the block as markdown shows the rule as written: a `#`
+line, a `===` underline or an `<h2>` in it cannot become a heading that wears
+no override label (iss-2609020219265817). A bundled domain's rules are abcd's
+own and keep their markdown.
+
 **Known limitation.** Replacement is per field, so a user or repo layer cannot
 add one rule to a bundled domain's list: it restates the list. A third layer
 makes that grain more visible; finer-grained merging, detecting a repo file that
@@ -780,7 +794,7 @@ iss-2608261550580260):
 
 ```json
 {
-  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
              "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]

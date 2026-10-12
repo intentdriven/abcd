@@ -126,6 +126,15 @@ refusal is a named shape with a remedy in `refusal`:
   detail, which names what failed, and the remedy: retry once both are
   reachable, or install by hand — download the asset, check it with
   `gh attestation verify`, then copy it over the PATH copy.
+- `older-than-mark` — a bare `abcd update` resolved a latest release older
+  than `~/.abcd.noindex/release-mark`, the newest release this machine has
+  installed or verified: the publisher may have withdrawn the newer one.
+  Nothing was fetched. Relay the remedy, `abcd update <tag>` naming the older
+  tag, as the person's choice to make; never run it for them.
+
+Every install or verification this verb completes records its release in
+`~/.abcd.noindex/release-mark`. A bare update only raises the mark; a tag the
+person names records itself, older or not, which is the one way to lower it.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

@@ -55,6 +55,11 @@ type cacheAttestation struct {
 	dataDir string
 	sha     string
 	trust   string
+	// releaseTag is the release the bootstrap authenticated the cache at.
+	// Optional on read (an attestation written before iss-2609151847117977
+	// names none), but such a record cannot be told from an older release's,
+	// so it binds only on a machine that has recorded no release mark.
+	releaseTag string
 }
 
 // userCacheAttestationPath is ~/.abcd.noindex/cache-attestation, beside path-entry
@@ -110,9 +115,14 @@ func readCacheAttestation() (cacheAttestation, bool) {
 			rec.sha = v
 		case "cache_trust":
 			rec.trust = v
+		case "release_tag":
+			rec.releaseTag = v
 		}
 	}
 	if !filepath.IsAbs(rec.dataDir) || hasControlChar(rec.dataDir) || !hexDigestOK(rec.sha) || rec.trust != "manifest" {
+		return cacheAttestation{}, false
+	}
+	if rec.releaseTag != "" && !ReleaseTagShape.MatchString(rec.releaseTag) {
 		return cacheAttestation{}, false
 	}
 	return rec, true
