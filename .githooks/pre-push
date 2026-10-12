@@ -51,7 +51,10 @@
 #      reachable from <local> on a create, so ordinary history pushed under the
 #      prefix walks into a non-empty tree and is gated as any branch is. The
 #      exemption sits after the non-fast-forward guard, which still refuses a
-#      forced push to a reservation branch.
+#      forced push to a reservation branch. A deletion under the prefix is
+#      refused outright: a reservation ends with a tombstone
+#      (`abcd reserve <id> --release`), and a deleted tip would let the next
+#      reserve take the record with no lease judgement.
 #
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
@@ -87,8 +90,20 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 
-  # A deletion carries no commit to gate.
-  [ "$local_sha" != "$zero" ] || continue
+  # A deletion carries no commit to gate, except under the reservation prefix:
+  # a reservation ends with a tombstone, never a deletion, because a deleted
+  # tip reads as absent and the next reserve takes the record with no lease
+  # judgement at all.
+  if [ "$local_sha" = "$zero" ]; then
+    case "$branch" in
+    "$reserved_prefix"*)
+      echo "pre-push: refusing to delete the reservation '$branch': a reservation ends with a tombstone, never a deletion;" >&2
+      echo "          release it with \`abcd reserve ${branch#"$reserved_prefix"} --release\`." >&2
+      exit 1
+      ;;
+    esac
+    continue
+  fi
 
   # Non-fast-forward (force) push guard on an existing remote branch.
   if [ "$remote_sha" != "$zero" ]; then

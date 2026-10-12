@@ -132,3 +132,52 @@ func TestPrePushRefusesANonFastForwardReservationPush(t *testing.T) {
 		t.Errorf("the remote holds %q, want the first reservation %s", got, first)
 	}
 }
+
+// TestPrePushRefusesDeletingAReservation: a deletion carries no commit, so the
+// hook passed every one through, and `git push origin :<reservation>` erased
+// another person's live reservation, after which a reserve meets an absent tip
+// and takes the record with no lease judgement at all. A reservation ends with
+// a tombstone pushed by `abcd reserve <id> --release`, never a deletion, so a
+// delete of any ref under the prefix is refused, naming that path, in both of
+// the spellings git sends the hook the same way.
+func TestPrePushRefusesDeletingAReservation(t *testing.T) {
+	for name, del := range map[string][]string{
+		"colon refspec": {"origin", ":" + reservedRef},
+		"--delete":      {"--delete", "origin", "abcd-reserved/iss-2609020716570699"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newPrePushCase(t)
+			first := c.emptyTreeCommit("", "abcd reservation: iss-2609020716570699")
+			if out, err := c.push("origin", first+":"+reservedRef); err != nil {
+				t.Fatalf("the reservation itself was refused\n%s", out)
+			}
+			out, err := c.push(del...)
+			if err == nil {
+				t.Fatalf("a deletion of a reservation passed the hook\n%s", out)
+			}
+			if !strings.Contains(out, "abcd reserve iss-2609020716570699 --release") {
+				t.Errorf("the refusal does not name the release that ends a reservation\n%s", out)
+			}
+			if got := c.remoteRef(reservedRef); got != first {
+				t.Errorf("the remote holds %q, want the reservation %s untouched", got, first)
+			}
+		})
+	}
+}
+
+// TestPrePushStillPassesDeletingAnOrdinaryBranch pins the other side: only a
+// receipt-less prefix refuses a deletion; an ordinary branch is deleted as
+// before.
+func TestPrePushStillPassesDeletingAnOrdinaryBranch(t *testing.T) {
+	c := newPrePushCase(t)
+	c.git("fetch", "-q", "origin")
+	if out, err := c.push("origin", "origin/main:refs/heads/topic"); err != nil {
+		t.Fatalf("a branch at a published commit was refused\n%s", out)
+	}
+	if out, err := c.push("origin", ":refs/heads/topic"); err != nil {
+		t.Fatalf("deleting an ordinary branch was refused\n%s", out)
+	}
+	if got := c.remoteRef("refs/heads/topic"); got != "" {
+		t.Errorf("the remote still holds topic at %s", got)
+	}
+}
