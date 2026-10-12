@@ -8,7 +8,7 @@ import (
 
 // Request is one prompt's recall.
 type Request struct {
-	// Items are what the memory layers yield (NoteItems, ReadNotes).
+	// Items are what the memory layers yield (noteItems, ReadNotes).
 	Items []Item
 	// Prompt is the prompt the hook was handed.
 	Prompt string

@@ -49,13 +49,13 @@ type Refusal struct {
 	Reason string `json:"reason"`
 }
 
-// NoteItems turns both note layers into items, in id order. A personal note
+// noteItems turns both note layers into items, in id order. A personal note
 // is an item only in the repository it is tied to — root, the repository's
 // root commit, "" where there is none — or everywhere when its root is null.
 // Every note in the project's file is an item. A note in both layers (an id
 // is minted once, so only a hand copy does that) is the project's: the
 // machine's copy is suppressed.
-func NoteItems(machine, project []memnote.Note, root string) []Item {
+func noteItems(machine, project []memnote.Note, root string) []Item {
 	seen := map[string]bool{}
 	var out []Item
 	for _, n := range project {
@@ -109,7 +109,7 @@ func ReadNotes(home, repoRoot string) ([]Item, []Refusal) {
 			break
 		}
 	}
-	return NoteItems(machine, project, root), refused
+	return noteItems(machine, project, root), refused
 }
 
 // reason is a refusal's text, home-redacted and terminal-safe.

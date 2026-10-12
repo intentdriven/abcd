@@ -10,7 +10,7 @@ type Candidate struct {
 
 // Candidates returns the items any of whose recall words hits prompt under
 // the loader's term rule (rules.TermMatcher), in the items' order — id order
-// from NoteItems. The order chooses nothing yet; Recall takes them in it.
+// from noteItems. The order chooses nothing yet; Recall takes them in it.
 func Candidates(items []Item, prompt string) []Candidate {
 	if len(items) == 0 {
 		return nil
