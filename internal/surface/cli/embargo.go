@@ -248,8 +248,11 @@ func newEmbargoCheckCommand(asJSON *bool) *cobra.Command {
 			"and never repeats it.\n\n" +
 			"Limits: a title shorter than 12 characters is not matched on its own (its\n" +
 			"id still is); a paraphrase or a count (\"fixes several private reports\") is\n" +
-			"not recognised, and stays the author's to avoid. The check warns when the\n" +
-			"last intake is more than a day old.\n\n" +
+			"not recognised, and stays the author's to avoid; an advisory id of the\n" +
+			"placeholder form, each four-character group one character repeated\n" +
+			"(GHSA-xxxx-xxxx-xxxx), is not refused as unlisted, though one the store\n" +
+			"holds is still refused by its id. The check warns when the last intake is\n" +
+			"more than a day old.\n\n" +
 			"Exit 0 clean, or when no embargo store exists on this machine; exit 2 on any\n" +
 			"finding.",
 		Args: cobra.NoArgs,

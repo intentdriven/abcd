@@ -100,9 +100,13 @@ is a finding. `intake_stale` says the last intake is more than a day old: run
 intake first.
 
 Limits the user must hear: the check cannot recognise a paraphrase or a count
-("fixes several private reports"), which stays the author's to avoid; and a
+("fixes several private reports"), which stays the author's to avoid; a
 title shorter than 12 characters is not matched on its own, though its
-advisory's id still is.
+advisory's id still is; and an advisory id of the placeholder form, each
+four-character group one character repeated (`GHSA-xxxx-xxxx-xxxx`,
+`GHSA-2222-cccc-xxxx`), is taken for a documentation or test placeholder and
+not refused as unlisted, so a real id of that form would pass unremarked. An
+advisory the store holds is still refused by its id whatever its form.
 
 ## Publish
 

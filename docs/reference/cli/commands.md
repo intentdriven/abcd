@@ -1199,8 +1199,11 @@ and never repeats it.
 
 Limits: a title shorter than 12 characters is not matched on its own (its
 id still is); a paraphrase or a count ("fixes several private reports") is
-not recognised, and stays the author's to avoid. The check warns when the
-last intake is more than a day old.
+not recognised, and stays the author's to avoid; an advisory id of the
+placeholder form, each four-character group one character repeated
+(GHSA-xxxx-xxxx-xxxx), is not refused as unlisted, though one the store
+holds is still refused by its id. The check warns when the last intake is
+more than a day old.
 
 Exit 0 clean, or when no embargo store exists on this machine; exit 2 on any
 finding.

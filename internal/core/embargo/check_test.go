@@ -16,7 +16,7 @@ const (
 	ghsaClosed    = "GHSA-wwww-wwww-wwww" // closed on GitHub, never published
 	ghsaPublished = "GHSA-vvvv-vvvv-vvvv" // published
 	ghsaPublic    = "GHSA-rrrr-rrrr-rrrr" // triaged public-track, unpublished
-	ghsaUnlisted  = "GHSA-qqqq-qqqq-qqqq" // no advisory the store holds
+	ghsaUnlisted  = "GHSA-qqqq-qqqq-qqqq" // no advisory the store holds, placeholder form
 
 	cveOpen       = "CVE-2026-0000"
 	cvePublished  = "CVE-2026-0009"
@@ -247,16 +247,21 @@ func TestCheckReadsMergeCommitDiffs(t *testing.T) {
 	}
 }
 
+// ghsaRealShaped is an advisory id of a real one's shape that the store does
+// not hold. It is assembled at run time so this file's own text carries no
+// such id for the check to refuse over the commit that adds it.
+var ghsaRealShaped = "GHSA-" + strings.Join([]string{"2c3f", "4g5h", "6j7m"}, "-")
+
 // TestCheckRefusesUnknownGHSAUnlessAllowed: an advisory id the store does not
 // hold is refused unless --allow names it, and every allowed id is listed; an
 // unpublished advisory cannot be allowed.
 func TestCheckRefusesUnknownGHSAUnlessAllowed(t *testing.T) {
 	cf := newCheckFixture(t)
-	body := "upstream " + ghsaUnlisted + "\n"
+	body := "upstream " + ghsaRealShaped + "\n"
 	wantKinds(t, cf.text(t, body), KindUnlistedAdvisoryID)
-	res := cf.text(t, body, strings.ToLower(ghsaUnlisted))
+	res := cf.text(t, body, strings.ToLower(ghsaRealShaped))
 	wantKinds(t, res)
-	if len(res.Allowed) != 1 || res.Allowed[0] != ghsaUnlisted {
+	if len(res.Allowed) != 1 || res.Allowed[0] != ghsaRealShaped {
 		t.Fatalf("allowed %q", res.Allowed)
 	}
 	_, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: cf.f.repo.Root(), Files: []string{"-"},
@@ -265,6 +270,23 @@ func TestCheckRefusesUnknownGHSAUnlessAllowed(t *testing.T) {
 	_, err = Check(CheckRequest{Home: cf.f.home, RepoRoot: cf.f.repo.Root(), Files: []string{"-"},
 		Stdin: strings.NewReader(body), Allow: []string{"not-an-id"}})
 	mustRefuse(t, err, "--allow")
+}
+
+// TestCheckPassesPlaceholderAsUnlisted: an id of the placeholder form, each
+// four-character group one character repeated, is a documentation or test
+// placeholder and is not refused as unlisted; an id of a real one's shape
+// still is, and a placeholder-form id the store holds unpublished is still
+// refused as that advisory's id.
+func TestCheckPassesPlaceholderAsUnlisted(t *testing.T) {
+	cf := newCheckFixture(t)
+	for _, id := range []string{ghsaUnlisted, "ghsa-mmmm-mmmm-mmmm", "GHSA-2222-cccc-xxxx"} {
+		wantKinds(t, cf.text(t, "see "+id+"\n"))
+	}
+	for _, id := range []string{ghsaRealShaped, "GHSA-" + strings.Join([]string{"xxxx", "xxxx", "xxx2"}, "-")} {
+		wantKinds(t, cf.text(t, "see "+id+"\n"), KindUnlistedAdvisoryID)
+	}
+	wantKinds(t, cf.text(t, "fixes "+ghsaOpen+"\n"), KindAdvisoryID)
+	wantKinds(t, cf.text(t, "closes "+strings.ToLower(ghsaClosed)+"\n"), KindAdvisoryID)
 }
 
 // TestCheckReadsRangeMessagesAndAddedLines: over a commit range the check

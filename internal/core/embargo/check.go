@@ -56,6 +56,25 @@ const minTitleRunes = 12
 // the check matches in.
 var ghsaShapeRe = regexp.MustCompile(`ghsa-[2-9cfghjmpqrvwx]{4}-[2-9cfghjmpqrvwx]{4}-[2-9cfghjmpqrvwx]{4}`)
 
+// placeholderGHSA reports whether id, in canonGHSA's form, is of the
+// placeholder form documentation and tests use (GHSA-xxxx-xxxx-xxxx): each
+// four-character group one character repeated. GitHub's ids are random, so a
+// real one of this form is vanishingly unlikely. The form exempts an id from
+// the unlisted rule only: an advisory the store holds is refused by its id
+// whatever its form.
+func placeholderGHSA(id string) bool {
+	groups := strings.Split(strings.TrimPrefix(id, "GHSA-"), "-")
+	if len(groups) != 3 {
+		return false
+	}
+	for _, g := range groups {
+		if len(g) != 4 || strings.Count(g, g[:1]) != 4 {
+			return false
+		}
+	}
+	return true
+}
+
 // CheckRequest is one outbound check. Range is a commit range `<a>..<b>`
 // whose messages and added lines are read; each of Files is a path, or "-"
 // for Stdin. Allow names advisory ids of other projects, already public, that
@@ -546,7 +565,7 @@ func (ds denySet) matches(text string) []span {
 			break
 		}
 		id := canonGHSA(norm[loc[0]:loc[1]])
-		if ds.held[id] || ds.allowed[id] || !wordEdge(norm, loc[0], loc[1]) {
+		if ds.held[id] || ds.allowed[id] || placeholderGHSA(id) || !wordEdge(norm, loc[0], loc[1]) {
 			continue
 		}
 		sp := toOrig(loc[0], loc[1])
