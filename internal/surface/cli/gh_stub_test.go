@@ -23,6 +23,7 @@ const (
 	ghVerified        ghMode = iota // exit 0, as a verified attestation does
 	ghFails                         // exit 1 with gh's own failure line
 	ghUnauthenticated               // exit 4, gh's "authentication required"
+	ghNoSourceDigest                // a gh whose attestation verify predates --source-digest
 )
 
 // ghStub is a stub gh in its own directory, recording every verify call.
@@ -39,7 +40,8 @@ type ghCall struct {
 }
 
 // newGhStub writes a gh that answers `attestation verify --help` (the probe
-// that the attestation command exists) with 0, and a verify call as mode says.
+// that the attestation command exists, and that it can bind a check to a
+// commit) with its flag list, and a verify call as mode says.
 func newGhStub(t *testing.T, mode ghMode) *ghStub {
 	t.Helper()
 	dir := t.TempDir()
@@ -51,8 +53,12 @@ func newGhStub(t *testing.T, mode ghMode) *ghStub {
 	case ghUnauthenticated:
 		verdict = "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4"
 	}
+	help := "printf '%s\\n' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
+	if mode == ghNoSourceDigest {
+		help = "printf '%s\\n' '      --signer-workflow string'"
+	}
 	script := "#!/bin/sh\n" +
-		"[ \"$1 $2 $3\" = 'attestation verify --help' ] && exit 0\n" +
+		"[ \"$1 $2 $3\" = 'attestation verify --help' ] && { " + help + "; exit 0; }\n" +
 		"if [ \"$1 $2\" = 'attestation verify' ]; then\n" +
 		"\tsum=$( (shasum -a 256 \"$3\" 2>/dev/null || sha256sum \"$3\") | cut -d' ' -f1)\n" +
 		"\tprintf '%s\\t%s\\n' \"$sum\" \"$*\" >> '" + log + "'\n" +

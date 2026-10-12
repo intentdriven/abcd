@@ -895,6 +895,16 @@ else
 	[ -n "$binary_sha256" ] || binary_sha256=unknown
 	expected_sha="$binary_sha256"
 
+	# The release commit is read from the API when it answers, and left unknown
+	# otherwise: the meta file is the skew notice's only evidence, so it never
+	# records a value it did not resolve. It is read before the provenance
+	# check below, which is bound to it.
+	release_sha=unknown
+	body=$(curl -q -fsSL --proto '=https' --proto-redir '=https' --max-time 15 -H 'Accept: application/vnd.github+json' "$api_url/commits/$release_tag" 2>/dev/null) || body=''
+	candidate=$(printf '%s\n' "$body" | tr ',' '\n' |
+		sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1)
+	[ -n "$candidate" ] && release_sha="$candidate"
+
 	# 7b. Build provenance (iss-2610120617521209, the product thinker's ruling
 	#     of 2026-10-12). checksums.txt sits on the same release page as the
 	#     binary, so whoever can change that page can change both and the check
@@ -912,40 +922,48 @@ else
 	#         and the command that checks the binary by hand.
 	#     gh's own transport overrides were scrubbed with curl's above; the
 	#     hostname is passed so no GH_HOST can point the check elsewhere.
-	gh_hand_check="gh attestation verify $binary_quoted $gh_policy"
+	#     The release workflow builds every release, so its signature says who
+	#     built the bytes, not which release they are: an older release's
+	#     genuine build re-uploaded under this tag would pass it. So the check
+	#     is bound to the commit this tag names (--source-digest, which gh
+	#     holds to the commit Fulcio recorded for the signing run), and a gh
+	#     that can verify but whose release commit the API did not answer
+	#     REFUSES rather than ask a question any release's build would pass.
+	#     A gh whose attestation command predates --source-digest cannot bind
+	#     the check, and counts as one that cannot verify.
+	if [ "$release_sha" != unknown ]; then
+		gh_hand_check="gh attestation verify $binary_quoted $gh_policy --source-digest $release_sha"
+	else
+		gh_hand_check="gh attestation verify $binary_quoted $gh_policy --source-digest \$(gh api repos/intentdriven/abcd/commits/$release_tag -H 'Accept: application/vnd.github.sha')"
+	fi
 	gh_cannot=''
 	if ! command -v gh >/dev/null 2>&1; then
 		gh_cannot='gh is not installed'
 	elif ! gh attestation verify --help >/dev/null 2>&1; then
-		gh_cannot='the installed gh has no attestation command (gh 2.49 or later has it)'
+		gh_cannot='the installed gh has no attestation command (gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--source-digest'; then
+		gh_cannot='the installed gh cannot hold the check to the release commit (its attestation verify has no --source-digest; gh 2.68 or later has it)'
+	elif [ "$release_sha" = unknown ]; then
+		refuse "the commit release $release_tag names could not be resolved through GitHub's API, so the build provenance of the downloaded $asset cannot be bound to that release, and a provenance check not bound to it would pass any release's build; nothing was installed. Retry once the API answers"
 	else
 		gh_rc=0
-		gh_out=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh attestation verify "$tmp/$asset" $gh_policy 2>&1) || gh_rc=$?
+		gh_out=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh attestation verify "$tmp/$asset" $gh_policy --source-digest "$release_sha" 2>&1) || gh_rc=$?
 		case "$gh_rc" in
 		0)
-			prov_note=' Its build provenance was verified with gh attestation verify: the release workflow of intentdriven/abcd built it.'
+			prov_note=" Its build provenance was verified with gh attestation verify: the release workflow of intentdriven/abcd built it from $release_tag's commit."
 			;;
 		4)
 			gh_cannot='gh is installed but not signed in (run gh auth login, or set GH_TOKEN, and the next update verifies)'
 			;;
 		*)
 			gh_said=$(printf '%s\n' "$gh_out" | grep -v '^[[:space:]]*$' | tail -n 1)
-			refuse "the downloaded $asset matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd, so nothing was installed (gh said: $gh_said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one"
+			refuse "the downloaded $asset matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd from $release_tag's commit $release_sha, so nothing was installed (gh said: $gh_said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one"
 			;;
 		esac
 	fi
 	if [ -n "$gh_cannot" ]; then
 		prov_note=" WARNING: this download was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record (the build provenance the release workflow signs), because $gh_cannot. To check it by hand: $gh_hand_check"
 	fi
-
-	# The release commit is read from the API when it answers, and left unknown
-	# otherwise: the meta file is the skew notice's only evidence, so it never
-	# records a value it did not resolve.
-	release_sha=unknown
-	body=$(curl -q -fsSL --proto '=https' --proto-redir '=https' --max-time 15 -H 'Accept: application/vnd.github+json' "$api_url/commits/$release_tag" 2>/dev/null) || body=''
-	candidate=$(printf '%s\n' "$body" | tr ',' '\n' |
-		sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1)
-	[ -n "$candidate" ] && release_sha="$candidate"
 
 	# 8. Publish into the cache (cache mode): artefact then meta, each by rename
 	#    on the cache's own filesystem. A hash that failed to parse cannot be

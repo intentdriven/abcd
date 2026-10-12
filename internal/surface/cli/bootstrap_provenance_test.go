@@ -47,6 +47,12 @@ func TestBootstrapInstallsADownloadGhVerifies(t *testing.T) {
 	if !strings.Contains(calls[0].args, ghVerifyArgs) {
 		t.Errorf("gh must be held to the release workflow's policy %q; ran %q", ghVerifyArgs, calls[0].args)
 	}
+	// The workflow identity says who built the bytes, not which release: an
+	// older release's genuine build passes it under any tag. So gh is held
+	// to the commit the release tag names, as the API resolved it.
+	if !strings.Contains(calls[0].args, "--source-digest "+bootstrapRelease) {
+		t.Errorf("gh must be bound to the release's commit %s; ran %q", bootstrapRelease, calls[0].args)
+	}
 	if calls[0].sha != sha256Hex(body) {
 		t.Errorf("gh must verify the downloaded binary; it was handed bytes hashing to %s", calls[0].sha)
 	}
@@ -144,4 +150,48 @@ func assertProvenanceWarning(t *testing.T, out, why string) {
 	if lines := bootstrapTerminalLines(out); len(lines) != 1 || !strings.Contains(lines[0], "WARNING") {
 		t.Errorf("the warning must ride on the one terminal line a hook's reader sees; lines %q", lines)
 	}
+}
+
+// TestBootstrapRefusesWhenTheReleaseCommitCannotBeResolved: with a gh that
+// can verify, a release whose commit the API does not answer cannot have its
+// provenance bound to it, so nothing is installed and gh is not asked a
+// question that would pass for any release's build.
+func TestBootstrapRefusesWhenTheReleaseCommitCannotBeResolved(t *testing.T) {
+	root := bootstrapRoot(t)
+	body := []byte("#!/bin/sh\nexit 0\n")
+	fx := bootstrapServer(t, body, bootstrapManifest(body))
+	*fx.failCommits = 1
+	gh := newGhStub(t, ghVerified)
+
+	out, code := runScriptGh(t, bootstrapFixtureScript(t, fx.base), root, fx.env(), "", gh.dir)
+	if code == 0 {
+		t.Fatalf("an unresolvable release commit must refuse when gh can verify; output %q", out)
+	}
+	assertNothingInstalled(t, root, out)
+	if calls := gh.verifyCalls(t); len(calls) != 0 {
+		t.Errorf("gh must not verify without the release's commit: %q", calls)
+	}
+	if !strings.Contains(out, "commit") || !strings.Contains(out, bootstrapTag) {
+		t.Errorf("the refusal must say the release's commit could not be resolved; output %q", out)
+	}
+}
+
+// TestBootstrapWarnsWhenGhCannotBindTheCommit: a gh whose attestation verify
+// has no --source-digest cannot hold the check to the release's commit, so it
+// counts as a gh that cannot verify: the checksum stands alone, with the
+// warning.
+func TestBootstrapWarnsWhenGhCannotBindTheCommit(t *testing.T) {
+	root := bootstrapRoot(t)
+	body := []byte("#!/bin/sh\nexit 0\n")
+	fx := bootstrapServer(t, body, bootstrapManifest(body))
+	gh := newGhStub(t, ghNoSourceDigest)
+
+	out, code := runScriptGh(t, bootstrapFixtureScript(t, fx.base), root, fx.env(), "", gh.dir)
+	if code != 0 {
+		t.Fatalf("a gh too old to bind the commit is no gh, not a failed verification; exit %d, output %q", code, out)
+	}
+	if calls := gh.verifyCalls(t); len(calls) != 0 {
+		t.Errorf("a gh that cannot bind the commit must not be asked to verify: %q", calls)
+	}
+	assertProvenanceWarning(t, out, "--source-digest")
 }

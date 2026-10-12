@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	// check back over recorded bundles (ahoy_provenance_test.go). The shipping
 	// value is kept so the wiring itself stays asserted.
 	shippedAhoyReleaseProvenance = ahoyReleaseProvenance
-	ahoyReleaseProvenance = func([]byte) (string, error) {
+	ahoyReleaseProvenance = func(string, []byte) (string, error) {
 		return "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main", nil
 	}
 	// The deep installability tier re-executes the running binary as its

@@ -31,6 +31,20 @@ import (
 // logged in Rekor. Verifying that bundle, in process with sigstore-go, against
 // the Sigstore trusted root fetched through TUF, proves the bytes were built by
 // release.yml in intentdriven/abcd — something a release-page edit cannot forge.
+//
+// The workflow identity says who built the bytes, not which release they are:
+// every release's genuine build verifies as signed by release.yml, so whoever
+// can replace a release's assets could upload an older release's binary and
+// checksums under a newer tag and every check above would pass. So the
+// provenance is also bound to the release being installed: the tag is
+// resolved to its commit through GitHub's git API, over the same pinned
+// client, and both the certificate's source-repository digest (which Fulcio
+// takes from the run's OIDC token, so no workflow step can write it) and the
+// SLSA statement's resolved source dependency must name that commit. A
+// certificate whose ref is exactly refs/tags/<tag> is not accepted as a
+// substitute: release.yml also runs from main (auto-release), whose builds
+// carry refs/heads/main, and a tag can be moved after a tag-push build, so
+// the commit is the one proof both release paths share.
 
 // provenancePolicy is who must have signed the provenance: the repository and
 // the workflow file inside it.
@@ -54,9 +68,20 @@ const (
 	// "sha256:<hex>" is appended. It answers a public repository's attestations
 	// without a token, which abcd does not hold.
 	attestationEndpoint = "https://api.github.com/repos/intentdriven/abcd/attestations/"
+	gitEndpoint         = "https://api.github.com/repos/intentdriven/abcd/git/"
 	maxAttestationBytes = 4 << 20 // 4 MiB: one bundle is about 12 KiB
 	maxTUFBytes         = 4 << 20 // a TUF role or trusted_root.json is a few KiB
+	maxGitObjectBytes   = 1 << 20 // a ref or tag object is well under 1 KiB
 )
+
+// gitCommitShape is a full SHA-1 object name, the only shape a resolved
+// release commit may take.
+var gitCommitShape = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// maxTagDepth bounds how many annotated tag objects a ref may chain through
+// before it reaches its commit. A release tag is one hop; a chain longer than
+// this is refused rather than followed.
+const maxTagDepth = 4
 
 // signerSAN is the certificate identity the policy requires: the workflow file
 // at the repository's main branch (auto-release's call) or at a vX tag (a tag
@@ -68,20 +93,21 @@ func (p provenancePolicy) signerSAN() string {
 // provenanceVerifier checks a release asset's build provenance by its sha256,
 // returning the verified signer identity.
 type provenanceVerifier interface {
-	verify(digest []byte) (signer string, err error)
+	verify(tag string, digest []byte) (signer string, err error)
 }
 
 // githubAttestations fetches the asset's attestations from GitHub's API under
 // the updater's pinned transport and verifies each until one holds.
 type githubAttestations struct {
-	u        *Updater
-	endpoint string
-	trusted  func() (root.TrustedMaterial, error)
-	policy   provenancePolicy
+	u           *Updater
+	endpoint    string
+	gitEndpoint string
+	trusted     func() (root.TrustedMaterial, error)
+	policy      provenancePolicy
 }
 
 func newGitHubAttestations(u *Updater) *githubAttestations {
-	return &githubAttestations{u: u, endpoint: attestationEndpoint, trusted: u.sigstoreTrustedRoot, policy: releasePolicy}
+	return &githubAttestations{u: u, endpoint: attestationEndpoint, gitEndpoint: gitEndpoint, trusted: u.sigstoreTrustedRoot, policy: releasePolicy}
 }
 
 // VerifyReleaseProvenance verifies one release asset's SLSA build provenance
@@ -96,8 +122,8 @@ func newGitHubAttestations(u *Updater) *githubAttestations {
 // it touches is GitHub's attestations API and the Sigstore TUF repository,
 // keyed by the digest of a release already chosen: it discovers nothing
 // (adr-38 tier 3).
-func VerifyReleaseProvenance(digest []byte) (string, error) {
-	return newReleaseProvenance(releaseOrigin, urlguard.BlockedIP, false).verify(digest)
+func VerifyReleaseProvenance(tag string, digest []byte) (string, error) {
+	return newReleaseProvenance(releaseOrigin, urlguard.BlockedIP, false).verify(tag, digest)
 }
 
 // newReleaseProvenance is the test-reachable constructor behind
@@ -111,18 +137,23 @@ func newReleaseProvenance(origin string, blocked func(net.IP) bool, allowHTTP bo
 // endpoint a test serves and a fixed Sigstore trusted root, so a caller's
 // tests can hold their wiring to recorded real bundles without the network.
 // Never used by the shipping binary.
-func ReleaseProvenanceForTest(endpoint string, trustedRootJSON []byte) (func(digest []byte) (string, error), error) {
+func ReleaseProvenanceForTest(apiBase string, trustedRootJSON []byte) (func(tag string, digest []byte) (string, error), error) {
 	tr, err := root.NewTrustedRootFromJSON(trustedRootJSON)
 	if err != nil {
 		return nil, err
 	}
 	g := newReleaseProvenance(releaseOrigin, nil, true)
-	g.endpoint = endpoint
+	g.endpoint = apiBase + "/attestations/"
+	g.gitEndpoint = apiBase + "/git/"
 	g.trusted = func() (root.TrustedMaterial, error) { return tr, nil }
 	return g.verify, nil
 }
 
-func (g *githubAttestations) verify(digest []byte) (string, error) {
+func (g *githubAttestations) verify(tag string, digest []byte) (string, error) {
+	commit, err := g.resolveTagCommit(tag)
+	if err != nil {
+		return "", err
+	}
 	hexDigest := hex.EncodeToString(digest)
 	bundles, err := g.fetch(hexDigest)
 	if err != nil {
@@ -134,14 +165,86 @@ func (g *githubAttestations) verify(digest []byte) (string, error) {
 	}
 	var failures []string
 	for _, b := range bundles {
-		signer, err := verifyBundle(b, digest, tm, g.policy)
+		signer, err := verifyBundle(b, digest, commit, tm, g.policy)
 		if err == nil {
 			return signer, nil
 		}
 		failures = append(failures, err.Error())
 	}
-	return "", fmt.Errorf("no attestation for sha256 %s verifies as signed by %s/%s: %s",
-		hexDigest, g.policy.repo, g.policy.workflow, strings.Join(failures, "; "))
+	return "", fmt.Errorf("no attestation for sha256 %s verifies as signed by %s/%s at %s's commit %s: %s",
+		hexDigest, g.policy.repo, g.policy.workflow, tag, commit, strings.Join(failures, "; "))
+}
+
+// gitObject is the part of a git ref or tag object the resolution reads.
+type gitObject struct {
+	Ref    string `json:"ref"`
+	Object struct {
+		SHA  string `json:"sha"`
+		Type string `json:"type"`
+	} `json:"object"`
+}
+
+// resolveTagCommit resolves a release tag to the commit it names, through
+// GitHub's git API under the updater's pinned client: the ref, then each
+// annotated tag object it points through. Any failure refuses — a tag that is
+// not a release tag, a missing ref, an answer for another ref, an object that
+// is not a commit, a malformed name, a chain past maxTagDepth — because the
+// provenance can only be bound to a release whose commit is known.
+func (g *githubAttestations) resolveTagCommit(tag string) (string, error) {
+	if !tagShape.MatchString(tag) {
+		return "", fmt.Errorf("%q is not a release tag, so its commit cannot be resolved to bind the build provenance to", tag)
+	}
+	var obj gitObject
+	if err := g.getGitObject(g.gitEndpoint+"ref/tags/"+tag, &obj); err != nil {
+		return "", fmt.Errorf("could not resolve release %s to its commit: %w", tag, err)
+	}
+	if obj.Ref != "refs/tags/"+tag {
+		return "", fmt.Errorf("could not resolve release %s to its commit: the git API answered for %q", tag, obj.Ref)
+	}
+	for depth := 0; ; depth++ {
+		sha, typ := obj.Object.SHA, obj.Object.Type
+		if !gitCommitShape.MatchString(sha) {
+			return "", fmt.Errorf("could not resolve release %s to its commit: the git API named the object %q", tag, sha)
+		}
+		switch typ {
+		case "commit":
+			return sha, nil
+		case "tag":
+			if depth >= maxTagDepth {
+				return "", fmt.Errorf("could not resolve release %s to its commit: more than %d tag objects deep", tag, maxTagDepth)
+			}
+			obj = gitObject{}
+			if err := g.getGitObject(g.gitEndpoint+"tags/"+sha, &obj); err != nil {
+				return "", fmt.Errorf("could not resolve release %s to its commit: tag object %s: %w", tag, sha, err)
+			}
+		default:
+			return "", fmt.Errorf("could not resolve release %s to its commit: it names a %q, not a commit", tag, typ)
+		}
+	}
+}
+
+// getGitObject reads one git API answer into obj.
+func (g *githubAttestations) getGitObject(rawURL string, obj *gitObject) error {
+	body, _, err := g.u.getWith(rawURL, maxGitObjectBytes, map[string]string{
+		"Accept":               "application/vnd.github+json",
+		"X-GitHub-Api-Version": "2022-11-28",
+	})
+	if err != nil {
+		var nf *notFoundError
+		if errors.As(err, &nf) {
+			return errors.New("no such object is published")
+		}
+		return err
+	}
+	defer body.Close()
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw, obj); err != nil {
+		return fmt.Errorf("the answer is not a git object: %w", err)
+	}
+	return nil
 }
 
 // fetch reads the attestation list for one digest and returns the bundles it
@@ -193,9 +296,11 @@ func (g *githubAttestations) fetch(hexDigest string) ([]json.RawMessage, error) 
 // trusted root's Fulcio CA with an embedded SCT, the entry is in the trusted
 // Rekor log and was integrated while the certificate was valid, the signer is
 // the policy's workflow in the policy's repository under GitHub Actions' OIDC
-// issuer, the statement is SLSA provenance, and one of its subjects is digest.
-// It returns the signer identity (the certificate's SAN).
-func verifyBundle(raw []byte, digest []byte, tm root.TrustedMaterial, p provenancePolicy) (string, error) {
+// issuer, the statement is SLSA provenance, one of its subjects is digest, and
+// both the certificate's source-repository digest and the statement's resolved
+// source dependency are commit. It returns the signer identity (the
+// certificate's SAN).
+func verifyBundle(raw []byte, digest []byte, commit string, tm root.TrustedMaterial, p provenancePolicy) (string, error) {
 	var b bundle.Bundle
 	if err := b.UnmarshalJSON(raw); err != nil {
 		return "", fmt.Errorf("unreadable bundle: %w", err)
@@ -215,8 +320,12 @@ func verifyBundle(raw []byte, digest []byte, tm root.TrustedMaterial, p provenan
 	if err != nil {
 		return "", err
 	}
+	if !gitCommitShape.MatchString(commit) {
+		return "", fmt.Errorf("no release commit %q to bind the provenance to", commit)
+	}
 	id, err := verify.NewCertificateIdentity(san, issuer, certificate.Extensions{
-		SourceRepositoryURI: "https://github.com/" + p.repo,
+		SourceRepositoryURI:    "https://github.com/" + p.repo,
+		SourceRepositoryDigest: commit,
 	})
 	if err != nil {
 		return "", err
@@ -232,10 +341,51 @@ func verifyBundle(raw []byte, digest []byte, tm root.TrustedMaterial, p provenan
 		}
 		return "", fmt.Errorf("the attestation is %q, not SLSA build provenance", got)
 	}
+	predicate, err := json.Marshal(res.Statement.GetPredicate().AsMap())
+	if err != nil {
+		return "", fmt.Errorf("unreadable provenance predicate: %w", err)
+	}
+	if err := predicateNamesCommit(predicate, p.repo, commit); err != nil {
+		return "", err
+	}
 	if res.Signature == nil || res.Signature.Certificate == nil {
 		return "", errors.New("the verified attestation names no signing certificate")
 	}
 	return res.Signature.Certificate.SubjectAlternativeName, nil
+}
+
+// predicateNamesCommit checks the SLSA v1 predicate's resolved dependencies
+// for repo's source at commit: an entry whose uri is this repository's git
+// URL and whose gitCommit digest is commit. The certificate's source digest
+// already binds the run to the commit; this holds the statement the run
+// signed to the same commit, so neither can name another release.
+func predicateNamesCommit(predicate []byte, repo, commit string) error {
+	var pr struct {
+		BuildDefinition struct {
+			ResolvedDependencies []struct {
+				URI    string            `json:"uri"`
+				Digest map[string]string `json:"digest"`
+			} `json:"resolvedDependencies"`
+		} `json:"buildDefinition"`
+	}
+	if err := json.Unmarshal(predicate, &pr); err != nil {
+		return fmt.Errorf("unreadable provenance predicate: %w", err)
+	}
+	source := "git+https://github.com/" + repo + "@"
+	var named []string
+	for _, d := range pr.BuildDefinition.ResolvedDependencies {
+		if !strings.HasPrefix(d.URI, source) {
+			continue
+		}
+		if d.Digest["gitCommit"] == commit {
+			return nil
+		}
+		named = append(named, d.Digest["gitCommit"])
+	}
+	if len(named) == 0 {
+		return fmt.Errorf("the provenance names no %s source commit, so it cannot be bound to commit %s", repo, commit)
+	}
+	return fmt.Errorf("the provenance was built from commit %s, not the release's commit %s", strings.Join(named, ", "), commit)
 }
 
 // sigstoreTrustedRoot fetches the Sigstore public-good trusted root through

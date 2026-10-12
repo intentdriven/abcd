@@ -76,7 +76,7 @@ func installOpts() InstallOptions {
 }
 
 // acceptProvenance is the accepting stand-in for the front door's check.
-func acceptProvenance([]byte) (string, error) {
+func acceptProvenance(string, []byte) (string, error) {
 	return "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main", nil
 }
 

@@ -61,6 +61,9 @@ func TestOneLinersInstallADownloadGhVerifies(t *testing.T) {
 			if !strings.Contains(calls[0], ghPolicyFlags) {
 				t.Errorf("gh must be held to the release workflow's policy %q: %q", ghPolicyFlags, calls[0])
 			}
+			if !strings.Contains(calls[0], "--source-digest "+releaseCommit) {
+				t.Errorf("gh must be bound to the latest release's commit %s: %q", releaseCommit, calls[0])
+			}
 			if strings.Contains(r.out, "WARNING") {
 				t.Errorf("a verified install carries no warning:\n%s", r.out)
 			}
@@ -90,8 +93,33 @@ func TestOneLinersRefuseADownloadGhCannotVerify(t *testing.T) {
 	}
 }
 
+// TestOneLinersRefuseWhenTheReleaseCommitCannotBeResolved: with a gh that
+// can verify, a latest release whose commit the API does not answer cannot
+// have its provenance bound to it, so nothing is installed.
+func TestOneLinersRefuseWhenTheReleaseCommitCannotBeResolved(t *testing.T) {
+	for _, f := range oneLinerForms(t) {
+		t.Run(f.name, func(t *testing.T) {
+			r := runOneLiner(t, f, ghVerifiesCommitUnresolved)
+			if r.err == nil {
+				t.Fatalf("an unresolvable release commit must refuse:\n%s", r.out)
+			}
+			if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
+				t.Errorf("an unbound check must install nothing: %v", err)
+			}
+			if calls := r.ghCalls(t); len(calls) != 0 {
+				t.Errorf("gh must not verify without the release's commit: %q", calls)
+			}
+			for _, want := range []string{"commit", "Nothing is installed"} {
+				if !strings.Contains(r.out, want) {
+					t.Errorf("the refusal must say %q:\n%s", want, r.out)
+				}
+			}
+		})
+	}
+}
+
 func TestOneLinersWarnWithoutGh(t *testing.T) {
-	for gh, why := range map[ghBehaviour]string{ghAbsent: "gh-absent", ghSignedOut: "gh-signed-out"} {
+	for gh, why := range map[ghBehaviour]string{ghAbsent: "gh-absent", ghSignedOut: "gh-signed-out", ghNoSourceDigest: "gh-without-source-digest"} {
 		for _, f := range oneLinerForms(t) {
 			t.Run(f.name+"/"+why, func(t *testing.T) {
 				r := runOneLiner(t, f, gh)

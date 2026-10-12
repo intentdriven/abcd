@@ -28,7 +28,11 @@ import (
 //     write, and only ever raises it.
 
 const (
-	installedTag  = "v0.14.2"
+	installedTag = "v0.14.2"
+	// releaseCommit is the commit the stub API resolves installedTag to; gh
+	// must be held to it (--source-digest), because the release workflow's
+	// signature alone passes any release's genuine build under any tag.
+	releaseCommit = "0123456789abcdef0123456789abcdef01234567"
 	ghPolicyFlags = "--hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"
 )
 
@@ -39,6 +43,12 @@ const (
 	ghRefuses
 	ghSignedOut
 	ghAbsent
+	// ghVerifiesCommitUnresolved: gh would verify, but the API does not
+	// answer the release tag's commit, so the check cannot be bound to it.
+	ghVerifiesCommitUnresolved
+	// ghNoSourceDigest: a gh whose attestation verify predates
+	// --source-digest, so it cannot bind the check to the release commit.
+	ghNoSourceDigest
 )
 
 // installerRun is one run of the template under a sandbox.
@@ -107,7 +117,21 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 	}
 
 	stubs := t.TempDir()
-	curl := "#!/bin/sh\nfor a in \"$@\"; do url=\"$a\"; done\ncp '" + release + "'/\"${url##*/}\" \"${url##*/}\"\n"
+	// The stub curl answers the latest-release redirect with installedTag's
+	// page, the API's commit lookup for installedTag with releaseCommit (or a
+	// failure, when the case says the API does not answer), and any other URL
+	// from the release fixture by its last segment.
+	commitAnswer := "printf '%s' '" + releaseCommit + "'"
+	if gh == ghVerifiesCommitUnresolved {
+		commitAnswer = "exit 22"
+	}
+	curl := "#!/bin/sh\nfor a in \"$@\"; do url=\"$a\"; done\n" +
+		"case \"$url\" in\n" +
+		"https://github.com/intentdriven/abcd/releases/latest) printf '%s' 'https://github.com/intentdriven/abcd/releases/tag/" + installedTag + "'; exit 0 ;;\n" +
+		"https://api.github.com/repos/intentdriven/abcd/commits/" + installedTag + ") " + commitAnswer + "; exit 0 ;;\n" +
+		"https://api.github.com/*) exit 22 ;;\n" +
+		"esac\n" +
+		"cp '" + release + "'/\"${url##*/}\" \"${url##*/}\"\n"
 	if err := os.WriteFile(filepath.Join(stubs, "curl"), []byte(curl), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -120,8 +144,12 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 		case ghSignedOut:
 			verdict = "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4"
 		}
+		help := "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
+		if gh == ghNoSourceDigest {
+			help = "printf '%s\\n' '      --signer-workflow string'"
+		}
 		script := "#!/bin/sh\n" +
-			"[ \"$1 $2 $3\" = 'attestation verify --help' ] && exit 0\n" +
+			"[ \"$1 $2 $3\" = 'attestation verify --help' ] && { " + help + "; exit 0; }\n" +
 			"if [ \"$1 $2\" = 'attestation verify' ]; then\n" +
 			"\tsum=$( (shasum -a 256 \"$3\" 2>/dev/null || sha256sum \"$3\") | cut -d' ' -f1)\n" +
 			"\tprintf '%s\\t%s\\n' \"$sum\" \"$*\" >> '" + r.ghLog + "'\n" +
@@ -223,9 +251,49 @@ func TestInstallerInstallsADownloadGhVerifies(t *testing.T) {
 	if !strings.Contains(calls[0], ghPolicyFlags) {
 		t.Errorf("gh must be held to the release workflow's policy %q: %q", ghPolicyFlags, calls[0])
 	}
+	if !strings.Contains(calls[0], "--source-digest "+releaseCommit) {
+		t.Errorf("gh must be bound to the latest release's commit %s: %q", releaseCommit, calls[0])
+	}
 	if strings.Contains(r.out, "WARNING") {
 		t.Errorf("a verified install carries no warning:\n%s", r.out)
 	}
+}
+
+// TestInstallerRefusesWhenTheReleaseCommitCannotBeResolved: with a gh that
+// can verify, a latest release whose commit the API does not answer cannot
+// have its provenance bound to it, so nothing is installed.
+func TestInstallerRefusesWhenTheReleaseCommitCannotBeResolved(t *testing.T) {
+	r := runInstaller(t, ghVerifiesCommitUnresolved, nil)
+	if r.err == nil {
+		t.Fatalf("an unresolvable release commit must refuse when gh can verify:\n%s", r.out)
+	}
+	if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
+		t.Errorf("an unbound check must install nothing: %v", err)
+	}
+	if calls := r.ghCalls(t); len(calls) != 0 {
+		t.Errorf("gh must not verify without the release's commit: %q", calls)
+	}
+	for _, want := range []string{"commit", "Nothing is installed"} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("the refusal must say %q:\n%s", want, r.out)
+		}
+	}
+}
+
+// TestInstallerWarnsWhenGhCannotBindTheCommit: a gh without --source-digest
+// counts as one that cannot verify.
+func TestInstallerWarnsWhenGhCannotBindTheCommit(t *testing.T) {
+	r := runInstaller(t, ghNoSourceDigest, nil)
+	if r.err != nil {
+		t.Fatalf("a gh too old to bind the commit counts as no gh: %v\n%s", r.err, r.out)
+	}
+	if !r.installed(t) {
+		t.Fatalf("the checksum-verified binary must be installed:\n%s", r.out)
+	}
+	if calls := r.ghCalls(t); len(calls) != 0 {
+		t.Errorf("a gh that cannot bind the commit must not be asked to verify: %q", calls)
+	}
+	assertInstallerWarning(t, r.out, "--source-digest")
 }
 
 func TestInstallerRefusesADownloadGhCannotVerify(t *testing.T) {

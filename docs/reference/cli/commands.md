@@ -3780,7 +3780,8 @@ Fetches the named release (or resolves the latest, naming it before acting),
 verifies the platform binary against the same release's checksums.txt and
 against the SLSA build provenance the release workflow signed for it
 (fetched from GitHub's attestations API and checked against the Sigstore
-trusted root, pinned to intentdriven/abcd's release.yml), and swaps the
+trusted root, pinned to intentdriven/abcd's release.yml and to the commit
+the release tag names), and swaps the
 PATH-installed copy atomically. A binary whose provenance cannot be
 verified, offline included, is refused with the way to install it by hand;
 nothing is swapped unverified. The verb is the only ask: abcd

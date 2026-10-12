@@ -494,6 +494,26 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 		return rep, fmt.Errorf("reading %s: %w", target, err)
 	}
 	if targetHex == wantHex {
+		// A matching file is called current at tag only once its bytes verify
+		// as tag's build: the manifest it matched sits on the release page
+		// with the binary, and a page re-uploaded with an older release's
+		// genuine build would otherwise call that build current at the newer
+		// tag, and the CLI would record the newer tag as installed.
+		sum, err := hex.DecodeString(wantHex)
+		if err != nil {
+			return rep, fmt.Errorf("release %s carries a malformed digest for %s", tag, u.assetName)
+		}
+		signer, perr := u.verifyProvenance(tag, sum)
+		if perr != nil {
+			rep.Action = ActionRefused
+			rep.Refusal = &Refusal{
+				Shape:  "unverified-provenance",
+				Detail: "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + ", but its build provenance could not be verified as " + tag + "'s, so it is not reported current: " + perr.Error(),
+				Remedy: u.remedyInstallByHand(tag, target),
+			}
+			return rep, nil
+		}
+		rep.AttestedBy = signer
 		rep.Action = ActionCurrent
 		rep.Digest = wantHex
 		rep.OldVersion = tag
@@ -564,7 +584,7 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	// build provenance release.yml signed, which a release-page edit cannot
 	// forge (iss-2609231050273096). Any failure refuses before anything is
 	// staged: there is no unverified swap.
-	signer, perr := u.verifyProvenance(sum)
+	signer, perr := u.verifyProvenance(tag, sum)
 	if perr != nil {
 		rep.Action = ActionRefused
 		rep.Refusal = &Refusal{
@@ -605,11 +625,11 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 
 // verifyProvenance runs the configured provenance check; an updater without
 // one refuses.
-func (u *Updater) verifyProvenance(digest []byte) (string, error) {
+func (u *Updater) verifyProvenance(tag string, digest []byte) (string, error) {
 	if u.provenance == nil {
 		return "", errors.New("no provenance check is configured")
 	}
-	return u.provenance.verify(digest)
+	return u.provenance.verify(tag, digest)
 }
 
 // remedyInstallByHand names the way to take the release without this verb:
@@ -622,7 +642,7 @@ func (u *Updater) remedyInstallByHand(tag, target string) string {
 	}
 	return "retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or install by hand: download " +
 		u.assetName + " from " + u.assetURL(tag, u.assetName) + " (" + u.origin + "/releases/tag/" + tag + "), check it with `gh attestation verify " +
-		u.assetName + " --repo " + p.repo + " --signer-workflow " + p.repo + "/" + p.workflow + "`, and only then copy it over " +
+		u.assetName + " --repo " + p.repo + " --signer-workflow " + p.repo + "/" + p.workflow + " --source-digest $(gh api repos/" + p.repo + "/commits/" + tag + " -H 'Accept: application/vnd.github.sha')`, which also holds it to the commit " + tag + " names, and only then copy it over " +
 		fsutil.RedactHome(target)
 }
 

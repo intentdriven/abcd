@@ -180,6 +180,10 @@ type bootstrapFixture struct {
 	// offline-resolve case: the refresh detector's best-effort resolve fails
 	// and a cache hit must still provision the root.
 	failLatest *int32
+	// failCommits, when set non-zero, makes the API's /commits/<tag> answer
+	// 500: the release's commit cannot be resolved, so a gh check cannot be
+	// bound to the release.
+	failCommits *int32
 }
 
 // bootstrapServer stands in for the release host, shaped like the real one
@@ -200,7 +204,7 @@ type bootstrapFixture struct {
 // server — so it is not the class of seam that was removed from the script.
 func bootstrapServer(t *testing.T, body []byte, manifest string) *bootstrapFixture {
 	t.Helper()
-	var count, artefacts, manifests, failLatest int32
+	var count, artefacts, manifests, failLatest, failCommits int32
 	asset := bootstrapAsset()
 	pinned := "/releases/download/" + bootstrapTag + "/"
 	mux := http.NewServeMux()
@@ -228,6 +232,10 @@ func bootstrapServer(t *testing.T, body []byte, manifest string) *bootstrapFixtu
 			atomic.AddInt32(&manifests, 1)
 			_, _ = w.Write([]byte(manifest))
 		case "/commits/" + bootstrapTag:
+			if atomic.LoadInt32(&failCommits) != 0 {
+				http.Error(w, "unavailable", http.StatusInternalServerError)
+				return
+			}
 			_, _ = w.Write([]byte(`{"sha":"` + bootstrapRelease + `","node_id":"x"}`))
 		default:
 			http.NotFound(w, r)
@@ -241,7 +249,7 @@ func bootstrapServer(t *testing.T, body []byte, manifest string) *bootstrapFixtu
 	if err := os.WriteFile(ca, pemBytes, 0o600); err != nil {
 		t.Fatalf("writing the fixture CA: %v", err)
 	}
-	fx := &bootstrapFixture{base: srv.URL, ca: ca, hits: &count, artefactHits: &artefacts, manifestHits: &manifests, failLatest: &failLatest}
+	fx := &bootstrapFixture{base: srv.URL, ca: ca, hits: &count, artefactHits: &artefacts, manifestHits: &manifests, failLatest: &failLatest, failCommits: &failCommits}
 
 	// Prove the harness itself works before any case blames the script. Without
 	// this, a curl build that ignored CURL_CA_BUNDLE would surface as "the latest

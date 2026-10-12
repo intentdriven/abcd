@@ -28,13 +28,29 @@ func provenanceFixture(t *testing.T, name string) []byte {
 	return b
 }
 
+// installShapeTagRef is the git API's answer for v9.9.9, the release the
+// seeded cache's attestation names, resolving it to the commit v0.13.4's
+// recorded provenance was built from, so a case reaches the attestation check.
+const installShapeTagRef = `{"ref":"refs/tags/v9.9.9","object":{"sha":"2de70c93b510b606f54ce02ee7fe2603a36d5ef0","type":"commit"}}`
+
 // recordedProvenance swaps the CLI's check for the shipping one pointed at a
-// served attestations API that answers every digest with body (404 when nil)
-// and at the recorded Sigstore trusted root.
+// served repository API: its attestations endpoint answers every digest with
+// body (404 when nil), its git API resolves the seeded release tag as ref says
+// (404 when empty), and the Sigstore trusted root is the recorded one.
 func recordedProvenance(t *testing.T, body []byte) {
 	t.Helper()
+	recordedProvenanceWithRef(t, body, installShapeTagRef)
+}
+
+func recordedProvenanceWithRef(t *testing.T, body []byte, ref string) {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if body == nil {
+		if r.URL.Path == "/git/ref/tags/v9.9.9" && ref != "" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(ref))
+			return
+		}
+		if !strings.HasPrefix(r.URL.Path, "/attestations/") || body == nil {
 			http.NotFound(w, r)
 			return
 		}
@@ -42,7 +58,7 @@ func recordedProvenance(t *testing.T, body []byte) {
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
-	check, err := update.ReleaseProvenanceForTest(srv.URL+"/attestations/", provenanceFixture(t, "trusted_root.json"))
+	check, err := update.ReleaseProvenanceForTest(srv.URL, provenanceFixture(t, "trusted_root.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,10 +89,15 @@ func TestAhoyInstallRefusesACacheTheReleaseWorkflowDidNotBuild(t *testing.T) {
 		{"another workflow", provenanceFixture(t, "abcd-v0.13.4-site.attestations.json"), "verifies as signed by intentdriven/abcd/.github/workflows/release.yml"},
 		{"another repository", provenanceFixture(t, "cli-v2.102.0.attestations.json"), "verifies as signed by intentdriven/abcd/.github/workflows/release.yml"},
 		{"no attestation", nil, "no build-provenance attestation is published"},
+		{"a release tag that does not resolve", provenanceFixture(t, "abcd-v0.13.4-linux-amd64.attestations.json"), "could not resolve release v9.9.9 to its commit"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			binDir, repo := provenanceInstallEnv(t)
-			recordedProvenance(t, tc.body) // reads its fixture before the chdir
+			ref := installShapeTagRef
+			if strings.Contains(tc.want, "could not resolve") {
+				ref = ""
+			}
+			recordedProvenanceWithRef(t, tc.body, ref) // reads its fixture before the chdir
 			t.Chdir(repo)
 
 			out, _ := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",

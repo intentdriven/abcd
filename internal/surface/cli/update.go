@@ -47,7 +47,8 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"verifies the platform binary against the same release's checksums.txt and\n" +
 			"against the SLSA build provenance the release workflow signed for it\n" +
 			"(fetched from GitHub's attestations API and checked against the Sigstore\n" +
-			"trusted root, pinned to intentdriven/abcd's release.yml), and swaps the\n" +
+			"trusted root, pinned to intentdriven/abcd's release.yml and to the commit\n" +
+			"the release tag names), and swaps the\n" +
 			"PATH-installed copy atomically. A binary whose provenance cannot be\n" +
 			"verified, offline included, is refused with the way to install it by hand;\n" +
 			"nothing is swapped unverified. The verb is the only ask: abcd\n" +

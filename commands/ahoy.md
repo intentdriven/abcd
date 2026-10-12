@@ -466,7 +466,8 @@ leave the user's shell profile alone.
 The entry install writes is the abcd-owned copy of the verified release binary,
 taken from the persistent plugin data directory a session's hooks provision.
 Before writing it, install verifies that binary's signed build provenance with
-the same in-process check `abcd update` makes; when the check fails or cannot
+the same in-process check `abcd update` makes, bound to the commit of the
+release the cache attestation names; when the check fails or cannot
 reach GitHub's attestations API or the Sigstore TUF repository, install writes
 no entry and its note names what failed and how to check the release by hand
 with `gh attestation verify`. Relay that note verbatim.

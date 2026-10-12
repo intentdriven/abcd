@@ -24,11 +24,13 @@ import (
 // recordingProvenance answers as told and records each digest it was asked.
 type recordingProvenance struct {
 	asked [][]byte
+	tags  []string
 	err   error
 }
 
-func (r *recordingProvenance) check(digest []byte) (string, error) {
+func (r *recordingProvenance) check(tag string, digest []byte) (string, error) {
 	r.asked = append(r.asked, append([]byte(nil), digest...))
+	r.tags = append(r.tags, tag)
 	if r.err != nil {
 		return "", r.err
 	}
@@ -127,5 +129,29 @@ func TestInstallLeavesAMatchingCopyWithoutAsking(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(target); string(got) != string(cacheArtefact) {
 		t.Errorf("the verified copy must stay in place")
+	}
+}
+
+// TestInstallBindsTheProvenanceCheckToTheAttestedRelease: the check is asked
+// about the release the bootstrap attested the cache at, so a cache holding
+// an older release's genuine build under a newer tag fails it: the
+// provenance must name the commit that tag resolves to.
+func TestInstallBindsTheProvenanceCheckToTheAttestedRelease(t *testing.T) {
+	home, _ := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	data := t.TempDir()
+	seedDataCacheAt(t, data, cacheArtefact)
+	writeUserCacheAttestation(t, attestationBodyAt(data, "v0.13.4", cacheArtefact))
+	t.Setenv("CLAUDE_PLUGIN_DATA", data)
+	rec := &recordingProvenance{}
+	opts := installOpts()
+	opts.VerifyProvenance = rec.check
+
+	if _, err := Install(adoptableRepo(t), opts, RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.tags) != 1 || rec.tags[0] != "v0.13.4" {
+		t.Fatalf("the provenance must be checked for the attested release v0.13.4, asked for %q", rec.tags)
 	}
 }

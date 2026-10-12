@@ -1577,13 +1577,18 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	// The build provenance release.yml signed is what a page edit cannot
 	// forge, so the bytes about to be written are checked against it, through
 	// the same in-process check abcd update runs, before anything at target
-	// is touched. Any failure refuses; there is no unverified promotion.
-	if perr := a.verifyProvenance(sum[:]); perr != nil {
+	// is touched. Any failure refuses; there is no unverified promotion. The
+	// check is bound to the release the attestation names: release.yml signs
+	// every release's build, so only the provenance naming the commit that
+	// tag resolves to shows these are that release's bytes, not an older
+	// release's genuine build re-uploaded under a newer tag. An attestation
+	// naming no release hands the check no tag, and the check refuses it.
+	if perr := a.verifyProvenance(att.releaseTag, sum[:]); perr != nil {
 		a.refuse("refused to install the PATH entry: the cached artefact " + displayPath(artefact) +
 			" matches the checksum the plugin bootstrap verified, but its build provenance could not be verified, so nothing was installed: " +
 			errText(perr) + ". That checksum came from the same release page as the binary, so only the provenance the release workflow signed shows who built it. " +
 			"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check the release by hand with `" +
-			ghAttestationVerifyCommand(cacheAssetName()) + "` after downloading it. " + coldCacheRemedy)
+			ghAttestationVerifyCommand(cacheAssetName(), att.releaseTag) + "` after downloading it. " + coldCacheRemedy)
 		return
 	}
 	if kind == binTargetOwnedSymlink || kind == binTargetDevShim {
@@ -1605,11 +1610,11 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 
 // verifyProvenance runs the front door's build-provenance check; a run
 // without one refuses.
-func (a *applyCtx) verifyProvenance(digest []byte) error {
+func (a *applyCtx) verifyProvenance(tag string, digest []byte) error {
 	if a.provenance == nil {
 		return errors.New("no build-provenance check is configured for this run")
 	}
-	_, err := a.provenance(digest)
+	_, err := a.provenance(tag, digest)
 	return err
 }
 

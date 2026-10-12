@@ -43,10 +43,15 @@ func cacheAssetName() string { return "abcd-" + runtime.GOOS + "-" + runtime.GOA
 
 // ghAttestationVerifyCommand is the hand check of a downloaded release asset's
 // build provenance, the same policy abcd update and ahoy install verify in
-// process: signed by this repository's release workflow. hooks/bootstrap.sh
-// and the install one-liner run exactly this when gh is present.
-func ghAttestationVerifyCommand(file string) string {
-	return "gh attestation verify " + file + " --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"
+// process: signed by this repository's release workflow, from the commit the
+// release tag names. hooks/bootstrap.sh and the install one-liner run this
+// when gh is present. With no tag known the commit is named as a placeholder.
+func ghAttestationVerifyCommand(file, tag string) string {
+	if tag == "" {
+		tag = "<release tag>"
+	}
+	return "gh attestation verify " + file + " --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml" +
+		" --source-digest $(gh api repos/intentdriven/abcd/commits/" + tag + " -H 'Accept: application/vnd.github.sha')"
 }
 
 // cacheMetaPath is the cache's provenance record (release_tag / release_sha /

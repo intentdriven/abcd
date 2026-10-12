@@ -91,7 +91,7 @@ func trustedMaterial(t *testing.T) root.TrustedMaterial {
 
 func TestVerifyBundleAcceptsTheReleaseProvenance(t *testing.T) {
 	signer, err := verifyBundle(fixtureBundle(t, "abcd-v0.13.4-linux-amd64.attestations.json"),
-		mustHex(t, linuxAmd64V0134), trustedMaterial(t), releasePolicy)
+		mustHex(t, linuxAmd64V0134), commitV0134, trustedMaterial(t), releasePolicy)
 	if err != nil {
 		t.Fatalf("the release's own provenance must verify: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestVerifyBundleAcceptsTheReleaseProvenance(t *testing.T) {
 
 func TestVerifyBundleRefusesAnotherWorkflow(t *testing.T) {
 	_, err := verifyBundle(fixtureBundle(t, "abcd-v0.13.4-site.attestations.json"),
-		mustHex(t, siteTarV0134), trustedMaterial(t), releasePolicy)
+		mustHex(t, siteTarV0134), commitV0134, trustedMaterial(t), releasePolicy)
 	if err == nil {
 		t.Fatal("provenance signed by site.yml must not stand in for release.yml's")
 	}
@@ -114,7 +114,7 @@ func TestVerifyBundleRefusesAnotherWorkflow(t *testing.T) {
 
 func TestVerifyBundleRefusesAnotherRepository(t *testing.T) {
 	_, err := verifyBundle(fixtureBundle(t, "cli-v2.102.0.attestations.json"),
-		mustHex(t, ghLinux386Deb), trustedMaterial(t), releasePolicy)
+		mustHex(t, ghLinux386Deb), commitV0134, trustedMaterial(t), releasePolicy)
 	if err == nil {
 		t.Fatal("another repository's provenance must not verify an abcd release")
 	}
@@ -126,7 +126,7 @@ func TestVerifyBundleRefusesAnotherRepository(t *testing.T) {
 func TestVerifyBundleRefusesATamperedBinary(t *testing.T) {
 	tampered := sha256.Sum256([]byte("a binary the release workflow never built"))
 	_, err := verifyBundle(fixtureBundle(t, "abcd-v0.13.4-linux-amd64.attestations.json"),
-		tampered[:], trustedMaterial(t), releasePolicy)
+		tampered[:], commitV0134, trustedMaterial(t), releasePolicy)
 	if err == nil {
 		t.Fatal("a real bundle must not vouch for bytes it does not name")
 	}
@@ -134,11 +134,51 @@ func TestVerifyBundleRefusesATamperedBinary(t *testing.T) {
 
 // --- the fetch: the attestations API, keyed by the digest ---
 
+// The release tags the recorded bundles are bound to, as GitHub's git API
+// answered for them (2026-10-12): v0.13.4 is an annotated tag whose tag object
+// points at the commit its provenance names; v0.13.3 is the release before it.
+const (
+	commitV0134 = "2de70c93b510b606f54ce02ee7fe2603a36d5ef0"
+	tagObjV0134 = "dc7f461c5ee42e56f459de6484c5f9db9aca72f6"
+	commitV0133 = "33681cf8905216c5ea60d180739a0ba3868eef23"
+)
+
+// recordedRefs is the git API as GitHub answers it for v0.13.4 (annotated:
+// ref -> tag object -> commit), plus v0.6.2, the synthetic release the Apply
+// tests serve, as a lightweight tag on the same commit, so those tests reach
+// the attestation check.
+func recordedRefs() map[string]string {
+	return map[string]string{
+		"/git/ref/tags/v0.13.4":    `{"ref":"refs/tags/v0.13.4","object":{"sha":"` + tagObjV0134 + `","type":"tag"}}`,
+		"/git/tags/" + tagObjV0134: `{"sha":"` + tagObjV0134 + `","tag":"v0.13.4","object":{"sha":"` + commitV0134 + `","type":"commit"}}`,
+		"/git/ref/tags/v0.6.2":     `{"ref":"refs/tags/v0.6.2","object":{"sha":"` + commitV0134 + `","type":"commit"}}`,
+	}
+}
+
 // attestationAPI serves recorded responses at /attestations/sha256:<hex>; any
-// digest not in byDigest is a 404, which is what GitHub answers.
+// digest not in byDigest is a 404, which is what GitHub answers. It serves the
+// recorded git refs too, so a tag resolves as GitHub resolves it.
 func attestationAPI(t *testing.T, byDigest map[string][]byte) *httptest.Server {
 	t.Helper()
+	return repoAPI(t, byDigest, recordedRefs())
+}
+
+// repoAPI is attestationAPI with the git API's answers given: refs maps a
+// request path under the repository (/git/ref/tags/<tag>, /git/tags/<sha>) to
+// its JSON body; any other path is a 404.
+func repoAPI(t *testing.T, byDigest map[string][]byte, refs map[string]string) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/git/") {
+			b, ok := refs[r.URL.Path]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(b))
+			return
+		}
 		d := strings.TrimPrefix(r.URL.Path, "/attestations/sha256:")
 		b, ok := byDigest[d]
 		if !ok {
@@ -157,15 +197,15 @@ func attestationAPI(t *testing.T, byDigest map[string][]byte) *httptest.Server {
 
 func testAttestations(t *testing.T, u *Updater, api *httptest.Server) *githubAttestations {
 	t.Helper()
-	return &githubAttestations{u: u, endpoint: api.URL + "/attestations/", trusted: fixtureTrusted(t), policy: releasePolicy}
+	return &githubAttestations{u: u, endpoint: api.URL + "/attestations/", gitEndpoint: api.URL + "/git/", trusted: fixtureTrusted(t), policy: releasePolicy}
 }
 
 func TestAttestationsVerifyThroughTheAPI(t *testing.T) {
 	api := attestationAPI(t, map[string][]byte{linuxAmd64V0134: fixture(t, "abcd-v0.13.4-linux-amd64.attestations.json")})
 	u := newUpdater(api.URL, nil, testAssetName, true, nil)
-	signer, err := testAttestations(t, u, api).verify(mustHex(t, linuxAmd64V0134))
+	signer, err := testAttestations(t, u, api).verify("v0.13.4", mustHex(t, linuxAmd64V0134))
 	if err != nil {
-		t.Fatalf("a recorded release attestation fetched by digest must verify: %v", err)
+		t.Fatalf("a recorded release attestation fetched by digest must verify for its own tag: %v", err)
 	}
 	if !strings.Contains(signer, "release.yml") {
 		t.Errorf("signer = %q", signer)
@@ -175,7 +215,7 @@ func TestAttestationsVerifyThroughTheAPI(t *testing.T) {
 func TestAttestationsRefuseAMissingBundle(t *testing.T) {
 	api := attestationAPI(t, nil)
 	u := newUpdater(api.URL, nil, testAssetName, true, nil)
-	_, err := testAttestations(t, u, api).verify(mustHex(t, linuxAmd64V0134))
+	_, err := testAttestations(t, u, api).verify("v0.13.4", mustHex(t, linuxAmd64V0134))
 	if err == nil || !strings.Contains(err.Error(), "no build-provenance attestation") {
 		t.Fatalf("a digest with no attestation must refuse, naming the absence: %v", err)
 	}
@@ -184,7 +224,7 @@ func TestAttestationsRefuseAMissingBundle(t *testing.T) {
 func TestAttestationsRefuseAResponseWithNoInlineBundle(t *testing.T) {
 	api := attestationAPI(t, map[string][]byte{"*": []byte(`{"attestations":[{"repository_id":1,"bundle":null}]}`)})
 	u := newUpdater(api.URL, nil, testAssetName, true, nil)
-	_, err := testAttestations(t, u, api).verify(mustHex(t, linuxAmd64V0134))
+	_, err := testAttestations(t, u, api).verify("v0.13.4", mustHex(t, linuxAmd64V0134))
 	if err == nil {
 		t.Fatal("an attestation list with no bundle in it verifies nothing")
 	}
@@ -195,7 +235,7 @@ func TestAttestationsRefuseWhenTheTrustedRootIsUnavailable(t *testing.T) {
 	u := newUpdater(api.URL, nil, testAssetName, true, nil)
 	g := testAttestations(t, u, api)
 	g.trusted = func() (root.TrustedMaterial, error) { return nil, errors.New("tuf unreachable") }
-	if _, err := g.verify(mustHex(t, linuxAmd64V0134)); err == nil || !strings.Contains(err.Error(), "trusted root") {
+	if _, err := g.verify("v0.13.4", mustHex(t, linuxAmd64V0134)); err == nil || !strings.Contains(err.Error(), "trusted root") {
 		t.Fatalf("no trusted root means nothing can be verified: %v", err)
 	}
 }
@@ -277,11 +317,13 @@ func TestApplyRefusesWhenTheAttestationAPIIsUnreachable(t *testing.T) {
 // synthetic: it records the digest it was asked about and answers as told.
 type recordingProvenance struct {
 	asked [][]byte
+	tags  []string
 	err   error
 }
 
-func (r *recordingProvenance) verify(digest []byte) (string, error) {
+func (r *recordingProvenance) verify(tag string, digest []byte) (string, error) {
 	r.asked = append(r.asked, digest)
+	r.tags = append(r.tags, tag)
 	if r.err != nil {
 		return "", r.err
 	}
@@ -307,6 +349,9 @@ func TestApplyChecksTheDownloadedBytesProvenanceAndRecordsTheSigner(t *testing.T
 	if len(rec.asked) != 1 || hex.EncodeToString(rec.asked[0]) != hex.EncodeToString(want[:]) {
 		t.Fatalf("provenance must be asked once, about the downloaded bytes: %x", rec.asked)
 	}
+	if len(rec.tags) != 1 || rec.tags[0] != "v0.6.2" {
+		t.Fatalf("provenance must be bound to the tag being installed: %q", rec.tags)
+	}
 	if !strings.Contains(rep.AttestedBy, "release.yml") {
 		t.Errorf("the receipt must name the verified signer: %+v", rep)
 	}
@@ -322,6 +367,9 @@ func TestShippingUpdaterPinsTheAttestationCheck(t *testing.T) {
 	}
 	if g.endpoint != "https://api.github.com/repos/intentdriven/abcd/attestations/" {
 		t.Errorf("endpoint = %q", g.endpoint)
+	}
+	if g.gitEndpoint != "https://api.github.com/repos/intentdriven/abcd/git/" {
+		t.Errorf("gitEndpoint = %q", g.gitEndpoint)
 	}
 	if g.policy.repo != "intentdriven/abcd" || g.policy.workflow != ".github/workflows/release.yml" {
 		t.Errorf("policy = %+v", g.policy)
@@ -355,6 +403,9 @@ func TestReleaseProvenanceIsTheUpdatersCheck(t *testing.T) {
 	if g.endpoint != attestationEndpoint {
 		t.Errorf("endpoint = %q", g.endpoint)
 	}
+	if g.gitEndpoint != gitEndpoint {
+		t.Errorf("gitEndpoint = %q", g.gitEndpoint)
+	}
 	if g.policy != releasePolicy {
 		t.Errorf("policy = %+v", g.policy)
 	}
@@ -387,15 +438,159 @@ func TestReleaseProvenanceLeavesTheEnvironmentAlone(t *testing.T) {
 // release's own bundle verifies its digest, and refuses other bytes.
 func TestReleaseProvenanceForTestVerifiesRecordedBundles(t *testing.T) {
 	api := attestationAPI(t, map[string][]byte{"*": fixture(t, "abcd-v0.13.4-linux-amd64.attestations.json")})
-	check, err := ReleaseProvenanceForTest(api.URL+"/attestations/", fixture(t, "trusted_root.json"))
+	check, err := ReleaseProvenanceForTest(api.URL, fixture(t, "trusted_root.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if signer, err := check(mustHex(t, linuxAmd64V0134)); err != nil || !strings.Contains(signer, "release.yml") {
+	if signer, err := check("v0.13.4", mustHex(t, linuxAmd64V0134)); err != nil || !strings.Contains(signer, "release.yml") {
 		t.Fatalf("the release's own provenance must verify: %q %v", signer, err)
 	}
 	other := sha256.Sum256([]byte("a binary the release workflow never built"))
-	if _, err := check(other[:]); err == nil {
+	if _, err := check("v0.13.4", other[:]); err == nil {
 		t.Fatal("a real bundle must not vouch for bytes it does not name")
+	}
+}
+
+// --- the provenance is bound to the release tag, not only to the workflow ---
+
+// A genuine release build verifies as signed by release.yml whichever release
+// page it is uploaded to: the workflow identity says who built it, not which
+// release. Whoever can replace a release's assets could upload an older
+// release's genuine binary and checksums under a newer tag, so the check also
+// requires the provenance to name the commit the tag resolves to.
+
+// TestAttestationsRefuseAGenuineBundleForTheWrongTag: v0.13.4's real
+// provenance, presented for a tag that resolves to another commit (v0.13.3's),
+// is refused, naming both commits.
+func TestAttestationsRefuseAGenuineBundleForTheWrongTag(t *testing.T) {
+	refs := map[string]string{
+		"/git/ref/tags/v0.13.5": `{"ref":"refs/tags/v0.13.5","object":{"sha":"` + commitV0133 + `","type":"commit"}}`,
+	}
+	api := repoAPI(t, map[string][]byte{linuxAmd64V0134: fixture(t, "abcd-v0.13.4-linux-amd64.attestations.json")}, refs)
+	u := newUpdater(api.URL, nil, testAssetName, true, nil)
+	_, err := testAttestations(t, u, api).verify("v0.13.5", mustHex(t, linuxAmd64V0134))
+	if err == nil {
+		t.Fatal("a genuine build of another release must not verify for this tag")
+	}
+	for _, want := range []string{commitV0133, commitV0134} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %s: %v", want, err)
+		}
+	}
+}
+
+// TestAttestationsVerifyTheRightTagThroughAnAnnotatedTag: the same bundle for
+// its own tag verifies, the annotated tag dereferenced to its commit.
+func TestAttestationsVerifyTheRightTagThroughAnAnnotatedTag(t *testing.T) {
+	api := attestationAPI(t, map[string][]byte{linuxAmd64V0134: fixture(t, "abcd-v0.13.4-linux-amd64.attestations.json")})
+	u := newUpdater(api.URL, nil, testAssetName, true, nil)
+	if _, err := testAttestations(t, u, api).verify("v0.13.4", mustHex(t, linuxAmd64V0134)); err != nil {
+		t.Fatalf("the release's provenance must verify for its own annotated tag: %v", err)
+	}
+}
+
+// TestAttestationsRefuseATagThatDoesNotResolve: any failure to resolve the
+// tag's commit refuses — a missing tag, a malformed answer, an object that is
+// not a commit, a tag chain that never ends — and nothing is verified.
+func TestAttestationsRefuseATagThatDoesNotResolve(t *testing.T) {
+	loop := strings.Repeat("a", 40)
+	for _, tc := range []struct {
+		name string
+		tag  string
+		refs map[string]string
+	}{
+		{"no such tag", "v0.13.4", map[string]string{}},
+		{"not JSON", "v0.13.4", map[string]string{"/git/ref/tags/v0.13.4": `<html>`}},
+		{"a prefix match list", "v0.13.4", map[string]string{"/git/ref/tags/v0.13.4": `[{"ref":"refs/tags/v0.13.40","object":{"sha":"` + commitV0134 + `","type":"commit"}}]`}},
+		{"another ref", "v0.13.4", map[string]string{"/git/ref/tags/v0.13.4": `{"ref":"refs/tags/v0.13.40","object":{"sha":"` + commitV0134 + `","type":"commit"}}`}},
+		{"a malformed sha", "v0.13.4", map[string]string{"/git/ref/tags/v0.13.4": `{"ref":"refs/tags/v0.13.4","object":{"sha":"2de70c93","type":"commit"}}`}},
+		{"a tree", "v0.13.4", map[string]string{"/git/ref/tags/v0.13.4": `{"ref":"refs/tags/v0.13.4","object":{"sha":"` + commitV0134 + `","type":"tree"}}`}},
+		{"an unresolvable tag object", "v0.13.4", map[string]string{"/git/ref/tags/v0.13.4": `{"ref":"refs/tags/v0.13.4","object":{"sha":"` + tagObjV0134 + `","type":"tag"}}`}},
+		{"a tag chain that never ends", "v0.13.4", map[string]string{
+			"/git/ref/tags/v0.13.4": `{"ref":"refs/tags/v0.13.4","object":{"sha":"` + loop + `","type":"tag"}}`,
+			"/git/tags/" + loop:     `{"sha":"` + loop + `","object":{"sha":"` + loop + `","type":"tag"}}`,
+		}},
+		{"a path-shaped tag", "../v0.13.4", recordedRefs()},
+		{"no tag at all", "", recordedRefs()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := repoAPI(t, map[string][]byte{"*": fixture(t, "abcd-v0.13.4-linux-amd64.attestations.json")}, tc.refs)
+			u := newUpdater(api.URL, nil, testAssetName, true, nil)
+			_, err := testAttestations(t, u, api).verify(tc.tag, mustHex(t, linuxAmd64V0134))
+			if err == nil {
+				t.Fatal("a tag whose commit cannot be resolved must refuse")
+			}
+			if !strings.Contains(err.Error(), "commit") {
+				t.Errorf("the refusal must say the release's commit could not be resolved: %v", err)
+			}
+		})
+	}
+}
+
+// TestStatementNamesCommit holds the statement half of the binding: the SLSA
+// provenance's resolved source dependency must be this repository at the
+// tag's commit. The certificate half (the Fulcio-attested source digest) is
+// what the wrong-tag test above trips first, so this is checked on its own.
+func TestStatementNamesCommit(t *testing.T) {
+	var b struct {
+		DSSEEnvelope struct {
+			Payload []byte `json:"payload"`
+		} `json:"dsseEnvelope"`
+	}
+	if err := json.Unmarshal(fixtureBundle(t, "abcd-v0.13.4-linux-amd64.attestations.json"), &b); err != nil {
+		t.Fatal(err)
+	}
+	var st struct {
+		Predicate json.RawMessage `json:"predicate"`
+	}
+	if err := json.Unmarshal(b.DSSEEnvelope.Payload, &st); err != nil {
+		t.Fatal(err)
+	}
+	if err := predicateNamesCommit(st.Predicate, releasePolicy.repo, commitV0134); err != nil {
+		t.Fatalf("v0.13.4's provenance names its own commit: %v", err)
+	}
+	if err := predicateNamesCommit(st.Predicate, releasePolicy.repo, commitV0133); err == nil {
+		t.Fatal("v0.13.4's provenance must not stand for v0.13.3's commit")
+	}
+	if err := predicateNamesCommit(st.Predicate, "cli/cli", commitV0134); err == nil {
+		t.Fatal("the commit must be named as this repository's source")
+	}
+	if err := predicateNamesCommit(json.RawMessage(`{"buildDefinition":{}}`), releasePolicy.repo, commitV0134); err == nil {
+		t.Fatal("a predicate naming no source commit binds nothing")
+	}
+}
+
+// TestApplyChecksProvenanceBeforeCallingAMatchingFileCurrent: a target whose
+// bytes already match the tag's checksums.txt is reported current only once
+// those bytes verify for that tag. Otherwise a release page re-uploaded with
+// an older genuine build would call the old build current at the new tag, and
+// the CLI would record the new tag as the newest release installed.
+func TestApplyChecksProvenanceBeforeCallingAMatchingFileCurrent(t *testing.T) {
+	o := newTestOrigin(t)
+	bin := []byte("same-binary-bytes")
+	o.addRelease("v0.6.2", testAssetName, bin)
+	target := writeTarget(t, bin)
+	u := newUpdater(o.srv.URL, nil, testAssetName, true, nil)
+	rec := &recordingProvenance{err: errors.New("the provenance names commit 33681cf, not v0.6.2's")}
+	u.provenance = rec
+
+	rep, err := u.Apply(target, "v0.6.2", nil)
+	if err != nil {
+		t.Fatalf("a provenance failure is a named refusal, not an error: %v", err)
+	}
+	if rep.Action != ActionRefused || rep.Refusal == nil || rep.Refusal.Shape != "unverified-provenance" {
+		t.Fatalf("a matching file whose provenance fails is not current: %+v (refusal %+v)", rep, rep.Refusal)
+	}
+	if len(rec.tags) != 1 || rec.tags[0] != "v0.6.2" {
+		t.Fatalf("the current file's provenance must be checked for the tag: %q", rec.tags)
+	}
+
+	rec.err = nil
+	rep, err = u.Apply(target, "v0.6.2", nil)
+	if err != nil || rep.Action != ActionCurrent {
+		t.Fatalf("a matching file whose provenance verifies is current: %+v %v", rep, err)
+	}
+	if !strings.Contains(rep.AttestedBy, "release.yml") {
+		t.Errorf("the receipt must name the verified signer: %+v", rep)
 	}
 }

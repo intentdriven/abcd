@@ -31,8 +31,16 @@ certificate must chain to Sigstore's Fulcio CA, its entry must be in the Rekor
 transparency log, its signer must be `intentdriven/abcd`'s
 `.github/workflows/release.yml` (at `main` or a `v` tag) under GitHub Actions'
 OIDC issuer, and its SLSA provenance must name exactly the downloaded bytes.
-Any failure refuses before anything is staged. All three addresses are reached
-over the same pinned transport as the release download.
+The signature alone says who built the bytes, not which release they are, so
+the check is also bound to the release: the tag is resolved to its commit
+through GitHub's git API (`https://api.github.com/repos/intentdriven/abcd/git/ref/tags/<tag>`,
+following an annotated tag to its commit), and both the certificate's source
+digest and the provenance's source commit must be that commit. An older
+release's genuine build re-uploaded under a newer tag is refused. A file that
+already matches the release's `checksums.txt` passes the same check before it
+is reported current. Any failure refuses before anything is staged, a tag
+whose commit cannot be resolved included. Every address is reached over the
+same pinned transport as the release download.
 
 The same line announces a swap the plugin bootstrap makes. When a hook that
 discards its output made the swap, the next session start shows the line once,
@@ -119,13 +127,16 @@ refusal is a named shape with a remedy in `refusal`:
   cannot run once it is gone.
 - `absent` — nothing on PATH to update; point at the install remedy.
 - `unverified-provenance` — the binary matched `checksums.txt`, but no build
-  provenance signed by `intentdriven/abcd`'s release workflow verifies for it:
-  none is published, it was signed by another repository or workflow, it names
-  other bytes, or GitHub's attestations API or the Sigstore TUF repository
-  could not be reached (offline included). Nothing was swapped. Relay the
+  provenance signed by `intentdriven/abcd`'s release workflow from the
+  release tag's commit verifies for it: none is published, it was signed by
+  another repository or workflow, it names other bytes, it was built from
+  another release's commit, the tag's commit could not be resolved, or
+  GitHub's API or the Sigstore TUF repository could not be reached (offline
+  included). Nothing was swapped. Relay the
   detail, which names what failed, and the remedy: retry once both are
   reachable, or install by hand — download the asset, check it with
-  `gh attestation verify`, then copy it over the PATH copy.
+  `gh attestation verify --source-digest <the tag's commit>`, then copy it
+  over the PATH copy.
 - `older-than-mark` — a bare `abcd update` resolved a latest release older
   than `~/.abcd.noindex/release-mark`, the newest release this machine has
   installed or verified: the publisher may have withdrawn the newer one.

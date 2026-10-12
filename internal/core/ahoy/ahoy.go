@@ -190,7 +190,9 @@ type InstallOptions struct {
 	// other category is still asked, or pre-answered, as before.
 	ApproveDependency bool
 	// VerifyProvenance verifies a release artefact's SLSA build provenance by
-	// its sha256, returning the verified signer identity. Promoting the
+	// its sha256, for the release tag the cache attestation names (the
+	// provenance must name the commit that tag resolves to), returning the
+	// verified signer identity. Promoting the
 	// plugin's cached release binary to the PATH copy runs it before anything
 	// is written, and any failure refuses (iss-2610120617515834): the cache
 	// was checked against checksums.txt from the same release page as the
@@ -203,8 +205,9 @@ type InstallOptions struct {
 }
 
 // ProvenanceCheck verifies a release artefact's build provenance by its
-// sha256 digest and returns the verified signer identity.
-type ProvenanceCheck func(digest []byte) (signer string, err error)
+// sha256 digest, as the build of release tag, and returns the verified signer
+// identity.
+type ProvenanceCheck func(tag string, digest []byte) (signer string, err error)
 
 // InstallResult is the outcome of Install.
 type InstallResult struct {
