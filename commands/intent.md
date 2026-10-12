@@ -1224,7 +1224,9 @@ overflows):
    holds exactly one valid payload for every chunk of one emit (a chunk
    missing or given twice, chunks of two emits, or a chunk beside an unchunked
    payload). Findings of different chunks that share a key are one finding,
-   numbered in chunk order.
+   numbered in chunk order. Each pair of documents is owned by one chunk, whose
+   request alone asks for it; a finding on a pair another chunk owns is set
+   aside rather than filed, and `set_aside` counts it.
 
 On a provider route, the emit sends the chunks one after another and ingests
 them together; if any send falls back to the harness, every chunk is left to
