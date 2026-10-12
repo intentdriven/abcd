@@ -12,7 +12,7 @@ import (
 // the key, and a finding would change key when its spec closed
 // (itd-2609291923559186, G1).
 func TestFindingKeyDropsTheSpecStatuses(t *testing.T) {
-	got := findingkey.StatusFolders(SpecsRelDir)
+	got := findingkey.StatusFoldersForTest(SpecsRelDir)
 	if want := []string{StatusOpen, StatusClosed}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("findingkey drops %v under %s; the store's statuses are %v", got, SpecsRelDir, want)
 	}

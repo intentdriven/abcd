@@ -59,10 +59,10 @@ var statusStores = []struct {
 	{recordid.IssuesRelDir, issueschema.StatusDirs},
 }
 
-// StatusFolders returns the status folders this package drops from a path
+// StatusFoldersForTest returns the status folders this package drops from a path
 // under root, or nil when root is no status-foldered store. It exists for the
 // tests that pin each list to its owner's.
-func StatusFolders(root string) []string {
+func StatusFoldersForTest(root string) []string {
 	for _, s := range statusStores {
 		if s.root == root {
 			return append([]string(nil), s.folders...)
@@ -71,12 +71,12 @@ func StatusFolders(root string) []string {
 	return nil
 }
 
-// IdentityPath is p with the status folder dropped when p names a record
+// identityPath is p with the status folder dropped when p names a record
 // directly inside a status folder of a status-foldered store:
 // `.abcd/development/intents/planned/itd-N-slug.md` becomes
 // `.abcd/development/intents/itd-N-slug.md`. Any other path is kept as it is,
 // surrounding space trimmed.
-func IdentityPath(p string) string {
+func identityPath(p string) string {
 	p = strings.TrimSpace(p)
 	dir, file := path.Split(p)
 	folderDir, folder := path.Split(strings.TrimSuffix(dir, "/"))
@@ -105,8 +105,8 @@ func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
 // ordered (path, quote) pairs, with NUL between every field.
 func Derive(class string, a, b End) string {
 	ends := [2]End{
-		{Path: IdentityPath(a.Path), Quote: collapse(a.Quote)},
-		{Path: IdentityPath(b.Path), Quote: collapse(b.Quote)},
+		{Path: identityPath(a.Path), Quote: collapse(a.Quote)},
+		{Path: identityPath(b.Path), Quote: collapse(b.Quote)},
 	}
 	if ends[1].Path < ends[0].Path || (ends[1].Path == ends[0].Path && ends[1].Quote < ends[0].Quote) {
 		ends[0], ends[1] = ends[1], ends[0]

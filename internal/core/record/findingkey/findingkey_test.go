@@ -106,8 +106,8 @@ func TestIdentityPath(t *testing.T) {
 		// Surrounding space and a backslash-free relative path are taken as given.
 		"  " + planned + " ": ".abcd/development/intents/itd-10-one-spec.md",
 	} {
-		if got := IdentityPath(in); got != want {
-			t.Errorf("IdentityPath(%q) = %q, want %q", in, got, want)
+		if got := identityPath(in); got != want {
+			t.Errorf("identityPath(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
