@@ -1223,9 +1223,10 @@ page of the same name. Notes and pages share one ranked order: each carries
 its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
 term with how often it was found in the item's `recall` words, `title` and
 `body` and its `contribution` to the score; the ranking decides which items
-fit the budget. Each carries a `form`: `full`, or `over-budget` when
+fit the budget. Each carries a `form`: `full`, `over-budget` when
 it would not fit the per-turn budget and would come back on a later prompt
-instead. `disabled` is true under the kill switch, and then nothing comes
+instead, or `too-large` when it is larger than the whole per-turn budget and
+no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
 back; `unreadable` names a `memory.json`, page store or page that could not
 be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
 a rule, a note or a page did, or did not, come back on a prompt. A

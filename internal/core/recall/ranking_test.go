@@ -250,3 +250,37 @@ func TestRankingFindsATermWhereTheMatcherHits(t *testing.T) {
 		}
 	}
 }
+
+// TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest: an item whose block
+// alone is larger than the whole per-turn budget can never come back in
+// full, so it is set aside as too large, never recorded, and the items
+// ranked below it still come back; one that only misses this turn's
+// remainder still stops the take, as before.
+func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
+	huge := strings.TrimSpace(strings.Repeat("kerberos deploy notes ", rules.InjectionBudgetBytes/20))
+	items := []Item{
+		item("page:fact_eng_huge.md", []string{"deploy", "kerberos"}, "Every kerberos deploy ever", huge),
+		item("mem-2610111200000002", []string{"deploy"}, "Deploys need the dry-run flag", "Pass it first."),
+	}
+	ranked := Rank(items, "deploy with kerberos")
+	if ranked[0].Item.Key != "page:fact_eng_huge.md" {
+		t.Fatalf("the fixture does not rank the huge page first: %v", rankedKeys(ranked))
+	}
+	res := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: rules.InjectionBudgetBytes})
+	if !slices.Equal(res.Recalled, []string{"mem-2610111200000002"}) || !slices.Equal(res.TooLarge, []string{"page:fact_eng_huge.md"}) ||
+		len(res.Omitted) != 0 {
+		t.Fatalf("recalled %v too large %v omitted %v", res.Recalled, res.TooLarge, res.Omitted)
+	}
+	if _, ok := res.Ledger["page:fact_eng_huge.md"]; ok {
+		t.Fatal("an item that never came back was recorded as sent")
+	}
+	if len(res.Text) > rules.InjectionBudgetBytes {
+		t.Fatalf("the block is over the budget: %d", len(res.Text))
+	}
+	// With the rules leaving too little for the note this turn, the note is
+	// omitted and tried again, and the huge page is still only too large.
+	tight := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: 10})
+	if len(tight.Recalled) != 0 || !slices.Equal(tight.Omitted, []string{"mem-2610111200000002"}) || !slices.Equal(tight.TooLarge, []string{"page:fact_eng_huge.md"}) {
+		t.Fatalf("recalled %v too large %v omitted %v", tight.Recalled, tight.TooLarge, tight.Omitted)
+	}
+}

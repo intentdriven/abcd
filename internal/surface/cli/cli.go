@@ -1765,10 +1765,13 @@ exits 0, so the hook can never wedge a session.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
-			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) %v, %d bytes", len(mem.Recalled), mem.Recalled, len(mem.Text))
 				if len(mem.Omitted) > 0 {
 					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) %v did not fit this turn's budget and are tried again on the next", len(mem.Omitted), mem.Omitted)
+				}
+				if len(mem.TooLarge) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) %v are larger than the whole per-turn budget and do not come back in full", len(mem.TooLarge), mem.TooLarge)
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
@@ -2445,7 +2448,8 @@ session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
 layer and the recall words that hit, each in full or as not fitting the
-per-turn budget. Notes and pages share one ranked order, a BM25F relevance
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads

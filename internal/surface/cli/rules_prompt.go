@@ -11,7 +11,7 @@ import (
 )
 
 // rules_prompt.go — the memory recall's two front doors
-// (spc-2610111627213138 steps 2 and 3): the prompt router's recall after the
+// (spc-2610111627213138 steps 2 to 4): the prompt router's recall after the
 // rules, and the `rules --prompt "<text>"` diagnostic that shows what one
 // prompt brings back.
 
@@ -56,6 +56,7 @@ func refusalLoss(r recall.Refusal) string {
 const (
 	promptFormFull       = "full"
 	promptFormOverBudget = "over-budget"
+	promptFormTooLarge   = "too-large"
 )
 
 // rulesPromptDomain is one matched domain in the diagnostic.
@@ -136,10 +137,17 @@ func rulesPrompt(rs rules.RuleSet, root, prompt string) rulesPromptView {
 	for _, key := range mem.Recalled {
 		recalled[key] = true
 	}
+	tooLarge := map[string]bool{}
+	for _, key := range mem.TooLarge {
+		tooLarge[key] = true
+	}
 	for i, c := range recall.Rank(items, prompt) {
 		form := promptFormOverBudget
-		if recalled[c.Item.Key] {
+		switch {
+		case recalled[c.Item.Key]:
 			form = promptFormFull
+		case tooLarge[c.Item.Key]:
+			form = promptFormTooLarge
 		}
 		terms := c.Terms
 		if terms == nil {
@@ -218,8 +226,11 @@ func renderTermScores(w io.Writer, terms []recall.TermScore) {
 
 // promptFormWords is a form as the plain diagnostic says it.
 func promptFormWords(form string) string {
-	if form == promptFormFull {
+	switch form {
+	case promptFormFull:
 		return "in full"
+	case promptFormTooLarge:
+		return "larger than the whole per-turn budget, so it does not come back in full"
 	}
 	return "does not fit this turn's budget"
 }
