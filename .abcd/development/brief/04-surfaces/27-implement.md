@@ -259,12 +259,12 @@ with a joined session) a warning is also written as a load event, attributed
 to the first-role session, carrying the verdict's facts so it renders exactly
 as it was printed; the run's hand-written load samples share the name and carry
 no `triggers`. Without its wait flag the check exits 0 on every status: it never
-refuses, waits or signals anything. With `--wait` it is the one waiter
+refuses, waits or signals anything. With its wait flag it is the one waiter
 concurrent sessions gate a preflight or a race run with: it blocks until the
 one-minute load is below the wait limit and no other `go test -race` run is
 live, one waiter at a time under a machine-wide hold, runs a command given after
 `--` and exits with its code, forwarding an interrupt to it, and gives up after
-its `--timeout` at exit 1, naming what it was still waiting on.
+its timeout at exit 1, naming what it was still waiting on.
 
 ## The implement loop
 

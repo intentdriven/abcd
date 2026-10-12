@@ -30,7 +30,7 @@ landing), and the run record read back at the end with the run's transcripts.
 
 The status cell records that the sub-verb is in the command tree, not that its
 intent is delivered: the pick is made once per invocation by default, and a
-series (`--max` above 1, or `--until-empty`) continues under the pace rule
+series (a run count above one, or a run until no candidate is left) continues under the pace rule
 (criterion 5); a lane handed back names the pick falsified in the run record
 (criterion 6) ([The pick](#the-pick)).
 
