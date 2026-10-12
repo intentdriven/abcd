@@ -593,10 +593,12 @@ as it is and says so.
 
 ### What `--yes` does
 
-`--yes` never answers the README question. A `--yes` run without
-`--readme-parts` leaves `README.md` as it is, or absent if there was none,
-lists `readme.offered` under `optional_skipped`, and its summary says "The
-README question was not asked" and names `--readme-parts`. A run whose answers
+`--yes` never answers the README question. While the question is unanswered,
+a `--yes` run without `--readme-parts` leaves `README.md` as it is, or absent
+if there was none, lists `readme.offered` under `optional_skipped`, and its
+summary says "The README question was not asked" and names `--readme-parts`.
+Once a list of parts is saved, a `--yes` run keeps those parts current like
+any other setup run. A run whose answers
 are piped in is not asked either, and reports it the same way.
 
 ### Uninstall
