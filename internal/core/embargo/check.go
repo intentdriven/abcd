@@ -46,6 +46,12 @@ const staleIntake = 24 * time.Hour
 // snippetRunes caps a finding's masked line.
 const snippetRunes = 200
 
+// minTitleRunes is the shortest title the check matches on its own. A title
+// of a word or two ("Parser bug") would match ordinary prose everywhere, so
+// below this length only the advisory's id and reserved CVE id are refused;
+// the command page names the limit.
+const minTitleRunes = 12
+
 // ghsaShapeRe is any text of a GitHub advisory id's shape, in the lower case
 // the check matches in.
 var ghsaShapeRe = regexp.MustCompile(`ghsa-[2-9cfghjmpqrvwx]{4}-[2-9cfghjmpqrvwx]{4}-[2-9cfghjmpqrvwx]{4}`)
@@ -99,14 +105,16 @@ type needle struct {
 	text     string
 	kind     string
 	boundary bool // the match must not continue a word on either side
+	pathEnd  bool // the match must not continue a path segment's name after it
 }
 
 // denySet is what the check refuses, built from the store's state.
 type denySet struct {
-	needles []needle
-	held    map[string]bool // every advisory id the store holds, canonGHSA's form
-	allowed map[string]bool // --allow'ed ids, canonGHSA's form
-	embargo int
+	needles  []needle
+	held     map[string]bool // every advisory id the store holds, canonGHSA's form
+	allowed  map[string]bool // --allow'ed ids, canonGHSA's form
+	unlisted bool            // refuse an advisory id the store does not hold
+	embargo  int
 }
 
 // Check is the outbound embargo check. It reads the commit range and the
@@ -281,8 +289,10 @@ type addedRun struct {
 // program), and the patch passes --no-ext-diff and --no-textconv so no diff
 // driver or text conversion the repository configures runs, or decides what
 // the check reads; --text keeps a file marked binary from hiding its lines.
-// A merge commit's message is read; its diff is not, since the commits it
-// merges are read on their own.
+// A merge commit's diff is read against its first parent, so a line the merge
+// itself adds (a conflict resolution, an evil merge) is read too; a line it
+// brings in from a merged commit of the range is then read twice, which can
+// only add findings.
 func readRange(top, rng string) ([]commitText, error) {
 	rng = strings.TrimSpace(rng)
 	if rng == "" {
@@ -312,7 +322,7 @@ func readRange(top, rng string) ([]commitText, error) {
 		}
 		patch, err := gitutil.RunCappedBytes(top, maxCheckGit, "log", "-1", "--no-show-signature", "--format=", "-p",
 			"--no-ext-diff", "--no-textconv", "--text", "--no-color", "--no-renames", "--no-relative",
-			"--diff-merges=off", "--unified=0", "--src-prefix=a/", "--dst-prefix=b/", sha, "--")
+			"--diff-merges=first-parent", "--unified=0", "--src-prefix=a/", "--dst-prefix=b/", sha, "--")
 		if err != nil {
 			return nil, refuse("a commit of the range could not be read within the check's limit", "narrow the range, then run it again")
 		}
@@ -409,36 +419,28 @@ func patchPath(p string) string {
 	return strings.TrimPrefix(p, "b/")
 }
 
-// buildDenySet is the deny set of a store's state: for every advisory not
-// yet published (a closed one stays private on GitHub, so it stays in the
-// set), its id and reserved CVE id, and its title unless it was moved to the
-// public track; and, while any advisory is under embargo, the store's
-// location in every form a text could name it.
+// buildDenySet is the deny set of a store's state: every advisory under
+// embargo (embargoed), and, while any is, the store's location on this
+// machine in every form a text could name it: absolute, home-relative, and
+// the worktree-store fragment keyed on this repository's root commit. The
+// relative paths inside any store (StateRel, DraftDirRel) are not in the set:
+// abcd's own source names them, and they say nothing of where this machine
+// keeps its records.
 func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
-	ds := denySet{held: map[string]bool{}, allowed: allowed}
+	ds := denySet{held: map[string]bool{}, allowed: allowed, unlisted: true}
 	for _, a := range st.Advisories {
 		ds.held[canonGHSA(a.GHSAID)] = true
-		if a.PublishedAt != nil {
-			continue
-		}
-		if allowed[canonGHSA(a.GHSAID)] {
+		if a.PublishedAt == nil && allowed[canonGHSA(a.GHSAID)] {
 			return denySet{}, refuse("an --allow value names an unpublished advisory this store holds, which stays under embargo",
 				"drop it from --allow; only an advisory already public may be allowed")
 		}
-		ds.embargo++
-		ds.add(a.GHSAID, KindAdvisoryID, true)
-		if a.CVEID != nil {
-			ds.add(*a.CVEID, KindReservedCVE, true)
-		}
-		if a.Verdict == nil || *a.Verdict != VerdictPublicTrack {
-			ds.add(a.Title, KindAdvisoryTitle, true)
-		}
 	}
+	ds.addEmbargoed(st, "")
 	if ds.embargo == 0 {
 		return ds, nil
 	}
 	sha := gitutil.RootCommit(s.Checkout)
-	forms := []string{s.Root, resolve(s.Root), "worktrees/" + sha + "/" + StoreName, ".abcd/.work.local/" + StoreName}
+	forms := []string{s.Root, resolve(s.Root), "worktrees/" + sha + "/" + StoreName}
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, h := range []string{filepath.Clean(home), resolve(home)} {
 			for _, root := range []string{s.Root, resolve(s.Root)} {
@@ -454,6 +456,40 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 	return ds, nil
 }
 
+// addEmbargoed adds every advisory under embargo but the one with id skip:
+// each not yet published (a closed one stays private on GitHub, so it stays
+// in the set), by its id and reserved CVE id, and by its title unless it was
+// moved to the public track (that issue is fixed in the open) or is shorter
+// than minTitleRunes.
+func (ds *denySet) addEmbargoed(st State, skip string) {
+	for _, a := range st.Advisories {
+		if a.PublishedAt != nil || (skip != "" && canonGHSA(a.GHSAID) == canonGHSA(skip)) {
+			continue
+		}
+		ds.embargo++
+		ds.add(a.GHSAID, KindAdvisoryID, true)
+		if a.CVEID != nil {
+			ds.add(*a.CVEID, KindReservedCVE, true)
+		}
+		if a.Verdict == nil || *a.Verdict != VerdictPublicTrack {
+			if n, _ := normalise(a.Title); utf8.RuneCountInString(strings.TrimSpace(n)) >= minTitleRunes {
+				ds.add(a.Title, KindAdvisoryTitle, true)
+			}
+		}
+	}
+}
+
+// othersDenySet is the deny set an advisory's own text is held to before it
+// is published: every other advisory still under embargo, by id, reserved
+// CVE id and title, so publishing one never discloses another. An advisory id
+// the store does not hold is not refused here: an advisory may cite another
+// project's, already public.
+func othersDenySet(st State, self string) denySet {
+	ds := denySet{}
+	ds.addEmbargoed(st, self)
+	return ds
+}
+
 func (ds *denySet) add(text, kind string, boundary bool) {
 	n, _ := normalise(text)
 	n = strings.TrimSpace(n)
@@ -465,7 +501,7 @@ func (ds *denySet) add(text, kind string, boundary bool) {
 			return
 		}
 	}
-	ds.needles = append(ds.needles, needle{text: n, kind: kind, boundary: boundary})
+	ds.needles = append(ds.needles, needle{text: n, kind: kind, boundary: boundary, pathEnd: kind == KindStorePath})
 }
 
 // span is one match, in byte offsets of the original text.
@@ -497,12 +533,18 @@ func (ds denySet) matches(text string) []span {
 			if n.boundary && !wordEdge(norm, s, e) {
 				continue
 			}
+			if n.pathEnd && continuesName(norm, e) {
+				continue
+			}
 			sp := toOrig(s, e)
 			sp.kind = n.kind
 			found = append(found, sp)
 		}
 	}
 	for _, loc := range ghsaShapeRe.FindAllStringIndex(norm, -1) {
+		if !ds.unlisted {
+			break
+		}
 		id := canonGHSA(norm[loc[0]:loc[1]])
 		if ds.held[id] || ds.allowed[id] || !wordEdge(norm, loc[0], loc[1]) {
 			continue
@@ -618,6 +660,19 @@ func wordEdge(norm string, s, e int) bool {
 }
 
 func isWord(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+
+// continuesName reports whether the path segment ending at norm[e] goes on
+// past it: a store path followed by more of a name (embargo-old, embargo.bak)
+// names a sibling folder, not the store. A dot that ends a sentence does not
+// continue it.
+func continuesName(norm string, e int) bool {
+	name := func(b byte) bool {
+		return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b == '_' || b >= 0x80
+	}
+	for ; e < len(norm) && norm[e] == '.'; e++ {
+	}
+	return e < len(norm) && name(norm[e])
+}
 
 func capRunes(s string, n int) string {
 	if utf8.RuneCountInString(s) <= n {

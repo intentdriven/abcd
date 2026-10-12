@@ -150,9 +150,8 @@ func TestCheckRefusesTitleCaseInsensitive(t *testing.T) {
 	wantKinds(t, cf.text(t, "Xsample overflow in the example parsers\n"))
 }
 
-// TestCheckRefusesStorePathForms: the store's location is refused absolute,
-// home-relative, as its worktree-store fragment, and as the local-tier folder
-// the state sits in.
+// TestCheckRefusesStorePathForms: the store's location on this machine is
+// refused absolute, home-relative and as its worktree-store fragment.
 func TestCheckRefusesStorePathForms(t *testing.T) {
 	cf := newCheckFixture(t)
 	sha := cf.f.repo.Git("rev-list", "--max-parents=0", "HEAD")
@@ -168,9 +167,83 @@ func TestCheckRefusesStorePathForms(t *testing.T) {
 		"cd " + cf.s.Root + "/x\n",
 		"cd ~/" + filepath.ToSlash(rel) + "\n",
 		"under worktrees/" + sha + "/embargo/.abcd\n",
-		"see .abcd/.work.local/embargo/state.json\n",
+		"the store is " + cf.s.Root + ".\n",
 	} {
 		wantKinds(t, cf.text(t, body), KindStorePath)
+	}
+}
+
+// TestCheckPassesStoreRelativeConstants: the relative paths abcd's own source
+// names (the state file and the drafts inside any store) say nothing about
+// where this machine keeps its records, so a range that touches the embargo
+// package is not refused for them; and a sibling folder whose name merely
+// begins with the store's is another place.
+func TestCheckPassesStoreRelativeConstants(t *testing.T) {
+	cf := newCheckFixture(t)
+	wantKinds(t, cf.text(t, "const StateRel = \""+StateRel+"\"\n"))
+	wantKinds(t, cf.text(t, "drafts sit in "+DraftDirRel+"/\n"))
+	wantKinds(t, cf.text(t, "cd "+cf.s.Root+"-steps-10-11/x\n"))
+	wantKinds(t, cf.text(t, "cd "+cf.s.Root+".bak/x\n"))
+
+	r := cf.f.repo
+	base := r.Git("rev-parse", "HEAD")
+	r.Write("internal/core/embargo/state.go", "package embargo\n\nconst StateRel = \""+StateRel+"\"\n")
+	r.Commit("feat: name the state file")
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: base + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res)
+}
+
+// TestCheckShortTitleNotMatchedAlone: a title shorter than the minimum is
+// not matched on its own, so a very short title cannot match everywhere; the
+// advisory's id still is.
+func TestCheckShortTitleNotMatchedAlone(t *testing.T) {
+	cf := newCheckFixture(t)
+	st, err := cf.s.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	short := "Parser bug"  // 10 characters: not matched alone
+	edge := "Parser crash" // 12 characters: matched
+	st.Advisories = append(st.Advisories,
+		Advisory{GHSAID: "GHSA-mmmm-mmmm-mmmm", IssueID: "iss-2610120000000005", Title: short, Severity: "minor", ForgeState: "triage"},
+		Advisory{GHSAID: "GHSA-jjjj-jjjj-jjjj", IssueID: "iss-2610120000000006", Title: edge, Severity: "minor", ForgeState: "triage"})
+	if err := cf.s.SaveState(st); err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, cf.text(t, "fix: a parser bug in the example\n"))
+	wantKinds(t, cf.text(t, "see GHSA-mmmm-mmmm-mmmm\n"), KindAdvisoryID)
+	wantKinds(t, cf.text(t, "fix: parser crash on empty input\n"), KindAdvisoryTitle)
+}
+
+// TestCheckReadsMergeCommitDiffs: a merge commit's own diff is read against
+// its first parent, so a line a merge adds that no merged commit carries (an
+// evil merge, a conflict resolution) is not let through.
+func TestCheckReadsMergeCommitDiffs(t *testing.T) {
+	cf := newCheckFixture(t)
+	r := cf.f.repo
+	base := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "-c", "side")
+	r.Write("side.txt", "clean\n")
+	r.Commit("side work")
+	r.Git("switch", "-q", "main")
+	r.Write("main.txt", "clean\n")
+	r.Commit("main work")
+	r.Git("merge", "-q", "--no-ff", "--no-commit", "side")
+	r.Write("merged.txt", "names "+ghsaOpen+"\n")
+	r.Git("add", "merged.txt")
+	r.Git("commit", "-q", "-m", "merge side")
+	merge := r.Git("rev-parse", "HEAD")
+
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: base + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryID)
+	if f := res.Findings[0]; f.Source != "commit "+merge || f.Where != "added line in merged.txt" || f.Line != 1 {
+		t.Fatalf("merge finding %+v", f)
 	}
 }
 

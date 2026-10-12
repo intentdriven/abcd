@@ -131,7 +131,7 @@ func planFor(s Store, st State, release string) (PublicationPlan, error) {
 	}
 	slices.SortFunc(candidates, func(a, b Advisory) int { return strings.Compare(a.GHSAID, b.GHSAID) })
 	for _, a := range candidates {
-		e, why, err := planEntry(s, st.Repo, release, resolved, a)
+		e, why, err := planEntry(s, st.Repo, release, resolved, a, othersDenySet(st, a.GHSAID))
 		if err != nil {
 			return PublicationPlan{}, err
 		}
@@ -186,10 +186,13 @@ func resolvedRecords(checkout, release string) ([]string, error) {
 	return paths, nil
 }
 
-// planEntry plans one advisory, or says why it is left out. An error is a
-// failure that refuses the whole plan (a git or GitHub request that fails, a
-// text the scanner cannot judge).
-func planEntry(s Store, repo, release string, resolved []string, a Advisory) (PlanEntry, string, error) {
+// planEntry plans one advisory, or says why it is left out. others is every
+// other advisory still under embargo, which the advisory's text must not
+// name: publishing it would disclose them. An advisory in the same plan
+// counts, since publication is not one atomic act. An error is a failure that
+// refuses the whole plan (a git or GitHub request that fails, a text the
+// scanner cannot judge).
+func planEntry(s Store, repo, release string, resolved []string, a Advisory, others denySet) (PlanEntry, string, error) {
 	rec := ""
 	for _, p := range resolved {
 		base := path.Base(p)
@@ -248,6 +251,10 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory) (Pl
 		}
 		if f != nil {
 			return PlanEntry{}, fmt.Sprintf("its %s on GitHub carries a %s on line %d; correct it there, then run it again", part.name, f.kind, f.line), nil
+		}
+		if m := others.matches(part.text); len(m) > 0 {
+			return PlanEntry{}, fmt.Sprintf("its %s on GitHub names another advisory still under embargo (%s on line %d), which publishing it would disclose; "+
+				"correct it there, or publish the other first, then run it again", part.name, m[0].kind, strings.Count(part.text[:m[0].start], "\n")+1), nil
 		}
 	}
 	return PlanEntry{GHSAID: a.GHSAID, IssueID: a.IssueID, FixCommit: fix, FirstTag: first, PatchedVersion: patched,

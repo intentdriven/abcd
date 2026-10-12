@@ -348,6 +348,62 @@ func TestScanFindingLeavesAdvisoryOut(t *testing.T) {
 	}
 }
 
+// TestPlanLeavesOutAdvisoryNamingAnother: an advisory whose text names
+// another advisory still under embargo (its id, reserved CVE id, or its
+// title by the check's title rule) is left out, naming why and never the
+// other advisory, since publishing it would disclose the other one. Naming
+// itself, or an advisory already published, does not.
+func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
+	at := fixedNow
+	other := Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000003", Title: titleClosed, CVEID: strp(cveOpen), Severity: "minor",
+		ForgeState: "closed", Verdict: strp(VerdictNotAVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, Reason: strp("documented"), ClosedAt: &at}
+	published := Advisory{GHSAID: ghsaPublished, IssueID: "iss-2610120000000004", Title: titlePublishd, Severity: "major",
+		ForgeState: "published", Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at}
+	short := Advisory{GHSAID: "GHSA-mmmm-mmmm-mmmm", IssueID: "iss-2610120000000005", Title: "Parser bug", Severity: "minor", ForgeState: "triage"}
+	for name, tc := range map[string]struct {
+		desc    string
+		leftOut bool
+	}{
+		"other id":        {"also see " + strings.ToLower(ghsaClosed), true},
+		"other cve":       {"tracked with " + cveOpen, true},
+		"other title":     {"related to " + strings.ToUpper(titleClosed), true},
+		"same-plan id":    {"found with " + ghsaPublic, true},
+		"own id":          {"this is " + ghsaOpen, false},
+		"published id":    {"like " + ghsaPublished + ": " + titlePublishd, false},
+		"short title":     {"a parser bug in the example", false},
+		"unlisted public": {"upstream " + ghsaUnlisted, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA), vulnAdvisory(ghsaPublic, issB), other, published, short)
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.resolve(issA, fix)
+			pf.resolve(issB, fix)
+			pf.tag("v0.9.0")
+			pf.remote(t, ghsaOpen, "draft", "line one\n"+tc.desc, vulnJSON(examplePackage, ""))
+			pf.remote(t, ghsaPublic, "draft", "another report", vulnJSON(examplePackage, ""))
+			p := pf.plan(t, "")
+			if !tc.leftOut {
+				if len(p.Entries) != 2 {
+					t.Fatalf("plan %+v", p)
+				}
+				return
+			}
+			r := leftOutReason(t, p, ghsaOpen)
+			if len(p.Entries) != 1 || p.Entries[0].GHSAID != ghsaPublic ||
+				!strings.Contains(r, "another advisory still under embargo") || !strings.Contains(r, "description") || !strings.Contains(r, "line 2") {
+				t.Fatalf("plan %+v", p)
+			}
+			low := strings.ToLower(r)
+			for _, s := range []string{ghsaClosed, ghsaPublic, cveOpen, titleClosed} {
+				if strings.Contains(low, strings.ToLower(s)) {
+					t.Fatalf("the reason repeats %q: %q", s, r)
+				}
+			}
+		})
+	}
+}
+
 // TestPlanSendsOnlyGets: building the plan reads, and writes nothing on
 // GitHub or in the store.
 func TestPlanSendsOnlyGets(t *testing.T) {
