@@ -47,9 +47,14 @@ func SetupValueQuestion(n int, cwd, key string, choices []string, def string) qu
 // SetupHelpedQuestion is the n-th question of setup, PromptHelped(h,
 // choices, def) as the shared type: SetupValueQuestion over the help built for
 // this run, its current setting the question's Now and its example quoted
-// after the material.
+// after the material. Its Default is def, so a drawn list starts on the
+// answer an empty answer takes at the stdin door (the README pair, the one
+// question set asked through PromptHelped, keeps its answers in one order
+// whatever the default); no text marks it.
 func SetupHelpedQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
-	return valueQuestion(n, h, choices, def)
+	q := valueQuestion(n, h, choices, def)
+	q.Default = def
+	return q
 }
 
 // exampleLead is how a question introduces its whole example

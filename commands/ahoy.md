@@ -688,7 +688,10 @@ after the configuration values (the conventions-file question among them)
 and the house-style question, and before the status-line offer: the first
 question alone, then one question per offered part, each with what the part
 is, its current setting (`Now:`), how to change it later, and the exact lines
-it would write in this project or the reason it writes none. Off a terminal,
+it would write in this project or the reason it writes none. Each list starts
+on its question's default (deciding later for the first question, the part's
+own default for each part), so Enter alone takes what an empty answer takes;
+the answers keep their order and no text marks the default. Off a terminal,
 and under `--yes`, the pair is never asked, so a piped answer stream keeps its
 order; the result lists `readme.offered` under `optional_skipped`, and its
 summary names the flag.

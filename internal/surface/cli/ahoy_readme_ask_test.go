@@ -170,3 +170,58 @@ func TestAhoyDetectionCarriesTheReadmeQuestions(t *testing.T) {
 		t.Errorf("an answered question is still carried:\n%s", raw)
 	}
 }
+
+// TestDrawnPrompterStartsAReadmeQuestionOnItsDefault: at the drawn door Enter
+// alone takes each README question's default, as an empty answer does at the
+// stdin door: off for the managed-with-abcd badge and the table of contents,
+// decide later for Q1. The answers keep their fixed order (on, off, later),
+// and no text marks the default.
+func TestDrawnPrompterStartsAReadmeQuestionOnItsDefault(t *testing.T) {
+	swap := drawnPut
+	t.Cleanup(func() { drawnPut = swap })
+	drawnPut = func(_ ask.Terminal, a question.Ask) ([]ask.Answer, error) {
+		pk := ask.NewPicker(a)
+		if out := pk.Apply(ask.Key{Kind: ask.KeyEnter}); out != ask.Done {
+			t.Fatalf("Enter left the list %v", out)
+		}
+		return pk.Answers(), nil
+	}
+	cases := []struct {
+		key     string
+		choices []string
+		def     string
+		want    string
+		record  string
+	}{
+		{ahoy.ReadmePromptKey, []string{"yes", "no", ahoy.SetupLaterValue}, ahoy.SetupLaterValue, "", ahoy.SetupLaterValue},
+		{"readme.abcd-badge", []string{"on", "off", ahoy.SetupLaterValue}, "off", "off", "off"},
+		{"readme.contents", []string{"on", "off", ahoy.SetupLaterValue}, "off", "off", "off"},
+		{"readme.licence", []string{"on", "off", ahoy.SetupLaterValue}, "on", "on", "on"},
+	}
+	for _, c := range cases {
+		h, ok := ahoy.HelpIn("", c.key)
+		if !ok {
+			t.Fatalf("core has no help for %s", c.key)
+		}
+		p := &drawnPrompter{setupQuestions: setupQuestions{w: &strings.Builder{}}}
+		if got := p.PromptHelped(h, c.choices, c.def); got != c.want {
+			t.Errorf("%s: Enter answered %q, want %q", c.key, got, c.want)
+		}
+		rec := p.recorded()
+		if len(rec) != 1 || rec[0].Value != c.record {
+			t.Fatalf("%s: recorded %+v, want %q", c.key, rec, c.record)
+		}
+		q := rec[0].Ask.Questions[0]
+		var order []string
+		for _, o := range q.Options {
+			order = append(order, o.Value)
+		}
+		if want := strings.Join(c.choices[:2], " "); strings.Join(order, " ") != want {
+			t.Errorf("%s: options %v, want %s in that order", c.key, order, want)
+		}
+		text := hostCall(rec[0].Ask).Questions[0].Question
+		if strings.Contains(strings.ToLower(text), "default") || strings.Contains(strings.ToLower(text), "recommended") {
+			t.Errorf("%s: the question's text marks its default:\n%s", c.key, text)
+		}
+	}
+}
