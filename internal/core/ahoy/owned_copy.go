@@ -430,6 +430,20 @@ func cacheBindingProblem(dataDir string) (cacheAttestation, string) {
 	if cacheRecordedSHA(dataDir) != att.sha {
 		return cacheAttestation{}, "its recorded binary_sha256 is not the one " + record + " attests, so the cache changed after it was authenticated"
 	}
+	// The hash binds bytes, not time: the attestation keeps vouching for the
+	// release it was written at after a newer one was installed, so a writer
+	// in the attested directory could restore that older release's genuine
+	// bytes and record (iss-2609151847117977). The newest-release mark is the
+	// monotonic check: an attested release older than it, or one the
+	// attestation does not name, is not promoted.
+	if mark, ok := ReadReleaseMark(); ok {
+		if att.releaseTag == "" {
+			return cacheAttestation{}, record + " does not name the release it attested, and this machine has recorded " + mark + " as its newest release, so the cache cannot be told from an older release's"
+		}
+		if ReleaseOlder(att.releaseTag, mark) {
+			return cacheAttestation{}, record + " attests " + att.releaseTag + ", older than " + mark + ", the newest release this machine has installed or verified, so the cache was not promoted (to go back to " + att.releaseTag + " on purpose, run `" + LowerReleaseMarkCommand(att.releaseTag) + "`)"
+		}
+	}
 	return att, ""
 }
 

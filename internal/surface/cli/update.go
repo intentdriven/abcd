@@ -45,6 +45,10 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"the binary running the command, an install " + abcdhome.Display("path-entry") + " records, or\n" +
 			"a digest a published release still names. Anything else is refused with a\n" +
 			"remedy that reinstalls over it — never one that deletes it.\n\n" +
+			"The release it installs or verifies is recorded as this machine's newest\n" +
+			"(" + abcdhome.Display("release-mark") + "). A bare update whose latest release is older\n" +
+			"than that is refused, since the newer one may have been withdrawn; naming\n" +
+			"the older tag installs it and records it, which is the one way back.\n\n" +
 			"With --check it only asks: it fetches the latest release's tag once, says\n" +
 			"whether this binary is behind and which command takes the update for this\n" +
 			"install's shape, and swaps nothing.",
@@ -77,6 +81,25 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A latest release older than the newest-release mark is a
+			// publisher withdrawal, or a fall back the person did not choose:
+			// refused before anything is fetched. Naming the tag is the one way
+			// to go back on purpose (iss-2609151847117977).
+			if requested == "" {
+				if mark, ok := ahoy.ReadReleaseMark(); ok && ahoy.ReleaseOlder(tag, mark) {
+					return refuseUpdate(cmd.OutOrStdout(), *asJSON, update.Report{
+						Action:     update.ActionRefused,
+						TargetPath: fsutil.RedactHome(tgt.Path),
+						Refusal: &update.Refusal{
+							Shape: "older-than-mark",
+							Detail: "the latest release, " + tag + ", is older than " + mark +
+								", the newest release this machine has installed or verified; the publisher may have withdrawn " + mark,
+							Remedy: "to go back to " + tag + " on purpose, run `" + ahoy.LowerReleaseMarkCommand(tag) +
+								"`, which installs it and records it as the newest release",
+						},
+					})
+				}
+			}
 			// Name the tag before acting. On a TTY the bare form asks; an
 			// explicit tag was already the user's own naming.
 			if requested == "" && !yes && isTTY(os.Stdin) && isTTY(os.Stderr) {
@@ -98,6 +121,14 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			// record names this path (legacy installs, plugin-root refusals).
 			if rep.Action == update.ActionSwapped || rep.Action == update.ActionCurrent {
 				ahoy.RefreshPathEntryDigest(tgt.Path, rep.Digest)
+				// The release this run installed or verified is recorded as the
+				// newest: a bare update only raises the mark, and a tag the
+				// person named records itself, lowering it on purpose
+				// (iss-2609151847117977).
+				if err := ahoy.RecordReleaseMark(tag, requested != ""); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "note: the newest-release mark could not be recorded (%s)\n",
+						termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+				}
 			}
 			if rep.Refusal != nil {
 				return refuseUpdate(cmd.OutOrStdout(), *asJSON, rep)

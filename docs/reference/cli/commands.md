@@ -3750,6 +3750,11 @@ the binary running the command, an install ~/.abcd.noindex/path-entry records, o
 a digest a published release still names. Anything else is refused with a
 remedy that reinstalls over it — never one that deletes it.
 
+The release it installs or verifies is recorded as this machine's newest
+(~/.abcd.noindex/release-mark). A bare update whose latest release is older
+than that is refused, since the newer one may have been withdrawn; naming
+the older tag installs it and records it, which is the one way back.
+
 With --check it only asks: it fetches the latest release's tag once, says
 whether this binary is behind and which command takes the update for this
 install's shape, and swaps nothing.

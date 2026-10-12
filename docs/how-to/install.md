@@ -52,8 +52,16 @@ falls back to downloading the release binary and `checksums.txt` and verifying
 the binary's SHA-256 against the manifest. Whenever a run has established that
 manifest trust — an authenticated cache hit, or a fresh verified download — it
 also writes `~/.abcd.noindex/cache-attestation`, a small home-scoped record naming the
-data directory, the manifest-verified SHA-256, and the trust it rests on; an
-offline run writes nothing there and leaves an existing record as it was. A mismatch, a manifest that doesn't
+data directory, the manifest-verified SHA-256, the release, and the trust it
+rests on; an offline run writes nothing there and leaves an existing record as
+it was, and a run that cannot write a new record removes the old one rather
+than leave it vouching for an earlier release. The same run raises
+`~/.abcd.noindex/release-mark`, the newest release this machine has installed
+or verified, which `abcd update` records too. A release older than that mark is
+not installed: not a cached copy, and not a latest release that has fallen back
+below it because the newer one was withdrawn. Going back is your choice, made by
+naming the tag, `abcd update <tag>`, which installs that release and records it
+as the newest. A mismatch, a manifest that doesn't
 list the platform, or a platform outside the released matrix (darwin and linux
 on amd64 and arm64) installs nothing and says why in plain language. A plugin
 root that already holds the binary costs one file test and no network.
@@ -91,8 +99,10 @@ own install verb — whichever entry it leaves on `PATH`: the copy of the
 verified release binary, the track-latest shim `--dev` writes, and a symlink
 into the plugin root that an earlier release wrote and that still works. The
 copy is made only from a cache that `~/.abcd.noindex/cache-attestation` vouches for —
-the directory it names, holding the hash it names — so a data directory pointed
-at by an environment variable alone is never promoted onto `PATH`. Neither
+the directory it names, holding the hash it names, at a release no older than
+the newest-release mark — so a data directory pointed at by an environment
+variable alone is never promoted onto `PATH`, and neither is an older release's
+copy restored into the attested directory. Neither
 record counts when `~/.abcd.noindex` is a symlink — a dotfiles checkout, say — and
 nothing abcd writes goes through one: the hooks, the install verb and the
 one-liner each refuse it and say so, as the rules loader refuses a
@@ -190,7 +200,7 @@ a release it did not come from.
 
 abcd keeps what belongs to your account rather than to one repository in one
 folder in your home directory, `~/.abcd.noindex`: the `path-entry` and
-`cache-attestation` records, the `trusted-roots`, `filter-roots` and
+`cache-attestation` and `release-mark` records, the `trusted-roots`, `filter-roots` and
 `rules.json` declarations, the transcript, worktree and sources stores, and the run logs.
 The `.noindex` ending is a name the Mac's search indexer passes over, so a new
 worktree or transcript there sets off no indexing; abcd changes only the name
