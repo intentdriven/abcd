@@ -717,7 +717,7 @@ on a yes, which. The first question, keyed `readme`, stands alone with `yes`,
 is not. The defaults are on for the licence, the links and the offered forge
 badges, and off for the table of contents and the managed-with-abcd badge
 (decision 2). Each part's question carries, from core's help (`readmeHelp`,
-reached through `HelpFor`), what the part is, its current setting, the
+reached through `HelpIn`), what the part is, its current setting, the
 change-later line naming the install flag that answers the pair, and the exact
 lines it would write in this project or the reason it writes none, which the
 terminal prints through `HelpedPrompter` and the plugin page relays from the
