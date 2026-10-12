@@ -1808,7 +1808,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if strings.HasSuffix(w, "+=") {
 					w, arrayAppend = w[:len(w)-2]+"=", true
 				}
-				if isAssignment(w) && strings.IndexByte(w, '=') == len(w)-1 {
+				if strings.HasSuffix(w, "=") && isName(w[:len(w)-1]) {
 					arrayName = w[:len(w)-1]
 				}
 			}

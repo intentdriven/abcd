@@ -321,22 +321,54 @@ func steppedBeforeCommand(tok string) bool {
 	return isAssignment(tok) || reserved[tok] || vanishable(tok)
 }
 
-// isAssignment reports whether a token is a NAME=VALUE environment prefix,
-// which precedes the command rather than being one.
+// isAssignment reports whether a token is an assignment word, which in
+// assignment position precedes the command rather than being one: NAME=VALUE,
+// and the forms bash and zsh read the same way (splitAssignment).
 func isAssignment(tok string) bool {
-	eq := strings.IndexByte(tok, '=')
-	if eq <= 0 {
-		return false
+	_, _, _, _, ok := splitAssignment(tok)
+	return ok
+}
+
+// splitAssignment splits an assignment word as bash and zsh read one: its
+// variable's name, the index of the `=` its value follows, and whether it
+// appends (NAME+=VALUE) or names an element (NAME[SUB]=VALUE,
+// NAME[SUB]+=VALUE). Both shells take each form before a command as an
+// assignment and run the command after it — bash 5 reports a subscripted
+// one as not a valid identifier and still runs the command
+// (iss-2610121214249290) — so every reading that asks whether a word is an
+// assignment asks this one rule. ok is false for any other word.
+func splitAssignment(tok string) (name string, eq int, appends, subscript, ok bool) {
+	i := 0
+	for i < len(tok) && (tok[i] == '_' || tok[i] >= 'a' && tok[i] <= 'z' || tok[i] >= 'A' && tok[i] <= 'Z' ||
+		i > 0 && tok[i] >= '0' && tok[i] <= '9') {
+		i++
 	}
-	for i := 0; i < eq; i++ {
-		c := tok[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
-		default:
-			return false
+	if i == 0 || i == len(tok) {
+		return "", 0, false, false, false
+	}
+	name = tok[:i]
+	if tok[i] == '[' {
+		end := strings.IndexByte(tok[i:], ']')
+		if end < 0 {
+			return "", 0, false, false, false
 		}
+		i += end + 1
+		subscript = true
 	}
-	return !(tok[0] >= '0' && tok[0] <= '9')
+	if i < len(tok) && tok[i] == '+' {
+		i++
+		appends = true
+	}
+	if i >= len(tok) || tok[i] != '=' {
+		return "", 0, false, false, false
+	}
+	return name, i, appends, subscript, true
+}
+
+// isName reports whether w is a shell variable name.
+func isName(w string) bool {
+	name, eq, _, _, ok := splitAssignment(w + "=")
+	return ok && eq == len(w) && name == w
 }
 
 // matchSegment applies the pattern's command, subcommand, and flag constraints
