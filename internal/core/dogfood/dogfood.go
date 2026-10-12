@@ -270,7 +270,7 @@ func Resolve(home, cwd string) Plan {
 	// A store another user can write is never read or built into: it is
 	// refused out loud, and no build is asked for, since Build would refuse
 	// it too and say so only in a log no one reads.
-	if storeExists(home, root) && !storeAlone(home, root) {
+	if storeRefused(home, root) {
 		return Plan{Checkout: c, Notes: []string{"abcd dogfood: IGNORED " + abcdhome.Display("dogfood", root) +
 			" — it is not this account's alone (a directory in it is not a real directory this account owns, or others can write it); the installed release runs"}}
 	}
@@ -1248,12 +1248,18 @@ func TipName(url, branch string) string {
 	return "verified-tip-" + hex.EncodeToString(sum[:8]) + ".json"
 }
 
-// storeExists reports whether any level of the repository's store exists, as
-// anything: a store not yet made is made by the first build, but one that is
-// there must be the account's alone.
-func storeExists(home, rootSHA string) bool {
+// storeRefused reports whether a level of the repository's store that exists
+// is not a real directory this account alone can write. A missing level is
+// made by the first build and refuses nothing, and nothing below a missing
+// level exists either.
+func storeRefused(home, rootSHA string) bool {
 	for _, level := range []string{StoreRelPath, path.Join(StoreRelPath, rootSHA)} {
-		if _, err := os.Lstat(filepath.Join(home, filepath.FromSlash(level))); err == nil {
+		p := filepath.Join(home, filepath.FromSlash(level))
+		fi, err := os.Lstat(p)
+		if errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+		if err != nil || !fi.IsDir() || fsutil.CallersAlone(p, fi) != nil {
 			return true
 		}
 	}

@@ -56,3 +56,21 @@ func TestAStoreNotTheAccountsAloneIsRefusedOutLoud(t *testing.T) {
 		}
 	}
 }
+
+// TestASecondRepositoryGetsItsFirstBuild: the check that refuses a store
+// another user can write took a store whose top level existed and whose
+// repository level did not as not this account's alone, so once any
+// repository had been built, the next one declared was refused forever and
+// never built. A missing level is made by the first build and refuses
+// nothing.
+func TestASecondRepositoryGetsItsFirstBuild(t *testing.T) {
+	f := newFixture(t, "github.com/intentdriven/abcd")
+	f.declare(t)
+	if err := os.MkdirAll(abcdhome.Path(f.home, "dogfood"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := Resolve(f.home, f.checkout)
+	if !p.StartBuild || strings.Contains(notes(p), "not this account's alone") {
+		t.Fatalf("Resolve with only the store's top level present = %+v, want its first build asked for", p)
+	}
+}
