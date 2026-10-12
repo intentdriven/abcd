@@ -89,6 +89,9 @@ type tip struct {
 	message
 	// Unreadable is the reason the tip cannot be read, "" when it can.
 	Unreadable string
+	// DatedFromFetch is true when WrittenAt is not the commit's date, which
+	// could not be read, but when this copy first fetched the tip.
+	DatedFromFetch bool
 }
 
 // The reasons a tip is unreadable. Each is fixed text: nothing a writer chose

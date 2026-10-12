@@ -209,6 +209,11 @@ func decide(p *prepared, j judged) (Result, message, string, error) {
 	case j.Unreadable != "":
 		hold := j.verdict.EffectiveExpiry
 		if now.Before(hold.Add(TakeoverMargin)) {
+			if j.DatedFromFetch {
+				return Result{}, message{}, "", backOff("the reservation on %s is unreadable (%s); its commit date cannot be read, so it is held "+
+					"from when this copy first fetched it, until %s, and can be taken over after %s",
+					p.id, j.Unreadable, stamp(hold), stamp(hold.Add(TakeoverMargin)))
+			}
 			return Result{}, message{}, "", backOff("the reservation on %s is unreadable (%s); it is held until %s and can be taken over after %s",
 				p.id, j.Unreadable, stamp(hold), stamp(hold.Add(TakeoverMargin)))
 		}
@@ -271,7 +276,7 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 // for the default lease), whether the default branch already finished the
 // record, and whose it is.
 func judge(p *prepared, tree string) (judged, error) {
-	t, ok, err := readTip(p.root, p.id, trackingName(p.id), tree)
+	t, ok, err := readTip(p.root, p.id, trackingName(p.id), tree, p.now)
 	if err != nil {
 		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
