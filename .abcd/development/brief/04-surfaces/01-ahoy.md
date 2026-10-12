@@ -690,6 +690,7 @@ approvals had before they listed anything.
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
+| `readme` | the README question (itd-2610031348087517), raised as the optional `readme.offered` while `readme.parts` is absent from `.abcd/config.json` | never asked as a category: the question pair is the consent, asked after `stepMarker` and before the status-line offer, only of a person at a terminal, in a run without the approve-everything flag, and only once `.abcd/config.json` exists; every other run reports the gap under optional work it skipped and names the install flag that answers the pair, which it does in any run; the chosen parts are written into `README.md` on every setup run (below) |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
 **A docs-lint root that does not resolve is a report-only gap**
@@ -704,6 +705,37 @@ removes the file and nothing else, and `.abcd/docs-lint.json` is the person's
 file, which setup reads but never edits once it exists. A missing or unloadable
 config raises nothing here, and an entry that is not a plain path inside the
 repository is not looked up: the check's own refusal names both.
+
+**The README question pair** (itd-2610031348087517, spc-2610031704338417).
+Setup asks whether abcd keeps parts of the project's `README.md` current and,
+on a yes, which. The first question, keyed `readme`, stands alone with `yes`,
+`no` and `later`, the default. `yes` asks one question per offered part, keyed
+`readme.<part>` in the fixed order `release-badge`, `build-badge`,
+`abcd-badge`, `licence`, `links`, `contents`, each answered `on`, `off` or
+`later`; the two forge badges are offered only where `repo.visibility` is
+`public`, the owner's declaration, and a line above the parts says so where it
+is not. The defaults are on for the licence, the links and the offered forge
+badges, and off for the table of contents and the managed-with-abcd badge
+(decision 2). Each part's question carries, from core's help (`readmeHelp`,
+reached through `HelpFor`), what the part is, its current setting, the
+change-later line naming the install flag that answers the pair, and the exact
+lines it would write in this project or the reason it writes none, which the
+terminal prints through `HelpedPrompter` and the plugin page relays from the
+`readme` view the dry run carries while the gap is open, its `readme_tool`
+calls holding the first question alone and then the parts as tabs of at most
+four. The answer is `readme.parts`: a list, which every later setup run derives
+and rewrites; `[]` for `no`, never asked again, and abcd's parts already in the
+file removed where their text is still abcd's; nothing for `later`, at either
+question, so the next run asks again. That flag takes a comma-separated list of
+part names or `none`, refuses an unknown or empty name, or `none` beside a
+name, with exit 2 before anything is written, and answers the pair in any run,
+the approve-everything flag included. An answer that changes the stored set is
+echoed as a change (`readme.parts: licence -> licence,links`), and
+`readmeWouldChange` keeps an otherwise current repository from returning early
+while a part would be written, rewritten or removed. Without
+`.abcd/config.json` (the starter files declined) the answer has nowhere to be
+stored, so the pair is not asked, the flag's answer is refused into the notes,
+and the summary names the starter files first (iss-2610120505551170).
 
 **The artefact kind is a gap until it is declared** (itd-2609150819432059). A
 managed repository with no `.abcd/config/artefact.json` raises a required,
@@ -977,6 +1009,45 @@ cannot land an artefact outside it. The private stub is written only where git
 reports the path as ignored. A clone arms the hooks once by pointing git at the
 hooks directory; abcd never sets that config, and no surface reports a committed
 hook as a running one.
+
+**The README parts** (spc-2610031704338417) are a named sibling of the
+conventions block: one marked place per part, opened by
+`<!-- BEGIN ABCD:<part> sha256=<hash> -->` and closed by
+`<!-- END ABCD:<part> -->`, the hash taken over the body abcd wrote
+(`readme_marker.go`). A named fence never matches the
+conventions block's pattern, and the conventions fences never match the named
+ones. Each part is derived from the project on this computer
+(`readme_derive.go`): the badges from the origin remote, github.com only, the
+build badge naming the one workflow file, or `ci.yml` or `ci.yaml` among
+several; the licence named only from an `SPDX-License-Identifier:` line in the
+first twenty lines or a forge-standard first line, else linked unnamed; the
+links from four guide files at the root, in `.github/` or in `docs/`; the
+contents from the README's live level-two and level-three headings outside
+every part. Each body then passes three checks in order (`readme_check.go`):
+the badge-address check (https, the one allowed host per badge and role,
+`img.shields.io` for the release and abcd badges' images, and a query only on
+the build badge's image with the forge's `branch` and `event` keys), the
+outbound scrub (`scanner.ScrubOutbound`), and the project's own docs-lint bans
+where it keeps `.abcd/docs-lint.json`; a part failing any one, or one that
+cannot be derived, is left out with the reason in the notes, and the derivation
+imports no network package. The write keeps a current part, rewrites a stale
+one where it stands, places an absent one beside the nearest present part, else
+after a leading frontmatter block, else after the first live level-one heading,
+else at the top, and removes one no longer chosen, or no longer derivable,
+whose body still matches its hash. A part whose body does not match its hash
+was edited by hand and is named with its line and left; a duplicated or
+unclosed fence refuses the whole write, naming the line. A run in which every
+part is current writes nothing, so the file's bytes and modification time are
+unchanged. With no `README.md` and a part to write, setup creates the file
+holding only the chosen parts, and records `readme.created: true` so uninstall
+may delete it once nothing but blank lines remains; the record is cleared once
+that file is gone, so it never vouches for a `README.md` the owner writes
+later. The fences name abcd, a mention outside `.abcd/` written only on the
+owner's yes (decision 2 extends ruling F by that consent). Uninstall
+(`uninstallReadme`) removes every part whose body matches its hash, whatever
+`readme.parts` says, leaves and names the others, and reports them in the
+receipt's `readme` field, which the text render prints as its `readme:` line
+("links removed; licence edited by hand, left").
 
 Two writes deserve their own note. The visibility step rewrites the ignore block
 under the config-change approval already given, with no confirmation of its own;
