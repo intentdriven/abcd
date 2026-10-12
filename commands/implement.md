@@ -404,7 +404,8 @@ with a merge commit in its worktree, never a rebase, and a fresh round judges
 the merge head. The merge is made as the person's own `git merge` makes it: the
 repository's hooks, merge drivers, commit signing and merge.verifySignatures
 apply, and a merge the repository refuses before it begins refuses the step,
-naming what git reported. A merge that conflicts is aborted with the branch unchanged, and
+naming what git reported; one still waiting after ten minutes on a signing
+prompt or a hook is stopped and refuses the step. A merge that conflicts is aborted with the branch unchanged, and
 a fresh implementer is handed a sync brief naming each conflicting path and the
 sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
 A sync counts no fix round. The closing lane, which reaches its landing with no

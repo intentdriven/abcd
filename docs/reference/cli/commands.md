@@ -354,7 +354,9 @@ commits it there as the lane branch's first commit, record-only, before the brie
 receipt verifier does not count that commit as the implementer's. That commit is made as
 your own git makes one: the repository's hooks run, and a hook that refuses it refuses the
 stage; it is signed where your git configuration signs every commit; and staging the entry
-passes it through the repository's clean filter, as Git LFS needs. The checkout you run this
+passes it through the repository's clean filter, as Git LFS needs. A commit still waiting
+after ten minutes on a signing prompt or a hook is stopped and refuses the stage, naming
+the deadline. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
@@ -2172,7 +2174,9 @@ configuration signs every commit, the signature of the commit it merges in is ve
 merge.verifySignatures says so, the merge driver the repository configures or merge.default
 names merges each path it covers, and each file it writes passes through the repository's
 smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses
-the step, naming what git reported.
+the step, naming what git reported. A merge still waiting after ten minutes on a signing
+prompt or a hook (a passphrase dialog nobody answers) is stopped and refuses the step,
+so an unattended run is never held by it.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>

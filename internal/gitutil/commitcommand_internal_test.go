@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"slices"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 // commit signing and merge signature check to the repository, and keeps every
 // other pin WorkingTreeCommand carries; WorkingTreeCommand keeps all of them.
 func TestWorkingTreeCommitCommandLeavesTheRepositorysCommitSettings(t *testing.T) {
-	commit := WorkingTreeCommitCommand("/repo", "commit").Args
+	commit := WorkingTreeCommitCommand(context.Background(), "/repo", "commit").Args
 	tree := WorkingTreeCommand("/repo", "status").Args
 	for _, pin := range []string{"core.hooksPath=/dev/null", "commit.gpgsign=false", "merge.verifySignatures=false"} {
 		if slices.Contains(commit, pin) {

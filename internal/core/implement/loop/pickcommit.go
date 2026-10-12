@@ -29,10 +29,14 @@ package loop
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -42,6 +46,18 @@ import (
 
 // maxGitOutput caps what the pick commit reads from git.
 const maxGitOutput = 1 << 20
+
+// commitTimeout bounds one commitGit command: the repository's hooks and its
+// signing program run on it, and one can wait on a person (a GUI pinentry, a
+// hook that prompts) who is not there, as on an unattended resume. A var so a
+// test can shorten it.
+var commitTimeout = 10 * time.Minute
+
+// commitStopGrace is how long a commitGit command that ran past commitTimeout
+// has, once told to stop (SIGTERM, on which git removes its lock files), before
+// it is killed and its output pipes closed; and how long a process a hook or
+// signing program left behind may hold those pipes once git has exited.
+const commitStopGrace = 5 * time.Second
 
 // pickSubject is the pick commit's subject line.
 func pickSubject(st State) string {
@@ -84,8 +100,51 @@ func pickGit(dir string, args ...string) (string, error) {
 // repository's hooks, its commit signing, its merge's signature check and its
 // merge drivers run as they do on the person's own commit and merge
 // (iss-2610111729399920).
+//
+// Because those programs run, the command is bounded: past commitTimeout git
+// is told to stop (SIGTERM, so it removes its lock files and a stopped commit
+// leaves no index.lock), killed commitStopGrace later if it has not, and the
+// call is refused naming the deadline. A program a hook started that outlives
+// git is not killed (the hook's own children are the repository's), but it
+// cannot hold the call either: its hold on git's output is cut after
+// commitStopGrace. A git that exited 0 is a made commit even then.
 func commitGit(dir string, args ...string) (string, error) {
-	return runTreeGit(gitutil.WorkingTreeCommitCommand(dir, args...), args)
+	ctx, cancel := context.WithTimeout(context.Background(), commitTimeout)
+	defer cancel()
+	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
+	cmd.Cancel = func() error {
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			return cmd.Process.Kill()
+		}
+		return nil
+	}
+	cmd.WaitDelay = commitStopGrace
+	out, err := runTreeGit(cmd, args)
+	switch {
+	case err == nil:
+		return out, nil
+	case cmd.ProcessState != nil && cmd.ProcessState.Success() && errors.Is(err, exec.ErrWaitDelay):
+		// git finished; something it started held the pipes past the grace.
+		return "", nil
+	case ctx.Err() != nil:
+		return "", fmt.Errorf("git %s: %w within %s, so git was stopped", treeGitSub(args), errCommitStalled, commitTimeout)
+	}
+	return "", err
+}
+
+// errCommitStalled names a commitGit command stopped at its deadline.
+var errCommitStalled = errors.New("a signing prompt or hook did not finish")
+
+// treeGitSub is the subcommand args runs, past any `-c` overrides.
+func treeGitSub(args []string) string {
+	sub := args
+	for len(sub) > 2 && sub[0] == "-c" {
+		sub = sub[2:]
+	}
+	if len(sub) == 0 {
+		return ""
+	}
+	return sub[0]
 }
 
 // pickGitIndex is pickGit on a scratch index, for a command that must read the
@@ -114,7 +173,7 @@ func runTreeGit(cmd *exec.Cmd, args []string) (string, error) {
 		if len(msg) > 2048 {
 			msg = msg[:2048]
 		}
-		return "", fmt.Errorf("git %s: %v (%s)", sub[0], err, msg)
+		return "", fmt.Errorf("git %s: %w (%s)", sub[0], err, msg)
 	}
 	if stdout.Len() > maxGitOutput {
 		return "", fmt.Errorf("git %s wrote more than %d bytes", sub[0], maxGitOutput)
@@ -181,7 +240,11 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			"the lane's worktree holds changes the pick did not make, so its record-only commit is not made over them",
 			"clean the lane's worktree, then run `abcd implement step` again")
 	}
-	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil {
+	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); errors.Is(err, errCommitStalled) {
+		return "", refuse(string(StageWorktree), "", lane.ID,
+			"git could not make the pick's record commit: "+err.Error(),
+			"answer the repository's signing prompt, or settle the hook that waits, then run `abcd implement step` again")
+	} else if err != nil {
 		return "", refuse(string(StageWorktree), "", lane.ID,
 			"git could not make the pick's record commit (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git reports, then run `abcd implement step` again")

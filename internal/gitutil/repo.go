@@ -200,7 +200,7 @@ func ScrubbedEnv() []string {
 // through its promisor remote, and the command passes the lazy-fetch floor
 // guard every isolated command passes.
 func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(root, ExecPins(), args)
+	return workingTreeCommand(context.Background(), root, ExecPins(), args)
 }
 
 // WorkingTreeCommitCommand is WorkingTreeCommand for a git command that makes
@@ -215,8 +215,13 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // (iss-2610111729399920, principle abcd-fixes-what-it-adds). A content
 // filter and a merge driver the repository configures run too, as they do
 // under WorkingTreeCommand. Everything else is WorkingTreeCommand's.
-func WorkingTreeCommitCommand(root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(root, commitPins(), args)
+//
+// A program the repository's settings start can wait on a person (a GUI
+// pinentry, a hook that prompts), so the command is bound to ctx: the caller
+// gives it a deadline, and its Cancel and WaitDelay, so an unattended run is
+// never held by one nobody answers.
+func WorkingTreeCommitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return workingTreeCommand(ctx, root, commitPins(), args)
 }
 
 // repositoryCommitKnobs are the ExecPins a commit abcd makes leaves to the
@@ -237,14 +242,14 @@ func commitPins() []string {
 }
 
 // workingTreeCommand is WorkingTreeCommand and WorkingTreeCommitCommand,
-// pinning pins.
-func workingTreeCommand(root string, pins, args []string) *exec.Cmd {
+// pinning pins, bound to ctx.
+func workingTreeCommand(ctx context.Context, root string, pins, args []string) *exec.Cmd {
 	full := append(append(pins,
 		"-c", "core.quotePath=false",
 		"-c", "gc.auto=0",
 		"-c", "maintenance.auto=false",
 		"-C", root), args...)
-	cmd := exec.Command("git", full...)
+	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = append(ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
 	guardObjectRead(cmd, root, args)
 	return cmd

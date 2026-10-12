@@ -126,7 +126,8 @@ falsified in the run record, and the entry is left as written. The lane's `workt
 own worktree and commits it there as the lane branch's first commit, a
 record-only commit made before the brief, as your own git makes a commit: the
 repository's hooks run (one that refuses it refuses the stage), and it is
-signed where your git configuration signs every commit. The receipt verifier does not count
+signed where your git configuration signs every commit; one still waiting after ten
+minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
 rebase or an amend. No existing entry changes, the checkout you run in is not written but
