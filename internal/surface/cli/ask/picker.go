@@ -98,18 +98,36 @@ type part struct {
 // typedChoice is part.chosen for an answer typed for the typed part.
 func (pt *part) typedChoice() int { return len(pt.all) + 1 }
 
-// NewPicker is the list for a, its first part shown, each part's first entry
-// current, nothing typed.
+// NewPicker is the list for a, its first part shown, each part's default
+// entry current (its first, where the question names no default), nothing
+// typed.
 func NewPicker(a question.Ask) *Picker {
 	p := &Picker{orig: a, ask: Safe(a), window: defaultWindow}
-	for _, q := range p.ask.Questions {
+	for i, q := range p.ask.Questions {
 		all := entries(q)
 		all = all[:len(all)-1]
 		pt := &part{all: all, chosen: -1, takesTyped: q.Typed != ""}
 		pt.shown = span(len(all))
+		pt.cur = defaultEntry(a.Questions[i])
+		pt.scroll(p.window)
 		p.parts = append(p.parts, pt)
 	}
 	return p
+}
+
+// defaultEntry is the index, among q's drawn entries (Later last), of the one
+// whose value is q's Default, else 0. It reads the question as given, as the
+// answers do: the values are what is recorded.
+func defaultEntry(q question.Question) int {
+	if q.Default == "" {
+		return 0
+	}
+	for i, o := range entries(q) {
+		if o.Value == q.Default {
+			return i
+		}
+	}
+	return 0
 }
 
 // SetWindow sets how many entries the list shows at once, at least five.

@@ -18,16 +18,28 @@ import (
 // LimitsFileName is the settings file's name under ~/.abcd.noindex/.
 const LimitsFileName = "load-limits"
 
-// The two keys, and their bounds.
+// The three keys, and their bounds.
 const (
 	KeyStrayMinutes = "stray-minutes"
 	KeyExtremeLoad  = "extreme-load"
+	KeyWaitLoad     = "wait-load"
 
 	// DefaultStrayMinutes is how long a process may run at nearly all the CPU it
 	// could get before it reads as a stray.
 	DefaultStrayMinutes = 30
 	// DefaultExtremeFactor times the online core count is the extreme load.
 	DefaultExtremeFactor = 4
+	// DefaultWaitFactor times the online core count is the waiter's limit: the
+	// waiter opens only while the one-minute load is strictly below twice the
+	// core count. Once was too low: the baseline load of a busy multi-session
+	// machine already sits around one core-count, so a limit of the cores kept
+	// every waiter shut for hours (between 20 and 100 on 16 cores, 2026-10-11)
+	// and sent sessions back to hand-written loops. Serialising the work is the
+	// job of the race-run condition and the hold, not of the load number. One
+	// race run adds about a core-count of load, so admitting below twice the
+	// cores bounds the peak near three times them, under the extreme limit's
+	// DefaultExtremeFactor of four.
+	DefaultWaitFactor = 2
 
 	maxStrayMinutes = 10080 // one week
 	maxExtremeLoad  = 100000
@@ -35,7 +47,7 @@ const (
 	maxKeyEcho = 32
 )
 
-// Limits are the two limits the classifier applies.
+// Limits are the two limits the classifier applies, and the waiter's.
 type Limits struct {
 	// StrayMinutes: a process older than this at nearly all the CPU it could get
 	// is a stray.
@@ -46,12 +58,17 @@ type Limits struct {
 	// StrayFromFile and ExtremeFromFile say which limits the settings file set.
 	StrayFromFile   bool
 	ExtremeFromFile bool
+	// WaitLoad: the waiter (`implement load --wait`) opens only while the
+	// one-minute load average is strictly below this.
+	WaitLoad     float64
+	WaitFromFile bool
 }
 
-// DefaultLimits derives the defaults from the online core count: 30 minutes, and
-// four times the cores.
+// DefaultLimits derives the defaults from the online core count: 30 minutes,
+// four times the cores, and twice the cores.
 func DefaultLimits(cores int) Limits {
-	return Limits{StrayMinutes: DefaultStrayMinutes, ExtremeLoad: float64(DefaultExtremeFactor * cores)}
+	return Limits{StrayMinutes: DefaultStrayMinutes, ExtremeLoad: float64(DefaultExtremeFactor * cores),
+		WaitLoad: float64(DefaultWaitFactor * cores)}
 }
 
 // LimitsFault is why a settings file is unusable. It names the line (zero when
@@ -84,8 +101,8 @@ func ParseLimits(data []byte, cores int) (Limits, *LimitsFault) {
 		}
 		fields := strings.Fields(line)
 		key := fields[0]
-		if key != KeyStrayMinutes && key != KeyExtremeLoad {
-			return def, &LimitsFault{Line: n, Class: fmt.Sprintf("unknown key %q (known: %s, %s)", safeKey(key), KeyStrayMinutes, KeyExtremeLoad)}
+		if key != KeyStrayMinutes && key != KeyExtremeLoad && key != KeyWaitLoad {
+			return def, &LimitsFault{Line: n, Class: fmt.Sprintf("unknown key %q (known: %s, %s, %s)", safeKey(key), KeyStrayMinutes, KeyExtremeLoad, KeyWaitLoad)}
 		}
 		if seen[key] {
 			return def, &LimitsFault{Line: n, Class: key + " is given twice"}
@@ -108,7 +125,7 @@ func ParseLimits(data []byte, cores int) (Limits, *LimitsFault) {
 				return def, &LimitsFault{Line: n, Class: fmt.Sprintf("%s is out of range (1 to %d)", key, maxStrayMinutes)}
 			}
 			l.StrayMinutes, l.StrayFromFile = v, true
-		case KeyExtremeLoad:
+		case KeyExtremeLoad, KeyWaitLoad:
 			v, err := strconv.ParseFloat(value, 64)
 			if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
 				return def, &LimitsFault{Line: n, Class: "the value of " + key + " is not a number"}
@@ -116,7 +133,11 @@ func ParseLimits(data []byte, cores int) (Limits, *LimitsFault) {
 			if v <= 0 || v > maxExtremeLoad {
 				return def, &LimitsFault{Line: n, Class: fmt.Sprintf("%s is out of range (above 0, at most %d)", key, maxExtremeLoad)}
 			}
-			l.ExtremeLoad, l.ExtremeFromFile = v, true
+			if key == KeyWaitLoad {
+				l.WaitLoad, l.WaitFromFile = v, true
+			} else {
+				l.ExtremeLoad, l.ExtremeFromFile = v, true
+			}
 		}
 	}
 	return l, nil

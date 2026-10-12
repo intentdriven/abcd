@@ -586,3 +586,40 @@ func TestOpensFenceIsReadsOpener(t *testing.T) {
 		}
 	}
 }
+
+// TestMaskCodeSpansHidesEachSpanFromRewrites: a rewrite of inline text (a link
+// read as its text, a tag dropped, a reference decoded) must not reach into a
+// code span, where CommonMark reads every character literally. A span pairs a
+// backtick run with the next run of its length; an unpaired run is literal
+// backticks, and a backtick behind a backslash opens nothing. Unmask puts each
+// span back as written, or as the text it renders, and a token the rewrite
+// dropped stays dropped.
+func TestMaskCodeSpansHidesEachSpanFromRewrites(t *testing.T) {
+	tagRe := regexp.MustCompile(`<[a-z]+>`)
+	cases := []struct {
+		in, written, rendered string
+	}{
+		{"Use `<kbd>` here <b>now", "Use `<kbd>` here now", "Use <kbd> here now"},
+		{"A ``x ` <i>`` and <i>", "A ``x ` <i>`` and ", "A x ` <i> and "},
+		{"A `<b>tick", "A `tick", "A `tick"},
+		{"Escaped \\`<i>` tick", "Escaped \\`` tick", "Escaped \\`` tick"},
+		{"` <em> ` padded", "` <em> ` padded", "<em> padded"},
+		{"Escaped \\\\`<i>` tick", "Escaped \\\\`<i>` tick", "Escaped \\\\<i> tick"},
+		{"no spans <u>", "no spans ", "no spans "},
+	}
+	for _, c := range cases {
+		masked, unmask := MaskCodeSpans(c.in)
+		out := tagRe.ReplaceAllString(masked, "")
+		if got := unmask(out, false); got != c.written {
+			t.Errorf("%q: written %q, want %q", c.in, got, c.written)
+		}
+		if got := unmask(out, true); got != c.rendered {
+			t.Errorf("%q: rendered %q, want %q", c.in, got, c.rendered)
+		}
+	}
+	masked, unmask := MaskCodeSpans("[`x`](u) and `y`")
+	dropped := regexp.MustCompile(`\(u\) and .*$`).ReplaceAllString(masked, "")
+	if got := unmask(dropped, false); got != "[`x`]" {
+		t.Errorf("a token the rewrite dropped came back: %q", got)
+	}
+}

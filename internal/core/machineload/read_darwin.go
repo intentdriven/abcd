@@ -5,10 +5,13 @@ package machineload
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -56,4 +59,30 @@ func Read() (Snapshot, error) {
 	}
 	snap.Procs, snap.HasProcs = procs, true
 	return snap, nil
+}
+
+// ReadArgs reads the arguments of each of pids, the program name dropped, from
+// one ps run (parseDarwinArgs says how the words are split). A pid that has
+// exited is absent from the result; ps exits 1 when none of them is left, which
+// is an empty result, not an error.
+func ReadArgs(pids []int) (map[int][]string, error) {
+	if len(pids) == 0 {
+		return map[int][]string{}, nil
+	}
+	list := make([]string, len(pids))
+	for i, p := range pids {
+		list[i] = strconv.Itoa(p)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, psPath, "-o", "pid=,args=", "-p", strings.Join(list, ","))
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	var exit *exec.ExitError
+	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1 && out.Len() == 0) {
+		return nil, fmt.Errorf("could not read the arguments of the go processes (%s: %w)", psPath, err)
+	}
+	return parseDarwinArgs(out.Bytes()), nil
 }

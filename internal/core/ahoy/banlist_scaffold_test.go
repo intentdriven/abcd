@@ -1335,9 +1335,7 @@ func TestScaffoldedGuardHookRefusesAMirrorInsideAnotherCheckout(t *testing.T) {
 				src := filepath.Join(root, "src")
 				seed(src)
 				commonDir = filepath.Join(victim, "mirror.git")
-				if out, err := git(root, "clone", "--bare", src, commonDir); err != nil {
-					t.Skipf("bare clone unavailable: %v\n%s", err, out)
-				}
+				gittest.CloneBare(t, src, commonDir)
 			default:
 				work := filepath.Join(root, "work")
 				if err := os.MkdirAll(work, 0o755); err != nil {

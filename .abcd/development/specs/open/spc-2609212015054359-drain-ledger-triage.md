@@ -180,5 +180,16 @@ until the run itself closes it.
   done before the drain read it keeps its pull request number, and a drain
   that ends with every lane ended and none in a pull request says so as a
   normal ending (one stopped with a lane still in progress does not).
+- **Landed (merged lanes finished, step 3; iss-2610090936460789).** Every
+  drain move, after the outage check and before the window clock, takes the
+  landing's last step for each issue lane in the checkout parked at land whose
+  pushed head is on the default branch (`loop/drain_finish.go`): its worktree
+  and branch are removed and the lane is done, whatever the drain's or the
+  run's window clock says, since the cleanup does no new work. The lanes are
+  read from the checkout's runs, not the drain's state, so an ended drain's
+  lanes and a person's `abcd build <iss-N>` lanes are finished too; the default
+  branch is fetched once per move, only while a lane is parked, and the forge
+  is asked nothing about a lane not yet on it. A lane the landing refuses to
+  finish is named in `finished` and `next`, and the move goes on.
 - **Remaining:** the decision-record marker on a trust-rule hand-back
-  (decision 10), and the steps from issues the plan names.
+  (decision 10), and the plan's steps 4 and 5, from issues.

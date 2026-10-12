@@ -510,7 +510,7 @@ would be wrong. There are ten, and an operator sees them as
 | `uncommitted-records` | a record file in a terminal folder (`intents/shipped/`, `issues/resolved/`) differs from HEAD, where the cut reads it, so a spec close or resolve left uncommitted would be missing from the cut; every path is named, and no override waives it |
 | `stale-intent` | an intent in `planned/` has a spec that has closed |
 | `surface-guard` | the surface guardrail failed, or could not compare |
-| `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
+| `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it; or an open issue record that differs from HEAD, where the gate reads the ledger, at any severity, every path named and no override waiving it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
 | `doc-fidelity` | a surface the binary ships that no brief chapter names, whatever the cut ships; or, where the cut ships an intent, the brief lags the surface it delivered or no saved docs review names the commit being cut ([`10-docs.md`](10-docs.md), itd-60) |
 | `empty-cut` | nothing user-facing shipped, so there is no release |

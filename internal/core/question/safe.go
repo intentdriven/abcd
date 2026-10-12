@@ -25,6 +25,7 @@ func Safe(a Ask) Ask {
 			Now:         termsafe.Sanitize(q.Now),
 			ChangeLater: termsafe.Sanitize(q.ChangeLater),
 			Typed:       termsafe.Sanitize(q.Typed),
+			Default:     termsafe.Sanitize(q.Default),
 		}
 		if q.Material != nil {
 			s.Material = make([]Block, len(q.Material))

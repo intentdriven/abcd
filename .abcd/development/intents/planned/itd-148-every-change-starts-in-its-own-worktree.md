@@ -14,7 +14,7 @@ impact: additive
 
 # Every change starts in its own worktree in abcd's store: the primary checkout is a read-only surface, and abcd blocks mutations there for every session but a declared coordinator
 
-Typed links: `blocked_by` [itd-2609091014076309](itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the store under the home folder, which owns adding, listing and clearing away worktrees; this intent uses those verbs, so it waits on that draft); `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (the rule the store enacts). This record was rewritten on 2026-09-29 to the product thinker's rulings (see `## Decisions`); the rewrite **reverses** the scope its 2026-08-26 planning interview gave it, a worktree verb family and a sweep of its own, with worktrees placed inside the primary checkout.
+Typed links: `blocked_by` [itd-2609091014076309](itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the store under the home folder, which owns adding, listing and clearing away worktrees; this intent uses those verbs, so it waits on that intent); `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (the rule the store enacts). This record was rewritten on 2026-09-29 to the product thinker's rulings (see `## Decisions`); the rewrite **reverses** the scope its 2026-08-26 planning interview gave it, a worktree verb family and a sweep of its own, with worktrees placed inside the primary checkout.
 
 ## Press Release
 
@@ -52,16 +52,16 @@ object store, and Go's build cache is user-global.
 
 Where the worktree lives is settled elsewhere: a tool never creates directories
 in space the user did not hand it (adr-2609091248200336), so a per-change
-worktree goes in the machine-scoped store the store draft
+worktree goes in the machine-scoped store the store intent
 (itd-2609091014076309) describes, keyed on the repository's root commit, and
-that draft owns the verbs that add, list and clear away worktrees. This intent
+that intent owns the verbs that add, list and clear away worktrees. This intent
 is what makes the store the only route: the block in the primary checkout, the
 seeding of the protections, and the peer visibility.
 
 ## What's In Scope
 
 - **Worktrees come from the store.** This intent adds no verb that creates,
-  lists or removes a worktree: the store draft (itd-2609091014076309) owns
+  lists or removes a worktree: the store intent (itd-2609091014076309) owns
   add, list and clean-up, and this intent calls them. Every refusal of the
   block names the store's add verb as the route, and nothing this intent
   writes lands beside or inside the primary checkout.
@@ -113,14 +113,14 @@ seeding of the protections, and the peer visibility.
 
 ## What's Out of Scope
 
-- **Adding, listing and clearing away worktrees**: the store draft
+- **Adding, listing and clearing away worktrees**: the store intent
   (itd-2609091014076309) owns all three. The two refinements this intent's
   2026-08-26 interview ruled for its own sweep — a merge proven by the
   forge's recorded pull-request state or by patch-equivalence where squash
   and rebase merges leave no ancestry, working without a forge; and an
   unmerged worktree inactive for 14 days surfaced with a dossier (dirty
   state first) and removed only on per-item confirmation — are carried to
-  that draft's planning interview as input, not built here.
+  that intent's planning interview as input, not built here.
 - Post-merge residue mechanics (remote PR branch, local branch, tracking
   ref): itd-118 owns them, and the store's clean-up is what its post-merge
   tidy calls.
@@ -145,8 +145,8 @@ None stated.
 ## Acceptance Criteria
 
 > _Rewritten on 2026-09-29 to the product thinker's rulings (`## Decisions`):
-> the sweep's two criteria moved to the store draft, and the coordinator's
-> criterion was added. The criteria are walked again after the store draft's
+> the sweep's two criteria moved to the store intent, and the coordinator's
+> criterion was added. The criteria are walked again after the store intent's
 > planning interview, before anything is built._
 
 - **Given** a session in the primary checkout of an abcd-managed repo that
@@ -185,23 +185,23 @@ of autonomous run A; recorded in `.abcd/work/DECISIONS.md` under that date):
 1. **The store under the home folder wins** (adr-2609091248200336): a
    per-change worktree lives in the store, never inside or beside the
    checkout; this record is rewritten to match.
-2. **The store draft owns add, list and clean-up** (itd-2609091014076309);
+2. **The store intent owns add, list and clean-up** (itd-2609091014076309);
    this intent uses them and builds no worktree verb of its own.
 3. **A session that declares itself the coordinator is exempt** from the
    write block in the primary checkout; every other session is blocked.
-4. **The store draft is planned first**: nothing from the store draft, the
+4. **The store intent is planned first**: nothing from the store intent, the
    merged-worktree clean-up included, is built before its planning
    interview. This intent's own wait is not part of the ruling: it follows
    from decision 2, because this intent uses the store's verbs, and is
-   carried by its `blocked_by` on the store draft.
-5. **The mint-visibility criterion stays, as peer awareness** (ruled 2026-09-30 at the store draft's planning interview): timestamp ids make a clash impossible (adr-45), and the criterion is kept for what a peer learns, not for collision safety.
+   carried by its `blocked_by` on the store intent.
+5. **The mint-visibility criterion stays, as peer awareness** (ruled 2026-09-30 at the store intent's planning interview): timestamp ids make a clash impossible (adr-45), and the criterion is kept for what a peer learns, not for collision safety.
 
 ## Open Questions
 
 - **How does a session declare itself the coordinator, and what stops a
   second one?** Decision 3 rules that the exemption exists; its mechanism (a
   flag, a mode, a local-tier file) and the refusal of a second declaration
-  are the spec's, to be settled after the store draft's planning interview.
+  are the spec's, to be settled after the store intent's planning interview.
 
 ## Audit Notes
 

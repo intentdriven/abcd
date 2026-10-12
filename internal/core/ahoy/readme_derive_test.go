@@ -327,6 +327,192 @@ func TestContentsPartListsLiveHeadings(t *testing.T) {
 	}
 }
 
+// TestContentsAnchorsSlugTheRenderedText: the forge makes a heading's anchor
+// from the text it renders, not from the markdown source
+// (iss-2610111850237083). An HTML entity is decoded before the slug is made,
+// so `## A &amp; B` links #a--b, as the forge has it; the list shows the
+// entity as written, which renders the same. An emoji shortcode renders as
+// an emoji only when the forge knows its name, which abcd cannot tell without
+// the forge's list, so a heading carrying one is listed without a link, and
+// so is every later heading whose anchor it could have taken or numbered
+// (here `Rocket Launch` and `-Launch`, never the plain `Launch`), each named
+// in a note. A reference inside a code span is shown as written and is not
+// decoded for the anchor either: `## The `&amp;` entity` anchors
+// #the-amp-entity. A shortcode in a code span is text, never an emoji, so
+// its heading is linked.
+func TestContentsAnchorsSlugTheRenderedText(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		"## A &amp; B",
+		"",
+		"## Caf&eacute; &#35;1",
+		"",
+		"## Not &notanentity; here",
+		"",
+		"## :rocket: Launch",
+		"",
+		"## Launch",
+		"",
+		"## Rocket Launch",
+		"",
+		"## -Launch",
+		"",
+		"## Usage",
+		"",
+		"## The `&amp;` entity",
+		"",
+		"## The ``&#35;`` sign",
+		"",
+		"## Run `:rocket:` now",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [A &amp; B](#a--b)",
+		"- [Caf&eacute; &#35;1](#café-1)",
+		"- [Not &notanentity; here](#not-notanentity-here)",
+		"- :rocket: Launch",
+		"- [Launch](#launch)",
+		"- Rocket Launch",
+		"- -Launch",
+		"- [Usage](#usage)",
+		"- [The `&amp;` entity](#the-amp-entity)",
+		"- [The ``&#35;`` sign](#the-35-sign)",
+		"- [Run `:rocket:` now](#run-rocket-now)",
+	}, "\n"))
+	notes := strings.Join(d.Notes, "\n")
+	for _, line := range []string{"line 9", "line 13", "line 15"} {
+		if !strings.Contains(notes, line) {
+			t.Errorf("no note names the unlinked heading at %s; notes %q", line, d.Notes)
+		}
+	}
+	if !strings.Contains(notes, "emoji shortcode") {
+		t.Errorf("the notes do not say why a heading is unlinked: %q", d.Notes)
+	}
+}
+
+// TestContentsStripsInlineHTMLFromHeadings: inline HTML in a heading renders
+// as markup, not text (iss-2610111850405447), so its tags are carried neither
+// into the list's text nor into the anchor. The space the tags leave before
+// the text is the forge's too: `## <a name="install"></a> Install` anchors
+// #-install. An autolink is not a tag, and a lone angle bracket is text.
+// A code span shows its text as written, tags, links and all, and its anchor
+// is made from the span's rendered text, one padding space each side dropped;
+// a backtick run no run of its length closes is a literal backtick.
+func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		`## <a name="install"></a> Install`,
+		"",
+		"## Usage <sup>beta</sup>",
+		"",
+		"## Old<br/>New",
+		"",
+		"## a < b > c",
+		"",
+		"## Use `<kbd>` here",
+		"",
+		"## The `[x](y)` form",
+		"",
+		"## A `<b>tick",
+		"",
+		"## ` <em> ` padded",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [Install](#-install)",
+		"- [Usage beta](#usage-beta)",
+		"- [OldNew](#oldnew)",
+		"- [a < b > c](#a--b--c)",
+		"- [Use `<kbd>` here](#use-kbd-here)",
+		"- [The `[x](y)` form](#the-xy-form)",
+		"- [A `tick](#a-tick)",
+		"- [` <em> ` padded](#em-padded)",
+	}, "\n"))
+}
+
+// TestContentsMasksCodeSpansOnce: a heading's code spans are read once, from
+// the heading as written (iss-2610112237411831). Where a stripped tag or link
+// sat between two spans, the anchor is made from both spans' rendered text and
+// the list keeps them two spans, a space apart, as a setext heading's line
+// break is listed as a space; a second reading would pair the spans across
+// the join into one.
+func TestContentsMasksCodeSpansOnce(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		"## `a`<br>` b `",
+		"",
+		"## `GET`<br>`POST`",
+		"",
+		"## `x`[](y)`z`",
+		"",
+		"## ``<br>`a`",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [`a` ` b `](#ab)",
+		"- [`GET` `POST`](#getpost)",
+		"- [`x` `z`](#xz)",
+		"- [`` `a`](#a)",
+	}, "\n"))
+}
+
+// TestContentsSkipsHeadingsInsideHTMLBlocks: a line inside an HTML block is
+// HTML to the forge, so a heading written there renders as text and has no
+// anchor (iss-2610111851312171). A block such as a div ends at the first
+// blank line, and a heading after it is a heading; a pre block ends at its
+// closing tag, blank lines or not. A tag alone on a line opens a block too,
+// but not in the middle of a paragraph, where it is inline HTML.
+func TestContentsSkipsHeadingsInsideHTMLBlocks(t *testing.T) {
+	readme := strings.Join([]string{
+		`<div align="center">`,
+		"## Inside a div",
+		"</div>",
+		"",
+		"<details>",
+		"<summary>More</summary>",
+		"",
+		"## After the blank line",
+		"",
+		"</details>",
+		"",
+		"<pre>",
+		"",
+		"## Inside a pre",
+		"</pre>",
+		"",
+		"<span>",
+		"## Inside a tag alone on its line",
+		"</span>",
+		"",
+		"a paragraph",
+		"<span>",
+		"## After inline HTML",
+		"",
+		"<DIV>",
+		"Setext inside",
+		"---",
+		"",
+		"## Last",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [After the blank line](#after-the-blank-line)",
+		"- [After inline HTML](#after-inline-html)",
+		"- [Last](#last)",
+	}, "\n"))
+}
+
 // TestBadgePartsNeedPublicAndForge: the release and build badges are derived
 // only where the owner declared the project public and the origin is on
 // github.com; the build badge also needs one workflow it can name. The

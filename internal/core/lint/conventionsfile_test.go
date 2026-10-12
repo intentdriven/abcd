@@ -255,3 +255,321 @@ func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 		}
 	}
 }
+
+// worktreeStoreIntent is the intent that carries the worktree store's own verbs
+// (add, list, reclaim), which the CONCURRENCY rule names as the reason the
+// store has none yet.
+const worktreeStoreIntent = "itd-2609091014076309"
+
+// TestWorktreeStoreRuleNamesTheIntentsActualState holds every present-state
+// sentence that says why the worktree store has no verbs to the lifecycle folder
+// its intent actually sits in (iss-2610090744073409). The CONCURRENCY rule of
+// .abcd/rules.json said the intent was in drafts/ while its own link pointed at
+// planned/, so the prose contradicted the link beside it; the build surface page
+// and the lane's worktree code repeated the claim as "a draft". The rule must
+// name the folder the record is in and say the store has no verbs because that
+// intent has not shipped; no site may call a planned intent a draft. The
+// planning records that wait on the store (itd-148, its spec spc-42, and
+// iss-213, which itd-148 carries) went on calling it "the store draft" after it
+// was planned (iss-2610111926302792), so they are sites too, found by id in
+// whichever lifecycle folder holds them. A site is the list item, prose
+// sentence or front-matter line that names the intent or says "store draft"
+// (worktreeStoreSites), never the whole paragraph, so a draft word said of
+// another intent in the same list is not blamed on this one
+// (iss-2610111926302443). Dated records (ADRs, the decision log, research
+// notes) and the dated "## Deferral" sections inside a record say what was true
+// when they were written and are not held here.
+func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	matches, err := filepath.Glob(filepath.Join(root, ".abcd", "development", "intents", "*", worktreeStoreIntent+"-*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("want exactly one record of %s in the intent store, got %v (err=%v)", worktreeStoreIntent, matches, err)
+	}
+	bucket := filepath.Base(filepath.Dir(matches[0]))
+	if bucket == "shipped" {
+		t.Fatalf("%s has shipped: the store has verbs now, so the CONCURRENCY rule's \"no verbs yet\" is stale "+
+			"and this test's premise with it", worktreeStoreIntent)
+	}
+
+	var repo rules.RuleSet
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/rules.json")), &repo); err != nil {
+		t.Fatalf("parse .abcd/rules.json: %v", err)
+	}
+	rule := ""
+	for _, r := range repo.Domains["CONCURRENCY"].Rules {
+		if strings.Contains(r, worktreeStoreIntent) {
+			rule = strings.Join(strings.Fields(r), " ")
+		}
+	}
+	if rule == "" {
+		t.Fatalf("the CONCURRENCY domain of .abcd/rules.json has no rule naming %s", worktreeStoreIntent)
+	}
+	for _, want := range []string{"/intents/" + bucket + "/" + worktreeStoreIntent + "-", bucket, "has not shipped"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("the CONCURRENCY rule naming %s does not say %q; the intent is in %s/ and has not shipped, "+
+				"which is why the store has no verbs yet", worktreeStoreIntent, want, bucket)
+		}
+	}
+
+	// Every present-state passage naming the intent.
+	sites := map[string][]string{"the CONCURRENCY rule": {rule}}
+	rels := []string{
+		".abcd/development/brief/04-surfaces/34-build.md",
+		"internal/core/implement/loop/lane.go",
+	}
+	// The planning records waiting on the store, wherever their lifecycle
+	// folder puts them.
+	for _, pattern := range []string{
+		".abcd/development/intents/*/itd-148-*.md",
+		".abcd/development/specs/*/spc-42-*.md",
+		".abcd/work/issues/*/iss-213-*.md",
+	} {
+		found, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(pattern)))
+		if err != nil || len(found) != 1 {
+			t.Fatalf("want exactly one record matching %s, got %v (err=%v)", pattern, found, err)
+		}
+		rel, err := filepath.Rel(root, found[0])
+		if err != nil {
+			t.Fatalf("relative path of %s: %v", found[0], err)
+		}
+		rels = append(rels, filepath.ToSlash(rel))
+	}
+	for _, rel := range rels {
+		sites[rel] = append(sites[rel], worktreeStoreSites(readRepoFile(t, root, rel))...)
+		if len(sites[rel]) == 0 {
+			t.Errorf("%s no longer names %s; update this test's list of sites", rel, worktreeStoreIntent)
+		}
+	}
+	if bucket == "drafts" {
+		return
+	}
+	for name, paras := range sites {
+		for _, p := range paras {
+			for _, stale := range staleDraftWords(p) {
+				t.Errorf("%s calls %s %q, but the intent is in %s/:\n%s", name, worktreeStoreIntent, stale, bucket, p)
+			}
+		}
+	}
+}
+
+// withoutDeferralSections drops each dated "## Deferral <date>" section of a
+// record, from its heading to the next level-two heading or the end: such a
+// section repeats the deferral reason as it read on that date, so it is a dated
+// note, not present-state prose.
+func withoutDeferralSections(text string) string {
+	var kept []string
+	skipping := false
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			skipping = strings.HasPrefix(line, "## Deferral ")
+		}
+		if !skipping {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+// worktreeStoreSites returns the passages of one file that
+// TestWorktreeStoreRuleNamesTheIntentsActualState judges, each flattened to
+// single spaces (iss-2610111926302443). A passage is a list item, a sentence of
+// prose, or a line of front matter, so a draft word said of another intent in
+// the same list or paragraph is not blamed on the store intent; a wrapped line
+// is never the unit, because the stale shapes this check was written against
+// ("(a\n  draft)", "a draft\n// (itd-...") broke across lines. A passage is a
+// site when it names the store intent or says "store draft". Dated
+// "## Deferral" sections are skipped.
+func worktreeStoreSites(text string) []string {
+	var sites []string
+	for _, u := range siteUnits(withoutDeferralSections(text)) {
+		if strings.Contains(u, worktreeStoreIntent) || strings.Contains(u, "store draft") {
+			sites = append(sites, u)
+		}
+	}
+	return sites
+}
+
+// listItemStart matches the first line of a Markdown list item, nested or not.
+var listItemStart = regexp.MustCompile(`^\s*(?:[-*+]|\d+[.)])\s`)
+
+// sentenceBreak matches the end of a sentence in flattened prose: its stop, any
+// closing marks after it (submatch 1 ends there), a space, and the capital or
+// emphasis that opens the next sentence.
+var sentenceBreak = regexp.MustCompile("([.!?][)\"'*_`\\]]*) [A-Z*_]")
+
+// siteUnits splits a file into the passages worktreeStoreSites judges: each
+// front-matter line, each list item with its continuation lines, and each
+// sentence of a prose paragraph. A Go comment's "//" leader is dropped first,
+// so a bare "//" line separates paragraphs as a blank line does.
+func siteUnits(text string) []string {
+	lines := strings.Split(text, "\n")
+	var units []string
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				for _, l := range lines[1:i] {
+					if flat := flatten(l); flat != "" {
+						units = append(units, flat)
+					}
+				}
+				lines = lines[i+1:]
+				break
+			}
+		}
+	}
+	var block []string
+	item := false
+	flush := func() {
+		flat := flatten(strings.Join(block, " "))
+		block = nil
+		if flat == "" {
+			return
+		}
+		if item {
+			units = append(units, flat)
+			return
+		}
+		start := 0
+		for _, m := range sentenceBreak.FindAllStringSubmatchIndex(flat, -1) {
+			units = append(units, flat[start:m[3]])
+			start = m[3] + 1
+		}
+		units = append(units, flat[start:])
+	}
+	for _, l := range lines {
+		l = strings.TrimLeft(l, " \t")
+		if strings.HasPrefix(l, "//") {
+			l = strings.TrimPrefix(l, "//")
+		}
+		switch {
+		case strings.TrimSpace(l) == "":
+			flush()
+		case listItemStart.MatchString(l):
+			flush()
+			item = true
+			block = append(block, l)
+		default:
+			if len(block) == 0 {
+				item = false
+			}
+			block = append(block, l)
+		}
+	}
+	flush()
+	return units
+}
+
+// flatten collapses every run of white space in s to one space.
+func flatten(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// staleDraftWords returns the words in one site that call the store intent a
+// draft, which a planned intent is not.
+func staleDraftWords(site string) []string {
+	var found []string
+	for _, stale := range []string{"drafts/", "a draft", "drafted", "in drafts", "store draft", "that draft"} {
+		if strings.Contains(site, stale) {
+			found = append(found, stale)
+		}
+	}
+	return found
+}
+
+// TestWorktreeStoreSitesNarrowToTheItemNamingTheIntent pins the unit the
+// store-intent check judges (iss-2610111926302443). The references list of the
+// build surface page is one blank-line paragraph naming six intents, so judging
+// the whole paragraph would blame the store intent for "a draft" written beside
+// another intent in that list. A site is the list item that names the store
+// intent, or the sentence that does in prose, or the front-matter line; the
+// stale shapes this check was written against still fail, wrapped across lines
+// as they were.
+func TestWorktreeStoreSitesNarrowToTheItemNamingTheIntent(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		stale      []string
+	}{
+		{
+			name: "a draft beside another intent in the same list passes",
+			text: "## Where this sits\n\n" +
+				"- The pace and the window clock: itd-2609201925079472 (a draft) and its\n" +
+				"  design record, spc-2609202134341288, which drafted the clock.\n" +
+				"- The worktree store the lane's checkout lives in: itd-2609091014076309\n" +
+				"  (planned, not yet shipped), the rule it enacts, adr-2609091248200336.\n" +
+				"- The pick: itd-2609211116005482, still in drafts/.\n",
+		},
+		{
+			name: "a draft beside another intent in the same prose paragraph passes",
+			text: "The clock is a draft (itd-2609201925079472). The store's own verbs are\n" +
+				"planned and not yet shipped (itd-2609091014076309), so the lane is a plain\n" +
+				"`git worktree add` into the store's path.\n",
+		},
+		{
+			name: "a draft wrapped inside the list item naming the store intent fails",
+			text: "- The pace: itd-2609201925079472.\n" +
+				"- The worktree store the lane's checkout lives in: itd-2609091014076309 (a\n" +
+				"  draft), the rule it enacts, adr-2609091248200336.\n",
+			stale: []string{"a draft"},
+		},
+		{
+			name: "a draft wrapped in a Go comment sentence fails",
+			text: "// cut from the default branch. The store's own verbs are a draft\n" +
+				"// (itd-2609091014076309), so the lane is a plain `git worktree add` into the\n" +
+				"// store's path until they ship.\n",
+			stale: []string{"a draft"},
+		},
+		{
+			name: "the store draft and that draft in the sentence naming the intent fail",
+			text: "Where the worktree lives is settled elsewhere: a per-change\n" +
+				"worktree goes in the machine-scoped store the store draft\n" +
+				"(itd-2609091014076309) describes, and\n" +
+				"that draft owns the verbs that add, list and clear away worktrees.\n",
+			stale: []string{"store draft", "that draft"},
+		},
+		{
+			name: "a list item saying store draft without the id fails",
+			text: "1. **The store draft is planned first**: nothing from the store\n" +
+				"   draft is built before its planning interview.\n" +
+				"2. **A coordinator is exempt.** It is not a draft.\n",
+			stale: []string{"store draft"},
+		},
+		{
+			name: "a front-matter line naming the store intent fails, the next line does not",
+			text: "---\nid: \"iss-213\"\n" +
+				"deferral_reason: \"Blocked on the store draft itd-2609091014076309.\"\n" +
+				"note: \"itd-2609201925079472 is a draft.\"\n---\n\nBody.\n",
+			stale: []string{"store draft"},
+		},
+		{
+			name: "a dated Deferral section is skipped",
+			text: "Body naming itd-2609091014076309.\n\n## Deferral 2026-09-29\n\n" +
+				"Deferred: blocked on the store draft itd-2609091014076309.\n\n## Notes\n\nNone.\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sites := worktreeStoreSites(tc.text)
+			if len(sites) == 0 {
+				t.Fatalf("no site found in:\n%s", tc.text)
+			}
+			got := map[string]bool{}
+			for _, s := range sites {
+				for _, w := range staleDraftWords(s) {
+					got[w] = true
+				}
+			}
+			want := map[string]bool{}
+			for _, w := range tc.stale {
+				want[w] = true
+			}
+			for w := range want {
+				if !got[w] {
+					t.Errorf("stale %q not flagged; sites:\n%s", w, strings.Join(sites, "\n"))
+				}
+			}
+			for w := range got {
+				if !want[w] {
+					t.Errorf("%q flagged against %s, but it is not said of the store intent; sites:\n%s",
+						w, worktreeStoreIntent, strings.Join(sites, "\n"))
+				}
+			}
+		})
+	}
+}

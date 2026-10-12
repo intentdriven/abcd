@@ -4,9 +4,9 @@ package loop
 // implementer works in, made in abcd's form. It lives in the machine-scoped
 // worktree store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, keyed on the
 // repository's root commit in the full form the sibling stores use, on a branch
-// cut from the default branch. The store's own verbs are a draft
-// (itd-2609091014076309), so the lane is a plain `git worktree add` into the
-// store's path until they ship.
+// cut from the default branch. The store's own verbs are planned and not yet
+// shipped (itd-2609091014076309), so the lane is a plain `git worktree add`
+// into the store's path until they ship.
 //
 // The path is derived, never taken: the run id and the lane id are each held to
 // their own shape and the name they compose to a single safe path segment, so

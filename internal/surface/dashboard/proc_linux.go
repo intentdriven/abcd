@@ -2,10 +2,16 @@ package dashboard
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"strconv"
 	"strings"
+)
+
+// readStat and readExe are readProcess's two reads of /proc, variables so a
+// test can make one fail the way a read racing the process's exit fails.
+var (
+	readStat = os.ReadFile
+	readExe  = os.Readlink
 )
 
 // readProcess reads the identity of process pid from /proc: its start time in
@@ -16,9 +22,9 @@ func readProcess(pid int) (processID, error) {
 		return processID{}, errProcessGone
 	}
 	dir := "/proc/" + strconv.Itoa(pid)
-	raw, err := os.ReadFile(dir + "/stat")
+	raw, err := readStat(dir + "/stat")
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
+		if processGone(err) {
 			return processID{}, errProcessGone
 		}
 		return processID{}, err
@@ -37,9 +43,9 @@ func readProcess(pid int) (processID, error) {
 	if fields[0] == "Z" || fields[0] == "X" {
 		return processID{}, errProcessGone
 	}
-	exe, err := os.Readlink(dir + "/exe")
+	exe, err := readExe(dir + "/exe")
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
+		if processGone(err) {
 			return processID{}, errProcessGone
 		}
 		return processID{}, err

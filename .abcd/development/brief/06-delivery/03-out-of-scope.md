@@ -45,7 +45,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-26` — `/abcd:loot` OSS-vendor with provenance (pulled to an earlier phase on 2026-05-08)
 - `itd-30` — Design fictions as an alternative intent capture format (`--format=fiction`)
 - `itd-35` — `/abcd:audit lifeboat <path>` lifeboat-integrity verification (sibling sub-verb under itd-16's umbrella; captured 2026-05-08)
-- `itd-39` — Scope-aware memory retrieval (extends itd-3's recall hook to the memory store)
 - `itd-41` — Phase negotiator — Socratic phase-proposer (per [adr-10](../../decisions/adrs/0010-phase-negotiator-grounded-tradeoffs.md))
 - `itd-44` — A fourth intent kind for infrastructure choices the product thinker wants to record
 - `itd-51` — Harness-adoption-readiness rubric ("safe enough to adopt" before a new harness arrives)
@@ -144,10 +143,10 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610071545380041` — Work about abcd itself goes to abcd as a report, never into a managed repository's own plans (draft)
 - `itd-2610091010348892` — abcdev.app shows the record of any public abcd-managed project, with abcd as the showcase (draft)
 - `itd-2610091016262335` — The product thinker and facilitator make a project's design decisions on abcdesign.app (draft)
-- `itd-2610091918433290` — Agents keep memory notes with /abcd:memory, recalled when they matter (draft)
 - `itd-2610100627454580` — An agent's text comes back from abcd's rewriter written for its reader and within its limits (draft; grows the question drafter)
 - `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on (draft; builds on itd-2609201925079472)
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands (draft)
+- `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping (draft; builds on itd-2610091918433290 and itd-2610032150577708; moved out of the memory notes intent)
 - `itd-2610111707085098` — Each session takes a persona name, shown in the status line and the session list (draft)
 - `itd-2610120738075547` — Work handed to a cloud session comes back, or says why not: a prepared and checked machine, a brief per item, a report every session leaves, one list of sessions (draft; builds on itd-2609091034175565; answers the six cloud findings of 2026-10-12)
 <!-- /index -->
