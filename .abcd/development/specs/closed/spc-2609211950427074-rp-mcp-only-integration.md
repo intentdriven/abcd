@@ -79,6 +79,9 @@ choice, recorded for review; none changes a criterion.
   or fragment, and no refusal quotes it. A repository that selects `rp` on a
   machine naming no server is not a fault: the route reads as rp with no
   server, so the opt-in never breaks a collaborator who runs no RepoPrompt.
+  The server block is read only when the route is rp, so a fault in it never
+  refuses a step in a repository that has not opted in (refined on review the
+  same day).
 - 2026-10-12 (agent's choice, for review): **The transport is MCP's
   Streamable HTTP, spoken with the standard library.** The Approach names the
   smallest dependency that speaks the protocol, subject to the new-dependency

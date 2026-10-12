@@ -407,8 +407,9 @@ default, or `rp`, from the repository's `.abcd/config.json` or the machine's
 `~/.abcd.noindex/config.json`, the repository's file winning a key both set,
 and the MCP server's address, `oracle.rp.url` (with an optional
 `oracle.rp.tool`), sits in the machine's file alone, admitted only to this
-machine; a repository declaring it, or any other fault, is refused at the
-`review` stage before anything moves. When the validate stage hands a ruthless
+machine, and read only when the route is `rp`. A fault in `oracle.review`, and
+on the `rp` route a repository declaring the server or any fault in it, is
+refused at the `review` stage before anything moves. When the validate stage hands a ruthless
 or security review to the host, and no runner took it, the step verb renders
 the review's request beside its brief (`request.md`: the reviewer's agent
 definition, the lane's brief, the implementer's report and each fix round's,

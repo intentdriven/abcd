@@ -236,6 +236,9 @@ passed over for the default:
   is, and the URL is admitted only to localhost or a loopback address. A
   refusal never quotes the URL, which could carry a credential. An unknown key
   under `oracle.rp` is refused, and so is an `oracle.rp` with no `url`.
+- **The server block is read on the rp route alone.** With `oracle.review`
+  unset or `host`, `oracle.rp` is not read, so a fault in it refuses nothing in
+  a repository that never opted in; every refusal above is the rp route's.
 - **A route with no server here is not a fault.** A repository that sets
   `oracle.review` to `rp` on a machine whose file names no `oracle.rp.url`
   breaks nothing: each review the step hands out falls back to the host with a

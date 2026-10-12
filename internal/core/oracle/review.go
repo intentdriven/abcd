@@ -14,6 +14,9 @@ package oracle
 //     sent to is the person's own machine's to say, as a provider block's is,
 //     so a repository declaring it is refused naming the machine's file.
 //
+// oracle.rp is read only when the route is rp: on the host's route it is not
+// read at all, so a fault in it never refuses a step that does not use it.
+//
 // The rp route selected with no oracle.rp.url on this machine is not a fault:
 // the route reads as rp with no server (RP nil), so a repository that opts its
 // reviews in never breaks a collaborator who runs no RepoPrompt. Nothing here
@@ -70,22 +73,6 @@ func LoadReview(r layered.Roots) (ReviewRoute, error) {
 	if err != nil {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
 	}
-	// oracle.rp must be an object before the claim reads it: the claim's
-	// refusal quotes a value that is not one, and a URL written there in place
-	// of the block can carry a credential no refusal may echo.
-	blocks, err := s.Lookup(RPKey)
-	if err != nil {
-		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
-	}
-	for _, f := range blocks {
-		if _, err := layered.Decode[map[string]json.RawMessage](f.Raw); err != nil {
-			return ReviewRoute{}, fmt.Errorf("review route: %s (%s layer): %s is not an object; it takes url and tool",
-				f.Origin, f.Layer, RPKey)
-		}
-	}
-	if err := s.Claim(RPKey, "url", "tool"); err != nil {
-		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
-	}
 	v, err := layered.Get(s, ReviewKey, ReviewHost, func(name string) error {
 		if name != ReviewHost && name != ReviewRP {
 			return fmt.Errorf("it takes %s (the host's own agents) or %s (RepoPrompt over MCP)", ReviewHost, ReviewRP)
@@ -96,8 +83,25 @@ func LoadReview(r layered.Roots) (ReviewRoute, error) {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
 	}
 	rv := ReviewRoute{Route: v.V, Layer: v.Layer, Origin: v.Origin}
+	if rv.Route != ReviewRP {
+		// The server block is the rp route's alone: on the host's route it is
+		// not read, so a fault in it never refuses a step that does not use it.
+		return rv, nil
+	}
+	// oracle.rp must be an object before the claim reads it: the claim's
+	// refusal quotes a value that is not one, and a URL written there in place
+	// of the block can carry a credential no refusal may echo.
 	found, err := s.Lookup(RPKey)
 	if err != nil {
+		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
+	}
+	for _, f := range found {
+		if _, err := layered.Decode[map[string]json.RawMessage](f.Raw); err != nil {
+			return ReviewRoute{}, fmt.Errorf("review route: %s (%s layer): %s is not an object; it takes url and tool",
+				f.Origin, f.Layer, RPKey)
+		}
+	}
+	if err := s.Claim(RPKey, "url", "tool"); err != nil {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
 	}
 	for _, f := range found {

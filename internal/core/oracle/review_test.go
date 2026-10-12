@@ -99,21 +99,21 @@ func TestAReviewRouteFaultIsRefusedNamingTheFileAndTheKey(t *testing.T) {
 			[]string{".abcd/config.json", "oracle.review", "host", "rp"}},
 		{"a route that is not a string", "", `{"oracle":{"review":true}}`,
 			[]string{machine, "oracle.review"}},
-		{"a server the repository names", `{"oracle":{"rp":{"url":"http://127.0.0.1:7777/mcp"}}}`, "",
+		{"a server the repository names", `{"oracle":{"review":"rp","rp":{"url":"http://127.0.0.1:7777/mcp"}}}`, "",
 			[]string{".abcd/config.json", "oracle.rp", machine}},
-		{"a server on another machine", "", `{"oracle":{"rp":{"url":"http://example.com/mcp"}}}`,
+		{"a server on another machine", "", `{"oracle":{"review":"rp","rp":{"url":"http://example.com/mcp"}}}`,
 			[]string{machine, "oracle.rp.url", "this machine"}},
-		{"a server with no url", "", `{"oracle":{"rp":{"tool":"oracle_send"}}}`,
+		{"a server with no url", "", `{"oracle":{"review":"rp","rp":{"tool":"oracle_send"}}}`,
 			[]string{machine, "oracle.rp", "url"}},
-		{"an unknown key under oracle.rp", "", `{"oracle":{"rp":{"url":"http://127.0.0.1:7777","port":7777}}}`,
+		{"an unknown key under oracle.rp", "", `{"oracle":{"review":"rp","rp":{"url":"http://127.0.0.1:7777","port":7777}}}`,
 			[]string{machine, "oracle.rp.port", "url, tool"}},
-		{"a tool that is not a name", "", `{"oracle":{"rp":{"url":"http://127.0.0.1:7777","tool":"two words"}}}`,
+		{"a tool that is not a name", "", `{"oracle":{"review":"rp","rp":{"url":"http://127.0.0.1:7777","tool":"two words"}}}`,
 			[]string{machine, "oracle.rp.tool"}},
-		{"oracle.rp that is not an object", "", `{"oracle":{"rp":"http://user:s3cret@example.com/mcp"}}`,
+		{"oracle.rp that is not an object", "", `{"oracle":{"review":"rp","rp":"http://user:s3cret@example.com/mcp"}}`,
 			[]string{machine, "oracle.rp"}},
-		{"oracle.rp that is not an object, in the repository", `{"oracle":{"rp":"http://user:s3cret@example.com/mcp"}}`, "",
+		{"oracle.rp that is not an object, in the repository", `{"oracle":{"review":"rp","rp":"http://user:s3cret@example.com/mcp"}}`, "",
 			[]string{".abcd/config.json", "oracle.rp"}},
-		{"a url that is not a string", "", `{"oracle":{"rp":{"url":["http://user:s3cret@example.com/mcp"]}}}`,
+		{"a url that is not a string", "", `{"oracle":{"review":"rp","rp":{"url":["http://user:s3cret@example.com/mcp"]}}}`,
 			[]string{machine, "oracle.rp.url"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -132,6 +132,32 @@ func TestAReviewRouteFaultIsRefusedNamingTheFileAndTheKey(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "example.com") || strings.Contains(err.Error(), "s3cret") {
 				t.Fatalf("the refusal never quotes the URL, which may carry a credential: %v", err)
+			}
+		})
+	}
+}
+
+// TestOracleRPIsReadOnlyWhenTheRouteIsRP: the server block is the rp route's
+// alone, so a fault in it never refuses a step whose route is the host's: a
+// typo in the machine's oracle.rp does not break every repository that never
+// opted in.
+func TestOracleRPIsReadOnlyWhenTheRouteIsRP(t *testing.T) {
+	for name, c := range map[string]struct{ repo, machine string }{
+		"unset, a server off this machine":    {"", `{"oracle":{"rp":{"url":"http://example.com/mcp"}}}`},
+		"unset, a server block not an object": {"", `{"oracle":{"rp":"http://127.0.0.1:7777"}}`},
+		"host, an unknown key":                {`{"oracle":{"review":"host"}}`, `{"oracle":{"rp":{"url":"http://127.0.0.1:7777","port":1}}}`},
+		"host, a server the repository names": {`{"oracle":{"review":"host","rp":{"url":"http://127.0.0.1:7777"}}}`, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFx(t)
+			if c.repo != "" {
+				f.repoConfig(c.repo)
+			}
+			if c.machine != "" {
+				f.machineConfig(c.machine)
+			}
+			if rv := f.loadReview(); rv.Route != ReviewHost || rv.RP != nil {
+				t.Fatalf("the host's route reads no server block: %+v", rv)
 			}
 		})
 	}
