@@ -21,6 +21,17 @@ type remoteAdvisory struct {
 	Description *string `json:"description"`
 	Severity    *string `json:"severity"`
 	State       string  `json:"state"`
+
+	Vulnerabilities []remoteVulnerability `json:"vulnerabilities"`
+}
+
+// remoteVulnerability is one affected package of an advisory, as GitHub
+// carries it; a field GitHub leaves unset is null.
+type remoteVulnerability struct {
+	Package                *Package `json:"package"`
+	VulnerableVersionRange *string  `json:"vulnerable_version_range"`
+	PatchedVersions        *string  `json:"patched_versions"`
+	VulnerableFunctions    []string `json:"vulnerable_functions"`
 }
 
 func (a remoteAdvisory) description() string {
@@ -112,7 +123,8 @@ func getAdvisory(cwd, repo, ghsa string) (remoteAdvisory, error) {
 }
 
 // patchAdvisory sends one update of an advisory, its body on stdin as JSON
-// (never as -f fields). It is the only write this package's close makes.
+// (never as -f fields). It is the only write this package makes: close and
+// publish each send their updates through it.
 func patchAdvisory(cwd, repo, ghsa string, body []byte) error {
 	if _, err := github.API(cwd, body, "-X", "PATCH", advisoriesPath(repo)+"/"+ghsa, "--input", "-"); err != nil {
 		return remoteError(err, true)

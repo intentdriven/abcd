@@ -222,25 +222,54 @@ func forgeStateWord(state string) string {
 }
 
 // scanClosingText refuses a closing text that carries what its reader must
-// not see: a hard-fail finding of the outbound scanner (a token, a key, the
-// caller's own home or identity), any token whatever its severity, a harness
-// leak, or a name the private-names layer bans, in this checkout or in the
-// primary checkout it inherits from. The refusal names the kind and the line,
-// never the match. A scanner or a private-names layer that cannot judge is a
-// refusal too: a text nobody could check is not shown as checked.
+// not see (scanOutbound). The refusal names the kind and the line, never the
+// match.
 func scanClosingText(checkout, text string) error {
-	const label = "closing text"
+	f, err := scanOutbound(checkout, "the closing text", text, false)
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		return nil
+	}
 	remedy := "record the verdict again with `abcd embargo triage`, with a reason that does not carry it"
+	if f.kind == kindPrivateName {
+		return refuse(fmt.Sprintf("the closing text carries a name the private-names layer bans on line %d; nothing was shown or sent", f.line), remedy)
+	}
+	return refuse(fmt.Sprintf("the closing text carries a %s on line %d, which its reader must not see; nothing was shown or sent", f.kind, f.line), remedy)
+}
+
+// kindPrivateName is the kind scanOutbound reports for a name the
+// private-names layer bans.
+const kindPrivateName = "private_name"
+
+// textFinding is the first thing scanOutbound found: its kind and line,
+// never the match.
+type textFinding struct {
+	kind string
+	line int
+}
+
+// scanOutbound finds the first thing in a text bound for a reader outside
+// this machine that the reader must not see: a hard-fail finding of the
+// outbound scanner (a token, a key, the caller's own home or identity), any
+// token whatever its severity, a harness leak, with otherHome another
+// account's home path, or a name the private-names layer bans, in this
+// checkout or in the primary checkout it inherits from. A scanner or a
+// private-names layer that cannot judge is a refusal, worded with label: a
+// text nobody could check is not shown as checked.
+func scanOutbound(checkout, label, text string, otherHome bool) (*textFinding, error) {
 	sc, err := scanner.New(checkout)
 	if err != nil {
-		return refuse("the closing text could not be checked: the scanner could not be built", "settle the scanner's configuration, then run it again")
+		return nil, refuse(label+" could not be checked: the scanner could not be built", "settle the scanner's configuration, then run it again")
 	}
 	if degraded, _ := sc.Unavailable(); degraded {
-		return refuse("the closing text could not be checked: the scanner's configuration is degraded", "settle .abcd/config/pii.json, then run it again")
+		return nil, refuse(label+" could not be checked: the scanner's configuration is degraded", "settle .abcd/config/pii.json, then run it again")
 	}
-	for _, f := range sc.ScanText(text, label) {
-		if f.Severity == scanner.SeverityHardFail || scanner.IsTokenKind(f.Kind) || scanner.IsHarnessLeakKind(f.Kind) {
-			return refuse(fmt.Sprintf("the closing text carries a %s on line %d, which its reader must not see; nothing was shown or sent", f.Kind, f.Line), remedy)
+	for _, f := range sc.ScanText(text, "outbound text") {
+		if f.Severity == scanner.SeverityHardFail || scanner.IsTokenKind(f.Kind) || scanner.IsHarnessLeakKind(f.Kind) ||
+			(otherHome && f.Kind == kindHomePathOther) {
+			return &textFinding{kind: f.Kind, line: f.Line}, nil
 		}
 	}
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
@@ -254,14 +283,19 @@ func scanClosingText(checkout, text string) error {
 	for _, root := range roots {
 		hits, err := banlist.MatchPrivate(root, lines)
 		if err != nil {
-			return refuse("the closing text could not be checked against the private-names layer, which cannot be read",
+			return nil, refuse(label+" could not be checked against the private-names layer, which cannot be read",
 				"settle `abcd banlist`'s report, then run it again")
 		}
 		for n, hit := range hits {
 			if hit {
-				return refuse(fmt.Sprintf("the closing text carries a name the private-names layer bans on line %d; nothing was shown or sent", n+1), remedy)
+				return &textFinding{kind: kindPrivateName, line: n + 1}, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
+
+// kindHomePathOther is the scanner's kind for another account's home path,
+// which it rates a warning: harmless in a local report, a disclosure in an
+// advisory published to everyone.
+const kindHomePathOther = "home_path_other"
