@@ -203,12 +203,14 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 	return workingTreeCommand(context.Background(), root, ExecPins(), args)
 }
 
-// WorkingTreeCommitCommand is WorkingTreeCommand for a git command that makes
-// a commit in a working tree abcd made for the work (a lane's record commit, a
-// merge into a lane): the repository's hooks, its commit signing and its
-// merge's signature check run as they do on the person's own commit and
-// merge, so it is WorkingTreeCommand without those three pins (ExecPins
-// names them: core.hooksPath, commit.gpgsign, merge.verifySignatures). Each is
+// WorkingTreeCommitCommand is WorkingTreeCommand for a git command that runs
+// the repository's hooks on a working tree abcd makes for the work, so a
+// lane's record commit, a merge into a lane, a lane's reset --hard and the
+// `git worktree add` that checks the lane out all use it: the repository's
+// hooks, its commit signing and its merge's signature check run as they do on
+// the person's own commit, merge, reset and checkout, so it is
+// WorkingTreeCommand without those three pins (ExecPins names them:
+// core.hooksPath, commit.gpgsign, merge.verifySignatures). Each is
 // the repository's own behaviour, and a program it names there runs on the
 // person's own next commit with no abcd involved, so switching it off for
 // abcd prevented nothing and changed how the repository works
@@ -217,9 +219,17 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // under WorkingTreeCommand. Everything else is WorkingTreeCommand's.
 //
 // A program the repository's settings start can wait on a person (a GUI
-// pinentry, a hook that prompts), so the command is bound to ctx: the caller
-// gives it a deadline, and its Cancel and WaitDelay, so an unattended run is
-// never held by one nobody answers.
+// pinentry, a hook that prompts), so the command is bound to ctx, which the
+// caller gives a deadline so an unattended run is never held by one nobody
+// answers. It sets no Cancel or WaitDelay itself, and a ctx that expires
+// without them SIGKILLs git (exec.CommandContext's default), which leaves its
+// lock files (index.lock) and a half-written checkout behind. So the caller
+// sets Cancel to send SIGTERM, on which git removes its locks, and WaitDelay
+// to bound how long a program a hook left running may hold git's output
+// pipes once git has exited (loop.boundedGit does both, and signals git's
+// whole process group). After a Cancel that succeeded, Wait reports the
+// context's error even when git then exited 0, so a caller that needs to know
+// whether git's work was made checks ProcessState.
 func WorkingTreeCommitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
 	return workingTreeCommand(ctx, root, commitPins(), args)
 }
