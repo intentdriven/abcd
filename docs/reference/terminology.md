@@ -27,7 +27,7 @@ deep-linked.
 - **Protocols**: Agent Payments Protocol (AP2) · Agent2Agent Protocol (A2A) ·
   Model Context Protocol (MCP)
 - **The core loop**: Agent loop · Autonomous agent · Multi-agent systems ·
-  Orchestration · Tool use
+  Orchestration · Reservation (lease) · Tool use
 - **Context**: Context engineering · Grounding · Memory ·
   Retrieval-augmented generation (RAG)
 - **Safety**: Guardrails · Human-in-the-loop · Prompt injection · Sandboxing
@@ -62,6 +62,7 @@ deep-linked.
 | **Orchestration** | Coordinating which agents run, in what order, and how control and results flow between them.[^orch] | **ADAPTS** — abcd is *host-delegated* (adr-25): the deterministic core prepares work and hands a prompt to the host's own dispatch. abcd owns the prompt; the host owns models, credentials, and execution — the orchestration-substrate role is deliberately declined. |
 | **Policy-as-code** | Expressing enforcement policy in declarative, machine-evaluated form, decoupling policy decisions from application logic; the policy *engine* is the component that decides grant or deny.[^pac] | **USES** — abcd's policy is committed JSON configuration: per-repo rules, docs-lint, record-lint, and backend-seam selection, evaluated deterministically in the core. The record practises this without using the phrase; this page is where the mapping is made. |
 | **Prompt injection** | A vulnerability where user prompts or ingested content alter an LLM's behaviour in unintended ways — directly or indirectly (OWASP LLM01:2025).[^pi] | **USES** — recorded defences on both sides of the boundary: agents that read untrusted input must carry injection-canary fixtures (the itd-5 discipline), and a verb that mutates state fails closed on anything not exactly recognised. The canary lint (reserved code PQ006) and automated canary execution are recorded design targets, not yet shipped. |
+| **Reservation (lease)** | A time-bounded grant a holder must renew before it expires, after which others may take it; holder failure costs at most the lease term, and clock skew is absorbed by a margin.[^lease] | **ADAPTS** — a *reservation* is abcd's lease on a whole work item, kept where every participant already looks: before an agent starts on an issue or an intent, `abcd reserve` pushes a branch nobody merges, `abcd-reserved/<record-id>` on the shared remote, naming the holder (a GitHub username), the working copy, the files the work will change and the expiry (itd-2609091034175565). The plain fast-forward push is the compare-and-swap; the term is clamped to a day, and another person takes over only five minutes past the expiry. `abcd peers` lists every reservation. It is advisory, not a lock: it coordinates people, and the in-run claim keeps one account's sessions apart. |
 | **Retrieval-augmented generation (RAG)** | Combining a generator with a retriever over an external index, so generation draws on non-parametric knowledge.[^rag] | **ADAPTS** — the sources corpus takes the plain-store shape: per-source folders, extracted text, grep-based consult; `abcd library add` registers a document in it, and the corpus shares the library verb with the memory store without being connected to it, so registering a document distils nothing and distilling one registers nothing; retrieval is recorded as a pluggable seam (iss-26) where a RAG backend is one opt-in adapter, never the default. |
 | **Sandboxing** | An OS-enforced boundary restricting an agent's filesystem and network access, so it can act autonomously without unrestricted host access.[^sand] | **ADAPTS** — abcd's containment is structural rather than OS-level: read-only probes proven by before-and-after tree hashes, a destination safety gate that refuses directories abcd did not produce, and refusals that write nothing. OS-level sandboxes belong to the host. |
 | **Tamper-evidence** | Append-only log integrity via Merkle trees, so any instance of a log can be proven a superset of any earlier instance.[^tamper] | **WATCHING** — receipts are hash-anchored and manifests verified today; a compliance-grade hash chain over conversation and edit history is a draft (itd-16), and tamper-evident receipts are tracked as iss-141. |
@@ -112,6 +113,8 @@ deep-linked.
 [^pac]: Open Policy Agent documentation (a CNCF graduated project), https://www.openpolicyagent.org/docs; NIST, SP 800-207, "Zero Trust Architecture", 2020, DOI 10.6028/NIST.SP.800-207 (defines the policy engine as the component that decides access).
 
 [^pi]: OWASP Gen AI Security Project, "LLM01:2025 Prompt Injection", OWASP Top 10 for LLM Applications 2025, https://genai.owasp.org/llmrisk/llm01-prompt-injection/.
+
+[^lease]: Gray, C. G., and Cheriton, D. R., "Leases: An Efficient Fault-Tolerant Mechanism for Distributed File Cache Consistency", Proceedings of the 12th ACM Symposium on Operating Systems Principles (SOSP '89), 1989, DOI 10.1145/74850.74870.
 
 [^rag]: Lewis, P., et al., "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks", NeurIPS 2020, DOI 10.48550/arXiv.2005.11401.
 

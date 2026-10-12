@@ -189,7 +189,7 @@ nowhere else (`claim.Holder`):
    `internal/core/claim` and called by both, so the forge's two forms are
    spelled once (C17).
 2. The key `reservation.github_username` in the machine layer of
-   `layered.Config`, that is `~/.abcd/config.json`, read through
+   `layered.Config`, that is `~/.abcd.noindex/config.json`, read through
    `layered.Load` and taken only from a `Found` whose layer is `Machine`
    (C18). The `reservation` namespace is claimed by this reader, so an unknown
    key under it is refused by the resolver as for every other namespace.
@@ -214,7 +214,7 @@ reservation (the precedent of `loop.tierPresent`): A checkout without
 
 ### Reading the remote, and the view
 
-Every reservation write first fetches, in one command:
+Every reservation write first fetches, in one command when it can:
 
 ```text
 git fetch --prune --no-tags origin \
@@ -224,7 +224,12 @@ git fetch --prune --no-tags origin \
 
 so the tip it judges, the cap and the overlap it counts, and the derived
 release it applies are all read from the view fetched just before the push
-(scope condition 9). The default branch is the one `gitutil.DefaultRef`
+(scope condition 9). The default branch is the one this clone last knew as
+origin's, and that name can be stale (a remote whose `main` was renamed), when
+git refuses the whole command for want of the one ref. The reservations are
+then fetched alone, and the act goes on without the derived release, saying
+the check was skipped (`derived_unchecked`); a failed fetch of the
+reservations themselves refuses the act. The default branch is the one `gitutil.DefaultRef`
 resolves under `refs/remotes/origin/`. A fetch is a git command that reaches the
 remote; it is lifted from the land stage's `netGit` into one runner,
 `gitutil.Net`, which both the loop and the claim package call: hooks run, the
@@ -365,8 +370,15 @@ is refused, naming the remotes found, or saying there are none (C21).
 ### The verbs
 
 **`abcd reserve`** is a new top-level verb, the front door onto
-`internal/core/claim` for hand work, filed in the people's records help group
-beside `build` and `capture`, with its sentence in `sentences.go`:
+`internal/core/claim` for the work no build or drain starts. It is an agent's
+verb (the product thinker's ruling of 2026-10-12, under "Settled here"): it is
+listed in the agents-and-hosts block `abcd --help --agent` renders
+(`internal/surface/cli/helpgroups.go`), naming `commands/reserve.md` as the
+page to read next, its sentence is in `sentences.go`, and its plugin page
+carries `user-invocable: false`, which keeps it out of a person's `/abcd:`
+menu. It stays runnable from the CLI. A person sees reservations through
+`abcd peers` and, in spec 2, the record and board renders, not through the
+verb:
 
 ```text
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] [--json]
@@ -495,7 +507,7 @@ and each ends by saying nothing was pushed or no reservation was made.
 | Lease out of bounds | 2 | `lease <d> is outside 1m0s to 24h0m0s; nothing was pushed` |
 | Message over the cap | 2 | `the reservation message would be <n> bytes, over the 4096-byte cap: name fewer or shorter footprint paths; nothing was pushed` |
 | Outbound finding | 2 | `the reservation message carries <class>, which public text may not carry; nothing was pushed` |
-| No username | 2 | `cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and ~/.abcd/config.json sets no reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed` |
+| No username | 2 | `cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and ~/.abcd.noindex/config.json sets no reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed` |
 | No git identity | 2 | `git has no user.name or user.email to author the reservation; set them, then retry; nothing was pushed` |
 | No local tier | 2 | `.abcd/.work.local/ is not a directory in this checkout, so there is nowhere to keep this copy's key; run abcd ahoy to set it up; nothing was pushed` |
 | No `origin` | 2 | `reservations live on the remote named origin, and this checkout's remotes are: <names>; nothing was pushed` (or `this checkout has no remote`) |
@@ -612,6 +624,72 @@ These are the facilitator's design calls; none changes a criterion.
   the stage; the fence stops the run.
 - `abcd peers` exits 1 when its fetch fails, after rendering the last view.
 - `build --release` changes nothing in the run's state.
+- **`abcd reserve` is an agent's verb** (the product thinker's ruling,
+  2026-10-12, in their words: "I suggest /abcd:reserve becomes an agent-only
+  verb"). It is listed in the agents-and-hosts block, not in a person's
+  group, and `commands/reserve.md` carries `user-invocable: false`; the page is
+  still the plugin surface, so the verb is wired on both surfaces. It stays
+  runnable from the CLI, and a person sees reservations through `abcd peers`
+  and the record and board renders.
+- **What steps 1 to 3 settled** (lane 1's build, recorded with step 7):
+  - The machine layer is `~/.abcd.noindex/config.json` (the intent has it
+    right; this spec said `~/.abcd/config.json`). Every message naming it
+    takes the path from `layered.Config.MachineOrigin()`.
+  - A renewal resets `Abcd-Claimed-At` to now, so spec 2's half-lease rule
+    and the 24-hour clamp count from the renewal, not from the first
+    reservation.
+  - A tombstone's `Abcd-Claimed-At`, `Abcd-Expires-At` and `Abcd-Released-At`
+    are all the release's time, and it keeps the tip's footprint.
+  - The same person's other copy, past its effective expiry plus the
+    five-minute margin, is taken over without `--take-over`, as another
+    person's lapsed reservation would be.
+  - Two release refusals the table had no row for: with no tip, "`<id>` holds
+    no reservation on origin to release; nothing was pushed"; with an
+    unreadable tip, "the reservation on `<id>` is unreadable (`<reason>`), so
+    nobody holds it to release; nothing was pushed". A release over any
+    tombstone, whoever wrote it, exits 0 as `already_released`.
+  - The derived release applies to an unreadable tip too: a record finished
+    on the default branch releases its reservation whatever its tip says or
+    fails to say.
+  - C30's "before any git": the size check runs after `git config user.name`
+    and `user.email` are read, because the holder's length is part of the
+    message; it still runs before any write, fetch or push, and the test
+    checks that only config reads came first.
+  - `commit-tree` runs with `gitutil.ExecPins()`, so no signing program or
+    hook starts, with author and committer set from the person's `user.name`
+    and `user.email` and dated by the injected clock. `gitutil.Net` returns
+    stdout on a failure too, where a porcelain push reports its rejections.
+  - The in-run claim reads a claim file with no `claimed_at` as unreadable,
+    since the 24-hour clamp needs a starting point.
+  - `peers` names the ledger directory through `recordid` rather than
+    `capture`, which breaks the import cycle `site → claim → peers → capture →
+    site`.
+- **What the review of steps 1 to 3 and steps 4 to 7 settled** (2026-10-12):
+  - The size cap measures a reservation's tombstone too (about 48 bytes
+    longer), so a reservation the writer accepts can always be released.
+  - An unreadable tip too big to read whole takes its committer date from git.
+    One whose date cannot be read at all (an object that is not a commit, or a
+    committer line that does not parse) is held from when this copy first
+    fetched it, kept in the local tier at
+    `.abcd/.work.local/reservation/undated/<commit>` so a later fetch does not
+    restart the hold, and the refusal says the hold is counted from then.
+    `claim.View`, being a reader, reads that time and records none.
+  - The networked runner's ssh runs in batch mode where abcd composes the ssh
+    command, so a host-key question is a failure, not a ten-minute wait.
+  - The attribution gate read a commit with no parent as a silent exit 1 (its
+    last identity read met end of input under `set -e`); a reservation's
+    create is such a commit, so the gate was fixed and its case corpus holds a
+    parentless commit both ways.
+  - The brief chapter is `37-reserve.md`, because `36-dashboard.md` took 36.
+  - `abcd peers` in a checkout with no remote named `origin` lists no
+    reservations and exits 0, as before: there is nothing to fetch, which is
+    not a failed fetch. In a checkout without its local tier, the fetch is
+    made but not stamped, so the view's age is unknown. Its sentence now says
+    it writes the fetched reservations.
+  - The pre-push hook's create range is every commit reachable from the
+    pushed tip, as written; on a SHA-256 repository the hook's 40-zero
+    sentinel does not match, so a create there is gated (the range walk fails
+    and the receipt is asked for), the safe direction.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an
@@ -639,7 +717,7 @@ the cross-cutting ones.
 | Record | Step |
 |---|---|
 | `commands/reserve.md` (new), with the push as its documented meaning | 5 |
-| `.abcd/development/brief/04-surfaces/36-reserve.md` (new) and its row and help-group entry in `04-surfaces/README.md` | 5 |
+| `.abcd/development/brief/04-surfaces/37-reserve.md` (new; 36 is the dashboard's) and its row and help-group entry in `04-surfaces/README.md` | 5 |
 | Generated `docs/reference/cli/commands.md` | 5, 6, 13 |
 | `commands/peers.md` and `04-surfaces/08-abcd.md`'s peers section: the fetch and the reservation rows | 6 |
 | `.githooks/pre-push` header: the exemption and its reason | 4 |
@@ -688,7 +766,7 @@ the cross-cutting ones.
    - criteria: C27, C28, C52
    - packages: internal/surface/cli, commands/, .abcd/development/brief/04-surfaces, docs/reference
    - tests: the verb's flags, usage errors and exit codes (0, 2 and 3); `--json` for each act; no footprint refused; take-over naming the copy replaced; renders carrying no host or home path; the surface-parity, help-group, sentence and command-reference tests regenerated and passing
-   - records: `commands/reserve.md`; `04-surfaces/36-reserve.md` and its register row
+   - records: `commands/reserve.md`; `04-surfaces/37-reserve.md` and its register row
 6. Spec 1: `abcd peers` lists the reservations
    - criteria: C12, C16
    - packages: internal/surface/cli, internal/core/claim, commands/, .abcd/development/brief/04-surfaces
