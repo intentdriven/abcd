@@ -529,7 +529,9 @@ One waiter opens at a time: the one that opens writes a machine-wide hold,
 it is in force. Without a command the hold lasts two minutes, so run the gated
 work straight after it opens. Prefer the command form,
 `implement load --wait -- make preflight`: it runs the command once the gate
-opens, exits with the command's exit code, and holds the gate until the
+opens, exits with the command's exit code (128+N, as a shell reports it,
+when signal N killed the command, so a SIGTERM reads 143, never a failed
+gate's 1), and holds the gate until the
 command has started its own race run, the command exits, or 60 minutes pass. A
 hold whose waiter has died, or whose pid now belongs to another process, is
 reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to
