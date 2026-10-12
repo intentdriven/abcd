@@ -313,9 +313,31 @@ func runScript(t *testing.T, script, root string, extraEnv []string, extraPath s
 // relative HOME the attestation's trust floor has to refuse — needs that
 // directory to be a temp dir it controls, because the whole point of the shape
 // is that the child resolves the value against wherever it happens to run.
+//
+// gh is the verifying stub (gh_stub_test.go) unless extraPath supplies another:
+// the script asks gh about every download, and the machine's own gh must never
+// be the one that answers.
 func runScriptIn(t *testing.T, dir, script, root string, extraEnv []string, extraPath string) (string, int) {
 	t.Helper()
+	return runScriptInGh(t, dir, script, root, extraEnv, extraPath, newGhStub(t, ghVerified).dir)
+}
+
+// runScriptGh is runScript with gh chosen: ghDir holds the gh the script finds
+// first on PATH, and an empty ghDir runs it with no gh on PATH at all.
+func runScriptGh(t *testing.T, script, root string, extraEnv []string, extraPath, ghDir string) (string, int) {
+	t.Helper()
+	bootstrapRequires(t)
+	return runScriptInGh(t, "", script, root, extraEnv, extraPath, ghDir)
+}
+
+func runScriptInGh(t *testing.T, dir, script, root string, extraEnv []string, extraPath, ghDir string) (string, int) {
+	t.Helper()
 	pathValue := os.Getenv("PATH")
+	if ghDir != "" {
+		pathValue = ghDir + string(os.PathListSeparator) + pathValue
+	} else {
+		pathValue = pathWithout(t, pathValue, "gh")
+	}
 	if extraPath != "" {
 		pathValue = extraPath + string(os.PathListSeparator) + pathValue
 	}

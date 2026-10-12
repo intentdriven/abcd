@@ -176,6 +176,10 @@ data_dir="${CLAUDE_PLUGIN_DATA:-}"
 repo_url="https://github.com/intentdriven/abcd"
 releases_url="$repo_url/releases"
 api_url="https://api.github.com/repos/intentdriven/abcd"
+# The build-provenance policy `gh attestation verify` holds a download to
+# (section 7b): signed by this repository's release workflow, on github.com.
+# The same policy abcd update and ahoy install verify in process.
+gh_policy='--hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml'
 
 # Every fetch below is HTTPS-only, redirects included, unconditionally: there is
 # no toggle and no code path that clears it. Without the pin a redirect could
@@ -799,6 +803,7 @@ if [ -n "$cached_sha" ]; then
 fi
 
 meta_note=''
+prov_note=''
 cache_note=''
 path_note=''
 from_note=''
@@ -889,6 +894,49 @@ else
 	binary_sha256=$(printf '%s\n' "$line" | sed -n 's/^\([0-9a-fA-F]\{64\}\).*/\1/p' | tr 'ABCDEF' 'abcdef')
 	[ -n "$binary_sha256" ] || binary_sha256=unknown
 	expected_sha="$binary_sha256"
+
+	# 7b. Build provenance (iss-2610120617521209, the product thinker's ruling
+	#     of 2026-10-12). checksums.txt sits on the same release page as the
+	#     binary, so whoever can change that page can change both and the check
+	#     above still passes: it proves the download arrived intact, not who
+	#     built it. The release workflow also signs SLSA build provenance over
+	#     every asset, which a page edit cannot forge, and `gh attestation
+	#     verify` checks it. abcd does not require gh, so:
+	#       - gh present: verify, held to this repository's release workflow on
+	#         github.com, and REFUSE on a failed verification — nothing is
+	#         installed, cached or attested;
+	#       - gh absent, too old to have the attestation command, or installed
+	#         but not signed in (its exit 4, authentication required): it cannot
+	#         verify, which is not a failed verification, so the checksum check
+	#         stands alone and the success line says so in a WARNING naming why
+	#         and the command that checks the binary by hand.
+	#     gh's own transport overrides were scrubbed with curl's above; the
+	#     hostname is passed so no GH_HOST can point the check elsewhere.
+	gh_hand_check="gh attestation verify $binary_quoted $gh_policy"
+	gh_cannot=''
+	if ! command -v gh >/dev/null 2>&1; then
+		gh_cannot='gh is not installed'
+	elif ! gh attestation verify --help >/dev/null 2>&1; then
+		gh_cannot='the installed gh has no attestation command (gh 2.49 or later has it)'
+	else
+		gh_rc=0
+		gh_out=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh attestation verify "$tmp/$asset" $gh_policy 2>&1) || gh_rc=$?
+		case "$gh_rc" in
+		0)
+			prov_note=' Its build provenance was verified with gh attestation verify: the release workflow of intentdriven/abcd built it.'
+			;;
+		4)
+			gh_cannot='gh is installed but not signed in (run gh auth login, or set GH_TOKEN, and the next update verifies)'
+			;;
+		*)
+			gh_said=$(printf '%s\n' "$gh_out" | grep -v '^[[:space:]]*$' | tail -n 1)
+			refuse "the downloaded $asset matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd, so nothing was installed (gh said: $gh_said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one"
+			;;
+		esac
+	fi
+	if [ -n "$gh_cannot" ]; then
+		prov_note=" WARNING: this download was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record (the build provenance the release workflow signs), because $gh_cannot. To check it by hand: $gh_hand_check"
+	fi
 
 	# The release commit is read from the API when it answers, and left unknown
 	# otherwise: the meta file is the skew notice's only evidence, so it never
@@ -1227,5 +1275,5 @@ fi
 #
 # The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
 # the reason given there: this string is printed to be pasted into a shell.
-notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$update_lead" "$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$mark_note" "$degrade_note" "$binary_quoted")"
+notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$update_lead" "$release_tag" "$prov_note" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$mark_note" "$degrade_note" "$binary_quoted")"

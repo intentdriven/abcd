@@ -49,7 +49,15 @@ authenticating the cached hash against the release's published `checksums.txt`
 when online, or noting in its success line that it provisioned from an
 unauthenticated cache when offline. Only an empty, stale, or unavailable cache
 falls back to downloading the release binary and `checksums.txt` and verifying
-the binary's SHA-256 against the manifest. Whenever a run has established that
+the binary's SHA-256 against the manifest. The manifest sits on the same
+release page as the binary, so a download is also checked against its signed
+build provenance when the GitHub CLI, `gh`, is installed and signed in: the
+bootstrap runs `gh attestation verify` on it, held to this repository's release
+workflow, and installs nothing if that check fails. abcd does not require
+`gh`. Without it, or with a `gh` that is not signed in, the download installs
+on the checksum alone, and the success line carries a warning that says so,
+why, and the `gh attestation verify` command that checks the installed binary
+by hand. Whenever a run has established that
 manifest trust — an authenticated cache hit, or a fresh verified download — it
 also writes `~/.abcd.noindex/cache-attestation`, a small home-scoped record naming the
 data directory, the manifest-verified SHA-256, the release, and the trust it
@@ -430,6 +438,13 @@ release workflow, and it refuses the swap, naming what failed, when that cannot
 be verified, offline included. To do the same check by hand, run `gh
 attestation verify <binary> --repo intentdriven/abcd --signer-workflow
 intentdriven/abcd/.github/workflows/release.yml`.
+
+The script abcdev.app serves at `/install.sh` does what the one-liners do, and
+one thing more. When `gh` is installed and signed in it runs that same `gh
+attestation verify` on the download and installs nothing if it fails; without
+`gh`, or with one that is not signed in, it installs on the checksum alone and
+prints a warning naming the command to check the binary by hand. It does not
+write `~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 

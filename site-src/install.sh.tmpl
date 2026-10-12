@@ -10,6 +10,12 @@
 # forms to one another by test — same release URLs, same checksum step, same
 # install destination — so none of them can drift alone.
 #
+# One step goes beyond the one-liner, and internal/core/site runs the script to
+# prove it (installsh_run_test.go). When gh is present it verifies the
+# binary's build provenance with `gh attestation verify` and installs nothing
+# if that fails; without gh, or with a gh that is not signed in, the checksum
+# stands alone and a warning says so (iss-2610120617521209).
+#
 # Everything between `set -eu` and the last line is a definition. Only the final
 # `main "$@"` runs anything, so a download truncated in transit executes nothing.
 
@@ -29,6 +35,12 @@ set -eu
 unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME
 unset CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
 
+# gh_policy is who must have built the binary for `gh attestation verify` to
+# pass: this repository's release workflow, on github.com — the policy
+# hooks/bootstrap.sh, `abcd update` and `abcd ahoy install` verify too. The
+# hostname is named so no GH_HOST can point the check at another server.
+gh_policy='--hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml'
+
 # usage is the --help text.
 usage() {
 	cat <<'EOT'
@@ -42,6 +54,11 @@ Install abcd, the single binary behind abcdev.app.
 The script downloads the binary for this platform along with the release
 checksums.txt, verifies the binary's SHA-256 against that manifest, and copies
 it into the install directory. It never asks for administrator rights.
+
+When gh (the GitHub CLI) is installed and signed in, the script also checks
+the binary's build provenance with `gh attestation verify`, and installs
+nothing if that check fails. Without gh it installs on the checksum alone and
+prints a warning with the command that checks the binary by hand.
 EOT
 }
 
@@ -105,6 +122,43 @@ verify() {
 	else
 		die "neither sha256sum nor shasum is available, so the download cannot be verified. Nothing is installed."
 	fi
+}
+
+# verify_provenance checks the build provenance of the downloaded binary $1
+# with `gh attestation verify` when it can. checksums.txt comes from the same
+# release page as the binary, so whoever can change that page can change both
+# and the SHA-256 check still passes: it proves the download arrived intact,
+# not who built it. The provenance the release workflow signs is what a page
+# edit cannot forge. A failed verification stops the install; a gh that cannot
+# verify at all — absent, too old for the attestation command, or not signed in
+# (its exit 4) — is not a failure, so the checksum stands alone and the warning
+# says why and how to check the installed binary $2/abcd by hand.
+verify_provenance() {
+	hand_check="gh attestation verify '$2/abcd' $gh_policy"
+	cannot=''
+	if ! command -v gh >/dev/null 2>&1; then
+		cannot='gh is not installed'
+	elif ! gh attestation verify --help >/dev/null 2>&1; then
+		cannot='the installed gh has no attestation command (gh 2.49 or later has it)'
+	else
+		rc=0
+		# shellcheck disable=SC2086 -- gh_policy is split into its flags on purpose.
+		said=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh attestation verify "$1" $gh_policy 2>&1) || rc=$?
+		case "$rc" in
+		0)
+			printf 'abcd install: verified the build provenance of %s with gh attestation verify: the release workflow of intentdriven/abcd built it.\n' "$1"
+			return 0
+			;;
+		4)
+			cannot='gh is installed but not signed in (run gh auth login, or set GH_TOKEN)'
+			;;
+		*)
+			said=$(printf '%s\n' "$said" | grep -v '^[[:space:]]*$' | tail -n 1) || said=''
+			die "$1 matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd (gh said: $said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one. Nothing is installed."
+			;;
+		esac
+	fi
+	printf 'abcd install: WARNING: %s was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record (the build provenance the release workflow signs), because %s. To check it by hand: %s\n' "$1" "$cannot" "$hand_check" >&2
 }
 
 # install_binary copies the verified binary $1 into the directory $2. abcd never
@@ -172,6 +226,7 @@ main() {
 
 	download "$binary"
 	verify "$binary"
+	verify_provenance "$binary" "$bin_dir"
 	install_binary "$binary" "$bin_dir"
 	report "$bin_dir"
 }
