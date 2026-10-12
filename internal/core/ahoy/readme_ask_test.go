@@ -1,12 +1,14 @@
 package ahoy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/question"
 )
@@ -451,4 +453,58 @@ func materialText(q question.Question) string {
 		parts = append(parts, b.Items...)
 	}
 	return strings.Join(parts, "\n")
+}
+
+// TestReadmeViewIsLinearInTheHeadings: the table of contents lists one line a
+// heading, and a README of thousands of headings is read whole (up to the
+// 1 MiB cap), so cutting its example to the rows limit must not try every
+// length from the longest down: no more lines than the limit has rows can fit,
+// and the view of a README of 6000 headings is built in well under the
+// seconds a cut that grows with the square of the lines takes.
+func TestReadmeViewIsLinearInTheHeadings(t *testing.T) {
+	var readme strings.Builder
+	readme.WriteString("# Project\n")
+	for i := range 6000 {
+		fmt.Fprintf(&readme, "\n## Heading number %d\n", i)
+	}
+	repo := readmeRepo(t, "", map[string]string{"README.md": readme.String(), ".abcd/config.json": `{"repo": {"visibility": "private"}}`})
+	start := time.Now()
+	v, ok := readmeView(repo)
+	took := time.Since(start)
+	if !ok {
+		t.Fatal("no view while the pair is unanswered")
+	}
+	if took > 3*time.Second {
+		t.Errorf("building the view of 6000 headings took %s, want well under 3s", took)
+	}
+	for _, pv := range v.Parts {
+		if pv.Name == "contents" && len(pv.Example) != 6000 {
+			t.Errorf("the view's contents example holds %d lines, want all 6000", len(pv.Example))
+		}
+	}
+	t.Logf("built in %s", took)
+}
+
+// TestFitLinesChecksABoundedNumberOfCandidates: however many lines an example
+// has, the cut asks whether at most the limit's rows plus one candidates fit,
+// so its cost does not grow with the lines.
+func TestFitLinesChecksABoundedNumberOfCandidates(t *testing.T) {
+	limit := question.Default.Rows + 1
+	for _, n := range []int{3, 30, 3000, 30000} {
+		lines := make([]string, n)
+		for i := range lines {
+			lines[i] = fmt.Sprintf("- [Heading %d](#heading-%d)", i, i)
+		}
+		calls := 0
+		got := fitLines(lines, func(ex []string) bool {
+			calls++
+			return len(ex) <= 5
+		})
+		if calls > limit {
+			t.Errorf("%d lines: fits was called %d times, want at most %d", n, calls, limit)
+		}
+		if want := min(n, 5); len(got) != want {
+			t.Errorf("%d lines: cut to %d lines, want %d", n, len(got), want)
+		}
+	}
 }

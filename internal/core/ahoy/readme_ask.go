@@ -153,6 +153,9 @@ type ReadmeView struct {
 	// Asks are Q1 alone, then the offered parts in calls of at most four
 	// tabs, each as the shared question type.
 	Asks []question.Ask `json:"asks"`
+	// helps is each offered part's help, its example cut to the rows limit
+	// once, which the terminal asks with.
+	helps map[string]PromptHelp
 }
 
 // ReadmePartView is one part as the view carries it. Every string is
@@ -187,7 +190,7 @@ func readmeView(cwd string) (ReadmeView, bool) {
 // cwd, whose declared visibility is vis, and builds the questions.
 func buildReadmeView(cwd, vis string) ReadmeView {
 	s := readmeSettings{Parts: readmePartOrder, Visibility: vis}
-	v := ReadmeView{Public: s.public(), Parts: []ReadmePartView{}, Asks: []question.Ask{}}
+	v := ReadmeView{Public: s.public(), Parts: []ReadmePartView{}, Asks: []question.Ask{}, helps: map[string]PromptHelp{}}
 	if !v.Public {
 		v.Declaration = readmeNotPublic
 	}
@@ -218,6 +221,7 @@ func buildReadmeView(cwd, vis string) ReadmeView {
 	for _, pv := range v.offered() {
 		n++
 		h := pv.help()
+		v.helps[pv.Name] = h
 		call = append(call, valueQuestion(n, h, choiceValues(h.Choices), pv.Default))
 		if len(call) == question.Default.QuestionsPerCall[1] {
 			v.Asks = append(v.Asks, question.Ask{Questions: call})
@@ -274,7 +278,7 @@ func (pv ReadmePartView) help() PromptHelp {
 // the rows limit (question.Default.Rows at its columns) with a last line
 // saying how many more there are. The lines shown are exact; none is cut.
 func fitExample(h PromptHelp, lines []string, def string) []string {
-	fits := func(ex []string) bool {
+	return fitLines(lines, func(ex []string) bool {
 		h.Example = ex
 		q := valueQuestion(0, h, choiceValues(h.Choices), def)
 		q.Chip = setupChip(1)
@@ -284,11 +288,19 @@ func fitExample(h PromptHelp, lines []string, def string) []string {
 			}
 		}
 		return true
-	}
-	if len(lines) == 0 || fits(lines) {
+	})
+}
+
+// fitLines is fitExample's cut, with fits judging a candidate example. Every
+// line takes at least one row, so no example of more lines than the limit has
+// rows can fit: the cut starts there, not at the last line, and fits is
+// called at most question.Default.Rows+1 times however many lines there are
+// (a README of thousands of headings, read whole, is one contents line each).
+func fitLines(lines []string, fits func([]string) bool) []string {
+	if len(lines) == 0 || len(lines) <= question.Default.Rows && fits(lines) {
 		return lines
 	}
-	for k := len(lines) - 1; k >= 1; k-- {
+	for k := min(len(lines)-1, question.Default.Rows); k >= 1; k-- {
 		ex := append(append([]string(nil), lines[:k]...), moreLines(len(lines)-k, "and %d more"))
 		if fits(ex) {
 			return ex
@@ -334,7 +346,7 @@ func (a *applyCtx) askReadme(vis string) ([]string, bool) {
 	}
 	parts := []string{}
 	for _, pv := range v.offered() {
-		h := pv.help()
+		h := v.helps[pv.Name]
 		switch strings.ToLower(strings.TrimSpace(promptHelped(a.prompter, h, choiceValues(h.Choices), pv.Default))) {
 		case "on":
 			parts = append(parts, pv.Name)
