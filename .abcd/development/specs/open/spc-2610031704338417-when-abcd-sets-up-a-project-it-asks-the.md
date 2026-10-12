@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2610031348087517](../../intents/shipped/itd-2610031348087517-when-abcd-sets-up-a-project-it-asks-the.md)
+[itd-2610031348087517](../../intents/planned/itd-2610031348087517-when-abcd-sets-up-a-project-it-asks-the.md)
 (setup asks whether abcd keeps parts of the README current, and which). The
 file name and slug are the ones minted on filing; the intent's title is the one
 that describes the work.
@@ -76,7 +76,7 @@ Builds on and reuses:
   (`TestEverySetupQuestionPassesTheLimits`), which live on the asking branch of
   spc-2610030944505997 and are not
   yet at this spec's base; step 4 waits on them.
-- [spc-2610031156364295](spc-2610031156364295-evaluate-whether-claude-md-can-be.md)
+- [spc-2610031156364295](../closed/spc-2610031156364295-evaluate-whether-claude-md-can-be.md)
   step 2, which narrows the conventions-file question to AGENTS.md or nothing;
   the README pair is asked after it (decision 7).
 

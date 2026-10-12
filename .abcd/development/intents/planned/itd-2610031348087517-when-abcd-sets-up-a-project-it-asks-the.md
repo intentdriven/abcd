@@ -116,9 +116,7 @@ Overtaken:
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-5b7cb4b81566 -->
-Fidelity review OWED (receipt rcp-5b7cb4b81566).
-<!-- abcd-review-end receipt=rcp-5b7cb4b81566 -->
+_Empty. Populated by intent-auditor when intent moves to shipped/._
 
 ## Grounds
 
