@@ -1056,7 +1056,14 @@ func scanStatusDir(issuesRoot string, sub State) ([]Issue, []SkipRecord, error) 
 			continue
 		}
 		if refusal != nil {
-			skipped = append(skipped, SkipRecord{Path: path, Layer: refusal.Layer, Error: refusal.Err.Error()})
+			// The path is a file name the ledger holds, which only claims to be a
+			// record, and the reader's refusal quotes it and the record's own
+			// values; both reach every capture surface's --json skipped list,
+			// so they are masked where the skip is composed
+			// (iss-2610121542258778). The id a skip claims is read from the
+			// masked name exactly as from the raw one: a masked rune is never
+			// a digit.
+			skipped = append(skipped, SkipRecord{Path: termsafe.Sanitize(path), Layer: refusal.Layer, Error: termsafe.Sanitize(refusal.Err.Error())})
 			continue
 		}
 		issues = append(issues, issueFromFrontmatter(fm, sub, path, body))

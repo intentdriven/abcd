@@ -104,7 +104,9 @@ type DrainVerdict struct {
 // both. `capture defer` writes a deferral only onto a major or
 // critical record, but a hand-written one on a lighter record is read alike.
 func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdict {
-	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Title: issueTitleLine(iss.Body, iss.Slug), Severity: iss.Severity, Category: iss.Category}
+	// The title is the record's own first line, so it is masked: it reaches
+	// `drain --json` (iss-2610121542258778).
+	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Title: termsafe.Sanitize(issueTitleLine(iss.Body, iss.Slug)), Severity: iss.Severity, Category: iss.Category}
 	decide := func(o DrainOutcome, rule DrainRule, reason string) DrainVerdict {
 		v.Outcome, v.Rule, v.Reason = o, rule, reason
 		return v
