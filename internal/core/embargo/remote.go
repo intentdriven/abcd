@@ -92,3 +92,30 @@ func listAdvisories(cwd, repo, state string) ([]remoteAdvisory, error) {
 		all = append(all, items...)
 	}
 }
+
+// getAdvisory reads one advisory. The answer is GitHub's, read leniently for
+// its shape and held to the id asked for.
+func getAdvisory(cwd, repo, ghsa string) (remoteAdvisory, error) {
+	out, err := github.API(cwd, nil, advisoriesPath(repo)+"/"+ghsa)
+	if err != nil {
+		return remoteAdvisory{}, remoteError(err, false)
+	}
+	var a remoteAdvisory
+	if err := json.Unmarshal(out, &a); err != nil {
+		return remoteAdvisory{}, refuse("GitHub's answer for the advisory is not the JSON this abcd reads, or was cut at its size limit",
+			"run it again; if it persists, report it")
+	}
+	if !strings.EqualFold(a.GHSAID, ghsa) {
+		return remoteAdvisory{}, refuse("GitHub answered for another advisory than the one asked for", "run it again; if it persists, report it")
+	}
+	return a, nil
+}
+
+// patchAdvisory sends one update of an advisory, its body on stdin as JSON
+// (never as -f fields). It is the only write this package's close makes.
+func patchAdvisory(cwd, repo, ghsa string, body []byte) error {
+	if _, err := github.API(cwd, body, "-X", "PATCH", advisoriesPath(repo)+"/"+ghsa, "--input", "-"); err != nil {
+		return remoteError(err, true)
+	}
+	return nil
+}
