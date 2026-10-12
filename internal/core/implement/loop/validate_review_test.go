@@ -1,16 +1,19 @@
 package loop
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
@@ -303,5 +306,62 @@ func TestAnInterruptedStepFallsBackOnNothing(t *testing.T) {
 	st, _ := ReadState(repo.Root(), id)
 	if len(st.Fallbacks) != 0 || st.Lanes[0].awaiting() == nil {
 		t.Fatalf("no fallback is recorded and the review still awaits: %+v %+v", st.Fallbacks, st.Lanes[0].Awaits)
+	}
+}
+
+// TestAnUnconfiguredRouteLeavesTheReviewAndTheStateByteIdentical is criterion
+// 3: with oracle.review unset in both files, or set to host, the route reads
+// as none, and a review the step hands out is the host's exactly as before:
+// the step's result and the state file are byte-identical to the host-driven
+// step's, and nothing is sent anywhere.
+func TestAnUnconfiguredRouteLeavesTheReviewAndTheStateByteIdentical(t *testing.T) {
+	at := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	o := Options{Now: func() time.Time { return at }}
+	for name, config := range map[string]string{"unset": "", "host": `{"oracle":{"review":"host"}}`} {
+		t.Run(name, func(t *testing.T) {
+			repo := briefRepo(t, agentsMarked)
+			if config != "" {
+				repo.Write(".abcd/config.json", config)
+				repo.Commit("the review route")
+			}
+			rr, err := LoadReviewRoute(layered.Roots{Repo: repo.Root(), Home: t.TempDir()}, nil)
+			if err != nil || rr != nil {
+				t.Fatalf("an unconfigured route reads as none: %+v %v", rr, err)
+			}
+			start, err := Start(repo.Root(), "itd-10", Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, stages := start.RunID, DefaultStages()
+			implemented(t, repo, id, stages, "one.txt")
+			path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
+			before := stateBytes(t, repo.Root(), id)
+
+			plain, err := advance(repo.Root(), id, stages, o)
+			if err != nil || plain.Awaiting == nil || plain.Awaiting.Role != RoleRuthless {
+				t.Fatalf("the host is handed the review: %+v %v", plain, err)
+			}
+			plainState := stateBytes(t, repo.Root(), id)
+			if err := os.WriteFile(path, before, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			res, err := advance(repo.Root(), id, stages, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			driven, err := DriveReview(context.Background(), repo.Root(), id, res, stages, o, rr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(plain, driven) {
+				t.Fatalf("an unconfigured route changed the step's result:\nplain  %+v\ndriven %+v", plain, driven)
+			}
+			if !bytes.Equal(plainState, stateBytes(t, repo.Root(), id)) {
+				t.Fatalf("an unconfigured route changed the state:\nplain  %s\ndriven %s", plainState, stateBytes(t, repo.Root(), id))
+			}
+			if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(plain.Awaiting.Receipt))), ReviewRequestFileName)); err == nil {
+				t.Fatal("an unconfigured route renders no request")
+			}
+		})
 	}
 }
