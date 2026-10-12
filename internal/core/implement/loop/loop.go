@@ -7,6 +7,7 @@ package loop
 // writes it last; a stage that fails leaves the state exactly as it was.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -53,8 +54,9 @@ type Options struct {
 	// role of the run is routed to for its remaining quota; nil leaves every
 	// role on the host, which reports none.
 	Runners *runner.Config
-	// Quota asks the named runner for its remaining quota; nil asks Runners.
-	Quota func(name string) (runner.Quota, bool, error)
+	// Quota asks the named runner for its remaining quota, under ctx's
+	// deadline; nil asks Runners.
+	Quota func(ctx context.Context, name string) (runner.Quota, bool, error)
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
