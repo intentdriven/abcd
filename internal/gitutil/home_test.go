@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -88,5 +90,92 @@ func TestHomeInsideWorkingTree(t *testing.T) {
 	}
 	if got := gitutil.HomeInsideWorkingTree(""); got != "" {
 		t.Errorf("an unresolved home was judged inside %q", got)
+	}
+}
+
+// writePasswd writes a passwd-format account database holding lines.
+func writePasswd(t *testing.T, lines ...string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "passwd")
+	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestAccountHomeNeverComesFromHOME is the review finding against the first
+// exemption: os/user's LookupId answers this process's own uid through
+// Current, and the pure-Go Current (no cgo, off darwin: the shipped
+// cross-compiled linux binaries) returns $HOME as the home when the uid has no
+// /etc/passwd entry, so a HOME planted in a checkout vouched for itself. The
+// account home is read from the passwd file alone; $HOME pointing at the
+// checkout changes nothing, and only an entry for this uid naming the
+// checkout exempts it.
+func TestAccountHomeNeverComesFromHOME(t *testing.T) {
+	f := newHomeFixture(t)
+	uid := strconv.Itoa(os.Getuid())
+	other := strconv.Itoa(os.Getuid() + 1)
+	elsewhere := t.TempDir()
+	cases := []struct {
+		name    string
+		passwd  []string // nil: no passwd file at all
+		refused bool
+	}{
+		{"no entry for this uid", []string{"root:*:0:0:root:/root:/bin/sh"}, true},
+		{"no passwd file", nil, true},
+		{"this uid's entry names another home", []string{"me:*:" + uid + ":20::" + elsewhere + ":/bin/sh"}, true},
+		{"another uid's entry names the checkout", []string{"them:*:" + other + ":20::" + f.repo + ":/bin/sh"}, true},
+		{"this uid's entry names a relative home", []string{"me:*:" + uid + ":20::repo:/bin/sh"}, true},
+		{"this uid's entry names no home", []string{"me:*:" + uid + ":20:::/bin/sh"}, true},
+		{"a short line for this uid", []string{"me:*:" + uid + ":20:" + f.repo}, true},
+		{"a commented entry naming the checkout", []string{"#me:*:" + uid + ":20::" + f.repo + ":/bin/sh"}, true},
+		{"this uid's entry names the checkout", []string{"# local accounts", "", "me:*:" + uid + ":20:Me:" + f.repo + ":/bin/sh"}, false},
+		{"the first of two entries for this uid wins", []string{"me:*:" + uid + ":20::" + elsewhere + ":/bin/sh", "me2:*:" + uid + ":20::" + f.repo + ":/bin/sh"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", f.repo)
+			passwd := filepath.Join(t.TempDir(), "absent")
+			if c.passwd != nil {
+				passwd = writePasswd(t, c.passwd...)
+			}
+			gitutil.SetAccountPasswdForTest(t, passwd)
+			got := gitutil.HomeInsideWorkingTree(f.repo)
+			if c.refused && got != f.repo {
+				t.Errorf("HomeInsideWorkingTree(%s) with HOME there = %q, want the working tree %q", f.repo, got, f.repo)
+			}
+			if !c.refused && got != "" {
+				t.Errorf("HomeInsideWorkingTree(%s) = %q, want the exemption the passwd entry grants", f.repo, got)
+			}
+		})
+	}
+}
+
+// TestPlantedHOMEIsRefusedByTheRealLookup drives the production lookup, not a
+// substitute: with HOME pointed into a checkout the account database does not
+// name, the checkout is refused. Built with -tags osusergo it also covers
+// darwin's pure-Go os/user, the variant whose Current falls back to $HOME.
+// os/user caches Current for the process, so against a lookup that went
+// through it this test is only decisive when it is the first to call it.
+func TestPlantedHOMEIsRefusedByTheRealLookup(t *testing.T) {
+	f := newHomeFixture(t)
+	t.Setenv("HOME", f.repo)
+	if got := gitutil.HomeInsideWorkingTree(f.repo); got != f.repo {
+		t.Errorf("HomeInsideWorkingTree(%s) with HOME there = %q, want the working tree %q", f.repo, got, f.repo)
+	}
+	if got := gitutil.HomeInsideWorkingTree(f.inside); got != f.repo {
+		t.Errorf("HomeInsideWorkingTree(%s) with HOME at the checkout = %q, want the working tree %q", f.inside, got, f.repo)
+	}
+}
+
+// TestAMissingHomeInsideACheckoutIsRefused: a home whose directory does not
+// exist is judged on its spelling, and the exemption cannot apply because
+// there is nothing to compare by identity, so it is refused.
+func TestAMissingHomeInsideACheckoutIsRefused(t *testing.T) {
+	f := newHomeFixture(t)
+	missing := filepath.Join(f.repo, "no-such-home")
+	accountHomeIs(t, missing, nil)
+	if got := gitutil.HomeInsideWorkingTree(missing); got != f.repo {
+		t.Errorf("HomeInsideWorkingTree(%s) = %q, want the working tree %q", missing, got, f.repo)
 	}
 }
