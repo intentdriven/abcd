@@ -542,3 +542,48 @@ func resolveOrClean(p string) string {
 	}
 	return filepath.Clean(p)
 }
+
+// NarrowToOwner takes the group and other bits off the directory at p when this
+// uid owns it, and reports whether it did. It is how abcd keeps its home
+// readable only by the account it belongs to: a home made at the umask (0755)
+// by an earlier abcd or a hand-run mkdir is narrowed to 0700 the next time abcd
+// runs, which closes every folder below it without walking them.
+//
+// It only ever narrows, and only the one directory named: the owner's bits are
+// kept as they are, nothing below p is touched, and nothing is created. A path
+// that is absent, not a directory, or a symlink is left alone and is not an
+// error, and a symlink is never followed (the path is opened O_NOFOLLOW, and
+// the open must reach the very directory the Lstat saw). A directory owned by
+// another account, or whose owner cannot be read, is left as it stands; the
+// readers that refuse such a directory refuse it as before. The mode is judged
+// and changed on the opened descriptor, so the directory changed is the one
+// judged.
+func NarrowToOwner(p string) (bool, error) {
+	fi, err := os.Lstat(p)
+	if err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() || fi.Mode().Perm()&0o077 == 0 {
+		return false, nil
+	}
+	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_DIRECTORY, 0)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !st.IsDir() || !os.SameFile(fi, st) {
+		return false, nil
+	}
+	if uid, ok := homeScopeDirOwner(st); !ok || uid != uint32(os.Getuid()) {
+		return false, nil
+	}
+	perm := st.Mode().Perm()
+	if perm&0o077 == 0 {
+		return false, nil
+	}
+	if err := f.Chmod(perm &^ 0o077); err != nil {
+		return false, err
+	}
+	return true, nil
+}
