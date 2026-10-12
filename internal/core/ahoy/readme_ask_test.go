@@ -508,3 +508,39 @@ func TestFitLinesChecksABoundedNumberOfCandidates(t *testing.T) {
 		}
 	}
 }
+
+// TestReadmeReasonIsFittedToTheRows: a part that writes nothing says why in
+// its question as fully as the rows limit allows. Eight long-named workflows
+// and no ci.yml make the build badge's whole reason too tall, so its tab says
+// how many workflows there are, and the view's reason still names them; a
+// reason with no short form that does not fit says it is too long to show.
+func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
+	files := map[string]string{"README.md": "# Project\n", ".abcd/config.json": `{"repo": {"visibility": "public"}}`}
+	for i := range 8 {
+		files[fmt.Sprintf(".github/workflows/a-workflow-with-a-long-descriptive-name-number-%d.yml", i)] = "on: push\n"
+	}
+	repo := readmeRepo(t, "https://github.com/owner/repo.git", files)
+	v, ok := readmeView(repo)
+	if !ok {
+		t.Fatal("no view while the pair is unanswered")
+	}
+	var bb ReadmePartView
+	for _, pv := range v.Parts {
+		if pv.Name == "build-badge" {
+			bb = pv
+		}
+	}
+	if !strings.Contains(bb.Reason, "number-7.yml") {
+		t.Errorf("the view's reason %q does not name the workflows", bb.Reason)
+	}
+	if got := bb.help().ExampleNone; !strings.HasPrefix(got, "8 workflows in .github/workflows/") {
+		t.Errorf("the build badge's tab says %q, want the short form counting the workflows", got)
+	}
+	long := strings.Repeat("a reason that goes on ", 200)
+	if got := fitReason(bb.help(), "on", long, ""); got != readmeReasonTooLong {
+		t.Errorf("a reason too long to fit is said as %q, want %q", got, readmeReasonTooLong)
+	}
+	if got := fitReason(bb.help(), "on", ""); got != "" {
+		t.Errorf("no reason is said as %q", got)
+	}
+}

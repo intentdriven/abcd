@@ -50,10 +50,13 @@ func (s readmeSettings) public() bool { return s.Visibility == "public" }
 // readmeDerived is one chosen part's derivation: a body that passed every
 // check, or the reason it is omitted (each reason leads with the part's name).
 // Notes carry what a check noted without refusing (a docs-lint warning).
+// Short, where the reason lists what it found, says it in a few words (how
+// many workflows, not their names), for a question with no rows to spare.
 type readmeDerived struct {
 	Name   string
 	Body   string
 	Reason string
+	Short  string
 	Notes  []string
 }
 
@@ -88,11 +91,11 @@ func deriveReadmeParts(root string, s readmeSettings) []readmeDerived {
 		if !chosen[name] {
 			continue
 		}
-		src.notes = nil
+		src.notes, src.short = nil, ""
 		body, addrs, reason := src.derive(name)
 		d := readmeDerived{Name: name}
 		if reason != "" {
-			d.Reason = name + " omitted: " + reason
+			d.Reason, d.Short = name+" omitted: "+reason, src.short
 		} else {
 			var checked []string
 			d.Body, d.Reason, checked = checks.run(name, body, addrs)
@@ -118,6 +121,9 @@ type readmeSource struct {
 	// notes is what deriving the current part noted without omitting it (a
 	// contents entry listed without a link); deriveReadmeParts takes them.
 	notes []string
+	// short is the current part's reason in a few words, where its reason
+	// lists what it found; deriveReadmeParts takes it.
+	short string
 }
 
 func (r *readmeSource) derive(name string) (body string, addrs []readmeAddr, reason string) {
@@ -311,6 +317,7 @@ func (r *readmeSource) workflow() (string, string) {
 	if len(list) > shown {
 		list, more = list[:shown], fmt.Sprintf(" and %d more", len(found)-shown)
 	}
+	r.short = fmt.Sprintf("%d workflows in .github/workflows/ and none is ci.yml or ci.yaml", len(found))
 	return "", fmt.Sprintf("several workflows in .github/workflows/ and none is ci.yml or ci.yaml: %s%s", strings.Join(list, ", "), more)
 }
 

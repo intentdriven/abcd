@@ -136,8 +136,10 @@ func askLabel(a question.Ask, tab int) string {
 // readmeLimitAsks is every call the README pair makes, in the projects whose
 // words are tallest: a public project with long names, every link, a long
 // table of contents and a build workflow, so every part has an example to
-// show; a project not declared public, whose Q1 says so; and a public project
-// where no part can be written, so every tab says why instead.
+// show; a project not declared public, whose Q1 says so; a public project
+// where no part can be written, so every tab says why instead; and a public
+// project whose eight long-named workflows hold no ci.yml, so the build badge's
+// reason would name every one of them.
 func readmeLimitAsks(t *testing.T) []question.Ask {
 	t.Helper()
 	long := "a-rather-long-owner-name-of-39-chars-xx"
@@ -158,8 +160,16 @@ func readmeLimitAsks(t *testing.T) []question.Ask {
 		".github/workflows/release-candidates.yml": "x\n", ".github/workflows/nightly-checks.yml": "x\n",
 		".abcd/config.json": `{"repo": {"visibility": "public"}}`,
 	})
+	workflows := map[string]string{"README.md": "# Project\n", ".abcd/config.json": `{"repo": {"visibility": "public"}}`}
+	for _, n := range []string{"build-and-test-on-every-supported-platform", "codeql-analysis-of-the-go-sources",
+		"dependency-review-of-every-pull-request", "release-candidates-for-the-next-version",
+		"nightly-checks-against-the-latest-toolchain", "documentation-site-render-and-publish",
+		"scheduled-secret-scanning-of-the-history", "merge-queue-sweep-of-dropped-entries"} {
+		workflows[".github/workflows/"+n+".yml"] = "on: push\n"
+	}
+	many := readmeRepo(t, "https://github.com/owner/repo.git", workflows)
 	var out []question.Ask
-	for _, repo := range []string{full, private, empty} {
+	for _, repo := range []string{full, private, empty, many} {
 		v, ok := readmeView(repo)
 		if !ok {
 			t.Fatalf("no README view in %s", repo)

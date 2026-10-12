@@ -169,6 +169,9 @@ type ReadmePartView struct {
 	// Reason, where it would write none, why.
 	Example []string `json:"example,omitempty"`
 	Reason  string   `json:"reason,omitempty"`
+	// short is Reason in a few words, where the derivation gives one; the
+	// question says it when the whole reason does not fit.
+	short string
 }
 
 // readmeView is the README view of the project at cwd, and false once the
@@ -210,6 +213,7 @@ func buildReadmeView(cwd, vis string) ReadmeView {
 			}
 		} else {
 			pv.Reason = termsafe.Sanitize(strings.TrimPrefix(d.Reason, d.Name+" omitted: "))
+			pv.short = termsafe.Sanitize(d.Short)
 		}
 		v.Parts = append(v.Parts, pv)
 	}
@@ -265,13 +269,47 @@ func (v ReadmeView) q1Help() PromptHelp {
 }
 
 // help is the part's help in this project: its current setting, and its
-// example cut to the lines that fit the rows a question may take.
+// example cut to the lines that fit the rows a question may take, or the
+// reason it writes none, said as fully as fits.
 func (pv ReadmePartView) help() PromptHelp {
 	h, _ := readmeHelp(readmePartKeyPrefix + pv.Name)
 	h.Now = pv.Now
-	h.ExampleNone = pv.Reason
+	h.ExampleNone = fitReason(h, pv.Default, pv.Reason, pv.short)
 	h.Example = fitExample(h, pv.Example, pv.Default)
 	return h
+}
+
+// readmeReasonTooLong is said where neither a part's reason nor its short form
+// fits the rows a question may take; the view's reason keeps it whole.
+const readmeReasonTooLong = "its reason is too long to show here"
+
+// fitReason is the first of reasons (the whole reason, then its short form)
+// that the question h asks still fits the rows limit with, else
+// readmeReasonTooLong; "" where there is no reason.
+func fitReason(h PromptHelp, def string, reasons ...string) string {
+	if len(reasons) == 0 || reasons[0] == "" {
+		return ""
+	}
+	for _, r := range reasons {
+		h.ExampleNone = r
+		if r != "" && fitsRows(h, def) {
+			return r
+		}
+	}
+	return readmeReasonTooLong
+}
+
+// fitsRows reports whether the question h asks, with def its default, fits
+// the rows limit (question.Default.Rows at its columns).
+func fitsRows(h PromptHelp, def string) bool {
+	q := valueQuestion(0, h, choiceValues(h.Choices), def)
+	q.Chip = setupChip(1)
+	for _, f := range question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{}) {
+		if f.Rule == question.RuleRows {
+			return false
+		}
+	}
+	return true
 }
 
 // fitExample is lines, or as many of them as fit the question h asks within
@@ -280,14 +318,7 @@ func (pv ReadmePartView) help() PromptHelp {
 func fitExample(h PromptHelp, lines []string, def string) []string {
 	return fitLines(lines, func(ex []string) bool {
 		h.Example = ex
-		q := valueQuestion(0, h, choiceValues(h.Choices), def)
-		q.Chip = setupChip(1)
-		for _, f := range question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{}) {
-			if f.Rule == question.RuleRows {
-				return false
-			}
-		}
-		return true
+		return fitsRows(h, def)
 	})
 }
 
