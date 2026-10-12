@@ -313,6 +313,20 @@ var remainingHelp = SummaryItem{
 	Action: "Run abcd ahoy install again and answer y to each question; abcd ahoy doctor lists the steps one by one.",
 }
 
+// unverifiedCopyHelp explains an owned PATH copy whose build provenance did not
+// verify, with the hand check for that file.
+func unverifiedCopyHelp(check string) SummaryItem {
+	if check == "" {
+		check = ghAttestationVerifyCommand("<the abcd on your PATH>", "")
+	}
+	return SummaryItem{
+		What:   "The abcd on your PATH could not be verified as a release build of abcd, so it was not adopted; it was left as it is.",
+		Why:    "Its recorded checksum shows only that it is the file that was installed; the build record the release workflow signed is what shows who built it.",
+		Action: "Check it by hand with `" + check + "`, or run abcd ahoy install again once GitHub's attestations API is reachable; if it fails, reinstall with the install one-liner in the README.",
+		Refs:   []string{UnverifiedCopyGapID},
+	}
+}
+
 // statusHeadline is the one sentence that opens the summary for each status.
 var statusHeadline = map[string]string{
 	"already_up_to_date": "abcd was already set up in this repository, so nothing needed changing.",
@@ -376,9 +390,17 @@ func (r *InstallResult) explain() {
 		it.Refs = []string{c}
 		r.Summary = append(r.Summary, it)
 	}
-	if len(r.Remaining) > 0 {
+	var rest []string
+	for _, id := range r.Remaining {
+		if id == UnverifiedCopyGapID {
+			r.Summary = append(r.Summary, unverifiedCopyHelp(r.unverifiedCheck))
+			continue
+		}
+		rest = append(rest, id)
+	}
+	if len(rest) > 0 {
 		it := remainingHelp
-		it.Refs = append([]string(nil), r.Remaining...)
+		it.Refs = rest
 		r.Summary = append(r.Summary, it)
 	}
 	for _, id := range r.OptionalSkipped {

@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/apply.go"
 remedy: "On the cold-cache adoption path, hash the owned copy and run the same tag-bound provenance check before reporting it adopted (or report it as adopted unverified, naming the hand check), so the claim holds for every entry install accepts."
-resolution: "On a cold cache ahoy install adopts an owned PATH copy only after verifying its build provenance with the same in-process check a promotion runs, on the copy's own bytes, bound to the commit of the release the copy's Go build metadata names (read, never run); a copy that fails, names no release, or meets no configured check is not adopted, is left as it is, and the run's note says what failed and how to check it by hand"
+resolution: "On a cold cache ahoy install adopts an owned PATH copy only after verifying its build provenance with the same in-process check a promotion runs, on the copy's own bytes, bound to the commit of the release the copy's Go build metadata names (read, never run); a copy that fails, names no release, or meets no configured check is not adopted, is left as it is, and the run's note says what failed and how to check it by hand. Every install on a cold cache makes that read-only check, including a run with nothing else to do and one no gap drives onto the PATH step, and a copy that fails or cannot be checked ends the run partial with a symlink.unverified remaining item whose summary gives the gh attestation verify command for that file, never clean or already up to date. A copy matching a warm cache is not re-checked: it holds the bytes its promotion verified"
 impact: fix
 ---
 

@@ -250,6 +250,9 @@ type InstallResult struct {
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
+	// unverifiedCheck is the hand check for the owned copy whose provenance
+	// failed, which the summary gives under UnverifiedCopyGapID.
+	unverifiedCheck string
 }
 
 // ApplyResult is the outcome of one apply step.

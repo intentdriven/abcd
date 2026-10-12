@@ -128,8 +128,11 @@ the plugin root, which the next plugin update would break: it says which record
 is missing or disagrees, and names the command to run first, the
 [install](#cli) one-liner, after which re-running the install adopts the copy
 the one-liner wrote, once that copy passes the same build-provenance check,
-bound to the release its build metadata names; a copy that fails it is left
-as it is and not adopted, and the install says what failed. A symlink into the plugin root that an earlier release
+bound to the release its build metadata names. Every later install on a cold
+cache checks the copy again. A copy that fails, or that cannot be checked, is
+left as it is and not adopted: the install says what failed, gives the
+`gh attestation verify` command for that file, and reports itself only partly
+done rather than set up. A symlink into the plugin root that an earlier release
 wrote is named by `abcd ahoy` as a gap while it still works, and an entry the
 record names that has since stopped resolving is reported as abcd's own and
 replaced by the install. The record is read

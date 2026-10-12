@@ -476,11 +476,14 @@ symlink into the plugin root, which stops working at the next plugin update, and
 its note names the command to run first: the install one-liner in the README,
 which downloads the release binary, verifies it against that release's own
 checksums and records it, after which a re-run of `ahoy install` adopts it.
-Relay that note verbatim. Adopting that copy on a cold cache runs the same
-provenance check, on the copy's own bytes, bound to the release its build
-metadata names (read, never run); a copy that fails is not adopted and is
-left as it is, and the note says what failed and how to check it by hand.
-Relay that note verbatim too. A `symlink.legacy` gap is a symlink into the plugin
+Relay that note verbatim. On a cold cache every install run checks that
+copy with the same provenance check, read-only, on the copy's own bytes, bound
+to the release its build metadata names (read, never run), even when nothing
+else is left to do. A copy that fails, or that cannot be checked, is not
+adopted and is left as it is: the run ends `partial`, never `clean` or
+`already_up_to_date`, with a `symlink.unverified` item in `remaining` whose
+summary gives the `gh attestation verify` command for that file. Relay that
+note verbatim too. A `symlink.legacy` gap is a symlink into the plugin
 root that an earlier release wrote: it works until the next plugin update, and
 its fix hint says whether install replaces it now or which command comes first.
 A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an

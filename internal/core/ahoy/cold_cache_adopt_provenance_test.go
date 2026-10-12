@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -161,5 +162,118 @@ func TestReleaseOfBuild(t *testing.T) {
 	}
 	if _, err := releaseTagOfBinary([]byte("#!/bin/sh\nexit 0\n")); err == nil {
 		t.Error("a file with no Go build metadata names no release")
+	}
+}
+
+// plainCopy lays the one-liner's copy on a cold cache with nothing else on
+// PATH: no gap drives the install step onto it.
+func plainCopy(t *testing.T) (target string, bin []byte) {
+	t.Helper()
+	home, _ := setupUserScope(t)
+	coldCache(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	target = filepath.Join(binDir, "abcd")
+	bin = []byte("#!/bin/sh\necho one-liner-install\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(bin)
+	writeUserPathEntry(t, "path="+target+"\nbinary_sha256="+hex.EncodeToString(sum[:])+"\n")
+	return target, bin
+}
+
+// assertUnverifiedCopyReported fails unless the run reports the copy at
+// target as an outstanding gap carrying the hand check: never a false green.
+func assertUnverifiedCopyReported(t *testing.T, res InstallResult, target string) {
+	t.Helper()
+	if res.Status == "clean" || res.Status == "already_up_to_date" {
+		t.Errorf("status = %q with an unverified copy on PATH; notes = %v", res.Status, res.Notes)
+	}
+	if !slices.Contains(res.Remaining, UnverifiedCopyGapID) {
+		t.Errorf("Remaining = %v, want %s", res.Remaining, UnverifiedCopyGapID)
+	}
+	var item *SummaryItem
+	for i := range res.Summary {
+		if slices.Contains(res.Summary[i].Refs, UnverifiedCopyGapID) {
+			item = &res.Summary[i]
+		}
+	}
+	if item == nil {
+		t.Fatalf("no summary item explains %s: %+v", UnverifiedCopyGapID, res.Summary)
+	}
+	if !strings.Contains(item.Action, "gh attestation verify "+target) {
+		t.Errorf("the summary item must give the hand check for %s: %q", target, item.Action)
+	}
+}
+
+// TestGapDrivenRefusedAdoptionIsNotClean: the stranded entry is cleared and
+// nothing else remains, yet the copy that failed is still what runs.
+func TestGapDrivenRefusedAdoptionIsNotClean(t *testing.T) {
+	target, _ := oneLinerCopy(t)
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{err: errors.New("no build-provenance attestation is published")}).check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnverifiedCopyReported(t, res, target)
+}
+
+// TestPlainColdCopyIsVerifiedOnAFirstInstall: no gap drives the PATH step, and
+// the copy is still checked, read-only, before the run calls it abcd's.
+func TestPlainColdCopyIsVerifiedOnAFirstInstall(t *testing.T) {
+	target, bin := plainCopy(t)
+	rec := &recordingProvenance{err: errors.New("no build-provenance attestation is published")}
+	opts := installOpts()
+	opts.VerifyProvenance = rec.check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(bin)
+	if len(rec.asked) != 1 || !bytes.Equal(rec.asked[0], sum[:]) || rec.tags[0] != stubCopyRelease {
+		t.Fatalf("the copy must be checked once, as %s; asked %x for %q", stubCopyRelease, rec.asked, rec.tags)
+	}
+	assertUnverifiedCopyReported(t, res, target)
+	if got, _ := os.ReadFile(target); !bytes.Equal(got, bin) {
+		t.Error("the check is read-only, yet the copy changed")
+	}
+}
+
+// TestPlainColdCopyIsVerifiedOnAnUpToDateRepo: a repository with nothing left
+// to do still has its PATH copy checked, so it is not reported up to date
+// over a copy that fails.
+func TestPlainColdCopyIsVerifiedOnAnUpToDateRepo(t *testing.T) {
+	target, _ := plainCopy(t)
+	repo := gitRepo(t)
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	for name, check := range map[string]ProvenanceCheck{
+		"failing": (&recordingProvenance{err: errors.New("the Sigstore TUF repository is unreachable")}).check,
+		"absent":  nil,
+	} {
+		opts := installOpts()
+		opts.VerifyProvenance = check
+		res, err := Install(repo, opts, RefusingPrompter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(name, func(t *testing.T) { assertUnverifiedCopyReported(t, res, target) })
+	}
+
+	rec := &recordingProvenance{}
+	opts := installOpts()
+	opts.VerifyProvenance = rec.check
+	res, err := Install(repo, opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "already_up_to_date" || len(rec.asked) != 1 {
+		t.Errorf("a genuine copy keeps the repository up to date after one check: status %q, asked %d, notes %v", res.Status, len(rec.asked), res.Notes)
 	}
 }
