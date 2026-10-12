@@ -1,7 +1,7 @@
 ---
 id: adr-2610120558328615
 slug: a-private-advisory-s-record-never-enters
-status: proposed
+status: accepted
 date: 2026-10-12
 supersedes: null
 superseded_by: null
