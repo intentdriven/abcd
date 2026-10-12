@@ -281,6 +281,13 @@
           "hidden": false
         },
         {
+          "name": "readme-parts",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "refuse-adopt",
           "shorthand": "",
           "type": "bool",
@@ -1772,12 +1779,26 @@
     {
       "path": "abcd implement load",
       "hidden": false,
-      "sentence": "Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.",
+      "sentence": "Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
       "flags": [
         {
           "name": "site",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "timeout",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "wait",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

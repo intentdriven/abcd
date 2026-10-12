@@ -638,7 +638,7 @@ func TestRemoteProbeAnswersFromALocalOrigin(t *testing.T) {
 		t.Fatalf("a local origin = down (%s); want it answered", detail)
 	}
 	bare := filepath.Join(t.TempDir(), "bare.git")
-	origin.Git("init", "--bare", "-q", bare)
+	gittest.InitBare(t, bare)
 	headless := gittest.NewRepo(t)
 	headless.Git("remote", "add", "origin", bare)
 	if ok, detail := RemoteProbe(headless.Root())(); !ok || !strings.Contains(detail, "no HEAD") {

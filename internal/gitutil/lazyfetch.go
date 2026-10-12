@@ -30,22 +30,23 @@ const (
 var ErrLazyFetchFloor = fmt.Errorf("the repository declares a promisor remote (a partial clone), and git older than %d.%d ignores GIT_NO_LAZY_FETCH, so reading a missing object would run the transport the repository configures: abcd reads no objects here until git is %d.%d or later",
 	lazyFetchFloorMajor, lazyFetchFloorMinor, lazyFetchFloorMajor, lazyFetchFloorMinor)
 
-// versionCache holds the `git version` answer, probed once per process. The
-// source is a field so a test can inject a version on either side of the
-// floor whatever git is installed.
+// versionCache holds the `git version` answer, probed once per process. Two
+// floors read it: the lazy-fetch floor here, and the merge driver's options
+// (BuiltinMergeDriver). The source is a field so a test can inject a version
+// on either side of a floor whatever git is installed.
 type versionCache struct {
-	mu     sync.Mutex
-	src    func() (string, error)
-	done   bool
-	honour bool
-	raw    string
+	mu   sync.Mutex
+	src  func() (string, error)
+	done bool
+	ok   bool // the probe ran and returned
+	raw  string
 }
 
 var gitVersion = &versionCache{src: probeGitVersion}
 
-// SwapGitVersionForTest replaces the `git version` probe the lazy-fetch floor
-// reads, so a test in any package can put git on either side of the floor
-// whatever is installed. It returns the restore, which puts the real probe
+// SwapGitVersionForTest replaces the `git version` probe, so a test in any
+// package can put git on either side of a floor whatever is installed; the
+// swap moves the lazy-fetch floor and the merge driver's options together. It returns the restore, which puts the real probe
 // back; the cached answer is cleared both ways.
 func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
 	gitVersion.set(src)
@@ -56,7 +57,7 @@ func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
 func (v *versionCache) set(src func() (string, error)) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v.src, v.done, v.honour, v.raw = src, false, false, ""
+	v.src, v.done, v.ok, v.raw = src, false, false, ""
 }
 
 // honoursNoLazyFetch reports whether the git on PATH honours GIT_NO_LAZY_FETCH,
@@ -65,15 +66,22 @@ func (v *versionCache) set(src func() (string, error)) {
 // repository that declares a promisor remote, so failing closed costs nothing
 // elsewhere.
 func (v *versionCache) honoursNoLazyFetch() (bool, string) {
+	return v.atLeast(lazyFetchFloorMajor, lazyFetchFloorMinor)
+}
+
+// atLeast reports whether the git on PATH is at least major.minor, and the
+// version line it read, probing once per process. A probe that fails, or a
+// line that does not parse, is below every floor.
+func (v *versionCache) atLeast(major, minor int) (bool, string) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if !v.done {
 		raw, err := v.src()
 		v.raw = strings.TrimSpace(raw)
-		v.honour = err == nil && versionAtLeast(v.raw, lazyFetchFloorMajor, lazyFetchFloorMinor)
+		v.ok = err == nil
 		v.done = true
 	}
-	return v.honour, v.raw
+	return v.ok && versionAtLeast(v.raw, major, minor), v.raw
 }
 
 // gitVersionRe reads major and minor from `git version 2.39.5 (Apple Git-154)`

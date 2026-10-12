@@ -4,9 +4,9 @@ package loop
 // implementer works in, made in abcd's form. It lives in the machine-scoped
 // worktree store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, keyed on the
 // repository's root commit in the full form the sibling stores use, on a branch
-// cut from the default branch. The store's own verbs are a draft
-// (itd-2609091014076309), so the lane is a plain `git worktree add` into the
-// store's path until they ship.
+// cut from the default branch. The store's own verbs are planned and not yet
+// shipped (itd-2609091014076309), so the lane is a plain `git worktree add`
+// into the store's path until they ship.
 //
 // The path is derived, never taken: the run id and the lane id are each held to
 // their own shape and the name they compose to a single safe path segment, so
@@ -218,6 +218,14 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 				"settle what git reports, then run `abcd implement step` again")
 		}
 	}
+	// git makes the worktree at the process umask, 0755 under the usual 022;
+	// the lane's checkout is the caller's alone, like the store levels above
+	// it. An adopted worktree is narrowed too, since a process killed between
+	// git's add and this line left it as git made it. A store on a
+	// filesystem that cannot change modes (exFAT, a network share) keeps the
+	// lane as git made it rather than refusing the step: the home above it is
+	// narrowed at every command, so other accounts cannot reach the lane.
+	_, _ = fsutil.NarrowToOwner(lw.Path)
 	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)

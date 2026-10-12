@@ -297,7 +297,10 @@ type RuleConfig struct {
 	// AgentsDir is the agent_contract prompt tree, repo-relative (default
 	// "agents"). It lies outside Roots — an agent prompt is not a record, so the
 	// rule walks the tree itself rather than the tree being added to Roots and
-	// judged by the record stores' schema.
+	// judged by the record stores' schema. For surface_coverage it arms the
+	// agent sweep: every *.md page directly under it must have a row in the
+	// registry's agents table, and every row there must name a page
+	// (iss-2610110456358519); empty leaves that sweep unarmed.
 	AgentsDir string `json:"agents_dir"`
 	// DiffRange is the agent_contract changelog sub-check's git revision range.
 	// It is supplied by the CALLER (ArmAgentDiff, from a CI invocation) rather

@@ -267,6 +267,50 @@ func TestReadmePartStates(t *testing.T) {
 	})
 }
 
+// TestReadmePartOfAnUnknownNameIsLeft: a well-formed part whose name is not
+// one this abcd writes, a part a later abcd wrote, is left where it stands and
+// named, as a part edited by hand is, by a write and by a removal alike, even
+// when its body matches its hash: this abcd cannot tell whether the part is
+// still wanted, so it does not take it out. The other parts are still
+// written and removed.
+func TestReadmePartOfAnUnknownNameIsLeft(t *testing.T) {
+	later := readmePart("sponsors", "- [Sponsor](https://example.org/sponsor)")
+	content := "# Project\n\n" + later + "\n\nThe owner's own words.\n"
+	const note = "sponsors part at line 3 is not one this abcd writes; left as it is"
+
+	path := writeReadme(t, content)
+	res, err := syncReadmeParts(path, []readmePartWant{{Name: "licence", Body: licenceMIT}})
+	if err != nil || !res.Wrote {
+		t.Fatalf("sync: wrote=%v err=%v", res.Wrote, err)
+	}
+	got := readReadme(t, path)
+	if !strings.Contains(got, later) {
+		t.Fatalf("a write took out a part of an unknown name:\n%q", got)
+	}
+	if !strings.Contains(got, readmePart("licence", licenceMIT)) {
+		t.Errorf("the chosen part was not written beside it:\n%q", got)
+	}
+	if !hasNote(res, note) {
+		t.Errorf("notes = %q, want %q", notes(res), note)
+	}
+
+	path = writeReadme(t, content)
+	old := backdate(t, path)
+	rm, err := removeReadmeParts(path)
+	if err != nil || rm.Wrote {
+		t.Fatalf("remove: wrote=%v err=%v", rm.Wrote, err)
+	}
+	if got := readReadme(t, path); got != content {
+		t.Fatalf("a removal changed a README holding only a part of an unknown name:\n%q", got)
+	}
+	if mt := modTime(t, path); !mt.Equal(old) {
+		t.Errorf("modification time changed")
+	}
+	if !hasNote(rm, note) {
+		t.Errorf("notes = %q, want %q", notes(rm), note)
+	}
+}
+
 // TestReadmePartFenceRoundTrip holds the marked place's exact form: the fences
 // name the part, the opening one carries SHA-256 over the body's lines joined
 // with LF and no trailing newline, the parser reads back what the renderer

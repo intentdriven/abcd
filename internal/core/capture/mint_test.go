@@ -2,6 +2,7 @@ package capture
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -205,5 +206,42 @@ func TestCaptureMintEntropyFailureIsLoud(t *testing.T) {
 	entries, derr := os.ReadDir(filepath.Join(ir, "open"))
 	if derr == nil && len(entries) != 0 {
 		t.Fatalf("a failed mint left %d file(s) in open/", len(entries))
+	}
+}
+
+// iss-2610110359273529: mintRecordID redraws on ANY existing path, a record this
+// process never wrote included, and the redraw is bounded: a draw that keeps
+// landing on a taken path is a broken entropy source, reported as allocator
+// contention rather than looped on — the same budget the iss and reading-item
+// allocators spend (spc-33 ruling 2).
+func TestMintRecordIDRedrawsOnAnyTakenPathWithinTheBudget(t *testing.T) {
+	dir := t.TempDir()
+	pathFor := func(id string) string { return filepath.Join(dir, id+".md") }
+	instant := time.Date(2026, 10, 11, 18, 20, 41, 0, time.UTC)
+	foreign := pathFor("srp-2610111820410042")
+	if err := os.WriteFile(foreign, []byte("not this process's record\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// One clash, then a free draw: the mint redraws past the foreign record.
+	setMinter(t, recordid.Minter{
+		Now:     func() time.Time { return instant },
+		Entropy: bytes.NewReader([]byte{0x00, 0x2A, 0x00, 0x07}),
+	})
+	id, err := mintRecordID("srp", pathFor)
+	if err != nil {
+		t.Fatalf("mintRecordID past one foreign record: %v", err)
+	}
+	if id != "srp-2610111820410007" {
+		t.Fatalf("mint = %q, want the redrawn srp-2610111820410007", id)
+	}
+
+	// Every draw clashes: the budget runs out and the mint refuses.
+	setMinter(t, recordid.Minter{
+		Now:     func() time.Time { return instant },
+		Entropy: bytes.NewReader(bytes.Repeat([]byte{0x00, 0x2A}, placeholderRetryBudget)),
+	})
+	if id, err := mintRecordID("srp", pathFor); !errors.Is(err, ErrAllocatorContention) {
+		t.Fatalf("mint with every draw taken = (%q, %v), want ErrAllocatorContention", id, err)
 	}
 }

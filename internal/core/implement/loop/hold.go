@@ -204,6 +204,11 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 			return false, refuse(string(StageHeld), "", lane.ID, "the lane's branch is not one the loop made, so its work is not the loop's to discard",
 				"restore the run's state file")
 		}
+		if lane.Branch != "" {
+			if err := branchCheckedOutElsewhere(c, lane, string(StageHeld), "run `abcd implement step --discard "+lane.ID+"` again"); err != nil {
+				return false, err
+			}
+		}
 		did := []string{}
 		if lane.Worktree != "" {
 			if err := removeLaneWorktree(c, lane); err != nil {

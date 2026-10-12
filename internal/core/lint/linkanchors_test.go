@@ -51,3 +51,22 @@ func TestLinkAnchorsValidatesFragmentsAgainstHeadingSlugs(t *testing.T) {
 		}
 	}
 }
+
+// TestLinkAnchorsReadsCodeSpansLiterally: a heading's link is read as its text
+// for the slug, but a link written inside a code span is not a link: the page
+// shows `[x](y)` as written, and anchors it #the-xy-form.
+func TestLinkAnchorsReadsCodeSpansLiterally(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/b.md", "# Title\n\n## The `[x](y)` form\n\n## A [link](u) head\n")
+	writeFile(t, root, "rec/a.md", "# A\n\n[code](b.md#the-xy-form)\n[link](b.md#a-link-head)\n")
+	cfg := Config{Roots: []string{"rec"}, Rules: map[string]RuleConfig{
+		"link_anchors": {Enabled: true, Severity: "warn"},
+	}}
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, "link_anchors"); n != 0 {
+		t.Errorf("both anchors exist on the page; want no link_anchors finding, got %+v", fs)
+	}
+}
