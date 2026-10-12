@@ -275,6 +275,11 @@ func discardLane(c Context, lane Lane) (string, error) {
 	if !gitutil.IsFullSHA(tip) {
 		tip = ""
 	}
+	if tip != "" {
+		if err := branchCheckedOutElsewhere(c, lane, "receipt", "hand the receipt back again"); err != nil {
+			return "", err
+		}
+	}
 	if lane.Worktree != "" {
 		if err := loopWorktree(c, lane, "receipt"); err != nil {
 			return "", err
