@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The comparison is derived from the log and from nothing else: the run's
@@ -563,6 +565,11 @@ func outageSpans(events []Event) []OutageSpan {
 
 // listField reads a field holding a JSON list of strings, or one string (a
 // comma-separated list when written by hand), as a list.
+//
+// Each item is masked with termsafe.Sanitize: the text comes from the run log
+// the sessions append to, a file a hand edit or a hostile checkout can carry,
+// and an outage span takes it to `implement record --json` and `implement
+// report --json` (iss-2610121542263820).
 func listField(e Event, key string) []string {
 	raw, ok := e.Fields[key]
 	if !ok {
@@ -570,7 +577,7 @@ func listField(e Event, key string) []string {
 	}
 	var list []string
 	if json.Unmarshal(raw, &list) == nil {
-		return list
+		return termsafe.SanitizeAll(list)
 	}
 	s := e.String(key)
 	if s == "" {
@@ -579,7 +586,7 @@ func listField(e Event, key string) []string {
 	var out []string
 	for _, part := range strings.Split(s, ",") {
 		if part = strings.TrimSpace(part); part != "" {
-			out = append(out, part)
+			out = append(out, termsafe.Sanitize(part))
 		}
 	}
 	return out
