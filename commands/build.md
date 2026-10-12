@@ -178,8 +178,10 @@ Refusals, each writing nothing:
 - no candidate for a single pick or a series' first: refused at the `pick`
   stage, exit 2; `refusal.excluded` names every planned intent and the check
   that excluded it. Tell the user each one and do not work around it.
-- a negative `--max`, or `--max` with `--until-empty`: refused at the `pick`
-  stage, exit 2.
+- `--max 0` or a negative `--max`, which name no run count (it is 1 or
+  more), or `--max` with `--until-empty`: refused at the `pick` stage, exit 2.
+  An explicit `--max 0` is not read as no count: it neither gives a single
+  pick nor continues a live series.
 - while a series is in progress, a count other than the one it began with,
   `--max 1` included: refused at the `pick` stage, exit 2; run `build next`
   without a count. A

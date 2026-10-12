@@ -264,8 +264,8 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"rounds falsifies the pick: the run record (`abcd implement record`) carries the pick's\n" +
 			"score table and says so, and the intent's entry is not edited.\n\n" +
 			"No candidate for a first pick is refused, naming each excluded intent and the check that\n" +
-			"excluded it, and nothing is written. Refused too, writing nothing: a negative --max,\n" +
-			"--max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
+			"excluded it, and nothing is written. Refused too, writing nothing: --max 0 or a negative\n" +
+			"--max, --max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
 			"the one it began with, and, until it is restored or removed, a series state that cannot be\n" +
 			"read, does not parse, or names a count, a pick, an outcome or pace flags the series never\n" +
 			"writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.\n" +
@@ -295,6 +295,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			}
 			if cmd.Flags().Changed("fix-rounds") {
 				o.FixRounds = &fixRounds
+			}
+			if cmd.Flags().Changed("max") && maxPicks < 1 {
+				// NextOptions.Max reads 0 as no --max at all; an explicit
+				// --max 0 is no run count either, so it is refused here.
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, loop.RunCountRefusal(maxPicks))
 			}
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {

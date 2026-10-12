@@ -248,6 +248,60 @@ func TestBuildNextRefusesTwoCounts(t *testing.T) {
 	runDirAbsent(t, repo.Root())
 }
 
+// TestBuildNextRefusesAnExplicitMaxZero (iss-2610121210280182): --max 0 as
+// typed is no run count, so it is refused at the pick with the negative
+// count's words, exit 2, starting no run: with no series, rather than read as
+// a single pick, and on a live series, rather than read as no count and
+// continuing it. A call with no --max still gives a single pick, and still
+// continues a live series.
+func TestBuildNextRefusesAnExplicitMaxZero(t *testing.T) {
+	refusedZero := func(t *testing.T) {
+		t.Helper()
+		ref := refusalDocs(t, 2, "build", "next", "--max", "0", "--json")
+		reason, _ := ref["reason"].(string)
+		remedy, _ := ref["remedy"].(string)
+		if ref["stage"] != "pick" || reason != "--max 0 is not a run count" || !strings.Contains(remedy, "1 or more") {
+			t.Fatalf("--max 0 is refused at the pick with the negative count's words: %v", ref)
+		}
+		if code, _, errOut := implementCLI(t, "build", "next", "--max", "0"); code != 2 || !strings.Contains(errOut, "--max 0 is not a run count") {
+			t.Fatalf("the text refusal exits 2 naming --max 0: %d %q", code, errOut)
+		}
+	}
+
+	t.Run("no series", func(t *testing.T) {
+		repo := buildRepo(t)
+		refusedZero(t)
+		runDirAbsent(t, repo.Root())
+		var single struct {
+			Pick   *struct{} `json:"pick"`
+			Series *struct{} `json:"series"`
+		}
+		if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--json")), &single); err != nil {
+			t.Fatal(err)
+		}
+		if single.Pick == nil || single.Series != nil {
+			t.Fatalf("with no --max the call is a single pick: %+v", single)
+		}
+	})
+
+	t.Run("live series", func(t *testing.T) {
+		repo := buildRepo(t)
+		secondBuildIntent(t, repo)
+		mustImplement(t, "build", "next", "--max", "2", "--json")
+		refusedZero(t)
+		var waiting map[string]any
+		if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--json")), &waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting["pick"] != nil || waiting["series"] == nil {
+			t.Fatalf("with no --max the call continues the series: %v", waiting)
+		}
+		if runs, _ := loop.Runs(repo.Root()); len(runs) != 1 {
+			t.Fatalf("the refused count started no run: %d runs", len(runs))
+		}
+	})
+}
+
 // TestImplementRecordCarriesThePick is criterion 6 at the front door: the run
 // record of a picked run carries the pick's score table and whether its
 // falsifier was met, in --json and in the text.
