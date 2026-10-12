@@ -9,11 +9,13 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The served installer, run. The surface tests above hold its text to the
 // other install forms; these run the committed template in a temp HOME with
-// curl and gh stubbed on PATH, so its security behaviour is proven by
+// curl and gh stubbed on PATH, so its two security behaviours are proven by
 // what it does rather than by what it says:
 //
 //   - iss-2610120617521209 (the product thinker's ruling of 2026-10-12): the
@@ -21,6 +23,9 @@ import (
 //     and a failed verification installs nothing; without gh, or with a gh
 //     that is not signed in, the checksum-verified binary installs with a
 //     warning naming the hand check.
+//   - iss-2610120601505029: a verified install records the newest-release mark
+//     the bootstrap and abcd update keep, with the same atomic owner-only
+//     write, and only ever raises it.
 
 const (
 	installedTag  = "v0.14.2"
@@ -173,6 +178,15 @@ func (r installerRun) ghCalls(t *testing.T) []string {
 	return strings.Split(strings.TrimSpace(string(raw)), "\n")
 }
 
+func (r installerRun) mark(t *testing.T) (string, bool) {
+	t.Helper()
+	raw, err := os.ReadFile(abcdhome.Path(r.home, "release-mark"))
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
+}
+
 func TestInstallerInstallsADownloadGhVerifies(t *testing.T) {
 	r := runInstaller(t, ghVerifies, nil)
 	if r.err != nil {
@@ -204,6 +218,9 @@ func TestInstallerRefusesADownloadGhCannotVerify(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
 		t.Errorf("a failed verification must install nothing: %v", err)
+	}
+	if _, ok := r.mark(t); ok {
+		t.Error("a refused install records no release mark")
 	}
 	for _, want := range []string{"build provenance", "no matching attestation", "Nothing is installed"} {
 		if !strings.Contains(r.out, want) {
@@ -241,5 +258,75 @@ func assertInstallerWarning(t *testing.T, out, why string) {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the warning must say %q:\n%s", want, out)
 		}
+	}
+}
+
+// --- the newest-release mark (iss-2610120601505029) ---
+
+func TestInstallerRecordsTheReleaseMark(t *testing.T) {
+	for _, gh := range []ghBehaviour{ghVerifies, ghAbsent} {
+		r := runInstaller(t, gh, nil)
+		if r.err != nil {
+			t.Fatalf("install failed: %v\n%s", r.err, r.out)
+		}
+		got, ok := r.mark(t)
+		if !ok || got != "release_tag="+installedTag+"\n" {
+			t.Fatalf("a fresh install must record the installed release as the mark; got %q (%v)\n%s", got, ok, r.out)
+		}
+		fi, err := os.Stat(abcdhome.Path(r.home, "release-mark"))
+		if err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("the mark must be mode 0600: %v %v", fi.Mode(), err)
+		}
+		if di, err := os.Stat(abcdhome.Path(r.home)); err != nil || di.Mode().Perm() != 0o700 {
+			t.Errorf("the home it lives in must be mode 0700: %v %v", di.Mode(), err)
+		}
+		left, _ := filepath.Glob(abcdhome.Path(r.home, ".release-mark.*"))
+		if len(left) != 0 {
+			t.Errorf("the atomic write must leave no temp file: %v", left)
+		}
+	}
+}
+
+func TestInstallerOnlyRaisesTheMark(t *testing.T) {
+	for _, tc := range []struct{ had, want string }{
+		{"v0.13.4", installedTag}, // older: raised
+		{"v0.15.0", "v0.15.0"},    // newer: kept
+	} {
+		r := runInstaller(t, ghVerifies, func(home string) {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(abcdhome.Path(home, "release-mark"), []byte("release_tag="+tc.had+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if r.err != nil {
+			t.Fatalf("install failed: %v\n%s", r.err, r.out)
+		}
+		if got, _ := r.mark(t); got != "release_tag="+tc.want+"\n" {
+			t.Errorf("with a mark of %s the install must leave %s; got %q", tc.had, tc.want, got)
+		}
+	}
+}
+
+// TestInstallerWritesNoMarkThroughASymlinkedHome: abcd refuses a
+// ~/.abcd.noindex that is a symlink rather than following it, and the
+// installer writes nothing through one: the binary installs, and the line
+// says the mark was not recorded and why.
+func TestInstallerWritesNoMarkThroughASymlinkedHome(t *testing.T) {
+	elsewhere := t.TempDir()
+	r := runInstaller(t, ghVerifies, func(home string) {
+		if err := os.Symlink(elsewhere, abcdhome.Path(home)); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if r.err != nil {
+		t.Fatalf("install failed: %v\n%s", r.err, r.out)
+	}
+	if _, err := os.Stat(filepath.Join(elsewhere, "release-mark")); !os.IsNotExist(err) {
+		t.Errorf("the mark was written through the symlink: %v", err)
+	}
+	if !strings.Contains(r.out, "symlink") {
+		t.Errorf("the run must say the mark was not recorded because of the symlink:\n%s", r.out)
 	}
 }

@@ -10,11 +10,13 @@
 # forms to one another by test — same release URLs, same checksum step, same
 # install destination — so none of them can drift alone.
 #
-# One step goes beyond the one-liner, and internal/core/site runs the script to
-# prove it (installsh_run_test.go). When gh is present it verifies the
+# Two steps go beyond the one-liner, and internal/core/site runs the script to
+# prove them (installsh_run_test.go). When gh is present it verifies the
 # binary's build provenance with `gh attestation verify` and installs nothing
 # if that fails; without gh, or with a gh that is not signed in, the checksum
-# stands alone and a warning says so (iss-2610120617521209).
+# stands alone and a warning says so (iss-2610120617521209). After the install
+# it records the release in ~/.abcd.noindex/release-mark, the newest-release
+# mark hooks/bootstrap.sh and `abcd update` keep (iss-2610120601505029).
 #
 # Everything between `set -eu` and the last line is a definition. Only the final
 # `main "$@"` runs anything, so a download truncated in transit executes nothing.
@@ -171,6 +173,94 @@ install_binary() {
 		die "cannot install into $2. abcd never escalates privileges — pick a directory you own with --bin-dir DIR."
 }
 
+# tag_parts prints MAJOR MINOR PATCH and a pre-release flag for a vX.Y.Z[-pre]
+# tag, and nothing for anything else. tag_older succeeds when tag $1 is older
+# than tag $2. Both are hooks/bootstrap.sh's, so the installer orders releases
+# exactly as the bootstrap and `abcd update` do.
+tag_parts() {
+	printf '%s\n' "$1" | sed -n 's/^v\{0,1\}\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)$/\1 \2 \3 release/p; s/^v\{0,1\}\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)-[0-9A-Za-z.-]\{1,\}$/\1 \2 \3 pre/p'
+}
+
+tag_older() {
+	_to_a=$(tag_parts "$1")
+	_to_b=$(tag_parts "$2")
+	[ -n "$_to_a" ] && [ -n "$_to_b" ] || return 1
+	_a1=${_to_a%% *}
+	_ar=${_to_a#* }
+	_a2=${_ar%% *}
+	_as=${_ar#* }
+	_a3=${_as%% *}
+	_ap=${_as#* }
+	_b1=${_to_b%% *}
+	_br=${_to_b#* }
+	_b2=${_br%% *}
+	_bs=${_br#* }
+	_b3=${_bs%% *}
+	_bp=${_bs#* }
+	[ "$_a1" -lt "$_b1" ] && return 0
+	[ "$_a1" -gt "$_b1" ] && return 1
+	[ "$_a2" -lt "$_b2" ] && return 0
+	[ "$_a2" -gt "$_b2" ] && return 1
+	[ "$_a3" -lt "$_b3" ] && return 0
+	[ "$_a3" -gt "$_b3" ] && return 1
+	[ "$_ap" = pre ] && [ "$_bp" = release ]
+}
+
+# record_mark records the release just installed into $1 as the newest release
+# this machine has installed or verified, in ~/.abcd.noindex/release-mark, the
+# mark hooks/bootstrap.sh and `abcd update` keep and refuse an older release
+# against (iss-2609151847117977). Without it a machine installed only this way
+# has no mark until the bootstrap or an update next runs, and a stale cached
+# release is not refused in that window. The release is the one the installed
+# binary reports, so the mark names the bytes that were verified. Like the
+# bootstrap it only RAISES the mark — lowering it is `abcd update <tag>`, the
+# person's own choice — reads an existing mark only from a regular file this
+# account owns that no one else can write, and writes the whole record into a
+# mktemp sibling renamed in, mode 0600, never through a symlinked
+# ~/.abcd.noindex. A mark that cannot be recorded is said, and never fails the
+# install it follows.
+record_mark() {
+	tag=$("$1/abcd" --version 2>/dev/null | sed -n '1s/^abcd \(v[0-9][^ ]*\)$/\1/p') || tag=''
+	if [ -z "$(tag_parts "$tag")" ]; then
+		printf 'abcd install: the newest-release mark was not recorded, because the installed binary did not report a release version.\n' >&2
+		return 0
+	fi
+	home_dir="${HOME:-}"
+	case "$home_dir" in
+	/*) ;;
+	*)
+		printf 'abcd install: the newest-release mark was not recorded, because HOME is not an absolute path.\n' >&2
+		return 0
+		;;
+	esac
+	mark_dir="$home_dir/.abcd.noindex"
+	mark="$mark_dir/release-mark"
+	if [ -L "$mark_dir" ]; then
+		printf 'abcd install: the newest-release mark was not recorded, because ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory.\n' >&2
+		return 0
+	fi
+	if [ -n "$(find "$mark" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]; then
+		had=$(sed -n 's/^release_tag=//p' "$mark" 2>/dev/null | head -n 1) || had=''
+		if [ -n "$(tag_parts "$had")" ] && ! tag_older "$had" "$tag"; then
+			return 0
+		fi
+	fi
+	mark_tmp=''
+	if [ -e "$mark" ] && [ ! -f "$mark" ]; then
+		printf 'abcd install: the newest-release mark was not recorded, because its path is occupied by something that is not a regular file.\n' >&2
+	elif mkdir -p -m 0700 "$mark_dir" 2>/dev/null &&
+		mark_tmp=$(mktemp "$mark_dir/.release-mark.XXXXXX" 2>/dev/null) &&
+		[ -n "$mark_tmp" ] &&
+		printf 'release_tag=%s\n' "$tag" > "$mark_tmp" 2>/dev/null &&
+		chmod 0600 "$mark_tmp" 2>/dev/null &&
+		mv -f "$mark_tmp" "$mark" 2>/dev/null; then
+		return 0
+	else
+		[ -z "$mark_tmp" ] || rm -f "$mark_tmp" 2>/dev/null || :
+		printf 'abcd install: the newest-release mark was not recorded, so a later plugin session cannot tell %s from an older release it cached.\n' "$tag" >&2
+	fi
+}
+
 # report prints the PATH fix when the install directory is not on PATH, then runs
 # the installed binary so the last line of the install is the version installed.
 report() {
@@ -228,6 +318,7 @@ main() {
 	verify "$binary"
 	verify_provenance "$binary" "$bin_dir"
 	install_binary "$binary" "$bin_dir"
+	record_mark "$bin_dir"
 	report "$bin_dir"
 }
 

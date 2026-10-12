@@ -440,11 +440,13 @@ attestation verify <binary> --repo intentdriven/abcd --signer-workflow
 intentdriven/abcd/.github/workflows/release.yml`.
 
 The script abcdev.app serves at `/install.sh` does what the one-liners do, and
-one thing more. When `gh` is installed and signed in it runs that same `gh
+two things more. When `gh` is installed and signed in it runs that same `gh
 attestation verify` on the download and installs nothing if it fails; without
 `gh`, or with one that is not signed in, it installs on the checksum alone and
-prints a warning naming the command to check the binary by hand. It does not
-write `~/.abcd.noindex/path-entry`.
+prints a warning naming the command to check the binary by hand. After the
+install it records the release in `~/.abcd.noindex/release-mark`, the
+newest-release mark the plugin's bootstrap and `abcd update` keep, and only
+ever raises it. It does not write `~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 
