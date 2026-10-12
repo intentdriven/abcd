@@ -20,7 +20,8 @@ package credential
 // The index is the one file the store writes that must never hold a secret,
 // so the secret scanner reads its bytes before they are written, and a
 // finding refuses the write. The abcd home, the one that keeps a value under
-// ~/.abcd.noindex, is never written inside a git working tree.
+// ~/.abcd.noindex, is never written inside a git working tree, nor read from a
+// home inside one unless it is the account's own.
 
 import (
 	"encoding/json"
@@ -35,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The homes a credential lives in (adr-2609221017021499 ruling 2).
@@ -130,6 +132,19 @@ func (s store) Resolve(name string) (string, error) {
 	case !indexed && err != nil:
 		return "", notSetError{name: name}
 	case !indexed:
+		// A home inside a git working tree that is not the account's own is
+		// the checkout's (HOME set into the tree by an environment the
+		// repository shapes), so a value found there is refused, not handed
+		// to a caller that would spend it (iss-2609300012273350). It is the
+		// one rule the layered machine layer applies
+		// (gitutil.HomeInsideWorkingTree): the account's own home, a
+		// dotfiles-in-HOME checkout, keeps a value it already holds. Set's
+		// write refusal below is a different rule and stays whole: a value
+		// written into any working tree is one commit from leaving it.
+		if tree := gitutil.HomeInsideWorkingTree(s.home); tree != "" {
+			return "", errors.New("credential: HOME lies inside a git working tree and is not this account's home, so " +
+				name + " is not read from " + abcdhome.Display() + "; run abcd with your own HOME")
+		}
 		return v, nil
 	case err == nil:
 		return "", fmt.Errorf("credential: %s is named in two homes, %s and the %s home in %s, so it is not read; remove one by hand",

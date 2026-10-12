@@ -483,7 +483,11 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		d.NextMoves = []string{"none — closed; the linked intent is " + sp.Intent}
 		return d, nil
 	}
-	ready, err := intent.Ready(repoRoot, sp.Intent)
+	// The verdict `abcd intent ready` reports, open questions included, as the
+	// intent page reads it: plain Ready sent an intent with an unanswered
+	// question to "implement" while the verb and the build refused it
+	// (iss-2610112214150230).
+	ready, err := intent.ReadyWithQuestions(repoRoot, sp.Intent)
 	if err != nil {
 		// A one-sided link is the intent store's defect, not a dispatch fault:
 		// report the spec and point at the intent rather than failing the render.
@@ -548,7 +552,9 @@ func describeBundleSpec(repoRoot string, store spec.Store, sp spec.Spec, members
 	}
 	var unread, notReady []string
 	for _, m := range live {
-		ready, err := intent.Ready(repoRoot, m)
+		// Each member by the verdict `abcd intent ready` reports, open questions
+		// included, as describeSpec reads its one intent (iss-2610112214150230).
+		ready, err := intent.ReadyWithQuestions(repoRoot, m)
 		switch {
 		case err != nil:
 			unread = append(unread, "the linked intent "+m+" could not be read: "+err.Error())

@@ -595,6 +595,39 @@ func TestRecordRefusesASymlinkedAncestor(t *testing.T) {
 	}
 }
 
+// TestRecordFollowsAnInRootSymlinkedAncestor pins what os.Root actually
+// guarantees: it refuses a path that ESCAPES the root, not every symlink. A
+// relative symlink at an intermediate component that stays inside the tree is
+// followed, and the record lands at its target, still inside the repository.
+// Containment is the only guarantee the writer rests on, so following such a
+// link is correct; a repository that arranges its own tree with an in-tree link
+// is not overridden (iss-2610050259237102).
+func TestRecordFollowsAnInRootSymlinkedAncestor(t *testing.T) {
+	root := seedRepo(t)
+	dev := filepath.Join(root, ".abcd", "development")
+	if err := os.Rename(dev, filepath.Join(root, "elsewhere")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "elsewhere"), dev); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	res, err := Record(root, "in-root-link", encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("an in-root symlinked ancestor was refused: %v", err)
+	}
+	target := filepath.Join(root, "elsewhere", "research", "notes", filepath.Base(res.Path))
+	fi, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("the record did not land at the in-root link's target: %v", err)
+	}
+	if !fi.Mode().IsRegular() {
+		t.Errorf("the record at %s is not a regular file: %v", target, fi.Mode())
+	}
+	if !strings.Contains(readFile(t, root, DecisionsRelDir), "in-root-link") {
+		t.Error("the decision pointer is missing")
+	}
+}
+
 // TestRecordCreatesTheResearchDirectory proves an absent research directory is
 // created rather than refused. Nothing in abcd establishes it and no convention
 // check requires it, so refusing would fail the first run in every repository —
