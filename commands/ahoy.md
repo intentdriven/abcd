@@ -606,7 +606,9 @@ because a table decides which model every delegated step asks for, and never
 adds the drain eligibility record (below), because the record decides what an
 unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it, except `drain_rule.offered`
-and `conventions.retire_offered`, which only a person at a terminal is asked.
+and `conventions.retire_offered`, which only a person at a terminal is asked,
+and `readme.offered`, which this page relays as the README question pair
+below and answers with `--readme-parts`.
 
 **The git identity question is a person's alone.** When the author or committer
 a commit would carry diverges from the identity pin, or is a machine identity
@@ -668,6 +670,72 @@ what was heard. The question comes after the category approvals and the
 configuration values and before the status-line offer, and is asked only when
 the config is being created: a repository that already has one keeps its own
 severity.
+
+**The README question pair.** Setup asks whether abcd keeps parts of the
+project's `README.md` current and, on a yes, which. The parts, in their fixed
+order, are `release-badge`, `build-badge`, `abcd-badge`, `licence`, `links` and
+`contents`. Each is read from the project on this computer and written inside
+its own marked place; the owner's own words are never touched. The two badges
+the forge draws are offered only in a project the owner declared public in
+abcd's settings (`repo.visibility`), and the managed-with-abcd badge stays off
+unless the owner turns it on. The answer is stored as `readme.parts` in
+`.abcd/config.json`: a list of parts, which every later setup run rewrites, or
+an empty list, a no that is never asked again. Deciding later stores nothing,
+so the next run asks again.
+
+At a terminal, in a run without `--yes`, the install asks the pair itself,
+after the configuration values (the conventions-file question among them)
+and the house-style question, and before the status-line offer: the first
+question alone, then one question per offered part, each with what the part
+is, its current setting (`Now:`), how to change it later, and the exact lines
+it would write in this project or the reason it writes none. Each list starts
+on its question's default (deciding later for the first question, the part's
+own default for each part), so Enter alone takes what an empty answer takes;
+the answers keep their order and no text marks the default. Off a terminal,
+and under `--yes`, the pair is never asked, so a piped answer stream keeps its
+order; the result lists `readme.offered` under `optional_skipped`, and its
+summary names the flag. A terminal run whose `.abcd/config.json` does not
+exist (abcd's starter files declined) has nowhere to store the answer, so it
+does not ask the pair either, and lists it the same way; its summary then
+names the starter files first, since `--readme-parts` is refused until they
+exist.
+
+Through this page, relay the pair with your question tool. While it is open,
+the bare detection (`ahoy --json`) carries a `readme` object (per part its
+`name`, whether it is `offered`, its `now`, its `default`, and its `example`
+lines or the `reason` it writes none, every line already made safe to show)
+and `readme_tool`, the same questions as your question tool's input, built
+from the words the terminal shows. Ask `readme_tool[0]`, the first question,
+alone, exactly as given: never reworded, never with a preview, never with an
+option marked. On a yes, say the `readme.declaration` line, where there is
+one, in one line above the next call; then ask each later call in turn, each
+holding at most four parts as tabs. Every part's tab offers `on`, `off`, then
+`Decide later`, in that order whatever the part's default: keep the order,
+and never move the default first, which would read as recommending it. A
+tab's example is the exact lines the part would write, as many of the first
+of them as the tab can quote within the limits (its rows, and the style rules
+your question hook checks, so a heading with an em dash or bold markup ends
+the quote before it), its lead saying how many there are; where a part writes
+nothing and its reason cannot be quoted in the tab, the tab says it in a few
+words or says it is not shown, and the view's `reason` holds it whole. Then
+pass the answer:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --readme-parts <list>|none --json
+```
+
+`<list>` is the parts answered `on`, comma-separated. A no to the first
+question, or `off` to every part, is `none`. A `Decide later` anywhere is no
+answer: pass no flag, and the next setup asks again. `--readme-parts` answers
+the pair in any run, `--yes` included; an unknown part, or `none` beside a
+part, is refused with exit 2, naming the parts, before anything is written.
+A value that differs from the stored one is echoed as a change
+(`readme.parts: licence -> licence,links`), and a part dropped from the set is
+removed from `README.md` where its text is still abcd's. A part the owner
+edited by hand, or a mark that is duplicated or unclosed, is left and named in
+the `notes` with its line; relay those notes as they stand. A project with no
+`README.md` gets one holding only the chosen parts. Committing the result is
+the owner's act.
 
 **The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
 an `artefact.missing` gap: the launch verbs choose what to preview, check and
@@ -837,7 +905,14 @@ entry — the owned copy (or a legacy pinned symlink), found wherever it sits on
 removed with it even when no plugin root resolves any more — and leaves
 `.abcd/` intact, so the
 repo's record survives. The persistent download cache is left to the harness's
-own uninstall to delete. Report `marker.removed` and the entry note; the
+own uninstall to delete. Report `marker.removed`, the `readme` receipt and
+the entry note. The `readme` receipt lists the parts it `removed` from
+`README.md`, each whose text was still abcd's; the parts it `left`, each with
+its `reason` (edited by hand, or a mark duplicated or unclosed) and its
+`line`; whether it `deleted` a `README.md` abcd itself created once nothing
+was left in it; and its `note`, the receipt in words ("links removed; licence
+edited by hand, left"), which the text render prints as its `readme:` line. An
+owner's `README.md` that holds no abcd part is never written. The
 receipt's `symlink.target` is already rendered in tilde form, so relay it as
 given rather than expanding it. When the harness's `statusLine` is abcd's, it
 is handed back to the command recorded in `~/.abcd.noindex/statusline.json` before

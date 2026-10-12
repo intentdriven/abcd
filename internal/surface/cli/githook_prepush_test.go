@@ -51,7 +51,7 @@ func newPrePushCase(t *testing.T) *prePushCase {
 
 	base := t.TempDir()
 	c := &prePushCase{t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"), env: gittest.Env(t)}
-	c.run(base, "git", "init", "-q", "--bare", "-b", "main", c.origin)
+	gittest.InitBare(t, c.origin)
 	c.run(base, "git", "init", "-q", "-b", "main", c.dir)
 	c.git("config", "user.name", "Alice Example")
 	c.git("config", "user.email", "alice@example.com")

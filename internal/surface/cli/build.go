@@ -800,9 +800,13 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is\n" +
 			"proved to apply to that commit, the lane's worktree is reset and cleaned, the run record\n" +
 			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
-			"the aside. It is refused, changing nothing, while the run has an outage (open or given\n" +
-			"up), for a blank --yielded, for a lane with no implementer out, or for a worktree that\n" +
-			"is not the one the loop derives.\n" +
+			"the aside. An await a rate limit kept, because what its agent left could not be saved\n" +
+			"aside, is marked in the run state, and --restart re-tells it the same way once that is\n" +
+			"settled, a validator's included: only a validator's partial return is saved aside, its\n" +
+			"worktree is not touched, and a validator of the round that is still out unmarked is left\n" +
+			"alone. It is refused, changing nothing, while the run has an outage (open or given up),\n" +
+			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
+			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
 			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -817,7 +821,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request\n" +
 			"open where no merge queue gates the default branch, and pushes nothing after that; and\n" +
 			"once the pushed head is an ancestor of the default branch on origin it removes the lane's\n" +
-			"worktree and branch and the lane is done. Until then the call exits 3 and waits.\n\n" +
+			"worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull\n" +
+			"request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)\n" +
+			"is refused at exit 2 instead, before arming or at the merged check, naming the files a\n" +
+			"local merge with every merge driver off conflicts in and the hand merge that settles it.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +

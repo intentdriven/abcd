@@ -50,7 +50,7 @@ func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string)
 	repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
 	repo.Commit("the record")
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	repo.Git("init", "-q", "--bare", "--initial-branch=main", bare)
+	gittest.InitBare(t, bare)
 	repo.Git("remote", "add", "origin", bare)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
@@ -899,8 +899,8 @@ func TestADiscardedHeldLaneLeavesItsStepUnlanded(t *testing.T) {
 
 // C12, the schema: a version-7 or version-8 state file (8 is the runner's
 // record, the version before a run worked in parallel) with one lane awaiting
-// its implementer reads as one await and runs on; the next write is version 9
-// and carries `awaits`, never `awaiting`. A version-7 or version-8 file
+// its implementer reads as one await and runs on; the next write is the current
+// version and carries `awaits`, never `awaiting`. A version-7 or version-8 file
 // carrying what only version 9 writes, and a version-9 file carrying
 // `awaiting`, are refused naming the version and the key.
 func TestASerialStateMigratesItsAwaitAndVersion9IsHeldToItsShape(t *testing.T) {
@@ -941,12 +941,12 @@ func TestASerialStateMigratesItsAwaitAndVersion9IsHeldToItsShape(t *testing.T) {
 	}
 	f.implement(t, "lane-1", "one.txt")
 	written, _ := os.ReadFile(path)
-	if !strings.Contains(string(written), `"schema_version": 9`) || strings.Contains(string(written), `"awaiting"`) {
-		t.Fatalf("the next write is version 9 and never writes awaiting:\n%s", written)
+	if !strings.Contains(string(written), `"schema_version": `+strconv.Itoa(SchemaVersion)) || strings.Contains(string(written), `"awaiting"`) {
+		t.Fatalf("the next write is version %d and never writes awaiting:\n%s", SchemaVersion, written)
 	}
 	f.step(t)
 	if written, _ = os.ReadFile(path); !strings.Contains(string(written), `"awaits"`) {
-		t.Fatalf("version 9 writes awaits:\n%s", written)
+		t.Fatalf("version %d writes awaits:\n%s", SchemaVersion, written)
 	}
 	v8 = written
 

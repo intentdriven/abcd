@@ -409,6 +409,15 @@ A lane's stages run in order:
    worktree and branch, the lane is done, and the next pending step opens the
    next lane. A pull request closed without merging, or merged in a way that
    rewrote its head, is refused and nothing is cleaned up: report it as it is.
+   A pull request the forge reports `CONFLICTING` (`gh pr view <n> --json
+   mergeable,mergeStateStatus`) is refused at exit 2, before arming or at the
+   merged check, because it never enters the merge queue: the refusal names
+   the files a driver-free local merge conflicts in and the `merge=` drivers
+   the forge ignores, or says no local merge reproduces it. It is a person's:
+   report it with the remedy it names (a hand merge of the default branch into
+   the lane's branch, with a disarm and re-arm when it is armed), and never
+   push to the lane or merge it yourself. `UNKNOWN`, a verdict the forge has not
+   computed yet, keeps the exit-3 wait.
 
 ### When a connection is lost
 

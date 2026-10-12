@@ -326,3 +326,38 @@ func TestPrepareHoldsAQuestionToTheStructuralCheck(t *testing.T) {
 		t.Errorf("Prepare did not sanitise: %q", got.Questions[0].Ask)
 	}
 }
+
+// TestParagraphKeepsItsLineBreaks: a paragraph whose text holds line breaks
+// is drawn a line for each, as the host's question tool shows it and as the
+// row estimate counts it, each line kept as it is, its leading spaces
+// included, and wrapped only where it is wider than the measure: the lines a
+// README part would write are quoted exactly.
+func TestParagraphKeepsItsLineBreaks(t *testing.T) {
+	long := "- [" + strings.Repeat("word ", 20) + "](#anchor)"
+	a := question.Ask{Questions: []question.Question{{
+		ID: "readme.contents", Chip: "Setup Q2",
+		Material: []question.Block{
+			{Kind: question.KindParagraph, Text: "A table of contents. Here it writes:"},
+			{Kind: question.KindParagraph, Text: "- [Section 0](#section-0)\n  - [Sub 0](#sub-0)\n" + long},
+		},
+		Ask:     "Keep it?",
+		Options: []question.Option{{Value: "on", Label: "on", Meaning: "Writes it."}, {Value: "off", Label: "off", Meaning: "Leaves it out."}},
+		Later:   question.Option{Value: "later", Label: "Decide later", Meaning: "Stores nothing."},
+		Now:     "not set", ChangeLater: "the flag",
+	}}}
+	lines := Layout(a, 80, term.Mono)
+	drawn := strings.Join(lines, "\n")
+	for _, want := range []string{"\n  - [Section 0](#section-0)\n", "\n    - [Sub 0](#sub-0)\n"} {
+		if !strings.Contains(drawn, want) {
+			t.Errorf("the line %q is not drawn as it is:\n%s", strings.Trim(want, "\n"), drawn)
+		}
+	}
+	for _, ln := range lines {
+		if w := textwidth.Columns(ln); w > 80 {
+			t.Errorf("a line %d columns wide: %q", w, ln)
+		}
+	}
+	if !strings.Contains(drawn, "(#anchor)") {
+		t.Errorf("the long line is not drawn whole across its wrapped lines:\n%s", drawn)
+	}
+}

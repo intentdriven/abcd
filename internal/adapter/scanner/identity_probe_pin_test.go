@@ -105,11 +105,11 @@ func newPinCtx(t *testing.T, bare bool) *pinCtx {
 	if err := os.MkdirAll(c.repo, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"init", "-q"}
 	if bare {
-		args = append(args, "--bare")
+		gittest.InitBare(t, c.repo)
+	} else {
+		c.git(t, "init", "-q", c.repo)
 	}
-	c.git(t, append(args, c.repo)...)
 	t.Setenv("GIT_CONFIG_GLOBAL", c.global)
 	t.Setenv("GIT_CONFIG_SYSTEM", c.system)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "0")

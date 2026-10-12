@@ -62,7 +62,7 @@ It is a **hypothesis, not a measurement.** Each row states the best status a lif
 | `product/context` | `brief/01-product/02-context.md` | partial | grounded | grounded | README, docs/, CONTRIBUTING, commit subjects |
 | `product/mental-model` | `brief/01-product/03-mental-model.md` | blank | partial | grounded | docs/ explanation pages, ADR context sections, the brief |
 | `product/scope` | `brief/01-product/04-scope.md` | partial | partial | grounded | README features, intents' in-scope/out-of-scope sections, the code's own surface |
-| `product/personas` | `brief/01-product/05-personas.md` | blank | blank | partial | personas registry, press-release quote attributions |
+| `product/personas` | `brief/01-product/05-personas.md` | blank | blank | grounded | personas registry, press-release quote attributions |
 | `product/framing` | `brief/01-product/06-framing.md` | blank | partial | grounded | the brief's framing section, the brief-creation interview's committed framing products |
 | `constraints/platform` | `brief/02-constraints/01-platform.md` | partial | grounded | grounded | build manifests, CI workflows, README requirements |
 | `constraints/dependencies` | `brief/02-constraints/02-dependencies.md` | partial | grounded | grounded | add/remove churn from git history; the authoritative list needs the manifest and lockfile |
@@ -87,7 +87,7 @@ It is a **hypothesis, not a measurement.** Each row states the best status a lif
 Two rows carry most of the thesis:
 
 - **`graveyard` is the only section grounded at Tier 0.** What a project abandoned is written into its git history whether or not anyone wrote it down — which is why the graveyard earns a section of its own rather than a footnote inside `evidence/what-didnt`.
-- **`product/personas` is blank below abcd-native, and only partial there.** If the probe confirms that across the corpus, personas are not derivable from a repository at all: the section is a question for a human, not an extraction, and it should not be in a lifeboat's brief.
+- **`product/personas` is blank below abcd-native, and grounded there only from an authored brief file** — a person's writing, never an extraction. The probe confirmed that across the corpus, so personas are not derivable from a repository at all: the section is human-owned ([adr-36](../decisions/adrs/0036-coverage-blanks-are-a-fillable-lifecycle.md)), a question for a human, which a lifeboat carries as a blank to answer wherever no one has written the personas down.
 
 `coverage.{json,md}` and `_provenance.json` are not rows here. They are the lifeboat's own machinery — the report of what could *not* be filled, and the record of how it was produced — and they are always written, whatever the tiers.
 

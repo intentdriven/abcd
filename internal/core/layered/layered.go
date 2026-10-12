@@ -58,6 +58,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Layer is where a resolved value came from. The constants ascend in
@@ -129,6 +130,10 @@ func (f File) MachineOrigin() string { return abcdhome.Display(f.MachineRel) }
 type Roots struct {
 	Repo string
 	Home string
+	// HomeRefused marks a home RootsFor declined (iss-2609300012273350): Home
+	// is "" so nothing is read from or written to it, and the machine layer
+	// reads as absent instead of failing the load. RootsFor's notes say why.
+	HomeRefused bool
 }
 
 // RootsFor is the one way a front door resolves Roots for a working directory,
@@ -153,13 +158,32 @@ type Roots struct {
 // notes are the resolution's refusals (a foreign-owned checkout declined), for
 // the front door to print on stderr; the home is left "" when it cannot be
 // resolved, which Load refuses loudly.
+//
+// A home inside a git working tree that is not the account's own is refused
+// (iss-2609300012273350), by the one rule gitutil.HomeInsideWorkingTree
+// spells for the credential store too. The home is $HOME, and an environment
+// the repository can shape (a committed harness settings file whose env block
+// sets HOME into the tree) would otherwise let the checkout supply the machine
+// layer, the layer that decides which route may spend the person's paid key.
+// The tree a checkout controls is never this machine's layer, unless it is
+// the home the account database names for this uid (a dotfiles-in-HOME
+// account), judged by file identity. Home is left "" so nothing is read from
+// or written to it, HomeRefused makes Load read the machine layer as absent
+// rather than fail, and a note says why. A home outside every working tree
+// (every test and CI job's temporary HOME among them) is untouched.
 func RootsFor(cwd string) (Roots, []string) {
 	res := rules.Resolve(cwd)
+	notes := res.Notes
 	home, err := userHomeDir()
 	if err != nil {
 		home = ""
 	}
-	return Roots{Repo: res.Root, Home: home}, res.Notes
+	if tree := gitutil.HomeInsideWorkingTree(home); tree != "" {
+		notes = append(notes, fmt.Sprintf("abcd: HOME lies inside the git working tree at %s and is not this account's home, "+
+			"so %s is not read as this machine's layer and nothing is written there; run abcd with your own HOME", tree, abcdhome.Display()))
+		return Roots{Repo: res.Root, HomeRefused: true}, notes
+	}
+	return Roots{Repo: res.Root, Home: home}, notes
 }
 
 // userHomeDir is the package's view of os.UserHomeDir, held as a var for the
@@ -206,7 +230,7 @@ func Load(f File, r Roots) (*Stack, error) {
 	if !f.valid() {
 		return nil, fmt.Errorf("layered: file family %q / %q is not a pair of clean relative paths", f.RepoRel, f.MachineRel)
 	}
-	if r.Home == "" {
+	if r.Home == "" && !r.HomeRefused {
 		return nil, fmt.Errorf("%s: the home directory is unresolved, so the machine layer "+
 			"cannot be read; set HOME and retry", f.MachineOrigin())
 	}
@@ -225,6 +249,11 @@ func Load(f File, r Roots) (*Stack, error) {
 				return nil, fmt.Errorf("%s (repo layer): %w", f.RepoOrigin(), err)
 			}
 		}
+	}
+	if r.HomeRefused {
+		// RootsFor declined the home and said so in its notes: the machine
+		// layer is absent, never read from a home the checkout controls.
+		return s, nil
 	}
 	raw, err := readMachine(r.Home, f.MachineRel)
 	if err != nil {

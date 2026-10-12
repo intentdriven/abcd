@@ -35,7 +35,8 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 
 // stubGH is a forge client that records every call in gh.log beside it and
 // answers from files there: pr.json (the open pull requests), body.md (the
-// body the forge holds), state (the pull request's state), footer (a line the
+// body the forge holds), state (the pull request's state), mergeable.json (its
+// mergeability; MERGEABLE when absent), footer (a line the
 // "harness" appends to a body at creation), refuse-disarm (present, the forge
 // refuses to withdraw an armed merge). It never reaches a network.
 const stubGH = `#!/bin/sh
@@ -59,6 +60,7 @@ case "$1 $2" in
     echo "https://example.com/o/r/pull/7" ;;
   "pr view")
     case "$*" in
+      *mergeable*) if [ -f "$d/mergeable.json" ]; then cat "$d/mergeable.json"; else echo '{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; fi ;;
       *state*) if [ -f "$d/state" ]; then cat "$d/state"; else echo OPEN; fi ;;
       *) cat "$d/body.md" ;;
     esac ;;
@@ -119,7 +121,7 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	repo.Commit("the record")
 
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	repo.Git("init", "-q", "--bare", "--initial-branch=main", bare)
+	gittest.InitBare(t, bare)
 	repo.Git("remote", "add", "origin", bare)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")

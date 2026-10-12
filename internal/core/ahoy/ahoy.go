@@ -115,6 +115,10 @@ type DetectionResult struct {
 	// store is trackable" to a consumer that never asked about a repo.
 	Banlist *BanlistHealth `json:"banlist,omitempty"`
 	Gaps    []Gap          `json:"gaps"`
+	// Readme is the README question pair as the plugin page relays it, carried
+	// by DryRun while the question is open (readme.offered) and omitted
+	// otherwise (spc-2610031704338417).
+	Readme *ReadmeView `json:"readme,omitempty"`
 
 	// pluginRoot is the resolved plugin root; not serialized.
 	pluginRoot string
@@ -165,6 +169,12 @@ type InstallOptions struct {
 	// --install-tool. Nil is a no for every tool, so a caller that asks nothing
 	// installs nothing. The category approval never stands in for it.
 	ConfirmTool tools.Confirm
+	// ReadmeParts is --readme-parts as given: a comma-separated list of the
+	// README parts abcd keeps current, or none; "" is the flag not given. It
+	// answers the README question in any run, --yes included, and is stored as
+	// readme.parts (readme_apply.go); a value ParseReadmeParts refuses refuses
+	// the install before any write.
+	ReadmeParts string
 	// ApproveDependency answers the dependency category's question yes without
 	// asking it: the front door sets it when the person named a tool to
 	// install (--install-tool), which is that answer given in advance. Every
@@ -213,7 +223,17 @@ type InstallResult struct {
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
+	// readmeAwaitsConfig is set when the run reports the README question
+	// skipped and ends with no .abcd/config.json to keep its answer in, so the
+	// summary names the starter files first (iss-2610120505551170).
+	readmeAwaitsConfig bool
 }
+
+// ReadmeAwaitsConfig reports whether the run left the README question
+// unanswered with no .abcd/config.json to keep the answer in: until abcd's
+// starter files exist, the question is not asked and --readme-parts is
+// refused, so the way to answer it starts with creating them.
+func (r InstallResult) ReadmeAwaitsConfig() bool { return r.readmeAwaitsConfig }
 
 // ApplyResult is the outcome of one apply step.
 type ApplyResult struct {
@@ -248,6 +268,7 @@ type StatusLineReceipt struct {
 // UninstallReceipt is the outcome of Uninstall.
 type UninstallReceipt struct {
 	Marker     MarkerReceipt     `json:"marker"`
+	Readme     ReadmeReceipt     `json:"readme"`
 	Symlink    SymlinkReceipt    `json:"symlink"`
 	StatusLine StatusLineReceipt `json:"status_line"`
 }

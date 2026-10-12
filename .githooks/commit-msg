@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Outbound gate, commit-message half — run on every clone via the global
-# ~/.githooks dispatcher (core.hooksPath), or by pointing this clone's hooks at
-# this directory: git config core.hooksPath .githooks
+# ~/.githooks dispatcher (core.hooksPath), or, in a clone no dispatcher serves, by
+# pointing that clone's hooks at this directory; the refusal below prints which.
 #
 # Refuses a commit whose message carries a LIVE AGENT-SESSION URL or a tool's own
 # attribution footer, the two halves of the outbound policy AGENTS.md states
@@ -158,8 +158,14 @@ if [ -z "$src" ]; then
   echo "commit-msg: BLOCKED — no abcd source to judge this commit message with." >&2
   echo "            the outbound check builds ./cmd/abcd from the checkout that holds this hook" >&2
   echo "            and runs \`abcd lint outbound\`, and neither the hook's checkout nor this working tree" >&2
-  echo "            carries cmd/abcd. Point the clone's hooks at the committed directory:" >&2
-  echo "            git config core.hooksPath .githooks" >&2
+  echo "            carries cmd/abcd. What to do turns on the hooks directory git runs in" >&2
+  echo "            this clone, which \`abcd ahoy --json\` reports as banlist.hooks_path:" >&2
+  echo "            - \`unarmed\` — point the clone's hooks at the committed directory:" >&2
+  echo "                git config core.hooksPath .githooks" >&2
+  echo "            - \`foreign\` — a global or system hooks dispatcher is in force. Leave it:" >&2
+  echo "                a local core.hooksPath would shadow it in this clone. Have the" >&2
+  echo "                dispatcher call the hook in .githooks/ of a checkout that carries cmd/abcd." >&2
+  echo "            - \`armed\` — nothing to set: git already runs this clone's .githooks/." >&2
   exit 1
 fi
 if [ -z "$go_bin" ]; then

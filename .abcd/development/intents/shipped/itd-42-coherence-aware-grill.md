@@ -49,7 +49,7 @@ Each of those is caught today only later — at planning, at review, or not at a
 
 abcd already has the grounded-adversary pattern this needs. [itd-41](../drafts/itd-41-phase-negotiator.md)'s phase negotiator is *Socratic where it questions, grounded where it asserts* — it never invents a trade-off to sound thorough. Coherence grilling MUST work the same way: a hallucinated conflict ("this contradicts itd-12") spends the product thinker's trust on a fiction. Every asserted conflict cites a real anchor; every concern that cannot be anchored is a question.
 
-The brief is already structured for selective loading — numbered sections, invariants and scope already isolated in their own files — so reading the *relevant* slice of it is a context-selection problem, not a new subsystem. Whole-corpus full-text comparison across all intents is not; that is left out of scope and deferred to scope-aware retrieval ([itd-39](../drafts/itd-39-scope-aware-memory-retrieval.md)).
+The brief is already structured for selective loading — numbered sections, invariants and scope already isolated in their own files — so reading the *relevant* slice of it is a context-selection problem, not a new subsystem. Whole-corpus full-text comparison across all intents is not; that is left out of scope and deferred to scope-aware retrieval ([itd-39](../planned/itd-39-scope-aware-memory-retrieval.md)).
 
 ## What's In Scope
 
@@ -63,7 +63,7 @@ The brief is already structured for selective loading — numbered sections, inv
 ## What's Out of Scope
 
 - **Replacing or rewriting the glossary tier** — itd-27's glossary-aware mode is kept verbatim. This intent is additive.
-- **Full-body semantic comparison across all intents** — Tier 3 is index-level only. Loading and comparing full intent bodies at scale is the scope-aware retrieval problem; deferred to [itd-39](../drafts/itd-39-scope-aware-memory-retrieval.md). This intent must not pre-build that subsystem.
+- **Full-body semantic comparison across all intents** — Tier 3 is index-level only. Loading and comparing full intent bodies at scale is the scope-aware retrieval problem; deferred to [itd-39](../planned/itd-39-scope-aware-memory-retrieval.md). This intent must not pre-build that subsystem.
 - **Loading the whole brief** — only the named invariant / scope / surface slices. Whole-brief grilling stays out of scope for the same token-budget reason itd-27 ruled out whole-brief grilling.
 - **Asserting unanchored conflicts** — a coherence concern that cannot be tied to a named invariant, scope clause, or sibling intent is a question, never an assertion. "Sounds thorough" is not a licence to invent a conflict.
 - **Auto-resolving conflicts** — the grill surfaces incoherence; it does not edit the intent, kill a sibling, or rewrite scope. The product thinker decides.
@@ -185,7 +185,7 @@ Gap audit:
 
 - Extends: [itd-27](../superseded/itd-27-grill-skill-and-glossary.md) (grill skill & glossary) — adds a coherence tier to the grill itd-27 built; the glossary tier's behaviour is unchanged. **Also renames itd-27's `--with-docs` flag to `--glossary` and adds `--coherence` / `--full`** — itd-27's surface table and the grill `SKILL.md` flag list must be updated when this intent is planned.
 - Shares the grounded-adversary pattern with: [itd-41](../drafts/itd-41-phase-negotiator.md) (phase negotiator) — Socratic where it questions, grounded where it asserts.
-- Defers to: [itd-39](../drafts/itd-39-scope-aware-memory-retrieval.md) (scope-aware memory retrieval) — full-body cross-intent comparison at scale is itd-39's problem, not this intent's.
+- Defers to: [itd-39](../planned/itd-39-scope-aware-memory-retrieval.md) (scope-aware memory retrieval) — full-body cross-intent comparison at scale is itd-39's problem, not this intent's.
 - Coordinates with: [itd-48](itd-48-intent-fidelity-reviewer-roles-2-3.md) (cross-document fidelity reviewer — supersedes [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md)) — different register: itd-48's Role 2 reviews delivered documents for drift; this grills an intent for coherence before it is planned.
 
 ## Grounds

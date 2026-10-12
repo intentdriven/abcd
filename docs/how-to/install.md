@@ -487,6 +487,131 @@ markers they carry, so a hook whose marker is renamed or stripped reads as
 someone else's hook, a fence without its markers reads as drifted, and
 `abcd ahoy` reports either as a gap.
 
+`README.md` is not among them. abcd writes in it only after you answer yes to
+the README question below, and only the parts you choose; the marks around
+each part name abcd, as the fence in `.gitignore` does.
+
+## The README parts abcd keeps current
+
+Setup can keep a few parts of your project's `README.md` current. Each part is
+read from the project on this computer and sits inside its own marked place.
+Setup asks before it writes any, never writes a title, and never touches your
+own words. It writes in your working tree and commits nothing: committing
+`README.md` is yours to do.
+
+The parts, in the order abcd places them:
+
+| Part | What it writes | Left out, with the reason said, when |
+| --- | --- | --- |
+| `release-badge` | a badge of the latest release, linked to the forge's latest-release page | the project is not declared public; there is no `origin` remote abcd can read, or it is not on github.com |
+| `build-badge` | the forge's own status badge for one workflow, linked to that workflow's runs | as the release badge; or `.github/workflows/` holds no workflow file, or several and none is `ci.yml` or `ci.yaml` |
+| `abcd-badge` | a "managed with abcd" badge linked to abcd's repository | only by one of the checks below, since it reads nothing from the project |
+| `licence` | one line naming the licence and linking the file, or linking it unnamed | there is no `LICENSE`, `LICENSE.md` or `LICENSE.txt` at the root |
+| `links` | links to `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md` and `CODE_OF_CONDUCT.md`, each looked for at the root, then in `.github/`, then in `docs/` | none of the four is found |
+| `contents` | a list of links to the README's own level-two and level-three headings | the README has no level-two heading |
+
+The two forge badges go by what you declared in abcd's settings
+(`repo.visibility` in `.abcd/config.json`, which `--visibility public` sets):
+abcd reads no visibility from the forge, and a project not declared public is
+not offered them. The badge images are drawn when someone reads the page, so
+no version number is written into the file. The licence is named only from an
+`SPDX-License-Identifier:` line in the file's first twenty lines, or from the
+standard first line of the MIT, Apache 2.0, BSD 2-Clause, BSD 3-Clause, ISC or
+Mozilla Public License 2.0 text; any other licence file is linked without being
+named. A heading whose anchor abcd cannot be sure of is listed in `contents`
+without a link, and a note says which.
+
+Before a part is written it passes three checks, and a part that fails one is
+left out with the finding named. A badge's addresses must use https and the
+one host allowed for that badge, and may carry no query key the forge does not
+read: an `origin` remote ending `?token=abc` is refused naming `token`. Every
+part passes abcd's outbound scrub. Where the project keeps
+`.abcd/docs-lint.json`, every part passes its banned tokens too. Setup reads
+files and the `origin` remote's address and asks the network nothing.
+
+A part looks like this in `README.md`:
+
+```markdown
+<!-- BEGIN ABCD:licence sha256=<64 hex digits> -->
+Licensed under the MIT License; see [LICENSE](LICENSE).
+<!-- END ABCD:licence -->
+```
+
+The opening mark carries a hash of the text abcd wrote. Each setup run reads
+every chosen part from the project again and rewrites one that has gone stale,
+wherever in the file you moved it; a run in which every part is current leaves
+the file's bytes and time stamp as they were. A part whose text does not
+match its hash was edited by hand: setup names it and its line
+(`licence part edited by hand at line 4; left as it is`), leaves it, and still
+writes the others. Two marks for one part, or a mark with no partner, leaves
+the whole file as it is and names the line. A new part goes beside the nearest
+part already there, else after a leading frontmatter block, else after the
+first level-one heading, else at the top. Marks shown inside a code block, as
+above, are not read as a part. A project with no `README.md` gets one holding
+only the chosen parts, with no title and no prose.
+
+### The question
+
+At a terminal, in a run without `--yes`, setup asks whether abcd should keep
+parts of `README.md` current: `yes`, `no`, or `later`, the default. `yes` goes
+on to one question per part offered, each saying what the part is, its
+current setting, how to change it later, and the exact lines it would write in
+this project or the reason it writes none. Each part's answer is `on`, `off`
+or `later`. The licence and the links start on; the table of contents and the
+managed-with-abcd badge start off; the two forge badges start on where they
+are offered. Through the plugin, your agent harness asks the same questions
+with its own question tool: the first one alone, then the parts as tabs of at
+most four.
+
+The answer is saved as `readme.parts` in `.abcd/config.json`. A list of parts
+is rewritten on every later setup run. `no` saves an empty list, takes out the
+parts whose text is still abcd's, and is not asked again. `later`, at the first
+question or at any part, saves nothing, so the next setup run asks again. The
+answer is kept in `.abcd/config.json`, so the question is asked only once
+abcd's starter files exist.
+
+### Answering it with `--readme-parts`
+
+```sh
+'<plugin-root>/abcd' ahoy install --readme-parts licence,links
+```
+
+```sh
+'<plugin-root>/abcd' ahoy install --readme-parts none
+```
+
+`<plugin-root>` is the folder described under [Plugin](#plugin); once abcd is
+on your `PATH`, `abcd` alone takes the place of the quoted path. The flag takes the parts you want, comma-separated, or `none`, which answers
+no. It answers the question in any run, `--yes` included, and is saved as the
+question's answer is. A name that is not one of the six parts, an empty name,
+or `none` beside a part is refused with exit 2, naming the parts, before
+anything is written. A value that differs from the saved one is shown as a
+change (`readme.parts: licence -> licence,links`), and a part you drop is
+taken out of `README.md` where its text is still abcd's. Until abcd's starter
+files exist there is nowhere to save the answer, so the run leaves `README.md`
+as it is and says so.
+
+### What `--yes` does
+
+`--yes` never answers the README question. While the question is unanswered,
+a `--yes` run without `--readme-parts` leaves `README.md` as it is, or absent
+if there was none, lists `readme.offered` under `optional_skipped`, and its
+summary says "The README question was not asked" and names `--readme-parts`.
+Once a list of parts is saved, a `--yes` run keeps those parts current like
+any other setup run. A run whose answers
+are piped in is not asked either, and reports it the same way.
+
+### Uninstall
+
+`abcd ahoy uninstall` takes out every part whose text still matches its hash,
+whatever `readme.parts` says, and leaves each part edited by hand, naming it.
+Two marks for one part, or a mark with no partner, leaves the file untouched
+and names the line. A `README.md` holding no part is never written. A
+`README.md` that abcd created is deleted once nothing but blank lines is left
+in it; one you made is kept, even when empty. The uninstall's text names what
+it did on its `readme:` line, for example
+`readme: links removed; licence edited by hand, left`.
+
 ## Build
 
 ```bash

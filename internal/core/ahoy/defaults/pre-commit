@@ -5,9 +5,18 @@
 # committed on purpose: every clone inherits the check, while the names it checks
 # stay on the machine that declared them.
 #
-# Point this repo's hooks at the directory holding this file, once per clone:
+# A committed hook is not a running hook until git runs the directory holding
+# this file. What that takes, once per clone, turns on the hooks directory git
+# runs in the clone, which `abcd ahoy --json` reports as banlist.hooks_path:
 #
-#     git config core.hooksPath .githooks
+#   - `unarmed` — point the clone's hooks at the committed directory:
+#
+#         git config core.hooksPath .githooks
+#
+#   - `foreign` — a global or system hooks dispatcher is in force. Leave it: a
+#     local core.hooksPath would shadow it in this clone. Have the dispatcher
+#     call this hook in .githooks/.
+#   - `armed` — nothing to set: git already runs this clone's .githooks/.
 #
 # Refuses to commit any name listed in an UNTRACKED banlist. The banlist lives
 # only on this machine (.abcd/.work.local/ is gitignored), so a name that must

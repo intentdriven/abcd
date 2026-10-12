@@ -2,6 +2,7 @@ package ahoy
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/question"
@@ -89,17 +90,26 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 		confirmQuestion(t, len(qs)+1, OracleRoutingMachineGapID, machineRoutingQuestion(), oracleRoutingMachineQuestionTail),
 		confirmQuestion(t, len(qs)+2, OracleRoutingRepoGapID, repoRoutingQuestion(), oracleRoutingRepoQuestionTail))
 
-	broken := map[string]bool{}
+	var asks []question.Ask
 	for _, q := range qs {
-		a := question.Ask{Questions: []question.Question{q}}
+		asks = append(asks, question.Ask{Questions: []question.Question{q}})
+	}
+	// The README pair (spc-2610031704338417 step 4): Q1 alone, and every
+	// part's tab in the calls of at most four the page makes, each built as
+	// the run builds it, with its current setting, its change-later line and
+	// its example, in the projects that make them tallest.
+	asks = append(asks, readmeLimitAsks(t)...)
+
+	broken := map[string]bool{}
+	for _, a := range asks {
 		for _, f := range question.Check(a) {
-			t.Errorf("%s: structural: %s", q.ID, f)
+			t.Errorf("%s: structural: %s", askLabel(a, f.Tab), f)
 		}
 		for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
-			key := q.ID + " " + string(f.Rule)
+			key := askLabel(a, f.Tab) + " " + string(f.Rule)
 			broken[key] = true
 			if !setupLimitsOwed[key] {
-				t.Errorf("%s: %s", q.ID, f)
+				t.Errorf("%s: %s", askLabel(a, f.Tab), f)
 			}
 		}
 	}
@@ -108,4 +118,69 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 			t.Errorf("%q is owed in setupLimitsOwed but the question no longer breaks it; delete its line", key)
 		}
 	}
+}
+
+// askLabel names the question at tab (counted from one) of a, or the call as
+// a whole for tab zero.
+func askLabel(a question.Ask, tab int) string {
+	if tab < 1 || tab > len(a.Questions) {
+		ids := make([]string, len(a.Questions))
+		for i, q := range a.Questions {
+			ids[i] = q.ID
+		}
+		return "(" + strings.Join(ids, ", ") + ")"
+	}
+	return a.Questions[tab-1].ID
+}
+
+// readmeLimitAsks is every call the README pair makes, in the projects whose
+// words are tallest: a public project with long names, every link, a long
+// table of contents and a build workflow, so every part has an example to
+// show; a public project whose README's headings, quoted in its table of
+// contents, would trip a style rule (an em dash in a list item, a bold or a
+// dunder heading, iss-2610120129098206); a project not declared public, whose Q1 says so; a public project
+// where no part can be written, so every tab says why instead; and a public
+// project whose eight long-named workflows hold no ci.yml, so the build badge's
+// reason would name every one of them.
+func readmeLimitAsks(t *testing.T) []question.Ask {
+	t.Helper()
+	long := "a-rather-long-owner-name-of-39-chars-xx"
+	var headings strings.Builder
+	headings.WriteString("# Project\n")
+	for _, h := range []string{"Installing it on every platform it supports", "Configuring the tool for a team",
+		"Running the test suite", "Contributing changes", "Security reports", "Licence and credits"} {
+		headings.WriteString("\n## " + h + "\n")
+	}
+	full := readmeRepo(t, "https://github.com/"+long+"/"+long+"-with-a-longer-repository-name.git", map[string]string{
+		"LICENSE": "MIT License\n", "CHANGELOG.md": "x\n", "CONTRIBUTING.md": "x\n", "SECURITY.md": "x\n",
+		"CODE_OF_CONDUCT.md": "x\n", ".github/workflows/continuous-integration.yml": "on: push\n",
+		"README.md": headings.String(), ".abcd/config.json": `{"repo": {"visibility": "public"}}`,
+	})
+	private := readmeRepo(t, "", map[string]string{".abcd/config.json": `{"repo": {"visibility": "private"}}`})
+	empty := readmeRepo(t, "https://github.com/owner/repo.git", map[string]string{
+		"README.md": "# Project\n", ".github/workflows/build-and-test.yml": "x\n",
+		".github/workflows/release-candidates.yml": "x\n", ".github/workflows/nightly-checks.yml": "x\n",
+		".abcd/config.json": `{"repo": {"visibility": "public"}}`,
+	})
+	workflows := map[string]string{"README.md": "# Project\n", ".abcd/config.json": `{"repo": {"visibility": "public"}}`}
+	for _, n := range []string{"build-and-test-on-every-supported-platform", "codeql-analysis-of-the-go-sources",
+		"dependency-review-of-every-pull-request", "release-candidates-for-the-next-version",
+		"nightly-checks-against-the-latest-toolchain", "documentation-site-render-and-publish",
+		"scheduled-secret-scanning-of-the-history", "merge-queue-sweep-of-dropped-entries"} {
+		workflows[".github/workflows/"+n+".yml"] = "on: push\n"
+	}
+	many := readmeRepo(t, "https://github.com/owner/repo.git", workflows)
+	styled := readmeRepo(t, "https://github.com/owner/repo.git", map[string]string{
+		"README.md":         "# Project\n\n## Usage\n\n## Install — fast\n\n## The **core** of __init__\n",
+		".abcd/config.json": `{"repo": {"visibility": "public"}}`,
+	})
+	var out []question.Ask
+	for _, repo := range []string{full, private, empty, many, styled} {
+		v, ok := readmeView(repo)
+		if !ok {
+			t.Fatalf("no README view in %s", repo)
+		}
+		out = append(out, v.Asks...)
+	}
+	return out
 }

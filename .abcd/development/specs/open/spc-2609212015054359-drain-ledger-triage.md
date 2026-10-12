@@ -170,6 +170,26 @@ until the run itself closes it.
   "judgement"`); a no opens the lane; an answer over an issue no longer
   eligible decides nothing, and one over a remedy rewritten since is refused
   and asked again. Every answer is kept in the drain's state and summary.
-- **Remaining:** the counts of scope 8 not yet in the summary (the spend), and
-  the decision-record marker on a trust-rule hand-back (decision 10), and the
-  steps from issues the plan names.
+- **Landed (the summary's remaining counts, step 2): scope 8.** Every move's
+  summary carries `counts`, in text and `--json`: the lanes opened by outcome,
+  the pull requests they opened, the hand-backs by route (promotions, decision
+  records, homes), the rule's flags, the host judgements, the issues passed
+  over, and the spend in agent runs (each verified implementer's receipt and
+  each validator's return across the drain's lanes, the budget check's unit;
+  a lane whose run cannot be read is named, the spend then a floor). A lane
+  done before the drain read it keeps its pull request number, and a drain
+  that ends with every lane ended and none in a pull request says so as a
+  normal ending (one stopped with a lane still in progress does not).
+- **Landed (merged lanes finished, step 3; iss-2610090936460789).** Every
+  drain move, after the outage check and before the window clock, takes the
+  landing's last step for each issue lane in the checkout parked at land whose
+  pushed head is on the default branch (`loop/drain_finish.go`): its worktree
+  and branch are removed and the lane is done, whatever the drain's or the
+  run's window clock says, since the cleanup does no new work. The lanes are
+  read from the checkout's runs, not the drain's state, so an ended drain's
+  lanes and a person's `abcd build <iss-N>` lanes are finished too; the default
+  branch is fetched once per move, only while a lane is parked, and the forge
+  is asked nothing about a lane not yet on it. A lane the landing refuses to
+  finish is named in `finished` and `next`, and the move goes on.
+- **Remaining:** the decision-record marker on a trust-rule hand-back
+  (decision 10), and the plan's steps 4 and 5, from issues.

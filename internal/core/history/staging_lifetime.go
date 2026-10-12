@@ -425,6 +425,13 @@ type RepoBacklog struct {
 	OldestStagedAt   time.Time `json:"oldest_staged_at,omitempty"`
 	Quarantined      int       `json:"quarantined"`
 	QuarantinedBytes int64     `json:"quarantined_bytes"`
+	// Orphaned marks a key whose recorded checkout no longer exists
+	// (iss-2609091717146700): the drain needs that repository's own redaction
+	// configuration, so with the checkout gone nothing will ever redact this
+	// pile, and discard by root SHA is the only way it leaves. A key with no
+	// recorded root, or one whose root cannot be examined, is not orphaned:
+	// unknown is not gone.
+	Orphaned bool `json:"orphaned,omitempty"`
 }
 
 // Total is the unredacted bytes this repository is holding, staged and
@@ -459,6 +466,7 @@ func SurveyBacklog() ([]RepoBacklog, error) {
 		}
 		return nil, fmt.Errorf("history: read store root: %w", err)
 	}
+	roots := registeredRoots()
 	var out []RepoBacklog
 	for _, e := range entries {
 		// Only a directory whose name IS a root-commit SHA is a repository key.
@@ -495,10 +503,65 @@ func SurveyBacklog() ([]RepoBacklog, error) {
 		if b.Staged == 0 && b.Quarantined == 0 {
 			continue
 		}
+		b.Orphaned = rootGone(roots[e.Name()])
 		out = append(out, b)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].RootSHA < out[j].RootSHA })
 	return out, nil
+}
+
+// maxRegistryBytes caps the registry read. One entry is a few hundred bytes,
+// so 4 MiB is thousands of repositories and still bounds a planted device.
+const maxRegistryBytes = 4 << 20
+
+// registeredRoots reads where each key's checkout was recorded: the `path` of
+// its entry in ahoy's registry (~/.abcd.noindex/history/index.json), the one
+// place the store keeps a repository's location. Best effort, like the name:
+// an absent or unreadable registry records nothing, and nothing is then called
+// orphaned.
+func registeredRoots() map[string]string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+	data, err := fsutil.ReadGuarded(filepath.Join(home, filepath.FromSlash(legacyStoreRelPath), "index.json"), maxRegistryBytes)
+	if err != nil {
+		return nil
+	}
+	var idx struct {
+		Repos []struct {
+			RootCommit string `json:"root_commit"`
+			Path       string `json:"path"`
+		} `json:"repos"`
+	}
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(idx.Repos))
+	for _, r := range idx.Repos {
+		p := r.Path
+		if strings.HasPrefix(p, "~/") {
+			p = filepath.Join(home, filepath.FromSlash(p[2:]))
+		}
+		if rootSHARe.MatchString(r.RootCommit) && filepath.IsAbs(p) {
+			out[r.RootCommit] = p
+		}
+	}
+	return out
+}
+
+// rootGone reports whether a recorded checkout root no longer exists. Only an
+// absence counts: no recorded root, or one that cannot be examined (a
+// permission fault), is not gone. The mark only names the pile; it deletes
+// nothing, because a checkout that moved, or sits on a volume not mounted
+// now, also reads as absent, and the judgement that the text may go is the
+// person's, through discard.
+func rootGone(root string) bool {
+	if root == "" {
+		return false
+	}
+	_, err := os.Stat(root)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // maxRepoMetaBytes caps the per-repo meta.json read. It holds four scalars.
