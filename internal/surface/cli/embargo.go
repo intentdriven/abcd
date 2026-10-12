@@ -292,7 +292,7 @@ func renderEmbargoCheck(w io.Writer, res embargo.CheckResult) {
 	if !res.Clean() {
 		verdict = "REFUSED, " + countOf(len(res.Findings), "finding")
 	}
-	fmt.Fprintf(w, "abcd embargo check — %s: %s under embargo; %s\n", verdict, countOf(res.UnderEmbargo, "advisory"), read)
+	fmt.Fprintf(w, "abcd embargo check — %s: %s under embargo; %s\n", verdict, advisoryCount(res.UnderEmbargo), read)
 	if len(res.Allowed) > 0 {
 		fmt.Fprintf(w, "  allowed: %s\n", strings.Join(res.Allowed, ", "))
 	}
@@ -357,7 +357,7 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 	p := res.Plan
 	if res.Approved {
-		fmt.Fprintf(w, "abcd embargo publish — %s from %s published, the first as the canary", countOf(len(res.Published), "advisory"), p.Release)
+		fmt.Fprintf(w, "abcd embargo publish — %s from %s published, the first as the canary", advisoryCount(len(res.Published)), p.Release)
 		if res.NoDraftLeft {
 			fmt.Fprint(w, "; GitHub lists none of them in draft or triage")
 		}
@@ -368,7 +368,7 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 		return
 	}
 	fmt.Fprintf(w, "abcd embargo publish — plan for %s in %s: %s, %s left out; nothing was sent\n",
-		termsafe.Sanitize(p.Repo), p.Release, countOf(len(p.Entries), "advisory"), countOf(len(p.LeftOut), "advisory"))
+		termsafe.Sanitize(p.Repo), p.Release, advisoryCount(len(p.Entries)), advisoryCount(len(p.LeftOut)))
 	for _, e := range p.Entries {
 		fmt.Fprintf(w, "  %s (%s): fix %s, first released in %s, patched %s\n", e.GHSAID, e.IssueID, e.FixCommit[:12], e.FirstTag, e.PatchedVersion)
 		for _, v := range e.Vulnerabilities {
@@ -382,4 +382,12 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 	if p.ApproveWith != "" {
 		fmt.Fprintf(w, "digest: %s\napprove with: %s\n", p.Digest, p.ApproveWith)
 	}
+}
+
+// advisoryCount is n advisories, spelled as English spells it.
+func advisoryCount(n int) string {
+	if n == 1 {
+		return "1 advisory"
+	}
+	return fmt.Sprintf("%d advisories", n)
 }

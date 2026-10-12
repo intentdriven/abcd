@@ -13,10 +13,10 @@ import (
 // and affected range take: the release tag without its leading v. It is the
 // form this repository's own advisories carry: the version bodies the
 // 2026-10-09 hand-run sent for the advisories it published name the patched
-// release as MAJOR.MINOR.PATCH with no v (kept in that checkout's local tier).
-// That observation was not repeated through the API when this was written, so
-// the live run of the command re-reads one published advisory to confirm it.
-// Changing the form is this one constant.
+// release as MAJOR.MINOR.PATCH with no v, and the live run of 2026-10-12 read
+// this repository's published advisories back through the API (state
+// published) and found every patched version and every range bound in that
+// form, with no v. Changing the form is this one constant.
 const patchedVersionKeepsV = false
 
 // releaseTagRe is a release tag: strict vMAJOR.MINOR.PATCH, with no leading

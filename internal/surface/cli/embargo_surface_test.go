@@ -213,3 +213,12 @@ func TestEmbargoJSONShapes(t *testing.T) {
 		t.Fatalf("publish document %v %s", err, out)
 	}
 }
+
+// TestEmbargoCountsReadAsEnglish: a count of advisories is spelled as one.
+func TestEmbargoCountsReadAsEnglish(t *testing.T) {
+	for n, want := range map[int]string{0: "0 advisories", 1: "1 advisory", 6: "6 advisories"} {
+		if got := advisoryCount(n); got != want {
+			t.Errorf("advisoryCount(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
