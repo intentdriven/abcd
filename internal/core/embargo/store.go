@@ -98,6 +98,32 @@ func Open(home, repoRoot string) (s Store, created bool, err error) {
 	return s, created, nil
 }
 
+// OpenExisting returns the store of the repository at repoRoot and its
+// verified state, making nothing: the sub-verbs after intake act on a store
+// intake made, and with none there is nothing under embargo to act on.
+func OpenExisting(home, repoRoot string) (Store, State, error) {
+	top, err := gitutil.Toplevel(repoRoot)
+	if err != nil {
+		return Store{}, State{}, refuse("this is not inside a git checkout", "run it from the repository's checkout")
+	}
+	p, err := StorePath(home, top)
+	if err != nil {
+		return Store{}, State{}, err
+	}
+	s := Store{Root: p, Checkout: top}
+	switch _, err := os.Lstat(p); {
+	case errors.Is(err, fs.ErrNotExist):
+		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
+	case err != nil:
+		return Store{}, State{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
+	}
+	st, err := s.Verify()
+	if err != nil {
+		return Store{}, State{}, err
+	}
+	return s, st, nil
+}
+
 // create makes the store's parent levels, each a real directory this account
 // alone can write, and adds the store detached at the default branch's tip:
 // with no branch, nothing in it has a ref to push.
