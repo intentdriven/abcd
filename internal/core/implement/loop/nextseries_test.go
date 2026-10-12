@@ -431,6 +431,52 @@ func TestASeriesRefusesAnOutcomeItNeverWrites(t *testing.T) {
 	}
 }
 
+// TestASeriesRefusesPaceFlagsItNeverWrites (iss-2610120925598775): the
+// series' stored pace flags are read in the form the flags take, as typed; a
+// file whose flags carry other text (a hand edit, or a file a hostile
+// checkout ships with bidi or C1 control runes) is refused at the pick, so it
+// never reaches the --json payload, and a series written with real flags
+// still reads back.
+func TestASeriesRefusesPaceFlagsItNeverWrites(t *testing.T) {
+	root := seriesRepo(t)
+	if _, err := Next(root, Options{Pace: strp("90/0"), SubAgents: strp("2"), FixRounds: strp("1")}, NextOptions{Max: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Next(root, Options{}, NextOptions{}); err != nil || res.Series == nil || res.Series.Flags.Pace == nil ||
+		*res.Series.Flags.Pace != "90/0" || *res.Series.Flags.SubAgents != "2" || *res.Series.Flags.FixRounds != "1" {
+		t.Fatalf("a series written with real flags reads back: %+v %v", res.Series, err)
+	}
+	path := filepath.Join(root, filepath.FromSlash(NextSeriesRel))
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ field, bad string }{
+		{`"pace": "90/0"`, `"pace": "\u202e90/0"`},
+		{`"sub_agents": "2"`, `"sub_agents": "\u009b2"`},
+		{`"fix_rounds": "1"`, `"fix_rounds": "1\u202e\u009b"`},
+	} {
+		forged := strings.Replace(string(raw), c.field, c.bad, 1)
+		if forged == string(raw) {
+			t.Fatalf("the series' state carries %s", c.field)
+		}
+		if err := os.WriteFile(path, []byte(forged), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Next(root, Options{}, NextOptions{})
+		r := mustRefusal(t, err)
+		if r.Stage != StagePick || !strings.Contains(r.Reason, "pace flags") {
+			t.Fatalf("%s is refused at the pick: %+v", c.bad, r)
+		}
+		if strings.ContainsAny(r.Reason+r.Remedy, "\u202e\u009b") {
+			t.Fatalf("the refusal carries a raw control rune: %q", r.Reason+r.Remedy)
+		}
+		if runs, _ := Runs(root); len(runs) != 1 {
+			t.Fatalf("a refused series starts no run: %d runs", len(runs))
+		}
+	}
+}
+
 // TestAPickedRunHandedBackAfterItsFixRoundsLeavesTheEntryAlone is criterion
 // 6's "the entry is not edited": a picked run whose lane takes its one fix
 // round and is then handed back as unachievable meets the pick's falsifier in

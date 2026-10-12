@@ -192,8 +192,9 @@ Refusals, each writing nothing:
   (not a regular file in a real directory, or past its size cap), that does not
   parse as it (malformed JSON, an unknown or repeated field, another
   `schema_version`), that names no run count a series takes, or that names a
-  pick that is not an intent and a run, or whose `outcome` is not one the
-  series writes: refused at the `pick` stage, exit 2, on every `build next`
+  pick that is not an intent and a run, whose `outcome` is not one the series
+  writes, or whose stored pace flags are not in the form `--pace`,
+  `--sub-agents` and `--fix-rounds` take: refused at the `pick` stage, exit 2, on every `build next`
   until the file is restored or removed. `build next` is its only writer: tell
   the user, and do not edit it to get past the refusal.
 - the pick's reason refused by the grounds writer's own gate, asked before the
