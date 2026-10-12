@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/land.go"
 remedy: "compare the listed branch ref with the lane's case-insensitively on a filesystem that folds case (fsutil.CaseFoldingFS), with a test that provokes both answers through a seam"
-resolution: "branchCheckedOutElsewhere compares the listed branch ref with the lane's through sameBranchRef, through full Unicode case folding and NFC (refFold), as APFS resolves names, where the filesystem folds them, so a checkout on build/lane-1 counts as standing on a lane named build/Lane-1"
+resolution: "branchCheckedOutElsewhere compares the listed branch ref with the lane's through sameBranchRef, through full Unicode case folding and NFC (refFold) where the filesystem folds case, which matches how APFS resolves names except for Cherokee (iss-2610121622596154), so a checkout on build/lane-1 counts as standing on a lane named build/Lane-1"
 impact: fix
 ---
 
