@@ -245,10 +245,22 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		}
 		now := o.now()
 		lane.Awaits = slices.Clone(lane.Awaits)
-		var told []Await
-		for _, k := range gone {
+		// Every gone await is proved before anything is saved, so a refusal
+		// on any one of them leaves every aside unwritten and every partial
+		// receipt where its agent wrote it.
+		proved := make([]provedAside, len(gone))
+		for n, k := range gone {
 			aw := lane.Awaits[k]
-			aside, err := saveAside(repoRoot, root, st.RunID, lane, aw, why, aw.Role == RoleImplementer, now)
+			p, err := proveAside(repoRoot, root, st.RunID, lane, aw, aw.Role == RoleImplementer)
+			if err != nil {
+				return false, err
+			}
+			proved[n] = p
+		}
+		var told []Await
+		for n, k := range gone {
+			aw := lane.Awaits[k]
+			aside, err := saveAside(repoRoot, root, st.RunID, laneID, aw, proved[n], why, now)
 			if err != nil {
 				return false, err
 			}
@@ -284,65 +296,81 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 	return res, err
 }
 
-// saveAside saves aside what the gone agent of aw left: with reset, everything
-// uncommitted in the lane's worktree, proved to apply to the lane's last
-// commit, after which the worktree is reset to that commit and cleaned; and,
-// either way, the partial receipt at the await's path, which leaves it. The
-// aside is a directory under the lane's directory of the run, named by the
-// UTC second, its aside.json naming the head, the files and why. Without
-// reset (a validator, who edits nothing and may share the worktree with the
-// round's others) the worktree is not read or touched, and the head is the
-// one the lane's state names. A refusal changes nothing, but for a reset git
-// refuses after the save, which names the aside.
-func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await, why string, reset bool, now time.Time) (RestartAside, error) {
+// provedAside is what proveAside read of a gone agent's leavings, for
+// saveAside to write: the lane's worktree and the commit it is reset to (reset
+// is false for a validator, whose worktree is not touched), the uncommitted
+// work's patch and files, and the partial receipt with its file name.
+type provedAside struct {
+	reset       bool
+	lw          LaneWorktree
+	head        string
+	patch       []byte
+	files       []string
+	partial     []byte
+	receiptName string
+}
+
+// proveAside reads, and writes nothing of, what the gone agent of aw left:
+// with reset, everything uncommitted in the lane's worktree, proved to apply
+// to the lane's last commit; and, either way, the partial receipt at the
+// await's path. Without reset (a validator, who edits nothing and may share
+// the worktree with the round's others) the worktree is not read, and the head
+// is the one the lane's state names. A refusal changes nothing.
+func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await, reset bool) (provedAside, error) {
 	laneID := lane.ID
-	head := lane.HeadSHA
-	var lw LaneWorktree
-	var patch []byte
-	files := []string{}
+	p := provedAside{reset: reset, head: lane.HeadSHA, files: []string{}}
 	if reset {
 		var err error
-		if lw, err = restartWorktree(repoRoot, runID, lane); err != nil {
-			return RestartAside{}, err
+		if p.lw, err = restartWorktree(repoRoot, runID, lane); err != nil {
+			return provedAside{}, err
 		}
-		head, err = gitutil.Run(lw.Path, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-		if err != nil || !gitutil.IsFullSHA(head) {
-			return RestartAside{}, fmt.Errorf("resolving %s's last commit: %v", laneID, err)
+		p.head, err = gitutil.Run(p.lw.Path, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+		if err != nil || !gitutil.IsFullSHA(p.head) {
+			return provedAside{}, fmt.Errorf("resolving %s's last commit: %v", laneID, err)
 		}
 		tmp, err := os.MkdirTemp("", "abcd-restart-")
 		if err != nil {
-			return RestartAside{}, err
+			return provedAside{}, err
 		}
 		defer os.RemoveAll(tmp)
-		patch, files, err = snapshot(lw.Path, head, tmp)
+		p.patch, p.files, err = snapshot(p.lw.Path, p.head, tmp)
 		if err != nil {
-			return RestartAside{}, refuse(stageRestart, "", laneID, "git could not capture the lane's uncommitted work: "+fsutil.RedactHome(err.Error()),
+			return provedAside{}, refuse(stageRestart, "", laneID, "git could not capture the lane's uncommitted work: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 		}
-		if len(patch) > 0 {
+		if len(p.patch) > 0 {
 			tmpPatch := filepath.Join(tmp, AsidePatchName)
-			if err := os.WriteFile(tmpPatch, patch, filePerm); err != nil {
-				return RestartAside{}, err
+			if err := os.WriteFile(tmpPatch, p.patch, filePerm); err != nil {
+				return provedAside{}, err
 			}
-			if err := checkAsidePatch(lw.Path, tmpPatch); err != nil {
-				return RestartAside{}, refuse(stageRestart, "", laneID,
-					"the uncommitted work's patch does not apply to the lane's last commit "+shortSHA(head)+", so it is not saved and the worktree is not reset: "+fsutil.RedactHome(err.Error()),
+			if err := checkAsidePatch(p.lw.Path, tmpPatch); err != nil {
+				return provedAside{}, refuse(stageRestart, "", laneID,
+					"the uncommitted work's patch does not apply to the lane's last commit "+shortSHA(p.head)+", so it is not saved and the worktree is not reset: "+fsutil.RedactHome(err.Error()),
 					"save the lane's uncommitted work by hand, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 			}
 		}
 	}
 
-	var partial []byte
-	receiptName := ""
 	data, err := fsutil.ReadGuardedInRoot(root, aw.Receipt, maxPartialReceiptBytes)
 	switch {
 	case err == nil:
-		partial, receiptName = data, filepath.Base(aw.Receipt)
+		p.partial, p.receiptName = data, filepath.Base(aw.Receipt)
 	case !errors.Is(err, os.ErrNotExist):
-		return RestartAside{}, refuse(stageRestart, "", laneID, "the partial receipt at "+aw.Receipt+" cannot be read: "+fsutil.RedactHome(err.Error()),
+		return provedAside{}, refuse(stageRestart, "", laneID, "the partial receipt at "+aw.Receipt+" cannot be read: "+fsutil.RedactHome(err.Error()),
 			"move it out of the lane's directory yourself, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 	}
+	return p, nil
+}
 
+// saveAside saves aside what proveAside read of the gone agent of aw: the
+// uncommitted work's patch, after which, with reset, the lane's worktree is
+// reset to its last commit and cleaned; and, either way, the partial receipt,
+// which leaves the await's path. The aside is a directory under the lane's
+// directory of the run, named by the UTC second, its aside.json naming the
+// head, the files and why. Only when git refuses the reset after the save is
+// it refused, and that refusal names the aside.
+func saveAside(repoRoot string, root *os.Root, runID, laneID string, aw Await, p provedAside, why string, now time.Time) (RestartAside, error) {
+	head, patch, partial, receiptName := p.head, p.patch, p.partial, p.receiptName
 	laneDir, err := laneRel(runID, laneID, stageRestart)
 	if err != nil {
 		return RestartAside{}, err
@@ -355,7 +383,7 @@ func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await
 	if err != nil {
 		return RestartAside{}, err
 	}
-	aside := RestartAside{RunID: runID, Lane: laneID, At: now, Path: dir, Head: head, Files: files, Why: why, Receipt: receiptName}
+	aside := RestartAside{RunID: runID, Lane: laneID, At: now, Path: dir, Head: head, Files: p.files, Why: why, Receipt: receiptName}
 	if len(patch) > 0 {
 		aside.Patch = AsidePatchName
 		if err := fsutil.WriteFileAtomicInRoot(root, dir+"/"+AsidePatchName, patch, filePerm); err != nil {
@@ -381,13 +409,13 @@ func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await
 			return RestartAside{}, err
 		}
 	}
-	if !reset {
+	if !p.reset {
 		return aside, nil
 	}
 
 	// Saved and proved: only now is the lane's own worktree reset.
 	for _, args := range [][]string{{"reset", "--hard", "--quiet", head}, {"clean", "-f", "-d", "--quiet", "--"}} {
-		if _, err := gitutil.Run(lw.Path, args...); err != nil {
+		if _, err := gitutil.Run(p.lw.Path, args...); err != nil {
 			return RestartAside{}, refuse(stageRestart, "", laneID,
 				"the uncommitted work is saved aside at "+dir+", but git could not reset the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again")

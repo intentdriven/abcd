@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -367,5 +368,47 @@ func TestARestartLeavesALiveValidatorOfTheSameRound(t *testing.T) {
 	}
 	if got, err := os.ReadFile(f.abs(live.Receipt)); err != nil || string(got) != "# Review\n\nunder way" {
 		t.Fatalf("the live reviewer's partial return stays where it writes it: %q %v", got, err)
+	}
+}
+
+// With two awaits kept on one lane, a restart proves every one before it saves
+// anything: when the second's partial return cannot be read, the restart is
+// refused with nothing changed, so the first's partial return is not saved
+// aside or moved from where its agent writes it.
+func TestARestartOfTwoKeptAwaitsProvesBothBeforeSavingEither(t *testing.T) {
+	f, _, _, until := keptValidator(t)
+	f.now = until
+	f.rewrite(t, func(st *State) {
+		for k := range st.Lanes[0].Awaits {
+			st.Lanes[0].Awaits[k].Kept = "its partial return could not be saved aside"
+		}
+	})
+	awaits := f.lane(t, "lane-1").Awaits
+	if len(awaits) != 2 {
+		t.Fatalf("the round has its two reviewers out: %+v", awaits)
+	}
+	first, second := awaits[0], awaits[1]
+	for _, p := range []string{first.Receipt, second.Receipt} {
+		if err := os.Remove(f.abs(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(f.abs(first.Receipt), []byte("# Review\n\nsettled"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere.md"), f.abs(second.Receipt)); err != nil {
+		t.Fatal(err)
+	}
+	before := f.state(t)
+	_, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts())
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, second.Receipt+" cannot be read") {
+		t.Fatalf("the refusal names the unreadable partial return: %+v", r)
+	}
+	noAside(t, f.abs(RunRelDir+"/"+f.runID+"/lane-1"))
+	if got, err := os.ReadFile(f.abs(first.Receipt)); err != nil || string(got) != "# Review\n\nsettled" {
+		t.Fatalf("the first kept await's partial return stays at its path: %q %v", got, err)
+	}
+	if got := f.lane(t, "lane-1").Awaits; !slices.Equal(got, before.Lanes[0].Awaits) {
+		t.Fatalf("the awaits are unchanged: %+v, was %+v", got, before.Lanes[0].Awaits)
 	}
 }

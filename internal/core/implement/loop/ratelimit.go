@@ -159,7 +159,11 @@ func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw
 		return
 	}
 	why := fmt.Sprintf("rate limit: the %s runner answered the %s with one", fl.Runner, aw.Role)
-	aside, err := saveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], why, aw.Role == RoleImplementer, now)
+	proved, err := proveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], aw.Role == RoleImplementer)
+	var aside RestartAside
+	if err == nil {
+		aside, err = saveAside(repoRoot, root, st.RunID, lane.ID, lane.Awaits[k], proved, why, now)
+	}
 	if err != nil {
 		reason := fsutil.RedactHome(err.Error())
 		if r, ok := AsRefusal(err); ok {
