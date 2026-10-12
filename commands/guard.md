@@ -542,7 +542,11 @@ printed into a variable the same line assigns is read as the search's output
 so is one written to a file the same line then reads (`pgrep make > p; kill
 $(cat p)`, `xargs kill < p`, `while read q; do kill $q; done < p`): each is a
 **block**. The file is matched by the name the line writes it under, and a
-name the line does not fix can be any file; one written under another
+name the line does not fix can be any file, except a word whose only unfixed
+parts are variables the line does not set: that is a value from before the
+line, so `pgrep -l make > search.log; echo "$pid" | xargs kill` stays allowed,
+though such a word still reads a file the line wrote under a name it does not
+fix (`pgrep make > "$f"; kill $(cat "$f")`). One written under another
 spelling of the path, or by a command that names it as an operand (`tee p`),
 is not followed. A `ps` listing filtered by a name — through `grep`, or an
 `awk` program that matches (`ps aux | grep make | awk '{print $2}' | xargs

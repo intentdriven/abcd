@@ -493,6 +493,13 @@ func outputRunAsString(s segment, at []int) bool {
 // variable, or by a command that names it as an operand (`tee p`) is not
 // followed.
 //
+// A word whose unknown parts are only variables the line does not set reads
+// as such a word always has (ruling AT): a value from before the line, a
+// recorded pid, not any file the line wrote (iss-2610120916220240). It reads
+// a file written under a name the line does not fix, which can be spelled by
+// the same variable, and one whose name its fixed text can still spell
+// (`$HOME/p` for `~/p`); a bare `$pid` names none.
+//
 // A ps listing is not a search, since `ps -o pid= -p N` reports the pid the
 // caller names; a grep, or an awk program that matches, filtering a ps
 // listing by a name is (segment.processSearch).
@@ -506,9 +513,13 @@ func outputRunAsString(s segment, at []int) bool {
 func fileCarries(segs []segment) {
 	var written map[string][]feed
 	var wild, all []feed
+	var assigned map[string]bool
 	for k := range segs {
 		s := &segs[k]
 		if len(all) > 0 {
+			if assigned == nil {
+				assigned = namesAssigned(segs)
+			}
 			var got []feed
 			read := func(name string, fixed bool) {
 				if !fixed {
@@ -522,8 +533,21 @@ func fileCarries(segs []segment) {
 					read(r.target.text, r.target.ok)
 				}
 			}
-			for _, tok := range s.tokens {
+			for i, tok := range s.tokens {
 				tally(1)
+				if isUnknown(tok) && onlyOutsideVariables(*s, i, assigned) {
+					got = append(got, wild...)
+					if knownText(tok) == "" {
+						continue
+					}
+					for name, fs := range written {
+						tally(1)
+						if unknownCouldBe(tok, name) {
+							got = append(got, fs...)
+						}
+					}
+					continue
+				}
 				read(tok, !isUnknown(tok))
 			}
 			s.carries = append(s.carries, mergeRuns(got)...)
@@ -546,6 +570,66 @@ func fileCarries(segs []segment) {
 		}
 	}
 }
+
+// onlyOutsideVariables reports whether every unknown part of word i of s is
+// a plain variable (siteNames) that assigned does not hold: a value from
+// before the line.
+func onlyOutsideVariables(s segment, i int, assigned map[string]bool) bool {
+	tmpl, ok := s.variable[i]
+	if !ok || tmpl == "" || len(s.spelled[i]) != 1 {
+		return false
+	}
+	names, ok := siteNames(tmpl, s.spelled[i][0])
+	if !ok {
+		return false
+	}
+	for _, n := range names {
+		if assigned[n] {
+			return false
+		}
+	}
+	return true
+}
+
+// namesAssigned is every name a command of segs can assign: by an assignment
+// word anywhere in it (a prefix, a declarer's operand, `+=`), an array
+// assignment, a `for` or `select` loop, and any name-shaped word of a
+// command that assigns its operands (read, mapfile, getopts, printf -v and
+// the rest), or of one whose name the line does not fix. It reaches past
+// what the shell assigns, which only keeps a word read as any file.
+func namesAssigned(segs []segment) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range segs {
+		if s.arrayOf != "" {
+			out[s.arrayOf] = true
+		}
+		if len(s.tokens) >= 2 && (s.tokens[0] == "for" || s.tokens[0] == "select") {
+			out[s.tokens[1]] = true
+		}
+		for _, t := range s.tokens {
+			tally(1)
+			if eq := strings.IndexByte(t, '='); eq > 0 && isName(strings.TrimSuffix(t[:eq], "+")) {
+				out[strings.TrimSuffix(t[:eq], "+")] = true
+			}
+		}
+		for _, a := range commandSites(s) {
+			tok := s.tokens[a.idx]
+			if !isUnknown(tok) && !nameCouldBeAny(tok, operandAssigners) {
+				continue
+			}
+			for _, w := range s.tokens[a.idx+1:] {
+				if isName(w) {
+					out[w] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
+// operandAssigners are the builtins that assign the names they are handed.
+var operandAssigners = []string{"read", "mapfile", "readarray", "getopts", "printf", "let", "local",
+	"declare", "typeset", "export", "readonly", "vared", "zparseopts", "print"}
 
 // mergeRuns holds runs as one covering run per tokenize call they name: the
 // commands between two runs of one call are read with them, which can only

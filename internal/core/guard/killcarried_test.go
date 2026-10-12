@@ -42,3 +42,26 @@ func TestAPidListFromASearchBlocksHoweverItTravels(t *testing.T) {
 		{`cat p | xargs kill; pgrep make > p`, VerdictAllow, ""},
 	})
 }
+
+// TestAVariableTheLineDidNotSetReadsNoFileItWrote — iss-2610120916220240. A
+// word whose unknown parts are only variables the line did not set reads as
+// it did before the file carry: a recorded pid, not the file a search was
+// logged to, so the kill entries' own successor (`echo "$pid" | xargs
+// kill`) allows after a search is merely logged. A file the line wrote under
+// a name it does not fix can still be the one such a word names, and a
+// variable the line set from the file is still followed.
+func TestAVariableTheLineDidNotSetReadsNoFileItWrote(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`pgrep -l make > search.log; echo $pid | xargs kill`, VerdictAllow, ""},
+		{`pgrep -l make > search.log; echo "$pid" | xargs kill`, VerdictAllow, ""},
+		{`pgrep -l make > search.log; printf '%s\n' "${pid}" | xargs kill -TERM`, VerdictAllow, ""},
+		{`pgrep make > search.log && xargs kill <<< "$pid"`, VerdictAllow, ""},
+
+		// The search to a file to the kill still blocks.
+		{`pgrep make > p; kill $(cat p)`, VerdictBlock, "kill-by-search"},
+		{`pgrep make > "$f"; kill $(cat "$f")`, VerdictBlock, "kill-by-search"},
+		{`pgrep make > $TMPDIR/p; xargs kill < $TMPDIR/p`, VerdictBlock, "kill-by-search"},
+		{`pgrep make > p; f=p; kill $(cat $f)`, VerdictBlock, "kill-by-search"},
+		{`pgrep make > p; cat $(echo p) | xargs kill`, VerdictBlock, "kill-by-search"},
+	})
+}

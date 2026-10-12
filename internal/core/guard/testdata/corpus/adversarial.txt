@@ -258,6 +258,11 @@ block	pnpm dlx kill-port 3000
 quiet	npx prettier --check .
 quiet	npm install --save-dev kill-port
 
+# --- a search logged to a file, and a recorded pid -------------------------
+# iss-2610120916220240: a variable the line did not set names no file it wrote.
+quiet	pgrep -l make > search.log; echo "$pid" | xargs kill
+block	pgrep make > "$f"; kill $(cat "$f")
+
 # --- fp: accepted false positives, and the exact shape they take ------------
 fp	rg git push --force docs/
 fp	grep -rn gh repo delete .

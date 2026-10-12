@@ -111,6 +111,7 @@ var wordReaders = map[string]string{
 	"packageName":        "unknownMark: an `@` before a substitution's output is no version the line fixes",
 	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep, awk or ps",
 	"awkMatches":         "isUnknown on every word: an option or program the line does not fix is read as one that matches",
+	"namesAssigned":      "commandSites, isUnknown and nameCouldBeAny: a command whose name the line does not fix, or one a substitution can print as an assigning builtin, assigns every name-shaped operand",
 	"recordAssignments":  "commandSites and isUnknown: a declarer, unset or read is taken only at a site whose name the line fixes; a name a substitution prints assigns nothing the reading follows",
 	"writerTargets":      "commandSites and isUnknown: no writer is read for a program name the line does not fix",
 	"curlTargets":        "isUnknown on every URL it names; an unknown one is a write the guard cannot place",
