@@ -805,6 +805,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
+	if !st.receiptsWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a receipt's model or resolution the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
 	return st, nil
 }
 

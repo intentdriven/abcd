@@ -312,6 +312,60 @@ func TestImplementRecordRefusesControlRunesInTheRunPace(t *testing.T) {
 	}
 }
 
+// TestImplementStreamsRefuseControlRunesInAStoredReceipt
+// (iss-2610121532247004): a run state whose lane stores a receipt model or a
+// resolution note carrying U+202E or U+009B is refused as the run's state,
+// exit 2, by `implement record --json` and `implement status --json`, and no
+// raw rune reaches either stream.
+func TestImplementStreamsRefuseControlRunesInAStoredReceipt(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	var res struct {
+		Start struct {
+			RunID string `json:"run_id"`
+		} `json:"start"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	id := res.Start.RunID
+	path := filepath.Join(repo.Root(), filepath.FromSlash(loop.StateRelPath(id)))
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.Repeat("a", 40)
+	for _, c := range []struct{ list, field, bad string }{
+		{"receipts", "model", "Claude:claude-opus-5-5\u202e"},
+		{"resolves", "note", "\u009bguarded the map"},
+	} {
+		var doc map[string]any
+		if err := json.Unmarshal(good, &doc); err != nil {
+			t.Fatal(err)
+		}
+		lane := doc["lanes"].([]any)[0].(map[string]any)
+		lane["receipts"] = []any{map[string]any{"role": "implementer", "receipt": "lane-1/receipt.json", "model": "Claude:claude-opus-5-5"}}
+		lane["resolves"] = []any{map[string]any{"issue": "iss-1", "commit": sha, "note": "guarded the map", "impact": "fix", "grounds": "pursued: it holds"}}
+		lane[c.list].([]any)[0].(map[string]any)[c.field] = c.bad
+		data, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"implement", "record", "--run", id, "--json"}, {"implement", "status", "--json"}} {
+			code, out, _ := implementCLI(t, args...)
+			if strings.ContainsAny(out, "\u202e\u009b") {
+				t.Fatalf("%s.%s, %v: a raw control rune reaches the --json stream: %q", c.list, c.field, args, out)
+			}
+			if code != 2 || !strings.Contains(out, "carries a receipt's model or resolution the loop never writes") {
+				t.Fatalf("%s.%s, %v: the forged receipt text is refused as the run's state, exit 2: %d %s", c.list, c.field, args, code, out)
+			}
+		}
+	}
+}
+
 // TestBuildNextRefusesTwoCounts: --max and --until-empty together are refused
 // at the pick, exit 2, writing nothing.
 func TestBuildNextRefusesTwoCounts(t *testing.T) {
