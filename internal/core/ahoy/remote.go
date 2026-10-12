@@ -264,7 +264,8 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 		}
 		if err := ghEnable(abs, res.Repo, step.key); err != nil {
 			return refuseRemote(res, "could not enable "+step.key+" on "+res.Repo+
-				"; the remaining steps were not attempted and no desired state was recorded: "+errText(err)), nil
+				"; the remaining steps were not attempted and no desired state was recorded"+
+				landedBeforeRefusal(res.Changes)+": "+errText(err)), nil
 		}
 		res.Changes = append(res.Changes, step.key+": "+displayStatus(step.have)+" -> "+statusEnabled)
 	}
@@ -278,7 +279,7 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 	if err != nil {
 		res.Status = "refused"
 		res.Notes = append(res.Notes, "the remote state is correct but the desired-state mirror could not be written ("+
-			RepoSettingsMirrorRelPath+"), so nothing in the tree records it: "+errText(err))
+			RepoSettingsMirrorRelPath+"), so nothing in the tree records it"+landedBeforeRefusal(res.Changes)+": "+errText(err))
 		return res, nil
 	}
 	if wrote {
@@ -379,6 +380,18 @@ func refuseRemote(res RemoteResult, reason string) RemoteResult {
 	res.Status = "refused"
 	res.Notes = append(res.Notes, reason)
 	return res
+}
+
+// landedBeforeRefusal words the toggles this run already changed on GitHub, for
+// a refusal reached after one of them landed (iss-2610072347230409). A refusal
+// that said only what failed would read as "the forge is untouched" when it is
+// not, and the person would re-run or report against a state that has moved.
+// Empty when nothing landed, so a refusal before the first toggle reads as before.
+func landedBeforeRefusal(changes []string) string {
+	if len(changes) == 0 {
+		return ""
+	}
+	return "; this run had already landed on GitHub, and left in place: " + strings.Join(changes, "; ")
 }
 
 // pendingChanges names the toggles that are not yet in the desired state.
