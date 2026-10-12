@@ -83,10 +83,10 @@ func (w *world) clone(email, home string) *participant {
 func (p *participant) opts() Options { return Options{Now: p.w.clock, Home: p.home} }
 
 func (p *participant) reserve(id string, fp ...string) (Result, error) {
-	return reserve(p.dir, Request{Record: id, Footprint: fp}, p.opts())
+	return Reserve(p.dir, Request{Record: id, Footprint: fp}, p.opts())
 }
 
-func (p *participant) do(req Request) (Result, error) { return reserve(p.dir, req, p.opts()) }
+func (p *participant) do(req Request) (Result, error) { return Reserve(p.dir, req, p.opts()) }
 
 func (p *participant) git(args ...string) string {
 	p.w.t.Helper()
@@ -312,7 +312,7 @@ func TestReleasePushesATombstoneAndDeletesNothing(t *testing.T) {
 	}
 	w.set(t0.Add(20 * time.Minute))
 	res, err := p.do(Request{Record: "iss-5", Release: true})
-	if err != nil || res.Act != ActReleased {
+	if err != nil || res.Act != ActReleased || res.Copy != CopyThis {
 		t.Fatalf("release = %+v, %v", res, err)
 	}
 	tip := w.remoteTip("iss-5")
@@ -322,7 +322,7 @@ func TestReleasePushesATombstoneAndDeletesNothing(t *testing.T) {
 		t.Fatalf("tombstone %s (parent %s):\n%s", tip, w.parentOf(tip), msg)
 	}
 	again, err := p.do(Request{Record: "iss-5", Release: true})
-	if err != nil || again.Act != ActAlreadyReleased || w.remoteTip("iss-5") != tip {
+	if err != nil || again.Act != ActAlreadyReleased || again.Copy != CopyThis || w.remoteTip("iss-5") != tip {
 		t.Fatalf("a second release = %+v, %v; want already released, nothing pushed", again, err)
 	}
 }

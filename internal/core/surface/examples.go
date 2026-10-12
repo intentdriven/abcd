@@ -36,6 +36,8 @@ var examples = map[string]string{
 
 	"abcd decide": `abcd decide "Record ids are minted from a timestamp"`,
 
+	"abcd reserve": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",
+
 	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
 
 	"abcd disembark coverage":      "abcd disembark coverage probe-report.json",

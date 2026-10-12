@@ -50,9 +50,12 @@ type Replaced struct {
 // Result is a reservation act that reached the remote, or a release that
 // found nothing to do.
 type Result struct {
-	Act       Act
-	Record    string
-	Holder    string
+	Act    Act
+	Record string
+	Holder string
+	// Copy is CopyThis for every act that pushed, and for a release found
+	// already made, whether the tombstone came from this copy.
+	Copy      string
 	Footprint []string
 	ClaimedAt time.Time
 	ExpiresAt time.Time
@@ -89,12 +92,12 @@ func (j judged) released() bool {
 	return j.present && (j.derived || j.Unreadable == "" && j.message.released())
 }
 
-// reserve performs one act against origin: fetch, judge, write one commit,
+// Reserve performs one act against origin: fetch, judge, write one commit,
 // then one plain push, which is the compare-and-swap. A release pushes the
 // tombstone; every other request reserves, renews or takes over, by what the
 // tip it judged allows. A refusal pushes nothing; a failure leaves nothing
 // locally but an unreferenced commit git's collection removes.
-func reserve(root string, req Request, o Options) (Result, error) {
+func Reserve(root string, req Request, o Options) (Result, error) {
 	p, err := prepare(root, req, o)
 	if err != nil {
 		return Result{}, err
@@ -135,6 +138,7 @@ func reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, lostRace(p, tree, j, pushRejection(out, perr))
 	}
 	res.Commit = sha
+	res.Copy = CopyThis
 	res.DerivedUnchecked = p.derivedGap
 	return res, nil
 }
@@ -258,7 +262,11 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", refuse("the reservation on %s is unreadable (%s), so nobody holds it to release; %s",
 			p.id, j.Unreadable, nothingPushed)
 	case j.message.released():
-		return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Footprint: j.Footprint,
+		copyOf := CopyAnother
+		if j.mine && j.thisCopy {
+			copyOf = CopyThis
+		}
+		return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Copy: copyOf, Footprint: j.Footprint,
 			ClaimedAt: j.ClaimedAt, ExpiresAt: j.ExpiresAt, Commit: j.Commit}, message{}, "", nil
 	case !j.mine:
 		return Result{}, message{}, "", refuse("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed)

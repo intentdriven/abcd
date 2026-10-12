@@ -3523,6 +3523,57 @@ nothing filed. After the editor ran, both name where what was written is kept.
       --template   print the report skeleton to fill (writes nothing)
 ```
 
+### `abcd reserve`
+
+Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+
+**Usage:** `abcd reserve <record-id> [flags]`
+
+abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve <record-id> --release
+
+Reserve an issue or an intent on the shared remote before starting work on it, so
+every other participant sees it is taken. The reservation is the branch
+abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
+naming the record, the holder (your GitHub username), this working copy, the files
+the work will change (--footprint, once per repository-relative path) and the
+lease (--lease, default 2h, from 1m to 24h).
+
+Every act fetches the reservations from origin, judges the tip, writes one
+commit and makes one plain fast-forward push, with the repository's hooks
+running: a reservation, a renewal by the same person and copy, a take-over of
+a reservation lapsed past its expiry by five minutes, or a release (--release),
+which pushes a tombstone. --take-over moves your own live reservation from
+another copy to this one; it never moves another person's. A record already
+resolved, won't-fixed, shipped or superseded on origin's default branch counts
+as released whatever its reservation says.
+
+The holder is read from user.email when it is a GitHub no-reply address, or from
+reservation.github_username in the machine configuration; the repository's
+own configuration is never read for it. The checkout must have its local tier
+(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
+reservation.
+
+Exit 0 when the act reached origin (or a release was already made); exit 3 when
+the record is held by someone else or by your other copy, so back off; exit 2
+on every other refusal and failure. Nothing is pushed on a refusal, and a failed
+push leaves no reservation and nothing in the checkout.
+
+**Flags:**
+
+```
+      --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --release                 release your reservation from this copy by pushing a tombstone
+      --take-over               move your own live reservation from another copy to this one
+```
+
+**Example:**
+
+```
+abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go
+```
+
 ### `abcd rules`
 
 Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.
