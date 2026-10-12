@@ -7,6 +7,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -104,10 +107,12 @@ func HomeScopeLink(home, rel string) error {
 // never put there (iss-2609290656480443). ReadHomeDeclaration returns it
 // wrapped in a *HomeScopeExposedError, so errors.Is finds it.
 //
-// A directory its group can write is deliberately not refused here: under a
-// user-private-group umask of 002, a ~/.abcd.noindex made by hand is 0775 and its
-// group is the caller alone, and refusing it is an open question on that
-// record rather than a decision this read takes.
+// A directory its group can write is refused too, unless that group's sole
+// member is the directory's owner (ownersPrivateGroup): under a
+// user-private-group umask of 002, a ~/.abcd.noindex made by hand is 0775 and
+// its group is the caller alone, so nobody else can write it. That is the
+// product thinker's ruling of 2026-10-11 on iss-2609290703091174, and the
+// shape Debian's OpenSSH admits for the same umask.
 var ErrHomeScopeExposed = errors.New("fsutil: a directory of this home-scoped path can be changed by another account")
 
 // HomeScopeExposedError names the exposed directory in tilde form. Its message
@@ -119,13 +124,24 @@ type HomeScopeExposedError struct {
 	Perm os.FileMode
 	// Foreign is true when the refusal is the owner, not the mode.
 	Foreign bool
+	// Group is true when the directory's group write bit is part of the
+	// refusal: its group holds an account other than its owner, or its
+	// members could not be read.
+	Group bool
 }
 
 func (e *HomeScopeExposedError) Error() string {
 	if e.Foreign {
 		return e.Dir + " is owned by another account, or its owner could not be read, so nothing in it is necessarily yours; abcd reads no declaration there"
 	}
-	return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod o-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	switch {
+	case e.Perm&0o002 != 0 && e.Group:
+		return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod go-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	case e.Perm&0o002 != 0:
+		return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod o-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	default:
+		return fmt.Sprintf("%s can be written by its group (mode %04o), which holds an account other than its owner or whose members could not be read, so nothing in it is necessarily yours; `chmod g-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	}
 }
 
 func (e *HomeScopeExposedError) Unwrap() error { return ErrHomeScopeExposed }
@@ -150,17 +166,112 @@ func swapHomeScopeDirOwnerForTest(fn func(os.FileInfo) (uint32, bool)) (restore 
 // vetDeclarationDir is ReadHomeDeclaration's judgement of one directory level
 // below home, made on the FileInfo of the descriptor that was opened and
 // confirmed to be the level vetted, so it judges the directory the read goes
-// through and not a name: refused when every account can write it or when it
-// is owned by an account that is neither this uid nor root (root can replace
-// anything anywhere, so refusing it would protect nothing).
+// through and not a name: refused when every account can write it, when its
+// group can and that group is not its owner's alone (ownersPrivateGroup), or
+// when it is owned by an account that is neither this uid nor root (root can
+// replace anything anywhere, so refusing it would protect nothing).
 func vetDeclarationDir(st os.FileInfo, shown string) error {
-	if perm := st.Mode().Perm(); perm&0o002 != 0 {
-		return &HomeScopeExposedError{Dir: shown, Perm: perm}
+	perm := st.Mode().Perm()
+	uid, owned := homeScopeDirOwner(st)
+	group := perm&0o020 != 0 && !(owned && ownersPrivateGroup(st, uid))
+	if perm&0o002 != 0 || group {
+		return &HomeScopeExposedError{Dir: shown, Perm: perm, Group: group}
 	}
-	if uid, ok := homeScopeDirOwner(st); !ok || (uid != uint32(os.Getuid()) && uid != 0) {
-		return &HomeScopeExposedError{Dir: shown, Perm: st.Mode().Perm(), Foreign: true}
+	if !owned || (uid != uint32(os.Getuid()) && uid != 0) {
+		return &HomeScopeExposedError{Dir: shown, Perm: perm, Foreign: true}
 	}
 	return nil
+}
+
+// ownersPrivateGroup reports whether the group of the directory fi describes
+// has exactly one member, its owner uid: then the group write bit lets nobody
+// else write it. A group whose members cannot be read is not.
+func ownersPrivateGroup(fi os.FileInfo, owner uint32) bool {
+	sys, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	members, ok := groupMembers(sys.Gid)
+	return ok && len(members) == 1 && members[0] == owner
+}
+
+// groupMembers is every account in the group gid, as uids, and whether they
+// could be read. It is a var because a test cannot make a group; production
+// never reassigns it.
+var groupMembers = accountFileGroupMembers
+
+func swapGroupMembersForTest(fn func(uint32) ([]uint32, bool)) (restore func()) {
+	prev := groupMembers
+	groupMembers = fn
+	return func() { groupMembers = prev }
+}
+
+// accountFileGroupMembers reads gid's members from /etc/passwd and
+// /etc/group (membersFromAccountFiles), where those files hold the machine's
+// accounts. On darwin they do not (directory services do), so the members are
+// unread there, and a group-writable directory is refused.
+func accountFileGroupMembers(gid uint32) ([]uint32, bool) {
+	if runtime.GOOS == "darwin" {
+		return nil, false
+	}
+	passwd, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return nil, false
+	}
+	group, err := os.ReadFile("/etc/group")
+	if err != nil {
+		return nil, false
+	}
+	return membersFromAccountFiles(passwd, group, gid)
+}
+
+// membersFromAccountFiles is gid's members from the account files' contents,
+// counted as Debian's OpenSSH counts them: every account whose primary group
+// gid is, and every account the group's line lists, each as its uid, sorted
+// and once. A group the group file does not hold, or a listed name no
+// account in the password file carries, is unread (false): an account the
+// files do not show could be a member.
+func membersFromAccountFiles(passwd, group []byte, gid uint32) ([]uint32, bool) {
+	want := strconv.FormatUint(uint64(gid), 10)
+	uids := map[string]uint32{}
+	var members []uint32
+	for _, line := range strings.Split(string(passwd), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) < 4 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		uid, err := strconv.ParseUint(f[2], 10, 32)
+		if err != nil {
+			continue
+		}
+		uids[f[0]] = uint32(uid)
+		if f[3] == want {
+			members = append(members, uint32(uid))
+		}
+	}
+	found := false
+	for _, line := range strings.Split(string(group), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) < 4 || strings.HasPrefix(line, "#") || f[2] != want {
+			continue
+		}
+		found = true
+		for _, name := range strings.Split(f[3], ",") {
+			if name = strings.TrimSpace(name); name == "" {
+				continue
+			}
+			uid, ok := uids[name]
+			if !ok {
+				return nil, false
+			}
+			members = append(members, uid)
+		}
+	}
+	if !found {
+		return nil, false
+	}
+	slices.Sort(members)
+	return slices.Compact(members), true
 }
 
 // ErrHomeScopeSwapped is the refusal for a directory of a home-scoped path that
@@ -343,8 +454,9 @@ func swappedLevel(parent *os.Root, part, full, shown string, err error) error {
 // stands there now and DeclarationUnreadable otherwise.
 //
 // Each directory level below home is judged too, on the descriptor opened for
-// it: one every account can write, or one owned by an account that is neither
-// this uid nor root, is DeclarationDirectoryExposed with a
+// it: one every account can write, one its group can write when that group is
+// not its owner's alone, or one owned by an account that is neither this uid
+// nor root, is DeclarationDirectoryExposed with a
 // *HomeScopeExposedError naming it, because whoever can change the directory
 // can put a file of the caller's own shape in it under the declaration's name
 // (iss-2609290656480443). The check follows the absence check, so an exposed
