@@ -164,14 +164,14 @@ func TestReciprocalFindingCarriesItsKeyInJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"key":"`+want+`"`) {
+	if !strings.Contains(string(b), `"Key":"`+want+`"`) {
 		t.Errorf("JSON does not carry the key: %s", b)
 	}
 	b, err = json.Marshal(Finding{File: "a.md", Line: 1, RuleID: "links_resolve", Severity: severityWarn, Message: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(b), `"key"`) {
+	if strings.Contains(string(b), `"Key"`) {
 		t.Errorf("a finding with no key serialises one: %s", b)
 	}
 }

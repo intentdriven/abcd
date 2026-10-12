@@ -43,7 +43,7 @@ type Finding struct {
 	// Key is the finding key (findingkey.Derive) of a cross-document finding,
 	// which the pre-commit gate reads to tell a new finding from a standing one.
 	// It is empty for every other rule and then left out of the JSON.
-	Key string `json:"key,omitempty"`
+	Key string `json:"Key,omitempty"`
 }
 
 const (
