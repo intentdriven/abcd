@@ -412,17 +412,23 @@ machine; a repository declaring it, or any other fault, is refused at the
 or security review to the host, and no runner took it, the step verb renders
 the review's request beside its brief (`request.md`: the reviewer's agent
 definition, the lane's brief, the implementer's report and each fix round's,
-and the lane's diff), sends it over MCP outside the run's lock, writes the
-answer to the review's return path and hands it back through the same
-receipt, so the loop records its verdict as it records any validator's and the
-result's and the return's `route` name `rp`. A review the route does not
-return (no server named on this machine, a refused connection, a bound run
-out, the server's error, an answer that is not the protocol's, or a return
-with no verdict) leaves the lane awaiting: the call records one fallback
-receipt (the role, `asked: rp`, the reason, abcd's detail, `ran: host`) in the
-state and the record and hands the host the same brief and return path,
-naming the fallback; the status and record verbs count it with the runner's.
-An interrupted step records nothing and is refused. The intent-auditor stays
+and the lane's own changes as git's own diff, from the default-branch commit
+its last sync merged in, or its base), sends it over MCP outside the run's
+lock, writes the answer to the review's return path, under the lock and only
+while the review still awaits it and no return stands there, and hands it back
+through the same receipt, so the loop records its verdict as it records any
+validator's and the result's and the return's `route` name `rp`. A return the
+host's agent wrote while the route worked stands: the route's answer is kept
+aside beside it (`rp-return.md`) and recorded nowhere. A review the route does
+not return (no server named on this machine, a refused connection, a bound run
+out, the server's error, an answer that is not the protocol's, a return with no
+verdict or larger than a return may be, a request that could not be composed,
+or a step interrupted while the route worked) leaves the lane awaiting: the
+call records one fallback receipt (the role, `asked: rp`, the reason, abcd's
+detail, `ran: host`) in the state and the record, retrying while another
+invocation holds the run's lock, and hands the host the same brief and return
+path, naming the fallback; the status and record verbs count it with the
+runner's. The intent-auditor stays
 on the host, a reviewer routed to a runner keeps its runner, and with
 `oracle.review` unset or `host` the call is the host-driven step byte for
 byte. abcd never starts, installs or configures RepoPrompt

@@ -40,6 +40,8 @@ package loop
 //
 //	validate/round-<n>/<role>/brief.md      the brief the loop renders for the validator
 //	validate/round-<n>/<role>/return.md     a reviewer's return
+//	validate/round-<n>/<role>/request.md    a reviewer's request, when the reviewer route takes it
+//	validate/round-<n>/<role>/rp-return.md  the route's answer, kept aside when a host's return stood first
 //	validate/round-<n>/intent-auditor/request.md   the fidelity request
 //	validate/round-<n>/intent-auditor/verdict.json the auditor's verdict
 //	validate/round-<n>/fix/brief.md         the fresh implementer's brief
@@ -895,39 +897,164 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 		return res, nil
 	}
 	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
-	if err == nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
+		err = &reviewFailure{reasonInterrupted, fmt.Sprintf("the step was interrupted before the %s route returned the review", rr.Name)}
+	case err != nil:
+	case len(ret) > maxReturnBytes:
+		err = &reviewFailure{runner.ReasonInvalid, fmt.Sprintf("its return is %d bytes, more than the %d a return may be", len(ret), maxReturnBytes)}
+	default:
 		if _, perr := parseVerdict(ret, words); perr != nil {
 			err = &reviewFailure{runner.ReasonInvalid, "its return states no verdict the loop can record: " + perr.Error()}
 		}
 	}
 	if err != nil {
-		if ctx.Err() != nil {
-			return res, refuse(StageReview, "", res.Lane, fmt.Sprintf("the step was interrupted before the %s route returned the %s", rr.Name, aw.Role),
-				"the lane still awaits the review: "+handedMove(aw))
-		}
-		fb := runner.FallbackReceipt{At: o.now(), Role: aw.Role, Asked: rr.Name, Reason: runner.ReasonFailed, Detail: fallbackDetail(err), Ran: runner.Host}
-		var why interface{ Reason() string }
-		if errors.As(err, &why) {
-			fb.Reason = runner.Reason(why.Reason())
-		}
-		if err := recordFallback(repoRoot, runID, res.Lane, fb, o); err != nil {
-			return res, err
-		}
-		res.Fallback = &fb
-		res.Next = fmt.Sprintf("the %s route did not return the %s (%s; recorded as a fallback), so the host runs it: %s",
-			rr.Name, aw.Role, fb.Reason, res.Next)
-		return res, nil
+		return fallBack(repoRoot, runID, res, aw, rr, err, o)
 	}
-	if err := writeRoundFile(repoRoot, aw.Receipt, []byte(ret)); err != nil {
-		return res, err
-	}
-	route := runner.RouteRecord{Asked: rr.Name, Ran: rr.Name}
-	r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &route)
+	placed, err := placeReturn(repoRoot, runID, aw.Receipt, ret)
 	if err != nil {
 		return res, err
 	}
+	if !placed {
+		return keptAside(repoRoot, runID, res, aw, rr, ret)
+	}
+	route := runner.RouteRecord{Asked: rr.Name, Ran: rr.Name}
+	var r StepResult
+	err = retryContended(func() error {
+		var rerr error
+		r, rerr = receipt(repoRoot, runID, aw.Receipt, steps, o, &route)
+		return rerr
+	})
+	if err != nil {
+		if _, ok := AsRefusal(err); !ok {
+			return res, err
+		}
+		// The verifier refused what the route returned: the return is taken
+		// back off the path, so the host's agent writes there afresh, and the
+		// review falls back like any other the route did not return.
+		if rerr := removeRoundFile(repoRoot, aw.Receipt); rerr != nil {
+			return res, rerr
+		}
+		return fallBack(repoRoot, runID, res, aw, rr, &reviewFailure{runner.ReasonInvalid, err.Error()}, o)
+	}
 	r.Route = &route
 	return r, nil
+}
+
+// reasonInterrupted is the fallback's reason for a step interrupted while the
+// route worked: the person's interrupt, or a host's command timeout.
+const reasonInterrupted runner.Reason = "interrupted"
+
+// fallBack is the fallback branch: the review the route did not return is the
+// host's, with the brief and the return path res already names, and one
+// fallback receipt in the run's state and record says so and why.
+func fallBack(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute, cause error, o Options) (StepResult, error) {
+	fb := runner.FallbackReceipt{At: o.now(), Role: aw.Role, Asked: rr.Name, Reason: runner.ReasonFailed, Detail: fallbackDetail(cause), Ran: runner.Host}
+	var why interface{ Reason() string }
+	if errors.As(cause, &why) {
+		fb.Reason = runner.Reason(why.Reason())
+	}
+	if err := retryContended(func() error { return recordFallback(repoRoot, runID, res.Lane, fb, o) }); err != nil {
+		return res, err
+	}
+	res.Fallback = &fb
+	res.Next = fmt.Sprintf("the %s route did not return the %s (%s; recorded as a fallback), so the host runs it: %s",
+		rr.Name, aw.Role, fb.Reason, res.Next)
+	return res, nil
+}
+
+// placeReturn writes the route's return at the review's return path, under the
+// run's lock, only while the review still awaits it and nothing stands there:
+// a concurrent step can re-tell an open review to the host, and a return the
+// host's agent wrote, handed back or not, is never overwritten. It reports
+// whether it wrote.
+func placeReturn(repoRoot, runID, rel string, ret string) (bool, error) {
+	if err := fsutil.EnsureRealDirAll(repoRoot, filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel))), dirPerm); err != nil {
+		return false, fmt.Errorf("creating the review's directory: %w", err)
+	}
+	placed := false
+	err := retryContended(func() error {
+		return withLock(repoRoot, func(root *os.Root) error {
+			st, err := readStateIn(root, runID)
+			if err != nil {
+				return err
+			}
+			if i, _ := st.findAwait(repoRoot, rel); i < 0 {
+				return nil
+			}
+			f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
+			if errors.Is(err, fs.ErrExist) {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("writing %s: %w", rel, err)
+			}
+			_, werr := f.WriteString(ret)
+			if cerr := f.Close(); werr == nil {
+				werr = cerr
+			}
+			if werr != nil {
+				_ = root.Remove(rel)
+				return fmt.Errorf("writing %s: %w", rel, werr)
+			}
+			placed = true
+			return nil
+		})
+	})
+	return placed, err
+}
+
+// removeRoundFile removes one file of a round, if it is there.
+func removeRoundFile(repoRoot, rel string) error {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return fmt.Errorf("opening the checkout: %w", err)
+	}
+	defer root.Close()
+	if err := root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("removing %s: %w", rel, err)
+	}
+	return nil
+}
+
+// keptAside keeps the route's answer beside the review's return when a return
+// the host's agent wrote already stands there, records nothing for it, and
+// reports where the lane stands now.
+func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute, ret string) (StepResult, error) {
+	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/" + rr.Name + "-return.md"
+	if err := writeRoundFile(repoRoot, aside, []byte(ret)); err != nil {
+		return res, err
+	}
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return res, err
+	}
+	for _, l := range st.Lanes {
+		if l.ID == res.Lane {
+			res = laneResult(st, l, "", nil)
+		}
+	}
+	res.Next = fmt.Sprintf("a return the host's agent wrote already stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
+		aw.Receipt, rr.Name, aside, res.Next)
+	return res, nil
+}
+
+// lockRetries bounds the retries of a write the route's result needs when
+// another invocation holds the run's lock.
+const lockRetries = 5
+
+// retryContended runs fn again while it is refused because another invocation
+// holds the run's lock, so a review the route answered or did not answer is
+// never left unrecorded by a busy lock.
+func retryContended(fn func() error) error {
+	var err error
+	for range lockRetries {
+		err = fn()
+		if r, ok := AsRefusal(err); !ok || !r.Contention || r.Stage != "state" {
+			return err
+		}
+	}
+	return err
 }
 
 // fallbackDetail is a failure's text as a fallback receipt carries it:
@@ -989,7 +1116,14 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	if len(prompt) > maxAgentPromptBytes {
 		return "", fmt.Errorf("the %s agent definition is larger than %d bytes", aw.Role, maxAgentPromptBytes)
 	}
-	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", lane.BaseSHA+".."+r.HeadSHA)
+	// The lane's own changes, as the audit reads them: its head against the
+	// default-branch commit its last sync merged in, or its base, so a sync
+	// never carries the default branch's changes into the request. Git's own
+	// diff, whatever the repository configures: no external diff program, no
+	// textconv driver, no colour.
+	base := diffBase(lane)
+	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", "--no-ext-diff", "--no-textconv", "--no-color",
+		base+".."+r.HeadSHA, "--")
 	if err != nil {
 		return "", fmt.Errorf("the lane's diff: %w", err)
 	}
@@ -1041,7 +1175,7 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 		p("- the run: `abcd build %s`, building %s against %s\n", st.Key, st.Intent, st.Spec)
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
-	p("- the branch: `%s`, its diff `%s..%s` below\n\n", lane.Branch, lane.BaseSHA, r.HeadSHA)
+	p("- the branch: `%s`, its own changes `%s..%s` below\n\n", lane.Branch, base, r.HeadSHA)
 	p("## The record: the lane's brief\n\n%s\n\n", fenced("markdown", string(brief)))
 	for _, rp := range reports {
 		p("## %s\n\n%s\n\n", rp.title, fenced("markdown", rp.body))

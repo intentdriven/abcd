@@ -285,10 +285,12 @@ ruthless or security review the stage hands to the host, and no runner took, is
 sent by `step` itself to RepoPrompt over MCP, with a request rendered beside the
 review's brief (`request.md`); the answer is written to the review's return path
 and verified through the same receipt, so the loop records its verdict, and the
-result's `route` names `rp`. Do not start an agent for it. A review the route
-does not return leaves the lane awaiting, and the result names `awaiting` plus
-`fallback` (the role, `asked: rp`, the reason, `ran: host`): start the reviewer
-as for any await, and tell the user the reason. The route is read on every
+result's `route` names `rp`. Do not start an agent for it, and give that `step`
+a timeout above the route's thirty-minute bound or run it in the background. A
+review the route does not return, an interrupted step included, leaves the lane
+awaiting, and the result names `awaiting` plus `fallback` (the role,
+`asked: rp`, the reason, `ran: host`): start the reviewer as for any await, and
+tell the user the reason. The route is read on every
 `step`; a fault is refused at the `review` stage before anything runs. Unset,
 nothing changes.
 

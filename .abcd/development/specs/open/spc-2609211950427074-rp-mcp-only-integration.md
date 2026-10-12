@@ -102,11 +102,18 @@ choice, recorded for review; none changes a criterion.
   (`validate/round-<n>/<role>/`): the reviewer's agent definition (the
   plugin's `agents/<role>.md`), the lane's brief with the record it was
   rendered from, the implementer's report and each earlier fix round's, and
-  the lane's diff whole (at most 512 KiB), since the route reads no file of
-  the checkout. The answer is the reviewer's whole return: the loop writes it
-  to the return path the host's agent would have written and verifies and
-  records it through the same receipt, so a review the route ran differs from
-  a host-run one in its `route` alone (`asked` and `ran` both `rp`).
+  the lane's own changes whole as git's own diff (from the default-branch
+  commit its last sync merged in, or its base, as the audit reads a lane; no
+  external diff program, textconv or colour; at most 512 KiB), since the route
+  reads no file of the checkout. The answer is the reviewer's whole return: the
+  loop writes it to the return path the host's agent would have written, under
+  the run's lock and only while the review still awaits it and nothing stands
+  there, and verifies and records it through the same receipt, so a review the
+  route ran differs from a host-run one in its `route` alone (`asked` and `ran`
+  both `rp`). A concurrent step can re-tell the open review to the host while
+  the route works; a return the host's agent wrote first stands, and the
+  route's answer is kept aside beside it (`rp-return.md`) and recorded
+  nowhere.
 - 2026-10-12 (agent's choice, for review): **Which reviews take the route, and
   where.** The ruthless and the security reviewer, when the step hands them to
   the host: the intent-auditor stays on the host (decision 2, reviews and not
@@ -116,8 +123,9 @@ choice, recorded for review; none changes a criterion.
   confined to the validator stage's file (`validate.go`).
 - 2026-10-12 (agent's choice, for review): **Bounds.** Ten seconds for the
   connection and the session's set-up, thirty minutes for the review call,
-  8 MiB for an answer; the address is never proxied and a redirect is never
-  followed.
+  8 MiB for an answer; the address is never proxied, a redirect is never
+  followed, and only a loopback address is dialled, whatever a host name such
+  as `localhost` resolves to.
 - 2026-10-12 (agent's choice, for review): **`fell_back: host` is the run's
   fallback receipt.** A review the route does not return is recorded as the
   run already records a role a runner did not run: one `runner.FallbackReceipt`
@@ -132,8 +140,11 @@ choice, recorded for review; none changes a criterion.
   named on this machine (`absent`), a refused connection or one closed before
   an answer (`unreachable`), a bound run out (`timeout`), the server's error
   (`refused`), an answer that is not the protocol's (`unparsable`), a return
-  with no verdict the loop can record (`invalid`), and a request that could
-  not be composed (`failed`) each hand the review to the host with its
-  receipt, as the runner falls back on every failure but a rate limit, so no
-  review is stranded behind a refusal. A step the person interrupts falls back
-  on nothing: it is refused and the review stays awaiting.
+  with no verdict the loop can record or larger than a return may be
+  (`invalid`), a request that could not be composed (`failed`), and a step
+  interrupted while the route worked, by the person or by a host's command
+  timeout shorter than the route's bound (`interrupted`), each hand the review
+  to the host with its receipt, as the runner falls back on every failure but
+  a rate limit, so no review is stranded behind a refusal and every review the
+  route was asked for and did not return has a receipt. The fallback's write
+  is retried while another invocation holds the run's lock.

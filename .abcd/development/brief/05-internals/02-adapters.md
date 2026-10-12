@@ -197,8 +197,11 @@ never starts RepoPrompt or any process, never reads or writes RepoPrompt's
 configuration, and never looks for a server, and a test holds its package to
 importing no process, file or environment API. The address is admitted only
 on this machine (localhost or a loopback address, no credentials, query or
-fragment), is never proxied, and a redirect is never followed, so a review
-request leaves the machine through no other door. The set-up is bounded to ten
+fragment), only a loopback address is dialled whatever a host name resolves
+to, the connection is never proxied, and a redirect is never followed, so a
+review request leaves the machine through no other door. RepoPrompt's MCP
+server must therefore answer over HTTP at that address; abcd starts no bridge
+to a server that speaks only stdio. The set-up is bounded to ten
 seconds, the call to thirty minutes and an answer to 8 MiB, and a failure
 names its kind (unreachable, timeout, refused, unparsable, failed) in abcd's
 own words, never the server's.
@@ -206,27 +209,33 @@ own words, never the server's.
 The loop renders the request beside the reviewer's brief
 (`validate/round-<n>/<role>/request.md`): the reviewer's agent definition, the
 lane's brief with the record it was rendered from, the implementer's report
-and each earlier fix round's, and the lane's diff whole (at most 512 KiB), since
-the route reads no file of the checkout. The answer is the reviewer's whole
+and each earlier fix round's, and the lane's own changes whole as git's own
+diff (no external diff program, textconv or colour; at most 512 KiB), since the
+route reads no file of the checkout. The answer is the reviewer's whole
 return: the loop writes it to the return path the host's agent would have
-written and verifies and records it through the same receipt, so a review the
-route ran differs from a host-run one in its `route` alone (`asked` and `ran`
-both `rp`). The intent-auditor stays on the host (reviews, not audits), and a
-reviewer the machine routes to a command-line runner keeps its runner. A
-review the route does not return (no server named on this machine, nothing
-listening, a bound run out, the server's error, an answer that is not the
-protocol's, or a return with no verdict the loop can record) is handed to the
-host's own agent with the same brief and return path, and one fallback
-receipt (the role, `asked: rp`, the reason, abcd's detail, `ran: host`) is
-recorded in the run's state and record, which `implement status` and
-`implement record` count per route and per role. The route is reached outside
-the run's lock, as a runner is. No test reaches a real RepoPrompt: every one
-runs against an MCP server the test owns on the loopback address.
+written, under the run's lock and only while the review awaits it and nothing
+stands there, and verifies and records it through the same receipt, so a
+review the route ran differs from a host-run one in its `route` alone (`asked`
+and `ran` both `rp`); a return the host's agent wrote first stands, and the
+route's answer is kept aside beside it. The intent-auditor stays on the host
+(reviews, not audits), and a reviewer the machine routes to a command-line
+runner keeps its runner. A review the route does not return (no server named
+on this machine, nothing listening, a bound run out, the server's error, an
+answer that is not the protocol's, a return with no verdict the loop can record
+or larger than a return may be, a request that could not be composed, or a
+step interrupted while the route worked) is handed to the host's own agent
+with the same brief and return path, and one fallback receipt (the role,
+`asked: rp`, the reason, abcd's detail, `ran: host`) is recorded in the run's
+state and record, which `implement status` and `implement record` count per
+route and per role. The route is reached outside the run's lock, as a runner
+is. No test reaches a real RepoPrompt: every one runs against an MCP server the
+test owns on the loopback address.
 
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting
 
-RepoPrompt is one opt-in `oracle` (mcp) adapter. When it is wired, `dev-sync
-reviews` harvests **ad-hoc oracle reviews not tied to a spec** from two
+This harvesting is a design target, separate from the reviewer route above:
+`internal/adapter/repoprompt` reads no file, and nothing here is built. When it
+is wired, `dev-sync reviews` harvests **ad-hoc oracle reviews not tied to a spec** from two
 RepoPrompt-local sources (spec-tied reviews go straight to the native spec
 review store and are never swept here). Vendor filesystem layout lives here with
 the adapter, not in the core config brief:

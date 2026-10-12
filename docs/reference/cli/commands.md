@@ -2295,11 +2295,12 @@ MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or securit
 the step hands to the host is sent instead to that MCP oracle, with a request rendered
 beside the reviewer's brief (its agent definition, the lane's brief, the reports and the
 diff): the answer is written to the review's return path and its verdict recorded through
-the same receipt, and the result's route names rp. A review the route does not return
-(no server named on this machine, a refused connection, a bound run out, the server's
-error, or a return with no verdict) falls back: the host is handed the same brief and
-return path, and the call records one fallback naming the role, rp, the reason and the
-host, which status and record count. An interrupt falls back on nothing. The
+the same receipt, and the result's route names rp; a return the host's agent wrote first
+stands, and the answer is kept aside beside it. A review the route does not return (no
+server named on this machine, a refused connection, a bound run out, the server's error,
+a return with no verdict or too large, a request too large to compose, or an interrupt)
+falls back: the host is handed the same brief and return path, and the call records one
+fallback naming the role, rp, the reason and the host, which status and record count. The
 intent-auditor, and a reviewer routed to a runner, are unchanged; with oracle.review unset
 or host nothing changes, and abcd never starts, installs or configures the oracle.
 

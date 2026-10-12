@@ -313,13 +313,18 @@ key both set), with the MCP server's address, `oracle.rp.url`, in
 out the ruthless or the security review, and no runner took it, `implement
 step` sends the review there itself, writes the answer to the review's return
 path and verifies it as yours would be, so the payload's `route` names `rp` and
-there is no agent to start. A review the route does not return (no server named
-on this machine, a refused connection, a timeout, the server's error, or an
-answer with no verdict) is handed to you as usual, with `fallback` (the `role`,
+there is no agent to start. The review can take many minutes (the route's bound
+is thirty), so give that `implement step` a timeout above it or run it in the
+background; a step you stop early falls back. A review the route does not
+return (no server named on this machine, a refused connection, a timeout, the
+server's error, an answer with no verdict, a request too large to compose, or
+an interrupted step) is handed to you as usual, with `fallback` (the `role`,
 `asked: rp`, the `reason`, `ran: host`): start the reviewer yourself, and tell
-the user the reason. The intent-auditor always stays with you. Unset, or set to
-`host`, nothing changes, and abcd never starts, installs or configures
-RepoPrompt.
+the user the reason. If a reviewer you started for the same review wrote its
+return first, that return stands and the route's answer is kept aside as
+`rp-return.md`; hand yours back as usual. The intent-auditor always stays with
+you. Unset, or set to `host`, nothing changes, and abcd never starts, installs
+or configures RepoPrompt.
 
 A runner that answers with a rate-limit response is the one failure not handed
 to you: every lane spends the same budget, so the run's window ends early. The

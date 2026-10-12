@@ -3,6 +3,7 @@ package loop
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The reviewer route (itd-6, spc-2609211950427074), exercised end to end
@@ -282,30 +284,25 @@ func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T
 	}
 }
 
-// TestAnInterruptedStepFallsBackOnNothing: a step the person interrupts
-// while the route works is refused, records no fallback, and leaves the
-// review awaiting, so nothing is lost and nothing is miscounted.
-func TestAnInterruptedStepFallsBackOnNothing(t *testing.T) {
-	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, stages := start.RunID, DefaultStages()
-	implemented(t, repo, id, stages, "one.txt")
+// TestAnInterruptedStepFallsBackAsInterrupted: a step the person, or a host's
+// command timeout, interrupts while the route works still leaves a receipt:
+// the review goes to the host, and the fallback names the interrupt.
+func TestAnInterruptedStepFallsBackAsInterrupted(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 	slow := &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message"}}, Delay: 2 * time.Second}
-	rr := rpRoute(t, slow)
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := DriveReview(ctx, repo.Root(), id, res, stages, Options{}, rr); err == nil {
-		t.Fatal("an interrupted step is refused")
-	} else if r, ok := AsRefusal(err); !ok || r.Stage != StageReview {
-		t.Fatalf("the refusal is the review route's: %v", err)
+	got, err := DriveReview(ctx, repo.Root(), id, res, stages, Options{}, rpRoute(t, slow))
+	if err != nil {
+		t.Fatalf("an interrupted review falls back: %v", err)
+	}
+	if fb := got.Fallback; fb == nil || fb.Reason != "interrupted" || fb.Ran != runner.Host || got.Awaiting == nil {
+		t.Fatalf("the receipt names the interrupt and the host runs the review: %+v", got)
 	}
 	st, _ := ReadState(repo.Root(), id)
-	if len(st.Fallbacks) != 0 || st.Lanes[0].awaiting() == nil {
-		t.Fatalf("no fallback is recorded and the review still awaits: %+v %+v", st.Fallbacks, st.Lanes[0].Awaits)
+	if len(st.Fallbacks) != 1 || st.Lanes[0].awaiting() == nil {
+		t.Fatalf("one fallback, and the review still awaits: %+v %+v", st.Fallbacks, st.Lanes[0].Awaits)
 	}
 }
 
@@ -363,5 +360,176 @@ func TestAnUnconfiguredRouteLeavesTheReviewAndTheStateByteIdentical(t *testing.T
 				t.Fatal("an unconfigured route renders no request")
 			}
 		})
+	}
+}
+
+// startAtValidate starts a run on briefRepo's intent and drives its lane to
+// its validators, its implementer committing name with body.
+func startAtValidate(t *testing.T, name, body string) (*gittest.Repo, string, Stages, Lane) {
+	t.Helper()
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := start.RunID, DefaultStages()
+	if body == "" {
+		return repo, id, stages, implemented(t, repo, id, stages, name)
+	}
+	stepTo(t, repo, id, stages, StageImplement)
+	if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	l := currentLane(t, repo, id)
+	if err := os.WriteFile(filepath.Join(l.Worktree, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("-C", l.Worktree, "add", "--", name)
+	repo.Git("-C", l.Worktree, "commit", "-q", "-m", "lane: "+name)
+	sha := strings.TrimSpace(repo.Git("-C", l.Worktree, "rev-parse", "HEAD"))
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), id, l.ID)
+	path := writeReceipt(t, dir, goodReceipt(t, id, l, dir, sha))
+	if _, err := Receipt(repo.Root(), id, path, stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	return repo, id, stages, currentLane(t, repo, id)
+}
+
+// fellBack drives the lane's ruthless review through rr and returns the
+// fallback the step recorded, failing unless the host is handed the review
+// with nothing written at its return path.
+func fellBack(t *testing.T, repo *gittest.Repo, id string, stages Stages, rr *ReviewRoute) runner.FallbackReceipt {
+	t.Helper()
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	got, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rr)
+	if err != nil {
+		t.Fatalf("a review the route did not return falls back: %v", err)
+	}
+	if got.Fallback == nil || got.Awaiting == nil || *got.Awaiting != aw {
+		t.Fatalf("the host is handed the same review, with a fallback: %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
+		t.Fatal("nothing is written at the return path for a review the route did not return")
+	}
+	st, _ := ReadState(repo.Root(), id)
+	if len(st.Fallbacks) != 1 {
+		t.Fatalf("one fallback receipt: %+v", st.Fallbacks)
+	}
+	return *got.Fallback
+}
+
+// TestEveryWayTheRouteFailsFallsBackWithItsReason: an answer too large to be
+// a return, the server's error, and a request too large to compose each hand
+// the review to the host with a receipt naming why, never a refusal that
+// strands it.
+func TestEveryWayTheRouteFailsFallsBackWithItsReason(t *testing.T) {
+	prompt := func(role string) (string, error) { return "# " + role + "\n", nil }
+	t.Run("an answer larger than a return", func(t *testing.T) {
+		repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+		big := rpServer(func(string) string { return strings.Repeat("padding\n", maxReturnBytes/8+1) + reviewerReturn("SHIP") })
+		fb := fellBack(t, repo, id, stages, rpRoute(t, big))
+		if fb.Reason != runner.ReasonInvalid || !strings.Contains(fb.Detail, "bytes") {
+			t.Fatalf("an oversize answer is an invalid return: %+v", fb)
+		}
+	})
+	t.Run("the server's error", func(t *testing.T) {
+		repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+		srv := &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message"}}, RPCError: "tools/call"}
+		fb := fellBack(t, repo, id, stages, rpRoute(t, srv))
+		if fb.Reason != "refused" {
+			t.Fatalf("the server's error is a refusal: %+v", fb)
+		}
+	})
+	t.Run("a diff larger than a request carries", func(t *testing.T) {
+		repo, id, stages, _ := startAtValidate(t, "big.txt", strings.Repeat("a line of the lane\n", maxReviewDiffBytes/18+1))
+		srv := rpServer(verdictFor)
+		fb := fellBack(t, repo, id, stages, &ReviewRoute{Name: "rp", Reviewer: rpRoute(t, srv).Reviewer, AgentPrompt: prompt})
+		if fb.Reason != runner.ReasonFailed || len(srv.Calls()) != 0 {
+			t.Fatalf("a request that cannot be composed is never sent and falls back as failed: %+v %d", fb, len(srv.Calls()))
+		}
+	})
+}
+
+// TestTheRouteNeverOverwritesAReturnTheHostWrote: while the route works, a
+// concurrent step can re-tell the open review to the host. A return the
+// host's agent has written, verified or not, stands: the route's answer is
+// kept aside in the review's own directory, recorded nowhere, and the state
+// and the return agree.
+func TestTheRouteNeverOverwritesAReturnTheHostWrote(t *testing.T) {
+	for _, verified := range []bool{true, false} {
+		t.Run(fmt.Sprintf("verified=%v", verified), func(t *testing.T) {
+			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+			path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
+			host := reviewerReturn("SHIP")
+			srv := rpServer(func(string) string {
+				// The host's agent writes its return, and hands it back,
+				// while the route works.
+				if err := os.WriteFile(path, []byte(host), 0o600); err != nil {
+					t.Error(err)
+				}
+				if verified {
+					if _, err := Receipt(repo.Root(), id, path, stages, Options{}); err != nil {
+						t.Error(err)
+					}
+				}
+				return reviewerReturn("FIX FIRST")
+			})
+			got, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, srv))
+			if err != nil {
+				t.Fatalf("the route's late answer is not an error: %v", err)
+			}
+			if b, _ := os.ReadFile(path); string(b) != host {
+				t.Fatalf("the host's return stands: %q", b)
+			}
+			aside := filepath.Join(filepath.Dir(path), "rp-return.md")
+			if b, err := os.ReadFile(aside); err != nil || string(b) != reviewerReturn("FIX FIRST") {
+				t.Fatalf("the route's answer is kept aside in the review's directory: %q %v", b, err)
+			}
+			if !strings.Contains(got.Next, filepath.ToSlash(filepath.Join(filepath.Dir(filepath.FromSlash(aw.Receipt)), "rp-return.md"))) {
+				t.Fatalf("the next move names where the answer is kept: %s", got.Next)
+			}
+			st, _ := ReadState(repo.Root(), id)
+			v := st.Lanes[0].Validation[0].Validators[0]
+			if verified && (v.Verdict != "SHIP" || v.Route != nil) {
+				t.Fatalf("the host's verdict stands: %+v", v)
+			}
+			if !verified && (v.Verdict != "" || st.Lanes[0].awaiting() == nil) {
+				t.Fatalf("the host's unverified return still awaits its hand-back: %+v", v)
+			}
+			if len(st.Fallbacks) != 0 || got.Route != nil {
+				t.Fatalf("nothing is recorded for the route's answer: %+v %+v", st.Fallbacks, got.Route)
+			}
+		})
+	}
+}
+
+// TestTheRequestCarriesGitsOwnDiffAndTheReport: the repository's diff
+// configuration (an external diff program, colour) never shapes the diff a
+// request carries, and the implementer's report rides with it.
+func TestTheRequestCarriesGitsOwnDiffAndTheReport(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	ext := filepath.Join(t.TempDir(), "ext-diff")
+	if err := os.WriteFile(ext, []byte("#!/bin/sh\necho EXTERNAL DIFF RAN\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("config", "diff.external", ext)
+	repo.Git("config", "color.diff", "always")
+	srv := rpServer(verdictFor)
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	if _, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, srv)); err != nil {
+		t.Fatal(err)
+	}
+	sent := sentTo(srv)
+	if len(sent) != 1 {
+		t.Fatalf("one request: %d", len(sent))
+	}
+	if !strings.Contains(sent[0], "+one.txt") || strings.Contains(sent[0], "EXTERNAL DIFF RAN") || strings.Contains(sent[0], "\x1b[") {
+		t.Fatalf("the request carries git's own diff:\n%s", sent[0])
+	}
+	if !strings.Contains(sent[0], "built it") {
+		t.Fatalf("the request carries the implementer's report:\n%s", sent[0])
 	}
 }
