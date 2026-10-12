@@ -360,7 +360,9 @@ instead carry `handback` (`kind`: `user-visible`, `trust-rule`,
 last two) with no `resolves` and no definition of done: `receipt` then discards
 the lane's worktree and branch, ends the lane at `handed-back` before the
 validators, and the result's `hand_back` names the kind, the reason, the home
-and the `discarded` head. `/abcd:drain` routes it by kind.
+and the `discarded` head. A lane branch another checkout has checked out is
+not deleted: `receipt` refuses, naming that checkout and removing nothing.
+`/abcd:drain` routes it by kind.
 `validate` hands the lane's head to fresh validators, side by side up to the
 ceiling, and writes a fix brief only once every validator of the round has
 returned; it records each verdict from the validator's own return; the fidelity audit passes only
@@ -388,7 +390,8 @@ has work left:
   removed, then its pull request is closed if it opened one, its stage is
   `discarded`, and its spec step stays unlanded. A removal git refuses (a
   worktree with changes) leaves the pull request open and the lane held, so the
-  retry closes it once.
+  retry closes it once. A lane branch another checkout has checked out is
+  refused the same way, before anything is removed, naming that checkout.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. The run stays in progress, so `build next` passes over its
@@ -552,7 +555,9 @@ One waiter opens at a time: the one that opens writes a machine-wide hold,
 it is in force. Without a command the hold lasts two minutes, so run the gated
 work straight after it opens. Prefer the command form,
 `implement load --wait -- make preflight`: it runs the command once the gate
-opens, exits with the command's exit code, and holds the gate until the
+opens, exits with the command's exit code (128+N, as a shell reports it,
+when signal N killed the command, so a SIGTERM reads 143, never a failed
+gate's 1), and holds the gate until the
 command has started its own race run, the command exits, or 60 minutes pass. A
 hold whose waiter has died, or whose pid now belongs to another process, is
 reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to

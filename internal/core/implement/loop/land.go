@@ -1059,7 +1059,7 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 	if tipErr == nil && gitutil.IsFullSHA(tip) {
-		if err := branchCheckedOutElsewhere(c, *lane); err != nil {
+		if err := branchCheckedOutElsewhere(c, *lane, string(StageLand), "run `abcd implement step` again"); err != nil {
 			return Outcome{}, err
 		}
 	}
@@ -1097,8 +1097,10 @@ func fetchDefault(c Context, lane Lane, def string) (string, error) {
 // branch -d` does, whether a checkout stands on it: deleting it there would
 // leave that checkout's HEAD naming nothing (the main checkout after a person
 // removed the clean lane worktree and checked the branch out, or a second
-// worktree a person added on it).
-func branchCheckedOutElsewhere(c Context, lane Lane) error {
+// worktree a person added on it). The landing, the held discard and the
+// hand-back discard each delete the branch that way, so each asks first; stage
+// names the refusing stage and again what to run once the checkout is moved.
+func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error {
 	wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
 	if err != nil {
 		return fmt.Errorf("listing the repository's worktrees: %w", err)
@@ -1109,9 +1111,9 @@ func branchCheckedOutElsewhere(c Context, lane Lane) error {
 			continue
 		}
 		at := fsutil.RedactHome(wt.Path)
-		return refuse(string(StageLand), "", lane.ID,
+		return refuse(stage, "", lane.ID,
 			lane.Branch+" is checked out in "+at+", a checkout the loop did not make for this lane, and deleting the branch would leave its HEAD naming nothing",
-			"check out another branch in "+at+" (or remove that worktree), then run `abcd implement step` again")
+			"check out another branch in "+at+" (or remove that worktree), then "+again)
 	}
 	return nil
 }
