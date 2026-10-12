@@ -488,6 +488,39 @@ narrowest reading that meets the criteria. Each is open to review.
 - **Step 2, the citation rule keeps its coverage.** `related_issues` and
   `routed_from` join the graph fields. `prose_citation_resolves` keeps reading
   both as prose, so moving them takes no coverage away.
+- **Step 3, the limit's home.** The emit takes the limit as
+  `MaxRequestBytes`, 0 meaning the bundled 524288. The 64 KiB–1 MiB bounds are
+  the configuration loader's, so the core plans under any positive limit.
+  `on_finding` is claimed beside it now and left unread until step 4.
+- **Step 3, an unreviewed document's size** is its framed size: its manifest
+  line, its BEGIN and END lines and its text. That is the number compared with
+  a group's budget.
+- **Step 3, the header allowance** is an upper bound, rendered at worst-case
+  number widths. Every rendered chunk is still checked against the limit, and
+  a chunk over it refuses the emit with nothing written.
+- **Step 3, nothing fits.** When no group can form, the emit is refused rather
+  than writing no chunk. So is a scope too large to sit in a chunk by itself.
+- **Step 3, the top-level paths.** On an overflow, `request_path` and
+  `corpus_path` are empty, `chunks` lists every chunk's pair, and `receipt_id`
+  is the emit's receipt. The unchunked corpus file is not written.
+- **Step 3, the ingest recomputes the plan** from the chunk request's
+  `limit_bytes` line, which `prompt_hash` binds, not from the configuration.
+  A limit changed between emit and ingest therefore never breaks a chunk set.
+  The chunk receipt leaves the limit out, as the spec spells it.
+- **Step 3, extra refusals.** The ingest also refuses:
+  - a payload and a chunk set handed in together;
+  - two unchunked payloads;
+  - chunks read at different commits;
+  - a chunk request the corpus no longer plans, or whose corpus now fits its
+    limit.
+- **Step 3, the merged payload digest** is taken over every chunk's payload
+  digest in chunk order, so the same set given in any order is a noop.
+- **Step 3, several verifiers.** When different verifiers answered the
+  chunks, the report's verifier line lists each one.
+- **Step 3, the provider route.** The `route` member is the first chunk's
+  dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
+  back to the harness, every chunk is left to the host. Answers already
+  received are not ingested.
 
 ## Open point
 
