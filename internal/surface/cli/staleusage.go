@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdrepo"
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
@@ -37,7 +38,8 @@ import (
 //     flag) the binary refused. That is direct evidence the surface is newer
 //     than the binary, and the remedy follows where the binary sits: a source
 //     checkout is rebuilt, a plugin-root binary is replaced by a plugin update,
-//     a PATH copy takes `abcd update`.
+//     a PATH copy takes `abcd update`, and a local `dev` build elsewhere (`go
+//     run` from a source checkout) is only told the thing is not in this build.
 //  2. Otherwise, the disk-only vintage comparison `abcd --version` already
 //     renders: behind the checkout tip (dogfood) or differing from the release
 //     the plugin cache pinned.
@@ -107,9 +109,10 @@ const maxCommandPageBytes = 256 << 10
 // command path the binary does know, then either the verb it does not or the
 // flag it does not.
 type usageSkew struct {
-	known []string // the command path below the root the binary resolved
-	verb  string   // the unknown verb under known; "" for a flag-only skew
-	flag  string   // the unknown flag, consulted only when verb is ""
+	known    []string // the command path below the root the binary resolved
+	verb     string   // the unknown verb under known; "" for a flag-only skew
+	flag     string   // the unknown flag, consulted only when verb is ""
+	subVerbs bool     // the command at known has sub-verbs (flag skews only)
 }
 
 // staleUsageNote is the sentence appended to a usage error, or "" when the
@@ -146,6 +149,15 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 				return fmt.Sprintf("this binary predates %s its command surface documents — the plugin root is a source checkout, so rebuild it with `make build`", what)
 			case inRoot:
 				return fmt.Sprintf("this binary predates %s its plugin surface documents — %s", what, update.RemedyPluginUpdate)
+			case !releaseBuild():
+				// Outside every plugin root and unstamped by the release: `go
+				// run` from a source checkout (its build cache), a hand-run `go
+				// build`. Not a copy `abcd update` provisioned, so updating it
+				// changes nothing and its age is not what the page proves
+				// (iss-2610120921425348). The stamp is compiled in, so no path,
+				// cwd or environment can talk a release copy out of its remedy
+				// or a local build into one.
+				return fmt.Sprintf("the plugin surface documents %s, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale", what)
 			default:
 				return fmt.Sprintf("this binary predates %s the plugin surface it was provisioned from documents — this PATH copy is stale; run `abcd update`", what)
 			}
@@ -201,33 +213,34 @@ func classifyUsageError(root *cobra.Command, args []string, msg string) (usageSk
 		return usageSkew{known: fields[1:], verb: tok}, true
 	}
 	if m := unknownFlagRe.FindStringSubmatch(msg); m != nil {
-		known, verb := walkKnownPath(root, args)
-		return usageSkew{known: known, verb: verb, flag: m[1]}, true
+		known, verb, at := walkKnownPath(root, args)
+		return usageSkew{known: known, verb: verb, flag: m[1], subVerbs: at.HasSubCommands()}, true
 	}
 	return usageSkew{}, false
 }
 
 // walkKnownPath descends the tree along the positional tokens of args and
-// returns the path the binary knows plus the first token it does not. A token
-// under a leaf is an argument, never an unknown verb; a flag value that looks
-// positional can only ever make the lookup fail safe (no page is named for it).
-func walkKnownPath(root *cobra.Command, args []string) (known []string, unknown string) {
+// returns the path the binary knows, the first token it does not, and the
+// command the known path ends at. A token under a leaf is an argument, never an
+// unknown verb; a flag value that looks positional can only ever make the
+// lookup fail safe (no page is named for it).
+func walkKnownPath(root *cobra.Command, args []string) (known []string, unknown string, at *cobra.Command) {
 	cur := root
 	for _, tok := range args {
 		if strings.HasPrefix(tok, "-") {
 			continue
 		}
 		if !cur.HasSubCommands() {
-			return known, ""
+			return known, "", cur
 		}
 		next := subcommandNamed(cur, tok)
 		if next == nil {
-			return known, tok
+			return known, tok, cur
 		}
 		known = append(known, tok)
 		cur = next
 	}
-	return known, ""
+	return known, "", cur
 }
 
 // subcommandNamed is findByPath's one-level form that also honours aliases,
@@ -247,9 +260,10 @@ func subcommandNamed(cur *cobra.Command, tok string) *cobra.Command {
 // by its own page, commands/<verb>.md. A sub-verb is documented when its
 // top-level page hands it over as an invocation in any of the ladder's
 // spellings (`"${CLAUDE_PLUGIN_ROOT}/abcd" capture resolve`, `abcd capture
-// resolve`, `/abcd:capture resolve`); a flag when the page names it literally.
-// Prose that merely contains the word is not evidence: "status" appears in
-// most pages without `<verb> status` being a command.
+// resolve`, `/abcd:capture resolve`); a flag when the typed command's own
+// synopsis carries it (synopsisCarriesFlag). Prose that merely contains the
+// word is not evidence: "status" appears in most pages without `<verb> status`
+// being a command.
 func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 	for _, k := range s.known {
 		if !verbShape.MatchString(k) {
@@ -283,9 +297,51 @@ func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 	if body == "" {
 		return "", false
 	}
-	re := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])` + regexp.QuoteMeta(s.flag) + `(?:[^A-Za-z0-9-]|$)`)
 	what = "the `" + s.flag + "` flag of `" + strings.Join(append([]string{"abcd"}, s.known...), " ") + "`"
-	return what, re.MatchString(body)
+	return what, synopsisCarriesFlag(body, s)
+}
+
+// synopsisCarriesFlag reports whether a synopsis line for the typed command —
+// an invocation of exactly s.known inside a fenced block — names s.flag after
+// it. The rest of the page is not evidence (iss-2610120921497084): build.md
+// mentions `/abcd:drain --dry-run` in prose, and implement.md gives --run to
+// `implement step` and `implement receipt`, not to `implement log`. An
+// invocation of the path followed by a verb-shaped word, where the command has
+// sub-verbs, is a deeper sub-verb's synopsis (`implement outage record` is not
+// `implement outage`'s); where it has none, the word is an argument.
+func synopsisCarriesFlag(body string, s usageSkew) bool {
+	head := `abcd["':]?`
+	if len(s.known) > 0 {
+		head += `\s*` + regexp.QuoteMeta(strings.Join(s.known, " "))
+	}
+	invocation := regexp.MustCompile(head + `(?:\s|$)`)
+	flag := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])` + regexp.QuoteMeta(s.flag) + `(?:[^A-Za-z0-9-]|$)`)
+	fenced := false
+	held := "" // a synopsis wrapped with trailing backslashes, joined so far
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fenced, held = !fenced, ""
+			continue
+		}
+		if !fenced {
+			continue
+		}
+		if cont, wrapped := strings.CutSuffix(strings.TrimRight(line, " \t"), `\`); wrapped {
+			held += cont + " "
+			continue
+		}
+		line, held = held+line, ""
+		for _, loc := range invocation.FindAllStringIndex(line, -1) {
+			rest := line[loc[1]:]
+			if next := strings.Fields(rest); s.subVerbs && len(next) > 0 && verbShape.MatchString(next[0]) {
+				continue
+			}
+			if flag.MatchString(rest) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func commandPagePath(pluginRoot, verb string) string {
@@ -305,6 +361,13 @@ func readCommandPage(pluginRoot, verb string) string {
 func isRegularFile(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+// releaseBuild reports whether the release stamped this binary's version
+// (`make build VERSION=<tag>`); every other build answers "dev", the test the
+// vintage comparison applies to the same value (ahoy.vintageFrom).
+func releaseBuild() bool {
+	return core.Version != "" && core.Version != "dev"
 }
 
 // isSourceCheckout reports whether a plugin root is abcd's own source checkout,
