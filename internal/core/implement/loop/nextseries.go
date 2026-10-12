@@ -129,6 +129,11 @@ type SeriesResult struct {
 // many reports whether the options ask for more than one pick.
 func (n NextOptions) many() bool { return n.UntilEmpty || n.Max > 1 }
 
+// counted reports whether the options name a run count at all: --max 1 is
+// one, so on a live series it is held to the series' own like any other, and
+// only a call with no count continues the series.
+func (n NextOptions) counted() bool { return n.UntilEmpty || n.Max > 0 }
+
 // countPhrase names a series' run count.
 func countPhrase(max int, untilEmpty bool) string {
 	if untilEmpty {
@@ -195,7 +200,7 @@ func continueSeries(repoRoot string, o Options, n NextOptions, flags paceFlags) 
 			return contend(StagePick, "", "", "the series in progress in this checkout ended while this call waited for it",
 				"run `abcd build next` again")
 		}
-		if n.many() && (n.UntilEmpty != st.UntilEmpty || n.Max != st.Max) {
+		if n.counted() && (n.UntilEmpty != st.UntilEmpty || n.Max != st.Max) {
 			return refuse(StagePick, "", "", fmt.Sprintf("the series started %s is in progress with %s; %s names another, and a run count is set when a series starts",
 				st.StartedAt.UTC().Format(time.RFC3339), countPhrase(st.Max, st.UntilEmpty), countPhrase(n.Max, n.UntilEmpty)),
 				"run `abcd build next` without a count; the series keeps the one it started with")

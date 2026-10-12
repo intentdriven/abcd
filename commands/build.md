@@ -180,8 +180,9 @@ Refusals, each writing nothing:
   that excluded it. Tell the user each one and do not work around it.
 - a negative `--max`, or `--max` with `--until-empty`: refused at the `pick`
   stage, exit 2.
-- while a series is in progress, a count other than the one it began with:
-  refused at the `pick` stage, exit 2; run `build next` without a count. A
+- while a series is in progress, a count other than the one it began with,
+  `--max 1` included: refused at the `pick` stage, exit 2; run `build next`
+  without a count. A
   pace flag naming another pace than the series' is refused at the `pace`
   stage.
 - another `build next` moving the series at the same time, one that began a

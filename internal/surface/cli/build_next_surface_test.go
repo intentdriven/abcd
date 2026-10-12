@@ -173,6 +173,36 @@ func TestBuildNextMaxCarriesTheSeriesInJSON(t *testing.T) {
 	}
 }
 
+// TestBuildNextMaxOneOnALiveSeriesIsRefused (iss-2610120925509505): --max 1
+// is a count other than a live --max 3 series' own, so it is refused at the
+// pick, exit 2, starting no run; a call with no count still continues the
+// series.
+func TestBuildNextMaxOneOnALiveSeriesIsRefused(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	mustImplement(t, "build", "next", "--max", "3", "--json")
+
+	ref := refusalDocs(t, 2, "build", "next", "--max", "1", "--json")
+	reason, _ := ref["reason"].(string)
+	if ref["stage"] != "pick" || !strings.Contains(reason, "--max 3") || !strings.Contains(reason, "--max 1") {
+		t.Fatalf("--max 1 on a live --max 3 series is refused at the pick: %v", ref)
+	}
+	if code, _, errOut := implementCLI(t, "build", "next", "--max", "1"); code != 2 || !strings.Contains(errOut, "--max 3") {
+		t.Fatalf("the text refusal exits 2 naming the series' count: %d %q", code, errOut)
+	}
+	var waiting map[string]any
+	out := mustImplement(t, "build", "next", "--json")
+	if err := json.Unmarshal([]byte(out), &waiting); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if waiting["pick"] != nil || waiting["series"] == nil {
+		t.Fatalf("with no count the call continues the series: %s", out)
+	}
+	if runs, _ := loop.Runs(repo.Root()); len(runs) != 1 {
+		t.Fatalf("the refused count started no run: %d runs", len(runs))
+	}
+}
+
 // TestBuildNextRefusesTwoCounts: --max and --until-empty together are refused
 // at the pick, exit 2, writing nothing.
 func TestBuildNextRefusesTwoCounts(t *testing.T) {
