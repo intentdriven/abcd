@@ -190,8 +190,8 @@ var sentences = map[string]string{
 		"Writes the session's record and a session_open line; refuses the other role on a resume.",
 	"abcd implement leave": "Leave the run, releasing every claim this session holds: " +
 		"Writes the releases and a session_close line; refuses without --session.",
-	"abcd implement load": "Check the machine's load before abcd's own tests start: " +
-		"Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.",
+	"abcd implement load": "Check the load before abcd's tests start, or wait for capacity: " +
+		"Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
 	"abcd implement log": "Append one of the run's events to today's run log: " +
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +
