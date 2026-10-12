@@ -235,6 +235,38 @@ func TestReadmeNoIsStored(t *testing.T) {
 	}
 }
 
+// TestReadmeUnaskedWithoutAConfigIsReportedSkipped: at a terminal, a run
+// whose .abcd/config.json does not exist (the starter files declined) has
+// nowhere to store the pair's answer, so it does not ask it, and reports it
+// under optional_skipped as every pair a run leaves unasked is, rather than
+// saying nothing about it.
+func TestReadmeUnaskedWithoutAConfigIsReportedSkipped(t *testing.T) {
+	setupHermetic(t)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, repo, "README.md", "# Project\n", 0o644)
+	p := &helpedPrompter{confirm: func(q string) bool {
+		c := askedCategory(q)
+		return c != "" && c != SafeAutocreate
+	}}
+	adopt := true
+	res, err := Install(repo, InstallOptions{Adopt: &adopt}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(configPath(repo)); !os.IsNotExist(err) {
+		t.Fatalf("declining the starter files left a config (%v); asked %q", err, p.keys())
+	}
+	if got := p.readmeKeys(); len(got) != 0 {
+		t.Errorf("the pair was asked with nowhere to store its answer: %q", got)
+	}
+	if !containsString(res.OptionalSkipped, ReadmeOfferGapID) {
+		t.Errorf("optional_skipped = %v, want it to name %s", res.OptionalSkipped, ReadmeOfferGapID)
+	}
+}
+
 // TestReadmeLaterStoresNothing: deciding later, at Q1 or at any part, stores
 // nothing and writes nothing, the parts after a part decided later are not
 // asked, and the next setup run asks the pair again. Ending the input takes

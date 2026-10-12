@@ -694,7 +694,9 @@ own default for each part), so Enter alone takes what an empty answer takes;
 the answers keep their order and no text marks the default. Off a terminal,
 and under `--yes`, the pair is never asked, so a piped answer stream keeps its
 order; the result lists `readme.offered` under `optional_skipped`, and its
-summary names the flag.
+summary names the flag. A terminal run whose `.abcd/config.json` does not
+exist (abcd's starter files declined) has nowhere to store the answer, so it
+does not ask the pair either, and lists it the same way.
 
 Through this page, relay the pair with your question tool. While it is open,
 the bare detection (`ahoy --json`) carries a `readme` object (per part its

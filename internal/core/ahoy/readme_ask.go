@@ -348,7 +348,14 @@ func (a *applyCtx) asksReadme(ans readmeAnswer) bool {
 	if ans.flagSet || ans.storedSet || a.autoYes || !atTerminal(a.prompter) || !a.has(ReadmeOfferGapID) {
 		return false
 	}
-	cfg, err := readConfig(a.cwd)
+	return readmeStorable(a.cwd)
+}
+
+// readmeStorable reports whether the repository at cwd has the config the
+// pair's answer is stored in: without one (the starter files declined) the
+// pair is not asked, and the run reports it skipped (optionalAsked).
+func readmeStorable(cwd string) bool {
+	cfg, err := readConfig(cwd)
 	return err == nil && cfg != nil
 }
 

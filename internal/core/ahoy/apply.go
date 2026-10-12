@@ -157,7 +157,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	modeForced := modeWouldChange(opts, det, binTargetPath)
 
 	if len(actionable(det.Gaps)) == 0 &&
-		!(!opts.Yes && len(optionalAskable(det.Gaps, p)) > 0) &&
+		!(!opts.Yes && len(optionalAskable(abs, det.Gaps, p)) > 0) &&
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
 		!readmeWouldChange(abs, opts) &&
@@ -175,7 +175,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 			return InstallResult{
 				Status:          "partial",
 				Notes:           malformedConfigNotes(cfgErr, opts.ValueOverrides),
-				OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
+				OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 			}, nil
 		}
 		// The README parts this run had nothing to write still say what was
@@ -183,7 +183,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		return InstallResult{
 			Status:          "already_up_to_date",
 			Notes:           readmeStandingNotes(abs, opts),
-			OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
+			OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 		}, nil
 	}
 
@@ -280,7 +280,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		Remaining:          remaining,
 		DeclinedCategories: declined,
 		Notes:              ac.notes,
-		OptionalSkipped:    optionalSkipped(opts, final.Gaps, p),
+		OptionalSkipped:    optionalSkipped(opts, abs, final.Gaps, p),
 		writeKinds:         ac.writeKinds,
 	}, nil
 }
@@ -2082,26 +2082,33 @@ var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 // or wires the status line, so the skip is deliberate — and therefore has to
 // be reported rather than left ambient (iss-166). Outside --yes each is offered
 // as a confirmation, except the terminal-only offers off a terminal (see
-// stepDrainRule and stepConventionsFiles), so those are listed and nothing is
-// skipped silently.
-func optionalSkipped(opts InstallOptions, gaps []Gap, p Prompter) []string {
+// stepDrainRule and stepConventionsFiles) and the README question in a
+// repository at cwd with no config to store its answer in, so those are listed
+// and nothing is skipped silently.
+func optionalSkipped(opts InstallOptions, cwd string, gaps []Gap, p Prompter) []string {
 	if opts.Yes {
 		return optionalPending(gaps)
 	}
-	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return optionalAsked(id, p) })
+	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return optionalAsked(cwd, id, p) })
 }
 
 // optionalAskable is optionalPending less the offers that will not be asked of
-// p: the terminal-only offers are put only to a person at a terminal.
-func optionalAskable(gaps []Gap, p Prompter) []string {
-	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return !optionalAsked(id, p) })
+// p in the repository at cwd: the terminal-only offers are put only to a
+// person at a terminal, and the README question only where its answer can be
+// stored.
+func optionalAskable(cwd string, gaps []Gap, p Prompter) []string {
+	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return !optionalAsked(cwd, id, p) })
 }
 
 // optionalAsked reports whether a run that is not --yes puts the optional
-// offer id to p. The terminal-only offers, the README question among them
-// (stepReadme), are put only to a person at a terminal.
-func optionalAsked(id string, p Prompter) bool {
+// offer id to p in the repository at cwd. The terminal-only offers, the README
+// question among them (stepReadme), are put only to a person at a terminal,
+// and the README question, as asksReadme decides, only where the config its
+// answer is stored in exists (readmeStorable).
+func optionalAsked(cwd, id string, p Prompter) bool {
 	switch {
+	case id == ReadmeOfferGapID:
+		return atTerminal(p) && readmeStorable(cwd)
 	case slices.Contains(terminalOnlyGapIDs, id):
 		return atTerminal(p)
 	}
