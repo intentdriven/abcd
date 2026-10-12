@@ -1,6 +1,7 @@
 # Branch rulesets and repo settings — committed mirror
 
-The rulesets applied to this repository's default branch, and the repository-object
+The rulesets applied to this repository's default branch and to abcd's reservation
+branches, and the repository-object
 settings that sit behind a separate API, mirrored here in normalised form (name,
 target, enforcement, conditions, bypass actors, rules — no volatile ids or
 timestamps) so every gate claim in the contribution documents has a source of truth
@@ -14,7 +15,17 @@ in the tree rather than only a web console.
   bypass, which is why it is a separate ruleset: a bypass covers every rule in
   its ruleset, so the review requirement and the required checks must never
   share one.
-- `repo-settings.json` — the repository-object settings, which the two files above
+- `reservations-protection.json` — deletion and force-push protection for
+  `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
+  (itd-2609091034175565). **No bypass actors.** It is its own ruleset because it
+  guards abcd's reservation namespace, not `main`: a reservation ends with a
+  tombstone pushed as a fast-forward, never a deletion or a forced push, and the
+  committed pre-push hook refuses both only for a push made through the hooks.
+  The land stage reads only the rulesets that target the default branch, so this
+  one never changes how a lane merges. Ruled by the product thinker on
+  2026-10-12. A later sweep that deletes reservation branches (itd-118) needs it
+  amended first.
+- `repo-settings.json` — the repository-object settings, which the rulesets above
   do not cover: a ruleset is not a repository setting, and these live behind
   `GET /repos/{owner}/{repo}`. Two sections, deliberately apart. `managed` is what
   `abcd ahoy remote apply` drives and restores — GitHub's native secret scanning and
@@ -26,7 +37,7 @@ in the tree rather than only a web console.
   strength of a default nobody chose. Collapsing the two would make the file read as
   a promise about settings nothing enforces.
 
-Refresh the rulesets after any settings change (ids: 19969675, 21045110):
+Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633):
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \

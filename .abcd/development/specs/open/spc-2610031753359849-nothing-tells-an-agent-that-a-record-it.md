@@ -698,10 +698,13 @@ These are the facilitator's design calls; none changes a criterion.
   - The hook refuses a deletion of any ref under the reservation prefix,
     naming `abcd reserve <id> --release`, so "no deletion" holds for a push
     made through the hooks. A push with `--no-verify`, or from a checkout
-    without them, is not covered: a server-side ruleset for
-    `refs/heads/abcd-reserved/*` refusing deletion is proposed and not yet
-    applied, and `.abcd/work/rulesets/` is unchanged until the person rules
-    on it. No hazard-registry entry was added: the registry's operand
+    without them, is held by the server: the ruleset "reservations
+    protection" on `refs/heads/abcd-reserved/**` refuses deletion and
+    non-fast-forward with no bypass actors. It is applied, ruled by the
+    product thinker on 2026-10-12, and mirrored in
+    `.abcd/work/rulesets/reservations-protection.json`. A later sweep that
+    deletes reservation branches (itd-118, out of scope here) needs that
+    ruleset amended first. No hazard-registry entry was added: the registry's operand
     prefixes are all-of, so one entry per spelling (two colon refspecs, two
     `--delete` operands) would be needed, each taught as its own lesson, and a
     deletion by `--prune` or `--mirror` cannot be named at all; the hook sees
