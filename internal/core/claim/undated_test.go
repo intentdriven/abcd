@@ -20,7 +20,7 @@ func TestATipOverTheObjectBoundIsHeldFromItsCommitDate(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	tree := r.Git("hash-object", "-w", "-t", "tree", "/dev/null")
 	ref := hostileTip(t, r, "iss-5", "abcd reservation: iss-5\n\n"+strings.Repeat("x", 9000)+"\n", tree, t0)
-	got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0.Add(time.Hour))
+	got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0.Add(time.Hour), true)
 	if err != nil || !ok || got.Unreadable != reasonObjectTooBig {
 		t.Fatalf("tip = %+v, %v, %v; want unreadable: %s", got, ok, err, reasonObjectTooBig)
 	}
@@ -40,11 +40,11 @@ func TestAnUndatedTipIsHeldFromWhenThisCopyFirstFetchedIt(t *testing.T) {
 	q.git("update-ref", trackingName("iss-5"), blob)
 	tree := q.git("hash-object", "-w", "-t", "tree", "/dev/null")
 
-	got, ok, err := readTip(q.dir, "iss-5", trackingName("iss-5"), tree, t0)
+	got, ok, err := readTip(q.dir, "iss-5", trackingName("iss-5"), tree, t0, true)
 	if err != nil || !ok || got.Unreadable != reasonNoObject || !got.WrittenAt.Equal(t0) || !got.DatedFromFetch {
 		t.Fatalf("tip = %+v, %v, %v; want unreadable and dated from the first fetch, %s", got, ok, err, t0)
 	}
-	got, _, _ = readTip(q.dir, "iss-5", trackingName("iss-5"), tree, t0.Add(time.Hour))
+	got, _, _ = readTip(q.dir, "iss-5", trackingName("iss-5"), tree, t0.Add(time.Hour), true)
 	if !got.WrittenAt.Equal(t0) {
 		t.Fatalf("a later fetch restarted the hold at %s; want the first fetch, %s", got.WrittenAt, t0)
 	}

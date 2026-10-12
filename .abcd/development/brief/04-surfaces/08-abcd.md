@@ -189,8 +189,25 @@ whole picture, as text or in its JSON form, with every worktree named
 home-relative, or by its directory name outside HOME, never by an absolute
 path (iss-2609281329007423). The same reader answers the not-found paths of `abcd <record-id>`, of
 resolving a capture and of the intent audit, consulted only after the local
-lookup fails. It writes nothing,
-takes no lock and fetches nothing.
+lookup fails. That reader writes nothing, takes no lock and fetches nothing.
+
+**The reservations in `/abcd:peers`** (itd-2609091034175565,
+spc-2610031753359849). Below the peer rows, `abcd peers` lists the
+reservations on the shared remote. It is the verb's one network act: a fetch
+from `origin` of every `abcd-reserved/` branch, with pruning, and of the
+default branch, which updates the remote-tracking reservation branches and
+stamps when it ran in the local tier. Each reservation is listed with its
+record, holder, footprint, effective expiry and state (`live`, `expired`,
+`released` by its tombstone or by the record being finished on origin's
+default branch, or `unreadable` with its fixed reason and the end of its
+hold), its own copy's marked, and each person's count of live reservations;
+every value a writer chose is shown quoted and terminal-safe. The JSON form
+adds `reservations`, `live_by_holder` and `view` (`origin`, `fetched_at`,
+`age_seconds`). When the fetch fails, the listing renders the view as last
+fetched with its age, names the failure on stderr and in `fetch_error`, and
+exits 1; the peer rows are unchanged. A checkout with no remote named
+`origin` lists none. The board's peers line reads only the peer reader, and
+fetches nothing.
 
 **The inbox row** (itd-2609221656361680) adds one more: wherever the board runs,
 when reports from managed repositories wait in the user account's inbox, the text

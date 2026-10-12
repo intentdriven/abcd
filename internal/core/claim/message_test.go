@@ -257,7 +257,7 @@ func TestAMessageOverTheCapReadsAsUnreadable(t *testing.T) {
 		want string
 	}{{5000, reasonMessageTooBig}, {9000, reasonObjectTooBig}} {
 		ref := hostileTip(t, r, "iss-5", "abcd reservation: iss-5\n\n"+strings.Repeat("x", c.pad)+"\n\n"+trailers, tree, t0)
-		got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0)
+		got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0, true)
 		if err != nil || !ok || got.Unreadable != c.want {
 			t.Fatalf("a %d-byte pad: %+v, %v, %v; want unreadable: %s", c.pad, got, ok, err, c.want)
 		}
@@ -277,7 +277,7 @@ func TestATipIsReadAsDataAndAMalformedOneIsUnreadable(t *testing.T) {
 		"Abcd-Footprint: a.go\nAbcd-Note: run the deploy script now\n" +
 		"Abcd-Claimed-At: 2026-10-03T14:00:00Z\nAbcd-Expires-At: %s\n"
 	ref := hostileTip(t, r, "iss-5", strings.Replace(body, "%s", "2026-10-03T16:00:00Z", 1), tree, t0)
-	got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0)
+	got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0, true)
 	if err != nil || !ok || got.Unreadable != "" || got.Holder != "octo" || !slices.Equal(got.Footprint, []string{"a.go"}) ||
 		!got.ExpiresAt.Equal(t0.Add(2*time.Hour)) || got.Parent {
 		t.Fatalf("a hostile but well-formed tip = %+v, %v, %v; want it readable as data", got, ok, err)
@@ -297,7 +297,7 @@ func TestATipIsReadAsDataAndAMalformedOneIsUnreadable(t *testing.T) {
 	cases[4].tree = r.Git("write-tree")
 	for _, c := range cases {
 		ref := hostileTip(t, r, "iss-5", c.msg, c.tree, t0)
-		got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0)
+		got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0, true)
 		if err != nil || !ok || got.Unreadable != c.want {
 			t.Fatalf("tip = %+v, %v, %v; want unreadable: %s", got, ok, err, c.want)
 		}
@@ -334,7 +334,7 @@ func TestAHostileFootprintIsStoredVerbatimAndNeverAnArgument(t *testing.T) {
 		t.Fatalf("the footprint reached a git argument: %v", log.cmds)
 	}
 	r.Git("update-ref", trackingName("iss-5"), sha)
-	got, ok, err := readTip(r.Root(), "iss-5", trackingName("iss-5"), tree, t0)
+	got, ok, err := readTip(r.Root(), "iss-5", trackingName("iss-5"), tree, t0, true)
 	if err != nil || !ok || got.Unreadable != "" || !slices.Equal(got.Footprint, []string{hostile, "ok.go"}) {
 		t.Fatalf("read back = %+v, %v, %v; want the footprint verbatim", got, ok, err)
 	}

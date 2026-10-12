@@ -284,7 +284,7 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 // for the default lease), whether the default branch already finished the
 // record, and whose it is.
 func judge(p *prepared, tree string) (judged, error) {
-	t, ok, err := readTip(p.root, p.id, trackingName(p.id), tree, p.now)
+	t, ok, err := readTip(p.root, p.id, trackingName(p.id), tree, p.now, true)
 	if err != nil {
 		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
@@ -330,12 +330,7 @@ func terminalOnDefault(root, id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, f := range folders[id] {
-		if slices.Contains(terminalFolders[id[:3]], f) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return terminal(folders, id), nil
 }
 
 // originDefault is origin's default branch as this checkout last fetched it,
@@ -419,7 +414,14 @@ func fetch(root string, now time.Time) (gap string, err error) {
 // stampFetch records when this checkout last fetched the reservations, after a
 // fetch that succeeded: the view's age is counted from it, and a view with no
 // stamp is one nothing here fetched.
+//
+// A checkout without its local tier keeps no stamp (the tier is never created
+// on the way to a reservation); an act has already refused such a checkout,
+// and a listing's view then has no age.
 func stampFetch(root string, at time.Time) error {
+	if tierPresent(root) != nil {
+		return nil
+	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return err

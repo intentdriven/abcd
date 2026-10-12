@@ -3285,7 +3285,7 @@ and nothing is written on any of them.
 
 ### `abcd peers`
 
-List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.
+List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.
 
 **Usage:** `abcd peers`
 
@@ -3303,10 +3303,20 @@ whose common dir is another repository's, or one whose ledger holds an id in
 two status folders is named with the reason and not read; a gone or refused
 worktree's branch is then read from the object store instead.
 
-Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
+Then the reservations on the shared remote: one fetch from origin of every
+abcd-reserved/ branch, with pruning, and of the default branch, then every
+reservation with its record, holder, footprint, effective expiry and state
+(live, expired, released, or unreadable with its reason and the end of its
+hold), and each person's count of live reservations. The fetch is the only
+network act; it updates the remote-tracking reservation branches and stamps
+when it ran in the local tier, and nothing else is written. A checkout with no
+remote named origin lists no reservations. When the fetch fails, the
+reservations are listed as last fetched, with that view's age, and the failure
+is named on stderr and in fetch_error.
+
 A worktree is named home-relative (~/...), or by its directory name when it
-sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2
-outside a git checkout.
+sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
+the reservations could not be fetched; exit 2 outside a git checkout.
 
 ### `abcd reading`
 

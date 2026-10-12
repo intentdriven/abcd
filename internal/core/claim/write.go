@@ -48,7 +48,7 @@ func writeCommit(p *prepared, m message, tree, parent string) (string, error) {
 // tip of record's reservation branch. ok is false when the ref does not exist.
 // The object is read through a bounded read; one past the bound is unreadable,
 // never truncated into something that parses.
-func readTip(root, record, ref, tree string, fetchedAt time.Time) (t tip, ok bool, err error) {
+func readTip(root, record, ref, tree string, fetchedAt time.Time, keep bool) (t tip, ok bool, err error) {
 	out, err := localGit(root, 64<<10, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", ref)
 	if err != nil {
 		return tip{}, false, fmt.Errorf("reading %s: %w", ref, err)
@@ -69,7 +69,7 @@ func readTip(root, record, ref, tree string, fetchedAt time.Time) (t tip, ok boo
 		return tip{}, false, fmt.Errorf("reading %s: git named its object %s", ref, echo(name))
 	}
 	if typ != "commit" {
-		return dated(root, tip{Commit: name, Unreadable: reasonNoObject}, fetchedAt), true, nil
+		return dated(root, tip{Commit: name, Unreadable: reasonNoObject}, fetchedAt, keep), true, nil
 	}
 	obj, err := localGit(root, maxObjectBytes, "cat-file", "commit", name)
 	if err != nil {
@@ -81,11 +81,11 @@ func readTip(root, record, ref, tree string, fetchedAt time.Time) (t tip, ok boo
 					t.WrittenAt = time.Unix(sec, 0).UTC()
 				}
 			}
-			return dated(root, t, fetchedAt), true, nil
+			return dated(root, t, fetchedAt, keep), true, nil
 		}
 		return tip{}, false, fmt.Errorf("reading %s: %w", ref, err)
 	}
-	return dated(root, parseTip(record, name, []byte(obj), tree), fetchedAt), true, nil
+	return dated(root, parseTip(record, name, []byte(obj), tree), fetchedAt, keep), true, nil
 }
 
 // undatedRelDir keeps, per tip, when this copy first fetched an unreadable
@@ -96,18 +96,19 @@ const undatedRelDir = stateRelDir + "/undated"
 // this copy first fetched it, so its hold is the default lease from then
 // rather than from the year 1. The first time is kept in the local tier, so a
 // later fetch does not restart the hold; if it cannot be kept, the fetch at
-// hand is the time.
-func dated(root string, t tip, fetchedAt time.Time) tip {
+// hand is the time. keep is false for a reader that writes nothing (the view),
+// which reads a kept time and records none.
+func dated(root string, t tip, fetchedAt time.Time, keep bool) tip {
 	if t.Unreadable == "" || !t.WrittenAt.IsZero() {
 		return t
 	}
-	t.WrittenAt, t.DatedFromFetch = firstFetched(root, t.Commit, fetchedAt), true
+	t.WrittenAt, t.DatedFromFetch = firstFetched(root, t.Commit, fetchedAt, keep), true
 	return t
 }
 
-// firstFetched is when this copy first fetched commit, recorded now as at when
-// nothing records it yet.
-func firstFetched(root, commit string, at time.Time) time.Time {
+// firstFetched is when this copy first fetched commit, recorded as at when
+// nothing records it yet and keep allows it.
+func firstFetched(root, commit string, at time.Time, keep bool) time.Time {
 	at = at.UTC().Truncate(time.Second)
 	if !gitutil.IsFullSHA(commit) {
 		return at
@@ -117,15 +118,18 @@ func firstFetched(root, commit string, at time.Time) time.Time {
 		return at
 	}
 	defer r.Close()
-	for _, d := range []string{stateRelDir, undatedRelDir} {
-		if err := r.Mkdir(d, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-			return at
-		}
-	}
 	rel := undatedRelDir + "/" + commit
 	if data, err := fsutil.ReadGuardedInRoot(r, rel, 64); err == nil {
 		if seen, perr := time.Parse(time.RFC3339, strings.TrimSpace(string(data))); perr == nil {
 			return seen.UTC()
+		}
+	}
+	if !keep {
+		return at
+	}
+	for _, d := range []string{stateRelDir, undatedRelDir} {
+		if err := r.Mkdir(d, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+			return at
 		}
 	}
 	_ = fsutil.WriteFileAtomicInRoot(r, rel, []byte(stamp(at)+"\n"), stateMode)
