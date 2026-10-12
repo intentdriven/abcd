@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -156,6 +157,7 @@ type fakeFiler struct {
 	calls   []ConsistencyFinding
 	reports []string
 	link    map[int]string
+	address map[int][2]string // number -> {issue id, status folder}
 	failAt  int
 	onFile  func(reportRel string)
 }
@@ -171,6 +173,9 @@ func (f *fakeFiler) file(fd ConsistencyFinding, reportRel string) (ConsistencyFi
 	}
 	if id, ok := f.link[fd.Number]; ok {
 		return ConsistencyFiling{IssueID: id, Linked: true}, nil
+	}
+	if a, ok := f.address[fd.Number]; ok {
+		return ConsistencyFiling{IssueID: a[0], Addressed: true, Folder: a[1]}, nil
 	}
 	return ConsistencyFiling{IssueID: fmt.Sprintf("iss-90%d", len(f.calls))}, nil
 }
@@ -867,5 +872,111 @@ func TestConsistencyIngestChecksEveryFindingBeforeFilingAny(t *testing.T) {
 	_, err = IngestConsistency(ConsistencyIngestRequest{RepoRoot: root, Payload: payload, Date: cxDate, File: f.file})
 	if err == nil || !strings.Contains(err.Error(), "no prose-citation check") || len(f.calls) != 0 {
 		t.Fatalf("err = %v with %d filing(s), want an ingest with no check refused before filing", err, len(f.calls))
+	}
+}
+
+// TestConsistencyRowsCarryTheFindingKey is G1's criterion 9 at the report: every
+// finding and row carries the derived key, the report renders a key column and
+// a key on each finding's detail line, and the rows say they were filed.
+func TestConsistencyRowsCarryTheFindingKey(t *testing.T) {
+	r := consistencyRepo(t)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeFiler{}
+	res, err := ingest(t, root, findingsPayload(t, root, em, contradiction(), briefDrift()), f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := findingkey.Derive("premise_contradiction",
+		findingkey.End{Path: cxPlanned, Quote: cxQuotePlanned}, findingkey.End{Path: cxShipped, Quote: cxQuoteShipped})
+	if f.calls[0].Key != want || res.Rows[0].Key != want {
+		t.Fatalf("finding key %q, row key %q; want %s", f.calls[0].Key, res.Rows[0].Key, want)
+	}
+	if res.Rows[1].Key == want || !findingkey.Valid(res.Rows[1].Key) {
+		t.Fatalf("second row key %q; want a distinct, well-formed key", res.Rows[1].Key)
+	}
+	for i, row := range res.Rows {
+		if row.State != ConsistencyStateFiled || row.Linked || row.AddressedBy != nil {
+			t.Errorf("row %d = state %q linked %t addressed %+v; want filed", i+1, row.State, row.Linked, row.AddressedBy)
+		}
+	}
+	body, err := os.ReadFile(filepath.Join(root, res.ReportPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		"| # | Class | Severity | Key | End A | End B | Ledger |",
+		"| 1 | premise contradiction | major | `" + want + "` |",
+		"key: " + want + " · ledger: iss-901 (filed)",
+		"key: " + res.Rows[1].Key + " · ledger: iss-902 (filed)",
+	} {
+		if !strings.Contains(string(body), line) {
+			t.Errorf("report lacks %q:\n%s", line, body)
+		}
+	}
+	js, err := json.Marshal(res.Rows[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"key":"` + want + `"`, `"state":"filed"`, `"linked":false`} {
+		if !strings.Contains(string(js), field) {
+			t.Errorf("row JSON lacks %s: %s", field, js)
+		}
+	}
+}
+
+// TestConsistencyDuplicateCheckIsTheKey: two findings carrying one key — the
+// same class over the same two ends, given in the other order with the quote
+// spaced differently — are one finding, and the refusal names the key.
+func TestConsistencyDuplicateCheckIsTheKey(t *testing.T) {
+	r := consistencyRepo(t)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := contradiction()
+	again.summary = "the same contradiction, reported a second time"
+	again.ends = []cxEnd{{cxShipped, "  An intent owns one or more specs,\n each closed in turn. "}, {cxPlanned, cxQuotePlanned}}
+	key := findingkey.Derive("premise_contradiction",
+		findingkey.End{Path: cxPlanned, Quote: cxQuotePlanned}, findingkey.End{Path: cxShipped, Quote: cxQuoteShipped})
+	_, err = ingest(t, root, findingsPayload(t, root, em, contradiction(), again), &fakeFiler{})
+	if err == nil || !strings.Contains(err.Error(), "finding 2 repeats finding 1") || !strings.Contains(err.Error(), key) {
+		t.Fatalf("ingest = %v; want finding 2 refused as a repeat of finding 1, naming key %s", err, key)
+	}
+}
+
+// TestConsistencyIngestMarksAnAddressedFinding is G1's criterion 10 at the
+// report: a finding the ledger answers as addressed by a resolved or won't-fix
+// record is neither filed nor linked; its row names that record and its folder,
+// and the report's ledger cell says so.
+func TestConsistencyIngestMarksAnAddressedFinding(t *testing.T) {
+	r := consistencyRepo(t)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeFiler{address: map[int][2]string{1: {"iss-7", "resolved"}, 2: {"iss-8", "wontfix"}}}
+	res, err := ingest(t, root, findingsPayload(t, root, em, contradiction(), briefDrift()), f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(res.Addressed, ",") != "iss-7,iss-8" || len(res.Filed) != 0 || len(res.Linked) != 0 {
+		t.Fatalf("addressed %v filed %v linked %v; want iss-7,iss-8 addressed and nothing filed or linked", res.Addressed, res.Filed, res.Linked)
+	}
+	row := res.Rows[0]
+	if row.State != ConsistencyStateAddressed || row.Linked || row.AddressedBy == nil ||
+		*row.AddressedBy != (ConsistencyAddress{IssueID: "iss-7", Folder: "resolved"}) {
+		t.Fatalf("row = state %q linked %t addressed_by %+v; want addressed by iss-7 in resolved", row.State, row.Linked, row.AddressedBy)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, res.ReportPath))
+	for _, cell := range []string{"iss-7 (addressed: resolved)", "iss-8 (addressed: wontfix)"} {
+		if !strings.Contains(string(body), cell) {
+			t.Errorf("report lacks %q:\n%s", cell, body)
+		}
 	}
 }

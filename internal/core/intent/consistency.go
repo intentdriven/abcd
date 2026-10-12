@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -593,8 +594,14 @@ type ConsistencyEnd struct {
 // ConsistencyFinding is one validated finding. Every text field is the
 // reviewer's prose made single-line and inert (oneLine); it is not yet
 // redacted — each writer redacts on its own write.
+//
+// Key is the finding's stable key (findingkey.Derive over the class and the two
+// ends), the same for the same contradiction on every run: the ledger joins a
+// finding found again to the record that already holds it by this key
+// (itd-2609291923559186, G1).
 type ConsistencyFinding struct {
 	Number      int               `json:"number"`
+	Key         string            `json:"key"`
 	Class       string            `json:"class"`
 	Severity    string            `json:"severity"`
 	Summary     string            `json:"summary"`
@@ -631,10 +638,17 @@ type consistencyReview struct {
 }
 
 // ConsistencyFiling is the ledger's answer for one finding: the record filed
-// for it, or the open record that already held it (Linked).
+// for it, the open record that already held it (Linked), or the resolved or
+// won't-fix record that already answered it (Addressed). IssueID names the
+// record in every case.
 type ConsistencyFiling struct {
 	IssueID string `json:"issue_id"`
 	Linked  bool   `json:"linked"`
+	// Addressed is true when a resolved or won't-fix record carries the
+	// finding's key: nothing is filed, and nothing is written to that record.
+	// Folder is that record's status folder.
+	Addressed bool   `json:"addressed"`
+	Folder    string `json:"folder,omitempty"`
 	// Match is the filing-time match's outcome (itd-2609212137116617) on a
 	// record the ledger filed, when the ingest asked for one.
 	Match *match.Outcome `json:"match,omitempty"`
@@ -664,12 +678,45 @@ type ConsistencyIngestRequest struct {
 	Check ConsistencyCheck
 }
 
-// ConsistencyRow is one finding as the report and the result carry it.
+// The states a report row is in: filed as a new record, linked to the open
+// record that already held it, or addressed by a resolved or won't-fix record
+// carrying its key.
+const (
+	ConsistencyStateFiled     = "filed"
+	ConsistencyStateLinked    = "linked"
+	ConsistencyStateAddressed = "addressed"
+)
+
+// ConsistencyAddress names the record that already answered a finding: its id
+// and the status folder it sits in (resolved or wontfix).
+type ConsistencyAddress struct {
+	IssueID string `json:"issue_id"`
+	Folder  string `json:"folder"`
+}
+
+// ConsistencyRow is one finding as the report and the result carry it. State
+// says which ledger answer the row got; Linked stays beside it for the --json
+// consumers that read it.
 type ConsistencyRow struct {
 	ConsistencyFinding
-	IssueID string         `json:"issue_id"`
-	Linked  bool           `json:"linked"`
-	Match   *match.Outcome `json:"match,omitempty"`
+	IssueID     string              `json:"issue_id"`
+	State       string              `json:"state"`
+	Linked      bool                `json:"linked"`
+	AddressedBy *ConsistencyAddress `json:"addressed_by,omitempty"`
+	Match       *match.Outcome      `json:"match,omitempty"`
+}
+
+// newConsistencyRow is the row for a finding and the ledger's answer to it.
+func newConsistencyRow(f ConsistencyFinding, filing ConsistencyFiling) ConsistencyRow {
+	row := ConsistencyRow{ConsistencyFinding: f, IssueID: filing.IssueID, State: ConsistencyStateFiled, Linked: filing.Linked, Match: filing.Match}
+	switch {
+	case filing.Addressed:
+		row.State, row.Linked = ConsistencyStateAddressed, false
+		row.AddressedBy = &ConsistencyAddress{IssueID: filing.IssueID, Folder: filing.Folder}
+	case filing.Linked:
+		row.State = ConsistencyStateLinked
+	}
+	return row
 }
 
 // ConsistencyIngestResult reports one ingest.
@@ -683,6 +730,7 @@ type ConsistencyIngestResult struct {
 	Findings       int              `json:"findings"`
 	Filed          []string         `json:"filed"`
 	Linked         []string         `json:"linked"`
+	Addressed      []string         `json:"addressed"`
 	Rows           []ConsistencyRow `json:"rows"`
 }
 
@@ -717,7 +765,7 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	}
 	res := ConsistencyIngestResult{
 		ReceiptID: rv.ReceiptID, Scope: rv.Scope, ReviewOfCommit: rv.Commit, Dirty: len(rv.DirtyPaths) > 0,
-		Findings: len(rv.Findings), Filed: []string{}, Linked: []string{}, Rows: []ConsistencyRow{},
+		Findings: len(rv.Findings), Filed: []string{}, Linked: []string{}, Addressed: []string{}, Rows: []ConsistencyRow{},
 	}
 	existing, err := findConsistencyReport(req.RepoRoot, rv.ReceiptID, rv.PayloadDigest)
 	if err != nil {
@@ -754,10 +802,14 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 				"no report was written, and ingesting the same findings again links those records rather than filing them twice",
 				f.Number, len(rv.Findings), err, orNone(res.Filed))
 		}
-		res.Rows = append(res.Rows, ConsistencyRow{ConsistencyFinding: f, IssueID: filing.IssueID, Linked: filing.Linked, Match: filing.Match})
-		if filing.Linked {
+		row := newConsistencyRow(f, filing)
+		res.Rows = append(res.Rows, row)
+		switch row.State {
+		case ConsistencyStateAddressed:
+			res.Addressed = append(res.Addressed, filing.IssueID)
+		case ConsistencyStateLinked:
 			res.Linked = append(res.Linked, filing.IssueID)
-		} else {
+		default:
 			res.Filed = append(res.Filed, filing.IssueID)
 		}
 	}
@@ -978,23 +1030,23 @@ func validateConsistencyFindings(repoRoot string, c consistencyCorpus, in []cons
 			}
 			ends[j] = end
 		}
-		k0, k1 := endKey(f.Ends[0]), endKey(f.Ends[1])
-		if k0 == k1 {
+		if endKey(f.Ends[0]) == endKey(f.Ends[1]) {
 			return nil, fmt.Errorf("finding %d names the same end twice", n)
 		}
-		if k1 < k0 {
-			k0, k1 = k1, k0
-		}
-		key := f.Class + "\x00" + k0 + "\x00" + k1
+		// The duplicate check and the row's key are one computation: two
+		// findings repeat each other exactly when they carry one key.
+		key := findingkey.Derive(f.Class,
+			findingkey.End{Path: ends[0].Path, Quote: f.Ends[0].Quote},
+			findingkey.End{Path: ends[1].Path, Quote: f.Ends[1].Quote})
 		if prev, dup := seen[key]; dup {
-			return nil, fmt.Errorf("finding %d repeats finding %d (same class, same two ends)", n, prev)
+			return nil, fmt.Errorf("finding %d repeats finding %d (same class, same two ends: key %s)", n, prev, key)
 		}
 		seen[key] = n
 		if c.ScopePath != "" && ends[0].Path != c.ScopePath && ends[1].Path != c.ScopePath {
 			return nil, fmt.Errorf("finding %d has no end in %s, and the run is scoped to it", n, c.Scope)
 		}
 		out = append(out, ConsistencyFinding{
-			Number: n, Class: f.Class, Severity: f.Severity,
+			Number: n, Key: key, Class: f.Class, Severity: f.Severity,
 			Summary: oneLine(f.Summary), Explanation: oneLine(f.Explanation), Ends: ends,
 		})
 	}
@@ -1172,31 +1224,45 @@ func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date s
 	fmt.Fprintf(&b, "- findings: %d (%s)\n\n", len(rows), strings.Join(parts, " · "))
 	b.WriteString("Produced by `abcd intent consistency`: the binary assembled the corpus and validated\n")
 	b.WriteString("the findings against it, and the judgement rode the host. Each finding is filed in\n")
-	b.WriteString("the issue ledger with this report as its evidence, or linked to the open record that\n")
-	b.WriteString("already held it. The brief and the intents were not edited.\n\n")
+	b.WriteString("the issue ledger with this report as its evidence, linked to the open record that\n")
+	b.WriteString("already held it, or marked addressed when a resolved or won't-fix record carries its\n")
+	b.WriteString("key. The brief and the intents were not edited.\n\n")
 	b.WriteString("## Findings\n\n")
 	if len(rows) == 0 {
 		b.WriteString("None: the pass found no contradiction across the corpus.\n")
 		return b.String()
 	}
-	b.WriteString("| # | Class | Severity | End A | End B | Ledger |\n|---|---|---|---|---|---|\n")
+	b.WriteString("| # | Class | Severity | Key | End A | End B | Ledger |\n|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
-		ledger := r.IssueID + " (filed)"
-		if r.Linked {
-			ledger = r.IssueID + " (already open)"
-		}
-		fmt.Fprintf(&b, "| %d | %s | %s | `%s` | `%s` | %s |\n", r.Number, r.ClassLabel(), r.Severity,
-			endLocation(r.Ends[0]), endLocation(r.Ends[1]), ledger)
+		fmt.Fprintf(&b, "| %d | %s | %s | `%s` | `%s` | `%s` | %s |\n", r.Number, r.ClassLabel(), r.Severity, r.Key,
+			endLocation(r.Ends[0]), endLocation(r.Ends[1]), r.LedgerCell())
 	}
 	for _, r := range rows {
 		fmt.Fprintf(&b, "\n### %d. %s\n\n", r.Number, free(r.Summary))
-		fmt.Fprintf(&b, "- class: %s · severity: %s · ledger: %s\n", r.ClassLabel(), r.Severity, r.IssueID)
+		fmt.Fprintf(&b, "- class: %s · severity: %s · key: %s · ledger: %s\n", r.ClassLabel(), r.Severity, r.Key, r.LedgerCell())
 		for j, e := range r.Ends {
 			fmt.Fprintf(&b, "- end %c: `%s` — \u201c%s\u201d\n", 'A'+j, endLocation(e), free(e.Quote))
 		}
 		fmt.Fprintf(&b, "\n%s\n", free(r.Explanation))
 	}
 	return b.String()
+}
+
+// LedgerCell is the row's ledger answer as the report and the front door name
+// it: `iss-N (filed)`, `iss-N (already open)`, or `iss-N (addressed: resolved)`
+// and `(addressed: wontfix)`.
+func (r ConsistencyRow) LedgerCell() string {
+	switch r.State {
+	case ConsistencyStateAddressed:
+		folder := ""
+		if r.AddressedBy != nil {
+			folder = r.AddressedBy.Folder
+		}
+		return r.IssueID + " (addressed: " + folder + ")"
+	case ConsistencyStateLinked:
+		return r.IssueID + " (already open)"
+	}
+	return r.IssueID + " (filed)"
 }
 
 // endLocation is `path:line`, or the path alone when the line was not found on

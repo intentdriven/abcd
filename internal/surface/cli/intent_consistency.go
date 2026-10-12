@@ -125,7 +125,7 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payload []byte, rece
 		return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
 	}
 	for i := range res.Rows {
-		if res.Rows[i].Match == nil && !res.Rows[i].Linked {
+		if res.Rows[i].Match == nil && res.Rows[i].State == intent.ConsistencyStateFiled {
 			res.Rows[i].Match = matchRefused
 		}
 	}
@@ -137,13 +137,10 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payload []byte, rece
 		}
 		fmt.Fprintf(w, "  report: %s (read %s%s)\n", res.ReportPath, res.ReviewOfCommit, dirty)
 		if res.Status == "ingested" {
-			fmt.Fprintf(w, "  findings %d: filed %d · linked to an open record %d\n", res.Findings, len(res.Filed), len(res.Linked))
+			fmt.Fprintf(w, "  findings %d: filed %d · linked to an open record %d · addressed by a closed record %d\n",
+				res.Findings, len(res.Filed), len(res.Linked), len(res.Addressed))
 			for _, r := range res.Rows {
-				how := "filed"
-				if r.Linked {
-					how = "already open"
-				}
-				fmt.Fprintf(w, "  %d. %s (%s) — %s %s: %s\n", r.Number, r.ClassLabel(), r.Severity, r.IssueID, how,
+				fmt.Fprintf(w, "  %d. %s (%s) — %s, key %s: %s\n", r.Number, r.ClassLabel(), r.Severity, r.LedgerCell(), r.Key,
 					termsafe.Sanitize(r.Summary))
 				renderMatch(w, r.Match)
 			}

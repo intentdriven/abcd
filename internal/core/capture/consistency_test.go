@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -247,5 +248,174 @@ func TestConsistencyNeverLinksTwoFindingsOfOnePass(t *testing.T) {
 				t.Fatalf("finding %d was linked to a record of its own pass: %+v", r.Number, m)
 			}
 		}
+	}
+}
+
+// cxKey is the key the pass derives for consistencyPayload's one finding.
+func cxKey() string {
+	return findingkey.Derive("premise_contradiction", findingkey.End{Path: cxA, Quote: cxQuoteA}, findingkey.End{Path: cxB, Quote: cxQuoteB})
+}
+
+// TestConsistencyFiledRecordCarriesTheKeyAndTheNextRunLinksIt is G1's
+// criterion 9: the record a finding files carries the finding's key as
+// `finding_key:`, and the same contradiction found on a second run — reported
+// in other words, so the payload is not the first one again — carries the same
+// key and links to that record rather than filing a second.
+func TestConsistencyFiledRecordCarriesTheKeyAndTheNextRunLinksIt(t *testing.T) {
+	root := consistencyLedgerRepo(t)
+	first, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Filed) != 1 || first.Rows[0].Key != cxKey() {
+		t.Fatalf("first run = %+v; want one record filed under key %s", first, cxKey())
+	}
+	list, err := List(ListRequest{RepoRoot: root, State: StateOpen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Issues) != 1 || list.Issues[0].FindingKey != cxKey() {
+		t.Fatalf("open ledger = %+v; want one record carrying finding_key %s", list.Issues, cxKey())
+	}
+	if raw := readLedgerFile(t, root, list.Issues[0].Path); !strings.Contains(raw, "\nfinding_key: "+cxKey()+"\n") {
+		t.Fatalf("the filed record does not carry finding_key in its frontmatter:\n%s", raw)
+	}
+
+	second, err := IngestConsistency(root, consistencyPayloadWith(t, root, []any{cxFinding(
+		"the two intents still disagree about specs", "Reported again, in other words, on a later run.")}), "2026-09-27", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Rows[0].Key != first.Rows[0].Key {
+		t.Fatalf("second run's key %s, first run's %s; want one key for one contradiction", second.Rows[0].Key, first.Rows[0].Key)
+	}
+	if len(second.Filed) != 0 || strings.Join(second.Linked, ",") != first.Filed[0] || second.Rows[0].State != intent.ConsistencyStateLinked {
+		t.Fatalf("second run filed %v linked %v (state %q); want it linked to %s", second.Filed, second.Linked, second.Rows[0].State, first.Filed[0])
+	}
+}
+
+// TestConsistencyAnOpenKeyedRecordLinksWithoutTheProse: the key alone joins a
+// finding to its open record, even one whose body no longer quotes either end,
+// and linking writes nothing to it.
+func TestConsistencyAnOpenKeyedRecordLinksWithoutTheProse(t *testing.T) {
+	root := consistencyLedgerRepo(t)
+	held, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Reworded by a person; neither end is quoted any more.",
+		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := readLedgerFile(t, root, held.Path)
+	res, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(res.Linked, ",") != held.ID || len(res.Filed) != 0 {
+		t.Fatalf("linked %v filed %v; want linked to %s by its key", res.Linked, res.Filed, held.ID)
+	}
+	if after := readLedgerFile(t, root, held.Path); after != before {
+		t.Fatalf("linking rewrote the record:\n%s", after)
+	}
+}
+
+// TestConsistencyAKeyedClosedRecordAddressesTheFinding is G1's criterion 10: a
+// resolved or won't-fix record carrying the finding's key makes the row
+// `addressed`, naming that record and its folder; nothing is filed, and the
+// record is left exactly as it was.
+func TestConsistencyAKeyedClosedRecordAddressesTheFinding(t *testing.T) {
+	for _, folder := range []string{"resolved", "wontfix"} {
+		t.Run(folder, func(t *testing.T) {
+			root := consistencyLedgerRepo(t)
+			held, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Seen in " + cxB + ": \"" + cxQuoteB + "\".",
+				Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var moved TransitionResult
+			if folder == "resolved" {
+				moved, err = Resolve(ResolveRequest{RepoRoot: root, ID: held.ID, Resolution: "reconciled the two intents", Impact: "internal"})
+			} else {
+				moved, err = Wontfix(WontfixRequest{RepoRoot: root, ID: held.ID, Reason: "the two readings are both intended"})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := readLedgerFile(t, root, moved.Path)
+			res, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(res.Filed) != 0 || len(res.Linked) != 0 || strings.Join(res.Addressed, ",") != held.ID {
+				t.Fatalf("filed %v linked %v addressed %v; want only %s addressed", res.Filed, res.Linked, res.Addressed, held.ID)
+			}
+			row := res.Rows[0]
+			if row.State != intent.ConsistencyStateAddressed || row.AddressedBy == nil ||
+				*row.AddressedBy != (intent.ConsistencyAddress{IssueID: held.ID, Folder: folder}) {
+				t.Fatalf("row = state %q addressed_by %+v; want addressed by %s in %s", row.State, row.AddressedBy, held.ID, folder)
+			}
+			list, err := List(ListRequest{RepoRoot: root, State: StateOpen})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list.Issues) != 0 {
+				t.Fatalf("the ingest filed %+v; an addressed finding files nothing", list.Issues)
+			}
+			if after := readLedgerFile(t, root, moved.Path); after != before {
+				t.Fatalf("the ingest rewrote the addressing record:\n%s", after)
+			}
+			body := readLedgerFile(t, root, res.ReportPath)
+			if !strings.Contains(body, held.ID+" (addressed: "+folder+")") {
+				t.Fatalf("report does not mark the finding addressed:\n%s", body)
+			}
+		})
+	}
+}
+
+// TestConsistencyAnOpenKeyedRecordWinsOverAClosedOne: when an open record and
+// a resolved one both carry the key, the finding is still being answered, so it
+// links to the open record.
+func TestConsistencyAnOpenKeyedRecordWinsOverAClosedOne(t *testing.T) {
+	root := consistencyLedgerRepo(t)
+	old, err := testCapture(CaptureRequest{RepoRoot: root, Text: "An earlier filing of the same contradiction.",
+		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(ResolveRequest{RepoRoot: root, ID: old.ID, Resolution: "thought fixed", Impact: "internal"}); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := testCapture(CaptureRequest{RepoRoot: root, Text: "It came back.",
+		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(res.Linked, ",") != reopened.ID || len(res.Addressed) != 0 {
+		t.Fatalf("linked %v addressed %v; want linked to the open %s", res.Linked, res.Addressed, reopened.ID)
+	}
+}
+
+// TestConsistencyALegacyOpenRecordLinksByProse: a record filed before keys
+// existed carries none; the prose match still links it, and nothing — no key —
+// is written into it.
+func TestConsistencyALegacyOpenRecordLinksByProse(t *testing.T) {
+	root := consistencyLedgerRepo(t)
+	held, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Seen in " + cxB + ": \"" + cxQuoteB + "\".",
+		Severity: "minor", Category: "inconsistency", Source: "user-observation", FoundDuring: "fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := readLedgerFile(t, root, held.Path)
+	res, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(res.Linked, ",") != held.ID || len(res.Filed) != 0 {
+		t.Fatalf("linked %v filed %v; want the legacy %s linked by prose", res.Linked, res.Filed, held.ID)
+	}
+	if after := readLedgerFile(t, root, held.Path); after != before || strings.Contains(after, "finding_key") {
+		t.Fatalf("linking a legacy record wrote to it:\n%s", after)
 	}
 }

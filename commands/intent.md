@@ -1211,19 +1211,32 @@ finding and the id, wherever the repository's record-lint gates prose
 citations in the issue ledger: every finding is checked before the first is
 filed, so re-word the prose to describe the record and ingest again.
 
+Every finding carries a stable `key`, `cfk-` and sixteen hex digits, derived
+from its class, its two ends' paths (with an intent's bucket, an issue's status
+folder and a spec's `open`/`closed` folder dropped, so a record moving between
+them keeps the key) and their quotes with whitespace collapsed: the same
+contradiction carries the same key on every run.
+
 A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with
-the report as its evidence) — unless an open record already quotes either end
-and names its document, in which case it is linked to that record and nothing
-is filed. A finding it files runs the capture verb's filing-time match on its
+the report as its evidence, carrying the key as `finding_key:`) — unless a
+record already holds it. A record in `open/` carrying the key links the
+finding to it; failing that, a record in `resolved/` or `wontfix/` carrying the
+key marks the finding `addressed`, naming that record, and files nothing; and
+failing both, an open record that quotes either end and names its document
+(one filed before keys existed) links it. Linking and marking write nothing to
+the record. A finding it files runs the capture verb's filing-time match on its
 summary and explanation, never against a record the same pass filed, and
 carries a `duplicates:` or `refines:` link naming each likely double; each row
 reports it as `match`. And one dated report lands on the reviews shelf,
 `.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
-commit the pass read, listing every finding with both ends quoted and located
-and the record it was filed as or linked to; a second run the same day takes
-the next free suffix. Report `status`, `report_path`, and the `filed` and
-`linked` ids. The same findings ingested again are a `noop` naming the report.
+commit the pass read, listing every finding with its key, both ends quoted and
+located, and the record it was filed as, linked to (`already open`) or
+addressed by (`addressed: resolved` or `addressed: wontfix`); a second run the
+same day takes the next free suffix. Each row's `state` is `filed`, `linked`
+or `addressed`, and an addressed row's `addressed_by` names the record and its
+folder. Report `status`, `report_path`, and the `filed`, `linked` and
+`addressed` ids. The same findings ingested again are a `noop` naming the report.
 The brief and the intents are never edited: act on a finding through its issue.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

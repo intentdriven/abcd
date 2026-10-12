@@ -161,3 +161,58 @@ func TestIntentConsistencyNamesADirtyCorpus(t *testing.T) {
 		t.Fatalf("ingest text does not say the read was dirty:\n%s", out)
 	}
 }
+
+// TestIntentConsistencyIngestNamesTheFindingKey (itd-2609291923559186 G1): the
+// ingest names each finding's stable key and its ledger answer, in text and in
+// --json, and the same contradiction ingested from a second run's findings —
+// reported in other words — carries the same key and links to the record the
+// first run filed.
+func TestIntentConsistencyIngestNamesTheFindingKey(t *testing.T) {
+	repo := consistencyCLIRepo(t)
+	var em consistencyEmitted
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "--json"), &em); err != nil {
+		t.Fatal(err)
+	}
+	type row struct {
+		Key     string `json:"key"`
+		State   string `json:"state"`
+		IssueID string `json:"issue_id"`
+	}
+	var first struct {
+		Filed []string `json:"filed"`
+		Rows  []row    `json:"rows"`
+	}
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "ingest", "--findings-json", consistencyFindingsFile(t, repo, em), "--json"), &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Rows) != 1 || !regexp.MustCompile(`^cfk-[0-9a-f]{16}$`).MatchString(first.Rows[0].Key) || first.Rows[0].State != "filed" {
+		t.Fatalf("rows = %+v; want one filed row carrying a finding key", first.Rows)
+	}
+	recs, _ := filepath.Glob(filepath.Join(repo, ".abcd/work/issues/open/"+first.Filed[0]+"-*.md"))
+	if len(recs) != 1 {
+		t.Fatalf("the filed record %s is not in open/", first.Filed[0])
+	}
+	if rec, _ := os.ReadFile(recs[0]); !strings.Contains(string(rec), "\nfinding_key: "+first.Rows[0].Key+"\n") {
+		t.Fatalf("the filed record does not carry its finding key:\n%s", rec)
+	}
+
+	// A second run reports the same contradiction in other words.
+	fp := consistencyFindingsFile(t, repo, em)
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reworded := strings.Replace(string(data), "disagree on how many specs an intent owns", "still disagree about specs", 1)
+	if err := os.WriteFile(fp, []byte(reworded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := string(runCLI(t, "intent", "consistency", "ingest", "--findings-json", fp))
+	for _, want := range []string{
+		"filed 0 · linked to an open record 1 · addressed by a closed record 0",
+		"— " + first.Filed[0] + " (already open), key " + first.Rows[0].Key + ":",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("second ingest text lacks %q:\n%s", want, out)
+		}
+	}
+}
