@@ -385,11 +385,35 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 		if !changed[rel] {
 			continue
 		}
-		bumped, err := promptVersionChanged(repoRoot, cfg.DiffRange, rel, promptVersionOf(p))
+		oldVersion, newVersion, introduced, err := promptVersionSides(repoRoot, cfg.DiffRange, rel, promptVersionOf(p))
 		if err != nil {
 			return nil, &configError{ruleAgentContract + ": reading the diff for " + quote(rel) + ": " + err.Error()}
 		}
-		if bumped {
+		if introduced {
+			continue
+		}
+		// A bump is a HIGHER version: a move back to an older one, whose entry
+		// the changelog already holds, satisfied both halves with no new entry
+		// (iss-2610111737295671). A side that is not a semver is compared as
+		// text; the tree half reports the malformed one.
+		cmp, ok := comparePromptVersions(newVersion, oldVersion)
+		if !ok {
+			cmp = strings.Compare(newVersion, oldVersion)
+			if cmp != 0 {
+				cmp = 1
+			}
+		}
+		if cmp > 0 {
+			continue
+		}
+		if cmp < 0 {
+			out = append(out, Finding{
+				File: rel, Line: 1, RuleID: ruleAgentContract, Severity: cfg.Severity,
+				Message: "agent '" + p.name + "' changed in this diff and moved its 'prompt_version' back from " +
+					oldVersion + " to " + newVersion + ", whose " + changelogRel + " entry describes an older prompt; " +
+					"a change takes a version above " + oldVersion + " (MAJOR schema break, MINOR behaviour, PATCH edit) " +
+					"and the matching entry",
+			})
 			continue
 		}
 		out = append(out, Finding{
@@ -402,9 +426,9 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 	return out, nil
 }
 
-// promptVersionChanged reports whether the prompt at rel declares a different
-// prompt_version on the two sides of the range: the frontmatter value, parsed
-// as the tree half parses it, never a line of the diff. Reading the diff
+// promptVersionSides reads the prompt_version the prompt at rel declares on
+// the two sides of the range: the frontmatter value, parsed as the tree half
+// parses it, never a line of the diff. Reading the diff
 // counted any added line starting "+prompt_version:" as a bump, so a body line
 // of that shape, or one trailing space on the frontmatter line, passed an edit
 // at an unchanged version (iss-2610111600065621).
@@ -412,15 +436,16 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 // The sides are the ones git diff compares for each spelling: A...B is the
 // merge-base of A and B against B, A..B is A against B, and a single revision
 // R is R against the working tree, whose version the tree half already read
-// (worktreeVersion). A prompt absent from the old side is an introduction and
-// counts as a bump; the tree half still demands its changelog entry. Each side
-// is read with cat-file, which runs no diff driver, textconv or filter.
-func promptVersionChanged(repoRoot, rangeSpec, rel, worktreeVersion string) (bool, error) {
+// (worktreeVersion). A prompt absent from either side is an introduction (or a
+// removal) and needs no bump; the tree half still demands its changelog entry.
+// Each side is read with cat-file, which runs no diff driver, textconv or
+// filter.
+func promptVersionSides(repoRoot, rangeSpec, rel, worktreeVersion string) (oldVersion, newVersion string, introduced bool, err error) {
 	var oldRev, newRev string
 	if a, b, ok := strings.Cut(rangeSpec, "..."); ok {
 		base, err := gitutil.Run(repoRoot, "merge-base", a, b)
 		if err != nil {
-			return false, err
+			return "", "", false, err
 		}
 		oldRev, newRev = base, b
 	} else if a, b, ok := strings.Cut(rangeSpec, ".."); ok {
@@ -429,24 +454,94 @@ func promptVersionChanged(repoRoot, rangeSpec, rel, worktreeVersion string) (boo
 		oldRev = rangeSpec
 	}
 	oldVersion, present, err := promptVersionAt(repoRoot, oldRev, rel)
-	if err != nil {
-		return false, err
+	if err != nil || !present {
+		return "", "", err == nil, err
 	}
-	if !present {
-		return true, nil
-	}
-	newVersion := worktreeVersion
+	newVersion = worktreeVersion
 	if newRev != "" {
 		v, present, err := promptVersionAt(repoRoot, newRev, rel)
-		if err != nil {
-			return false, err
-		}
-		if !present {
-			return true, nil
+		if err != nil || !present {
+			return "", "", err == nil, err
 		}
 		newVersion = v
 	}
-	return oldVersion != newVersion, nil
+	return oldVersion, newVersion, false, nil
+}
+
+// comparePromptVersions orders two prompt versions by semver precedence: the
+// three numeric fields, then a release above any of its pre-releases, whose
+// dot-separated identifiers compare numerically when both are digits, a
+// numeric one below an alphanumeric one, and a shorter list below a longer one
+// it prefixes. Build metadata is ignored. ok is false when either side is not
+// a semver.
+func comparePromptVersions(a, b string) (cmp int, ok bool) {
+	if !promptVersionRe.MatchString(a) || !promptVersionRe.MatchString(b) {
+		return 0, false
+	}
+	split := func(v string) (core []string, pre []string) {
+		v, _, _ = strings.Cut(v, "+")
+		v, p, hasPre := strings.Cut(v, "-")
+		if hasPre {
+			pre = strings.Split(p, ".")
+		}
+		return strings.Split(v, "."), pre
+	}
+	ac, ap := split(a)
+	bc, bp := split(b)
+	for i := range ac {
+		if c := compareDigits(ac[i], bc[i]); c != 0 {
+			return c, true
+		}
+	}
+	switch {
+	case ap == nil && bp == nil:
+		return 0, true
+	case ap == nil:
+		return 1, true
+	case bp == nil:
+		return -1, true
+	}
+	for i := 0; i < len(ap) && i < len(bp); i++ {
+		an, bn := isDigits(ap[i]), isDigits(bp[i])
+		var c int
+		switch {
+		case an && bn:
+			c = compareDigits(ap[i], bp[i])
+		case an:
+			c = -1
+		case bn:
+			c = 1
+		default:
+			c = strings.Compare(ap[i], bp[i])
+		}
+		if c != 0 {
+			return c, true
+		}
+	}
+	switch {
+	case len(ap) < len(bp):
+		return -1, true
+	case len(ap) > len(bp):
+		return 1, true
+	}
+	return 0, true
+}
+
+// compareDigits orders two non-empty runs of decimal digits by value, at any
+// length.
+func compareDigits(a, b string) int {
+	a, b = strings.TrimLeft(a, "0"), strings.TrimLeft(b, "0")
+	if len(a) != len(b) {
+		if len(a) < len(b) {
+			return -1
+		}
+		return 1
+	}
+	return strings.Compare(a, b)
+}
+
+func isDigits(s string) bool {
+	return s != "" && strings.Trim(s, "0123456789") == ""
 }
 
 // promptVersionAt reads the prompt_version the prompt at rel declares in the

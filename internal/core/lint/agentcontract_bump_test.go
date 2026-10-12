@@ -164,3 +164,60 @@ func TestAgentContractRefusesASymlinkedPrompt(t *testing.T) {
 		})
 	}
 }
+
+// iss-2610111737295671: a bump is a higher version. An edit that moves the
+// prompt back to an older version, whose changelog entry already exists, is
+// reported over every range spelling.
+func TestAgentContractVersionDowngradeIsNoBump(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	root := repo.Root()
+	writeAgent(t, root, "ruthless-reviewer", strings.Replace(conformingAgent, "0.2.0", "0.3.0", 1))
+	writeCanary(t, root, "ruthless-reviewer")
+	writeFile(t, root, filepath.FromSlash(defaultAgentChangelog),
+		"# Agent prompt changelog\n\n### ruthless-reviewer 0.3.0\n\nBumped.\n\n### ruthless-reviewer 0.2.0\n\nFirst entry.\n")
+	repo.Commit("seed")
+	repo.Git("checkout", "-q", "-b", "topic")
+	repo.Write(ruthlessRel, unbumpedVariants["a body line"])
+	if fs, err := Lint(ArmAgentDiff(agentCfg(), "HEAD"), root); err != nil || !messageContains(fs, "back from 0.3.0 to 0.2.0") {
+		t.Fatalf("HEAD: a downgrade must be reported; got %v %+v", err, fs)
+	}
+	repo.Commit("downgrade")
+	for _, rng := range []string{"main...HEAD", "main..HEAD"} {
+		fs, err := Lint(ArmAgentDiff(agentCfg(), rng), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !messageContains(fs, "back from 0.3.0 to 0.2.0") {
+			t.Fatalf("%s: a downgrade must be reported; got %+v", rng, fs)
+		}
+	}
+}
+
+func TestComparePromptVersions(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want int
+	}{
+		{"0.3.0", "0.2.0", 1},
+		{"0.10.0", "0.9.0", 1},
+		{"1.0.0", "0.99.99", 1},
+		{"0.2.0", "0.2.0", 0},
+		{"0.2.0+build.1", "0.2.0", 0},
+		{"0.3.0", "0.3.0-rc.1", 1},
+		{"0.3.0-rc.2", "0.3.0-rc.1", 1},
+		{"0.3.0-rc.10", "0.3.0-rc.9", 1},
+		{"0.3.0-rc.1", "0.3.0-1", 1},
+		{"0.3.0-rc.1.x", "0.3.0-rc.1", 1},
+	} {
+		got, ok := comparePromptVersions(c.a, c.b)
+		if !ok || got != c.want {
+			t.Errorf("compare(%s, %s) = %d, %v; want %d", c.a, c.b, got, ok, c.want)
+		}
+		if back, _ := comparePromptVersions(c.b, c.a); back != -c.want {
+			t.Errorf("compare(%s, %s) = %d; want %d", c.b, c.a, back, -c.want)
+		}
+	}
+	if _, ok := comparePromptVersions("0.2", "0.2.0"); ok {
+		t.Error("a version that is not a semver must not compare")
+	}
+}
