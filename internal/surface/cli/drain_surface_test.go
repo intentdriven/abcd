@@ -495,3 +495,75 @@ func TestDrainHandsBackADeferralPastATagTheCheckoutLacks(t *testing.T) {
 		t.Errorf("the ledger holds %d records after the drain, %d before", after, before)
 	}
 }
+
+// TestDrainRefusesControlRunesInItsStoredText (iss-2610121505153157): a drain
+// state whose judgement reason, or a hand-back's question or home, carries
+// U+202E or U+009B is refused at the drain stage, exit 2, and no raw rune
+// reaches the --json stream; the state the drain wrote still round-trips.
+func TestDrainRefusesControlRunesInItsStoredText(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	id := captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
+	var judging struct {
+		Judging struct {
+			RemedySHA256 string `json:"remedy_sha256"`
+			Answer       string `json:"answer"`
+		} `json:"judging"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "drain", "--max", "1", "--json")), &judging); err != nil || judging.Judging.Answer == "" {
+		t.Fatalf("the drain awaits a judgement: %v", err)
+	}
+	answer, _ := json.Marshal(map[string]any{"schema_version": 1, "issue": id, "remedy_sha256": judging.Judging.RemedySHA256,
+		"answer": "no", "reason": "an internal ordering fix"})
+	if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(judging.Judging.Answer)), answer, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustImplement(t, "drain", "--judgement", judging.Judging.Answer, "--json")
+	if out := mustImplement(t, "drain", "--json"); !strings.Contains(out, `"reason": "an internal ordering fix"`) {
+		t.Fatalf("the drain's stored judgement round-trips: %s", out)
+	}
+	path := filepath.Join(repo, filepath.FromSlash(loop.DrainStateRel))
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := func(field, bad string) func(map[string]any) {
+		return func(doc map[string]any) {
+			r := map[string]any{"issue": id, "from": "lane", "kind": "trust-rule", "route": "decision-record",
+				"question": "should it?", "reason": "should it?", "wrote": "nothing: a flag in this summary"}
+			r[field] = bad
+			doc["hand_backs"] = append(doc["hand_backs"].([]any), r)
+		}
+	}
+	for name, forge := range map[string]func(map[string]any){
+		"judgement reason": func(doc map[string]any) {
+			j := doc["judgements"].([]any)[0].(map[string]any)
+			j["reason"] = "‮" + j["reason"].(string)
+		},
+		"hand-back question": route("question", "should it?\u009b"),
+		"hand-back home":     route("home", "‮the parser's ADR"),
+	} {
+		var doc map[string]any
+		if err := json.Unmarshal(good, &doc); err != nil {
+			t.Fatal(err)
+		}
+		forge(doc)
+		data, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, out, _ := implementCLI(t, "drain", "--json"); strings.ContainsAny(out, "‮\u009b") {
+			t.Fatalf("%s: a raw control rune reaches the --json stream: %q", name, out)
+		}
+		ref := refusalDocs(t, 2, "drain", "--json")
+		if ref["stage"] != "drain" || !strings.Contains(ref["reason"].(string), "text the drain never writes") {
+			t.Fatalf("%s: the forged text is refused at the drain: %v", name, ref)
+		}
+	}
+}

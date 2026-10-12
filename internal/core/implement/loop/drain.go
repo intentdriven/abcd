@@ -677,6 +677,13 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a pace the drain never writes",
 			"the drain is the file's only writer; restore it or remove it")
 	}
+	// The stored lane, hand-back and judgement text carries no control, bidi
+	// or zero-width rune, so none reaches the drain's --json payload; the
+	// refusal does not echo it (iss-2610121505153157).
+	if !st.textWritten() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" carries text the drain never writes: a control, bidi or zero-width character in its rule, a lane, a hand-back or a judgement",
+			"the drain is the file's only writer; restore it or remove it")
+	}
 	for _, l := range st.Lanes {
 		if !validIssueKey(l.Issue) || !ValidRunID(l.RunID) {
 			return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a lane that is not an issue and a run",
