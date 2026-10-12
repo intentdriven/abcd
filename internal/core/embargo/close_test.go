@@ -293,8 +293,8 @@ func TestCloseRefusesVulnerabilityOrUntriagedVerdict(t *testing.T) {
 }
 
 // TestCloseRefusesAlreadyClosedOrPublished: an advisory the state records as
-// closed or published refuses before any call; one GitHub reports closed or
-// published refuses after the read, sending nothing.
+// closed or published refuses before any call; one GitHub reports published
+// refuses after the read, sending nothing, and records published_at.
 func TestCloseRefusesAlreadyClosedOrPublished(t *testing.T) {
 	for _, field := range []string{"closed_at", "published_at"} {
 		t.Run(field, func(t *testing.T) {
@@ -316,14 +316,74 @@ func TestCloseRefusesAlreadyClosedOrPublished(t *testing.T) {
 			}
 		})
 	}
-	for _, state := range []string{"closed", "published"} {
-		t.Run("GitHub "+state, func(t *testing.T) {
+	t.Run("GitHub published", func(t *testing.T) {
+		cf := newCloseFixture(t)
+		cf.g.answer("GET", cf.path, "", 1, cf.remote(t, "published", reporterText))
+		_, err := cf.close("")
+		mustRefuse(t, err, "published")
+		noWrites(t, cf.g)
+		if a := cf.state(t); a.PublishedAt == nil || a.ForgeState != "published" || a.ClosedAt != nil {
+			t.Fatalf("published_at not recorded from GitHub: %+v", a)
+		}
+	})
+}
+
+// TestCloseRecordsClosedOnGitHub: an advisory GitHub already reports closed
+// is not closed again; its closed_at is recorded from what GitHub reports,
+// nothing is sent, and the result says whether its description begins with
+// the drafted text.
+func TestCloseRecordsClosedOnGitHub(t *testing.T) {
+	for name, withText := range map[string]bool{"with the text": true, "without it": false} {
+		t.Run(name, func(t *testing.T) {
 			cf := newCloseFixture(t)
-			cf.g.answer("GET", cf.path, "", 1, cf.remote(t, state, reporterText))
-			_, err := cf.close("")
-			mustRefuse(t, err, state)
+			desc := reporterText
+			if withText {
+				desc = composeClosedDescription(cf.draft(t), reporterText)
+			}
+			cf.g.answer("GET", cf.path, "", 1, cf.remote(t, "closed", desc))
+			res, err := cf.close("")
+			if err != nil {
+				t.Fatal(err)
+			}
 			noWrites(t, cf.g)
+			if !res.Closed || !res.Reconciled || res.TextHeld == nil || *res.TextHeld != withText || res.ClosedAt == nil {
+				t.Fatalf("result %+v", res)
+			}
+			if a := cf.state(t); a.ClosedAt == nil || !a.ClosedAt.Equal(fixedNow.Add(2*time.Hour)) || a.ForgeState != "closed" {
+				t.Fatalf("closed_at not recorded from GitHub: %+v", a)
+			}
 		})
+	}
+}
+
+// TestCloseRecordsClosedAfterReadBackFails: a close GitHub accepted whose
+// read-back failed leaves closed_at unrecorded, and running close again, as
+// the failure says, records it from GitHub without sending a second update.
+func TestCloseRecordsClosedAfterReadBackFails(t *testing.T) {
+	cf := newCloseFixture(t)
+	cf.g.answer("GET", cf.path, "", 3, "not json")
+	cf.g.answer("GET", cf.path, "", 4, cf.remote(t, "closed", composeClosedDescription(cf.draft(t), reporterText)))
+	shown := cf.show(t)
+	_, err := cf.close(shown.Digest)
+	var cfe *CloseFailedError
+	if !errors.As(err, &cfe) || !strings.Contains(err.Error(), "run `abcd embargo close` again") {
+		t.Fatalf("err = %v, want a failed close saying to run it again", err)
+	}
+	if a := cf.state(t); a.ClosedAt != nil {
+		t.Fatal("closed_at stamped on a failed close")
+	}
+	res, err := cf.close("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Closed || !res.Reconciled || res.TextHeld == nil || !*res.TextHeld {
+		t.Fatalf("result %+v", res)
+	}
+	if n := len(cf.g.writes()); n != 1 {
+		t.Fatalf("%d updates sent, want the one close", n)
+	}
+	if a := cf.state(t); a.ClosedAt == nil {
+		t.Fatal("closed_at not recorded on the second run")
 	}
 }
 

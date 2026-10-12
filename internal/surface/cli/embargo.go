@@ -215,6 +215,18 @@ func newEmbargoCloseCommand(asJSON *bool) *cobra.Command {
 }
 
 func renderEmbargoClose(w io.Writer, res embargo.CloseResult) {
+	if res.Closed && res.Reconciled {
+		at := ""
+		if res.ClosedAt != nil {
+			at = " at " + res.ClosedAt.Format("2006-01-02T15:04:05Z")
+		}
+		fmt.Fprintf(w, "abcd embargo close — GitHub already reports %s (%s) closed; closed_at is recorded from that%s, and nothing was sent\n",
+			res.GHSAID, res.IssueID, at)
+		if res.TextHeld != nil && !*res.TextHeld {
+			fmt.Fprintln(w, "its description does not begin with the drafted text: look at the advisory on GitHub")
+		}
+		return
+	}
 	if res.Closed {
 		at := ""
 		if res.ClosedAt != nil {

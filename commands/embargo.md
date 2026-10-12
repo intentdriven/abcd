@@ -87,7 +87,12 @@ the digest binds the text and the advisory as read, so an edited draft or an
 advisory changed on GitHub sends nothing, and the remedy is to show the text
 again. With the approval abcd closes the advisory, reads it back to confirm it
 is closed with that text, and records `closed_at`. A read-back that does not
-confirm it exits 1 naming which half did not hold.
+confirm it exits 1 naming which half did not hold. An advisory GitHub already
+reports closed (a close whose read-back or record failed, or one closed by
+hand) is not sent anything: `closed_at` is recorded from GitHub,
+`reconciled` is true, and `text_held` says whether its description begins
+with the drafted text; one GitHub reports published is refused, and its
+`published_at` recorded.
 
 ## Check
 
@@ -141,7 +146,9 @@ digest for any other plan sends nothing. With it abcd publishes one advisory
 first as a canary and reads it back, then the rest the same way, stopping at
 the first mismatch, and confirms none is left in draft. A stopped run exits 1
 naming what is published and what is not; running publish again plans only
-what is still unpublished.
+what is still unpublished. An advisory GitHub already reports published or
+closed is left out of a plan, and its `published_at` or `closed_at` recorded
+from that, so a publication whose record failed is completed by the next run.
 
 ## What stays the person's act
 

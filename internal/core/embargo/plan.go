@@ -92,14 +92,16 @@ type PublicationPlan struct {
 	ApproveWith string      `json:"approve_with"`
 }
 
-// PlanPublication builds the publication plan and changes nothing: the only
-// requests it sends are reads of the advisories it plans.
+// PlanPublication builds the publication plan and changes nothing on GitHub:
+// the only requests it sends are reads of the advisories it plans. In the
+// store it records only what those reads report: an advisory GitHub already
+// holds published or closed.
 func PlanPublication(req PublishRequest) (PublicationPlan, error) {
 	s, st, err := OpenExisting(req.Home, req.RepoRoot)
 	if err != nil {
 		return PublicationPlan{}, err
 	}
-	return planFor(s, st, req.Release)
+	return planFor(s, &st, req.Release, clock(req.Now))
 }
 
 // planFor builds the plan of release over the store's state. For each
@@ -110,7 +112,13 @@ func PlanPublication(req PublishRequest) (PublicationPlan, error) {
 // its package, an affected range in GitHub's form, and text the outbound scan
 // passes. Each that fails a step is left out with the reason. Git is read
 // before GitHub, so an advisory the release leaves out is never requested.
-func planFor(s Store, st State, release string) (PublicationPlan, error) {
+//
+// An advisory GitHub reports published or closed already is left out, and
+// its published_at or closed_at is stamped with now and saved: a run that
+// published or closed it on GitHub but could not record it (a save that
+// failed after the update) is reconciled here, instead of holding the
+// advisory under embargo for ever.
+func planFor(s Store, st *State, release string, now time.Time) (PublicationPlan, error) {
 	if st.Repo == "" {
 		return PublicationPlan{}, refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again")
 	}
@@ -130,16 +138,28 @@ func planFor(s Store, st State, release string) (PublicationPlan, error) {
 		}
 	}
 	slices.SortFunc(candidates, func(a, b Advisory) int { return strings.Compare(a.GHSAID, b.GHSAID) })
+	reconciled := false
 	for _, a := range candidates {
-		e, why, err := planEntry(s, st.Repo, release, resolved, a, othersDenySet(st, a.GHSAID))
+		e, why, done, err := planEntry(s, st.Repo, release, resolved, a, othersDenySet(*st, a.GHSAID))
 		if err != nil {
 			return PublicationPlan{}, err
+		}
+		if done != "" {
+			if j, err := findAdvisory(*st, a.GHSAID); err == nil {
+				recordForgeEnd(&st.Advisories[j], done, now)
+				reconciled = true
+			}
 		}
 		if why != "" {
 			p.LeftOut = append(p.LeftOut, LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why})
 			continue
 		}
 		p.Entries = append(p.Entries, e)
+	}
+	if reconciled {
+		if err := s.SaveState(*st); err != nil {
+			return PublicationPlan{}, err
+		}
 	}
 	p.Digest = planDigest(p)
 	if len(p.Entries) > 0 {
@@ -189,10 +209,11 @@ func resolvedRecords(checkout, release string) ([]string, error) {
 // planEntry plans one advisory, or says why it is left out. others is every
 // other advisory still under embargo, which the advisory's text must not
 // name: publishing it would disclose them. An advisory in the same plan
-// counts, since publication is not one atomic act. An error is a failure that
-// refuses the whole plan (a git or GitHub request that fails, a text the
-// scanner cannot judge).
-func planEntry(s Store, repo, release string, resolved []string, a Advisory, others denySet) (PlanEntry, string, error) {
+// counts, since publication is not one atomic act. done is "published" or
+// "closed" when GitHub reports the advisory so already, for the caller to
+// record. An error is a failure that refuses the whole plan (a git or GitHub
+// request that fails, a text the scanner cannot judge).
+func planEntry(s Store, repo, release string, resolved []string, a Advisory, others denySet) (e PlanEntry, why, done string, err error) {
 	rec := ""
 	for _, p := range resolved {
 		base := path.Base(p)
@@ -202,41 +223,41 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory, oth
 		}
 	}
 	if rec == "" {
-		return PlanEntry{}, "its record is not resolved in " + release, nil
+		return PlanEntry{}, "its record is not resolved in " + release, "", nil
 	}
 	fix, why := fixCommit(s.Checkout, release, rec)
 	if why != "" {
-		return PlanEntry{}, why, nil
+		return PlanEntry{}, why, "", nil
 	}
 	first, why, err := firstReleaseTag(s.Checkout, fix, release)
 	if err != nil || why != "" {
-		return PlanEntry{}, why, err
+		return PlanEntry{}, why, "", err
 	}
 	patched := patchedVersion(first)
 
 	remote, err := getAdvisory(s.Checkout, repo, a.GHSAID)
 	if err != nil {
-		return PlanEntry{}, "", err
+		return PlanEntry{}, "", "", err
 	}
 	switch remote.State {
 	case "triage", "draft":
 	case "published", "closed":
-		return PlanEntry{}, "GitHub reports it " + remote.State + " already", nil
+		return PlanEntry{}, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", remote.State, nil
 	default:
-		return PlanEntry{}, "GitHub reports it in a state this abcd does not know", nil
+		return PlanEntry{}, "GitHub reports it in a state this abcd does not know", "", nil
 	}
 	const noPackage = "GitHub carries no package for it; set the package on GitHub, then run it again"
 	if len(remote.Vulnerabilities) == 0 {
-		return PlanEntry{}, noPackage, nil
+		return PlanEntry{}, noPackage, "", nil
 	}
 	var vulns []PlannedVulnerability
 	for _, v := range remote.Vulnerabilities {
 		if v.Package == nil || strings.TrimSpace(v.Package.Ecosystem) == "" || strings.TrimSpace(v.Package.Name) == "" {
-			return PlanEntry{}, noPackage, nil
+			return PlanEntry{}, noPackage, "", nil
 		}
 		rng, err := affectedRange(v.VulnerableVersionRange, patched)
 		if err != nil {
-			return PlanEntry{}, err.Error(), nil
+			return PlanEntry{}, err.Error(), "", nil
 		}
 		fns := v.VulnerableFunctions
 		if fns == nil {
@@ -247,18 +268,30 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory, oth
 	for _, part := range []struct{ name, text string }{{"summary", remote.Summary}, {"description", remote.description()}} {
 		f, err := scanOutbound(s.Checkout, "the advisory's "+part.name, part.text, true)
 		if err != nil {
-			return PlanEntry{}, "", err
+			return PlanEntry{}, "", "", err
 		}
 		if f != nil {
-			return PlanEntry{}, fmt.Sprintf("its %s on GitHub carries a %s on line %d; correct it there, then run it again", part.name, f.kind, f.line), nil
+			return PlanEntry{}, fmt.Sprintf("its %s on GitHub carries a %s on line %d; correct it there, then run it again", part.name, f.kind, f.line), "", nil
 		}
 		if m := others.matches(part.text); len(m) > 0 {
 			return PlanEntry{}, fmt.Sprintf("its %s on GitHub names another advisory still under embargo (%s on line %d), which publishing it would disclose; "+
-				"correct it there, or publish the other first, then run it again", part.name, m[0].kind, strings.Count(part.text[:m[0].start], "\n")+1), nil
+				"correct it there, or publish the other first, then run it again", part.name, m[0].kind, strings.Count(part.text[:m[0].start], "\n")+1), "", nil
 		}
 	}
 	return PlanEntry{GHSAID: a.GHSAID, IssueID: a.IssueID, FixCommit: fix, FirstTag: first, PatchedVersion: patched,
-		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote)}, "", nil
+		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote)}, "", "", nil
+}
+
+// recordForgeEnd stamps the end GitHub reports for a held advisory:
+// published_at or closed_at, at now, with the forge state to match.
+func recordForgeEnd(a *Advisory, state string, now time.Time) {
+	at := now
+	switch state {
+	case "published":
+		a.PublishedAt, a.ForgeState = &at, "published"
+	case "closed":
+		a.ClosedAt, a.ForgeState = &at, "closed"
+	}
 }
 
 // fixCommit reads the resolved_by.commit of the record at rec in the

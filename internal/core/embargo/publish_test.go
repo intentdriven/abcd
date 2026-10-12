@@ -3,6 +3,8 @@ package embargo
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -316,4 +318,58 @@ func TestPublishedAtStamped(t *testing.T) {
 	if res.Published[0].GHSAID != ghsaA || !res.Published[0].PublishedAt.Equal(publishedAt) {
 		t.Fatalf("result %+v", res.Published)
 	}
+}
+
+// TestPublishedAtRecordedFromGitHubAfterSaveFails: an advisory GitHub
+// confirmed published whose published_at could not be saved is reported as
+// published, and the next plan reads it published on GitHub and records it,
+// leaving it out, instead of holding it under embargo for ever.
+func TestPublishedAtRecordedFromGitHubAfterSaveFails(t *testing.T) {
+	px := newPublishFixture(t, "draft")
+	stateDir := filepath.Dir(px.s.StatePath())
+	t.Cleanup(func() { _ = os.Chmod(stateDir, 0o700) })
+	// The publishing PATCH of the canary leaves the state's folder unwritable.
+	px.g.hook(`if [ "$method" = PATCH ] && grep -q '"published"' "$d/calls/$n.stdin"; then chmod 500 '` + stateDir + `'; fi`)
+	shown := px.show(t)
+	_, err := px.publish(shown.Plan.Digest)
+	var pe *PublishFailedError
+	if !errors.As(err, &pe) || pe.GHSAID != ghsaA || strings.Join(pe.Published, ",") != ghsaA {
+		t.Fatalf("err = %v (%+v)", err, pe)
+	}
+	if !strings.Contains(err.Error(), "the next `abcd embargo publish` reads it published on GitHub and records it") {
+		t.Fatalf("the failure does not say how published_at is recorded: %v", err)
+	}
+	px.g.hook(":")
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if a := px.advisory(t, ghsaA); a.PublishedAt != nil {
+		t.Fatalf("published_at recorded though its save failed: %+v", a)
+	}
+	px.answer(t, ghsaA, 5, "published", "< 0.9.0", "0.9.0")
+	p := px.plan(t, "")
+	if len(p.Entries) != 1 || p.Entries[0].GHSAID != ghsaB {
+		t.Fatalf("replan %+v", p)
+	}
+	if r := leftOutReason(t, p, ghsaA); !strings.Contains(r, "published already") {
+		t.Fatalf("left-out reason %q", r)
+	}
+	if a := px.advisory(t, ghsaA); a.PublishedAt == nil || a.ForgeState != "published" {
+		t.Fatalf("the plan did not record what GitHub reports: %+v", a)
+	}
+}
+
+// TestPlanRecordsClosedOnGitHub: an advisory judged a vulnerability that
+// GitHub reports closed is left out, and its closed_at is recorded.
+func TestPlanRecordsClosedOnGitHub(t *testing.T) {
+	px := newPublishFixture(t, "draft")
+	px.answer(t, ghsaA, 1, "closed", "", "")
+	p := px.plan(t, "")
+	if r := leftOutReason(t, p, ghsaA); !strings.Contains(r, "closed already") {
+		t.Fatalf("left-out reason %q", r)
+	}
+	if a := px.advisory(t, ghsaA); a.ClosedAt == nil || a.ForgeState != "closed" || a.PublishedAt != nil {
+		t.Fatalf("the plan did not record what GitHub reports: %+v", a)
+	}
+	noWrites(t, px.g)
 }

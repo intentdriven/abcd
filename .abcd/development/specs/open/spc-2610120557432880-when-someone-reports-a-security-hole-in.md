@@ -423,6 +423,16 @@ Fixes from the security review of 2026-10-12, each held by a named test:
   set forever; it now leaves it once `closed_at` is set, keeping the id and
   CVE id (TestCheckRefusesClosedUnpublishedGHSA,
   TestCheckKeepsClosedAdvisorysCVE, TestPlanLeavesOutAdvisoryNamingAnother).
+- **Steps 6, 8 and 9, criteria 5, 7 and 9: a confirmed act left unrecorded.**
+  A publication GitHub confirmed whose `published_at` could not be saved, or
+  a close GitHub accepted whose read-back failed, left the advisory under
+  embargo with nothing to reconcile it. The plan now records an advisory
+  GitHub reports published or closed and leaves it out; `close` records one
+  GitHub reports closed (or published) and sends nothing; the error texts say
+  so (TestPublishedAtRecordedFromGitHubAfterSaveFails,
+  TestPlanRecordsClosedOnGitHub, TestCloseRecordsClosedOnGitHub,
+  TestCloseRecordsClosedAfterReadBackFails,
+  TestCloseRefusesAlreadyClosedOrPublished).
 
 ## Out of scope
 

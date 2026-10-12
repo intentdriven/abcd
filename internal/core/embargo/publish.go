@@ -78,7 +78,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 	if err != nil {
 		return PublishResult{}, err
 	}
-	plan, err := planFor(s, st, req.Release)
+	plan, err := planFor(s, &st, req.Release, clock(req.Now))
 	if err != nil {
 		return PublishResult{}, err
 	}
@@ -114,12 +114,13 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		now := clock(req.Now)
 		j, err := findAdvisory(st, e.GHSAID)
 		if err == nil {
-			st.Advisories[j].PublishedAt, st.Advisories[j].ForgeState = &now, "published"
+			recordForgeEnd(&st.Advisories[j], "published", now)
 			err = s.SaveState(st)
 		}
 		res.Published = append(res.Published, PublishedAdvisory{GHSAID: e.GHSAID, IssueID: e.IssueID, PublishedAt: now})
 		if err != nil {
-			return res, fail(i, e.GHSAID, "it is published on GitHub, but its published_at could not be recorded in the store ("+err.Error()+")")
+			return res, fail(i, e.GHSAID, "it is published on GitHub, but its published_at could not be recorded in the store ("+err.Error()+
+				"); the next `abcd embargo publish` reads it published on GitHub and records it")
 		}
 	}
 

@@ -29,6 +29,9 @@ type CloseRequest struct {
 // CloseResult is what a close showed and did. Text is exactly the explanation
 // that is posted, Digest the approval it takes, and ApproveWith the command
 // that gives it. Closed and ClosedAt report a close GitHub confirmed.
+// Reconciled reports that GitHub already held the advisory closed, so nothing
+// was sent and closed_at was recorded from that; TextHeld then says whether
+// its description begins with the drafted text.
 type CloseResult struct {
 	GHSAID      string     `json:"ghsa_id"`
 	IssueID     string     `json:"issue_id"`
@@ -39,6 +42,8 @@ type CloseResult struct {
 	ApproveWith string     `json:"approve_with"`
 	Closed      bool       `json:"closed"`
 	ClosedAt    *time.Time `json:"closed_at,omitempty"`
+	Reconciled  bool       `json:"reconciled,omitempty"`
+	TextHeld    *bool      `json:"text_held,omitempty"`
 }
 
 // CloseFailedError is a close GitHub accepted but whose read-back does not
@@ -62,7 +67,8 @@ func (e *CloseFailedError) Error() string {
 		halves = append(halves, e.Reason)
 	}
 	return "embargo: the close was sent, but reading the advisory back does not confirm it: " + strings.Join(halves, ", and ") +
-		"; closed_at was not recorded (look at the advisory on GitHub, then run `abcd embargo close` again)"
+		"; closed_at was not recorded (look at the advisory on GitHub, then run `abcd embargo close` again: " +
+		"if GitHub reports it closed, that records closed_at and sends nothing)"
 }
 
 // placement is where the approved explanation goes in the advisory's
@@ -134,6 +140,9 @@ func closeDigest(ghsa, text, description string) string {
 // recomputed; any difference refuses with nothing sent. On a match one PATCH
 // sets the advisory closed with the composed description, and a read-back must
 // show it closed with the approved text in place before closed_at is stamped.
+// An advisory GitHub already reports closed or published is not updated: its
+// closed_at or published_at is recorded from what GitHub reports, so a close
+// whose read-back or save failed is completed by running close again.
 //
 // The text is scanned before it is shown, with the outbound scanner, the
 // private-names layer, and every other advisory still under embargo: the
@@ -169,9 +178,29 @@ func Close(req CloseRequest) (CloseResult, error) {
 	if err != nil {
 		return CloseResult{}, err
 	}
-	if remote.State != "triage" && remote.State != "draft" {
-		return CloseResult{}, refuse(fmt.Sprintf("GitHub reports this advisory %s, so it is not closed again; nothing was sent", forgeStateWord(remote.State)),
-			"run `abcd embargo intake` to take GitHub's state")
+	switch remote.State {
+	case "triage", "draft":
+	case "closed":
+		// A close sent before whose read-back or save failed, or one made
+		// on GitHub by hand: record what GitHub reports, and send nothing.
+		now := clock(req.Now)
+		recordForgeEnd(&st.Advisories[i], "closed", now)
+		if err := s.SaveState(st); err != nil {
+			return CloseResult{}, fmt.Errorf("embargo: GitHub reports this advisory closed, but its closed_at could not be recorded (nothing was sent): %w", err)
+		}
+		held := approvedTextHeld(remote.description(), text)
+		return CloseResult{GHSAID: a.GHSAID, IssueID: a.IssueID, Verdict: *a.Verdict, ForgeState: "closed", Text: text,
+			Closed: true, ClosedAt: &now, Reconciled: true, TextHeld: &held}, nil
+	case "published":
+		recordForgeEnd(&st.Advisories[i], "published", clock(req.Now))
+		if err := s.SaveState(st); err != nil {
+			return CloseResult{}, fmt.Errorf("embargo: GitHub reports this advisory published, so it is not closed, but its published_at could not be recorded (nothing was sent): %w", err)
+		}
+		return CloseResult{}, refuse("GitHub reports this advisory published, so it is not closed; nothing was sent, and its published_at is recorded from that",
+			"there is nothing left to close")
+	default:
+		return CloseResult{}, refuse("GitHub reports this advisory in a state this abcd does not know, so it is not closed; nothing was sent",
+			"look at the advisory on GitHub, then run it again with a newer abcd, or report it")
 	}
 	digest := closeDigest(a.GHSAID, text, remote.description())
 	res := CloseResult{GHSAID: a.GHSAID, IssueID: a.IssueID, Verdict: *a.Verdict, ForgeState: remote.State,
@@ -201,10 +230,10 @@ func Close(req CloseRequest) (CloseResult, error) {
 	}
 
 	now := clock(req.Now)
-	a.ClosedAt, a.ForgeState = &now, "closed"
-	st.Advisories[i] = a
+	recordForgeEnd(&st.Advisories[i], "closed", now)
 	if err := s.SaveState(st); err != nil {
-		return CloseResult{}, fmt.Errorf("embargo: the advisory is closed on GitHub, but its closed_at could not be recorded: %w", err)
+		return CloseResult{}, fmt.Errorf("embargo: the advisory is closed on GitHub, but its closed_at could not be recorded "+
+			"(run `abcd embargo close` again once the store is writable: it reads the advisory closed and records closed_at, sending nothing): %w", err)
 	}
 	res.ForgeState, res.Closed, res.ClosedAt = "closed", true, &now
 	return res, nil

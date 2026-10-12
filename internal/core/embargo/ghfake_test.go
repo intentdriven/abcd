@@ -51,6 +51,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 key=$(printf '%s' "$method|$path|$state" | tr -c 'A-Za-z0-9._-' '_')
+if [ -f "$d/hook" ]; then . "$d/hook"; fi
 k=$(( $(cat "$d/seq/$key" 2>/dev/null || echo 0) + 1 ))
 printf '%s' "$k" >"$d/seq/$key"
 if [ -f "$d/resp/$key.err" ]; then cat "$d/resp/$key.err" >&2; exit 1; fi
@@ -86,6 +87,16 @@ func (g *ghFake) answer(method, path, state string, n int, body string) {
 		name += "." + strconv.Itoa(n)
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "resp", name), []byte(body), 0o600); err != nil {
+		g.t.Fatal(err)
+	}
+}
+
+// hook sets a shell fragment the fake runs on every call, after it records
+// the call and before it answers: $method, $path, $state, $d and $n (the
+// call's number; its stdin is "$d/calls/$n.stdin") are set.
+func (g *ghFake) hook(fragment string) {
+	g.t.Helper()
+	if err := os.WriteFile(filepath.Join(g.dir, "hook"), []byte(fragment+"\n"), 0o600); err != nil {
 		g.t.Fatal(err)
 	}
 }
