@@ -323,10 +323,13 @@ Refused, nothing pushed:
 the new tip. If the branch now holds a reservation it cannot take (the parentless
 create met an existing branch, or another child landed first), it refuses with
 the back-off exit naming that holder, and says the reservation was taken while
-this push was on its way (C3). This covers both ways the race shows: the
-remote's non-fast-forward rejection, and this repository's pre-push hook
-refusing a non-fast-forward when the remote tip is already in the local object
-store. Otherwise the push failure is reported as itself.
+this push was on its way (C3). This covers both ways the race shows: git's
+own client refusing the push as a non-fast-forward once the remote's
+advertisement shows the moved tip, and the remote's own compare-and-swap
+refusing the update when the other push lands after the advertisement, while
+this one is being received. A pre-push hook is never asked in a lost race:
+git rejects the ref before it runs the hook. Otherwise the push failure is
+reported as itself.
 
 **Failure writes nothing locally.** A missing `origin`, an `origin` path that
 does not exist, no write permission, offline, or a remote or proxy that rejects
@@ -524,7 +527,7 @@ the test that proves the criterion, in the package the step lands in.
 |---|---|---|
 | C1 | 3 | `claim.TestAReservationIsAParentlessEmptyTreeCommitAndLeavesTheCheckoutAlone` |
 | C2 | 3 | `claim.TestAnotherPersonsLiveReservationIsRefusedWithTheBackOffExit` |
-| C3 | 3 | `claim.TestAStaleViewLosesTheRaceAndNamesTheWinner` |
+| C3 | 3 | `claim.TestAStaleViewLosesTheRaceAndNamesTheWinner` (the advertised tip, and the push landed while this one is received) |
 | C4 | 3 | `claim.TestAFreshAgentInTheSameCopyRenews` |
 | C5 | 3 | `claim.TestReleasingAnotherPersonsReservationPushesNothing` |
 | C6 | 3 | `claim.TestReleasePushesATombstoneAndDeletesNothing` |
@@ -672,7 +675,7 @@ the cross-cutting ones.
 3. Spec 1: Reserve, renew, take over and release against the remote
    - criteria: C1, C2, C3, C4, C5, C6, C7, C8, C9, C13, C15, C20, C21, C22, C23, C52
    - packages: internal/core/claim, internal/core/peers, internal/gitutil, internal/core/implement/loop
-   - tests: a bare origin and clones for P, Q, P's second computer and P's cloud session, with an injected clock; the parentless create leaving HEAD, index and `git status --porcelain` unchanged on a detached HEAD; every row of the push table; the margin on both sides; the unreadable hold and its takeover; the lost race through both the remote's rejection and the hook's; the derived release from `resolved/` on `origin/main`; `upstream`-only, missing-path and `pre-receive`-rejecting remotes each making no reservation; `gitutil.Net` serving the land stage's existing tests unchanged
+   - tests: a bare origin and clones for P, Q, P's second computer and P's cloud session, with an injected clock; the parentless create leaving HEAD, index and `git status --porcelain` unchanged on a detached HEAD; every row of the push table; the margin on both sides; the unreadable hold and its takeover; the lost race through both git's rejection of an advertised tip and the remote's refusal of a push that landed while this one was received; the derived release from `resolved/` on `origin/main`; `upstream`-only, missing-path and `pre-receive`-rejecting remotes each making no reservation; `gitutil.Net` serving the land stage's existing tests unchanged
 4. Spec 1: The pre-push exemption and the registry
    - criteria: C24, C25, C26, C33
    - packages: .githooks, internal/core/guard/defaults, internal/surface/cli, internal/core/claim

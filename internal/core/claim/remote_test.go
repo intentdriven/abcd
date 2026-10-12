@@ -199,42 +199,59 @@ func TestAnotherPersonsLiveReservationIsRefusedWithTheBackOffExit(t *testing.T) 
 }
 
 // TestAStaleViewLosesTheRaceAndNamesTheWinner is C3, through both ways the
-// race shows: the remote's own rejection, and a pre-push hook refusing a
-// non-fast-forward because the remote's tip is already in the local store.
+// race shows. "advertised": P's reservation lands after Q's fetch and before
+// Q's push connects, so git's own client sees the moved tip in the remote's
+// advertisement and rejects the push as a non-fast-forward (this is also what
+// stops any pre-push hook from ever being asked: git rejects the ref before it
+// runs the hook). "landed": P's reservation lands on the remote while Q's push
+// is already inside receive-pack, after the advertisement, so the remote's own
+// compare-and-swap refuses Q's update; a pre-receive hook in origin stands in
+// for P's push arriving in that window.
 func TestAStaleViewLosesTheRaceAndNamesTheWinner(t *testing.T) {
-	for _, viaHook := range []bool{false, true} {
-		t.Run(map[bool]string{false: "remote", true: "hook"}[viaHook], func(t *testing.T) {
+	for _, mode := range []string{"advertised", "landed"} {
+		t.Run(mode, func(t *testing.T) {
 			w := newWorld(t)
 			p := w.clone("1234+octo@users.noreply.github.com", "")
 			q := w.clone("99+quinn@users.noreply.github.com", "")
-			if viaHook {
-				hooks := t.TempDir()
-				hook := "#!/bin/sh\nwhile read lref lsha rref rsha; do\n" +
-					"  case $rsha in *[!0]*) if git cat-file -e \"$rsha\" 2>/dev/null && ! git merge-base --is-ancestor \"$rsha\" \"$lsha\"; then\n" +
-					"    echo 'pre-push: refusing a non-fast-forward' >&2; exit 1; fi;; esac\ndone\nexit 0\n"
-				if err := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte(hook), 0o755); err != nil {
+			marker := filepath.Join(t.TempDir(), "pre-receive-ran")
+			if mode == "advertised" {
+				// Q's fetch has run; P reserves while Q's push is on its way.
+				beforePush = func(root string) {
+					if root != q.dir {
+						return
+					}
+					beforePush = nil
+					if _, err := p.reserve("iss-5", "a.go"); err != nil {
+						t.Errorf("P's reserve inside Q's window: %v", err)
+					}
+				}
+				t.Cleanup(func() { beforePush = nil })
+			} else {
+				// P's reservation commit is made, then parked off the branch, so
+				// Q's fetch finds no reservation; origin's pre-receive puts it on
+				// the branch while Q's push is being received.
+				res, err := p.reserve("iss-5", "a.go")
+				if err != nil {
 					t.Fatal(err)
 				}
-				q.git("config", "core.hooksPath", hooks)
-			}
-			// Q's fetch has run; P reserves while Q's push is on its way.
-			beforePush = func(root string) {
-				if root != q.dir {
-					return
-				}
-				beforePush = nil
-				if _, err := p.reserve("iss-5", "a.go"); err != nil {
-					t.Errorf("P's reserve inside Q's window: %v", err)
-				}
-				if viaHook {
-					q.git("fetch", "-q", "origin", RefPrefix+"iss-5")
+				runGit(t, w.bare, "update-ref", "refs/parked/iss-5", res.Commit)
+				runGit(t, w.bare, "update-ref", "-d", RefPrefix+"iss-5")
+				hook := "#!/bin/sh\nif [ ! -e '" + marker + "' ]; then\n  : > '" + marker + "'\n" +
+					"  env -u GIT_QUARANTINE_PATH -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES " +
+					"git update-ref " + RefPrefix + "iss-5 " + res.Commit + " || exit 1\nfi\nexit 0\n"
+				if err := os.WriteFile(filepath.Join(w.bare, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+					t.Fatal(err)
 				}
 			}
-			t.Cleanup(func() { beforePush = nil })
 			_, err := q.reserve("iss-5", "b.go")
 			want := "iss-5 was reserved by octo while this push was on its way, until 2026-10-03T16:00:00Z; back off and take other work"
 			if !errors.Is(err, ErrBackOff) || err.Error() != want {
 				t.Fatalf("Q's reserve = %v; want %q", err, want)
+			}
+			if mode == "landed" {
+				if _, serr := os.Stat(marker); serr != nil {
+					t.Fatalf("origin's pre-receive never ran, so the push was not refused by the remote: %v", serr)
+				}
 			}
 			if !strings.Contains(w.remoteMessage(w.remoteTip("iss-5")), "Abcd-Holder: octo") {
 				t.Fatalf("origin's tip is not P's")
