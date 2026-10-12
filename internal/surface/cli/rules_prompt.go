@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -22,8 +25,9 @@ import (
 // root the loader resolved. A layer that cannot be read is named on stderr
 // and recalls nothing, while the rules, already rendered, still inject. The
 // loader's kill switch silences the recall: nothing is read, nothing comes
-// back, and the ledger is kept as it was.
-func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map[string]string, budget int) recall.Result {
+// back, and the ledger is kept as it was. here answers the repository's root
+// commit for the notes tied to one, asked only once a tied note matched.
+func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map[string]string, budget int, here recall.RootFunc) recall.Result {
 	if rs.Disabled {
 		return recall.Result{Ledger: ledger}
 	}
@@ -31,7 +35,37 @@ func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map
 	for _, r := range refused {
 		diagnosticLine(w, "abcd memory: %s; recalling no notes from it", refusalText(r))
 	}
-	return recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget})
+	return recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here})
+}
+
+// routerRootCommit is the repository's root commit as the prompt router asks
+// git for it; a seam for the tests.
+var routerRootCommit = gitutil.RootCommitContext
+
+// rootLookup is one root-commit lookup the live drain made: its answer, its
+// error, and whether it was made at all (a hook with no cwd makes none).
+type rootLookup struct {
+	sha   string
+	err   error
+	asked bool
+}
+
+// promptRoot is the recall's root-commit answer for one prompt, memoised. It
+// reuses the lookup the live drain already made for this prompt, so the
+// router spawns that full-history rev-list once; only when the drain made
+// none does it ask git itself, about root, and then only when a tied note
+// matched. The drain asked about cwd and the recall needs root, the
+// repository the loader resolved from that same cwd: the two are one
+// repository, so they share one root commit — and where git cannot answer
+// for cwd (a refused foreign-uid root, which leaves cwd as root), it cannot
+// answer for root either.
+func promptRoot(drained rootLookup, root string) recall.RootFunc {
+	return sync.OnceValues(func() (string, error) {
+		if drained.asked {
+			return drained.sha, drained.err
+		}
+		return routerRootCommit(context.Background(), root)
+	})
 }
 
 // refusalText words a refused layer once: the file, then why, without the
@@ -98,12 +132,14 @@ func rulesPrompt(rs rules.RuleSet, root, prompt string) rulesPromptView {
 	}
 	items, refused := recall.ReadNotes(rules.UserHome(), root)
 	v.Unreadable = append(v.Unreadable, refused...)
-	mem := recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes - len(res.Text)})
+	here := promptRoot(rootLookup{}, root)
+	mem := recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes - len(res.Text), Root: here})
 	recalled := map[string]bool{}
 	for _, key := range mem.Recalled {
 		recalled[key] = true
 	}
-	for _, c := range recall.Candidates(items, prompt) {
+	matched, _ := recall.Matching(items, prompt, here)
+	for _, c := range matched {
 		form := promptFormOverBudget
 		if recalled[c.Item.Key] {
 			form = promptFormFull

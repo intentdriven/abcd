@@ -8,6 +8,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1726,7 +1727,7 @@ exits 0, so the hook can never wedge a session.`,
 			// stdout is injected into the session's context, and this drain's
 			// strings are transcript paths and capture errors, which are the
 			// least appropriate text in the program to hand to a model.
-			drainWhileLive(cmd, cwd)
+			drained := drainWhileLive(cmd, cwd)
 			// The badge's reset (itd-2609212130146198): a human message after
 			// an admitted question is its answer. Before the rules work, for
 			// the drain's reason: a rules.json that will not load must not
@@ -1754,7 +1755,8 @@ exits 0, so the hook can never wedge a session.`,
 			// The memory recall, after the rules and within what they left
 			// of the one per-turn budget (spc-2610111627213138). It shares
 			// the session's state file through its own ledger.
-			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text))
+			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text),
+				promptRoot(drained, root))
 			res.State.Recalled = mem.Ledger
 			if err := rules.SaveState(session, res.State); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
@@ -2221,16 +2223,19 @@ var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 
 // single git call that field actually needs.
 //
 // EVERY output goes to stderr and nothing to stdout — see the call site. A
-// failure to drain is never a failure of the prompt: this function returns
-// nothing and the hook exits 0 whatever happened here, because a transcript
-// backlog must not be able to wedge a session.
-func drainWhileLive(cmd *cobra.Command, cwd string) {
+// failure to drain is never a failure of the prompt: the hook exits 0
+// whatever happened here, because a transcript backlog must not be able to
+// wedge a session. What it returns is only the root-commit lookup it made,
+// for the memory recall to reuse (promptRoot), so one prompt spawns that
+// full-history rev-list once.
+func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
 	if cwd == "" {
-		return
+		return rootLookup{}
 	}
-	rootSHA := gitutil.RootCommit(cwd)
+	rootSHA, rootErr := routerRootCommit(context.Background(), cwd)
+	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
 	if rootSHA == "" {
-		return // not a git repo with commits: nothing here has a store
+		return looked // not a git repo with commits: nothing here has a store
 	}
 	// Look before spending: the ordinary prompt has nothing staged, and this
 	// listing is one readdir of a usually-empty directory, so the redaction
@@ -2239,14 +2244,14 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	// drain below, because every store verb now takes it.
 	repoRoot := captureRoot(cwd)
 	if staged, lerr := history.ListStaged(repoRoot, rootSHA); lerr == nil && len(staged) == 0 {
-		return
+		return looked
 	}
 	dr, err := history.Drain(repoRoot, rootSHA, livePromptDrainBudget)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"abcd history: could not drain staged transcripts this turn (%s); they hold UNREDACTED text until one succeeds.\n",
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-		return
+		return looked
 	}
 	for _, f := range dr.Failed {
 		fmt.Fprintln(cmd.ErrOrStderr(), drainFailureNotice(f))
@@ -2262,6 +2267,7 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	for _, l := range scanGapLines(dr.ScanGap) {
 		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
 	}
+	return looked
 }
 
 // drainFailureNotice renders one DrainFailure as the operator-facing sentence,

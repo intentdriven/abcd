@@ -21,6 +21,9 @@ type Request struct {
 	// Disabled is the loader's kill switch: recall is the loader's, so the
 	// switch silences it too.
 	Disabled bool
+	// Root answers the repository's root commit, for the items tied to one;
+	// asked only once a tied item matched (Matching).
+	Root RootFunc
 }
 
 // Result is one prompt's recall. Text is empty when nothing new comes back.
@@ -37,8 +40,9 @@ type Result struct {
 // Recall matches the items against the prompt, drops every candidate already
 // sent this session with unchanged content, and takes the rest in id order
 // while they fit the budget: the first that does not fit stops the take, so
-// an item never comes back ahead of one before it in the order. It performs
-// no I/O and never reflects prompt bytes into the block.
+// an item never comes back ahead of one before it in the order. Its only I/O
+// is req.Root, asked when a tied item matched, and it never reflects prompt
+// bytes into the block.
 func Recall(req Request) Result {
 	ledger := map[string]string{}
 	for k, v := range req.Ledger {
@@ -48,8 +52,9 @@ func Recall(req Request) Result {
 	if req.Disabled {
 		return res
 	}
+	cands, _ := Matching(req.Items, req.Prompt, req.Root)
 	var fresh []Item
-	for _, c := range Candidates(req.Items, req.Prompt) {
+	for _, c := range cands {
 		if ledger[c.Item.Key] == signature(c.Item) {
 			continue
 		}
