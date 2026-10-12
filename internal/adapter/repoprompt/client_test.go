@@ -360,3 +360,28 @@ func TestOnlyALoopbackAddressIsDialled(t *testing.T) {
 		t.Fatalf("localhost reaches the loopback server: %v", err)
 	}
 }
+
+// TestAToolAnswerPastTheBoundIsUnparsable: the review call's answer is held
+// to the same bound as every other: one just inside it is read, one just past
+// it is refused as unparsable, never truncated into a return.
+func TestAToolAnswerPastTheBoundIsUnparsable(t *testing.T) {
+	for _, c := range []struct {
+		text int
+		ok   bool
+	}{{MaxResponseBytes - 4096, true}, {MaxResponseBytes, false}} {
+		f := &mcptest.Server{Tools: map[string][]string{DefaultTool: {"message"}}, Answer: func(map[string]any) any {
+			return mcptest.TextResult(strings.Repeat("x", c.text))
+		}}
+		got, err := review(t, mcptest.Start(t, f), nil)
+		if c.ok {
+			if err != nil || len(got) != c.text {
+				t.Fatalf("an answer inside the bound is read whole: %d %v", len(got), err)
+			}
+			continue
+		}
+		wantKind(t, err, KindUnparsable)
+		if !strings.Contains(err.Error(), "larger than") {
+			t.Fatalf("the refusal names the bound: %v", err)
+		}
+	}
+}

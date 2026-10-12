@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -586,5 +587,56 @@ func TestAReceiptThatErrsTakesThePlacedReturnBack(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
 		t.Fatal("the placed return is taken back off the path")
+	}
+}
+
+// TestTheReviewRouteIsNoneUnlessRPIsSelected is criterion 3's weight-bearing
+// half: the step reads no route at all, and so sends nothing anywhere, unless
+// oracle.review names rp, in either file; unset, or host in either file, it
+// is nil. Selected with no server on this machine, the route is absent.
+func TestTheReviewRouteIsNoneUnlessRPIsSelected(t *testing.T) {
+	prompt := func(string) (string, error) { return "", nil }
+	for name, c := range map[string]struct {
+		repo, machine string
+		want          string // "none", "absent" or "server"
+	}{
+		"unset":                           {"", "", "none"},
+		"host in the repository":          {`{"oracle":{"review":"host"}}`, "", "none"},
+		"host in the machine":             {"", `{"oracle":{"review":"host","rp":{"url":"http://127.0.0.1:7777/mcp"}}}`, "none"},
+		"rp in the repository, no server": {`{"oracle":{"review":"rp"}}`, "", "absent"},
+		"rp in the machine, a server":     {"", `{"oracle":{"review":"rp","rp":{"url":"http://127.0.0.1:7777/mcp"}}}`, "server"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := layered.Roots{Repo: t.TempDir(), Home: t.TempDir()}
+			for dir, body := range map[string]string{filepath.Join(r.Repo, ".abcd"): c.repo, abcdhome.Path(r.Home): c.machine} {
+				if body == "" {
+					continue
+				}
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rr, err := LoadReviewRoute(r, prompt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch c.want {
+			case "none":
+				if rr != nil {
+					t.Fatalf("no route is read: %+v", rr)
+				}
+			case "absent":
+				if rr == nil || rr.Reviewer != nil || !strings.Contains(rr.Absent, "names no oracle.rp.url") {
+					t.Fatalf("the route is absent here: %+v", rr)
+				}
+			case "server":
+				if rr == nil || rr.Reviewer == nil || rr.Name != "rp" {
+					t.Fatalf("the route reaches the server: %+v", rr)
+				}
+			}
+		})
 	}
 }
