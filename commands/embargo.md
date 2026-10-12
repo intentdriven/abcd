@@ -110,7 +110,10 @@ nothing will publish it; its id and CVE id stay refused), and the store's
 location on this machine; any other advisory id is
 refused too unless `--allow <GHSA-id>` names it as another project's, already
 public. Each finding names its `kind`, `source`, `where` and `line` and never
-repeats the match. Exit 0 is clean (or no store exists on this machine), exit 2
+repeats the match. Text is folded before it is matched: fullwidth and other
+compatibility letters read as plain ones, every dash as a hyphen, invisible
+characters (a zero-width space, a soft hyphen) are dropped, and a token broken
+at a hyphen across a line end reads whole. Exit 0 is clean (or no store exists on this machine), exit 2
 is a finding. `intake_stale` says the last intake is more than a day old: run
 intake first.
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"golang.org/x/text/unicode/norm"
 )
 
 // The kinds of finding the outbound check reports (adr-2610120558328615,
@@ -663,28 +664,68 @@ func (ds denySet) nameOr(name, fallback string) string {
 	return name
 }
 
-// normalise is text case-folded with every run of white space one space,
-// and the offset in text each byte of the result came from.
+// normalise is text folded the way the deny set is matched, and the offset in
+// text each byte of the result came from. The fold is NFKC (fullwidth and
+// other compatibility forms become their plain letters and digits), then
+// lower case; every dash (Unicode's dash punctuation and the minus sign)
+// becomes the hyphen-minus; an invisible format character (a zero-width
+// space, a soft hyphen, a direction mark) is dropped; every run of white
+// space becomes one space, except that a run holding a line break between a
+// hyphen that ends a word and a word that goes on is dropped, so a token
+// wrapped at its hyphen ("GHSA-xxxx-xxxx-" at a line's end, "xxxx" on the
+// next) reads whole. Each byte of a normalisation segment the fold changed
+// maps to the segment's start; an unchanged one maps byte for byte.
 func normalise(text string) (string, []int) {
 	var b strings.Builder
 	at := make([]int, 0, len(text))
-	space := false
-	for i, r := range text {
-		if unicode.IsSpace(r) {
-			if !space {
-				b.WriteByte(' ')
-				at = append(at, i)
-			}
-			space = true
-			continue
-		}
-		space = false
+	put := func(r rune, off int) {
 		var buf [utf8.UTFMax]byte
-		n := utf8.EncodeRune(buf[:], unicode.ToLower(r))
+		n := utf8.EncodeRune(buf[:], r)
 		b.Write(buf[:n])
 		for j := 0; j < n; j++ {
-			at = append(at, i)
+			at = append(at, off)
 		}
+	}
+	spaceAt, spaceBreaks := -1, false // a run of white space not yet written
+	var last, beforeLast rune         // the last two runes written
+	var it norm.Iter
+	it.InitString(norm.NFKC, text)
+	for !it.Done() {
+		pos := it.Pos()
+		seg := string(it.Next())
+		exact := seg == text[pos:it.Pos()]
+		for k, r := range seg {
+			off := pos
+			if exact {
+				off = pos + k
+			}
+			switch {
+			case unicode.IsSpace(r):
+				if spaceAt < 0 {
+					spaceAt = off
+				}
+				spaceBreaks = spaceBreaks || r == '\n' || r == '\r'
+				continue
+			case unicode.Is(unicode.Cf, r):
+				continue
+			case unicode.Is(unicode.Pd, r) || r == '\u2212':
+				r = '-'
+			default:
+				r = unicode.ToLower(r)
+			}
+			if spaceAt >= 0 {
+				if !(spaceBreaks && last == '-' && isWord(beforeLast) && isWord(r)) {
+					put(' ', spaceAt)
+					beforeLast, last = last, ' '
+				}
+				spaceAt, spaceBreaks = -1, false
+			}
+			put(r, off)
+			beforeLast, last = last, r
+		}
+	}
+	if spaceAt >= 0 {
+		put(' ', spaceAt)
 	}
 	return b.String(), at
 }

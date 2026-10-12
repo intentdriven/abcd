@@ -460,3 +460,40 @@ func TestCheckFileInputs(t *testing.T) {
 	_, err = Check(CheckRequest{Home: cf.f.home, RepoRoot: cf.f.repo.Root()})
 	mustRefuse(t, err, "nothing to check")
 }
+
+// TestCheckFoldsConfusablesAndLineWraps: an id or title spelled with
+// fullwidth letters, a dash other than the hyphen-minus, an invisible
+// character inside it, or a hyphenated token broken at a line end is the same
+// id or title, and is refused.
+func TestCheckFoldsConfusablesAndLineWraps(t *testing.T) {
+	cf := newCheckFixture(t)
+	for name, tc := range map[string]struct {
+		body string
+		kind string
+	}{
+		"wrapped id":         {"fixes GHSA-xxxx-xxxx-\nxxxx today\n", KindAdvisoryID},
+		"wrapped id, indent": {"fixes GHSA-xxxx-\n    xxxx-xxxx today\n", KindAdvisoryID},
+		"wrapped cve":        {"tracked as CVE-2026-\n0000\n", KindReservedCVE},
+		"fullwidth id":       {"fixes ＧＨＳＡ－ｘｘｘｘ－ｘｘｘｘ－ｘｘｘｘ\n", KindAdvisoryID},
+		"unicode hyphens":    {"fixes GHSA‐xxxx‑xxxx–xxxx\n", KindAdvisoryID},
+		"minus sign":         {"fixes GHSA−xxxx−xxxx−xxxx\n", KindAdvisoryID},
+		"zero-width inside":  {"fixes GHSA-xx​xx-xxxx-xx­xx\n", KindAdvisoryID},
+		"fullwidth cve":      {"tracked as ＣＶＥ-２０２６-００００\n", KindReservedCVE},
+		"fullwidth title":    {"about the ｓample overflow in the example parser\n", KindAdvisoryTitle},
+	} {
+		t.Run(name, func(t *testing.T) {
+			res := cf.text(t, tc.body)
+			wantKinds(t, res, tc.kind)
+			if strings.Contains(strings.ToLower(res.Findings[0].Snippet), "xxxx") {
+				t.Fatalf("the snippet repeats the match: %q", res.Findings[0].Snippet)
+			}
+		})
+	}
+}
+
+// TestCheckLineJoinOnlyJoinsWrappedTokens: a dash standing alone at a line's
+// end is not a broken token, and joining nothing else makes no finding.
+func TestCheckLineJoinOnlyJoinsWrappedTokens(t *testing.T) {
+	cf := newCheckFixture(t)
+	wantKinds(t, cf.text(t, "a list -\nsample overflow in the parser\nwell-\nknown\n"))
+}

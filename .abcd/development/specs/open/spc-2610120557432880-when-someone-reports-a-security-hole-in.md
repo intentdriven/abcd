@@ -247,6 +247,10 @@ in the set):
 4. the store path in three forms: absolute, `~/`-relative, and the
    `worktrees/<root-sha>/embargo` fragment; and `.abcd/.work.local/embargo`.
 
+Text and deny set are folded alike before matching: NFKC, lower case, every
+dash to the hyphen-minus, invisible format characters dropped, white space
+runs to one space, and a hyphenated token broken across a line end joined.
+
 Any other `GHSA-xxxx-xxxx-xxxx`-shaped id is refused too unless `--allow
 <GHSA-id>` names it (an advisory of another project, already public), and
 every allowed id is listed in the output. Findings carry kind, source
@@ -433,6 +437,12 @@ Fixes from the security review of 2026-10-12, each held by a named test:
   TestPlanRecordsClosedOnGitHub, TestCloseRecordsClosedOnGitHub,
   TestCloseRecordsClosedAfterReadBackFails,
   TestCloseRefusesAlreadyClosedOrPublished).
+- **Step 7, criterion 6: false negatives.** An id wrapped at a hyphen across
+  a line end, fullwidth letters, a non-ASCII dash or an invisible character
+  inside an id or title slipped past the check; the text is now NFKC-folded,
+  dashes mapped, format characters dropped and wrapped tokens joined before
+  matching (TestCheckFoldsConfusablesAndLineWraps,
+  TestCheckLineJoinOnlyJoinsWrappedTokens).
 
 ## Out of scope
 
