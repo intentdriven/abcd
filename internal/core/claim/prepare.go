@@ -77,6 +77,9 @@ type prepared struct {
 	holder string
 	copy   string
 	label  string
+	// derivedGap is why the act's fetch could not read origin's default
+	// branch, "" when it read it: the derived release is then not applied.
+	derivedGap string
 }
 
 // prepare checks a request in the order the refusals promise: the id before

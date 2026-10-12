@@ -59,6 +59,10 @@ type Result struct {
 	// Commit is the commit pushed, or the tombstone already there.
 	Commit   string
 	Replaced *Replaced
+	// DerivedUnchecked is why origin's default branch could not be read, so
+	// whether the record is already finished there was not checked; "" when
+	// it was read (or origin has none).
+	DerivedUnchecked string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -102,15 +106,20 @@ func reserve(root string, req Request, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, refuse("%s; %s", redacted(err), nothingPushed)
 	}
-	if err := fetch(root, p.now); err != nil {
+	gap, err := fetch(root, p.now)
+	if err != nil {
 		return Result{}, err
 	}
+	p.derivedGap = gap
 	j, err := judge(p, tree)
 	if err != nil {
 		return Result{}, err
 	}
 	res, m, parent, err := decide(p, j)
 	if err != nil || res.Act == ActAlreadyReleased {
+		if err == nil {
+			res.DerivedUnchecked = p.derivedGap
+		}
 		return res, err
 	}
 	sha, err := writeCommit(p, m, tree, parent)
@@ -126,6 +135,7 @@ func reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, lostRace(p, tree, j, pushRejection(out, perr))
 	}
 	res.Commit = sha
+	res.DerivedUnchecked = p.derivedGap
 	return res, nil
 }
 
@@ -143,9 +153,11 @@ func pushArgs(sha, id string) []string {
 // as itself.
 func lostRace(p *prepared, tree string, before judged, perr error) error {
 	pushFailed := refuse("origin refused the reservation push: %s; %s", redacted(perr), noReservation)
-	if err := fetch(p.root, p.now); err != nil {
+	gap, err := fetch(p.root, p.now)
+	if err != nil {
 		return pushFailed
 	}
+	p.derivedGap = gap
 	j, err := judge(p, tree)
 	if err != nil || !j.present || j.Commit == before.Commit {
 		return pushFailed
@@ -267,7 +279,12 @@ func judge(p *prepared, tree string) (judged, error) {
 	if !ok {
 		return j, nil
 	}
-	if j.derived, err = terminalOnDefault(p.root, p.id); err != nil {
+	// A default branch the fetch could not read derives nothing: the copy
+	// this clone holds may be stale, so it is not read.
+	if p.derivedGap == "" {
+		j.derived, err = terminalOnDefault(p.root, p.id)
+	}
+	if err != nil {
 		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
 			p.id, redacted(err), noReservation)
 	}
@@ -355,20 +372,35 @@ func echoName(n string) string {
 // fetch reads every reservation branch from origin, with pruning, and the
 // default branch the derived release reads, in one command, then stamps when
 // it did. It is the only read of the remote an act makes before it judges.
-func fetch(root string, now time.Time) error {
+//
+// The default branch is the one this clone last knew (origin/HEAD's target),
+// and that name can be stale: a remote whose main was renamed refuses the whole
+// command for want of the one ref. So when the combined fetch fails, the
+// reservations are fetched alone, and only the derived release is lost: gap is
+// why the default branch could not be read, and the act goes on without it. A
+// fetch of the reservations themselves that fails refuses the act.
+func fetch(root string, now time.Time) (gap string, err error) {
 	args := []string{"fetch", "--prune", "--no-tags", Remote, "+" + RefPrefix + "*:" + TrackingPrefix + "*"}
-	if ref := originDefault(root); ref != "" {
+	ref := originDefault(root)
+	withDefault := args
+	if ref != "" {
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")
-		args = append(args, "+refs/heads/"+branch+":"+ref)
+		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
-	trace(args...)
-	if _, err := gitutil.Net(root, args...); err != nil {
-		return refuse("could not read the reservations from %s: %s; %s", Remote, redacted(err), noReservation)
+	trace(withDefault...)
+	_, ferr := gitutil.Net(root, withDefault...)
+	if ferr != nil && ref != "" {
+		gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
+		trace(args...)
+		_, ferr = gitutil.Net(root, args...)
+	}
+	if ferr != nil {
+		return "", refuse("could not read the reservations from %s: %s; %s", Remote, redacted(ferr), noReservation)
 	}
 	if err := stampFetch(root, now); err != nil {
-		return refuse("fetched the reservations, but could not record when: %s; %s", redacted(err), noReservation)
+		return "", refuse("fetched the reservations, but could not record when: %s; %s", redacted(err), noReservation)
 	}
-	return nil
+	return gap, nil
 }
 
 // stampFetch records when this checkout last fetched the reservations, after a
