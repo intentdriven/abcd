@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -53,5 +54,88 @@ func TestFilterOverridesBlanksEveryConfiguredFilter(t *testing.T) {
 	git("config", "filter.x=y.clean", "z")
 	if got, err := gitutil.FilterOverrides(repo); err == nil {
 		t.Fatalf("a filter name holding '=' must be refused, got %q", got)
+	}
+}
+
+// TestMergeDriverOverridesReplaceEveryConfiguredDriver: with no driver
+// configured only merge.default is pinned; each configured name (a dotted one
+// included, and one with no driver line) gets git's built-in merge once; a key
+// with no name (merge.ff) names nothing; a name -c cannot carry intact is
+// refused.
+func TestMergeDriverOverridesReplaceEveryConfiguredDriver(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	repo := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = gittest.Env(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+
+	got, err := gitutil.MergeDriverOverrides(repo)
+	if err != nil || strings.Join(got, " ") != "-c merge.default=text" {
+		t.Fatalf("no driver configured: got %q, %v; want only merge.default pinned", got, err)
+	}
+
+	git("config", "merge.ff", "false")
+	git("config", "merge.evil.driver", "x %A")
+	git("config", "merge.evil.recursive", "binary")
+	git("config", "merge.a.b.name", "named only")
+	got, err = gitutil.MergeDriverOverrides(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "-c merge.default=text -c merge.evil.driver=" + gitutil.BuiltinMergeDriver() + " -c merge.a.b.driver=" + gitutil.BuiltinMergeDriver()
+	if strings.Join(got, " ") != want {
+		t.Fatalf("got %q\nwant %q", strings.Join(got, " "), want)
+	}
+
+	git("config", "merge.x=y.driver", "z")
+	if got, err := gitutil.MergeDriverOverrides(repo); err == nil {
+		t.Fatalf("a driver name holding '=' must be refused, got %q", got)
+	}
+}
+
+// TestBuiltinMergeDriverTakesOnlyOptionsThisGitAccepts is iss-2610111549593667:
+// merge-file learned --diff-algorithm in git 2.44, and an older git (Apple Git
+// 2.39.5) rejects the option, so every merge whose driver is replaced fails;
+// the %S, %X and %Y labels arrived in the same release. The histogram option
+// and the labels are passed from 2.44 on, and below it the driver carries
+// fixed labels instead; a version the probe cannot read gets the form every
+// git accepts.
+func TestBuiltinMergeDriverTakesOnlyOptionsThisGitAccepts(t *testing.T) {
+	for _, tc := range []struct {
+		version   string
+		err       error
+		histogram bool
+	}{
+		{"git version 2.39.5 (Apple Git-154)", nil, false},
+		{"git version 2.43.7", nil, false},
+		{"git version 2.44.0", nil, true},
+		{"git version 2.52.0", nil, true},
+		{"git version 3.0.0", nil, true},
+		{"", errors.New("no git"), false},
+		{"not a version line", nil, false},
+	} {
+		gitutil.SetGitVersionSource(t, func() (string, error) { return tc.version, tc.err })
+		got := gitutil.BuiltinMergeDriver()
+		if has := strings.Contains(got, "--diff-algorithm=histogram"); has != tc.histogram {
+			t.Errorf("%q: driver %q, want histogram=%v", tc.version, got, tc.histogram)
+		}
+		labels := " -L ours -L base -L theirs %A %O %B"
+		if tc.histogram {
+			labels = " -L %X -L %S -L %Y %A %O %B"
+		}
+		if !strings.HasPrefix(got, "git merge-file --marker-size=%L ") || !strings.HasSuffix(got, labels) {
+			t.Errorf("%q: driver %q, want the marker size and the labels %q", tc.version, got, labels)
+		}
 	}
 }

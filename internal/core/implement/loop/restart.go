@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -214,10 +215,15 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 // uncommitted is saved aside under the lane's directory, the lane's worktree
 // is reset to its last commit and cleaned, the run record names the aside, and
 // the implementer await is re-told so the lead starts a fresh agent from the
-// same brief. It is refused, changing nothing, while the run has an outage
-// (open or given up), for a blank yield, for a lane with no implementer out, for a lane whose worktree is not the
-// one the loop derives for it, and when the saved patch would not apply to
-// the lane's head.
+// same brief. An await a rate-limit checkpoint kept and marked (ratelimit.go),
+// a validator's included, is re-told the same way: a validator edits nothing
+// and may share the worktree with its round, so only its partial return is
+// saved aside and the worktree is not touched, and a validator of the round
+// that is out unmarked is left alone. It is refused, changing nothing, while
+// the run has an outage (open or given up), for a blank yield, for a lane with
+// neither an implementer out nor an await a rate limit kept, for a lane whose
+// worktree is not the one the loop derives for it, and when the saved patch
+// would not apply to the lane's head.
 func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
 	why, err := whyOf(yielded)
 	if err != nil {
@@ -234,100 +240,148 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		if err := outageOpen(repoRoot, laneID); err != nil {
 			return false, err
 		}
-		k := slices.IndexFunc(lane.Awaits, func(a Await) bool { return a.Role == RoleImplementer })
-		if k < 0 {
+		var gone []int
+		for k, a := range lane.Awaits {
+			if a.Role == RoleImplementer || a.Kept != "" {
+				gone = append(gone, k)
+			}
+		}
+		if len(gone) == 0 {
 			return false, refuse(stageRestart, "", laneID,
-				fmt.Sprintf("%s has no implementer out (it is at %s), so there is no gone agent to restart", laneID, lane.Stage),
+				fmt.Sprintf("%s has no implementer out and no await a rate limit kept (it is at %s), so there is no gone agent to restart", laneID, lane.Stage),
 				"run `abcd implement step` to take the lane's next stage; nothing was changed")
 		}
-		aw := lane.Awaits[k]
 		now := o.now()
-		aside, err := saveAside(repoRoot, root, st.RunID, lane, aw, why, true, now)
-		if err != nil {
-			return false, err
+		lane.Awaits = slices.Clone(lane.Awaits)
+		// Every gone await is proved before anything is saved, so a refusal
+		// on any one of them leaves every aside unwritten and every partial
+		// receipt where its agent wrote it.
+		proved := make([]provedAside, len(gone))
+		for n, k := range gone {
+			aw := lane.Awaits[k]
+			p, err := proveAside(repoRoot, root, st.RunID, lane, aw, aw.Role == RoleImplementer)
+			if err != nil {
+				return false, err
+			}
+			proved[n] = p
 		}
-		dir, files, receiptName := aside.Path, aside.Files, aside.Receipt
-		head := aside.Head
-
-		aw.Since = now
-		lane.Awaits[k] = aw
+		var told []Await
+		for n, k := range gone {
+			aw := lane.Awaits[k]
+			aside, err := saveAside(repoRoot, root, st.RunID, laneID, aw, proved[n], why, now)
+			if err != nil {
+				return false, err
+			}
+			if told == nil {
+				res.Aside = aside
+			}
+			aw.Since, aw.Kept = now, ""
+			lane.Awaits[k] = aw
+			told = append(told, aw)
+			saved := "nothing was left uncommitted"
+			if len(aside.Files) > 0 {
+				saved = fmt.Sprintf("%d uncommitted file(s) saved aside for review at %s", len(aside.Files), aside.Path)
+			}
+			if aside.Receipt != "" {
+				saved += ", with its partial receipt"
+			}
+			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: stageRestart,
+				Note: fmt.Sprintf("restarted %s's %s from its last commit %s (%s): %s (aside %s); a fresh %s takes the brief again",
+					laneID, aw.Role, shortSHA(aside.Head), why, saved, aside.Path, aw.Role)})
+		}
 		st.Lanes[i] = lane
-		saved := "nothing was left uncommitted"
-		if len(files) > 0 {
-			saved = fmt.Sprintf("%d uncommitted file(s) saved aside for review at %s", len(files), dir)
-		}
-		if receiptName != "" {
-			saved += ", with its partial receipt"
-		}
-		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: stageRestart,
-			Note: fmt.Sprintf("restarted %s from its last commit %s (%s): %s (aside %s); a fresh implementer takes the brief again",
-				laneID, shortSHA(head), why, saved, dir)})
 		st.UpdatedAt = now
-		res = RestartResult{StepResult: laneResult(*st, lane, "", &aw), Aside: aside}
+		res.StepResult = laneResult(*st, lane, "", &told[0])
+		if len(told) > 1 {
+			moves := make([]string, len(told))
+			for n, a := range told {
+				moves[n] = handedMove(a)
+			}
+			res.Next = strings.Join(moves, "; and ")
+		}
 		return true, nil
 	})
 	return res, err
 }
 
-// saveAside saves aside what the gone agent of aw left: with reset, everything
-// uncommitted in the lane's worktree, proved to apply to the lane's last
-// commit, after which the worktree is reset to that commit and cleaned; and,
-// either way, the partial receipt at the await's path, which leaves it. The
-// aside is a directory under the lane's directory of the run, named by the
-// UTC second, its aside.json naming the head, the files and why. Without
-// reset (a validator, who edits nothing and may share the worktree with the
-// round's others) the worktree is not read or touched, and the head is the
-// one the lane's state names. A refusal changes nothing, but for a reset git
-// refuses after the save, which names the aside.
-func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await, why string, reset bool, now time.Time) (RestartAside, error) {
+// provedAside is what proveAside read of a gone agent's leavings, for
+// saveAside to write: the lane's worktree and the commit it is reset to (reset
+// is false for a validator, whose worktree is not touched), the uncommitted
+// work's patch and files, and the partial receipt with its file name.
+type provedAside struct {
+	reset       bool
+	lw          LaneWorktree
+	head        string
+	patch       []byte
+	files       []string
+	partial     []byte
+	receiptName string
+}
+
+// proveAside reads, and writes nothing of, what the gone agent of aw left:
+// with reset, everything uncommitted in the lane's worktree, proved to apply
+// to the lane's last commit; and, either way, the partial receipt at the
+// await's path. Without reset (a validator, who edits nothing and may share
+// the worktree with the round's others) the worktree is not read, and the head
+// is the one the lane's state names. A refusal changes nothing.
+func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await, reset bool) (provedAside, error) {
 	laneID := lane.ID
-	head := lane.HeadSHA
-	var lw LaneWorktree
-	var patch []byte
-	files := []string{}
+	if err := laneOwnReceipt(repoRoot, runID, laneID, aw.Receipt); err != nil {
+		return provedAside{}, err
+	}
+	p := provedAside{reset: reset, head: lane.HeadSHA, files: []string{}}
 	if reset {
 		var err error
-		if lw, err = restartWorktree(repoRoot, runID, lane); err != nil {
-			return RestartAside{}, err
+		if p.lw, err = restartWorktree(repoRoot, runID, lane); err != nil {
+			return provedAside{}, err
 		}
-		head, err = gitutil.Run(lw.Path, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-		if err != nil || !gitutil.IsFullSHA(head) {
-			return RestartAside{}, fmt.Errorf("resolving %s's last commit: %v", laneID, err)
+		p.head, err = gitutil.Run(p.lw.Path, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+		if err != nil || !gitutil.IsFullSHA(p.head) {
+			return provedAside{}, fmt.Errorf("resolving %s's last commit: %v", laneID, err)
 		}
 		tmp, err := os.MkdirTemp("", "abcd-restart-")
 		if err != nil {
-			return RestartAside{}, err
+			return provedAside{}, err
 		}
 		defer os.RemoveAll(tmp)
-		patch, files, err = snapshot(lw.Path, head, tmp)
+		p.patch, p.files, err = snapshot(p.lw.Path, p.head, tmp)
 		if err != nil {
-			return RestartAside{}, refuse(stageRestart, "", laneID, "git could not capture the lane's uncommitted work: "+fsutil.RedactHome(err.Error()),
+			return provedAside{}, refuse(stageRestart, "", laneID, "git could not capture the lane's uncommitted work: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 		}
-		if len(patch) > 0 {
+		if len(p.patch) > 0 {
 			tmpPatch := filepath.Join(tmp, AsidePatchName)
-			if err := os.WriteFile(tmpPatch, patch, filePerm); err != nil {
-				return RestartAside{}, err
+			if err := os.WriteFile(tmpPatch, p.patch, filePerm); err != nil {
+				return provedAside{}, err
 			}
-			if err := checkAsidePatch(lw.Path, tmpPatch); err != nil {
-				return RestartAside{}, refuse(stageRestart, "", laneID,
-					"the uncommitted work's patch does not apply to the lane's last commit "+shortSHA(head)+", so it is not saved and the worktree is not reset: "+fsutil.RedactHome(err.Error()),
+			if err := checkAsidePatch(p.lw.Path, tmpPatch); err != nil {
+				return provedAside{}, refuse(stageRestart, "", laneID,
+					"the uncommitted work's patch does not apply to the lane's last commit "+shortSHA(p.head)+", so it is not saved and the worktree is not reset: "+fsutil.RedactHome(err.Error()),
 					"save the lane's uncommitted work by hand, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 			}
 		}
 	}
 
-	var partial []byte
-	receiptName := ""
 	data, err := fsutil.ReadGuardedInRoot(root, aw.Receipt, maxPartialReceiptBytes)
 	switch {
 	case err == nil:
-		partial, receiptName = data, filepath.Base(aw.Receipt)
+		p.partial, p.receiptName = data, filepath.Base(aw.Receipt)
 	case !errors.Is(err, os.ErrNotExist):
-		return RestartAside{}, refuse(stageRestart, "", laneID, "the partial receipt at "+aw.Receipt+" cannot be read: "+fsutil.RedactHome(err.Error()),
+		return provedAside{}, refuse(stageRestart, "", laneID, fmt.Sprintf("the partial receipt at %q cannot be read: ", fsutil.RedactHome(aw.Receipt))+fsutil.RedactHome(err.Error()),
 			"move it out of the lane's directory yourself, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 	}
+	return p, nil
+}
 
+// saveAside saves aside what proveAside read of the gone agent of aw: the
+// uncommitted work's patch, after which, with reset, the lane's worktree is
+// reset to its last commit and cleaned; and, either way, the partial receipt,
+// which leaves the await's path. The aside is a directory under the lane's
+// directory of the run, named by the UTC second, its aside.json naming the
+// head, the files and why. Only when git refuses the reset after the save is
+// it refused, and that refusal names the aside.
+func saveAside(repoRoot string, root *os.Root, runID, laneID string, aw Await, p provedAside, why string, now time.Time) (RestartAside, error) {
+	head, patch, partial, receiptName := p.head, p.patch, p.partial, p.receiptName
 	laneDir, err := laneRel(runID, laneID, stageRestart)
 	if err != nil {
 		return RestartAside{}, err
@@ -340,7 +394,7 @@ func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await
 	if err != nil {
 		return RestartAside{}, err
 	}
-	aside := RestartAside{RunID: runID, Lane: laneID, At: now, Path: dir, Head: head, Files: files, Why: why, Receipt: receiptName}
+	aside := RestartAside{RunID: runID, Lane: laneID, At: now, Path: dir, Head: head, Files: p.files, Why: why, Receipt: receiptName}
 	if len(patch) > 0 {
 		aside.Patch = AsidePatchName
 		if err := fsutil.WriteFileAtomicInRoot(root, dir+"/"+AsidePatchName, patch, filePerm); err != nil {
@@ -366,7 +420,7 @@ func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await
 			return RestartAside{}, err
 		}
 	}
-	if !reset {
+	if !p.reset {
 		return aside, nil
 	}
 
@@ -376,9 +430,9 @@ func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await
 	// post-index-change hooks, bounded, and writes the files their global
 	// filters smudge; the clean (pickGit) runs no hook, and keeps what their
 	// global ignore names, which the snapshot did not save.
-	err = resetLaneTree(lw.Path, head)
+	err = resetLaneTree(p.lw.Path, head)
 	if err == nil {
-		_, err = pickGit(lw.Path, "clean", "-f", "-d", "--quiet", "--")
+		_, err = pickGit(p.lw.Path, "clean", "-f", "-d", "--quiet", "--")
 	}
 	if err != nil {
 		return RestartAside{}, refuse(stageRestart, "", laneID,
@@ -440,4 +494,50 @@ func outageOpen(repoRoot, laneID string) error {
 		fmt.Sprintf("the run's %s outage is still open (next probe at %s), so a fresh agent would lose its connection too",
 			down, cur.NextProbeAt.UTC().Format(time.RFC3339)),
 		"wait for a successful shared probe (`abcd implement outage probe`), or, once the connection is back, `abcd implement outage clear --session <id> --reason <why>`; then restart the lane; nothing was changed")
+}
+
+// laneOwnReceipt holds an await's receipt path to its lane's directory before
+// a restart or a rate-limit checkpoint reads, copies aside and removes the file
+// it names. The path comes from the run's state file, which an archive of the
+// checkout can carry hand-written: one naming another file of the checkout
+// (`.env`, `go.mod`) would have it moved into the lane's aside, and one naming
+// a file of the lane's asides could overwrite a saved patch. So a path that is
+// not a clean file of the lane's own directory outside its asides is refused,
+// as derivedLaneWorktree refuses a worktree the loop did not derive. Names are
+// compared folded, as a case-insensitive filesystem resolves them, and every
+// directory on the way must be real, since os.Root follows a symlink that
+// stays inside the checkout.
+func laneOwnReceipt(repoRoot, runID, laneID, receipt string) error {
+	dir, err := laneRel(runID, laneID, stageRestart)
+	if err != nil {
+		return err
+	}
+	clean := path.Clean(receipt)
+	bad := clean != receipt || !fsutil.ValidRelPath(clean) || !strings.HasPrefix(clean, dir+"/")
+	if !bad {
+		// Names are compared folded, as a case-insensitive filesystem (the Mac's
+		// default) resolves them: `ASIDE/` is the asides and `Changes.patch` the
+		// saved patch there.
+		parts := strings.Split(strings.TrimPrefix(clean, dir+"/"), "/")
+		for _, p := range parts[:len(parts)-1] {
+			bad = bad || strings.EqualFold(p, AsideDirName)
+		}
+		base := parts[len(parts)-1]
+		bad = bad || strings.EqualFold(base, AsideFileName) || strings.EqualFold(base, AsidePatchName)
+	}
+	if !bad {
+		// os.Root follows a symlink that stays inside the checkout, so a
+		// symlinked directory inside the lane's would reach any file of it:
+		// every directory on the way is proved real. A missing one is no
+		// escape: there is nothing under it to read.
+		if _, err := fsutil.ProbeRealDirAll(repoRoot, path.Dir(clean)); err != nil {
+			bad = true
+		}
+	}
+	if bad {
+		return refuse(stageRestart, "", laneID,
+			fmt.Sprintf("the run's state names %q as an await's receipt, which is not a file of the lane's own directory %s, so it is neither read nor removed", fsutil.RedactHome(receipt), dir),
+			"restore the run's state file; nothing was changed")
+	}
+	return nil
 }

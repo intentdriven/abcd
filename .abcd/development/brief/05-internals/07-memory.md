@@ -196,7 +196,7 @@ This is what makes "memory never overflows" an enforced property rather than a h
 
 **Diagnostic (a design target; not built).** A `recall [keyword]` sub-verb of `abcd library` would show which pages a prompt or keyword surfaces and in which bracket — explainability, per the bare-command-as-render discipline. The shipped surface carries `ingest`, `ask` and `lint` and nothing else.
 
-See [`../../intents/drafts/itd-39-scope-aware-memory-retrieval.md`](../../intents/drafts/itd-39-scope-aware-memory-retrieval.md) for the full intent, acceptance criteria, and the architectural-audit reconciliation with itd-3's global-rules rejection.
+See [`../../intents/drafts/itd-39-scope-aware-memory-retrieval.md`](../../intents/planned/itd-39-scope-aware-memory-retrieval.md) for the full intent, acceptance criteria, and the architectural-audit reconciliation with itd-3's global-rules rejection.
 
 ## References
 
@@ -205,7 +205,7 @@ See [`../../intents/drafts/itd-39-scope-aware-memory-retrieval.md`](../../intent
 - [`04-universal-patterns.md § 8`](04-universal-patterns.md#8-artefact-lifecycle-taxonomy) — artefact-lifecycle taxonomy this file's lifecycle class derives from
 - [`02-adapters.md`](02-adapters.md) — `internal/core/memory` semantic adapter (vendor-agnostic dispatcher)
 - [CARL][carl] — recall-engine prior art; itd-3 adopts its rule payload, itd-39 its memory payload + context brackets
-- [`itd-39`](../../intents/drafts/itd-39-scope-aware-memory-retrieval.md) — scope-aware memory retrieval intent
+- [`itd-39`](../../intents/planned/itd-39-scope-aware-memory-retrieval.md) — scope-aware memory retrieval intent
 
 [karpathy-llm-wiki]: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
 [carl]: https://github.com/ChristopherKahler/carl

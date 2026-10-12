@@ -18,6 +18,9 @@ and the release pipeline itself are all in scope. Secret scanning, push
 protection and dependency review run on the repository, but a human report
 beats every scanner — when in doubt, report it.
 
+A problem that would exist without abcd, such as a risk in git or in a
+repository's own settings, is out of scope unless abcd makes it worse.
+
 ## Supported versions
 
 The latest release is supported. Older releases receive no separate fixes; a

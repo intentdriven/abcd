@@ -190,6 +190,9 @@ type DrainResult struct {
 	NextEligibleAt *time.Time             `json:"next_eligible_at"`
 	Stopped        string                 `json:"stopped,omitempty"`
 	Complete       bool                   `json:"complete"`
+	// Finished are the merged lanes this call took the landing's last step
+	// for, outside the window clock (drain_finish.go).
+	Finished []DrainFinished `json:"finished"`
 	// Counts are the drain's totals as this call leaves it (scope 8).
 	Counts DrainCounts `json:"counts"`
 	Next   string      `json:"next"`
@@ -297,7 +300,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 	}
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
-		Flags: fieldFlags(plan)}
+		Flags: fieldFlags(plan), Finished: []DrainFinished{}}
 	finish := func(write bool) (DrainResult, error) {
 		if write {
 			st.UpdatedAt = now
@@ -311,6 +314,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			res.Judgements = []DrainJudgement{}
 		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
+		if note := finishedNote(res.Finished); note != "" {
+			res.Next = note + "; " + res.Next
+		}
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
 		// The normal ending is claimed only once every lane has ended: an
 		// outage stop is taken before the lane in progress is read, so a
@@ -358,6 +364,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		return finish(true)
 	}
 
+	// Merged lanes are finished before the window clock is read: the cleanup
+	// does no new work, so the pace does not hold it (iss-2610090936460789).
+	if res.Finished, err = finishMerged(repoRoot, now); err != nil {
+		return DrainResult{}, err
+	}
+	finished := false
+	for _, f := range res.Finished {
+		for i := range st.Lanes {
+			if f.Done && st.Lanes[i].RunID == f.RunID {
+				st.Lanes[i].Outcome, st.Lanes[i].PR, finished = DrainLaneDone, f.PR, true
+			}
+		}
+	}
+
 	// The window clock, as a run keeps it: before next_eligible_at nothing
 	// moves; a pause that has ended opens the next window; a window that has
 	// elapsed closes here, and the call opens nothing.
@@ -367,7 +387,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			res.Next = "nothing before " + at + ": the drain's window has elapsed; run `abcd drain` again at or after " + at
 			// A judgement taken this move was applied above (a yes already
 			// routed), so it is recorded even though nothing else moves.
-			return finish(res.Judged != nil)
+			return finish(res.Judged != nil || finished)
 		}
 		st.NextEligibleAt, st.WindowStartedAt = nil, &now
 	}

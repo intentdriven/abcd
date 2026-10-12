@@ -40,9 +40,11 @@ import (
 //
 // They do not blank content filters or diff and merge drivers, because those
 // are keyed on a name the repository chooses; FilterOverrides covers filters
-// for a read that must not run one, and a diff passes --no-ext-diff and
-// --no-textconv. A merge abcd makes runs the repository's merge drivers, as
-// the person's own merge does.
+// for a read that must not run one, MergeDriverOverrides makes every merge
+// driver git's built-in merge for a read-only merge (the conflict probe's
+// merge-tree), and a diff passes --no-ext-diff and --no-textconv. A merge abcd
+// makes in a lane runs the repository's merge drivers, as the person's own
+// merge does.
 func ExecPins() []string {
 	return []string{
 		"-c", "core.hooksPath=/dev/null",
@@ -78,6 +80,65 @@ func FilterOverrides(root string) ([]string, error) {
 		for _, v := range []string{"clean", "smudge", "process"} {
 			out = append(out, "-c", "filter."+name+"."+v+"=")
 		}
+	}
+	return out, nil
+}
+
+// git 2.44 taught merge-file --diff-algorithm and gave a merge driver its
+// conflict labels as %S, %X and %Y (RelNotes 2.44.0). An older git rejects the
+// option, so a driver passing it fails every merge it is asked for, and leaves
+// the placeholders unexpanded (iss-2610111549593667).
+const (
+	mergeDriverFloorMajor = 2
+	mergeDriverFloorMinor = 44
+)
+
+// BuiltinMergeDriver returns the merge.<name>.driver command line that makes
+// a driver git's built-in text merge: `git merge-file` over the three
+// versions, with the conflict-marker size git passes a driver, exiting
+// non-zero on a conflict, as a driver must.
+//
+// From git 2.44 it also passes the conflict labels and the histogram diff
+// git's merge itself uses, so the result, clean or conflicted, is byte for
+// byte the built-in driver's. Below 2.44 merge-file can take neither (it reads
+// no diff algorithm from config, and a driver is not given the labels), so the
+// driver runs merge-file's default diff with fixed labels: the repository's
+// driver still never starts, but a conflict's markers read ours, base and
+// theirs, and where the two diffs align a changed region differently the
+// result can differ from git's own merge of the same commits, in where a
+// conflict's hunks fall or in whether a region conflicts at all. A version the
+// probe cannot read gets that form, which every git accepts.
+func BuiltinMergeDriver() string {
+	if ok, _ := gitVersion.atLeast(mergeDriverFloorMajor, mergeDriverFloorMinor); ok {
+		return "git merge-file --marker-size=%L --diff-algorithm=histogram -L %X -L %S -L %Y %A %O %B"
+	}
+	return "git merge-file --marker-size=%L -L ours -L base -L theirs %A %O %B"
+}
+
+// MergeDriverOverrides returns the `git -c` overrides that make every merge
+// driver the repository at root configures git's built-in text merge —
+// `merge.<name>.driver` set to BuiltinMergeDriver for each name — and pin
+// merge.default to the built-in text driver, so a read-only merge abcd
+// computes (the conflict probe's merge-tree, a prediction of the forge's
+// merge) never starts a program the repository names, whichever driver an
+// attribute or merge.default selects (iss-2610090821510097). A merge made in a
+// lane's worktree does not take them: it runs the repository's own drivers
+// (WorkingTreeCommitCommand, iss-2610111729399920). A driver cannot be blanked as
+// a filter is: git fails to start an empty driver command and reports every
+// path both sides changed as a conflict. The overrides go before the
+// subcommand.
+//
+// Config is read as FilterOverrides reads it, and a name `-c` cannot carry
+// intact is refused the same way.
+func MergeDriverOverrides(root string) ([]string, error) {
+	names, err := configNames(root, "merge")
+	if err != nil {
+		return nil, err
+	}
+	out := []string{"-c", "merge.default=text"}
+	driver := BuiltinMergeDriver()
+	for _, name := range names {
+		out = append(out, "-c", "merge."+name+".driver="+driver)
 	}
 	return out, nil
 }

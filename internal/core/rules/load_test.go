@@ -98,6 +98,13 @@ func TestLoadDomainRecallsLoadExperimentPrompts(t *testing.T) {
 		"max out the CPU during the run",
 		"stress-test the machine with a CPU hog",
 		"run a CPU stress test before the release",
+		// The waiter's rule must reach the prompts that start the work it
+		// gates: a preflight, a go test run, a race run (iss-2610111826193257).
+		"run make preflight and merge",
+		"rerun the preflights once the fix lands",
+		"go test -race ./internal/...",
+		"go test ./internal/core/rules/",
+		"wait for the race run to finish before starting mine",
 	} {
 		if !has(rs.Match(prompt), "LOAD") {
 			t.Errorf("load-experiment prompt %q did not recall LOAD, got %v", prompt, names(rs.Match(prompt)))
@@ -126,6 +133,13 @@ func TestLoadDomainStaysQuietOnOrdinaryLoadWords(t *testing.T) {
 		"stress-test the plan before we build it",
 		"stress test this argument",
 		"the stress on the second syllable",
+		// "race" alone is ordinary concurrency vocabulary: a data race or a
+		// race condition is a bug to fix, not a run on the machine. The
+		// matcher folds "-race" to "race", so neither recalls; "race run" and
+		// "go test" do.
+		"there is a data race in the hold",
+		"fix the race condition in the lock",
+		"two writers race for the file",
 	} {
 		if has(rs.Match(prompt), "LOAD") {
 			t.Errorf("ordinary prompt %q recalled LOAD", prompt)
@@ -332,5 +346,29 @@ func waitGone(t *testing.T, flag, value string) {
 			t.Fatalf("pgrep %s %s still finds %v after the group kill", flag, value, pids)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestLoadDomainTeachesTheWaiter: the LOAD domain tells agents to gate a
+// preflight or a race run with abcd's own waiter and never a hand-written loop,
+// and names the self-match that made the hand-written loop wait forever
+// (iss-2610111826193257).
+func TestLoadDomainTeachesTheWaiter(t *testing.T) {
+	all := strings.Join(Defaults().Domains["LOAD"].Rules, "\n")
+	for _, want := range []string{
+		"abcd implement load --wait",
+		"abcd implement load --wait -- make preflight",
+		"never a hand-written",
+		`pgrep -f "go test -race"`,
+		"matched its own shell",
+		"one waiter at a time",
+		// The command form is the form for a preflight: a plain --wait then
+		// `make preflight` only spaces the starts by the settle hold.
+		"the form for a preflight",
+		"only spaces",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the LOAD rules do not carry %q", want)
+		}
 	}
 }

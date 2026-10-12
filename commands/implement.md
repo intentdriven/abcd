@@ -330,10 +330,16 @@ tree as a checkout's does, is bounded at sixty minutes, a reset stopped there
 refusing the restart naming the reset); the run record
 names the aside for review; and
 the implementer await is re-told. The brief never names the aside, so no agent
-builds on it. It is refused, changing nothing, while the run has an outage
-(open, or given up until `implement outage clear` closes it once the connection
-is back), for a blank `--yielded`, for a lane with no implementer out, and for a
-worktree that is not the one the loop derives.
+builds on it. When a rate limit stops an agent and what it left cannot be saved
+aside, its await is kept and marked in the run state, and the run record says
+so; once you have settled what refused the save, `--restart` re-tells that await
+the same way, a validator's included. A validator edits nothing, so only its
+partial return is saved aside and its worktree is not touched, and a validator
+of the same round that is still out unmarked is left alone. It is refused,
+changing nothing, while the run has an outage (open, or given up until
+`implement outage clear` closes it once the connection is back), for a blank
+`--yielded`, for a lane with neither an implementer out nor an await a rate
+limit kept, and for a worktree that is not the one the loop derives.
 
 The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
@@ -367,7 +373,9 @@ instead carry `handback` (`kind`: `user-visible`, `trust-rule`,
 last two) with no `resolves` and no definition of done: `receipt` then discards
 the lane's worktree and branch, ends the lane at `handed-back` before the
 validators, and the result's `hand_back` names the kind, the reason, the home
-and the `discarded` head. `/abcd:drain` routes it by kind.
+and the `discarded` head. A lane branch another checkout has checked out is
+not deleted: `receipt` refuses, naming that checkout and removing nothing.
+`/abcd:drain` routes it by kind.
 `validate` hands the lane's head to fresh validators, side by side up to the
 ceiling, and writes a fix brief only once every validator of the round has
 returned; it records each verdict from the validator's own return; the fidelity audit passes only
@@ -395,7 +403,8 @@ has work left:
   removed, then its pull request is closed if it opened one, its stage is
   `discarded`, and its spec step stays unlanded. A removal git refuses (a
   worktree with changes) leaves the pull request open and the lane held, so the
-  retry closes it once.
+  retry closes it once. A lane branch another checkout has checked out is
+  refused the same way, before anything is removed, naming that checkout.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. The run stays in progress, so `build next` passes over its
@@ -454,11 +463,34 @@ over each of the run's lanes' own diff.
    open for a person to merge, and `implement status` shows the landing as
    "left open for a person to merge: the ruleset requires no approval" where a
    queue exists but nothing requires approval; a later step never arms it, and
-   a missing mirror requires nothing. Nothing is pushed to the lane after this.
+   a missing mirror requires nothing. Before arming it asks the forge whether
+   the pull request merges (`gh pr view <n> --json mergeable,mergeStateStatus`),
+   and one the forge reports `CONFLICTING` is refused (exit 2), not armed: the
+   merge queue never takes a conflicting pull request. Nothing is pushed to the
+   lane after this.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
-   done. A pull request closed without merging, or merged in a way that rewrote
-   the head, is refused and nothing is cleaned up.
+   done. The wait names the forge's verdict; `UNKNOWN`, a verdict the forge has
+   not computed yet, keeps it waiting. A pull request closed without merging,
+   or merged in a way that rewrote the head, is refused and nothing is cleaned
+   up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
+   never merges on its own.
+
+A conflicting pull request is refused naming what this checkout can say about
+it: the files a merge of `origin/<default>` and the pushed head conflicts in
+with every merge driver switched to git's built-in merge, as the forge merges,
+and the `merge=` driver each carries here ("GitHub reports a conflict; locally
+these files carry merge drivers the forge ignores: …"), or that no local merge
+reproduces it ("GitHub reports a conflict this checkout cannot reproduce": a
+stale verdict, which pushing a merge of the default branch makes the forge
+compute again). The forge ignores `.gitattributes` merge drivers, so two
+branches that each appended to a `merge=union` file conflict there while they
+merge cleanly here. The refusal writes nothing, and the loop pushes and merges
+nothing on its own: the remedy is a person's hand merge in the lane's worktree
+(disarm it with `gh pr merge <n> --disable-auto` when it is armed, merge
+`origin/<default>` into the lane's branch, run `make preflight`, push, re-arm
+with the queue's method), then `step` again; or closing it and handing the
+lane back.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the
 move that did not complete and finds what it made rather than making it twice.
@@ -485,6 +517,7 @@ every refusal as it is.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement load --site preflight|eval-harness [--json]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait [--timeout <duration>] [--json] [-- <command>...]
 ```
 
 `make preflight` runs this first and the eval harness runs it once at its
@@ -496,8 +529,8 @@ limit (four times the online core count by default). What a program could get
 is its fair share: the online cores divided by the one-minute load, never more
 than one core. So on a loaded machine a stray can show well under 100% of a
 core: forty busy loops on 16 cores each show about 40%, and all forty are
-strays. The person's programs and other accounts' are judged alike. It never
-refuses, never waits and never stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
+strays. The person's programs and other accounts' are judged alike. Without
+`--wait` it never refuses, never waits and never stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
 the `reason`) and `unchecked` (a platform other than macOS and
 Linux, or a read that failed, with the `reason`).
 
@@ -512,10 +545,45 @@ total; say nothing more about them. A name the private banned-names layer
 matches reads `[private name]`.
 
 The limits are per machine, in `~/.abcd.noindex/load-limits`, which the check reads and
-never creates: `stray-minutes <1 to 10080>` and `extreme-load <load>`, one per
-line, `#` for comments. An unusable file is reported (`limits.malformed`) and
-both defaults are used. Inside an autonomous run, a warning is also written to
-the run log as a `load` event (`run_log`).
+never creates: `stray-minutes <1 to 10080>`, `extreme-load <load>` and
+`wait-load <load>`, one per line, `#` for comments. An unusable file is reported
+(`limits.malformed`) and every default is used. Inside an autonomous run, a
+warning is also written to the run log as a `load` event (`run_log`).
+
+### Wait for capacity before a preflight or a race run
+
+Gate every `make preflight` and every `go test -race` on a shared machine with
+`--wait`, and never write a waiter loop of your own: a hand-written
+`pgrep -f "go test -race"` loop matched its own shell, whose command line
+carries that string, and never opened. `--wait` blocks until the one-minute
+load average is below the wait limit (`wait-load`, by default twice the online
+core count) and no other `go test -race` run is live, judged from each go
+process's arguments with the waiter's own process and ancestors excluded. Twice,
+because a busy machine with several sessions already sits near one core-count of
+load; one waiter at a time is kept by the race-run condition and the hold, not
+by the load number; and one race run adds about a core-count, so the peak stays
+near three times the cores, under the extreme limit. It reads the
+machine every 15 seconds, prints one line when it starts waiting and nothing
+more until it opens, and gives up after `--timeout` (30 minutes by default),
+exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
+`lock` or `unreadable`). `--json` reports `status` (`open`, `timeout`,
+`skipped` on a CI runner, `unchecked` on an unsupported platform), `waited_on`
+and `waited_s`.
+
+One waiter opens at a time: the one that opens writes a machine-wide hold,
+`~/.abcd.noindex/load-wait.json`, and every other waiter waits on `lock` while
+it is in force. Without a command the hold lasts two minutes, so run the gated
+work straight after it opens. Prefer the command form,
+`implement load --wait -- make preflight`: it runs the command once the gate
+opens, exits with the command's exit code (128+N, as a shell reports it,
+when signal N killed the command, so a SIGTERM reads 143, never a failed
+gate's 1), and holds the gate until the
+command has started its own race run, the command exits, or 60 minutes pass. A
+hold whose waiter has died, or whose pid now belongs to another process, is
+reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to
+the command, and the waiter waits for it to exit before it exits and releases
+the hold, so the command is never left running without its waiter. A symlinked
+`~/.abcd.noindex` is refused. Relay a timeout as printed; do not loop around it.
 
 ## Wait out a lost connection
 

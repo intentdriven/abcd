@@ -189,9 +189,7 @@ func TestPrimaryWorktreeRootRefusesABareRepoWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	bare := filepath.Join(parent, "repo.git")
-	if out, err := git(parent, "clone", "--bare", src, bare); err != nil {
-		t.Skipf("bare clone unavailable: %v\n%s", err, out)
-	}
+	gittest.CloneBare(t, src, bare)
 	linked := filepath.Join(t.TempDir(), "bare-linked")
 	if out, err := git(bare, "worktree", "add", linked, "HEAD"); err != nil {
 		t.Skipf("git worktree add unavailable: %v\n%s", err, out)
@@ -281,9 +279,7 @@ func TestPrimaryWorktreeRootRefusesAMirrorInsideAnotherCheckout(t *testing.T) {
 	seedCheckout(t, git, src)
 
 	mirror := filepath.Join(victim, "mirror.git")
-	if out, err := git(root, "clone", "--bare", src, mirror); err != nil {
-		t.Skipf("bare clone unavailable: %v\n%s", err, out)
-	}
+	gittest.CloneBare(t, src, mirror)
 	linked := filepath.Join(t.TempDir(), "linked")
 	if out, err := git(mirror, "worktree", "add", linked, "HEAD"); err != nil {
 		t.Skipf("git worktree add unavailable: %v\n%s", err, out)

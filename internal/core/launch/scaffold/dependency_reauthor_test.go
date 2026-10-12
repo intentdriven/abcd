@@ -371,7 +371,7 @@ func TestReauthorRefusesWithoutTheOwnerOrEitherSecret(t *testing.T) {
 func (f reauthorFixture) bareRemote(t *testing.T) string {
 	t.Helper()
 	remote := filepath.Join(t.TempDir(), "remote.git")
-	f.git(t, nil, "clone", "-q", "--bare", f.dir, remote)
+	gittest.CloneBare(t, f.dir, remote)
 	return remote
 }
 

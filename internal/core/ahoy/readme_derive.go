@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -32,8 +34,7 @@ import (
 // only as a parser, and the live badges are drawn by the forge when someone
 // reads the page (scope condition 5).
 //
-// Staged: nothing outside the tests calls deriveReadmeParts yet. The spec's
-// step 3 hands its bodies to syncReadmeParts from setup.
+// setup hands its bodies to syncReadmeParts (stepReadme, readme_apply.go).
 
 // readmeSettings is what derivation reads of the stored settings: the chosen
 // parts (`readme.parts`) and the owner's declared visibility
@@ -49,10 +50,13 @@ func (s readmeSettings) public() bool { return s.Visibility == "public" }
 // readmeDerived is one chosen part's derivation: a body that passed every
 // check, or the reason it is omitted (each reason leads with the part's name).
 // Notes carry what a check noted without refusing (a docs-lint warning).
+// Short, where the reason lists what it found, says it in a few words (how
+// many workflows, not their names), for a question with no rows to spare.
 type readmeDerived struct {
 	Name   string
 	Body   string
 	Reason string
+	Short  string
 	Notes  []string
 }
 
@@ -87,12 +91,17 @@ func deriveReadmeParts(root string, s readmeSettings) []readmeDerived {
 		if !chosen[name] {
 			continue
 		}
+		src.notes, src.short = nil, ""
 		body, addrs, reason := src.derive(name)
 		d := readmeDerived{Name: name}
 		if reason != "" {
-			d.Reason = name + " omitted: " + reason
+			d.Reason, d.Short = name+" omitted: "+reason, src.short
 		} else {
-			d.Body, d.Reason, d.Notes = checks.run(name, body, addrs)
+			var checked []string
+			d.Body, d.Reason, checked = checks.run(name, body, addrs)
+			if d.Reason == "" {
+				d.Notes = append(src.notes, checked...)
+			}
 		}
 		derived = append(derived, d)
 	}
@@ -108,6 +117,13 @@ type readmeSource struct {
 	originRead bool
 	origin     forgeRemote
 	originWhy  string
+
+	// notes is what deriving the current part noted without omitting it (a
+	// contents entry listed without a link); deriveReadmeParts takes them.
+	notes []string
+	// short is the current part's reason in a few words, where its reason
+	// lists what it found; deriveReadmeParts takes it.
+	short string
 }
 
 func (r *readmeSource) derive(name string) (body string, addrs []readmeAddr, reason string) {
@@ -301,6 +317,7 @@ func (r *readmeSource) workflow() (string, string) {
 	if len(list) > shown {
 		list, more = list[:shown], fmt.Sprintf(" and %d more", len(found)-shown)
 	}
+	r.short = fmt.Sprintf("%d workflows in .github/workflows/ and none is ci.yml or ci.yaml", len(found))
 	return "", fmt.Sprintf("several workflows in .github/workflows/ and none is ci.yml or ci.yaml: %s%s", strings.Join(list, ", "), more)
 }
 
@@ -559,24 +576,38 @@ func (r *readmeSource) contents() (string, string) {
 			}
 		}
 	}
-	seen := readmeSlugger{}
+	seen := newReadmeSlugger()
 	var out []string
 	hasH2 := false
 	// heading numbers every heading the page renders and lists the live
 	// level-two and level-three ones outside every part. slugText is what
-	// the forge makes the anchor from; text is what the list shows.
-	heading := func(i, level int, slugText, text string) {
-		slug := seen.anchor(slugText)
+	// the forge makes the anchor from; text is what the list shows. A heading
+	// whose anchor abcd cannot be sure of is listed without a link, and a
+	// note says which and why.
+	//
+	// Both are masked (mdrecord.MaskCodeSpans), read once from the heading as
+	// written and carried through with their unmask: a second reading of the
+	// unmasked text would pair two spans a stripped tag had sat between
+	// (iss-2610112237411831).
+	heading := func(i, level int, slugText, text string, unmask func(string, bool) string) {
+		slug, why := seen.anchor(slugText, unmask)
 		if inPart[i] || text == "" || (level != 2 && level != 3) {
 			return
 		}
+		// A code span over a setext heading's lines is listed on one line.
+		listed := strings.ReplaceAll(escapeLinkText(text, unmask), "\n", " ")
 		indent := ""
 		if level == 3 {
 			indent = "  "
 		} else {
 			hasH2 = true
 		}
-		out = append(out, indent+"- ["+escapeLinkText(text)+"](#"+slug+")")
+		if why != "" {
+			out = append(out, indent+"- "+listed)
+			r.notes = append(r.notes, fmt.Sprintf("contents part: the heading at line %d is listed without a link: %s", i+1, why))
+			return
+		}
+		out = append(out, indent+"- ["+listed+"](#"+slug+")")
 	}
 	// A setext heading is the paragraph its underline ends, so the open
 	// paragraph's lines are kept, with the line it began on; inBlock is a
@@ -585,18 +616,37 @@ func (r *readmeSource) contents() (string, string) {
 	var para []string
 	paraAt := -1
 	inBlock := false
+	// htmlBlock is the HTML block the line is in, nil outside one: every line of
+	// one is HTML to the forge, a heading's included (iss-2610111851312171).
+	var htmlBlock *readmeHTMLBlock
 	for i, ln := range lines {
 		if skip[i] || mask[i] != 0 {
 			para, inBlock = nil, false
 			continue
 		}
-		if m := atxHeadingRe.FindStringSubmatch(ln); m != nil {
-			para, inBlock = nil, false
-			text := strings.TrimSpace(inlineLinkRe.ReplaceAllString(m[2], "$1"))
-			heading(i, len(m[1]), text, text)
+		blank := strings.TrimSpace(ln) == ""
+		if htmlBlock != nil {
+			if htmlBlock.ends(ln, blank) {
+				htmlBlock = nil
+				inBlock = false
+			}
 			continue
 		}
-		blank := strings.TrimSpace(ln) == ""
+		if b := openReadmeHTMLBlock(ln, para != nil); b != nil {
+			para, inBlock = nil, false
+			if !b.ends(ln, false) {
+				htmlBlock = b
+			}
+			continue
+		}
+		if m := atxHeadingRe.FindStringSubmatch(ln); m != nil {
+			para, inBlock = nil, false
+			// The space a stripped tag leaves before the text is in the
+			// anchor, as it is in the forge's.
+			text, unmask := headingText(m[2])
+			heading(i, len(m[1]), text, strings.TrimSpace(text), unmask)
+			continue
+		}
 		if para != nil {
 			if m := setextUnderlineRe.FindStringSubmatch(ln); m != nil {
 				level := 2
@@ -605,8 +655,8 @@ func (r *readmeSource) contents() (string, string) {
 				}
 				// The forge's page keeps the line break between a heading's
 				// lines, which its anchor drops; the list shows a space.
-				joined := inlineLinkRe.ReplaceAllString(strings.Join(para, "\n"), "$1")
-				heading(paraAt, level, joined, strings.ReplaceAll(joined, "\n", " "))
+				joined, unmask := headingText(strings.Join(para, "\n"))
+				heading(paraAt, level, joined, strings.TrimSpace(strings.ReplaceAll(joined, "\n", " ")), unmask)
 				para = nil
 				continue
 			}
@@ -636,6 +686,62 @@ func (r *readmeSource) contents() (string, string) {
 		return "", noLevelTwoHeading
 	}
 	return strings.Join(out, "\n"), ""
+}
+
+// readmeHTMLBlock is an open HTML block, as the forge's markdown reads one: a
+// block opened by a pre, script, style or textarea tag, or by `<?`, `<!X` or
+// `<![CDATA[`, ends at the line holding its end mark; any other ends at the
+// first blank line.
+type readmeHTMLBlock struct{ end *regexp.Regexp }
+
+// ends reports whether the block ends at this line (a blank line that ends a
+// block is not part of it, and is no heading either way).
+func (b *readmeHTMLBlock) ends(ln string, blank bool) bool {
+	if b.end == nil {
+		return blank
+	}
+	return b.end.MatchString(ln)
+}
+
+// The HTML block starts, after up to three spaces of indent.
+var (
+	htmlRawBlockRe   = regexp.MustCompile(`(?i)^ {0,3}<(?:pre|script|style|textarea)(?:[ \t>]|$)`)
+	htmlRawBlockEnd  = regexp.MustCompile(`(?i)</(?:pre|script|style|textarea)>`)
+	htmlPIBlockRe    = regexp.MustCompile(`^ {0,3}<\?`)
+	htmlPIBlockEnd   = regexp.MustCompile(`\?>`)
+	htmlCDATABlockRe = regexp.MustCompile(`^ {0,3}<!\[CDATA\[`)
+	htmlCDATAEnd     = regexp.MustCompile(`\]\]>`)
+	htmlDeclBlockRe  = regexp.MustCompile(`^ {0,3}<![A-Za-z]`)
+	htmlDeclBlockEnd = regexp.MustCompile(`>`)
+	// htmlTagBlockRe opens a block on one of the block-level tag names,
+	// opening or closing, which may interrupt a paragraph.
+	htmlTagBlockRe = regexp.MustCompile(`(?i)^ {0,3}</?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t>]|/>|$)`)
+	// htmlLoneTagRe is any other complete tag alone on its line, which opens
+	// a block only outside a paragraph.
+	htmlLoneTagRe = regexp.MustCompile(`^ {0,3}(?:` + inlineTagRe.String() + `)[ \t]*$`)
+)
+
+// openReadmeHTMLBlock is the HTML block ln opens, or nil. inPara says a
+// paragraph is open, which a lone tag of another name cannot interrupt.
+func openReadmeHTMLBlock(ln string, inPara bool) *readmeHTMLBlock {
+	switch {
+	case htmlRawBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlRawBlockEnd}
+	case strings.HasPrefix(strings.TrimLeft(ln, " "), "<!--"):
+		// A comment is mdrecord.Mask's; it never reaches here masked out.
+		return nil
+	case htmlPIBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlPIBlockEnd}
+	case htmlCDATABlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlCDATAEnd}
+	case htmlDeclBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{end: htmlDeclBlockEnd}
+	case htmlTagBlockRe.MatchString(ln):
+		return &readmeHTMLBlock{}
+	case !inPara && htmlLoneTagRe.MatchString(ln):
+		return &readmeHTMLBlock{}
+	}
+	return nil
 }
 
 // readmePageLines splits the README at every line ending the forge's page
@@ -680,21 +786,89 @@ func readmeUnreadReason(err error) string {
 // slug already taken takes the next number its own base has not handed out
 // and no heading already owns, so `Install`, `Install-1`, `Install` anchor
 // #install, #install-1 and #install-2. It counts per base slug.
-type readmeSlugger map[string]int
+//
+// It also keeps the bases it cannot be sure of. The forge makes an anchor
+// from the text it renders (iss-2610111850237083): a character reference is
+// decoded first, which abcd does as the forge does, but an emoji shortcode
+// becomes an emoji, dropped from the anchor, only when the forge knows its
+// name, and abcd holds no copy of the forge's list. A heading carrying one
+// has one of two anchors, and so does every later heading whose anchor it
+// could have taken or numbered: each of those bases, and any base numbered
+// from one, is unsure.
+type readmeSlugger struct {
+	taken  map[string]int
+	unsure []string
+}
 
-// anchor returns the next heading's anchor and records it as taken.
-func (s readmeSlugger) anchor(text string) string {
-	base := headingSlug(text)
+func newReadmeSlugger() *readmeSlugger { return &readmeSlugger{taken: map[string]int{}} }
+
+// emojiShortcodeRe is a shortcode the forge may render as an emoji.
+var emojiShortcodeRe = regexp.MustCompile(`:[a-z0-9_+-]+:`)
+
+// charRefRe is a character reference as the forge decodes one: a named,
+// decimal or hexadecimal reference ending in a semicolon.
+var charRefRe = regexp.MustCompile(`&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});`)
+
+// decodeCharRefs decodes every character reference the HTML entity table
+// knows, and leaves an unknown one as written, as the forge's page does. The
+// table's decoder also reads a known name's prefix (`&notanentity;` as `&not`
+// and the rest), so a decoding is taken only when it consumed the whole
+// reference: every entity stands for at most two characters. s is masked
+// (mdrecord.MaskCodeSpans): a reference in a code span is text, never decoded.
+func decodeCharRefs(s string) string {
+	return charRefRe.ReplaceAllStringFunc(s, func(ref string) string {
+		if dec := html.UnescapeString(ref); dec != ref && utf8.RuneCountInString(dec) <= 2 {
+			return dec
+		}
+		return ref
+	})
+}
+
+// Why a heading is listed without a link.
+const (
+	readmeAnchorShortcode = "it carries an emoji shortcode, and which anchor the forge gives it depends on whether the forge knows the shortcode, which abcd cannot tell"
+	readmeAnchorNumbered  = "its anchor depends on how the forge anchors an earlier heading carrying an emoji shortcode"
+)
+
+// anchor returns the next heading's anchor and records it as taken, or, when
+// abcd cannot be sure of the anchor, the reason it is not given.
+//
+// A code span is read as the text it renders: a reference or a shortcode in
+// one is text, and the slug is made from the span's content. masked is the
+// heading's text with its code spans masked, as headingText returns it, and
+// unmask the function that restores them.
+func (s *readmeSlugger) anchor(masked string, unmask func(string, bool) string) (string, string) {
+	masked = decodeCharRefs(masked)
+	why := ""
+	if emojiShortcodeRe.MatchString(masked) {
+		why = readmeAnchorShortcode
+		s.unsure = append(s.unsure, headingSlug(unmask(emojiShortcodeRe.ReplaceAllString(masked, ""), true)), headingSlug(unmask(masked, true)))
+	}
+	base := headingSlug(unmask(masked, true))
+	if why == "" && s.isUnsure(base) {
+		why = readmeAnchorNumbered
+	}
 	slug := base
 	for {
-		if _, taken := s[slug]; !taken {
+		if _, taken := s.taken[slug]; !taken {
 			break
 		}
-		s[base]++
-		slug = fmt.Sprintf("%s-%d", base, s[base])
+		s.taken[base]++
+		slug = fmt.Sprintf("%s-%d", base, s.taken[base])
 	}
-	s[slug] = 0
-	return slug
+	s.taken[slug] = 0
+	return slug, why
+}
+
+// isUnsure reports whether base is, or is numbered from, a base abcd cannot
+// be sure of.
+func (s *readmeSlugger) isUnsure(base string) bool {
+	for _, u := range s.unsure {
+		if base == u || strings.HasPrefix(base, u+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 // headingSlug is the forge's heading anchor: lower case, every character but
@@ -713,7 +887,38 @@ func headingSlug(text string) string {
 	return b.String()
 }
 
-// escapeLinkText keeps a heading's text from closing the link it sits in.
-func escapeLinkText(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(s)
+// inlineTagRe is inline HTML as the forge reads it in a heading: an opening
+// tag with its attributes, a closing tag, or a comment. An autolink
+// (`<https://…>`) and a lone angle bracket are not tags.
+var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:[^\s"'=<>` + "`" + `]+|'[^']*'|"[^"]*"))?)*\s*/?>|</[A-Za-z][A-Za-z0-9-]*\s*>|<!--.*?-->`)
+
+// headingText is a heading's text as the page shows it: an inline link read
+// as its text, and inline HTML tags dropped, which render as markup
+// (iss-2610111850405447). The spaces around a dropped tag are kept. A code
+// span shows its text as written, so neither reaches into one; the span is
+// kept with its backticks, which the list shows as code.
+//
+// The text comes back masked, with the function that restores its spans: the
+// spans are read once, from the heading as written (iss-2610112237411831).
+func headingText(src string) (string, func(string, bool) string) {
+	masked, unmask := mdrecord.MaskCodeSpans(src)
+	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), unmask
+}
+
+// spanJoinRe is a masked code span with a backtick or another span directly
+// after it, or a backtick directly before it: written out side by side, the
+// backtick runs would merge and a reader would pair them differently.
+var spanJoinRe = regexp.MustCompile("(\x00[0-9]+\x00)(\x00|`)|(`)(\x00[0-9]+\x00)")
+
+// escapeLinkText keeps a heading's text from closing the link it sits in, and
+// restores its code spans as written. A bracket in a code span closes nothing
+// and a backslash there is literal, so a span is left as written. Where a
+// stripped tag or link left a span touching another span or a backtick, a
+// space keeps them apart, as the list shows a setext heading's line break.
+func escapeLinkText(masked string, unmask func(string, bool) string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(masked)
+	for spanJoinRe.MatchString(escaped) {
+		escaped = spanJoinRe.ReplaceAllString(escaped, "$1$3 $2$4")
+	}
+	return unmask(escaped, false)
 }

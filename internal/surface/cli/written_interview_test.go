@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -514,6 +515,77 @@ func TestIntentInterviewRecordsAndReportsReadiness(t *testing.T) {
 	brief, err := os.ReadFile(filepath.Join(script, "turn-1.brief.seen.md"))
 	if err != nil || !strings.Contains(string(brief), `"path":".abcd/development/intents/drafts/itd-5-a-draft.md"`) {
 		t.Fatalf("the seed does not name the record: %v\n%s", err, brief)
+	}
+}
+
+// TestIntentInterviewEndingWithAnOpenQuestionIsNotReady is
+// iss-2610111759340919: the interview's closing verdict judges the record as
+// `abcd intent ready` and the build do, so a planned record the role leaves
+// passing all eight of the gate's checks but still asking a question ends
+// NOT READY, naming the open_questions row, rather than READY for a build that
+// then refuses it at check (open_questions).
+func TestIntentInterviewEndingWithAnOpenQuestionIsNotReady(t *testing.T) {
+	const (
+		record = ".abcd/development/intents/planned/itd-10-alpha.md"
+		head   = "---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n" +
+			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- Given x, when y, then z.\n\n"
+	)
+	edited := head + "## Open Questions\n\n- Which runner?\n" + cliGroundsSection
+	for _, asJSON := range []bool{false, true} {
+		t.Run(fmt.Sprintf("json=%v", asJSON), func(t *testing.T) {
+			routeMachine(t, interview.RolePlanningInterviewer)
+			script := interviewStub(t, stubQuestion("Product Q1", "Does the press release stand?", ""), `{"done":{"summary":"A question was left open."}}`)
+			r := gittest.NewRepo(t)
+			r.Write(record, head+"## Open Questions\n\n_None open._\n"+cliGroundsSection)
+			r.Write(".abcd/development/specs/open/spc-1-alpha.md",
+				"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n")
+			r.Commit("intents")
+			if err := os.MkdirAll(filepath.Join(r.Root(), ".abcd", ".work.local"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(r.Root())
+			interviewStubAlso(t, script, 1, map[string]string{record: edited})
+
+			stdout, stderr := tempStream(t, "stdout"), tempStream(t, "stderr")
+			in, w := pipeWith(t, "")
+			_ = w.Close()
+			cmd := NewRootCommand()
+			cmd.SetIn(in)
+			cmd.SetOut(stdout)
+			cmd.SetErr(stderr)
+			args := []string{"intent", "interview", "itd-10", "--answers", planningAnswersFile(t)}
+			if asJSON {
+				args = append(args, "--json")
+			}
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				errText, _ := os.ReadFile(stderr.Name())
+				t.Fatalf("err = %v\n%s", err, errText)
+			}
+			if got, err := os.ReadFile(filepath.Join(r.Root(), filepath.FromSlash(record))); err != nil || string(got) != edited {
+				t.Fatalf("precondition: the role's edit did not land: %v\n%s", err, got)
+			}
+			plain, err := intent.Ready(r.Root(), "itd-10")
+			if err != nil || !plain.Ready {
+				t.Fatalf("precondition: the gate's eight checks pass the edited record: %v %+v", err, plain.Checks)
+			}
+			out, _ := os.ReadFile(stdout.Name())
+			if asJSON {
+				var res planningInterviewResult
+				if err := json.Unmarshal(out, &res); err != nil {
+					t.Fatalf("%v\n%s", err, out)
+				}
+				last := res.Ready.Checks[len(res.Ready.Checks)-1]
+				if res.Ready.Ready || last.Name != intent.CheckOpenQuestions || last.OK || !strings.Contains(last.Detail, "Which runner?") {
+					t.Fatalf("ready = %+v, want ready=false with a failing open_questions row naming the question last", res.Ready)
+				}
+				return
+			}
+			if !strings.Contains(string(out), "the record is NOT READY") || !strings.Contains(string(out), "open_questions:") ||
+				!strings.Contains(string(out), "Which runner?") {
+				t.Fatalf("an interview ending with an open question must report NOT READY, naming it:\n%s", out)
+			}
+		})
 	}
 }
 

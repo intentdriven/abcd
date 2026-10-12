@@ -167,7 +167,9 @@ func undoStalledSync(lane Lane, def string, stalled error) error {
 // syncMerge merges merged into the lane's worktree with a merge commit, as the
 // person's own `git merge` makes it (commitGit): the repository's merge
 // drivers, hooks, commit signing and signature check run
-// (iss-2610111729399920).
+// (iss-2610111729399920), and its content filters run on the files the merge
+// writes and when merge.renormalize is on, left as the repository set them
+// (abcd-fixes-what-it-adds).
 func syncMerge(dir, msg, merged string) error {
 	_, err := commitGit(dir, "merge", "--no-ff", "--no-edit", "-m", msg, merged)
 	return err

@@ -38,7 +38,7 @@ var backtickScanners = map[string]backtickScanner{
 	"internal/core/history/reconstruct_render.go": {1, "a WRITER: longestBacktickRun sizes a fence longer than any run in the body; nothing is paired"},
 	"internal/core/lifeboat/mdrender.go":          {1, "escapeLeadingMarker asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
 	"internal/core/lint/lint.go":                  {2, "stripInlineCode walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
-	"internal/core/mdrecord/mdrecord.go":          {4, "OpensComment and CodeSpanRanges walk to each run and pair it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
+	"internal/core/mdrecord/mdrecord.go":          {5, "OpensComment, CodeSpanRanges and MaskCodeSpans walk to each run and pair it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
 	"internal/core/mdrender/render.go":            {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
 	"internal/core/question/check.go":             {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
 	"internal/core/surface/appendix.go":           {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
