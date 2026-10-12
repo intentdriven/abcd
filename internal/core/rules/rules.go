@@ -390,6 +390,16 @@ func SwapUserHomeForTest(fn func() (string, error)) (restore func()) {
 	return func() { userHomeDir = prev }
 }
 
+// UserHome is the home the user layer is read under, through the seam the
+// tests swap. It is exported so the memory recall reads the machine's
+// memory.json beside the very rules.json Load read: one home for both
+// layers, never a second lookup that a test could leave pointing at the
+// developer's own. "" when there is none.
+func UserHome() string {
+	home, _ := userHomeDir()
+	return home
+}
+
 // readRepoLayer reads and parses <repoRoot>/.abcd/rules.json. ok is false when
 // the file is absent; every other failure is an error naming the file.
 func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
@@ -998,3 +1008,47 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 	}
 	return out
 }
+
+// TermMatcher is the loader's term rule, exported so a memory note's recall
+// word hits on exactly the prompts a domain's recall word does
+// (spc-2610111627213138, "One recall for notes and pages"): it indexes prompt
+// once — capped at the bytes Inject scans, lower-cased, stemmed — and returns
+// the match a domain's every recall word and alias is judged by (word
+// boundary, stems, multi-word phrases). One function, never a copy.
+func TermMatcher(prompt string) func(term string) bool {
+	if len(prompt) > maxPromptBytes {
+		prompt = prompt[:maxPromptBytes]
+	}
+	idx := indexPrompt(prompt)
+	return idx.termHit
+}
+
+// Hits names what made d match prompt, for the `rules --prompt` diagnostic:
+// "*NAME" when a star-command activated it, otherwise each recall word and
+// alias that hits, in the order the domain declares them. It says nothing of
+// state or the kill switch; Match decides whether d is injected at all.
+func Hits(d ResolvedDomain, prompt string) []string {
+	if len(prompt) > maxPromptBytes {
+		prompt = prompt[:maxPromptBytes]
+	}
+	if parseStarCommands(prompt)[d.Name] {
+		return []string{"*" + d.Name}
+	}
+	hit := TermMatcher(prompt)
+	var out []string
+	for _, terms := range [][]string{d.Recall, d.Aliases} {
+		for _, term := range terms {
+			if hit(term) {
+				out = append(out, term)
+			}
+		}
+	}
+	return out
+}
+
+// SanitizeRuleBody is the rule body's render-safety pass (sanitizeRuleBody),
+// exported so the memory recall renders a note under its "- " bullet through
+// the one pass that keeps a rule body from forging a heading or a sibling:
+// control and bidirectional characters masked, every continuation line
+// indented under the bullet.
+func SanitizeRuleBody(r string) string { return sanitizeRuleBody(r) }
