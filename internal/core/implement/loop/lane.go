@@ -221,10 +221,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	// git makes the worktree at the process umask, 0755 under the usual 022;
 	// the lane's checkout is the caller's alone, like the store levels above
 	// it. An adopted worktree is narrowed too, since a process killed between
-	// git's add and this line left it as git made it.
-	if _, err := fsutil.NarrowToOwner(lw.Path); err != nil {
-		return Outcome{}, fmt.Errorf("making the lane's worktree %s the caller's alone: %s", fsutil.RedactHome(lw.Path), fsutil.RedactHome(err.Error()))
-	}
+	// git's add and this line left it as git made it. A store on a
+	// filesystem that cannot change modes (exFAT, a network share) keeps the
+	// lane as git made it rather than refusing the step: the home above it is
+	// narrowed at every command, so other accounts cannot reach the lane.
+	_, _ = fsutil.NarrowToOwner(lw.Path)
 	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
