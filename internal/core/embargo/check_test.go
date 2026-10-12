@@ -108,11 +108,31 @@ func TestCheckRefusesUnpublishedGHSA(t *testing.T) {
 }
 
 // TestCheckRefusesClosedUnpublishedGHSA: a closed advisory stays private on
-// GitHub, so its id stays refused.
+// GitHub, so its id stays refused. Its title does not: the reporter chose it,
+// and a closed report's title held forever ("Merge pull request") would
+// refuse every range after it. An advisory not yet closed keeps its title.
 func TestCheckRefusesClosedUnpublishedGHSA(t *testing.T) {
 	cf := newCheckFixture(t)
 	wantKinds(t, cf.text(t, "closes "+ghsaClosed+"\n"), KindAdvisoryID)
-	wantKinds(t, cf.text(t, "the report about "+titleClosed+"\n"), KindAdvisoryTitle)
+	wantKinds(t, cf.text(t, "the report about "+titleClosed+"\n"))
+	wantKinds(t, cf.text(t, "the report about "+titleOpen+"\n"), KindAdvisoryTitle)
+}
+
+// TestCheckKeepsClosedAdvisorysCVE: closing an advisory drops its title from
+// the deny set, never its reserved CVE id.
+func TestCheckKeepsClosedAdvisorysCVE(t *testing.T) {
+	cf := newCheckFixture(t)
+	st, err := cf.s.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Advisories[1].CVEID = strp("CVE-2026-0005")
+	st.Advisories[1].Title = "Merge pull request"
+	if err := cf.s.SaveState(st); err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, cf.text(t, "tracked as CVE-2026-0005\n"), KindReservedCVE)
+	wantKinds(t, cf.text(t, "Merge pull request #12 from example/branch\n"))
 }
 
 // TestCheckPassesPublishedGHSA: a published advisory's id, CVE id and title

@@ -100,7 +100,9 @@ Run it before anything is made public: a push, a pull-request body, a
 changelog section, a release page, a record. It reads each commit's message
 and the lines it adds (a merge's against its first parent), and each text, and
 refuses every advisory not yet published by its id, a CVE id reserved for it,
-its title, and the store's location on this machine; any other advisory id is
+its title (not once the advisory is closed, since its reporter chose it and
+nothing will publish it; its id and CVE id stay refused), and the store's
+location on this machine; any other advisory id is
 refused too unless `--allow <GHSA-id>` names it as another project's, already
 public. Each finding names its `kind`, `source`, `where` and `line` and never
 repeats the match. Exit 0 is clean (or no store exists on this machine), exit 2

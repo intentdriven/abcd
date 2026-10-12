@@ -352,7 +352,8 @@ func TestScanFindingLeavesAdvisoryOut(t *testing.T) {
 // another advisory still under embargo (its id, reserved CVE id, or its
 // title by the check's title rule) is left out, naming why and never the
 // other advisory, since publishing it would disclose the other one. Naming
-// itself, or an advisory already published, does not.
+// itself, an advisory already published, or a closed advisory's title, does
+// not.
 func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 	at := fixedNow
 	other := Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000003", Title: titleClosed, CVEID: strp(cveOpen), Severity: "minor",
@@ -360,13 +361,16 @@ func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 	published := Advisory{GHSAID: ghsaPublished, IssueID: "iss-2610120000000004", Title: titlePublishd, Severity: "major",
 		ForgeState: "published", Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at}
 	short := Advisory{GHSAID: "GHSA-mmmm-mmmm-mmmm", IssueID: "iss-2610120000000005", Title: "Parser bug", Severity: "minor", ForgeState: "triage"}
+	const siblingTitle = "a sample sibling report title"
+	sibling := Advisory{GHSAID: "GHSA-hhhh-hhhh-hhhh", IssueID: "iss-2610120000000006", Title: siblingTitle, Severity: "minor", ForgeState: "triage"}
 	for name, tc := range map[string]struct {
 		desc    string
 		leftOut bool
 	}{
 		"other id":        {"also see " + strings.ToLower(ghsaClosed), true},
 		"other cve":       {"tracked with " + cveOpen, true},
-		"other title":     {"related to " + strings.ToUpper(titleClosed), true},
+		"other title":     {"related to " + strings.ToUpper(siblingTitle), true},
+		"closed title":    {"related to " + strings.ToUpper(titleClosed), false},
 		"same-plan id":    {"found with " + ghsaPublic, true},
 		"own id":          {"this is " + ghsaOpen, false},
 		"published id":    {"like " + ghsaPublished + ": " + titlePublishd, false},
@@ -375,7 +379,7 @@ func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			pf := newPlanFixture(t)
-			pf.seed(t, vulnAdvisory(ghsaOpen, issA), vulnAdvisory(ghsaPublic, issB), other, published, short)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA), vulnAdvisory(ghsaPublic, issB), other, published, short, sibling)
 			fix := pf.commit("parser.go", "package parser\n", "fix")
 			pf.resolve(issA, fix)
 			pf.resolve(issB, fix)
@@ -395,7 +399,7 @@ func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 				t.Fatalf("plan %+v", p)
 			}
 			low := strings.ToLower(r)
-			for _, s := range []string{ghsaClosed, ghsaPublic, cveOpen, titleClosed} {
+			for _, s := range []string{ghsaClosed, ghsaPublic, cveOpen, siblingTitle} {
 				if strings.Contains(low, strings.ToLower(s)) {
 					t.Fatalf("the reason repeats %q: %q", s, r)
 				}

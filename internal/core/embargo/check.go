@@ -486,8 +486,11 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 // addEmbargoed adds every advisory under embargo but the one with id skip:
 // each not yet published (a closed one stays private on GitHub, so it stays
 // in the set), by its id and reserved CVE id, and by its title unless it was
-// moved to the public track (that issue is fixed in the open) or is shorter
-// than minTitleRunes; and each pending a severity, the same way.
+// moved to the public track (that issue is fixed in the open), is closed, or
+// is shorter than minTitleRunes; and each pending a severity, the same way.
+// A closed advisory's title leaves the set because its reporter chose it and
+// nothing will ever publish it: held forever, a title such as "Merge pull
+// request" would refuse every range after it. Its id and CVE id stay.
 func (ds *denySet) addEmbargoed(st State, skip string) {
 	for _, a := range st.Advisories {
 		if a.PublishedAt != nil || (skip != "" && canonGHSA(a.GHSAID) == canonGHSA(skip)) {
@@ -498,7 +501,7 @@ func (ds *denySet) addEmbargoed(st State, skip string) {
 		if a.CVEID != nil {
 			ds.add(*a.CVEID, KindReservedCVE, true)
 		}
-		if a.Verdict == nil || *a.Verdict != VerdictPublicTrack {
+		if a.ClosedAt == nil && (a.Verdict == nil || *a.Verdict != VerdictPublicTrack) {
 			ds.addTitle(a.Title)
 		}
 	}
