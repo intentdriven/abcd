@@ -573,14 +573,15 @@ abcd's starter files exist.
 ### Answering it with `--readme-parts`
 
 ```sh
-abcd ahoy install --readme-parts licence,links
+'<plugin-root>/abcd' ahoy install --readme-parts licence,links
 ```
 
 ```sh
-abcd ahoy install --readme-parts none
+'<plugin-root>/abcd' ahoy install --readme-parts none
 ```
 
-The flag takes the parts you want, comma-separated, or `none`, which answers
+`<plugin-root>` is the folder described under [Plugin](#plugin); once abcd is
+on your `PATH`, `abcd` alone takes the place of the quoted path. The flag takes the parts you want, comma-separated, or `none`, which answers
 no. It answers the question in any run, `--yes` included, and is saved as the
 question's answer is. A name that is not one of the six parts, an empty name,
 or `none` beside a part is refused with exit 2, naming the parts, before
