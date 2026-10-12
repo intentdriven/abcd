@@ -50,7 +50,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -160,17 +159,18 @@ type Roots struct {
 // the front door to print on stderr; the home is left "" when it cannot be
 // resolved, which Load refuses loudly.
 //
-// A home at or below the working tree of the checkout the session runs in is
-// refused (iss-2609300012273350). The home is $HOME, and an environment the
-// repository can shape (a committed harness settings file whose env block sets
-// HOME into the tree) would otherwise let the checkout supply the machine
+// A home inside a git working tree that is not the account's own is refused
+// (iss-2609300012273350), by the one rule gitutil.HomeInsideWorkingTree
+// spells for the credential store too. The home is $HOME, and an environment
+// the repository can shape (a committed harness settings file whose env block
+// sets HOME into the tree) would otherwise let the checkout supply the machine
 // layer, the layer that decides which route may spend the person's paid key.
-// Nothing below os.UserHomeDir tells a home the session was given from the
-// account's own, so the refusal is by place: the tree a checkout controls is
-// never this machine's layer. Home is left "" so nothing is read from or
-// written to it, HomeRefused makes Load read the machine layer as absent
-// rather than fail, and a note says why. A home outside the checkout (every
-// test and CI job's temporary HOME among them) is untouched.
+// The tree a checkout controls is never this machine's layer, unless it is
+// the home the account database names for this uid (a dotfiles-in-HOME
+// account), judged by file identity. Home is left "" so nothing is read from
+// or written to it, HomeRefused makes Load read the machine layer as absent
+// rather than fail, and a note says why. A home outside every working tree
+// (every test and CI job's temporary HOME among them) is untouched.
 func RootsFor(cwd string) (Roots, []string) {
 	res := rules.Resolve(cwd)
 	notes := res.Notes
@@ -178,55 +178,12 @@ func RootsFor(cwd string) (Roots, []string) {
 	if err != nil {
 		home = ""
 	}
-	if tree := homeInsideCheckout(cwd, home); tree != "" {
-		notes = append(notes, fmt.Sprintf("abcd: HOME lies inside the git working tree at %s, which the checkout controls, "+
+	if tree := gitutil.HomeInsideWorkingTree(home); tree != "" {
+		notes = append(notes, fmt.Sprintf("abcd: HOME lies inside the git working tree at %s and is not this account's home, "+
 			"so %s is not read as this machine's layer and nothing is written there; run abcd with your own HOME", tree, abcdhome.Display()))
 		return Roots{Repo: res.Root, HomeRefused: true}, notes
 	}
 	return Roots{Repo: res.Root, Home: home}, notes
-}
-
-// homeInsideCheckout returns the working tree of the checkout at or above cwd
-// (the nearest .git marker, the crude "could a commit carry it?" answer) when
-// home lies at or below it, and "" otherwise. Containment is judged by file
-// identity on the home's physical path and each of its ancestors, never by
-// spelling, so a symlink or a case variant of the tree on a case-insensitive
-// volume cannot pass a home inside it off as outside.
-func homeInsideCheckout(cwd, home string) string {
-	if home == "" {
-		return ""
-	}
-	h, err := filepath.EvalSymlinks(home)
-	if err != nil {
-		h = filepath.Clean(home)
-	}
-	seen := map[string]bool{}
-	cands := []string{cwd}
-	if real, err := filepath.EvalSymlinks(cwd); err == nil {
-		cands = append(cands, real)
-	}
-	for _, c := range cands {
-		tree := gitutil.RepoShapedRoot(filepath.Clean(c))
-		if tree == "" || seen[tree] {
-			continue
-		}
-		seen[tree] = true
-		ti, err := os.Stat(tree)
-		if err != nil {
-			continue
-		}
-		for d := h; ; {
-			if di, err := os.Stat(d); err == nil && os.SameFile(ti, di) {
-				return tree
-			}
-			parent := filepath.Dir(d)
-			if parent == d {
-				break
-			}
-			d = parent
-		}
-	}
-	return ""
 }
 
 // userHomeDir is the package's view of os.UserHomeDir, held as a var for the
