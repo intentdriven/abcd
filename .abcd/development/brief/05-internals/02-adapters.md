@@ -31,7 +31,7 @@ store/loop/scan for the rest). A missing or misbehaving external backend degrade
 to the native default rather than breaking abcd — each seam carries its own thin
 capability contract. Adding a backend = implement the interface and register it in a
 registry (the design target `internal/registry`, which does not exist yet);
-consumers are untouched. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the first intent that consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting` and `openaiapi`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list. See
+consumers are untouched. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the first intent that consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting`, `openaiapi` and `repoprompt`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list. See
 [`03-configuration.md`](03-configuration.md) for the config schema.
 
 **Oracle consumers.** `lifeboat-reviewer`, `press-release-composer`, and
@@ -164,6 +164,64 @@ agents read the packed lifeboat and no verb builds a request carrying it, so non
 is sent to a provider. No test reaches a real provider: the client and every
 dispatching verb are exercised end to end against a fake on the loopback
 address, and the key is built at run time.
+
+### Reviewer routes — the command-line runner, and RepoPrompt over MCP
+
+A build lane's ruthless and security reviews, which the validate stage hands
+to the host's own agents by default, can be routed elsewhere two ways. Each is
+opt-in, each is configured on the person's own machine, and each hands a
+review it does not return back to the host with a fallback receipt, so no
+review is skipped.
+
+- **The command-line runner** (`internal/core/runner`, itd-2609201916056194)
+  starts a model CLI, `claude` or `opencode`, as a subprocess for a role that
+  `roles.<role>.runner` routes to it. The opt-in is that key in
+  `~/.abcd.noindex/config.json`; the route, the sealing and the fallback are in
+  [`34-build.md`](../04-surfaces/34-build.md).
+- **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
+  review to the RepoPrompt the person runs, which answers with whichever model
+  the person configured in it. The opt-in is `oracle.review = rp` in the
+  repository's `.abcd/config.json` or the machine's
+  `~/.abcd.noindex/config.json` (the repository's file wins a key both set),
+  with the MCP server's address, `oracle.rp.url`, in the machine's file alone
+  ([`03-configuration.md`](03-configuration.md#the-reviewer-routes-keys)).
+  Unset, or set to `host`, every review runs on the host exactly as before.
+
+The RepoPrompt adapter speaks MCP's Streamable HTTP transport with the
+standard library, no MCP dependency: one session per review (initialize, the
+initialized notification, `tools/list`, `tools/call`, and a closing DELETE),
+the request sent as the `message` of the configured tool (`oracle_send`
+unless `oracle.rp.tool` names another), with `new_chat: true` when the tool
+declares it, so each reviewer is fresh. It connects and nothing else: it
+never starts RepoPrompt or any process, never reads or writes RepoPrompt's
+configuration, and never looks for a server, and a test holds its package to
+importing no process, file or environment API. The address is admitted only
+on this machine (localhost or a loopback address, no credentials, query or
+fragment), is never proxied, and a redirect is never followed, so a review
+request leaves the machine through no other door. The set-up is bounded to ten
+seconds, the call to thirty minutes and an answer to 8 MiB, and a failure
+names its kind (unreachable, timeout, refused, unparsable, failed) in abcd's
+own words, never the server's.
+
+The loop renders the request beside the reviewer's brief
+(`validate/round-<n>/<role>/request.md`): the reviewer's agent definition, the
+lane's brief with the record it was rendered from, the implementer's report
+and each earlier fix round's, and the lane's diff whole (at most 512 KiB), since
+the route reads no file of the checkout. The answer is the reviewer's whole
+return: the loop writes it to the return path the host's agent would have
+written and verifies and records it through the same receipt, so a review the
+route ran differs from a host-run one in its `route` alone (`asked` and `ran`
+both `rp`). The intent-auditor stays on the host (reviews, not audits), and a
+reviewer the machine routes to a command-line runner keeps its runner. A
+review the route does not return (no server named on this machine, nothing
+listening, a bound run out, the server's error, an answer that is not the
+protocol's, or a return with no verdict the loop can record) is handed to the
+host's own agent with the same brief and return path, and one fallback
+receipt (the role, `asked: rp`, the reason, abcd's detail, `ran: host`) is
+recorded in the run's state and record, which `implement status` and
+`implement record` count per route and per role. The route is reached outside
+the run's lock, as a runner is. No test reaches a real RepoPrompt: every one
+runs against an MCP server the test owns on the loopback address.
 
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting
 

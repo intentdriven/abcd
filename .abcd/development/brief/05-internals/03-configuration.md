@@ -205,6 +205,45 @@ overrides it for one run. The delegating verb sends such a step through the
 adapter itself and ingests the answer (spc-2609251028149555), and its receipt
 names the provider as the connection used.
 
+### The reviewer route's keys
+
+The RepoPrompt reviewer route (itd-6, spc-2609211950427074) reads two keys
+under `oracle` through the layered resolver, each validated when `implement
+step` reads it and refused loudly, naming the file and the key, rather than
+passed over for the default:
+
+```json
+{
+  "oracle": {
+    "review": "rp",                      // "host" (the bundled default) | "rp"; repo or machine,
+                                         //   the repository's file winning a key both set
+    "rp": {                              // MACHINE LAYER ONLY: ~/.abcd.noindex/config.json
+      "url": "http://127.0.0.1:7777/mcp",  // the MCP server's address: http or https to this
+                                           //   machine, no credentials, query or fragment
+      "tool": "oracle_send"              // optional: the tool a review is sent to
+    }
+  }
+}
+```
+
+- **`oracle.review` selects the route.** `host` keeps a build lane's reviews on
+  the host's own agents; `rp` sends the ruthless and security reviews to
+  RepoPrompt over MCP ([`02-adapters.md`](02-adapters.md)). Any other value is
+  refused. No flag sets it in this build.
+- **The server sits on the machine alone.** `oracle.rp` names the address a
+  review request (the lane's diff and its record) is sent to, so a
+  repository's `.abcd/config.json` declaring it is refused, as a provider block
+  is, and the URL is admitted only to localhost or a loopback address. A
+  refusal never quotes the URL, which could carry a credential. An unknown key
+  under `oracle.rp` is refused, and so is an `oracle.rp` with no `url`.
+- **A route with no server here is not a fault.** A repository that sets
+  `oracle.review` to `rp` on a machine whose file names no `oracle.rp.url`
+  breaks nothing: each review the step hands out falls back to the host with a
+  receipt whose reason is `absent`.
+
+Unconfigured, nothing changes: every review runs on the host, and abcd never
+starts, installs or configures RepoPrompt, and never writes either key.
+
 ### The interview key
 
 How a plain-Terminal interview takes a choice from a list

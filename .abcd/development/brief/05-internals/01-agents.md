@@ -165,8 +165,11 @@ connection `abcd ahoy connect` configured
 a provider that cannot be reached leaves the step to the host rather than
 blocking. A model CLI run as a subprocess is a runner that
 `roles.<role>.runner` names (`internal/core/runner`); an absent or failing
-runner hands the role back to the host. A model over MCP is a **design
-target**. The `oracle.backend` config key records a choice, defaulting to
+runner hands the role back to the host. A model over MCP reaches a build
+lane's reviews alone: with `oracle.review = rp`, the ruthless and security
+reviews go to RepoPrompt over MCP (`internal/adapter/repoprompt`), and a review
+it does not return goes back to the host with a fallback receipt
+([`02-adapters.md`](02-adapters.md)). The `oracle.backend` config key records a choice, defaulting to
 host-delegated, and routes nothing: host-delegated is the only value with an
 adapter behind it, so install records it without asking. Per
 [`04-universal-patterns.md § 7`](04-universal-patterns.md#7-vendor-agnostic-adapters-with-environment-branching)

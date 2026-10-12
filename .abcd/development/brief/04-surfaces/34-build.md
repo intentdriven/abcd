@@ -223,7 +223,10 @@ whose lanes await zero or one agent, its `awaiting` carried over to a one-entry
 version-9 file carrying `awaiting`. Version 8
 added the runner's record (itd-2609201916056194): the run's `fallbacks`, one
 receipt per role a routed runner did not run, and the `route` a verified receipt
-or a validator's recorded return names when a runner ran its agent. Version 7
+or a validator's recorded return names when a runner ran its agent. A review the
+reviewer route (itd-6) did not return is one more receipt in the same
+`fallbacks`, asked `rp`, and a review it ran names `rp` as its `route`; neither
+changes the file's shape. Version 7
 added the landing (a lane's `landing`, the implementers' `receipts` it verified
 with the model each runner reported, and the captures its receipts declared
 fixed, `resolves`) and the run's captured `transcripts`. Version 6
@@ -396,6 +399,34 @@ record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the
 machine's `runner.fallback_host`, is the process driver's reversal of the
 host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
+
+**The reviewer route** (itd-6, spc-2609211950427074). A build lane's ruthless
+and security reviews can go to RepoPrompt over MCP instead of the host's own
+agents: `oracle.review` in the layered configuration names `host`, the bundled
+default, or `rp`, from the repository's `.abcd/config.json` or the machine's
+`~/.abcd.noindex/config.json`, the repository's file winning a key both set,
+and the MCP server's address, `oracle.rp.url` (with an optional
+`oracle.rp.tool`), sits in the machine's file alone, admitted only to this
+machine; a repository declaring it, or any other fault, is refused at the
+`review` stage before anything moves. When the validate stage hands a ruthless
+or security review to the host, and no runner took it, the step verb renders
+the review's request beside its brief (`request.md`: the reviewer's agent
+definition, the lane's brief, the implementer's report and each fix round's,
+and the lane's diff), sends it over MCP outside the run's lock, writes the
+answer to the review's return path and hands it back through the same
+receipt, so the loop records its verdict as it records any validator's and the
+result's and the return's `route` name `rp`. A review the route does not
+return (no server named on this machine, a refused connection, a bound run
+out, the server's error, an answer that is not the protocol's, or a return
+with no verdict) leaves the lane awaiting: the call records one fallback
+receipt (the role, `asked: rp`, the reason, abcd's detail, `ran: host`) in the
+state and the record and hands the host the same brief and return path,
+naming the fallback; the status and record verbs count it with the runner's.
+An interrupted step records nothing and is refused. The intent-auditor stays
+on the host, a reviewer routed to a runner keeps its runner, and with
+`oracle.review` unset or `host` the call is the host-driven step byte for
+byte. abcd never starts, installs or configures RepoPrompt
+([`02-adapters.md`](../05-internals/02-adapters.md)).
 
 **The lost connection** (iss-2610080620372731). The step verb reads the shared
 run's outage before every move ([`27-implement.md`](27-implement.md) states the
@@ -653,9 +684,10 @@ verb reads a run's state back as its record: every lane with its spec step,
 branch and heads, the implementers' receipts the loop verified with the model
 each runner reported (as reported; the binary cannot verify it), every verdict
 the loop recorded, round by round, the route that ran a receipt's or a return's
-agent when a runner ran it, the captures the lane fixed, its pull request
-and what its landing did, the run's pending steps, every fallback with the
-count per runner and per role, the transcripts captured and
+agent when a runner or the reviewer route ran it, the captures the lane fixed,
+its pull request and what its landing did, the run's pending steps, every
+fallback with the count per runner or route and per role, the transcripts
+captured and
 the record's lines, in text and JSON. On a complete run, the record verb
 captures each transcript it is named into the history store as the history
 verb's capture of one path does, one capture per path, and records it in the
