@@ -413,7 +413,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
       --severity string              severity: nitpick | minor | major | critical (default minor)
       --slug string                  override the slug derived from the text
-      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
+      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo | security-advisory (default user-observation)
 ```
 
 #### `abcd capture admit`

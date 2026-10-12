@@ -199,6 +199,11 @@ var (
 		// managed-repo is a report a repository abcd manages filed back to abcd
 		// and a person promoted out of the inbox (itd-2609221656361680).
 		"managed-repo",
+		// security-advisory is a record `abcd embargo intake` minted from a
+		// private security advisory, held in the embargo store and never in the
+		// public ledger while the advisory is unpublished
+		// (adr-2610120558328615; spc-2610120557432880).
+		"security-advisory",
 	}
 )
 
