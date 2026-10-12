@@ -33,6 +33,10 @@ import (
 //   - A document larger than a group may hold is reviewed in no chunk, and the
 //     emit and the report name it, with its size.
 //
+// Every pair of documents is owned by one chunk, which alone reports it
+// (owner), so one ingest never files one contradiction twice; a chunk's
+// prompt names the sets whose pairs it leaves to another chunk.
+//
 // Each chunk is an ordinary request and corpus pair. Its manifest lists only
 // its own documents, so the rubric's rule that each end is a manifest document
 // confines a finding to the chunk with no change to the rubric. Its prompt
@@ -45,7 +49,8 @@ type consistencyChunkInfo struct {
 	Index, Count int
 	EmitReceipt  string // the unchunked corpus's receipt
 	LimitBytes   int
-	WholeDocs    int // documents in the whole corpus
+	WholeDocs    int        // documents in the whole corpus
+	NotOwned     [][]string // sets whose pairs among themselves another chunk owns
 }
 
 // consistencyPlan is the chunk plan for one overflowing corpus.
@@ -56,6 +61,43 @@ type consistencyPlan struct {
 	Chunks      []consistencyCorpus // each with Chunk set, in index order
 	Receipts    []string            // Chunks[i]'s receipt
 	Unreviewed  []ConsistencyUnreviewed
+	Owners      consistencyOwners
+}
+
+// consistencyOwners is each reviewed document's group in a plan, -1 for a
+// pinned scope document, from which the chunk owning a pair follows.
+type consistencyOwners struct {
+	Group  map[string]int
+	Groups int
+	Scoped bool
+}
+
+// owner is the 1-based chunk that owns the pair (a, b): a cross-group pair's
+// only chunk; group i's own pairs chunk (i, i+1), the last group's chunk
+// (g-2, g-1); in a scoped run, the scope's own pairs chunk 1 and the rest
+// their group's chunk. 0 is a pair no chunk holds.
+func (o consistencyOwners) owner(a, b string) int {
+	ga, okA := o.Group[a]
+	gb, okB := o.Group[b]
+	switch {
+	case !okA || !okB:
+		return 0
+	case o.Scoped && ga < 0 && gb < 0:
+		return 1
+	case o.Scoped && (ga < 0 || gb < 0 || ga == gb):
+		return max(ga, gb) + 1
+	case o.Scoped:
+		return 0
+	case o.Groups == 1:
+		return 1
+	}
+	i, j := min(ga, gb), max(ga, gb)
+	if i == j && i < o.Groups-1 {
+		j = i + 1
+	} else if i == j {
+		i = o.Groups - 2
+	}
+	return i*(2*o.Groups-i-1)/2 + j - i
 }
 
 // overflow is the plan as the emit and the report state it.
@@ -170,27 +212,49 @@ func planConsistencyChunks(c consistencyCorpus, emitRcp string, corpusBytes, lim
 			"(each is larger than the %d bytes a chunk leaves it); raise consistency.max_request_bytes", limit, budget)
 	}
 	p.Groups = len(groups)
+	p.Owners = consistencyOwners{Group: map[string]int{}, Groups: len(groups), Scoped: len(pins) > 0}
+	for _, d := range pins {
+		p.Owners.Group[d.Path] = -1
+	}
+	for gi, g := range groups {
+		for _, d := range g {
+			p.Owners.Group[d.Path] = gi
+		}
+	}
 
-	var sets [][]consistencyDoc
+	// parts is each chunk's sets of documents: the pins, then its groups.
+	var parts [][][]consistencyDoc
 	switch {
 	case len(pins) > 0:
 		for _, g := range groups {
-			sets = append(sets, append(append([]consistencyDoc{}, pins...), g...))
+			parts = append(parts, [][]consistencyDoc{pins, g})
 		}
 	case len(groups) == 1:
-		sets = append(sets, groups[0])
+		parts = append(parts, [][]consistencyDoc{groups[0]})
 	default:
 		for i := range groups {
 			for j := i + 1; j < len(groups); j++ {
-				sets = append(sets, append(append([]consistencyDoc{}, groups[i]...), groups[j]...))
+				parts = append(parts, [][]consistencyDoc{groups[i], groups[j]})
 			}
 		}
 	}
-	for i, docs := range sets {
+	for i, part := range parts {
+		var docs []consistencyDoc
+		var notOwned [][]string
+		for _, set := range part {
+			docs = append(docs, set...)
+			if p.Owners.owner(set[0].Path, set[0].Path) != i+1 {
+				var paths []string
+				for _, d := range set {
+					paths = append(paths, d.Path)
+				}
+				notOwned = append(notOwned, paths)
+			}
+		}
 		sort.Slice(docs, func(a, b int) bool { return docs[a].Path < docs[b].Path })
 		ch := consistencyCorpus{
 			Scope: c.Scope, ScopePath: c.ScopePath, Docs: docs, Digest: corpusDigest(docs),
-			Chunk: &consistencyChunkInfo{Index: i + 1, Count: len(sets), EmitReceipt: emitRcp, LimitBytes: limit, WholeDocs: n},
+			Chunk: &consistencyChunkInfo{Index: i + 1, Count: len(parts), EmitReceipt: emitRcp, LimitBytes: limit, WholeDocs: n, NotOwned: notOwned},
 		}
 		for _, d := range docs {
 			if d.IntentID == "" {
@@ -200,7 +264,7 @@ func planConsistencyChunks(c consistencyCorpus, emitRcp string, corpusBytes, lim
 			}
 		}
 		p.Chunks = append(p.Chunks, ch)
-		p.Receipts = append(p.Receipts, consistencyChunkReceipt(c.Scope, c.Digest, i+1, len(sets)))
+		p.Receipts = append(p.Receipts, consistencyChunkReceipt(c.Scope, c.Digest, i+1, len(parts)))
 	}
 	return p, nil
 }

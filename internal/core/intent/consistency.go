@@ -610,6 +610,13 @@ func consistencyPromptBody(c consistencyCorpus, rcp string) string {
 		fmt.Fprintf(&b, "is read in %d chunks chosen so that every pair of its documents shares one. This request is\n", ch.Count)
 		b.WriteString("one of them: its corpus file holds this chunk's documents only, and both ends of a\n")
 		b.WriteString("finding are documents its manifest lists.\n\n")
+		if len(ch.NotOwned) > 0 {
+			b.WriteString("Another chunk reports any contradiction whose two ends sit in one of these sets, so report none here:")
+			for _, set := range ch.NotOwned {
+				fmt.Fprintf(&b, " [%s]", strings.Join(set, ", "))
+			}
+			b.WriteString("\n\n")
+		}
 	}
 	b.WriteString("## What to find (authority; one class per finding)\n\n")
 	for _, k := range ConsistencyClasses {
@@ -770,6 +777,9 @@ type consistencyReview struct {
 	// Verifiers is every distinct verifier of a merged chunk set, in chunk
 	// order, when more than one ran the chunks.
 	Verifiers []verdictVerifier
+	// SetAside counts a merged chunk set's findings on a pair another chunk
+	// owns, which are not filed.
+	SetAside int
 }
 
 // consistencyReviewChunk is the chunk a payload answers, and the plan it is
@@ -779,6 +789,7 @@ type consistencyReviewChunk struct {
 	EmitReceipt  string
 	Overflow     *ConsistencyOverflow
 	Chunks       []ConsistencyChunk
+	Owners       consistencyOwners
 }
 
 // ConsistencyFiling is the ledger's answer for one finding: the record filed
@@ -883,6 +894,9 @@ type ConsistencyIngestResult struct {
 	// emit's chunks.
 	Overflow *ConsistencyOverflow `json:"overflow,omitempty"`
 	Chunks   []ConsistencyChunk   `json:"chunks,omitempty"`
+	// SetAside counts the findings a chunk reported on a pair another chunk
+	// owns: neither filed nor refused.
+	SetAside int `json:"set_aside,omitempty"`
 }
 
 // ReadConsistencyFindings reads a findings file the way the Role 1 ingest reads
@@ -939,7 +953,7 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 		Findings: len(rv.Findings), Filed: []string{}, Linked: []string{}, Addressed: []string{}, Rows: []ConsistencyRow{},
 	}
 	if rv.Chunk != nil {
-		res.Overflow, res.Chunks = rv.Chunk.Overflow, rv.Chunk.Chunks
+		res.Overflow, res.Chunks, res.SetAside = rv.Chunk.Overflow, rv.Chunk.Chunks, rv.SetAside
 	}
 	existing, err := findConsistencyReport(req.RepoRoot, rv.ReceiptID, rv.PayloadDigest)
 	if err != nil {
@@ -1022,9 +1036,9 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 // review the report is written from. One unchunked payload is that review. A
 // chunk set must hold exactly one payload for every chunk of one emit: a chunk
 // missing or given twice, chunks of two emits, and an unchunked payload beside
-// others are each refused. Findings of different chunks that share a key are
-// one finding, the first chunk's copy kept, and the merged findings are
-// numbered in chunk order.
+// others are each refused. A finding on a pair another chunk owns is set aside;
+// findings of different chunks that share a key are one finding, the first
+// chunk's copy kept, and the merged findings are numbered in chunk order.
 func mergeConsistencyReviews(reviews []consistencyReview) (consistencyReview, error) {
 	if len(reviews) == 1 && reviews[0].Chunk == nil {
 		return reviews[0], nil
@@ -1082,6 +1096,10 @@ func mergeConsistencyReviews(reviews []consistencyReview) (consistencyReview, er
 			out.Verifiers = append(out.Verifiers, rv.Verifier)
 		}
 		for _, f := range rv.Findings {
+			if o := rv.Chunk.Owners.owner(f.Ends[0].Path, f.Ends[1].Path); o != 0 && o != i {
+				out.SetAside++
+				continue
+			}
 			if seenKey[f.Key] {
 				continue
 			}
@@ -1232,7 +1250,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 		}
 		view = plan.Chunks[chunk.Index-1]
 		reviewChunk = &consistencyReviewChunk{Index: chunk.Index, Count: chunk.Count, EmitReceipt: emitRcp,
-			Overflow: plan.overflow(), Chunks: plan.chunkList()}
+			Overflow: plan.overflow(), Chunks: plan.chunkList(), Owners: plan.Owners}
 	}
 	// The request's mark is local-tier text: read the tree again against the
 	// pinned commit and keep the union, so the report is marked with at least
@@ -1591,6 +1609,9 @@ func renderConsistencyOverflow(b *strings.Builder, rv consistencyReview) {
 	}
 	for _, ch := range rv.Chunk.Chunks {
 		fmt.Fprintf(b, "- chunk %d of %d: %s (%d documents)\n", ch.Index, ov.Chunks, ch.ReceiptID, ch.Documents)
+	}
+	if rv.SetAside > 0 {
+		fmt.Fprintf(b, "- set aside: %d finding(s) a chunk reported on a pair another chunk owns\n", rv.SetAside)
 	}
 }
 

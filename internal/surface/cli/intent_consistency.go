@@ -254,6 +254,9 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payloads [][]byte, r
 		if res.Status == "ingested" {
 			fmt.Fprintf(w, "  findings %d: filed %d · linked to an open record %d · addressed by a closed record %d\n",
 				res.Findings, len(res.Filed), len(res.Linked), len(res.Addressed))
+			if res.SetAside > 0 {
+				fmt.Fprintf(w, "  set aside: %d finding(s) a chunk reported on a pair another chunk owns\n", res.SetAside)
+			}
 			for _, r := range res.Rows {
 				fmt.Fprintf(w, "  %d. %s (%s) — %s, key %s: %s\n", r.Number, r.ClassLabel(), r.Severity, r.LedgerCell(), r.Key,
 					termsafe.Sanitize(r.Summary))

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -465,5 +466,161 @@ func TestConsistencyIngestMergesCrossChunkFindingsByKey(t *testing.T) {
 	again, err := ingestChunks(t, root, reversed, &fakeFiler{})
 	if err != nil || again.Status != "noop" || again.ReportPath != res.ReportPath {
 		t.Fatalf("the same chunks again = %+v, %v; want a noop naming %s", again, err, res.ReportPath)
+	}
+}
+
+var notOwnedRe = regexp.MustCompile(`(?m)^Another chunk reports any contradiction whose two ends sit in one of these sets, so report none here: (.+)$`)
+
+// pairOwners maps every pair of documents a chunk holds (a self-pair
+// included) to the chunks that report it: those whose request does not leave
+// it to another chunk.
+func pairOwners(t *testing.T, root string, chunks []ConsistencyChunk) map[[2]string][]int {
+	t.Helper()
+	out := map[[2]string][]int{}
+	for _, ch := range chunks {
+		req, err := os.ReadFile(filepath.Join(root, ch.RequestPath))
+		if err != nil {
+			t.Fatal(err)
+		}
+		set := map[string]int{}
+		if m := notOwnedRe.FindSubmatch(req); m != nil {
+			for i, s := range regexp.MustCompile(`\[([^\]]+)\]`).FindAllSubmatch(m[1], -1) {
+				for _, p := range strings.Split(string(s[1]), ", ") {
+					set[p] = i + 1
+				}
+			}
+		}
+		docs := manifestOf(t, root, ch.CorpusPath)
+		for a := range docs {
+			for b := a; b < len(docs); b++ {
+				if set[docs[a]] == 0 || set[docs[a]] != set[docs[b]] {
+					k := [2]string{docs[a], docs[b]}
+					out[k] = append(out[k], ch.Index)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// TestConsistencyChunkPairsHaveOneOwner: over a whole-corpus plan of three or
+// more groups, every pair of reviewed documents is reported by exactly one
+// chunk, which holds both; an unchunked request is byte for byte what it was.
+func TestConsistencyChunkPairsHaveOneOwner(t *testing.T) {
+	r, paths := chunkRepo(t, 7, 1000, nil)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if em.Overflow == nil || em.Overflow.Groups < 3 {
+		t.Fatalf("overflow = %+v; the fixture must plan three or more groups", em.Overflow)
+	}
+	owners := pairOwners(t, root, em.Chunks)
+	for a := range paths {
+		for b := a; b < len(paths); b++ {
+			if got := owners[[2]string{paths[a], paths[b]}]; len(got) != 1 {
+				t.Errorf("%s and %s are reported by chunks %v; want exactly one", paths[a], paths[b], got)
+			}
+		}
+	}
+
+	cr := consistencyRepo(t).Root()
+	one, err := EmitConsistency(cr, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, prompt := provenanceOf(t, cr, one.RequestPath)
+	if want := "sha256:" + unchunkedPromptHash; prompt != want {
+		t.Fatalf("the unchunked request's prompt_hash moved: %s, want %s", prompt, want)
+	}
+}
+
+// unchunkedPromptHash is consistencyRepo's unchunked prompt_hash when pair
+// ownership landed; only a deliberate change to the unchunked prompt moves it.
+const unchunkedPromptHash = "3b23856e57e20623c3da57593f5914efcf050ec8dd43a7decbee9527ebfabb5a"
+
+// TestConsistencyScopedChunkOwnership: in a scoped run the scope's own pairs
+// are chunk 1's, and every other pair is its group's one chunk's.
+func TestConsistencyScopedChunkOwnership(t *testing.T) {
+	r, _ := chunkRepo(t, 7, 1000, nil)
+	root := r.Root()
+	scopePath := cxChunkPath(3)
+	em, err := EmitConsistency(root, "itd-23", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(em.Chunks) < 2 {
+		t.Fatalf("scoped plan has %d chunks; the fixture must plan two or more", len(em.Chunks))
+	}
+	for k, got := range pairOwners(t, root, em.Chunks) {
+		if len(got) != 1 || (k == [2]string{scopePath, scopePath} && got[0] != 1) {
+			t.Errorf("%v is reported by chunks %v; want one chunk (chunk 1 for the scope's own pairs)", k, got)
+		}
+	}
+}
+
+// TestConsistencyIngestSetsAsideANonOwnerFinding: chunks that report one
+// same-group pair with different quotes, so under different keys, file one
+// issue, the owner's, and the ingest counts the others set aside.
+func TestConsistencyIngestSetsAsideANonOwnerFinding(t *testing.T) {
+	r, _ := chunkRepo(t, 8, 500, nil)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 7000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The last group (docs 7 and 8 here) sits in every chunk that holds the
+	// last document, and only the last chunk owns its pairs.
+	last := cxChunkPath(8)
+	var holding []ConsistencyChunk
+	group := map[string]int{}
+	for _, ch := range em.Chunks {
+		docs := manifestOf(t, root, ch.CorpusPath)
+		if slices.Contains(docs, last) {
+			holding = append(holding, ch)
+			for _, d := range docs {
+				group[d]++
+			}
+		}
+	}
+	other := ""
+	for d, n := range group {
+		if n == len(holding) && d != last {
+			other = d
+		}
+	}
+	if other == "" || len(holding) < 2 || holding[len(holding)-1].Index != len(em.Chunks) {
+		t.Fatalf("the last document sits in chunks %+v; want two or more, the last chunk among them, and a second document beside it", holding)
+	}
+	n := 0
+	var payloads [][]byte
+	for _, ch := range em.Chunks {
+		var fs []cxFinding
+		for _, h := range holding {
+			if h.Index == ch.Index {
+				n++
+				fs = append(fs, cxFinding{class: "premise_contradiction", severity: "major", summary: fmt.Sprintf("seen in chunk %d", ch.Index),
+					explanation: "Both claim the same ground.", ends: []cxEnd{{last, cxChunkQuote(8)}, {other, strings.Repeat("filler words ", n)}}})
+			}
+		}
+		payloads = append(payloads, chunkPayload(t, root, ch, fs...))
+	}
+	f := &fakeFiler{}
+	res, err := ingestChunks(t, root, payloads, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("seen in chunk %d", len(em.Chunks))
+	if len(f.calls) != 1 || len(res.Rows) != 1 || res.Rows[0].Summary != want {
+		t.Fatalf("filed %d, rows %+v; want one issue, %q", len(f.calls), res.Rows, want)
+	}
+	js, _ := json.Marshal(res)
+	if aside := fmt.Sprintf(`"set_aside":%d`, len(holding)-1); !strings.Contains(string(js), aside) {
+		t.Fatalf("ingest result lacks %s: %s", aside, js)
+	}
+	report, _ := os.ReadFile(filepath.Join(root, res.ReportPath))
+	if line := fmt.Sprintf("- set aside: %d finding(s) a chunk reported on a pair another chunk owns\n", len(holding)-1); !strings.Contains(string(report), line) {
+		t.Fatalf("report lacks %q:\n%s", line, report)
 	}
 }
