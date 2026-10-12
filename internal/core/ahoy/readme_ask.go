@@ -283,12 +283,16 @@ func fitReason(h PromptHelp, def string, reasons ...string) string {
 	}
 	for _, r := range reasons {
 		h.ExampleNone = r
-		if r != "" && fitsRows(h, def) {
+		if r != "" && measureRows(h, def) {
 			return r
 		}
 	}
 	return readmeReasonTooLong
 }
+
+// measureRows is fitsRows, through which the cuts measure each candidate
+// question, so a test can count how many they build.
+var measureRows = fitsRows
 
 // fitsRows reports whether the question h asks, with def its default, fits
 // the rows limit (question.Default.Rows at its columns).
@@ -310,7 +314,7 @@ func fitsRows(h PromptHelp, def string) bool {
 func fitExample(h PromptHelp, lines []string, def string) ([]string, int) {
 	return fitLines(lines, func(ex []string, left int) bool {
 		h.Example, h.ExampleLeft = ex, left
-		return fitsRows(h, def)
+		return measureRows(h, def)
 	})
 }
 

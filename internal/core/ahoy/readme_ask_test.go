@@ -474,31 +474,44 @@ func materialText(q question.Question) string {
 // TestReadmeViewIsLinearInTheHeadings: the table of contents lists one line a
 // heading, and a README of thousands of headings is read whole (up to the
 // 1 MiB cap), so cutting its example to the rows limit must not try every
-// length from the longest down: no more lines than the limit has rows can fit,
-// and the view of a README of 6000 headings is built in well under the
-// seconds a cut that grows with the square of the lines takes.
+// length from the longest down: no more lines than the limit has rows can fit.
+// Building the view of a README of 6000 headings measures a bounded number of
+// candidate questions, as many as for a short README, where trying every
+// length measured one for each line and took 17 s. The count, not the time,
+// is asserted: a race-enabled run on a loaded machine is slow either way.
 func TestReadmeViewIsLinearInTheHeadings(t *testing.T) {
-	var readme strings.Builder
-	readme.WriteString("# Project\n")
-	for i := range 6000 {
-		fmt.Fprintf(&readme, "\n## Heading number %d\n", i)
-	}
-	repo := readmeRepo(t, "", map[string]string{"README.md": readme.String(), ".abcd/config.json": `{"repo": {"visibility": "private"}}`})
-	start := time.Now()
-	v, ok := readmeView(repo)
-	took := time.Since(start)
-	if !ok {
-		t.Fatal("no view while the pair is unanswered")
-	}
-	if took > 3*time.Second {
-		t.Errorf("building the view of 6000 headings took %s, want well under 3s", took)
-	}
-	for _, pv := range v.Parts {
-		if pv.Name == "contents" && len(pv.Example) != 6000 {
-			t.Errorf("the view's contents example holds %d lines, want all 6000", len(pv.Example))
+	measured := func(headings int) int {
+		var readme strings.Builder
+		readme.WriteString("# Project\n")
+		for i := range headings {
+			fmt.Fprintf(&readme, "\n## Heading number %d\n", i)
 		}
+		repo := readmeRepo(t, "", map[string]string{"README.md": readme.String(), ".abcd/config.json": `{"repo": {"visibility": "private"}}`})
+		calls := 0
+		swap := measureRows
+		t.Cleanup(func() { measureRows = swap })
+		measureRows = func(h PromptHelp, def string) bool {
+			calls++
+			return swap(h, def)
+		}
+		start := time.Now()
+		v, ok := readmeView(repo)
+		measureRows = swap
+		if !ok {
+			t.Fatal("no view while the pair is unanswered")
+		}
+		for _, pv := range v.Parts {
+			if pv.Name == "contents" && len(pv.Example) != headings {
+				t.Errorf("the view's contents example holds %d lines, want all %d", len(pv.Example), headings)
+			}
+		}
+		t.Logf("%d headings: %d questions measured in %s", headings, calls, time.Since(start))
+		return calls
 	}
-	t.Logf("built in %s", took)
+	short, long := measured(60), measured(6000)
+	if bound := len(readmePartOrder) * (question.Default.Rows + 2); long > bound || long != short {
+		t.Errorf("6000 headings measured %d candidate questions and 60 measured %d, want the same, at most %d", long, short, bound)
+	}
 }
 
 // TestFitLinesChecksABoundedNumberOfCandidates: however many lines an example
