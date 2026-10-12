@@ -35,9 +35,9 @@ var setsHooksPath = regexp.MustCompile("(?i)\\bgit\\s+" +
 var hooksPathStates = []HooksPathState{HooksPathStateArmed, HooksPathStateUnarmed, HooksPathStateForeign}
 
 // stateBullet matches a bullet that opens one hooks_path state's branch, "- `unarmed`
-// — …" in markdown, or the same bullet printed by a shell `echo` with its
-// backticks escaped, capturing the state.
-var stateBullet = regexp.MustCompile("^\\s*(?:echo\\s+\"\\s*)?- \\\\?`([a-z]+)\\\\?`")
+// — …" in markdown, the same bullet printed by a shell `echo` with its backticks
+// escaped, or written in a shell comment block, capturing the state.
+var stateBullet = regexp.MustCompile("^\\s*(?:echo\\s+\"\\s*|#\\s*)?- \\\\?`([a-z]+)\\\\?`")
 
 // numberedStep matches the start of a numbered step, which closes any state branch
 // above it.
@@ -58,6 +58,19 @@ func markdownBranchEnd(line string) bool {
 func shellBranchEnd(line string) bool {
 	t := strings.TrimSpace(line)
 	return !strings.HasPrefix(t, "echo ") && !strings.HasPrefix(t, "#")
+}
+
+// marginComment matches a shell comment line whose text starts flush with the
+// comment's margin ("# Refuses …", "#!/usr/bin/env bash"): prose resuming after an
+// indented bullet list. A blank comment line ("#") and an indented one ("#     …")
+// do not match, so a bullet's continuation and its code block stay in its branch.
+var marginComment = regexp.MustCompile(`^\s*# ?[^\s]`)
+
+// shellCommentBranchEnd closes a state branch in a shell hook whose advice is a
+// comment block, as the scaffolded pre-commit header gives it: a line that ends a
+// branch of echoed lines, or a comment line flush with the margin.
+func shellCommentBranchEnd(line string) bool {
+	return shellBranchEnd(line) || marginComment.MatchString(line)
 }
 
 // hooksPathAdviceFaults returns what a page gets wrong about arming the committed
@@ -131,6 +144,8 @@ func TestAhoyPageArmsHooksOnlyWhenUnarmed(t *testing.T) {
 // bullet and the commit-msg hook's "no abcd source" refusal. Under a global hooks
 // dispatcher (hooks_path foreign) either one overrides that dispatcher instead of
 // having it call `.githooks/`. Both are held to the ahoy page's three-way advice.
+// So is a third, iss-2610111820465940's: the header of the pre-commit hook ahoy
+// install scaffolds into every adopted repository, a shell comment block.
 func TestHooksPathSiblingsArmOnlyWhenUnarmed(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	for _, f := range []struct {
@@ -139,6 +154,7 @@ func TestHooksPathSiblingsArmOnlyWhenUnarmed(t *testing.T) {
 	}{
 		{filepath.Join(".github", "CONTRIBUTING.md"), markdownBranchEnd},
 		{filepath.Join(".githooks", "commit-msg"), shellBranchEnd},
+		{filepath.Join("internal", "core", "ahoy", "defaults", "pre-commit"), shellCommentBranchEnd},
 	} {
 		data, err := os.ReadFile(filepath.Join(root, f.path))
 		if err != nil {
@@ -261,5 +277,37 @@ func TestHooksPathAdviceFaultsJudgesAShellRefusal(t *testing.T) {
 	}
 	if faults := hooksPathAdviceFaults(strings.TrimSuffix(threeWay, "echo \"            git config core.hooksPath .githooks\" >&2\n"), shellBranchEnd); len(faults) != 0 {
 		t.Errorf("the detector faulted a refusal that gives the three-way advice: %q", faults)
+	}
+}
+
+// TestHooksPathAdviceFaultsJudgesACommentHeader is the comment-block half of the
+// detector's must-fail and must-pass pair: a hook header that tells every clone to
+// arm the hooks, as the scaffolded pre-commit's did, is named; one that gives the
+// three-way advice, each state a commented bullet, passes; and prose resuming at
+// the comment margin closes the last branch, so a setting after it is named.
+func TestHooksPathAdviceFaultsJudgesACommentHeader(t *testing.T) {
+	unconditional := "#!/usr/bin/env bash\n" +
+		"# abcd private name guard.\n#\n" +
+		"# Point this repo's hooks at the directory holding this file, once per clone:\n#\n" +
+		"#     " + armHooksCommand + "\n#\n" +
+		"# Refuses to commit any name listed in an UNTRACKED banlist.\nset -eu\n"
+	if faults := hooksPathAdviceFaults(unconditional, shellCommentBranchEnd); len(faults) == 0 {
+		t.Errorf("the detector passed a header that arms the hooks with no condition:\n%s", unconditional)
+	}
+	threeWay := "#!/usr/bin/env bash\n" +
+		"# abcd private name guard.\n#\n" +
+		"# Which hooks directory git runs is banlist.hooks_path in `abcd ahoy --json`:\n#\n" +
+		"#   - `unarmed` — point this clone at the committed hooks:\n#\n" +
+		"#         " + armHooksCommand + "\n#\n" +
+		"#   - `foreign` — have the global dispatcher call this hook in .githooks/.\n" +
+		"#   - `armed` — nothing to set.\n#\n" +
+		"# Refuses to commit any name listed in an UNTRACKED banlist.\nset -eu\n"
+	if faults := hooksPathAdviceFaults(threeWay, shellCommentBranchEnd); len(faults) != 0 {
+		t.Errorf("the detector faulted a header that gives the three-way advice: %q", faults)
+	}
+	trailing := strings.Replace(threeWay, "# Refuses", "# Then, once per clone:\n#\n#     "+armHooksCommand+"\n#\n# Refuses", 1)
+	faults := hooksPathAdviceFaults(trailing, shellCommentBranchEnd)
+	if len(faults) != 1 || !strings.Contains(faults[0], "outside every hooks_path branch") {
+		t.Errorf("want exactly the setting after the margin prose named, got %q", faults)
 	}
 }

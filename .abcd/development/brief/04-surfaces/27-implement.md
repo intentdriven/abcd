@@ -409,6 +409,8 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--site` | string |
+| `--timeout` | duration |
+| `--wait` | bool |
 
 ### `abcd implement log`
 

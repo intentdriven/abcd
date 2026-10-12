@@ -173,8 +173,11 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 1, Msg: "abcd intent interview: the interview ended without an outcome"}
 			}
 			// abcd's validation after the role's edits is the gate the host
-			// path has: the readiness report on the record as it now stands.
-			ready, err := intent.Ready(repoRoot, id)
+			// path has: the readiness report on the record as it now stands,
+			// judged as `abcd intent ready` and the build judge it, open
+			// questions included, so READY here means the build will start
+			// (iss-2610111759340919).
+			ready, err := intent.ReadyWithQuestions(repoRoot, id)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent interview: the record no longer reads after the interview: " + termsafe.Sanitize(scrubPaths(err))}
 			}

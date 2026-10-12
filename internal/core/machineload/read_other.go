@@ -8,3 +8,6 @@ package machineload
 // list names every other platform, so on this one the check says it could not
 // check and carries on (spc-2609231542463113, section 8).
 func Read() (Snapshot, error) { return Snapshot{}, ErrUnsupported }
+
+// ReadArgs reports ErrUnsupported, as Read does.
+func ReadArgs([]int) (map[int][]string, error) { return nil, ErrUnsupported }

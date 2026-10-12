@@ -236,6 +236,73 @@ func TestDescribeIntentLifecycleMoves(t *testing.T) {
 	}
 }
 
+// TestDescribeIntentOpenQuestionsWithholdsImplement pins the dispatcher's
+// planned-intent move to the verdict `abcd intent ready` reports
+// (intent.ReadyWithQuestions): a planned intent whose `## Open Questions` still
+// asks something is NOT ready, so the page must not say "implement"
+// (iss-2610111759346608). When the open question is the only gating failure,
+// the move is the planning interview; beside another failure, the open
+// question is listed with it.
+func TestDescribeIntentOpenQuestionsWithholdsImplement(t *testing.T) {
+	repo := t.TempDir()
+	const openQ = "\n## Open Questions\n\n- Which surface carries the flag?\n"
+
+	// Ready by the eight checks, but one question is unanswered.
+	intentFixture(t, repo, "planned", "itd-11", "asks-one",
+		"---\nid: itd-11\nslug: asks-one\nspec_id: spc-11\nkind: standalone\n---\n\n# Q\n\n## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- **Given** x, **then** y.\n"+recordGrounds+openQ)
+	write(t, repo, ".abcd/development/specs/open/spc-11-asks-one.md",
+		"---\nid: spc-11\nslug: asks-one\nintent: itd-11\n---\n# asks-one\n\nA real body: build the thing against these words.\n")
+	before := treeSnapshot(t, repo)
+	d, err := Describe(repo, "itd-11")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moves := strings.Join(d.NextMoves, "\n")
+	if strings.Contains(moves, "implement") || strings.Contains(moves, "spec close") {
+		t.Fatalf("a planned intent with an open question must not be sent to implement: %v", d.NextMoves)
+	}
+	if !strings.Contains(moves, "abcd intent interview itd-11") {
+		t.Fatalf("an open question alone must point at the planning interview: %v", d.NextMoves)
+	}
+	if !strings.Contains(moves, "Which surface carries the flag?") {
+		t.Fatalf("the move must name the open question: %v", d.NextMoves)
+	}
+	if !strings.Contains(moves, "abcd intent ready itd-11") {
+		t.Fatalf("the move must say how to re-check: %v", d.NextMoves)
+	}
+	assertZeroWrites(t, repo, before)
+
+	// Settled, the same record is ready again: the row gates only while asking.
+	intentFixture(t, repo, "planned", "itd-11", "asks-one",
+		"---\nid: itd-11\nslug: asks-one\nspec_id: spc-11\nkind: standalone\n---\n\n# Q\n\n## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- **Given** x, **then** y.\n"+recordGrounds+
+			"\n## Open Questions\n\n- Which surface carries the flag? — resolved: the CLI.\n")
+	d, err = Describe(repo, "itd-11")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moves := strings.Join(d.NextMoves, "\n"); !strings.Contains(moves, "implement") || !strings.Contains(moves, "spec close spc-11") {
+		t.Fatalf("a settled question must leave the intent ready: %v", d.NextMoves)
+	}
+
+	// An open question beside a stub spec body: both failing checks are listed,
+	// and neither is hidden behind the interview move.
+	intentFixture(t, repo, "planned", "itd-12", "asks-and-stub",
+		"---\nid: itd-12\nslug: asks-and-stub\nspec_id: spc-12\nkind: standalone\n---\n\n# Q2\n\n## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- **Given** x, **then** y.\n"+recordGrounds+openQ)
+	write(t, repo, ".abcd/development/specs/open/spc-12-asks-and-stub.md",
+		"---\nid: spc-12\nslug: asks-and-stub\nintent: itd-12\n---\n# asks-and-stub\n\n_Draft: describe what shipping itd-12 means._\n")
+	d, err = Describe(repo, "itd-12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moves = strings.Join(d.NextMoves, "\n")
+	if strings.Contains(moves, "implement against") {
+		t.Fatalf("a not-ready intent must not be sent to implement: %v", d.NextMoves)
+	}
+	if !strings.Contains(moves, intent.CheckSpecBody+":") || !strings.Contains(moves, intent.CheckOpenQuestions+":") {
+		t.Fatalf("both failing checks must be listed: %v", d.NextMoves)
+	}
+}
+
 func TestDescribeSpecMoves(t *testing.T) {
 	repo := t.TempDir()
 	intentFixture(t, repo, "planned", "itd-6", "for-spec",
@@ -382,7 +449,7 @@ func TestDescribeUnknownIDFaults(t *testing.T) {
 // test iterates: every verb constant the table can emit is enumerated.
 func TestRecommendedVerbPathsClosed(t *testing.T) {
 	want := map[string]bool{
-		"intent plan": true, "intent ready": true, "intent link": true,
+		"intent plan": true, "intent ready": true, "intent interview": true, "intent link": true,
 		"intent unhold": true, "intent audit": true,
 		"spec close": true, "capture promote": true, "capture resolve": true,
 		"capture wontfix": true, "capture reframe": true,
