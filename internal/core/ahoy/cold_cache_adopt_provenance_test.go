@@ -146,13 +146,18 @@ func TestReleaseOfBuild(t *testing.T) {
 	abcd := func(v string) *debug.BuildInfo {
 		return &debug.BuildInfo{Path: abcdMainPackage, Main: debug.Module{Path: "github.com/intentdriven/abcd", Version: v}}
 	}
-	if tag, err := releaseOfBuild(abcd("v0.13.4")); err != nil || tag != "v0.13.4" {
-		t.Errorf("a release build names its tag: %q, %v", tag, err)
+	for _, v := range []string{"v0.13.4", "v1.2.3-rc.1", "v1.2.3+meta"} {
+		if tag, err := releaseOfBuild(abcd(v)); err != nil || tag != v {
+			t.Errorf("a release build names its tag, in any shape release.yml admits: %q -> %q, %v", v, tag, err)
+		}
 	}
+	dirty := abcd("v0.13.4+dirty")
+	dirty.Settings = []debug.BuildSetting{{Key: "vcs.modified", Value: "true"}}
 	for name, bi := range map[string]*debug.BuildInfo{
 		"devel":        abcd("(devel)"),
 		"pseudo":       abcd("v0.13.5-0.20261012080000-2de70c93b510"),
-		"dirty":        abcd("v0.13.4+dirty"),
+		"dirty":        dirty,
+		"two suffixes": abcd("v1.2.3-rc.1+meta"),
 		"none":         abcd(""),
 		"other module": {Path: "example.com/other/cmd/abcd", Main: debug.Module{Version: "v0.13.4"}},
 	} {
@@ -275,5 +280,18 @@ func TestPlainColdCopyIsVerifiedOnAnUpToDateRepo(t *testing.T) {
 	}
 	if res.Status != "already_up_to_date" || len(rec.asked) != 1 {
 		t.Errorf("a genuine copy keeps the repository up to date after one check: status %q, asked %d, notes %v", res.Status, len(rec.asked), res.Notes)
+	}
+}
+
+// TestHandCheckNeverSplicesAnUnshapedTag: the advised command is pasted into a
+// shell, so a tag outside the release-tag alphabet is never spliced into it.
+func TestHandCheckNeverSplicesAnUnshapedTag(t *testing.T) {
+	for _, tag := range []string{"v1.2.3$(touch x)", "v1.2.3;id", "v1 2", "`id`"} {
+		if cmd := ghAttestationVerifyCommand("abcd", tag); strings.Contains(cmd, tag) {
+			t.Errorf("tag %q was spliced into %q", tag, cmd)
+		}
+	}
+	if cmd := ghAttestationVerifyCommand("abcd", "v0.13.4"); !strings.Contains(cmd, "commits/v0.13.4 ") {
+		t.Errorf("a release tag is named: %q", cmd)
 	}
 }

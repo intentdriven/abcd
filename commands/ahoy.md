@@ -476,10 +476,13 @@ symlink into the plugin root, which stops working at the next plugin update, and
 its note names the command to run first: the install one-liner in the README,
 which downloads the release binary, verifies it against that release's own
 checksums and records it, after which a re-run of `ahoy install` adopts it.
-Relay that note verbatim. On a cold cache every install run checks that
-copy with the same provenance check, read-only, on the copy's own bytes, bound
-to the release its build metadata names (read, never run), even when nothing
-else is left to do. A copy that fails, or that cannot be checked, is not
+Relay that note verbatim. Every install run checks the abcd-owned copy
+already on `PATH` with the same provenance check, read-only, on the copy's own
+bytes, even when nothing else is left to do and even when it holds the cached
+release's bytes (the bootstrap refreshes it from the cache on the checksum
+alone when `gh` cannot verify). It is bound to the release the cache
+attestation names when the copy holds the cache's bytes, and otherwise to the
+release its build metadata names (read, never run). A copy that fails, or that cannot be checked, is not
 adopted and is left as it is: the run ends `partial`, never `clean` or
 `already_up_to_date`, with a `symlink.unverified` item in `remaining` whose
 summary gives the `gh attestation verify` command for that file. Relay that

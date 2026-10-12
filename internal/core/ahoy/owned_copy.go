@@ -47,7 +47,9 @@ func cacheAssetName() string { return "abcd-" + runtime.GOOS + "-" + runtime.GOA
 // release tag names. hooks/bootstrap.sh and the install one-liner run this
 // when gh is present. With no tag known the commit is named as a placeholder.
 func ghAttestationVerifyCommand(file, tag string) string {
-	if tag == "" {
+	// The command is pasted into a shell, so a tag outside the release-tag
+	// alphabet is never spliced in, wherever it was read from.
+	if !ReleaseTagShape.MatchString(tag) {
 		tag = "<release tag>"
 	}
 	return "gh attestation verify " + file + " --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml" +

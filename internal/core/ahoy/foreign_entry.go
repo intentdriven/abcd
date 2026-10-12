@@ -8,7 +8,6 @@ import (
 	"os"
 	"regexp"
 	"runtime/debug"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -103,6 +102,21 @@ func buildValue(s string, n int, mark string) string {
 	return string([]rune(s)[:n]) + mark
 }
 
+// releaseWorkflowTag is the tag shape release.yml refuses to build any other
+// than (its tag_re): a core version with at most one pre-release or
+// build-metadata suffix.
+var releaseWorkflowTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$`)
+
+// buildSetting is one build setting's value, or "".
+func buildSetting(bi *debug.BuildInfo, key string) string {
+	for _, s := range bi.Settings {
+		if s.Key == key {
+			return s.Value
+		}
+	}
+	return ""
+}
+
 // pseudoVersionTail is the commit stamp a Go pseudo-version ends in
 // (yyyymmddhhmmss-abcdefabcdef): the version Go gives a build from an
 // untagged commit, which names no release.
@@ -125,16 +139,16 @@ func releaseTagOfBinary(data []byte) (string, error) {
 }
 
 // releaseOfBuild is the release an abcd build claims: the main module version
-// Go stamps from the release tag the build was made at. A release build is
-// made at its tag from a clean tree, so anything else (a source build's
-// (devel), a pseudo-version from an untagged commit, a +dirty tree, or
-// another program) names no release.
+// Go stamps from the release tag the build was made at, in the shape
+// release.yml admits. A release build is made at its tag from a clean tree,
+// so anything else (a source build's (devel), a pseudo-version from an
+// untagged commit, a modified tree, or another program) names no release.
 func releaseOfBuild(bi *debug.BuildInfo) (string, error) {
 	if bi.Path != abcdMainPackage {
 		return "", errors.New("it is not an abcd build: a Go program built from " + buildValue(bi.Path, maxBuildValueRunes, "…"))
 	}
 	v := bi.Main.Version
-	if _, ok := parseReleaseTag(v); !ok || strings.Contains(v, "+") || pseudoVersionTail.MatchString(v) {
+	if !releaseWorkflowTag.MatchString(v) || pseudoVersionTail.MatchString(v) || buildSetting(bi, "vcs.modified") == "true" {
 		if v == "" {
 			v = "none"
 		}

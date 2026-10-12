@@ -118,7 +118,8 @@ same check `abcd update` makes, bound to the commit of the release the
 attestation names, so it reaches GitHub's attestations and git APIs and the
 Sigstore TUF repository; when that check fails or cannot run, offline
 included, it writes no entry and says what failed. An entry that already holds
-those bytes is left as it is without asking. Neither
+those bytes is not written again, but its provenance is still checked, and
+if that fails it is left as it is and reported as not verified. Neither
 record counts when `~/.abcd.noindex` is a symlink — a dotfiles checkout, say — and
 nothing abcd writes goes through one: the hooks, the install verb and the
 one-liner each refuse it and say so, as the rules loader refuses a
@@ -128,8 +129,8 @@ the plugin root, which the next plugin update would break: it says which record
 is missing or disagrees, and names the command to run first, the
 [install](#cli) one-liner, after which re-running the install adopts the copy
 the one-liner wrote, once that copy passes the same build-provenance check,
-bound to the release its build metadata names. Every later install on a cold
-cache checks the copy again. A copy that fails, or that cannot be checked, is
+bound to the release its build metadata names. Every later install checks the
+copy again, whether or not the cache is there. A copy that fails, or that cannot be checked, is
 left as it is and not adopted: the install says what failed, gives the
 `gh attestation verify` command for that file, and reports itself only partly
 done rather than set up. A symlink into the plugin root that an earlier release

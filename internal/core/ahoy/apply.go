@@ -179,12 +179,12 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 				OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 			}, nil
 		}
-		// An owned copy on a cold cache is the entry this run would report as
-		// abcd's without promoting anything, so it is verified first,
-		// read-only, and a copy that fails keeps the run from being reported
-		// up to date (iss-2610120955431790).
-		if !opts.Dev && coldOwnedCopy(binTargetPath, det.pluginRoot, abs) {
-			if note, check := checkOwnedCopy(binTargetPath, opts.VerifyProvenance); note != "" {
+		// An owned copy is the entry this run would report as abcd's without
+		// promoting anything, so it is verified first, read-only, and a copy
+		// that fails keeps the run from being reported up to date
+		// (iss-2610120955431790).
+		if !opts.Dev {
+			if note, check := entryCopyCheck(binTargetPath, det.pluginRoot, abs, opts.VerifyProvenance); note != "" {
 				return InstallResult{
 					Status:          "partial",
 					Remaining:       []string{UnverifiedCopyGapID},
@@ -1394,10 +1394,10 @@ func (a *applyCtx) stepSymlink() {
 	gapDriven := a.approved[ConfigChange] &&
 		(a.has("symlink.missing") || a.has("symlink.dangling") || a.has("symlink.legacy") || a.has("symlink.superseded"))
 	if a.det.pluginRoot == "" || (!gapDriven && !a.modeForced) {
-		// Nothing is written, but an owned copy on a cold cache is still the
-		// entry this run reports as abcd's, so it is verified first, read-only
+		// Nothing is written, but an owned copy is still the entry this run
+		// reports as abcd's, so it is verified first, read-only
 		// (iss-2610120955431790).
-		if !a.devMode && coldOwnedCopy(a.binTarget, a.det.pluginRoot, a.cwd) {
+		if !a.devMode {
 			a.adoptOwnedCopy(a.binTarget)
 		}
 		return
@@ -1494,7 +1494,7 @@ func entryAnswers(target, pluginRoot string) bool {
 // refuses loudly and installs nothing — and the very bytes that were verified
 // are written 0755 with the provenance recorded in the data dir's path-entry.
 // A legacy owned symlink or a dev shim at the target is replaced (the heal); an
-// owned copy already matching is left alone, and so is an owned copy whose
+// owned copy already matching is left alone once its provenance verifies, and so is an owned copy whose
 // build provenance verifies when there is no usable cache to refresh it from
 // (adoptOwnedCopy). Otherwise, without a usable
 // cache it writes nothing and refuses, naming the command that provides a verified copy
@@ -1599,16 +1599,12 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			" does not match its recorded SHA-256 checksum, so it may be tampered with or corrupted and nothing was installed. Remove that file and start a session with network access to fetch a fresh verified copy.")
 		return
 	}
-	if kind == binTargetOwnedCopy {
-		if cur, ok := fileSHA256Hex(target); ok && cur == want {
-			// Idempotent, and deliberately not re-asked: these bytes equal the
-			// attested cache, and the promotion that wrote them passed the
-			// provenance check below, so a second ask would prove nothing new.
-			// The cold-cache copy has no such cache to equal, which is why
-			// checkOwnedCopy verifies it (iss-2610120955431790).
-			return
-		}
-	}
+	// An entry already holding these bytes is not written again, but it is
+	// checked like any other: the bootstrap refreshes the PATH copy from the
+	// cache on the same-page checksum alone where gh cannot verify, so equal
+	// bytes are no proof that a provenance check ever passed.
+	cur, _ := fileSHA256Hex(target)
+	equal := kind == binTargetOwnedCopy && cur == want
 	// The attested hash came from checksums.txt on the same release page as
 	// the binary, so it proves the cache arrived intact, not who built it:
 	// whoever can change that page can change both (iss-2610120617515834).
@@ -1622,12 +1618,20 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	// release's genuine build re-uploaded under a newer tag. An attestation
 	// naming no release hands the check no tag, and the check refuses it.
 	if perr := a.verifyProvenance(att.releaseTag, sum[:]); perr != nil {
+		if equal {
+			a.unverifiedCheck = ghAttestationVerifyCommand(target, att.releaseTag)
+			a.refuse(unverifiedCopyNote(target, perr, a.unverifiedCheck))
+			return
+		}
 		a.refuse("refused to install the PATH entry: the cached artefact " + displayPath(artefact) +
 			" matches the checksum the plugin bootstrap verified, but its build provenance could not be verified, so nothing was installed: " +
 			errText(perr) + ". That checksum came from the same release page as the binary, so only the provenance the release workflow signed shows who built it. " +
 			"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check the release by hand with `" +
 			ghAttestationVerifyCommand(cacheAssetName(), att.releaseTag) + "` after downloading it. " + coldCacheRemedy)
 		return
+	}
+	if equal {
+		return // the entry already is the verified artefact
 	}
 	if kind == binTargetOwnedSymlink || kind == binTargetDevShim {
 		if err := os.Remove(target); err != nil {
@@ -1646,35 +1650,59 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	a.note(writeCommandEntry, target)
 }
 
-// adoptOwnedCopy adopts the owned copy at target on a cold cache only when
-// its build provenance verifies (iss-2610120955431790), and otherwise records
-// the refusal and the outstanding gap the run's status reports.
+// adoptOwnedCopy checks the owned copy at target that this run reports as
+// abcd's without writing it (entryCopyCheck), and records the refusal and the
+// outstanding gap the run's status reports when it fails
+// (iss-2610120955431790).
 func (a *applyCtx) adoptOwnedCopy(target string) {
-	if note, check := checkOwnedCopy(target, a.provenance); note != "" {
+	if note, check := entryCopyCheck(target, a.det.pluginRoot, a.cwd, a.provenance); note != "" {
 		a.refuse(note)
 		a.unverifiedCheck = check
 	}
 }
 
-// checkOwnedCopy verifies the owned copy at target before a run calls it
-// abcd's entry, read-only. The copy was written by an earlier promotion, by
-// abcd update, or by the install one-liner, which without gh checks only the
-// same-page checksums.txt; calling it abcd's unchecked would let it stand on a
-// weaker check than any promotion. The bytes are read once and hashed, and the
-// check is the one a promotion runs, bound to the release the copy's own build
-// metadata names (read, never run), so an older release's genuine build fails
-// it as a newer one. On failure it returns the refusal note and the hand check
-// for the file; a copy that fails is not adopted and is left as it is: it is
+// entryCopyCheck verifies the owned copy at target before a run that writes
+// nothing there calls it abcd's entry, read-only; anything else at target is
+// not this check's. A copy holding the bytes of a cache the attestation binds
+// is checked as the release that attestation names, the binding the release
+// mark keeps from going backwards; any other copy (a cold cache, or bytes the
+// cache does not hold) as the release its own build metadata names.
+func entryCopyCheck(target, pluginRoot, cwd string, provenance ProvenanceCheck) (note, handCheck string) {
+	if target == "" || classifyBinTarget(target, pluginRoot) != binTargetOwnedCopy {
+		return "", ""
+	}
+	bound := ""
+	if ownedCopySourceReady(cwd, pluginRoot) {
+		if att, problem := cacheBindingProblem(pluginDataDir(pluginRoot).dir); problem == "" {
+			if cur, ok := fileSHA256Hex(target); ok && cur == att.sha {
+				bound = att.releaseTag
+			}
+		}
+	}
+	return checkOwnedCopy(target, bound, provenance)
+}
+
+// checkOwnedCopy verifies the owned copy at target, read-only. The copy was
+// written by a promotion, by abcd update, by the bootstrap's refresh, or by
+// the install one-liner, and the last two check only the same-page
+// checksums.txt where gh cannot verify; calling it abcd's unchecked would let
+// it stand on a weaker check than any promotion. The bytes are read once and
+// hashed, and the check is the one a promotion runs, bound to tag or, when
+// tag is empty, to the release the copy's own build metadata names (read,
+// never run). On failure it returns the refusal note and the hand check for
+// the file; a copy that fails is not adopted and is left as it is: it is
 // abcd's own record's, and removing it would leave no abcd at all.
-func checkOwnedCopy(target string, provenance ProvenanceCheck) (note, handCheck string) {
-	at := displayPath(target)
+func checkOwnedCopy(target, tag string, provenance ProvenanceCheck) (note, handCheck string) {
 	data, err := fsutil.ReadGuarded(target, maxBinaryArtefactBytes)
 	if err != nil {
-		return "refused to adopt the PATH entry " + at + ": it could not be read to verify its build provenance (" + errText(err) + "), so it was not adopted and was left as it is.",
+		return "refused to adopt the PATH entry " + displayPath(target) + ": it could not be read to verify its build provenance (" + errText(err) + "), so it was not adopted and was left as it is.",
 			ghAttestationVerifyCommand(target, "")
 	}
 	sum := sha256.Sum256(data)
-	tag, perr := copyRelease(data)
+	var perr error
+	if tag == "" {
+		tag, perr = copyRelease(data)
+	}
 	if perr == nil {
 		if provenance == nil {
 			perr = errors.New("no build-provenance check is configured for this run")
@@ -1686,21 +1714,17 @@ func checkOwnedCopy(target string, provenance ProvenanceCheck) (note, handCheck 
 		return "", ""
 	}
 	handCheck = ghAttestationVerifyCommand(target, tag)
-	return "refused to adopt the PATH entry " + at + ": the copy there is the one " + abcdhome.Display("path-entry") +
+	return unverifiedCopyNote(target, perr, handCheck), handCheck
+}
+
+// unverifiedCopyNote is the refusal for an owned copy left on PATH whose
+// build provenance did not verify.
+func unverifiedCopyNote(target string, perr error, handCheck string) string {
+	return "refused to adopt the PATH entry " + displayPath(target) + ": the copy there is the one " + abcdhome.Display("path-entry") +
 		" records, but its build provenance could not be verified, so it was not adopted and was left as it is: " +
 		errText(perr) + ". Its recorded checksum shows only that it is the file that was installed, not who built it; only the provenance the release workflow signed shows that. " +
 		"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check it by hand with `" +
-		handCheck + "`. " + coldCacheRemedy, handCheck
-}
-
-// coldOwnedCopy reports whether target is abcd's owned copy with no verified
-// cache to refresh it from: the one entry a run accepts without promoting
-// anything, so the one checkOwnedCopy must vouch for. A warm cache is not
-// this case: a copy matching it holds the bytes the promotion that wrote them
-// verified, and one that does not is refreshed from it through the promotion's
-// own check.
-func coldOwnedCopy(target, pluginRoot, cwd string) bool {
-	return target != "" && classifyBinTarget(target, pluginRoot) == binTargetOwnedCopy && !ownedCopySourceReady(cwd, pluginRoot)
+		handCheck + "`. " + coldCacheRemedy
 }
 
 // verifyProvenance runs the front door's build-provenance check; a run

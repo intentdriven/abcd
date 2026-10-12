@@ -107,29 +107,85 @@ func TestInstallRefusesWhenNoProvenanceCheckIsConfigured(t *testing.T) {
 	}
 }
 
-// TestInstallLeavesAMatchingCopyWithoutAsking: an entry that already is the
-// attested artefact is not written again, so nothing is promoted and the
-// network is not asked.
-func TestInstallLeavesAMatchingCopyWithoutAsking(t *testing.T) {
+// TestInstallChecksAMatchingCopyAndLeavesIt: an entry that already holds the
+// attested artefact is not written again, but its provenance is still
+// checked, bound to the attested release. The bootstrap refreshes the PATH
+// copy from the cache on a checksum alone where gh cannot verify, so equal
+// bytes are no proof that a provenance check ever passed.
+func TestInstallChecksAMatchingCopyAndLeavesIt(t *testing.T) {
 	repo, target := boundCacheInstall(t)
+	data := os.Getenv("CLAUDE_PLUGIN_DATA")
+	writeUserCacheAttestation(t, attestationBodyAt(data, "v0.13.4", cacheArtefact))
 	first := installOpts()
-	first.VerifyProvenance = (&recordingProvenance{}).check
 	if _, err := Install(repo, first, RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	rec := &recordingProvenance{err: errors.New("must not be asked")}
+	before, _ := os.Stat(target)
+	rec := &recordingProvenance{}
 	again := installOpts()
 	again.VerifyProvenance = rec.check
 	res, err := Install(repo, again, RefusingPrompter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.asked) != 0 {
-		t.Errorf("an entry already holding the attested bytes needs no promotion; asked %x, notes %v", rec.asked, res.Notes)
+	want := sha256.Sum256(cacheArtefact)
+	if len(rec.asked) != 1 || string(rec.asked[0]) != string(want[:]) || rec.tags[0] != "v0.13.4" {
+		t.Fatalf("a matching copy must be checked once, as the attested v0.13.4; asked %x for %q, notes %v", rec.asked, rec.tags, res.Notes)
 	}
+	if res.Status != "already_up_to_date" {
+		t.Errorf("a genuine matching copy leaves the repository up to date: %q, notes %v", res.Status, res.Notes)
+	}
+	after, _ := os.Stat(target)
+	if got, _ := os.ReadFile(target); string(got) != string(cacheArtefact) || !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("the verified copy must be left in place, unwritten")
+	}
+}
+
+// TestInstallReportsAMatchingCopyWhoseCheckFails: the bootstrap's
+// checksum-only refresh put the cache's bytes on PATH, and the check fails:
+// the copy is left as it is and the run reports it unverified, never clean.
+func TestInstallReportsAMatchingCopyWhoseCheckFails(t *testing.T) {
+	repo, target := boundCacheInstall(t)
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{err: errors.New("no build-provenance attestation is published")}).check
+	res, err := Install(repo, opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnverifiedCopyReported(t, res, target)
 	if got, _ := os.ReadFile(target); string(got) != string(cacheArtefact) {
-		t.Errorf("the verified copy must stay in place")
+		t.Errorf("the check is read-only, yet the copy changed")
 	}
+}
+
+// TestGapDrivenMatchingCopyWhoseCheckFailsIsUnverified: the same, with a
+// stranded entry ahead driving the install step onto the matching copy.
+func TestGapDrivenMatchingCopyWhoseCheckFailsIsUnverified(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	stale := filepath.Join(t.TempDir(), "usr-local-bin")
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	data := t.TempDir()
+	seedDataCacheAt(t, data, cacheArtefact)
+	attestDataCache(t, data, cacheArtefact)
+	t.Setenv("CLAUDE_PLUGIN_DATA", data)
+	repo := adoptableRepo(t)
+	target := filepath.Join(binDir, "abcd")
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stale+string(os.PathListSeparator)+binDir)
+	linkStranded(t, filepath.Join(stale, "abcd"), pluginRoot)
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{err: errors.New("no build-provenance attestation is published")}).check
+	res, err := Install(repo, opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnverifiedCopyReported(t, res, target)
 }
 
 // TestInstallBindsTheProvenanceCheckToTheAttestedRelease: the check is asked
