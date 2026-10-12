@@ -105,6 +105,70 @@ func TestGraveyardIsTheOnlySectionGroundedAtTierGit(t *testing.T) {
 	}
 }
 
+// TestPersonasPredictionMatchesTheProbe holds the personas row to what the probe
+// measures (iss-2610102343100369). The native personas adapter grounds the
+// section from an authored brief file, is partial from a stub and blank with
+// none, so the best status abcd-native can reach is the best of those three; no
+// poorer tier has a personas adapter, so git and conventions stay blank. A row
+// that predicts a different ceiling is a prediction the probe has already
+// overturned, and the table is what loses.
+func TestPersonasPredictionMatchesTheProbe(t *testing.T) {
+	const section Section = "product/personas"
+	const file = ".abcd/development/brief/01-product/05-personas.md"
+	prose := "Who the work is for is written here by the people who know it: the " +
+		"roles the product serves, what each needs from it, and why the work is " +
+		"shaped for them, so a reader meets the audience without reconstructing " +
+		"it from the history or asking the people who settled it.\n"
+
+	fixtures := map[string]map[string]string{
+		"authored": {file: "# Personas\n\n" + prose},
+		"stub":     {file: "# Personas\n\nTODO.\n"},
+		"none":     {"README.md": "# Project\n"},
+	}
+	want := map[string]Status{"authored": StatusGrounded, "stub": StatusPartial, "none": StatusBlank}
+
+	ceiling := StatusBlank
+	for name, tree := range fixtures {
+		dir := t.TempDir()
+		writeTree(t, dir, tree)
+		ctx, err := newSourceContext(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ev := nativeSourceForSection(t, section).Probe(ctx)
+		ctx.Close()
+		if ev.Status != want[name] {
+			t.Errorf("%s probe with %s brief file = %s, want %s", section, name, ev.Status, want[name])
+		}
+		if ev.Status.rank() > ceiling.rank() {
+			ceiling = ev.Status
+		}
+	}
+
+	for _, s := range append(gitSources(), conventionSources()...) {
+		if s.Section() == section {
+			t.Errorf("a tier-%s source speaks for %s; the blank predictions below abcd-native need revisiting", s.Tier(), section)
+		}
+	}
+
+	for _, m := range Table {
+		if m.Section != section {
+			continue
+		}
+		if m.Native != ceiling {
+			t.Errorf("lifeboat.Table predicts %s at tier %s as %q, but the probe reaches %q there "+
+				"(grounded from an authored brief file, partial from a stub, blank with none)",
+				section, TierNative, m.Native, ceiling)
+		}
+		if m.Git != StatusBlank || m.Conventions != StatusBlank {
+			t.Errorf("lifeboat.Table predicts %s as %q at %s and %q at %s; no adapter below %s reads it, so both are blank",
+				section, m.Git, TierGit, m.Conventions, TierConventions, TierNative)
+		}
+		return
+	}
+	t.Fatalf("lifeboat.Table has no %s row", section)
+}
+
 // TestEveryBriefSectionHasARow is the exhaustiveness detector. A brief section
 // with no row in the table is worse than one the probe reports as blank: a blank
 // names a question a human must answer, whereas a missing row is never reported
