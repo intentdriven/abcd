@@ -39,10 +39,12 @@ type RecallPage struct {
 }
 
 // RecallRefusal names a scope or a page the read refused, and why. File is
-// the store-relative or tilde form, never an expanded home.
+// the store-relative or tilde form, never an expanded home; Filename is the
+// refused page's own name, "" when the whole scope was refused.
 type RecallRefusal struct {
-	File string
-	Err  error
+	File     string
+	Filename string
+	Err      error
 }
 
 // machineStoreDisplay is the machine page scope as a message names it.
@@ -53,8 +55,10 @@ const workspaceStoreDisplay = ".abcd/memory/"
 
 // ReadRecallPages reads the workspace store under repoRoot through the store
 // handle: a symlinked or swapped store is refused whole, each page is read
-// through the handle's guarded read. An absent store yields nothing. Only
-// pages the index lists whose names are <type>_<domain>_<slug>.md are read.
+// through the handle's guarded read. An absent store yields nothing. The
+// pages read are those index.md is rendered from (the store's top-level page
+// files, storeHandle.pageNames) whose names are <type>_<domain>_<slug>.md;
+// index.md itself is never read.
 func ReadRecallPages(repoRoot string) ([]RecallPage, []RecallRefusal) {
 	store, err := openStore(repoRoot)
 	if err != nil {
@@ -113,7 +117,7 @@ func recallPagesFrom(store *storeHandle, shown string, read func(string, int64) 
 		}
 		raw, err := read(name, maxMemoryPageBytes)
 		if err != nil {
-			refused = append(refused, RecallRefusal{File: shown + name, Err: recallReadError(err)})
+			refused = append(refused, RecallRefusal{File: shown + name, Filename: name, Err: recallReadError(err)})
 			continue
 		}
 		p := parsePage(string(raw))

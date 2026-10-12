@@ -181,3 +181,26 @@ func TestPageItemsCarryTheirIngestDate(t *testing.T) {
 		t.Fatalf("items = %+v", items)
 	}
 }
+
+// TestAWorkspacePageShadowsTheMachinePageEvenWhenItIsSilent: the project's
+// page of a name is the page of that name whether or not it can come back —
+// one with no recall list, and one the read refuses (over the page cap) —
+// so the machine's page of the same name never stands in for it.
+func TestAWorkspacePageShadowsTheMachinePageEvenWhenItIsSilent(t *testing.T) {
+	home, repo, workspace, machine := pagesFixture(t)
+	writePage(t, workspace, "fact_eng_silent.md", "# The project's page, with no recall list\n")
+	writePage(t, machine, "fact_eng_silent.md", "# The person's page of the same name\n", "auth")
+	big := filepath.Join(workspace, "fact_eng_too-big.md")
+	if err := os.WriteFile(big, []byte("---\nrecall: [auth]\n---\n# Big\n"+strings.Repeat("x", 4<<20)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writePage(t, machine, "fact_eng_too-big.md", "# The person's page named like the refused one\n", "auth")
+
+	items, refused := ReadItems(home, repo)
+	if len(items) != 0 {
+		t.Fatalf("a machine page stood in for the project's page of its name: %+v", items)
+	}
+	if len(refused) != 1 || refused[0].File != ".abcd/memory/fact_eng_too-big.md" {
+		t.Fatalf("refused = %+v", refused)
+	}
+}

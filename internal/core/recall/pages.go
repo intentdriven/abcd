@@ -16,10 +16,14 @@ const PageKeyPrefix = "page:"
 // pageItems turns both page scopes into items, in key order. A page of the
 // same <type>_<domain>_<slug> name in both scopes is the workspace's: the
 // narrower scope's page is the page of that name, and the machine's is
-// suppressed, whether or not the workspace page carries a recall list. A page
-// with no recall: list is never an item, so it is never a candidate.
-func pageItems(workspace, machine []memory.RecallPage) []Item {
+// suppressed, whether or not the workspace page carries a recall list, and
+// when the workspace page could not be read (refusedHere names those). A
+// page with no recall: list is never an item, so it is never a candidate.
+func pageItems(workspace, machine []memory.RecallPage, refusedHere ...string) []Item {
 	shadowed := map[string]bool{}
+	for _, name := range refusedHere {
+		shadowed[name] = true
+	}
 	var out []Item
 	for _, p := range workspace {
 		shadowed[p.Filename] = true
@@ -51,10 +55,16 @@ func readPages(home, repoRoot string) ([]Item, []Refusal) {
 	workspace, wr := memory.ReadRecallPages(repoRoot)
 	machine, mr := memory.ReadMachineRecallPages(home)
 	var refused []Refusal
+	var refusedHere []string
+	for _, r := range wr {
+		if r.Filename != "" {
+			refusedHere = append(refusedHere, r.Filename)
+		}
+	}
 	for _, r := range append(wr, mr...) {
 		refused = append(refused, Refusal{File: r.File, Reason: reason(r.Err), Kind: KindPage})
 	}
-	return pageItems(workspace, machine), refused
+	return pageItems(workspace, machine, refusedHere...), refused
 }
 
 // ReadItems is every note and page in reach, in id order — notes (mem-…)
