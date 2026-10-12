@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,6 +39,9 @@ func sampleState() State {
 			History: []HistoryEntry{{
 				Verdict: "vulnerability", DecidedBy: "Alice", DecidedAt: at,
 			}},
+		}},
+		Pending: []PendingAdvisory{{
+			GHSAID: "GHSA-mmmm-mmmm-mmmm", Title: "a pending example title", CVEID: strp("CVE-2026-0002"), ForgeState: "triage",
 		}},
 	}
 }
@@ -93,7 +97,7 @@ func TestStateRefusesUnknownKey(t *testing.T) {
 // held to its shape.
 func TestStateRefusesMalformedEntries(t *testing.T) {
 	for name, mutate := range map[string]func(*State){
-		"schema":        func(st *State) { st.SchemaVersion = 2 },
+		"schema":        func(st *State) { st.SchemaVersion = SchemaVersion + 1 },
 		"repo":          func(st *State) { st.Repo = "example/../x" },
 		"ghsa":          func(st *State) { st.Advisories[0].GHSAID = "GHSA-1111-1111-1111" },
 		"issue":         func(st *State) { st.Advisories[0].IssueID = "iss-x" },
@@ -103,6 +107,14 @@ func TestStateRefusesMalformedEntries(t *testing.T) {
 		"cve":           func(st *State) { st.Advisories[0].CVEID = strp("CVE-26-1") },
 		"duplicate":     func(st *State) { st.Advisories[1].GHSAID = st.Advisories[0].GHSAID },
 		"duplicate iss": func(st *State) { st.Advisories[1].IssueID = st.Advisories[0].IssueID },
+		"pending ghsa":  func(st *State) { st.Pending = []PendingAdvisory{{GHSAID: "GHSA-1111-1111-1111", ForgeState: "triage"}} },
+		"pending state": func(st *State) { st.Pending = []PendingAdvisory{{GHSAID: "GHSA-mmmm-mmmm-mmmm", ForgeState: "open"}} },
+		"pending cve": func(st *State) {
+			st.Pending = []PendingAdvisory{{GHSAID: "GHSA-mmmm-mmmm-mmmm", ForgeState: "triage", CVEID: strp("x")}}
+		},
+		"pending held": func(st *State) {
+			st.Pending = []PendingAdvisory{{GHSAID: st.Advisories[0].GHSAID, ForgeState: "triage"}}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := openedStore(t)
@@ -148,6 +160,34 @@ func TestStateWrittenOwnerOnly(t *testing.T) {
 	if err := os.Symlink(target, s.StatePath()); err != nil {
 		t.Fatal(err)
 	}
+	_, err = s.Verify()
+	mustRefuse(t, err, "state")
+}
+
+// TestStateReadsSchemaOne: a state written before the pending list existed
+// (schema 1) is read as the current schema with nothing pending, and the next
+// save writes the current schema; a schema-1 file that carries a pending list
+// was not written by any abcd and is refused.
+func TestStateReadsSchemaOne(t *testing.T) {
+	s := openedStore(t)
+	writeState(t, s, `{"schema_version":1,"repo":"example/example","intake_at":null,"advisories":[`+
+		`{"ghsa_id":"GHSA-xxxx-xxxx-xxxx","issue_id":"iss-2610120000000001","title":"an example title","cve_id":null,`+
+		`"severity":"major","forge_state":"draft","verdict":null,"decided_by":null,"decided_at":null,"reason":null,`+
+		`"closed_at":null,"published_at":null}]}`)
+	st, err := s.Verify()
+	if err != nil {
+		t.Fatalf("a schema-1 state was refused: %v", err)
+	}
+	if st.SchemaVersion != SchemaVersion || len(st.Advisories) != 1 || len(st.Pending) != 0 {
+		t.Fatalf("schema-1 state read as %+v", st)
+	}
+	if err := s.SaveState(st); err != nil {
+		t.Fatal(err)
+	}
+	if data := readFile(t, s.StatePath()); !strings.Contains(data, `"schema_version": 2`) {
+		t.Fatalf("the save did not write the current schema:\n%s", data)
+	}
+	writeState(t, s, `{"schema_version":1,"repo":"example/example","intake_at":null,"advisories":[],"pending":[]}`)
 	_, err = s.Verify()
 	mustRefuse(t, err, "state")
 }

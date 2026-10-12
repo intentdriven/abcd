@@ -18,8 +18,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// SchemaVersion is the one state shape this package reads and writes.
-const SchemaVersion = 1
+// SchemaVersion is the state shape this package writes. Schema 1, which had
+// no pending list, is still read (loadState), as a state with nothing pending.
+const SchemaVersion = 2
 
 // StateRel is the state file's path inside the store, slash-separated. It
 // sits in the local tier, which every worktree of an abcd repository ignores,
@@ -64,6 +65,19 @@ type State struct {
 	Repo          string     `json:"repo"`
 	IntakeAt      *time.Time `json:"intake_at"`
 	Advisories    []Advisory `json:"advisories"`
+	// Pending are the advisories the last intake listed with no severity
+	// this abcd maps: no record is minted for them, but they are under
+	// embargo all the same, so the outbound check refuses them.
+	Pending []PendingAdvisory `json:"pending"`
+}
+
+// PendingAdvisory is an advisory held without a record until GitHub gives it
+// a severity: what the deny set needs of it, and no more.
+type PendingAdvisory struct {
+	GHSAID     string  `json:"ghsa_id"`
+	Title      string  `json:"title"`
+	CVEID      *string `json:"cve_id"`
+	ForgeState string  `json:"forge_state"`
 }
 
 // Advisory is one advisory the store holds. A nullable field is a pointer, so
@@ -95,7 +109,9 @@ type HistoryEntry struct {
 }
 
 // emptyState is what a store with no state file holds.
-func emptyState() State { return State{SchemaVersion: SchemaVersion, Advisories: []Advisory{}} }
+func emptyState() State {
+	return State{SchemaVersion: SchemaVersion, Advisories: []Advisory{}, Pending: []PendingAdvisory{}}
+}
 
 // validate holds every field a reader relies on to its shape. Its messages
 // name the field and the entry's position, never a value: the values are the
@@ -138,6 +154,20 @@ func (st State) validate() error {
 		}
 		ghsas[a.GHSAID], issues[a.IssueID] = true, true
 	}
+	for i, p := range st.Pending {
+		where := fmt.Sprintf("pending advisory %d", i+1)
+		switch {
+		case !ghsaRe.MatchString(p.GHSAID):
+			return fmt.Errorf("%s: ghsa_id is not a GitHub advisory id", where)
+		case !slices.Contains(ForgeStates, p.ForgeState):
+			return fmt.Errorf("%s: forge_state is not one of %s", where, strings.Join(ForgeStates, ", "))
+		case p.CVEID != nil && !cveRe.MatchString(*p.CVEID):
+			return fmt.Errorf("%s: cve_id is not a CVE id", where)
+		case ghsas[p.GHSAID]:
+			return fmt.Errorf("%s: its advisory is held twice", where)
+		}
+		ghsas[p.GHSAID] = true
+	}
 	return nil
 }
 
@@ -174,6 +204,17 @@ func (s Store) loadState() (State, error) {
 	if st.Advisories == nil {
 		st.Advisories = []Advisory{}
 	}
+	// Schema 1 is schema 2 without the pending list: read it as a state with
+	// nothing pending. One that carries the list was written by no abcd.
+	if st.SchemaVersion == 1 {
+		if st.Pending != nil {
+			return State{}, refuseState("schema_version is 1, which has no pending list, and it carries one")
+		}
+		st.SchemaVersion = SchemaVersion
+	}
+	if st.Pending == nil {
+		st.Pending = []PendingAdvisory{}
+	}
 	if err := st.validate(); err != nil {
 		return State{}, refuseState(err.Error())
 	}
@@ -185,6 +226,9 @@ func (s Store) loadState() (State, error) {
 func (s Store) SaveState(st State) error {
 	if st.Advisories == nil {
 		st.Advisories = []Advisory{}
+	}
+	if st.Pending == nil {
+		st.Pending = []PendingAdvisory{}
 	}
 	if err := st.validate(); err != nil {
 		return refuseState(err.Error() + "; nothing was written")

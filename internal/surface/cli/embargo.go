@@ -114,7 +114,7 @@ func renderEmbargoIntake(w io.Writer, res embargo.IntakeResult) {
 		fmt.Fprintf(w, "  minted %s for %s (%s)\n", m.IssueID, m.GHSAID, m.Severity)
 	}
 	for _, id := range res.NeedsSeverity {
-		fmt.Fprintf(w, "  not recorded: %s has no severity this abcd maps; set it on GitHub, then run intake again\n", id)
+		fmt.Fprintf(w, "  no record yet: %s has no severity this abcd maps, and the check holds it under embargo; set it on GitHub, then run intake again\n", id)
 	}
 	created := ""
 	if res.StoreCreated {

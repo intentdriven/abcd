@@ -236,7 +236,7 @@ func TestIntakeIsIdempotent(t *testing.T) {
 
 // TestIntakeListsNullSeverityAndMintsNothing: an advisory GitHub gives no
 // severity is listed for the person to set on GitHub; no record is minted for
-// it with a guessed one, and the state does not hold it.
+// it with a guessed one, and the state holds it as pending, with no record.
 func TestIntakeListsNullSeverityAndMintsNothing(t *testing.T) {
 	f, g := intakeFixture(t)
 	g.answer("GET", listPath, "triage", 0, page(t,
@@ -259,6 +259,63 @@ func TestIntakeListsNullSeverityAndMintsNothing(t *testing.T) {
 	}
 	if len(st.Advisories) != 0 {
 		t.Fatalf("state holds %d advisories", len(st.Advisories))
+	}
+	var pending []string
+	for _, p := range st.Pending {
+		pending = append(pending, p.GHSAID+" "+p.Title)
+	}
+	if !slices.Equal(pending, []string{"GHSA-qqqq-qqqq-qqqq another sample report", "GHSA-rrrr-rrrr-rrrr a sample report"}) {
+		t.Fatalf("state pending = %v, want both advisories with their titles", pending)
+	}
+}
+
+// TestCheckRefusesAdvisoryAwaitingSeverity: an advisory intake could not
+// record for want of a severity is still under embargo: a commit naming its
+// title, its id or its reserved CVE id is refused.
+func TestCheckRefusesAdvisoryAwaitingSeverity(t *testing.T) {
+	f, g := intakeFixture(t)
+	a := advisoryJSON("GHSA-rrrr-rrrr-rrrr", "triage", "", "Sample Overflow In The Example Parser", "the sample body")
+	a["cve_id"] = "CVE-2026-0001"
+	g.answer("GET", listPath, "triage", 0, page(t, a))
+	runIntake(t, f)
+
+	r := f.repo
+	base := r.Git("rev-parse", "HEAD")
+	r.Write("notes.txt", "clean\n")
+	r.Commit("fix the sample overflow in the example parser")
+	for _, msg := range []string{"refers to GHSA-rrrr-rrrr-rrrr", "tracked as CVE-2026-0001"} {
+		r.Write("notes.txt", msg+"\n")
+		r.Commit("more")
+	}
+	res, err := Check(CheckRequest{Home: f.home, RepoRoot: r.Root(), Range: base + "..HEAD", Now: func() time.Time { return fixedNow }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryTitle, KindAdvisoryID, KindReservedCVE)
+	if res.UnderEmbargo != 1 {
+		t.Fatalf("under_embargo = %d, want the pending advisory counted", res.UnderEmbargo)
+	}
+}
+
+// TestIntakeMintsPendingOnceSeverityIsSet: an advisory held pending is minted
+// when GitHub gives it a severity, and leaves the pending list.
+func TestIntakeMintsPendingOnceSeverityIsSet(t *testing.T) {
+	f, g := intakeFixture(t)
+	g.answer("GET", listPath, "triage", 1, page(t,
+		advisoryJSON("GHSA-rrrr-rrrr-rrrr", "triage", "", "a sample report", "the sample body")))
+	g.answer("GET", listPath, "triage", 2, page(t,
+		advisoryJSON("GHSA-rrrr-rrrr-rrrr", "triage", "low", "a sample report", "the sample body")))
+	runIntake(t, f)
+	res := runIntake(t, f)
+	if len(res.Minted) != 1 || res.Minted[0].GHSAID != "GHSA-rrrr-rrrr-rrrr" {
+		t.Fatalf("second run minted %+v", res.Minted)
+	}
+	st, err := Store{Root: res.Store, Checkout: f.repo.Root()}.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Pending) != 0 || len(st.Advisories) != 1 {
+		t.Fatalf("state holds %d pending and %d advisories, want 0 and 1", len(st.Pending), len(st.Advisories))
 	}
 }
 

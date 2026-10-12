@@ -38,8 +38,9 @@ record for each one not seen before. `minted` lists each new record with its
 advisory and severity (high is major, medium and low are minor, critical is
 critical); `held` lists the advisories already held, which are never recorded
 twice; `needs_severity` lists the advisories GitHub gives no severity, which
-are not recorded: tell the user to set the severity on GitHub and run intake
-again. Nothing is written to the public ledger.
+get no record yet but are held under embargo all the same, so the check
+refuses their id, reserved CVE id and title: tell the user to set the severity
+on GitHub and run intake again. Nothing is written to the public ledger.
 
 ## Triage
 

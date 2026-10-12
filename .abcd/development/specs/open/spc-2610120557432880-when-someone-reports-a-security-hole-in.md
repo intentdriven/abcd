@@ -84,7 +84,7 @@ records and the broken state are out of scope (see Out of scope).
 
   ```json
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "repo": "<owner>/<name>",
     "intake_at": "2026-10-11T22:00:00Z",
     "advisories": [
@@ -101,6 +101,14 @@ records and the broken state are out of scope (see Out of scope).
         "reason": null,
         "closed_at": null,
         "published_at": null
+      }
+    ],
+    "pending": [
+      {
+        "ghsa_id": "GHSA-wwww-wwww-wwww",
+        "title": "<the advisory summary>",
+        "cve_id": null,
+        "forge_state": "triage"
       }
     ]
   }
@@ -148,6 +156,10 @@ repository_advisories:write` as the remedy; abcd never runs `gh auth` itself.
 `critical` -> `critical`, `high` -> `major`, `medium` -> `minor`, `low` ->
 `minor`. A null or unknown severity is not mapped: the advisory is listed
 under `needs_severity` and no record is minted (unrecognized-input-never-writes).
+It is still under embargo, so the state holds it in a `pending` list (its id,
+title, reserved CVE id and forge state, no record), rebuilt from each intake's
+listing, and the outbound check's deny set includes it. The pending list is
+schema 2; a schema-1 state is read as one with nothing pending.
 
 ### Record shape at intake
 
@@ -397,6 +409,13 @@ Fixes from the security review of 2026-10-12, each held by a named test:
   or a named record with any group or other bit, naming the `chmod` that
   restores it (TestStoreRootOwnerOnly, TestVerifyStoreRefusesRootOpenToOthers,
   TestVerifyStoreRefusesRecordOpenToOthers).
+- **Steps 3, 4 and 7, criteria 2 and 6: an advisory with no severity.** It
+  was skipped before it entered the state, so its title and reserved CVE id
+  never joined the deny set. The state (schema 2, reading schema 1) holds it
+  as pending with no record, and the check refuses it
+  (TestIntakeListsNullSeverityAndMintsNothing,
+  TestCheckRefusesAdvisoryAwaitingSeverity,
+  TestIntakeMintsPendingOnceSeverityIsSet, TestStateReadsSchemaOne).
 
 ## Out of scope
 

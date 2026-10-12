@@ -34,7 +34,8 @@ type MintedRecord struct {
 
 // IntakeResult is what an intake did. Held lists the advisories the store
 // already held (refreshed, never recorded twice); NeedsSeverity lists those
-// GitHub gives no severity this abcd maps, for the person to set on GitHub.
+// GitHub gives no severity this abcd maps, for the person to set on GitHub:
+// they get no record, and the state holds them as pending, under embargo.
 type IntakeResult struct {
 	Store         string         `json:"store"`
 	StoreCreated  bool           `json:"store_created"`
@@ -149,6 +150,28 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 	held := map[string]int{}
 	for i, a := range st.Advisories {
 		held[a.GHSAID] = i
+	}
+	// The pending list is rebuilt from this listing before anything is
+	// minted, so every save from here on carries it: an advisory with no
+	// severity this abcd maps gets no record, but it is under embargo, and
+	// the outbound check must refuse its id, CVE id and title. One GitHub no
+	// longer lists in triage or draft has been published or closed there and
+	// leaves the list; an id the store does not hold is still refused as
+	// unlisted.
+	st.Pending = []PendingAdvisory{}
+	for _, id := range ids {
+		a := listed[id]
+		if _, ok := held[id]; ok {
+			continue
+		}
+		if _, ok := MapSeverity(a.Severity); !ok {
+			p := PendingAdvisory{GHSAID: a.GHSAID, Title: a.Summary, ForgeState: a.State}
+			if a.CVEID != nil && *a.CVEID != "" {
+				cve := *a.CVEID
+				p.CVEID = &cve
+			}
+			st.Pending = append(st.Pending, p)
+		}
 	}
 	for _, id := range ids {
 		a := listed[id]

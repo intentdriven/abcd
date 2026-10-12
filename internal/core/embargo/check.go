@@ -447,9 +447,17 @@ func patchPath(p string) string {
 // keeps its records.
 func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 	ds := denySet{held: map[string]bool{}, allowed: allowed, unlisted: true}
+	unpublished := map[string]bool{}
 	for _, a := range st.Advisories {
 		ds.held[canonGHSA(a.GHSAID)] = true
-		if a.PublishedAt == nil && allowed[canonGHSA(a.GHSAID)] {
+		unpublished[canonGHSA(a.GHSAID)] = a.PublishedAt == nil
+	}
+	for _, p := range st.Pending {
+		ds.held[canonGHSA(p.GHSAID)] = true
+		unpublished[canonGHSA(p.GHSAID)] = true
+	}
+	for id := range allowed {
+		if unpublished[id] {
 			return denySet{}, refuse("an --allow value names an unpublished advisory this store holds, which stays under embargo",
 				"drop it from --allow; only an advisory already public may be allowed")
 		}
@@ -479,7 +487,7 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 // each not yet published (a closed one stays private on GitHub, so it stays
 // in the set), by its id and reserved CVE id, and by its title unless it was
 // moved to the public track (that issue is fixed in the open) or is shorter
-// than minTitleRunes.
+// than minTitleRunes; and each pending a severity, the same way.
 func (ds *denySet) addEmbargoed(st State, skip string) {
 	for _, a := range st.Advisories {
 		if a.PublishedAt != nil || (skip != "" && canonGHSA(a.GHSAID) == canonGHSA(skip)) {
@@ -491,10 +499,28 @@ func (ds *denySet) addEmbargoed(st State, skip string) {
 			ds.add(*a.CVEID, KindReservedCVE, true)
 		}
 		if a.Verdict == nil || *a.Verdict != VerdictPublicTrack {
-			if n, _ := normalise(a.Title); utf8.RuneCountInString(strings.TrimSpace(n)) >= minTitleRunes {
-				ds.add(a.Title, KindAdvisoryTitle, true)
-			}
+			ds.addTitle(a.Title)
 		}
+	}
+	// An advisory pending a severity has no record and no verdict, and is
+	// under embargo all the same.
+	for _, p := range st.Pending {
+		if skip != "" && canonGHSA(p.GHSAID) == canonGHSA(skip) {
+			continue
+		}
+		ds.embargo++
+		ds.add(p.GHSAID, KindAdvisoryID, true)
+		if p.CVEID != nil {
+			ds.add(*p.CVEID, KindReservedCVE, true)
+		}
+		ds.addTitle(p.Title)
+	}
+}
+
+// addTitle adds an advisory's title, unless it is shorter than minTitleRunes.
+func (ds *denySet) addTitle(title string) {
+	if n, _ := normalise(title); utf8.RuneCountInString(strings.TrimSpace(n)) >= minTitleRunes {
+		ds.add(title, KindAdvisoryTitle, true)
 	}
 }
 
