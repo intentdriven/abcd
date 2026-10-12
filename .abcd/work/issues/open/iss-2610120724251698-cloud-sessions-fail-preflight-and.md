@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "Makefile"
 remedy: "Make abcd workable from a cloud container: run as a non-root user with gitleaks installed (document the container setup), or make the tests that rely on permission refusals and on gitleaks say plainly that they need a non-root user or gitleaks instead of failing; prove with one container session whose preflight passes and mints a receipt"
+related_intents: [itd-2610120738075547]
 ---
 
 Cloud agent sessions started on 2026-10-12 to work drain-eligible issues all failed abcd's preflight and had git identity problems, so none pushed a branch (the person reported this; the exact errors are with the launching session abcd-0b). abcd's gates assume the local development machine: every commit must name a human author (the attribution gate refuses a machine identity or none), and preflight resolves the go.mod-pinned toolchain and other local prerequisites. A cloud session gets neither by default, so abcd cannot yet be worked from a cloud session.

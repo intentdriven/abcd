@@ -149,6 +149,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on (draft; builds on itd-2609201925079472)
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands (draft)
 - `itd-2610111707085098` — Each session takes a persona name, shown in the status line and the session list (draft)
+- `itd-2610120738075547` — Work handed to a cloud session comes back, or says why not: a prepared and checked machine, a brief per item, a report every session leaves, one list of sessions (draft; builds on itd-2609091034175565; answers the six cloud findings of 2026-10-12)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
