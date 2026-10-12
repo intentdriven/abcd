@@ -467,6 +467,27 @@ narrowest reading that meets the criteria. Each is open to review.
   addresses the finding.
 - **Step 1, the duplicate refusal names the key.** "finding N repeats
   finding M" now ends with the key the two share.
+- **Step 2, the exemption list.** `builds_on_reciprocal` reads its own
+  `exempt_edges` field in `.abcd/record-lint.json`, one `<source> -> <target>`
+  entry per one-way edge. The tree held 155 one-way edges of 217 when the rule
+  landed (the spec measured 136 of 184), and all 155 are listed. A test holds
+  the list at 155 at most. Every entry must still name a `builds_on` edge in the
+  tree, so a dropped edge drops its entry. The test does not demand the edge
+  stay one-way, so answering one never fails a test.
+- **Step 2, where a finding sits.** On the file that declares the link, at the
+  field's line, naming the other file; the key ends the message and is also a
+  `key` field in `--json`.
+- **Step 2, one `routed_from` finding per routing record.** Entries routed from
+  one record share both files and so one key, and are one finding.
+- **Step 2, the item label.** A label counts only bounded on both sides by a
+  character that is not a letter, digit or hyphen.
+- **Step 2, what is judged.** `builds_on` is judged from every store and bucket,
+  superseded records included. `related_issues` is judged on intents only. A
+  record naming itself, or a target named twice, is no extra edge. Where two
+  files claim one id, the first in scan order answers.
+- **Step 2, the citation rule keeps its coverage.** `related_issues` and
+  `routed_from` join the graph fields. `prose_citation_resolves` keeps reading
+  both as prose, so moving them takes no coverage away.
 
 ## Open point
 
