@@ -532,6 +532,112 @@ func assignment(tok string) (name string, val varVal, ok bool) {
 	return tok[:eq], varVal{text: v, ok: !isUnknown(v) && !strings.ContainsRune(v, varMark)}, true
 }
 
+// assignOp splits an assignment word: NAME=VALUE, or NAME+=VALUE, which bash
+// and zsh read as appending VALUE to NAME's value (iss-2610120953445472). eq
+// is the index of the `=`; ok is false for any other word.
+func assignOp(tok string) (name string, eq int, appends, ok bool) {
+	if isAssignment(tok) {
+		eq = strings.IndexByte(tok, '=')
+		return tok[:eq], eq, false, true
+	}
+	eq = strings.IndexByte(tok, '=')
+	if eq > 1 && tok[eq-1] == '+' && isName(tok[:eq-1]) {
+		return tok[:eq-1], eq, true, true
+	}
+	return "", 0, false, false
+}
+
+// assigned is the value the assignment word at i of s gives the tracked
+// variable key, in st: its text where the line fixes it, a PATH value read
+// entry by entry (pathValue), and a `+=` appended to the value before it.
+func (st *shellState) assigned(rc *readCtx, s segment, i int, key string) varVal {
+	tok := s.tokens[i]
+	_, eq, appends, _ := assignOp(tok)
+	v := tok[eq+1:]
+	val := varVal{text: v, ok: !isUnknown(v) && !strings.ContainsRune(v, varMark)}
+	if key == "PATH" && !val.ok {
+		val = st.pathValue(rc, s, i, eq)
+	}
+	if !appends {
+		return val
+	}
+	prev := st.valueBefore(rc, key)
+	if !prev.ok || !val.ok {
+		return varVal{}
+	}
+	return varVal{text: prev.text + val.text, ok: true}
+}
+
+// valueBefore is key's value before an assignment that names it: the line's
+// where it set one, else the account's, which the line does not fix but a
+// search can still reach (accountPath, accountDirs).
+func (st *shellState) valueBefore(rc *readCtx, key string) varVal {
+	if v, set := st.vars[key]; set {
+		return v
+	}
+	switch key {
+	case "PATH":
+		return varVal{text: accountPath, ok: true}
+	case "FPATH":
+		return varVal{text: accountDirs, ok: true}
+	case "HOME":
+		return varVal{text: rc.files.home, ok: rc.files.home != ""}
+	case "CDPATH":
+		return varVal{text: rc.files.cdpath, ok: true}
+	}
+	return varVal{}
+}
+
+// pathValue reads a PATH value holding variables entry by entry, as the
+// search walks it (iss-2610120953445472): a fixed entry is kept, an entry
+// that is $PATH or ${PATH} whole is the value before the assignment, one
+// that $HOME or ${HOME} opens is HOME's value with the rest after it, and
+// any other entry holding a value the line does not fix is unknownText,
+// where a search stops. A word with a substitution's output, or spelled more
+// than one way, is not fixed at all.
+func (st *shellState) pathValue(rc *readCtx, s segment, i, eq int) varVal {
+	tmpl, ok := s.variable[i]
+	sp := s.spelled[i]
+	if !ok || len(sp) != 1 || len(tmpl) <= eq || len(sp[0]) <= eq {
+		return varVal{}
+	}
+	tents := strings.Split(tmpl[eq+1:], ":")
+	sents := strings.Split(sp[0][eq+1:], ":")
+	if len(tents) != len(sents) {
+		return varVal{}
+	}
+	out := make([]string, 0, len(tents))
+	for k, te := range tents {
+		if !strings.ContainsRune(te, varMark) {
+			out = append(out, te)
+			continue
+		}
+		se := sents[k]
+		entry := unknownText
+		switch {
+		case se == "$PATH" || se == "${PATH}":
+			if prev := st.valueBefore(rc, "PATH"); prev.ok {
+				entry = prev.text
+			}
+		case strings.Count(te, varText) == 1 && strings.HasPrefix(te, varText):
+			rest := te[len(varText):]
+			if se == "$HOME"+rest || se == "${HOME}"+rest {
+				if h, ok := st.home(rc); ok && h != "" {
+					entry = h + rest
+				}
+			}
+		}
+		out = append(out, entry)
+	}
+	return varVal{text: strings.Join(out, ":"), ok: true}
+}
+
+// accountPath stands in a PATH the line set for the account's own PATH,
+// which the line put back on the search without fixing it (`PATH=dir:$PATH`,
+// `PATH+=:dir`, `path=(dir $path)`): the search walks the account's entries
+// there, as it walks them where the line sets no PATH.
+const accountPath = "\x02path"
+
 // alwaysExported are the variables every shell inherits exported, so a plain
 // assignment changes what a child sees whatever the line does.
 var alwaysExported = map[string]bool{"HOME": true, "PATH": true}
@@ -547,19 +653,41 @@ var alwaysExported = map[string]bool{"HOME": true, "PATH": true}
 // the line set is read as handed down unless the line itself took the export
 // away (`export -n`, `typeset +x`); where it is not handed down, the child
 // reads the account's own, which stays unseen.
-func (st *shellState) env(s segment, site int) map[string]varVal {
+func (st *shellState) env(rc *readCtx, s segment, site int) map[string]varVal {
 	out := map[string]varVal{}
 	for k, v := range st.vars {
 		if e, set := st.exported[k]; !set || e || alwaysExported[k] {
 			out[k] = v
 		}
 	}
+	for k, v := range st.prefixVars(rc, s, site) {
+		out[k] = v
+	}
+	return out
+}
+
+// prefixVars is the tracked variables the assignments written before the
+// command at site in s set (a prefix, or an env wrapper's), each read in
+// order, so a `+=` appends to the value a prefix before it gave; nil where
+// there is none.
+func (st *shellState) prefixVars(rc *readCtx, s segment, site int) map[string]varVal {
+	var n *shellState
+	var out map[string]varVal
 	for i := 0; i < site && i < len(s.tokens); i++ {
-		if name, v, ok := assignment(s.tokens[i]); ok {
-			if key, tracked := st.trackedKey(name); tracked {
-				out[key] = v
-			}
+		name, _, _, ok := assignOp(s.tokens[i])
+		if !ok {
+			continue
 		}
+		key, tracked := st.trackedKey(name)
+		if !tracked {
+			continue
+		}
+		if n == nil {
+			n, out = st.clone(), map[string]varVal{}
+		}
+		v := n.assigned(rc, s, i, key)
+		n.vars[key] = v
+		out[key] = v
 	}
 	return out
 }
@@ -793,7 +921,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				shell := carrierShell(segs[c], site)
 				sts = nil
 				for _, cs := range recs[c].states {
-					st := childState(cs, cs.env(segs[c], site), shell)
+					st := childState(cs, cs.env(rc, segs[c], site), shell)
 					cs.applyRedirects(rc, st.fds, segs[c].redirects)
 					if s.fromFixedOutput || isEvalCarrier(segs[c]) {
 						// Another reading of the carrier, or a string eval runs
@@ -942,20 +1070,21 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 	}
 	allAssign := len(s.tokens) > 0
 	for _, t := range s.tokens {
-		if !isAssignment(t) {
+		if _, _, _, ok := assignOp(t); !ok {
 			allAssign = false
 			break
 		}
 	}
 	if allAssign {
 		n := st
-		for _, t := range s.tokens {
-			name, v, _ := assignment(t)
+		for i, t := range s.tokens {
+			name, _, _, _ := assignOp(t)
 			if key, ok := st.trackedKey(name); ok {
 				if n == st {
 					n = st.clone()
 				}
 				prev, set := n.vars[key]
+				v := n.assigned(rc, s, i, key)
 				n.emptied = nil
 				if t == name+"=" {
 					n.emptied = &emptiedVar{name: key, val: prev, set: set}
@@ -975,6 +1104,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 		tok := s.tokens[a.idx]
 		args := s.tokens[a.idx+1:]
 		switch name := strings.ToLower(path.Base(tok)); {
+		case tok == "":
 		case isUnknown(tok) && nameCouldBeAny(tok, directoryChanges):
 			out = out.unresolved()
 		case name == "cd" || name == "pushd":
@@ -1007,8 +1137,8 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				}
 			}
 			n := out.clone()
-			for _, w := range args {
-				nm, v, ok := assignment(w)
+			for k, w := range args {
+				nm, _, _, ok := assignOp(w)
 				if !ok {
 					nm = w
 				}
@@ -1017,7 +1147,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 					continue
 				}
 				if ok {
-					n.vars[nm] = v
+					n.vars[nm] = n.assigned(rc, s, a.idx+1+k, nm)
 				}
 				switch {
 				case exports:
@@ -1076,7 +1206,9 @@ func (st *shellState) unset(args []string) *shellState {
 // `$FPATH`) is the value before the assignment: the line's where it set
 // one, else the account's own directories, kept as accountDirs, and so is
 // what a `+=` appends to where the line set no value
-// (iss-2610111749099986).
+// (iss-2610111749099986). A path element that is the array itself
+// (`$path`, `$PATH`) is read the same way, the account's PATH kept as
+// accountPath (iss-2610120953445472).
 func (st *shellState) withArray(s segment, name string) *shellState {
 	// before is the value the array held before this assignment.
 	before, beforeSet := st.vars[name]
@@ -1087,8 +1219,10 @@ func (st *shellState) withArray(s segment, name string) *shellState {
 	for i := range s.tokens {
 		w, ok := fixedToken(s, i)
 		switch {
-		case !ok && name == "FPATH" && namesFpath(s, i):
+		case !ok && (name == "FPATH" || name == "PATH") && namesArray(s, i, name):
 			switch {
+			case !beforeSet && name == "PATH":
+				w = accountPath
 			case !beforeSet:
 				w = accountDirs
 			case !before.ok:
@@ -1109,6 +1243,8 @@ func (st *shellState) withArray(s segment, name string) *shellState {
 	switch {
 	case !set && s.arrayAppend && name == "FPATH":
 		prev = varVal{text: accountDirs, ok: true}
+	case !set && s.arrayAppend && name == "PATH":
+		prev = varVal{text: accountPath, ok: true}
 	case !set && s.arrayAppend:
 		prev = varVal{text: unknownText, ok: true}
 	case !set:
@@ -1133,10 +1269,10 @@ func (st *shellState) withArray(s segment, name string) *shellState {
 // account's own, unseen as its startup files are (autoloadTargets).
 const accountDirs = "\x02account"
 
-// namesFpath reports whether word i of s is fpath or FPATH whole as the line
-// spelled it, which as an element of fpath is the array before the
-// assignment.
-func namesFpath(s segment, i int) bool {
+// namesArray reports whether word i of s is the tied array or scalar whole
+// as the line spelled it (fpath or FPATH for FPATH, path or PATH for PATH),
+// which as an element of the array is its value before the assignment.
+func namesArray(s segment, i int, name string) bool {
 	sp := s.spelled[i]
 	if len(sp) == 0 {
 		return false
@@ -1146,8 +1282,9 @@ func namesFpath(s segment, i int) bool {
 			return false
 		}
 	}
+	low := strings.ToLower(name)
 	switch sp[0] {
-	case "$fpath", "${fpath}", "$fpath[@]", "$fpath[*]", "$FPATH", "${FPATH}":
+	case "$" + low, "${" + low + "}", "$" + low + "[@]", "$" + low + "[*]", "$" + name, "${" + name + "}":
 		return true
 	}
 	return false
@@ -1569,7 +1706,9 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 	var sigs []payloadSignal
 	for _, a := range commandSites(s) {
 		tok := s.tokens[a.idx]
-		if isUnknown(tok) || s.globAt(a.idx) || strings.ContainsRune(tok, varMark) {
+		// An empty word (a value placed empty) names no command, and never
+		// `.`, which is what path.Base makes of it.
+		if tok == "" || isUnknown(tok) || s.globAt(a.idx) || strings.ContainsRune(tok, varMark) {
 			continue
 		}
 		name := strings.ToLower(path.Base(tok))
@@ -1597,7 +1736,7 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			break
 		}
 		rc.nSites++
-		env := st.env(s, a.idx)
+		env := st.env(rc, s, a.idx)
 		switch {
 		case isShellFamily(name):
 			ts, ss := shellTargets(rc, s, st, a.idx, name, env)
@@ -1785,16 +1924,14 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 		return p, ok, false
 	}
 	pv, set := st.vars["PATH"]
-	prefix := false
-	for j := 0; j < site && j < len(s.tokens); j++ {
-		if name, v, isAssign := assignment(s.tokens[j]); isAssign {
-			if key, tracked := st.trackedKey(name); tracked && key == "PATH" {
-				pv, set, prefix = v, true, true
-			}
-		}
+	if v, ok := st.prefixVars(rc, s, site)["PATH"]; ok {
+		pv, set = v, true
 	}
+	// A PATH the line set, before the command or as its prefix, is searched
+	// strictly: an entry the line does not fix stops the search
+	// (iss-2610120953445472).
 	if st.shell != shellZsh {
-		return searchPath(rc, st, pv, set, w, true, prefix)
+		return searchPath(rc, st, pv, set, w, true, set)
 	}
 	if s.tokens[site] == "source" {
 		if p, ok := st.resolve(rc, w, false); ok {
@@ -1803,24 +1940,51 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 			}
 		}
 	}
-	return searchPath(rc, st, pv, set, w, false, prefix)
+	return searchPath(rc, st, pv, set, w, false, set)
 }
 
 // searchPath finds a bare name on PATH — pv when set, as the line set it,
 // else the account's — and then, for `source`, in the working directory. An
 // empty entry is the working directory, and a relative entry resolves
-// against it, as the shell's search does. With strict, an entry the line
-// does not fix stops the search and is reported (unfixed); without, the
-// search skips it, as it always has.
+// against it, as the shell's search does. An entry that is the account's
+// PATH (accountPath) is searched as the account's PATH always is. With
+// strict, an entry the line does not fix — a value it does not fix, or a
+// relative entry where the working directory is unknown — stops the search
+// and is reported (unfixed); without, the search skips it, as it always has.
 func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, thenCwd, strict bool) (string, bool, bool) {
-	pathVar := rc.files.path
-	if set {
-		if !pv.ok {
-			return "", false, strict
-		}
-		pathVar = pv.text
+	type entry struct {
+		dir     string
+		account bool
 	}
-	for _, d := range filepath.SplitList(pathVar) {
+	var entries []entry
+	account := func() {
+		for _, d := range filepath.SplitList(rc.files.path) {
+			entries = append(entries, entry{d, true})
+		}
+	}
+	switch {
+	case !set:
+		account()
+	case !pv.ok:
+		return "", false, strict
+	default:
+		for _, d := range filepath.SplitList(pv.text) {
+			if d == accountPath {
+				account()
+				continue
+			}
+			entries = append(entries, entry{d, false})
+		}
+	}
+	for _, e := range entries {
+		d := e.dir
+		lineStrict := strict && !e.account
+		if !e.account && (isUnknown(d) || strings.ContainsRune(d, varMark) || strings.Contains(d, accountPath)) {
+			if lineStrict {
+				return "", false, true
+			}
+			continue
+		}
 		if d == "" {
 			d = "."
 		}
@@ -1828,7 +1992,7 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 		if !filepath.IsAbs(d) {
 			q, ok := st.resolve(rc, p, false)
 			if !ok {
-				if strict {
+				if lineStrict {
 					return "", false, true
 				}
 				continue
