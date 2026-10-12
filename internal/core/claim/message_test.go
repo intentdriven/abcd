@@ -377,3 +377,21 @@ func TestAReservationNamesNoHostNoHomeAndPassesTheOutboundPolicy(t *testing.T) {
 		t.Fatalf("a message carrying a session URL = %v; want the outbound refusal", err)
 	}
 }
+
+// TestACheckoutWithoutAGitIdentityIsRefused: git would otherwise compose an
+// author from the machine's name, which a public commit may not carry.
+func TestACheckoutWithoutAGitIdentityIsRefused(t *testing.T) {
+	r := gittest.NewRepo(t)
+	// Neither a global nor a system file may lend the checkout a name.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	if err := os.MkdirAll(filepath.Join(r.Root(), ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("config", "user.email", "1234+octo@users.noreply.github.com")
+	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir()})
+	want := "git has no user.name or user.email to author the reservation; set them, then retry; nothing was pushed"
+	if !errors.Is(err, ErrRefused) || err.Error() != want {
+		t.Fatalf("prepare without user.name = %v; want %q", err, want)
+	}
+}
