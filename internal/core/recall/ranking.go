@@ -30,6 +30,10 @@ const (
 	FieldBody   = "body"
 )
 
+// scoreGrain is the finest difference between two scores the ranked order
+// tells apart.
+const scoreGrain = 1e-9
+
 // fieldWeights is each field's weight, in the order fieldsOf returns them: a
 // term found in an item's recall words counts three times, in its title
 // twice, in its body once. The weighted frequencies are summed per term
@@ -150,10 +154,12 @@ func Rank(items []Item, prompt string) []Ranked {
 }
 
 // rankedBefore is the ranked order: the higher score, then the narrower
-// scope, then the more recent At, then the key.
+// scope, then the more recent At, then the key. Scores are compared at a
+// billionth (scoreGrain), so two scores equal but for the last bits a
+// different machine's float arithmetic may leave tie on every machine.
 func rankedBefore(a, b Ranked) bool {
-	if a.Score != b.Score {
-		return a.Score > b.Score
+	if sa, sb := math.Round(a.Score/scoreGrain), math.Round(b.Score/scoreGrain); sa != sb {
+		return sa > sb
 	}
 	if ap, bp := a.Item.Layer == LayerProject, b.Item.Layer == LayerProject; ap != bp {
 		return ap
