@@ -125,6 +125,11 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		}
 		return res, err
 	}
+	if !p.req.Release {
+		if err := crowding(p, j, res); err != nil {
+			return Result{}, err
+		}
+	}
 	sha, err := writeCommit(p, m, tree, parent)
 	if err != nil {
 		return Result{}, err

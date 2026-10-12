@@ -105,6 +105,13 @@ func Fetch(root string, o Options) (gap string, err error) {
 // the derived release on origin's default branch as last fetched; nothing is
 // written. It is the "as of last fetch" reader every render shares.
 func View(root string, now time.Time) (Snapshot, error) {
+	return view(root, now, true)
+}
+
+// view is View, applying the derived release only when derive is true: an act
+// whose fetch could not read origin's default branch does not trust the copy
+// this clone holds of it.
+func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap := Snapshot{FetchedAt: lastFetched(root), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
@@ -126,7 +133,7 @@ func View(root string, now time.Time) (Snapshot, error) {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
 	var finished map[string][]string
-	if ref := originDefault(root); ref != "" {
+	if ref := originDefault(root); derive && ref != "" {
 		if finished, err = peers.FoldersAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}

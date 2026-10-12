@@ -706,6 +706,25 @@ These are the facilitator's design calls; none changes a criterion.
     `--delete` operands) would be needed, each taught as its own lesson, and a
     deletion by `--prune` or `--mirror` cannot be named at all; the hook sees
     every deletion however it was spelled.
+- **What step 10 settled** (the cap and the overlap, 2026-10-12):
+  - Both are judged after the push table has chosen the act and before the
+    commit is written, on the view the act just fetched, read by the same
+    reader as `claim.View`; the derived release is left out when the act's
+    fetch could not read the default branch, as the act's own judgement
+    leaves it out. The cap is checked first: taking other work does not lift
+    it.
+  - The cap counts the holder's live reservations on every other record. An
+    act over a tip this person already holds, readable and unreleased (a
+    renewal, or a take-over of their own other copy, lapsed or not), adds
+    none and is never refused by it. A holder past ten, which only a race
+    between two of their copies can make, is told "past the 10 one person
+    may hold" rather than the table's "the most one person may hold".
+  - The overlap counts every other live reservation, the holder's own on
+    another record included. The path named is the deeper of the two shared
+    paths, the one in both footprints: a request for `commands` over a
+    reservation of `commands/reserve.md` names `commands/reserve.md`.
+  - An unreadable reservation is counted by neither: it has no holder and no
+    footprint that can be read. It still holds its own record.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

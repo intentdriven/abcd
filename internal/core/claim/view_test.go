@@ -20,7 +20,7 @@ func TestTheViewJudgesEveryReservationFromDiskAlone(t *testing.T) {
 	}
 	w.set(t0.Add(3 * time.Hour))
 	for _, id := range []string{"iss-5", "iss-7", "iss-8"} {
-		if _, err := p.reserve(id, "b.go"); err != nil {
+		if _, err := p.reserve(id, id+".go"); err != nil { // footprints never overlap
 			t.Fatal(err)
 		}
 	}

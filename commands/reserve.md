@@ -52,11 +52,23 @@ cannot be read and is still within its two-hour hold, or another push reserved
 it while this one was on its way. Say who holds it and until when, and pick
 something else. Never retry in a loop.
 
+**Exit 3 also covers a shared path.** A footprint path that another live
+reservation's footprint also holds, whoever holds it and for whatever record,
+is refused, naming that path, the other record, its holder and until when. Two
+paths are shared when they are equal or one is a directory holding the other.
+A renewal is checked the same way, so a reservation is never widened onto
+another. Take other work, or reserve with a footprint that does not overlap.
+
 **Exit 3 also covers your own other copy.** When the same person holds the
 record from another computer or another checkout, the refusal says "you are
 already building … on another computer". Pass `--take-over` only when the user
 confirms the work moves here; it moves only the user's own reservation, and the
 output names the copy it replaced. It never moves another person's.
+
+**Exit 2 when the user holds ten.** One person may hold at most ten live
+reservations, counted across every record by username. A reservation past that
+is refused, naming the ten; a renewal, and a take-over of the user's own other
+copy, are never refused by the cap. Release one first, if the user agrees.
 
 **Exit 2 is every other refusal**: an id that is not an issue or intent, no
 footprint, a path that is not repository-relative, a lease out of bounds, a

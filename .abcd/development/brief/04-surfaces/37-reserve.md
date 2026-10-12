@@ -61,13 +61,23 @@ shipped or superseded on origin's default branch counts as released whatever
 its reservation says; when that branch cannot be read, the act goes on and the
 output says the check was skipped.
 
+The act is then judged against the rest of the fetched view. A reservation
+that would take its holder past ten live reservations, counted by username
+across every record, is refused naming the ten; a renewal, and a take-over of
+the same person's other copy, add none and are never refused by the cap. A
+footprint path that another live reservation's footprint shares, equal or one
+a directory holding the other, is refused, naming the deeper of the two paths,
+the other record, its holder and its expiry; a renewal is checked the same
+way, so a footprint is never widened onto another reservation.
+
 ## Exits
 
 Exit 0 when the act reached origin, or a release was already made. Exit 3, the
 back-off, when another person's reservation is live or lapsed under the
 margin, an unreadable one is within its hold, another push won the race, or the
-same person's other copy holds it and no take-over was asked for. Exit 2 on every other
-refusal and failure. The JSON document carries `act`, `record`, `holder`,
+same person's other copy holds it and no take-over was asked for, or a
+footprint path is in another live reservation's footprint. Exit 2 on the cap
+and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over and
 `derived_unchecked` when the default branch could not be read.
@@ -75,8 +85,8 @@ refusal and failure. The JSON document carries `act`, `record`, `holder`,
 ## Where this sits
 
 - The intent and its decisions: itd-2609091034175565; the design record:
-  spc-2610031753359849, whose spec-2 steps add the cap, the overlap refusal,
-  and the build, drain and render integration.
+  spc-2610031753359849, whose spec-2 steps add the build, drain and render
+  integration.
 - The listing: `abcd peers` ([`08-abcd.md`](08-abcd.md)).
 - The plugin surface: `commands/reserve.md`.
 
