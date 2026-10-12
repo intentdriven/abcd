@@ -190,12 +190,7 @@ func moduleRoot(t *testing.T) string {
 // t.TempDir cleanup then races it on .git/objects and fails the run.
 func TestNewRepoDisablesBackgroundMaintenance(t *testing.T) {
 	r := gittest.NewRepo(t)
-	for key, want := range map[string]string{
-		"gc.auto":          "0",
-		"gc.autodetach":    "false",
-		"maintenance.auto": "false",
-		"core.fsmonitor":   "false",
-	} {
+	for key, want := range maintenanceOff {
 		if got := r.Git("config", "--local", "--get", key); got != want {
 			t.Errorf("%s = %q, want %q", key, got, want)
 		}

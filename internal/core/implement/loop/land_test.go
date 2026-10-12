@@ -119,7 +119,7 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	repo.Commit("the record")
 
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	repo.Git("init", "-q", "--bare", "--initial-branch=main", bare)
+	gittest.InitBare(t, bare)
 	repo.Git("remote", "add", "origin", bare)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
