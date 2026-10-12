@@ -324,8 +324,8 @@ type scriptRun struct {
 // shellState is what the guard knows of the shell a command runs in: its
 // directory (dirOK false where it cannot say), a `cd` the next commands run
 // in only while each is chained after it with `&&`, the variables the line
-// set and which of them are exported, and the descriptors the line opened on
-// files. A cd bash and zsh read differently can leave the shell in one of
+// set and which of them it exported or took the export from, and the
+// descriptors the line opened on files. A cd bash and zsh read differently can leave the shell in one of
 // several directories; the reading then carries one state for each.
 type shellState struct {
 	dir      string
@@ -521,16 +521,24 @@ func assignment(tok string) (name string, val varVal, ok bool) {
 }
 
 // alwaysExported are the variables every shell inherits exported, so a plain
-// assignment changes what a child sees.
+// assignment changes what a child sees whatever the line does.
 var alwaysExported = map[string]bool{"HOME": true, "PATH": true}
 
-// env is the environment the command at site in s runs with: the exported
-// variables of st, and the assignments written before the command (a prefix,
-// or an env wrapper's).
+// env is the environment the command at site in s runs with: the variables
+// st set, and the assignments written before the command (a prefix, or an env
+// wrapper's).
+//
+// A variable the environment already exports stays exported when the line
+// assigns it without export, so a child is handed the line's value
+// (iss-2610111730574385). Whether the shell that runs the line exports it is
+// the environment's, which the guard does not see, so every tracked variable
+// the line set is read as handed down unless the line itself took the export
+// away (`export -n`, `typeset +x`); where it is not handed down, the child
+// reads the account's own, which stays unseen.
 func (st *shellState) env(s segment, site int) map[string]varVal {
 	out := map[string]varVal{}
 	for k, v := range st.vars {
-		if st.exported[k] || alwaysExported[k] {
+		if e, set := st.exported[k]; !set || e || alwaysExported[k] {
 			out[k] = v
 		}
 	}
@@ -998,7 +1006,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				case exports:
 					n.exported[nm] = true
 				case unexports:
-					delete(n.exported, nm)
+					n.exported[nm] = false
 				}
 			}
 			out = n

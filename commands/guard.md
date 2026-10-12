@@ -369,8 +369,10 @@ assigned `HOME` (`.bash_profile`, else `.bash_login`, else `.profile`, and
 `.bashrc`), the files a login bash or zsh reads as it exits (`.bash_logout`,
 `.zlogout`), and the other shells' profile (`.profile`, yash's `.yash_profile`)
 and rc file (`.kshrc`, `.mkshrc`, `.yashrc`) under an assigned `HOME`. An
-assignment counts as a prefix, through `env`, or exported earlier
-on the line. A function file `autoload` (or `functions -u`, `typeset -fu`)
+assignment counts as a prefix, through `env`, or made earlier on the line,
+exported or not, since a variable the environment exports stays exported when
+the line assigns it (`FPATH=dir; zsh -c 'autoload f; f'` loads `dir/f`), unless
+the line takes the export away (`export -n`, `typeset +x`). A function file `autoload` (or `functions -u`, `typeset -fu`)
 loads is read too: an operand with a slash is that file, and a name is searched
 in the `FPATH` or `fpath` the line sets, where the first directory holding it
 (as `dir.zwc`, `dir/name.zwc` or `dir/name`) is the file read; a compiled

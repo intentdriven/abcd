@@ -129,3 +129,32 @@ func TestUnsetCDPATHIsNotSearched(t *testing.T) {
 		}
 	}
 }
+
+// TestPlainAssignmentReachesAChildShell — iss-2610111730574385. A variable
+// the environment already exports stays exported when the line assigns it
+// without export, so the child shell is handed the line's value: with FPATH
+// exported, `FPATH=dir; zsh -c 'autoload p; p'` loads dir/p in bash and in
+// zsh (verified against /bin/bash 3.2, bash 5 and /bin/zsh 5.9). Whether the
+// shell that runs the line exports it is the environment's, so the child is
+// read as handed the line's value; where it is not, the child reads the
+// account's own, which stays unseen. A line that takes the export away
+// hands nothing.
+func TestPlainAssignmentReachesAChildShell(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"fp/p":   hazardLine,
+		"good/q": "echo fine",
+		"env.sh": hazardLine,
+	})
+	runScriptCases(t, dir, []scriptCase{
+		{`FPATH={d}/fp; zsh -c 'autoload p; p'`, VerdictBlock, scriptHazardEntryID},
+		{`fpath=({d}/fp); zsh -c 'autoload p; p'`, VerdictBlock, scriptHazardEntryID},
+		{`FPATH={d}/fp && zsh -c 'autoload -Uz p; p'`, VerdictBlock, scriptHazardEntryID},
+		{`typeset FPATH={d}/fp; zsh -c 'autoload p; p'`, VerdictBlock, scriptHazardEntryID},
+		{`BASH_ENV={d}/env.sh; bash -c true`, VerdictBlock, scriptHazardEntryID},
+
+		{`FPATH={d}/good; zsh -c 'autoload q; q'`, VerdictAllow, ""},
+		{`FPATH={d}/fp; typeset +x FPATH; zsh -c 'autoload p; p'`, VerdictAllow, ""},
+		{`FPATH={d}/fp; zsh -c 'echo ok'`, VerdictAllow, ""},
+		{`FPATH={d}/fp; unset FPATH; zsh -c 'autoload p; p'`, VerdictAllow, ""},
+	})
+}
