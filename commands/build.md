@@ -124,7 +124,9 @@ and the falsifier (fix rounds past the pace rule's count, or an unachievable
 hand-back). A lane handed back after its fix rounds records the pick as
 falsified in the run record, and the entry is left as written. The lane's `worktree` stage appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
-record-only commit made before the brief. The receipt verifier does not count
+record-only commit made before the brief, as your own git makes a commit: the
+repository's hooks run (one that refuses it refuses the stage), and it is
+signed where your git configuration signs every commit. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
 rebase or an amend. No existing entry changes, the checkout you run in is not written but

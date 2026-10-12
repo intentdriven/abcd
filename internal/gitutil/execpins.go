@@ -33,13 +33,16 @@ import (
 // Every isolated command (Run and its siblings) carries them, and a caller that
 // must build its own git command (one that keeps global config, say) prepends
 // them rather than copying the list. The pins come before -C and the
-// subcommand: after the subcommand, `-c` is that subcommand's option.
+// subcommand: after the subcommand, `-c` is that subcommand's option. A commit
+// abcd makes in a working tree it made for the work leaves core.hooksPath,
+// commit.gpgsign and merge.verifySignatures to the repository
+// (WorkingTreeCommitCommand): those are how the repository commits and merges.
 //
 // They do not blank content filters or diff and merge drivers, because those
 // are keyed on a name the repository chooses; FilterOverrides covers filters
-// for a command that must not run one, MergeDriverOverrides makes every merge
-// driver git's built-in merge, and a diff passes --no-ext-diff and
-// --no-textconv.
+// for a read that must not run one, and a diff passes --no-ext-diff and
+// --no-textconv. A merge abcd makes runs the repository's merge drivers, as
+// the person's own merge does.
 func ExecPins() []string {
 	return []string{
 		"-c", "core.hooksPath=/dev/null",
@@ -75,38 +78,6 @@ func FilterOverrides(root string) ([]string, error) {
 		for _, v := range []string{"clean", "smudge", "process"} {
 			out = append(out, "-c", "filter."+name+"."+v+"=")
 		}
-	}
-	return out, nil
-}
-
-// BuiltinMergeDriver is the merge.<name>.driver command line that makes a
-// driver git's built-in text merge: `git merge-file` over the three versions,
-// with the conflict-marker size and the three conflict labels git passes a
-// driver, and the histogram diff git's merge itself uses. Its result, clean
-// or conflicted, is byte for byte the built-in driver's, and it exits non-zero
-// on a conflict, as a driver must.
-const BuiltinMergeDriver = "git merge-file --marker-size=%L --diff-algorithm=histogram -L %X -L %S -L %Y %A %O %B"
-
-// MergeDriverOverrides returns the `git -c` overrides that make every merge
-// driver the repository at root configures git's built-in text merge —
-// `merge.<name>.driver` set to BuiltinMergeDriver for each name — and pin
-// merge.default to the built-in text driver, so a merge abcd composes never
-// starts a program the repository names, whichever driver an attribute or
-// merge.default selects (iss-2610090821510097). A driver cannot be blanked as
-// a filter is: git fails to start an empty driver command and reports every
-// path both sides changed as a conflict. The overrides go before the
-// subcommand.
-//
-// Config is read as FilterOverrides reads it, and a name `-c` cannot carry
-// intact is refused the same way.
-func MergeDriverOverrides(root string) ([]string, error) {
-	names, err := configNames(root, "merge")
-	if err != nil {
-		return nil, err
-	}
-	out := []string{"-c", "merge.default=text"}
-	for _, name := range names {
-		out = append(out, "-c", "merge."+name+".driver="+BuiltinMergeDriver)
 	}
 	return out, nil
 }

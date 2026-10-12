@@ -351,10 +351,10 @@ the run's state. The reason is one `pursued:` grounds entry opening `picked by r
 on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
 falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
-receipt verifier does not count that commit as the implementer's. That commit runs no hook
-and is unsigned, even where your git configuration signs every commit. It does run the
-repository's content filters: staging the entry passes it through its clean filter, as
-Git LFS needs. The checkout you run this
+receipt verifier does not count that commit as the implementer's. That commit is made as
+your own git makes one: the repository's hooks run, and a hook that refuses it refuses the
+stage; it is signed where your git configuration signs every commit; and staging the entry
+passes it through the repository's clean filter, as Git LFS needs. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
@@ -2166,13 +2166,13 @@ under blocked:; any other refused stage is the call's answer. Landing is one lan
 time; a lane whose sibling landed
 since its base is synced first (the default branch merged in with a merge commit, never a
 rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
-a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where
-your git configuration signs every commit, and the merge does not verify the signature of the
-commit it merges in. The merge is git's built-in merge on every path, whatever merge driver
-the repository configures or merge.default names, so a driver's program never runs. The
-merge does run the repository's content filters: each file it writes passes through its
-smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs
-the repository's own code.
+a sync counts no fix round. The sync's merge is made as your own `git merge` makes one, in
+the lane's worktree: the repository's hooks run, its merge commit is signed where your git
+configuration signs every commit, the signature of the commit it merges in is verified where
+merge.verifySignatures says so, the merge driver the repository configures or merge.default
+names merges each path it covers, and each file it writes passes through the repository's
+smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses
+the step, naming what git reported.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>

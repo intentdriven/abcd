@@ -15,11 +15,10 @@ package loop
 // isolated one less the global-config neutralisers (gitutil.ScrubbedEnv): the
 // commit is authored by the person whose identity git is configured with, as
 // every commit of the repository is, and no inherited GIT_DIR, GIT_WORK_TREE
-// or injected configuration can redirect it. Hooks, the fsmonitor and commit
-// signing are off (gitutil.ExecPins): the message and the entry are computed,
-// the lane's pull request runs every gate over the commit, and a hook
-// dispatcher or a signing program the repository names is code the loop does
-// not run (iss-2610090821520843).
+// or injected configuration can redirect it. The repository's hooks and its
+// commit signing run as they do on the person's own commit (commitGit): they
+// are how the repository commits, and a hook that refuses the commit refuses
+// the stage (iss-2610111729399920).
 // Every argument is derived: the paths come from the intent store's validated
 // ids, after `--`, and the message from the run and intent ids.
 //
@@ -70,14 +69,23 @@ func pickMessage(st State) string {
 // verbatim: a porcelain status line opens with a space when the change is
 // unstaged, and the comparison below is made against the line as git wrote it.
 // It is the loop's one route for a git command that writes or judges a lane's
-// working tree (the pick commit, the land's staging, a sync's merge, the lane's
-// `git worktree add`, a restart's reset and clean), so each sees the
+// working tree (the land's staging, the lane's `git worktree add`, a restart's
+// reset and clean; a commit goes through commitGit), so each sees the
 // repository as the person's own git does: gitutil.WorkingTreeCommand, which
 // keeps the person's global config (a content filter a global `git lfs
 // install` defines, a global ignore file) with the program-starting knobs and
 // automatic maintenance pinned off.
 func pickGit(dir string, args ...string) (string, error) {
 	return runTreeGit(gitutil.WorkingTreeCommand(dir, args...), args)
+}
+
+// commitGit is pickGit for a command that makes a commit in a lane's worktree
+// (the pick commit, a sync's merge): gitutil.WorkingTreeCommitCommand, so the
+// repository's hooks, its commit signing, its merge's signature check and its
+// merge drivers run as they do on the person's own commit and merge
+// (iss-2610111729399920).
+func commitGit(dir string, args ...string) (string, error) {
+	return runTreeGit(gitutil.WorkingTreeCommitCommand(dir, args...), args)
 }
 
 // pickGitIndex is pickGit on a scratch index, for a command that must read the
@@ -173,9 +181,9 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			"the lane's worktree holds changes the pick did not make, so its record-only commit is not made over them",
 			"clean the lane's worktree, then run `abcd implement step` again")
 	}
-	if _, err := pickGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil {
+	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil {
 		return "", refuse(string(StageWorktree), "", lane.ID,
-			"git could not make the pick's record commit (is a git identity configured?): "+fsutil.RedactHome(err.Error()),
+			"git could not make the pick's record commit (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git reports, then run `abcd implement step` again")
 	}
 	sha, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")

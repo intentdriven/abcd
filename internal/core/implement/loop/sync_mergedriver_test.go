@@ -1,25 +1,22 @@
 package loop
 
 import (
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // driverFixture is a repository whose main and side branches both changed
 // f.txt from a shared base, with a merge driver configured that writes its own
 // bytes into the result and leaves a mark when it runs.
 type driverFixture struct {
-	r            *gittest.Repo
-	ours, theirs string
-	mark         string
+	r      *gittest.Repo
+	theirs string
+	mark   string
 }
 
 func newDriverFixture(t *testing.T, base, ours, theirs, attributes string, cfg map[string]string) driverFixture {
@@ -36,7 +33,6 @@ func newDriverFixture(t *testing.T, base, ours, theirs, attributes string, cfg m
 	r.Git("checkout", "-q", "main")
 	r.Write("f.txt", ours)
 	r.Commit("main")
-	oursSHA := r.Git("rev-parse", "HEAD")
 
 	mark := filepath.Join(t.TempDir(), "driver-ran")
 	driver := filepath.Join(t.TempDir(), "evil-driver.sh")
@@ -49,30 +45,7 @@ func newDriverFixture(t *testing.T, base, ours, theirs, attributes string, cfg m
 	if err := os.WriteFile(filepath.Join(r.Root(), ".git", "info", "attributes"), []byte(attributes), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return driverFixture{r: r, ours: oursSHA, theirs: theirsSHA, mark: mark}
-}
-
-// plainMerge is a merge the operator runs, outside pickGit, under the same
-// environment the loop's git gets; it reports whether git merged cleanly.
-func (f driverFixture) plainMerge(t *testing.T) bool {
-	t.Helper()
-	cmd := exec.Command("git", "-C", f.r.Root(), "-c", "core.hooksPath=/dev/null", "merge", "--no-ff", "--no-edit", "-m", "plain", f.theirs)
-	cmd.Env = gitutil.ScrubbedEnv()
-	err := cmd.Run()
-	var ee *exec.ExitError
-	if err != nil && !errors.As(err, &ee) {
-		t.Fatal(err)
-	}
-	return err == nil
-}
-
-// undo puts main back at its own commit with a clean tree.
-func (f driverFixture) undo(t *testing.T) {
-	t.Helper()
-	if _, err := os.Stat(filepath.Join(f.r.Root(), ".git", "MERGE_HEAD")); err == nil {
-		f.r.Git("merge", "--abort")
-	}
-	f.r.Git("reset", "-q", "--hard", f.ours)
+	return driverFixture{r: r, theirs: theirsSHA, mark: mark}
 }
 
 func (f driverFixture) result(t *testing.T) string {
@@ -84,90 +57,76 @@ func (f driverFixture) result(t *testing.T) string {
 	return string(b)
 }
 
-// TestTheSyncMergeRunsNoConfiguredMergeDriver is iss-2610090821510097. The
-// sync's merge goes through pickGit, which keeps the repository's config, so a
+// TestTheSyncMergeUsesTheRepositorysMergeDriver is iss-2610111729399920. A
 // merge driver the repository configures (named by an attribute, or by
-// merge.default) runs as the operator wherever both sides changed a path, and
-// its bytes become the merge result. The sync must always use git's built-in
-// merge: the driver does not start, and the merged file, clean or conflicted,
-// is byte for byte what git's built-in merge makes of the same two commits. A
-// merge the operator runs outside pickGit still honours the driver.
-func TestTheSyncMergeRunsNoConfiguredMergeDriver(t *testing.T) {
+// merge.default) is the repository's own merge tool: the person's own `git
+// merge` runs it wherever both sides changed a path, so the sync's merge runs
+// it too, and its bytes are the merge result (principle
+// abcd-fixes-what-it-adds).
+func TestTheSyncMergeUsesTheRepositorysMergeDriver(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("POSIX sentinel script")
+		t.Skip("POSIX driver script")
 	}
+	withoutPersonalConfig(t)
 	const base = "a\nb\nc\nd\ne\nf\ng\n"
 	for _, tc := range []struct {
 		name         string
 		ours, theirs string
 		attributes   string
 		cfg          map[string]string
-		unset        []string
-		conflict     bool
 	}{
-		{"an attribute names the driver, clean", "a\nB\nc\nd\ne\nf\ng\n", "a\nb\nc\nd\ne\nF\ng\n",
-			"* merge=evil\n", map[string]string{"merge.evil.driver": "DRIVER"}, []string{"merge.evil.driver"}, false},
-		{"an attribute names the driver, conflicting", "a\nOURS\nc\nd\ne\nf\ng\n", "a\nTHEIRS\nc\nd\ne\nf\ng\n",
-			"* merge=evil\n", map[string]string{"merge.evil.driver": "DRIVER"}, []string{"merge.evil.driver"}, true},
+		{"an attribute names the driver", "a\nOURS\nc\nd\ne\nf\ng\n", "a\nTHEIRS\nc\nd\ne\nf\ng\n",
+			"* merge=lock\n", map[string]string{"merge.lock.driver": "DRIVER"}},
 		{"merge.default names the driver", "a\nB\nc\nd\ne\nf\ng\n", "a\nb\nc\nd\ne\nF\ng\n",
-			"", map[string]string{"merge.evil.driver": "DRIVER", "merge.default": "evil"}, []string{"merge.evil.driver", "merge.default"}, false},
-		{"a dotted driver name", "a\nB\nc\nd\ne\nf\ng\n", "a\nb\nc\nd\ne\nF\ng\n",
-			"* merge=e.vil\n", map[string]string{"merge.e.vil.driver": "DRIVER"}, []string{"merge.e.vil.driver"}, false},
-		{"a driver named like the built-in", "a\nB\nc\nd\ne\nf\ng\n", "a\nb\nc\nd\ne\nF\ng\n",
-			"* merge=text\n", map[string]string{"merge.text.driver": "DRIVER"}, []string{"merge.text.driver"}, false},
+			"", map[string]string{"merge.lock.driver": "DRIVER", "merge.default": "lock"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newDriverFixture(t, base, tc.ours, tc.theirs, tc.attributes, tc.cfg)
-
-			// The fixture is live: a merge the operator runs starts the driver.
-			f.plainMerge(t)
+			if err := syncMerge(f.r.Root(), "sync", f.theirs); err != nil {
+				t.Fatalf("the sync merge must be made with the repository's driver: %v", err)
+			}
 			if _, err := os.Stat(f.mark); err != nil {
-				t.Fatal("fixture: a plain merge did not start the configured driver, so this test proves nothing")
+				t.Fatal("the sync merge did not run the repository's merge driver")
 			}
-			if err := os.Remove(f.mark); err != nil {
-				t.Fatal(err)
-			}
-			f.undo(t)
-
-			err := syncMerge(f.r.Root(), "sync", f.theirs)
-			if _, serr := os.Stat(f.mark); serr == nil {
-				t.Fatal("the sync merge started the repository's merge driver")
-			}
-			if (err != nil) != tc.conflict {
-				t.Fatalf("the sync merge's outcome: err=%v, want conflict=%v", err, tc.conflict)
-			}
-			got := f.result(t)
-			f.undo(t)
-
-			// git's built-in merge of the same two commits, with the driver gone.
-			for _, k := range tc.unset {
-				f.r.Git("config", "--unset", k)
-			}
-			if clean := f.plainMerge(t); clean == tc.conflict {
-				t.Fatalf("fixture: the built-in merge's outcome is clean=%v, want conflict=%v", clean, tc.conflict)
-			}
-			if want := f.result(t); got != want {
-				t.Fatalf("the sync merge's result is not git's built-in result:\ngot:\n%s\nwant:\n%s", got, want)
+			if got := f.result(t); got != "DRIVER\n" {
+				t.Fatalf("the sync merge's result is not the driver's: %q", got)
 			}
 		})
 	}
 }
 
-// TestTheSyncMergeRefusesADriverItCannotSwitchOff: a driver name `git -c`
-// cannot carry intact is refused before any merge, rather than overridden
-// under a different key and left live.
-func TestTheSyncMergeRefusesADriverItCannotSwitchOff(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX sentinel script")
+// TestASyncTheRepositoryRefusesIsRefusedWithGitsReason is
+// iss-2610111729399920: the sync's merge runs under the repository's own
+// settings, and one that refuses the merge before it starts (here
+// merge.verifySignatures over the landed sibling's unsigned commit) leaves no
+// merge to abort. The step is refused naming what git reported, and the lane's
+// branch and worktree are left as they were.
+func TestASyncTheRepositoryRefusesIsRefusedWithGitsReason(t *testing.T) {
+	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
+	f.stepUntil(t, "both implementers are out", func(st State) bool {
+		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
+	})
+	f.implement(t, "lane-1", "one.txt")
+	f.implement(t, "lane-2", "two.txt")
+	f.roundPassed(t, "lane-1")
+	f.roundPassed(t, "lane-2")
+	f.landed(t, "lane-1")
+	judged := f.lane(t, "lane-2").HeadSHA
+
+	f.repo.Git("config", "merge.verifySignatures", "true")
+	_, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "git could not merge") || !strings.Contains(r.Reason, "GPG signature") {
+		t.Fatalf("the sync is refused with git's reason: %+v", r)
 	}
-	f := newDriverFixture(t, "a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n", "* merge=x=y\n", map[string]string{"merge.x=y.driver": "DRIVER"})
-	if err := syncMerge(f.r.Root(), "sync", f.theirs); err == nil {
-		t.Fatal("a driver name holding '=' must refuse the sync merge")
+	l2 := f.lane(t, "lane-2")
+	if len(l2.Syncs) != 0 || l2.HeadSHA != judged {
+		t.Fatalf("the refused sync records nothing: %+v", l2)
 	}
-	if _, err := os.Stat(f.mark); err == nil {
-		t.Fatal("the refused sync merge started the driver")
+	if tip := f.repo.Git("rev-parse", "refs/heads/"+l2.Branch); tip != judged {
+		t.Fatalf("the branch stays at the judged head: %s", tip)
 	}
-	if head := f.r.Git("rev-parse", "HEAD"); head != f.ours {
-		t.Fatalf("the refused sync merge moved HEAD to %s", head)
+	if st := f.repo.Git("-C", l2.Worktree, "status", "--porcelain"); st != "" {
+		t.Fatalf("the refused merge leaves the worktree clean: %s", st)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -199,7 +200,46 @@ func ScrubbedEnv() []string {
 // through its promisor remote, and the command passes the lazy-fetch floor
 // guard every isolated command passes.
 func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
-	full := append(append(ExecPins(),
+	return workingTreeCommand(root, ExecPins(), args)
+}
+
+// WorkingTreeCommitCommand is WorkingTreeCommand for a git command that makes
+// a commit in a working tree abcd made for the work (a lane's record commit, a
+// merge into a lane): the repository's hooks, its commit signing and its
+// merge's signature check run as they do on the person's own commit and
+// merge, so it is WorkingTreeCommand without those three pins (ExecPins
+// names them: core.hooksPath, commit.gpgsign, merge.verifySignatures). Each is
+// the repository's own behaviour, and a program it names there runs on the
+// person's own next commit with no abcd involved, so switching it off for
+// abcd prevented nothing and changed how the repository works
+// (iss-2610111729399920, principle abcd-fixes-what-it-adds). A content
+// filter and a merge driver the repository configures run too, as they do
+// under WorkingTreeCommand. Everything else is WorkingTreeCommand's.
+func WorkingTreeCommitCommand(root string, args ...string) *exec.Cmd {
+	return workingTreeCommand(root, commitPins(), args)
+}
+
+// repositoryCommitKnobs are the ExecPins a commit abcd makes leaves to the
+// repository (WorkingTreeCommitCommand).
+var repositoryCommitKnobs = []string{"core.hooksPath", "commit.gpgsign", "merge.verifySignatures"}
+
+// commitPins is ExecPins less every pin on a repositoryCommitKnobs key.
+func commitPins() []string {
+	pins := ExecPins()
+	var out []string
+	for i := 0; i+1 < len(pins); i += 2 {
+		key, _, _ := strings.Cut(pins[i+1], "=")
+		if !slices.Contains(repositoryCommitKnobs, key) {
+			out = append(out, pins[i], pins[i+1])
+		}
+	}
+	return out
+}
+
+// workingTreeCommand is WorkingTreeCommand and WorkingTreeCommitCommand,
+// pinning pins.
+func workingTreeCommand(root string, pins, args []string) *exec.Cmd {
+	full := append(append(pins,
 		"-c", "core.quotePath=false",
 		"-c", "gc.auto=0",
 		"-c", "maintenance.auto=false",
