@@ -195,6 +195,7 @@
         "known_good": [
           "git push origin main",
           "git push --set-upstream origin feat/shell-hazard-registry",
+          "git push --porcelain origin 9f2c41d07be35a6c80e1f4b2a7d39c559f2c41d0:refs/heads/abcd-reserved/iss-2609020716570699",
           "abcd capture \"an agent tried git push --force on main\"",
           "git log --oneline -5",
           "cat > CONTRIBUTING.md <<'EOF'\nNever run git push --force on main.\nEOF",
@@ -227,6 +228,7 @@
           "git push origin main:main",
           "git push origin HEAD:main",
           "git push --set-upstream origin feat/guard-registry",
+          "git push --porcelain origin 9f2c41d07be35a6c80e1f4b2a7d39c559f2c41d0:refs/heads/abcd-reserved/iss-2609020716570699",
           "abcd capture \"an agent ran git push origin +main:main and rewrote the branch\"",
           "cat > CONTRIBUTING.md <<'EOF'\nA refspec such as +main:main is a force push.\nEOF"
         ]

@@ -41,6 +41,18 @@
 #      record-lint job there repeats the reviews-charter, issue-resolution and
 #      decisions-append gates preflight already ran here.
 #
+#      One exemption: a reservation (`abcd reserve`, itd-2609091034175565) is a
+#      branch under refs/heads/abcd-reserved/ holding a chain of commits whose
+#      tree is the empty tree. They change no file, so there is nothing for a
+#      preflight to vouch for, and the verb pushes them with this hook running,
+#      never with --no-verify. An update under that prefix therefore passes
+#      without a receipt, but only when EVERY commit the push moves has the
+#      empty tree: the range is <remote>..<local> on an update and everything
+#      reachable from <local> on a create, so ordinary history pushed under the
+#      prefix walks into a non-empty tree and is gated as any branch is. The
+#      exemption sits after the non-fast-forward guard, which still refuses a
+#      forced push to a reservation branch.
+#
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
 set -euo pipefail
@@ -49,6 +61,18 @@ cd "$(git rev-parse --show-toplevel)"
 protected="main"
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
+reserved_prefix="abcd-reserved/"
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# only_empty_trees succeeds when every commit in the range git rev-list is
+# given has the empty tree, and fails when one does not or the range cannot be
+# walked (a remote tip this clone does not hold): the push is then gated.
+only_empty_trees() {
+  local trees
+  trees="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
+  [ -n "$empty_tree" ] || return 1
+  [ -z "$(printf '%s\n' "$trees" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ]
+}
 
 missing=""
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -80,6 +104,19 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       fi
     fi
   fi
+
+  # A reservation: every commit the push moves has the empty tree, so it needs
+  # no receipt. The range is everything new on an update, and everything
+  # reachable on a create.
+  case "$branch" in
+  "$reserved_prefix"*)
+    if [ "$remote_sha" = "$zero" ]; then
+      only_empty_trees "$local_sha" && continue
+    else
+      only_empty_trees "$remote_sha..$local_sha" && continue
+    fi
+    ;;
+  esac
 
   # The commit the ref will point at: a tag is peeled to the commit it names.
   commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" 2>/dev/null || true)"

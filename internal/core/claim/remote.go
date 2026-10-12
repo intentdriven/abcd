@@ -120,13 +120,21 @@ func reserve(root string, req Request, o Options) (Result, error) {
 	if beforePush != nil {
 		beforePush(root)
 	}
-	push := []string{"push", "--porcelain", Remote, sha + ":" + refName(p.id)}
+	push := pushArgs(sha, p.id)
 	trace(push...)
 	if out, perr := gitutil.Net(root, push...); perr != nil {
 		return Result{}, lostRace(p, tree, j, pushRejection(out, perr))
 	}
 	res.Commit = sha
 	return res, nil
+}
+
+// pushArgs is the one push every act makes: the commit to the record's
+// reservation branch on origin, plain, with no force, no `+` refspec, no
+// --no-verify and no deletion, so the repository's hooks run and the remote
+// takes it only as a fast-forward.
+func pushArgs(sha, id string) []string {
+	return []string{"push", "--porcelain", Remote, sha + ":" + refName(id)}
 }
 
 // lostRace explains a rejected push. When the branch moved while the push was
