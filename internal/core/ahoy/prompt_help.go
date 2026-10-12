@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/statusline"
@@ -42,11 +43,36 @@ type PromptHelp struct {
 	// from run to run, such as a README part (spc-2610031704338417); "" leaves
 	// the question's own ("not set").
 	Now string `json:"now,omitempty"`
-	// Example is the exact lines answering yes writes in this repository, and
-	// ExampleNone, where it writes none, the reason. Both are per run, read
-	// from the project, and terminal-safe as set.
+	// Example is the exact lines answering yes writes in this repository, or
+	// as many of them as a question has rows for, ExampleLeft how many more it
+	// writes, and ExampleNone, where it writes none, the reason. All are per
+	// run, read from the project, and terminal-safe as set.
 	Example     []string `json:"example,omitempty"`
+	ExampleLeft int      `json:"example_left,omitempty"`
 	ExampleNone string   `json:"example_none,omitempty"`
+}
+
+// ExampleIntro is the sentence a question says before its example, or in
+// place of it: that it writes the lines that follow, how many it writes where
+// only the first are shown or none fit, or that it writes nothing and why.
+// "" for a help with no example. Every door says these words, so none
+// composes its own.
+func (h PromptHelp) ExampleIntro() string {
+	total := len(h.Example) + h.ExampleLeft
+	switch {
+	case len(h.Example) > 0 && h.ExampleLeft == 0:
+		return "Here it writes:"
+	case len(h.Example) > 0:
+		return fmt.Sprintf("Here it writes %d lines, the first %d of them:", total, len(h.Example))
+	case h.ExampleLeft > 0:
+		if total == 1 {
+			return "Here it writes 1 line, too long to show here."
+		}
+		return fmt.Sprintf("Here it writes %d lines, too long to show here.", total)
+	case h.ExampleNone != "":
+		return "Here it writes nothing: " + strings.TrimSuffix(h.ExampleNone, ".") + "."
+	}
+	return ""
 }
 
 // YesStillAsksValues is said once, before the first value question, by a run

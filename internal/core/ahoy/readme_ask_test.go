@@ -496,15 +496,15 @@ func TestFitLinesChecksABoundedNumberOfCandidates(t *testing.T) {
 			lines[i] = fmt.Sprintf("- [Heading %d](#heading-%d)", i, i)
 		}
 		calls := 0
-		got := fitLines(lines, func(ex []string) bool {
+		got, left := fitLines(lines, func(ex []string, left int) bool {
 			calls++
 			return len(ex) <= 5
 		})
 		if calls > limit {
 			t.Errorf("%d lines: fits was called %d times, want at most %d", n, calls, limit)
 		}
-		if want := min(n, 5); len(got) != want {
-			t.Errorf("%d lines: cut to %d lines, want %d", n, len(got), want)
+		if want := min(n, 5); len(got) != want || left != n-want {
+			t.Errorf("%d lines: cut to %d lines leaving %d, want %d leaving %d", n, len(got), left, want, n-want)
 		}
 	}
 }
@@ -543,4 +543,68 @@ func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
 	if got := fitReason(bb.help(), "on", ""); got != "" {
 		t.Errorf("no reason is said as %q", got)
 	}
+}
+
+// TestReadmeExampleQuotesTheExactLines: a part's example is quoted as the
+// exact lines it would write, as the host's question tool shows the tab's
+// text: a links line is "- [Changelog](CHANGELOG.md)", never with a second
+// bullet before it, a nested contents line keeps its indent, and an example
+// cut to the rows limit says in its lead how many lines it writes, rather
+// than in a line that reads as one of them.
+func TestReadmeExampleQuotesTheExactLines(t *testing.T) {
+	var readme strings.Builder
+	readme.WriteString("# Project\n")
+	for i := range 30 {
+		fmt.Fprintf(&readme, "\n## Section %d\n\n### Sub %d\n", i, i)
+	}
+	repo := readmeRepo(t, "", map[string]string{
+		"CHANGELOG.md": "x\n", "CONTRIBUTING.md": "x\n", "README.md": readme.String(),
+		".abcd/config.json": `{"repo": {"visibility": "private"}}`,
+	})
+	v, ok := readmeView(repo)
+	if !ok {
+		t.Fatal("no view while the pair is unanswered")
+	}
+	tabs := map[string]question.Tab{}
+	for _, a := range v.Asks {
+		f := a.Fields()
+		for i, q := range a.Questions {
+			tabs[q.ID] = f.Tabs[i]
+		}
+	}
+	for _, pv := range v.Parts {
+		tab, asked := tabs[readmePartKeyPrefix+pv.Name]
+		if !asked || len(pv.Example) == 0 {
+			continue
+		}
+		lead, quoted, ok := quotedExample(tab.Text)
+		if !ok {
+			t.Errorf("%s: no example quoted after its lead in:\n%s", pv.Name, tab.Text)
+			continue
+		}
+		if len(quoted) > len(pv.Example) || !reflect.DeepEqual(quoted, pv.Example[:len(quoted)]) {
+			t.Errorf("%s: the tab quotes\n%s\nwant the first lines of\n%s", pv.Name, strings.Join(quoted, "\n"), strings.Join(pv.Example, "\n"))
+		}
+		if len(quoted) < len(pv.Example) && !strings.Contains(lead, fmt.Sprintf("%d lines", len(pv.Example))) {
+			t.Errorf("%s: an example cut to %d of %d lines does not say so in its lead %q", pv.Name, len(quoted), len(pv.Example), lead)
+		}
+	}
+	if !strings.Contains(tabs["readme.links"].Text, "\n- [Changelog](CHANGELOG.md)\n") || strings.Contains(tabs["readme.links"].Text, "- - ") {
+		t.Errorf("the links tab does not quote its lines exactly:\n%s", tabs["readme.links"].Text)
+	}
+	if !strings.Contains(tabs["readme.contents"].Text, "\n  - [Sub 0](#sub-0)\n") {
+		t.Errorf("the contents tab does not keep a nested line's indent:\n%s", tabs["readme.contents"].Text)
+	}
+}
+
+// quotedExample splits a tab's text into the paragraph that leads its example
+// and the example's lines, the block after it.
+func quotedExample(text string) (lead string, lines []string, ok bool) {
+	blocks := strings.Split(text, "\n\n")
+	for i, b := range blocks {
+		if strings.Contains(b, "Here it writes") && strings.HasSuffix(b, ":") && i+1 < len(blocks) {
+			return b, strings.Split(blocks[i+1], "\n"), true
+		}
+	}
+	return "", nil, false
 }

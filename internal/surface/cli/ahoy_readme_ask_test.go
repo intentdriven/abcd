@@ -60,19 +60,29 @@ func TestStdinPrompterRendersAReadmePartsNowAndExample(t *testing.T) {
 		}
 	}
 
-	h.Example, h.ExampleNone = nil, "no LICENSE file \x1b[2J at the root"
+	h.Example, h.ExampleLeft = []string{"- [Section 0](#section-0)", "  - [Sub 0](#sub-0)"}, 58
 	buf.Reset()
 	p = &stdinPrompter{r: bufio.NewReader(strings.NewReader("\n")), w: &buf}
 	p.PromptHelped(h, []string{"on", "off", "later"}, "on")
-	if out := buf.String(); !strings.Contains(out, "  Here it writes nothing: no LICENSE file ?[2J at the root\n") {
+	if out := buf.String(); !strings.Contains(out, "  Here it writes 60 lines, the first 2 of them:\n    - [Section 0](#section-0)\n      - [Sub 0](#sub-0)\n") ||
+		strings.Contains(out, "more") {
+		t.Errorf("an example cut to its first lines is not printed exactly, its count in its lead:\n%s", out)
+	}
+
+	h.Example, h.ExampleLeft, h.ExampleNone = nil, 0, "no LICENSE file \x1b[2J at the root"
+	buf.Reset()
+	p = &stdinPrompter{r: bufio.NewReader(strings.NewReader("\n")), w: &buf}
+	p.PromptHelped(h, []string{"on", "off", "later"}, "on")
+	if out := buf.String(); !strings.Contains(out, "  Here it writes nothing: no LICENSE file ?[2J at the root.\n") {
 		t.Errorf("the reason it writes none is not printed, terminal-safe:\n%q", out)
 	}
 }
 
 // TestDrawnPrompterAsksAReadmePartWithItsExample: the drawn door builds the
 // helped question from core's words, its current setting the question's Now
-// and its example quoted under the material, numbers it in setup's order and
-// records it.
+// and its example quoted under the material as the exact lines it writes (a
+// paragraph of them, never a list that bullets each line), numbers it in
+// setup's order and records it.
 func TestDrawnPrompterAsksAReadmePartWithItsExample(t *testing.T) {
 	swap := drawnPut
 	t.Cleanup(func() { drawnPut = swap })
@@ -93,8 +103,8 @@ func TestDrawnPrompterAsksAReadmePartWithItsExample(t *testing.T) {
 	if q.ID != "readme.licence" || q.Chip != "Setup Q5" || q.Now != "not set, so off" {
 		t.Errorf("question id %q chip %q now %q", q.ID, q.Chip, q.Now)
 	}
-	if len(q.Material) != 2 || q.Material[1].Kind != question.KindList || len(q.Material[1].Items) != 1 {
-		t.Fatalf("the example is not quoted under the material: %+v", q.Material)
+	if len(q.Material) != 2 || q.Material[1].Kind != question.KindParagraph || q.Material[1].Text != h.Example[0] {
+		t.Fatalf("the example is not quoted under the material as the line it writes: %+v", q.Material)
 	}
 	if rec := p.recorded(); len(rec) != 1 || rec[0].ID != "readme.licence" || rec[0].Value != "on" {
 		t.Errorf("recorded %+v", rec)

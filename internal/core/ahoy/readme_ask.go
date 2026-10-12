@@ -18,7 +18,6 @@ package ahoy
 // HelpedPrompter, the plugin page from the README view detection carries.
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/question"
@@ -275,7 +274,7 @@ func (pv ReadmePartView) help() PromptHelp {
 	h, _ := readmeHelp(readmePartKeyPrefix + pv.Name)
 	h.Now = pv.Now
 	h.ExampleNone = fitReason(h, pv.Default, pv.Reason, pv.short)
-	h.Example = fitExample(h, pv.Example, pv.Default)
+	h.Example, h.ExampleLeft = fitExample(h, pv.Example, pv.Default)
 	return h
 }
 
@@ -313,41 +312,33 @@ func fitsRows(h PromptHelp, def string) bool {
 }
 
 // fitExample is lines, or as many of them as fit the question h asks within
-// the rows limit (question.Default.Rows at its columns) with a last line
-// saying how many more there are. The lines shown are exact; none is cut.
-func fitExample(h PromptHelp, lines []string, def string) []string {
-	return fitLines(lines, func(ex []string) bool {
-		h.Example = ex
+// the rows limit (question.Default.Rows at its columns), and how many it
+// leaves out, which the question's lead says (PromptHelp.ExampleIntro). The
+// lines shown are exact; none is cut.
+func fitExample(h PromptHelp, lines []string, def string) ([]string, int) {
+	return fitLines(lines, func(ex []string, left int) bool {
+		h.Example, h.ExampleLeft = ex, left
 		return fitsRows(h, def)
 	})
 }
 
-// fitLines is fitExample's cut, with fits judging a candidate example. Every
-// line takes at least one row, so no example of more lines than the limit has
-// rows can fit: the cut starts there, not at the last line, and fits is
-// called at most question.Default.Rows+1 times however many lines there are
-// (a README of thousands of headings, read whole, is one contents line each).
-func fitLines(lines []string, fits func([]string) bool) []string {
-	if len(lines) == 0 || len(lines) <= question.Default.Rows && fits(lines) {
-		return lines
+// fitLines is fitExample's cut, with fits judging the first lines of an
+// example and how many it leaves out. Every line takes at least one row, so
+// no example of more lines than the limit has rows can fit: the cut starts
+// there, not at the last line, and fits is called at most
+// question.Default.Rows+1 times however many lines there are (a README of
+// thousands of headings, read whole, is one contents line each). Where not
+// even one line fits, it shows none and leaves them all out.
+func fitLines(lines []string, fits func(ex []string, left int) bool) ([]string, int) {
+	if len(lines) == 0 || len(lines) <= question.Default.Rows && fits(lines, 0) {
+		return lines, 0
 	}
 	for k := min(len(lines)-1, question.Default.Rows); k >= 1; k-- {
-		ex := append(append([]string(nil), lines[:k]...), moreLines(len(lines)-k, "and %d more"))
-		if fits(ex) {
-			return ex
+		if fits(lines[:k:k], len(lines)-k) {
+			return lines[:k:k], len(lines) - k
 		}
 	}
-	return []string{moreLines(len(lines), "%d") + ", too long to show here"}
-}
-
-// moreLines says how many lines an example leaves out, through format, which
-// takes the count.
-func moreLines(n int, format string) string {
-	unit := " lines"
-	if n == 1 {
-		unit = " line"
-	}
-	return fmt.Sprintf(format, n) + unit
+	return nil, len(lines)
 }
 
 // asksReadme reports whether this run puts the pair to a person: the pair is

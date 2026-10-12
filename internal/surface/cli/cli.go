@@ -4571,14 +4571,11 @@ func (p *stdinPrompter) PromptHelped(h ahoy.PromptHelp, choices []string, def st
 	if h.Now != "" {
 		fmt.Fprintf(p.w, "  %s %s\n", question.Default.NowPrefix, termsafe.Sanitize(h.Now))
 	}
-	switch {
-	case len(h.Example) > 0:
-		fmt.Fprint(p.w, "  Here it writes:\n")
-		for _, ln := range h.Example {
-			fmt.Fprintf(p.w, "    %s\n", termsafe.Sanitize(ln))
-		}
-	case h.ExampleNone != "":
-		fmt.Fprintf(p.w, "  Here it writes nothing: %s\n", termsafe.Sanitize(h.ExampleNone))
+	if intro := h.ExampleIntro(); intro != "" {
+		fmt.Fprintf(p.w, "  %s\n", termsafe.Sanitize(intro))
+	}
+	for _, ln := range h.Example {
+		fmt.Fprintf(p.w, "    %s\n", termsafe.Sanitize(ln))
 	}
 	return p.ask(h.Key, choices, def)
 }

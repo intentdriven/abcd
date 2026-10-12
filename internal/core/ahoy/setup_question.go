@@ -52,12 +52,9 @@ func SetupHelpedQuestion(n int, h PromptHelp, choices []string, def string) ques
 	return valueQuestion(n, h, choices, def)
 }
 
-// exampleLead introduces the lines a help's Example quotes, and exampleNone
-// the reason it writes none.
-const (
-	exampleLead = "Here it writes:"
-	exampleNone = "Here it writes nothing: "
-)
+// exampleLead is how a question introduces its whole example
+// (PromptHelp.ExampleIntro).
+const exampleLead = "Here it writes:"
 
 // valueQuestion is SetupValueQuestion over the help h.
 //
@@ -65,8 +62,8 @@ const (
 // is asked by that question, and a choice whose value is SetupLaterValue is
 // the question's own decide-later answer, with its own meaning, never a
 // second one beside it. A help built for this run carries its current
-// setting, which is the question's Now, and its example: the lines, as a
-// list after the material, or the reason it writes none, closing it.
+// setting, which is the question's Now, and its example: the lines, exactly
+// as written, after the material, or the reason it writes none, closing it.
 func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
 	later := question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],
 		Meaning: "Leaves the value unset, so the install lists it again next time."}
@@ -87,18 +84,19 @@ func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Q
 	if body, own := splitConfirm(about); strings.HasSuffix(about, "?") && len(body) == 1 && own != "" {
 		about, ask = body[0].Text, own
 	}
-	switch {
-	case len(h.Example) > 0:
-		about = strings.TrimSpace(about + " " + exampleLead)
-	case h.ExampleNone != "":
-		about = strings.TrimSpace(about + " " + exampleNone + strings.TrimSuffix(h.ExampleNone, ".") + ".")
+	if intro := h.ExampleIntro(); intro != "" {
+		about = strings.TrimSpace(about + " " + intro)
 	}
 	var material []question.Block
 	if about != "" {
 		material = []question.Block{{Kind: question.KindParagraph, Text: about}}
 	}
 	if len(h.Example) > 0 {
-		material = append(material, question.Block{Kind: question.KindList, Items: append([]string(nil), h.Example...)})
+		// The example is the lines the answer writes, as it writes them: a
+		// paragraph of them one a line, which the host shows as they are. A
+		// list would put a bullet before each, and before a line that is
+		// already a list item ("- [Changelog](CHANGELOG.md)") a second one.
+		material = append(material, question.Block{Kind: question.KindParagraph, Text: strings.Join(h.Example, "\n")})
 	}
 	change := h.ChangeLaterLine()
 	if change == "" {
