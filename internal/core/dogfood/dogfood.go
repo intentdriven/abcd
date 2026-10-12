@@ -417,7 +417,19 @@ func build(storeAbs string, c Checkout) (string, error) {
 	if err := goBuild(ctx, src, filepath.Join(out, BinaryName), logf); err != nil {
 		return "", fmt.Errorf("building %s: %w", short(c.Commit), err)
 	}
+	// go build leaves the mode to the umask, and readyBinary runs only a
+	// binary no one else can write: the build is the store's alone.
+	if err := os.Chmod(filepath.Join(out, BinaryName), 0o700); err != nil {
+		return "", fmt.Errorf("building %s: %w", short(c.Commit), err)
+	}
 	final := filepath.Join(storeAbs, c.Commit)
+	// Build runs under the store's lock and only when no ready binary stands
+	// for this commit, so a directory here is one readyBinary refused (a
+	// binary a umask left group-writable, say): it is replaced, or every later
+	// build would fail to move into place.
+	if err := os.RemoveAll(final); err != nil {
+		return "", fmt.Errorf("replacing a refused build: %w", err)
+	}
 	if err := os.Rename(out, final); err != nil {
 		return "", fmt.Errorf("moving the build into place: %w", err)
 	}
@@ -607,8 +619,9 @@ func goBuild(ctx context.Context, src, dst string, log io.Writer) error {
 }
 
 // prune keeps the keepBuilds most recent commit builds in the store and
-// removes the rest with their logs and markers, and any export left behind by
-// a build that was killed. keep is never removed.
+// removes the rest with their logs and markers, the log and marker of any
+// commit that never built, and any export left behind by a build that was
+// killed. keep is never removed.
 func prune(storeAbs, keep string) {
 	entries, err := os.ReadDir(storeAbs)
 	if err != nil {
@@ -633,17 +646,28 @@ func prune(storeAbs, keep string) {
 		}
 	}
 	sort.Slice(builds, func(i, j int) bool { return builds[i].mod.After(builds[j].mod) })
-	kept := 0
+	kept, held := 0, map[string]bool{keep: true}
 	for _, b := range builds {
 		if b.name == keep || kept < keepBuilds-1 {
 			if b.name != keep {
 				kept++
 			}
+			held[b.name] = true
 			continue
 		}
 		_ = os.RemoveAll(filepath.Join(storeAbs, b.name))
 		_ = os.Remove(filepath.Join(storeAbs, b.name+logSuffix))
 		_ = os.Remove(filepath.Join(storeAbs, b.name+failedSuffix))
+	}
+	// A commit whose build failed leaves its log and marker and no directory,
+	// so they are pruned by name: every pair but a kept build's goes.
+	for _, e := range entries {
+		name := e.Name()
+		for _, suffix := range []string{logSuffix, failedSuffix} {
+			if sha, ok := strings.CutSuffix(name, suffix); ok && gitutil.IsFullSHA(sha) && !held[sha] && e.Type().IsRegular() {
+				_ = os.Remove(filepath.Join(storeAbs, name))
+			}
+		}
 	}
 }
 
