@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/runner.go"
 remedy: "have quotaOf hold the caller's deadline itself: run the reporter in a goroutine and return ctx's error when ctx ends first, with a test using a reporter that ignores its context"
-resolution: "quotaOf runs the reporter in a goroutine and returns the caller's deadline error when the context ends first, so a reporter that ignores its context can no longer hold the start of a build or drain"
+resolution: "quotaOf runs the reporter in a goroutine and returns the caller's deadline error when the context ends first (the loop's deadline is the forge timeout Options.quota sets, which #979 added), so a reporter that ignores its context can no longer hold the start of a build or drain"
 impact: fix
 ---
 

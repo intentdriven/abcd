@@ -1158,13 +1158,13 @@ func removeLaneWorktree(c Context, lane Lane) error {
 var caseFoldingRefs = fsutil.CaseFoldingFS
 
 // sameBranchRef reports whether listed, a full ref git lists for a worktree,
-// names the branch branch. On a filesystem that folds case, git resolves a
-// loose ref whatever case it is named in, so a state naming build/Lane-1
-// reads and deletes build/lane-1: the names are compared folded there.
+// names the branch branch. On a filesystem that folds case and Unicode
+// normalisation, git resolves a loose ref however it is spelled, so a state
+// naming build/Lane-1, or an NFD spelling of an NFC name, reads and deletes
+// the branch: the names are compared through fsutil.FoldPath there, the
+// canonical fold for names such a filesystem resolves.
 func sameBranchRef(listed, branch string) bool {
 	want := "refs/heads/" + branch
-	if caseFoldingRefs() {
-		return strings.EqualFold(listed, want)
-	}
-	return listed == want
+	fold := caseFoldingRefs()
+	return fsutil.FoldPath(listed, fold) == fsutil.FoldPath(want, fold)
 }

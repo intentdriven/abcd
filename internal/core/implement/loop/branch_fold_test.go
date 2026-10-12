@@ -22,6 +22,11 @@ func TestABranchCheckedOutUnderAnotherCaseIsTheLanesOnAFoldingFilesystem(t *test
 	if sameBranchRef("refs/heads/build/lane-2", "build/Lane-1") {
 		t.Fatal("a different branch is never the lane's")
 	}
+	// macOS also folds Unicode normalisation: a state spelling the branch in
+	// NFD names the NFC branch a worktree stands on.
+	if !sameBranchRef("refs/heads/build/lan\u00e9-1", "build/lane\u0301-1") {
+		t.Fatal("on a folding filesystem a listed branch in another normalisation is the lane's")
+	}
 	caseFoldingRefs = func() bool { return false }
 	if sameBranchRef("refs/heads/build/lane-1", "build/Lane-1") {
 		t.Fatal("on a case-sensitive filesystem the names differ")
