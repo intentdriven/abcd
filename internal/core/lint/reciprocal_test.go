@@ -2,6 +2,7 @@ package lint
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -197,11 +198,6 @@ func TestBuildsOnExemptEdgesSilenceOnlyTheListedEdge(t *testing.T) {
 	}
 }
 
-// buildsOnExemptionsAtLanding is the number of one-way builds_on edges the
-// tree held when builds_on_reciprocal landed, which its exemption list
-// recorded. The list may shrink; it never grows past this.
-const buildsOnExemptionsAtLanding = 155
-
 // TestA1RulesAreKnownAndArmedAtWarn pins the three A1 rules to the config
 // loader and to this repository's record-lint configuration: a config naming
 // them loads, and the committed one arms each at warn, so a tree that passed
@@ -230,8 +226,9 @@ func TestA1RulesAreKnownAndArmedAtWarn(t *testing.T) {
 }
 
 // TestBuildsOnExemptionsNeverGrow pins builds_on_reciprocal's exemption list
-// in the committed configuration: it holds no more entries than it did at
-// landing, it is sorted (by source, then target, in handle order) without
+// in the committed configuration: every entry is one it landed with
+// (testdata/builds-on-exempt-at-landing.txt, the 155 one-way edges the tree
+// then held), so the list may shrink but never gains one; it is sorted (by source, then target, in handle order) without
 // duplicates, and every entry still names a builds_on edge in this tree, so an
 // entry whose edge was dropped is dropped from the list too.
 func TestBuildsOnExemptionsNeverGrow(t *testing.T) {
@@ -241,9 +238,19 @@ func TestBuildsOnExemptionsNeverGrow(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := cfg.Rules["builds_on_reciprocal"].ExemptEdges
-	if len(list) > buildsOnExemptionsAtLanding {
-		t.Errorf("exempt_edges holds %d entries, more than the %d it landed with: the list never grows; "+
-			"a new one-way builds_on is answered in its target's file, not exempted", len(list), buildsOnExemptionsAtLanding)
+	landing, err := os.ReadFile(filepath.Join("testdata", "builds-on-exempt-at-landing.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	landed := map[string]bool{}
+	for _, e := range strings.Split(strings.TrimSpace(string(landing)), "\n") {
+		landed[e] = true
+	}
+	for _, e := range list {
+		if !landed[e] {
+			t.Errorf("exempt_edges entry %q is not one the list landed with: the list never grows; "+
+				"a new one-way builds_on is answered in its target's file, not exempted", e)
+		}
 	}
 	split := func(e string) (string, string) {
 		from, to, _ := strings.Cut(e, " -> ")
