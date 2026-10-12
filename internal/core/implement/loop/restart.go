@@ -370,16 +370,20 @@ func saveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await
 		return aside, nil
 	}
 
-	// Saved and proved: only now is the lane's own worktree reset, as the
-	// person's own git resets and cleans it (pickGit): the reset writes the
-	// files their global filters smudge, and the clean keeps what their
+	// Saved and proved: only now is the lane's own worktree reset and
+	// cleaned, as the person's own git resets and cleans it. The reset
+	// (resetLaneTree) runs the repository's reference-transaction and
+	// post-index-change hooks, bounded, and writes the files their global
+	// filters smudge; the clean (pickGit) runs no hook, and keeps what their
 	// global ignore names, which the snapshot did not save.
-	for _, args := range [][]string{{"reset", "--hard", "--quiet", head}, {"clean", "-f", "-d", "--quiet", "--"}} {
-		if _, err := pickGit(lw.Path, args...); err != nil {
-			return RestartAside{}, refuse(stageRestart, "", laneID,
-				"the uncommitted work is saved aside at "+dir+", but git could not reset the lane's worktree: "+fsutil.RedactHome(err.Error()),
-				"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again")
-		}
+	err = resetLaneTree(lw.Path, head)
+	if err == nil {
+		_, err = pickGit(lw.Path, "clean", "-f", "-d", "--quiet", "--")
+	}
+	if err != nil {
+		return RestartAside{}, refuse(stageRestart, "", laneID,
+			"the uncommitted work is saved aside at "+dir+", but git could not reset the lane's worktree: "+fsutil.RedactHome(err.Error()),
+			"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again")
 	}
 	return aside, nil
 }

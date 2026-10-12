@@ -216,8 +216,14 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		// would, through the filters their global config defines
 		// (iss-2610111729375108), and runs the repository's post-checkout
 		// hook (the one `git lfs install` installs), as the person's own
-		// `git worktree add` does (commitGit, iss-2610120640452939).
-		if _, err := commitGit(c.RepoRoot, args...); err != nil {
+		// `git worktree add` does (iss-2610120640452939). Its time scales
+		// with the tree, so it has its own bound (worktreeAddGit).
+		if _, err := worktreeAddGit(c.RepoRoot, args...); errors.Is(err, errCheckoutStalled) {
+			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
+				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
+				fmt.Sprintf("settle the repository's post-checkout hook if it waits; a checkout that needs longer than %s (a large Git LFS download) can be made by hand at %s on %s, which the worktree stage adopts; then run `abcd implement step` again",
+					worktreeAddTimeout, fsutil.RedactHome(lw.Path), lw.Branch))
+		} else if err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")
