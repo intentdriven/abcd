@@ -8,10 +8,10 @@ type Candidate struct {
 	Hits []string
 }
 
-// Candidates returns the items any of whose recall words hits prompt under
+// candidates returns the items any of whose recall words hits prompt under
 // the loader's term rule (rules.TermMatcher), in the items' order — id order
 // from noteItems. The order chooses nothing yet; Recall takes them in it.
-func Candidates(items []Item, prompt string) []Candidate {
+func candidates(items []Item, prompt string) []Candidate {
 	if len(items) == 0 {
 		return nil
 	}
@@ -31,14 +31,14 @@ func Candidates(items []Item, prompt string) []Candidate {
 	return out
 }
 
-// Matching is Candidates with each personal note's tie judged: a candidate
+// Matching is candidates with each personal note's tie judged: a candidate
 // tied to a root is kept only when root answers that same root. root is
 // asked only when a tied item matched, and then once, so a prompt that
 // matches no tied item costs no git call; a nil root answers "". When root
 // errs, every tied candidate is left out and the error is returned beside
 // the rest.
 func Matching(items []Item, prompt string, root RootFunc) ([]Candidate, error) {
-	cands := Candidates(items, prompt)
+	cands := candidates(items, prompt)
 	tied := false
 	for _, c := range cands {
 		if c.Item.Tie != nil {

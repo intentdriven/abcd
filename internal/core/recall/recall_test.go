@@ -55,13 +55,13 @@ func TestNoteRecallUsesTheRuleTermMatch(t *testing.T) {
 		for _, p := range prompts {
 			rs := rules.RuleSet{SchemaVersion: 1, Domains: map[string]rules.Domain{"PROBE": {Recall: []string{w}, Rules: []string{"r"}}}}
 			domain := len(rs.Match(p)) == 1
-			got := len(Candidates(items, p)) == 1
+			got := len(candidates(items, p)) == 1
 			if got != domain {
 				t.Errorf("recall word %q on %q: note candidate = %v, domain match = %v", w, p, got, domain)
 			}
 		}
 	}
-	c := Candidates(noteItems([]memnote.Note{note("mem-2610111200000001", "A lesson", "Body.", "", "test", "race", "pull request")}, nil),
+	c := candidates(noteItems([]memnote.Note{note("mem-2610111200000001", "A lesson", "Body.", "", "test", "race", "pull request")}, nil),
 		"run the tests before the pull requests")
 	if len(c) != 1 || !slices.Equal(c[0].Hits, []string{"test", "pull request"}) {
 		t.Fatalf("candidate hits = %+v", c)
