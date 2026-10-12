@@ -5,7 +5,7 @@ slug: "unbumped-prompt-edit-passes-agent-diff"
 severity: "minor"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-10"
+found_during: "private security advisory GHSA-5c9h-7q8p-gpj5, filed 2026-10-10"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/lint/agentcontract.go"
@@ -16,6 +16,6 @@ impact: fix
 
 record-lint's armed agent-diff check counts any added diff line starting `+prompt_version:` as a version bump, so an instruction edit under `agents/` passes at an unchanged `prompt_version` when the diff also adds a body line `prompt_version: <same>` or adds one trailing space to the frontmatter line.
 
-A private security report, handled in this release; its advisory is published or closed with the release.
+Private security advisory GHSA-5c9h-7q8p-gpj5 (draft, severity medium). Present since v0.6.8. GHSA-q333-3p8r-xc2f's pins stop a diff driver forging the line, not git's own diff carrying it. Full text, evidence and reproduction: .abcd/.work.local/scratch/security-drain-2026-10-11/advisories/ in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
 Evidence (main 3d171421a): `promptVersionChanged` (internal/core/lint/agentcontract.go) returns true on the first diff line with prefix `+prompt_version:` and never compares the parsed version on the two sides. Confirmed by reading the code at that commit; not re-run.
