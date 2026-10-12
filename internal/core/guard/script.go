@@ -344,6 +344,18 @@ type shellState struct {
 	// shell is the shell the commands run in (shellZsh, shellOther), or
 	// shellUnknown where the guard cannot place it.
 	shell string
+	// emptied is the value a `NAME=` word emptied, kept for the array
+	// assignment it opens (`fpath=(dir $fpath)`), whose elements can name
+	// the value from before it (withArray); nil where no such word ran.
+	emptied *emptiedVar
+}
+
+// emptiedVar is a tracked variable's value before a `NAME=` word emptied
+// it; set is false where the line had not set it.
+type emptiedVar struct {
+	name string
+	val  varVal
+	set  bool
 }
 
 // pendingCD is a cd the next commands run after: dirs is every directory it
@@ -943,6 +955,11 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				if n == st {
 					n = st.clone()
 				}
+				prev, set := n.vars[key]
+				n.emptied = nil
+				if t == name+"=" {
+					n.emptied = &emptiedVar{name: key, val: prev, set: set}
+				}
 				n.vars[key] = v
 			}
 		}
@@ -1054,18 +1071,44 @@ func (st *shellState) unset(args []string) *shellState {
 // separator, is kept as unknownText, so a search reaching it stops there; a
 // `+=` onto a value the line did not set is the account's value, unknown,
 // followed by the elements.
+//
+// An fpath element that is the array itself (`$fpath`, `"${fpath[@]}"`,
+// `$FPATH`) is the value before the assignment: the line's where it set
+// one, else the account's own directories, kept as accountDirs, and so is
+// what a `+=` appends to where the line set no value
+// (iss-2610111749099986).
 func (st *shellState) withArray(s segment, name string) *shellState {
+	// before is the value the array held before this assignment.
+	before, beforeSet := st.vars[name]
+	if e := st.emptied; !s.arrayAppend && e != nil && e.name == name {
+		before, beforeSet = e.val, e.set
+	}
 	elems := make([]string, 0, len(s.tokens))
 	for i := range s.tokens {
 		w, ok := fixedToken(s, i)
-		if !ok || strings.ContainsRune(w, ':') {
+		switch {
+		case !ok && name == "FPATH" && namesFpath(s, i):
+			switch {
+			case !beforeSet:
+				w = accountDirs
+			case !before.ok:
+				w = unknownText
+			default:
+				w = before.text
+			}
+		case !ok || strings.ContainsRune(w, ':'):
 			w = unknownText
 		}
-		elems = append(elems, w)
+		if w != "" {
+			elems = append(elems, w)
+		}
 	}
 	n := st.clone()
+	n.emptied = nil
 	prev, set := n.vars[name]
 	switch {
+	case !set && s.arrayAppend && name == "FPATH":
+		prev = varVal{text: accountDirs, ok: true}
 	case !set && s.arrayAppend:
 		prev = varVal{text: unknownText, ok: true}
 	case !set:
@@ -1082,6 +1125,32 @@ func (st *shellState) withArray(s segment, name string) *shellState {
 	}
 	n.vars[name] = varVal{text: text, ok: true}
 	return n
+}
+
+// accountDirs stands in an FPATH the line set for the account's own
+// directories, which the line put back on the search without fixing them
+// (`fpath=(~/.zfunc $fpath)`). A function found only there is the
+// account's own, unseen as its startup files are (autoloadTargets).
+const accountDirs = "\x02account"
+
+// namesFpath reports whether word i of s is fpath or FPATH whole as the line
+// spelled it, which as an element of fpath is the array before the
+// assignment.
+func namesFpath(s segment, i int) bool {
+	sp := s.spelled[i]
+	if len(sp) == 0 {
+		return false
+	}
+	for _, rest := range sp[1:] {
+		if rest != "" {
+			return false
+		}
+	}
+	switch sp[0] {
+	case "$fpath", "${fpath}", "$fpath[@]", "$fpath[*]", "$FPATH", "${FPATH}":
+		return true
+	}
+	return false
 }
 
 // cdTarget is the state after a `cd`/`pushd` at site: every directory a
@@ -1492,6 +1561,10 @@ type readTarget struct {
 // targetsOf is every file a segment's commands point a shell at, and the
 // stream verdicts on a startup option or variable handed a stream.
 func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarget, []payloadSignal) {
+	if s.arrayOf != "" {
+		// The words of an array assignment are its elements: none runs.
+		return nil, nil
+	}
 	var out []readTarget
 	var sigs []payloadSignal
 	for _, a := range commandSites(s) {
@@ -1641,6 +1714,9 @@ func autoloadTargets(rc *readCtx, s segment, st *shellState, site, first int, op
 			return nil, unfixed
 		}
 		for _, d := range dirs {
+			if d == accountDirs {
+				continue // the account's own, searched by the shell, unseen
+			}
 			if d == "" || isUnknown(d) || strings.ContainsRune(d, varMark) {
 				return nil, unfixed
 			}

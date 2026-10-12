@@ -378,7 +378,12 @@ in the `FPATH` or `fpath` the line sets, where the first directory holding it
 (as `dir.zwc`, `dir/name.zwc` or `dir/name`) is the file read; a compiled
 `.zwc` file is a **block**, and so is a name or a directory searched before the
 file is found that the line does not fix (`script-unread`). A line that leaves
-`FPATH` as the account set it loads the account's own functions, unseen. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
+`FPATH` as the account set it loads the account's own functions, unseen. An
+`fpath` element that is the array itself (`fpath=(~/.zfunc $fpath)`,
+`"${fpath[@]}"`, `$FPATH`) is its value before the assignment, and where the
+line set none, and for `fpath+=(dir)`, that is the account's own directories:
+the search passes over them, the fixed directories around them are read, and
+a name only the account's directories hold stays unseen. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
 classify it: a shell-family shebang, or no shebang and no NUL byte, makes it a
 shell script, read the same way; anything else is a program, allowed unread. A
 relative path resolves against the working directory, and against a `cd` or
