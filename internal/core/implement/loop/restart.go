@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -318,6 +319,9 @@ type provedAside struct {
 // is the one the lane's state names. A refusal changes nothing.
 func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await, reset bool) (provedAside, error) {
 	laneID := lane.ID
+	if err := laneOwnReceipt(runID, laneID, aw.Receipt); err != nil {
+		return provedAside{}, err
+	}
 	p := provedAside{reset: reset, head: lane.HeadSHA, files: []string{}}
 	if reset {
 		var err error
@@ -476,4 +480,28 @@ func outageOpen(repoRoot, laneID string) error {
 		fmt.Sprintf("the run's %s outage is still open (next probe at %s), so a fresh agent would lose its connection too",
 			down, cur.NextProbeAt.UTC().Format(time.RFC3339)),
 		"wait for a successful shared probe (`abcd implement outage probe`), or, once the connection is back, `abcd implement outage clear --session <id> --reason <why>`; then restart the lane; nothing was changed")
+}
+
+// laneOwnReceipt holds an await's receipt path to its lane's directory before
+// a restart or a rate-limit checkpoint reads, copies aside and removes the file
+// it names. The path comes from the run's state file, which an archive of the
+// checkout can carry hand-written: one naming another file of the checkout
+// (`.env`, `go.mod`) would have it moved into the lane's aside, and one naming
+// a file of the lane's asides could overwrite a saved patch. So a path that is
+// not a clean file of the lane's own directory outside its asides is refused,
+// as derivedLaneWorktree refuses a worktree the loop did not derive.
+func laneOwnReceipt(runID, laneID, receipt string) error {
+	dir, err := laneRel(runID, laneID, stageRestart)
+	if err != nil {
+		return err
+	}
+	clean := path.Clean(receipt)
+	base := path.Base(clean)
+	if clean != receipt || !strings.HasPrefix(clean, dir+"/") || strings.HasPrefix(clean, dir+"/"+AsideDirName+"/") ||
+		base == AsideFileName || base == AsidePatchName {
+		return refuse(stageRestart, "", laneID,
+			fmt.Sprintf("the run's state names %q as an await's receipt, which is not a file of the lane's own directory %s, so it is neither read nor removed", fsutil.RedactHome(receipt), dir),
+			"restore the run's state file; nothing was changed")
+	}
+	return nil
 }
