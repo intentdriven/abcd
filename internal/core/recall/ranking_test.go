@@ -284,3 +284,35 @@ func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
 		t.Fatalf("recalled %v too large %v omitted %v", tight.Recalled, tight.TooLarge, tight.Omitted)
 	}
 }
+
+// TestOneWordInTwoInflectionsIsOneTerm: a prompt that says a word twice in
+// two inflections ("merge before merging") asks for one term, so an item's
+// word is found, and counted, once — never under two terms, each with its
+// own idf.
+func TestOneWordInTwoInflectionsIsOneTerm(t *testing.T) {
+	for _, prompt := range []string{"merge before merging", "merging before the merge", "commit after committing the fix"} {
+		terms := rules.PromptTerms(prompt)
+		owner := map[string]string{}
+		for _, term := range terms {
+			for _, root := range term.Roots {
+				if other, ok := owner[root]; ok {
+					t.Fatalf("%q: root %q belongs to two terms, %q and %q", prompt, root, other, term.Stem)
+				}
+				owner[root] = term.Stem
+			}
+		}
+	}
+	ranked := Rank([]Item{item("mem-2610111200000001", []string{"merge"}, "Merges need a review", "Ask first.")}, "merge before merging")
+	if len(ranked) != 1 {
+		t.Fatalf("ranked = %+v", ranked)
+	}
+	var found []string
+	for _, ts := range ranked[0].Terms {
+		if ts.Recall > 0 {
+			found = append(found, ts.Term)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("the recall word was found under %d terms %v: %+v", len(found), found, ranked[0].Terms)
+	}
+}
