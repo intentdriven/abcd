@@ -145,9 +145,14 @@ func rateLimitWindow(repoRoot, runID, laneID string, aw Await, fl *runner.Failur
 // checkpointLimited checkpoints the lane whose agent met the rate limit: its
 // uncommitted work (an implementer's) and partial receipt saved aside, its
 // worktree reset to the branch's last commit, and its await dropped. A save
-// the loop refuses keeps the await and leaves the worktree, and cp says why.
+// the loop refuses keeps the await, marked with why, and leaves the worktree;
+// cp says why too, and a restart re-tells the marked await.
 func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw Await, fl *runner.Failure, cp *Checkpoint, now time.Time) {
-	k := slices.IndexFunc(lane.Awaits, func(a Await) bool { return samePath(repoRoot, a.Receipt, aw.Receipt) })
+	// A restart keeps the receipt path and re-tells the await from a new
+	// Since, so the await is matched by both.
+	k := slices.IndexFunc(lane.Awaits, func(a Await) bool {
+		return samePath(repoRoot, a.Receipt, aw.Receipt) && a.Since.Equal(aw.Since)
+	})
 	if k < 0 {
 		// The await is gone already: its receipt was handed back, or a
 		// restart re-told it, before the response was read.
@@ -164,13 +169,19 @@ func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw
 		cp.Kept = reason
 		return
 	}
-	aside, err := saveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], why, aw.Role == RoleImplementer, now)
+	proved, err := proveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], aw.Role == RoleImplementer)
+	var aside RestartAside
+	if err == nil {
+		aside, err = saveAside(repoRoot, root, st.RunID, lane.ID, lane.Awaits[k], proved, why, now)
+	}
 	if err != nil {
 		reason := fsutil.RedactHome(err.Error())
 		if r, ok := AsRefusal(err); ok {
 			reason = r.Reason
 		}
 		cp.Kept = reason
+		lane.Awaits = slices.Clone(lane.Awaits)
+		lane.Awaits[k].Kept = reason
 		return
 	}
 	cp.Aside = aside.Path

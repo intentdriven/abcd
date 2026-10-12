@@ -131,11 +131,15 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 	v.slug = slug
 
 	// ONE os.Root at the repository root, used for every path this verb touches.
-	// It is the containment boundary: os.Root refuses symlink traversal at EVERY
-	// component, not just the leaf, so a repository whose `.abcd/development` is a
-	// symlink cannot redirect the write outside the tree. A leaf-only check would
-	// pass such a tree, because the kernel resolves the ancestors before the check
-	// ever sees them.
+	// It is the containment boundary: os.Root resolves every component, ancestors
+	// included, and refuses any path that would ESCAPE the root, so a repository
+	// whose `.abcd/development` is a symlink pointing outside the tree cannot
+	// redirect the write there. A leaf-only check would pass such a tree, because
+	// the kernel resolves the ancestors before the check ever sees them. os.Root
+	// does NOT refuse every symlink: a link that stays inside the tree is followed
+	// and the write lands at its in-tree target. Containment is the only guarantee
+	// this writer rests on, so that is correct, and a repository's own in-tree
+	// arrangement is left as it set it (iss-2610050259237102).
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return Result{}, err
@@ -144,8 +148,9 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 
 	// The decision log is read BEFORE the record is written, so the commonest
 	// reason the pointer cannot land is a refusal rather than a rollback. The
-	// through-the-Root Lstat is what refuses a symlinked ANCESTOR; ReadGuarded's
-	// O_NOFOLLOW refuses a symlinked leaf. The gap between them is the benign
+	// through-the-Root Lstat is what refuses an ancestor symlinked OUT of the tree
+	// (an in-tree one is followed); ReadGuarded's O_NOFOLLOW refuses a symlinked
+	// leaf. The gap between them is the benign
 	// TOCTOU of the trusted-worktree model.
 	if _, err := root.Lstat(DecisionsRelDir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -188,8 +193,8 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 		// Nothing in abcd establishes it and no convention check requires it, so
 		// refusing here would fail the first run in any repository — after the three
 		// host legs have already been paid for, and with the verdict unrecoverable
-		// when it arrived on stdin. Through the Root, a symlinked component still
-		// refuses.
+		// when it arrived on stdin. Through the Root, a component symlinked out of
+		// the tree still refuses.
 		if err := root.MkdirAll(ResearchRelDir, 0o755); err != nil {
 			return fmt.Errorf("preparing %s: %w", ResearchRelDir, err)
 		}

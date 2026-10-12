@@ -300,6 +300,17 @@ var optionalSkippedHelp = map[string]SummaryItem{
 	},
 }
 
+// readmeAwaitsConfigHelp explains the README question a run left unasked with
+// no .abcd/config.json to keep the answer in. Neither route the ordinary
+// action names works there: the question is not asked without the config, and
+// --readme-parts is refused, so the starter files come first
+// (iss-2610120505551170).
+var readmeAwaitsConfigHelp = SummaryItem{
+	What:   optionalSkippedHelp[ReadmeOfferGapID].What,
+	Why:    optionalSkippedHelp[ReadmeOfferGapID].Why,
+	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the README question at a terminal, or pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+}
+
 // remainingHelp explains the required work a run left outstanding.
 var remainingHelp = SummaryItem{
 	What:   "Some required set-up steps are still not done.",
@@ -379,6 +390,9 @@ func (r *InstallResult) explain() {
 		it, ok := optionalSkippedHelp[id]
 		if !ok {
 			continue
+		}
+		if id == ReadmeOfferGapID && r.readmeAwaitsConfig {
+			it = readmeAwaitsConfigHelp
 		}
 		it.Refs = []string{id}
 		r.Summary = append(r.Summary, it)
