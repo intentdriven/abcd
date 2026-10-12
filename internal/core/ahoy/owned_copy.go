@@ -331,13 +331,19 @@ func IsOwnedPathCopy(target string) bool {
 // artefact is available to install from (iss-2609100506263330). "A session
 // whose hooks provisioned the cache" is a condition the operator cannot check,
 // create or observe; this is a command they can type. The one-liner fetches the release binary and verifies it against that
-// release's own checksums.txt, writes it to ~/.local/bin/abcd and records it in
-// ~/.abcd.noindex/path-entry, which is exactly the owned-copy shape `ahoy install` then
-// adopts where it stands. One string, shared by the install refusal and the
-// symlink.legacy fix hint, so the two cannot drift apart.
+// release's own checksums.txt and, when gh is present, its signed build
+// provenance with gh attestation verify, refusing when that fails and warning
+// when gh cannot check (the product thinker's ruling of 2026-10-12,
+// iss-2610120617521209). It writes the binary to ~/.local/bin/abcd and records
+// it in ~/.abcd.noindex/path-entry, which is exactly the owned-copy shape `ahoy
+// install` then adopts where it stands; the served /install.sh writes no such
+// record, so it is not the remedy. One string, shared by the install refusal
+// and the symlink.legacy fix hint, so the two cannot drift apart.
 var coldCacheRemedy = "Install a verified copy first with the install one-liner in the README " +
-	"(https://github.com/intentdriven/abcd#install): it downloads the release binary, checks it against that release's own checksums.txt, " +
-	"writes it to ~/.local/bin/abcd and records it in " + abcdhome.Display("path-entry") + ". Then re-run `abcd ahoy install`, which adopts it."
+	"(https://github.com/intentdriven/abcd#install): it downloads the release binary and checks it against that release's own checksums.txt; " +
+	"when gh is installed and signed in it also checks the signed build record with `gh attestation verify` and installs nothing if that fails, " +
+	"and without gh it installs on the checksum alone and warns that the download was not checked against the signed build record. " +
+	"It writes the binary to ~/.local/bin/abcd and records it in " + abcdhome.Display("path-entry") + ". Then re-run `abcd ahoy install`, which adopts it."
 
 // coldCacheRefusal is the install note for a run that had no verified artefact
 // to install from. It says what was left at target and why, in the words the

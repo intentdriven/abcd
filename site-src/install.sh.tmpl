@@ -10,13 +10,14 @@
 # forms to one another by test — same release URLs, same checksum step, same
 # install destination — so none of them can drift alone.
 #
-# Two steps go beyond the one-liner, and internal/core/site runs the script to
-# prove them (installsh_run_test.go). When gh is present it verifies the
-# binary's build provenance with `gh attestation verify` and installs nothing
-# if that fails; without gh, or with a gh that is not signed in, the checksum
-# stands alone and a warning says so (iss-2610120617521209). After the install
-# it records the release in ~/.abcd.noindex/release-mark, the newest-release
-# mark hooks/bootstrap.sh and `abcd update` keep (iss-2610120601505029).
+# internal/core/site runs the script to prove two steps (installsh_run_test.go).
+# When gh is present it verifies the binary's build provenance with `gh
+# attestation verify` and installs nothing if that fails; without gh, or with a
+# gh that is not signed in, the checksum stands alone and a warning says so
+# (iss-2610120617521209), as the one-liners do (installoneliner_run_test.go).
+# Beyond the one-liners, after the install it records the release in
+# ~/.abcd.noindex/release-mark, the newest-release mark hooks/bootstrap.sh and
+# `abcd update` keep (iss-2610120601505029).
 #
 # Everything between `set -eu` and the last line is a definition. Only the final
 # `main "$@"` runs anything, so a download truncated in transit executes nothing.

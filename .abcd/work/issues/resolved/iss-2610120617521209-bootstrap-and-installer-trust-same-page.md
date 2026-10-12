@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "hooks/bootstrap.sh"
 remedy: "Choose how the shell installers verify provenance (gh attestation verify when present, an already-verified abcd, or a refusal naming the manual check), then implement it in both scripts with tests in a temp HOME; the choice is the product thinker's where it changes what a first install needs"
-resolution: "per the product thinker's ruling of 2026-10-12, hooks/bootstrap.sh and site-src/install.sh.tmpl verify the download with gh attestation verify (held to intentdriven/abcd's release workflow on github.com) when gh is present and refuse on a failed verification; with gh absent, too old for the attestation command, or not signed in, they install on the checksum alone with a warning naming why and the hand check"
+resolution: "per the product thinker's ruling of 2026-10-12, hooks/bootstrap.sh and site-src/install.sh.tmpl verify the download with gh attestation verify (held to intentdriven/abcd's release workflow on github.com) when gh is present and refuse on a failed verification; with gh absent, too old for the attestation command, or not signed in, they install on the checksum alone with a warning naming why and the hand check. The copy-paste one-liners in README.md and docs/how-to/install.md carry the same step and the same refusal and warning, the prose beside them says so for readers without gh, and the abcd ahoy install cold-cache remedy that points at the README one-liner says what it checks"
 impact: fix
 ---
 

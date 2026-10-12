@@ -56,6 +56,22 @@ type installerRun struct {
 // installedTag; prepare runs against the sandbox home before the install.
 func runInstaller(t *testing.T, gh ghBehaviour, prepare func(home string)) installerRun {
 	t.Helper()
+	script := filepath.Join(t.TempDir(), "install.sh")
+	tmpl, err := os.ReadFile(filepath.Join(repoRoot(), "site-src", "install.sh.tmpl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, tmpl, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return runInstallForm(t, []string{"sh", script}, gh, prepare)
+}
+
+// runInstallForm runs argv, one form of the install command, in the sandbox
+// runInstaller describes. The stub release serves the binary under every
+// released OS name, so a per-OS one-liner runs on either OS.
+func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(home string)) installerRun {
+	t.Helper()
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("the installer runs on macOS and Linux only")
 	}
@@ -68,15 +84,18 @@ func runInstaller(t *testing.T, gh ghBehaviour, prepare func(home string)) insta
 		prepare(r.home)
 	}
 
-	arch := runtime.GOARCH
-	asset := "abcd-" + runtime.GOOS + "-" + arch
 	r.release = []byte("#!/bin/sh\n[ \"$1\" = --version ] && echo 'abcd " + installedTag + "' && echo '  install:   pinned'\nexit 0\n")
 	release := t.TempDir()
-	if err := os.WriteFile(filepath.Join(release, asset), r.release, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	sum := sha256.Sum256(r.release)
-	manifest := hex.EncodeToString(sum[:]) + "  " + asset + "\n" + strings.Repeat("0", 64) + "  abcd-other-platform\n"
+	manifest := ""
+	for _, goos := range []string{"darwin", "linux"} {
+		asset := "abcd-" + goos + "-" + runtime.GOARCH
+		if err := os.WriteFile(filepath.Join(release, asset), r.release, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		manifest += hex.EncodeToString(sum[:]) + "  " + asset + "\n"
+	}
+	manifest += strings.Repeat("0", 64) + "  abcd-other-platform\n"
 	if err := os.WriteFile(filepath.Join(release, "checksums.txt"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -106,15 +125,7 @@ func runInstaller(t *testing.T, gh ghBehaviour, prepare func(home string)) insta
 		}
 	}
 
-	script := filepath.Join(t.TempDir(), "install.sh")
-	tmpl, err := os.ReadFile(filepath.Join(repoRoot(), "site-src", "install.sh.tmpl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(script, tmpl, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("sh", script)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = t.TempDir()
 	cmd.Env = []string{
 		"HOME=" + r.home,
