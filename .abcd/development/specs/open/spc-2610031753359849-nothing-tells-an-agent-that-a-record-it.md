@@ -687,9 +687,25 @@ These are the facilitator's design calls; none changes a criterion.
     made but not stamped, so the view's age is unknown. Its sentence now says
     it writes the fetched reservations.
   - The pre-push hook's create range is every commit reachable from the
-    pushed tip, as written; on a SHA-256 repository the hook's 40-zero
-    sentinel does not match, so a create there is gated (the range walk fails
-    and the receipt is asked for), the safe direction.
+    pushed tip, as written.
+- **What the security review of steps 4 to 7 settled** (2026-10-12):
+  - The hook reads git's null object id by what it is made of, all zeros of
+    any length, so a SHA-256 repository's sixty-four zeros are read as SHA-1's
+    forty are: a reservation create there passes without a receipt, and a
+    delete there, of a reservation or of the protected branch, is read as a
+    delete. The protected-branch delete check had the same forty-zero
+    constant, so a SHA-256 delete of it was refused under the wrong reason.
+  - The hook refuses a deletion of any ref under the reservation prefix,
+    naming `abcd reserve <id> --release`, so "no deletion" holds for a push
+    made through the hooks. A push with `--no-verify`, or from a checkout
+    without them, is not covered: a server-side ruleset for
+    `refs/heads/abcd-reserved/*` refusing deletion is proposed and not yet
+    applied, and `.abcd/work/rulesets/` is unchanged until the person rules
+    on it. No hazard-registry entry was added: the registry's operand
+    prefixes are all-of, so one entry per spelling (two colon refspecs, two
+    `--delete` operands) would be needed, each taught as its own lesson, and a
+    deletion by `--prune` or `--mirror` cannot be named at all; the hook sees
+    every deletion however it was spelled.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

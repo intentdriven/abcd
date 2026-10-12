@@ -62,10 +62,18 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
-zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
 reserved_prefix="abcd-reserved/"
 empty_tree="$(git hash-object -t tree /dev/null)"
+
+# is_null_id succeeds for the null object id git sends for a side that does
+# not exist: all zeros, forty of them under SHA-1 and sixty-four under SHA-256,
+# so it is read by what it is made of, never by its length.
+is_null_id() {
+  case "$1" in
+  "" | *[!0]*) return 1 ;;
+  esac
+}
 
 # only_empty_trees succeeds when every commit in the range git rev-list is
 # given has the empty tree, and fails when one does not or the range cannot be
@@ -82,7 +90,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   branch="${remote_ref#refs/heads/}"
 
   if [ "$branch" = "$protected" ]; then
-    if [ "$local_sha" = "$zero" ]; then
+    if is_null_id "$local_sha"; then
       echo "pre-push: refusing to delete protected branch '$protected'." >&2
     else
       echo "pre-push: refusing direct push to protected branch '$protected' — open a PR." >&2
@@ -94,7 +102,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   # a reservation ends with a tombstone, never a deletion, because a deleted
   # tip reads as absent and the next reserve takes the record with no lease
   # judgement at all.
-  if [ "$local_sha" = "$zero" ]; then
+  if is_null_id "$local_sha"; then
     case "$branch" in
     "$reserved_prefix"*)
       echo "pre-push: refusing to delete the reservation '$branch': a reservation ends with a tombstone, never a deletion;" >&2
@@ -106,7 +114,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
 
   # Non-fast-forward (force) push guard on an existing remote branch.
-  if [ "$remote_sha" != "$zero" ]; then
+  if ! is_null_id "$remote_sha"; then
     if git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
       : # fast-forward — fine
     else
@@ -125,7 +133,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   # reachable on a create.
   case "$branch" in
   "$reserved_prefix"*)
-    if [ "$remote_sha" = "$zero" ]; then
+    if is_null_id "$remote_sha"; then
       only_empty_trees "$local_sha" && continue
     else
       only_empty_trees "$remote_sha..$local_sha" && continue

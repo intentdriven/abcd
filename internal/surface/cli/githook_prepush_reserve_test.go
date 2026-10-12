@@ -181,3 +181,55 @@ func TestPrePushStillPassesDeletingAnOrdinaryBranch(t *testing.T) {
 		t.Errorf("the remote still holds topic at %s", got)
 	}
 }
+
+// TestPrePushReadsTheNullIDInASHA256Repository: git sends the hook the null
+// object id for a side that does not exist, forty zeros under SHA-1 and
+// sixty-four under SHA-256. A hook comparing against forty zeros alone walked
+// `<null>..<local>` on a SHA-256 reservation create and asked for a receipt,
+// read a SHA-256 delete of the protected branch as a direct push to it, and let
+// a SHA-256 delete of a reservation through. Each is read as SHA-1 reads it.
+func TestPrePushReadsTheNullIDInASHA256Repository(t *testing.T) {
+	sha256Case := func(t *testing.T) *prePushCase {
+		c := newPrePushCaseIn(t, "sha256")
+		if got := c.git("rev-parse", "--show-object-format"); got != "sha256" {
+			t.Fatalf("the fixture's premise is wrong: object format %q", got)
+		}
+		return c
+	}
+	// reserved pushes a reservation with the hook bypassed, so each case
+	// tests one thing.
+	reserved := func(c *prePushCase) string {
+		first := c.emptyTreeCommit("", "abcd reservation: iss-2609020716570699")
+		c.git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", first+":"+reservedRef)
+		return first
+	}
+	t.Run("a reservation create and renewal pass", func(t *testing.T) {
+		c := sha256Case(t)
+		first := c.emptyTreeCommit("", "abcd reservation: iss-2609020716570699")
+		if out, err := c.push("--porcelain", "origin", first+":"+reservedRef); err != nil {
+			t.Fatalf("a SHA-256 reservation create was refused although its commit has the empty tree\n%s", out)
+		}
+		next := c.emptyTreeCommit(first, "abcd reservation: renewed")
+		if out, err := c.push("--porcelain", "origin", next+":"+reservedRef); err != nil {
+			t.Fatalf("a SHA-256 renewal was refused\n%s", out)
+		}
+	})
+	t.Run("a reservation delete is refused", func(t *testing.T) {
+		c := sha256Case(t)
+		first := reserved(c)
+		out, err := c.push("origin", ":"+reservedRef)
+		if err == nil || !strings.Contains(out, "--release") {
+			t.Fatalf("a SHA-256 deletion of a reservation was not refused as a deletion (err %v)\n%s", err, out)
+		}
+		if got := c.remoteRef(reservedRef); got != first {
+			t.Errorf("the remote holds %q, want the reservation %s untouched", got, first)
+		}
+	})
+	t.Run("a protected-branch delete is refused as a delete", func(t *testing.T) {
+		c := sha256Case(t)
+		out, err := c.push("origin", ":refs/heads/main")
+		if err == nil || !strings.Contains(out, "refusing to delete protected branch") {
+			t.Fatalf("a SHA-256 deletion of the protected branch was not refused as a deletion (err %v)\n%s", err, out)
+		}
+	})
+}
