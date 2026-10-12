@@ -1626,9 +1626,14 @@ func hookSession(in hookInput) string {
 // Active is absent only when the router could not evaluate the prompt — an
 // unreadable payload or a rules.json that will not load — and Error says why:
 // that is "unknown, change nothing", never "every domain stopped".
+//
+// Recalled names each memory item text carries after the rules block
+// (spc-2610111627213138), an empty list on a turn that recalls nothing,
+// beside Injected for the domains, so a reader can tell what came back.
 type routerView struct {
 	Text     string    `json:"text"`
 	Injected []string  `json:"injected"`
+	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
 }
@@ -1640,7 +1645,7 @@ func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
 	if !asJSON {
 		return nil
 	}
-	return routerEmit(cmd, routerView{Injected: []string{}, Error: msg})
+	return routerEmit(cmd, routerView{Injected: []string{}, Recalled: []string{}, Error: msg})
 }
 
 // routerEmit writes the envelope and fails open like every other hook verb
@@ -1674,18 +1679,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	// prompt-router — UserPromptSubmit: recall-match, dedup, inject.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
-		Short: "UserPromptSubmit: inject the rules matching the prompt",
-		Long: `Plain, stdout is the rendered rule block the host injects, and nothing on a
+		Short: "UserPromptSubmit: inject the rules and memory notes matching the prompt",
+		Long: `Plain, stdout is the rendered rule block the host injects, followed by a
+"## MEMORY" block of the memory notes the prompt recalls, and nothing on a
 turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
-  {"text": ..., "injected": [...], "active": [...], "error": ...}
+  {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
-text carries; active is the full set of domains in force this turn, so a name
-missing from it has stopped. error is present only when the prompt could not
-be evaluated, and then active is absent: the set is unknown. Every outcome,
-an error included, exits 0, so the hook can never wedge a session.`,
+text carries, and recalled the notes; active is the full set of domains in
+force this turn, so a name missing from it has stopped. error is present only
+when the prompt could not be evaluated, and then active is absent: the set is
+unknown. A memory.json that cannot be read is named on stderr and recalls
+nothing, and the rules still inject. Every outcome, an error included,
+exits 0, so the hook can never wedge a session.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1743,6 +1751,11 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// The fixed-N backstop comes from the repo's config (default 15 when
 			// unset); event-driven reset is the primary refresh (D1).
 			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root))
+			// The memory recall, after the rules and within what they left
+			// of the one per-turn budget (spc-2610111627213138). It shares
+			// the session's state file through its own ledger.
+			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text))
+			res.State.Recalled = mem.Ledger
 			if err := rules.SaveState(session, res.State); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
 			}
@@ -1751,15 +1764,27 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) %v, %d bytes", len(mem.Recalled), mem.Recalled, len(mem.Text))
+				if len(mem.Omitted) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) %v did not fit this turn's budget and are tried again on the next", len(mem.Omitted), mem.Omitted)
+				}
+				fmt.Fprintln(cmd.ErrOrStderr())
+			}
+			text := res.Text + mem.Text
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
 					injected = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: res.Text, Injected: injected, Active: &res.Active})
+				recalled := mem.Recalled
+				if recalled == nil {
+					recalled = []string{}
+				}
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
 			}
-			if res.Text != "" {
-				fmt.Fprint(cmd.OutOrStdout(), res.Text)
+			if text != "" {
+				fmt.Fprint(cmd.OutOrStdout(), text)
 			}
 			return nil
 		},
@@ -2372,7 +2397,8 @@ type rulesView struct {
 // diagnostic — it never mutates and there is no `show` sub-verb (the positional
 // argument is the scope, per the bare-command-as-render discipline).
 func newRulesCommand(asJSON *bool) *cobra.Command {
-	return &cobra.Command{
+	var prompt string
+	cmd := &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
 domains, overridden by this machine's ` + abcdhome.Display("rules.json") + ` and then by this repo's
@@ -2412,14 +2438,26 @@ check in "abcd guard hook" enforces, so the rules and the check cannot state a
 limit differently. It recalls on words of asking and choosing, so it lands in
 most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
 its .abcd/rules.json.
+
+--prompt "<text>" shows what that one prompt would bring back to a fresh
+session: each rule domain it matches, with the recall words that hit, and
+each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
+with its layer and the recall words that hit, each in full or as not fitting
+the per-turn budget. It reads against an empty ledger and writes nothing.
+--prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			byPrompt := cmd.Flags().Changed("prompt")
+			if byPrompt && len(args) == 1 {
+				return &exitError{Code: 2, Msg: `abcd rules: --prompt and a DOMAIN are two forms; run abcd rules <DOMAIN> to render one domain, or abcd rules --prompt "<text>" to see what one prompt brings back (nothing rendered)`}
+			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			rs, err := rules.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
+			root := rulesRoot(cwd, cmd.ErrOrStderr())
+			rs, err := rules.Load(root)
 			if err != nil {
 				return err
 			}
@@ -2427,6 +2465,10 @@ Read-only.`,
 			// diagnostic mixed into it would break every parser reading it.
 			for _, note := range rs.Notes() {
 				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
+			}
+			if byPrompt {
+				v := rulesPrompt(rs, root, prompt)
+				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) { renderRulesPrompt(w, rs, v) })
 			}
 			// Scoped: inspect one domain's configured content regardless of its
 			// state OR the kill switch — this diagnostic shows what a domain holds,
@@ -2447,14 +2489,7 @@ Read-only.`,
 				if rs.Disabled {
 					// The switch is sticky across layers, so name every file
 					// that set it: each has to clear it.
-					var files []string
-					for _, src := range rs.KillSwitchSources() {
-						files = append(files, rules.LayerPath(src))
-					}
-					if len(files) == 0 {
-						files = []string{rules.RepoRelPath}
-					}
-					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(files, " and "))
+					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(killSwitchFiles(rs), " and "))
 					return
 				}
 				if out := rules.Render(active); out != "" {
@@ -2465,6 +2500,8 @@ Read-only.`,
 			})
 		},
 	}
+	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls")
+	return cmd
 }
 
 // intentStoreRoot is the shared front-door step for every `intent` verb: the

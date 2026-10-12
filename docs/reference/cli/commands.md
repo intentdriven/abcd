@@ -3612,7 +3612,7 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.
 
-**Usage:** `abcd rules [domain]`
+**Usage:** `abcd rules [domain] [flags]`
 
 Render the rule set the modular-rules loader injects: the bundled default
 domains, overridden by this machine's ~/.abcd.noindex/rules.json and then by this repo's
@@ -3652,7 +3652,20 @@ check in "abcd guard hook" enforces, so the rules and the check cannot state a
 limit differently. It recalls on words of asking and choosing, so it lands in
 most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
 its .abcd/rules.json.
+
+--prompt "<text>" shows what that one prompt would bring back to a fresh
+session: each rule domain it matches, with the recall words that hit, and
+each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
+with its layer and the recall words that hit, each in full or as not fitting
+the per-turn budget. It reads against an empty ledger and writes nothing.
+--prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.
+
+**Flags:**
+
+```
+      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls
+```
 
 ### `abcd scribe`
 

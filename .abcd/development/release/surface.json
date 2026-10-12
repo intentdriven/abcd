@@ -3281,7 +3281,15 @@
       "group": "agents",
       "block": "agents",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
-      "flags": []
+      "flags": [
+        {
+          "name": "prompt",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd scribe",

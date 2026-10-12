@@ -1202,6 +1202,26 @@ same pass `install` would apply, shown rather than applied. `--dry-run` always
 emits JSON, so it needs no `--json` flag. Use it when the user wants to see
 exactly what an install would do before letting it run.
 
+## `rules --prompt` — what one prompt brings back
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" rules --prompt "<text>" --json
+```
+
+Shows what the rule loader `install` sets up would bring back for that one
+prompt in a fresh session, and writes nothing. `domains` lists each rule
+domain the prompt matches, with the recall words that hit (`hits`, or
+`*NAME` for a star activation); `notes` lists each memory note it recalls
+from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
+its `layer` (`machine` or `project`) and the recall words that hit. Each
+carries a `form`: `full`, or `over-budget` when it would not fit the
+per-turn budget and would come back on a later prompt instead. `disabled`
+is true under the kill switch, and then nothing comes back; `unreadable`
+names a `memory.json` that could not be read, and why. Use it when someone
+asks why a rule or a note did, or did not, come back on a prompt. A
+positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
+renders one domain's rules instead.
+
 ## Scoping note: `--identity` is CLI-only
 
 `abcd ahoy --identity` exits non-zero when the author or the committer a commit
