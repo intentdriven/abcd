@@ -4012,7 +4012,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
-					if slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID) {
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID):
+					case res.ReadmeAwaitsConfig():
+						// Neither route below works without the config the
+						// answer is kept in (iss-2610120505551170).
+						fmt.Fprint(w, "    the README answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the README question at a terminal, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
+					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
 				}
