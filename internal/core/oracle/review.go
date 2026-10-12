@@ -96,18 +96,23 @@ func LoadReview(r layered.Roots) (ReviewRoute, error) {
 	if len(found) == 0 {
 		return rv, nil
 	}
-	url, err := layered.Get(s, RPKey+".url", "", nil)
+	// Read and checked here rather than through Get, whose refusal quotes the
+	// value: a URL can carry a credential, and no refusal may echo it.
+	urls, err := s.Lookup(RPKey + ".url")
 	if err != nil {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
 	}
-	if url.Layer == layered.Bundled {
+	if len(urls) == 0 {
 		return ReviewRoute{}, fmt.Errorf("review route: %s (machine layer): %s names no url; it takes url "+
 			"(the MCP server's address on this machine) and an optional tool", layered.Config.MachineOrigin(), RPKey)
 	}
-	// Checked here rather than in Get, whose refusal quotes the value: a URL
-	// can carry a credential, and the refusal must not echo it.
-	if err := repoprompt.CheckURL(url.V); err != nil {
-		return ReviewRoute{}, fmt.Errorf("review route: %s (machine layer): %s.url: %v", url.Origin, RPKey, err)
+	url, err := layered.Decode[string](urls[0].Raw)
+	if err != nil {
+		return ReviewRoute{}, fmt.Errorf("review route: %s (machine layer): %s.url is not a string; it takes the MCP server's address",
+			urls[0].Origin, RPKey)
+	}
+	if err := repoprompt.CheckURL(url); err != nil {
+		return ReviewRoute{}, fmt.Errorf("review route: %s (machine layer): %s.url: %v", urls[0].Origin, RPKey, err)
 	}
 	tool, err := layered.Get(s, RPKey+".tool", repoprompt.DefaultTool, func(t string) error {
 		if !toolNameRe.MatchString(t) {
@@ -118,6 +123,6 @@ func LoadReview(r layered.Roots) (ReviewRoute, error) {
 	if err != nil {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
 	}
-	rv.RP = &RPServer{URL: url.V, Tool: tool.V}
+	rv.RP = &RPServer{URL: url, Tool: tool.V}
 	return rv, nil
 }

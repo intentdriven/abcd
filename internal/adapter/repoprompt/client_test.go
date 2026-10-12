@@ -292,3 +292,71 @@ func TestNewRefusesAnAddressOffThisMachine(t *testing.T) {
 		}
 	}
 }
+
+// TestTheRevisionIsNegotiated: the previous revision, whose transport is the
+// same, is accepted and named on every later request; any other is refused
+// before a tool is listed.
+func TestTheRevisionIsNegotiated(t *testing.T) {
+	f := &mcptest.Server{Tools: map[string][]string{DefaultTool: {"message"}}, ProtocolVersion: "2025-03-26"}
+	if _, err := review(t, mcptest.Start(t, f), nil); err != nil {
+		t.Fatal(err)
+	}
+	if h := f.Headers(); h[len(h)-1].Get("Mcp-Protocol-Version") != "2025-03-26" {
+		t.Fatalf("the negotiated revision rides the call: %v", h[len(h)-1])
+	}
+	g := &mcptest.Server{Tools: map[string][]string{DefaultTool: {"message"}}, ProtocolVersion: "2024-11-05"}
+	_, err := review(t, mcptest.Start(t, g), nil)
+	wantKind(t, err, KindRefused)
+	if strings.Join(g.Methods(), ",") != "initialize" {
+		t.Fatalf("nothing follows a revision the client does not speak: %v", g.Methods())
+	}
+}
+
+// TestASessionIdThatIsNotVisibleASCIIIsRefused: a header value the client
+// would send back is held to the transport's shape.
+func TestASessionIdThatIsNotVisibleASCIIIsRefused(t *testing.T) {
+	f := &mcptest.Server{Tools: map[string][]string{DefaultTool: {"message"}}, Session: "a session"}
+	_, err := review(t, mcptest.Start(t, f), nil)
+	wantKind(t, err, KindUnparsable)
+}
+
+// TestAStreamThatEndsBeforeTheResponseIsUnreachable, and a missing endpoint
+// is refused naming the status.
+func TestAStreamThatEndsBeforeTheResponseIsUnreachable(t *testing.T) {
+	cut := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n")
+	}))
+	t.Cleanup(cut.Close)
+	_, err := review(t, cut.URL, nil)
+	wantKind(t, err, KindUnreachable)
+
+	missing := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(missing.Close)
+	_, err = review(t, missing.URL, nil)
+	wantKind(t, err, KindRefused)
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("the refusal names the status: %v", err)
+	}
+}
+
+// TestOnlyALoopbackAddressIsDialled: a host name is resolved at dial time and
+// only its loopback addresses are dialled, so a name that resolves elsewhere
+// (localhost in a hosts file, a search domain) never takes a request off the
+// machine; localhost itself reaches a server on the loopback address.
+func TestOnlyALoopbackAddressIsDialled(t *testing.T) {
+	elsewhere := func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("10.0.0.7")}}, nil
+	}
+	if _, err := dialLoopback(elsewhere)(context.Background(), "tcp", "localhost:7777"); !errors.Is(err, errNotLoopback) {
+		t.Fatalf("a name resolving off this machine is never dialled: %v", err)
+	}
+	if _, err := dialLoopback(elsewhere)(context.Background(), "tcp", "10.0.0.7:7777"); !errors.Is(err, errNotLoopback) {
+		t.Fatalf("an address off this machine is never dialled: %v", err)
+	}
+	f := &mcptest.Server{Tools: map[string][]string{DefaultTool: {"message"}}}
+	url := strings.Replace(mcptest.Start(t, f), "127.0.0.1", "localhost", 1)
+	if _, err := review(t, url, nil); err != nil {
+		t.Fatalf("localhost reaches the loopback server: %v", err)
+	}
+}

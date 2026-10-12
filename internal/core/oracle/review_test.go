@@ -111,6 +111,8 @@ func TestAReviewRouteFaultIsRefusedNamingTheFileAndTheKey(t *testing.T) {
 			[]string{machine, "oracle.rp.tool"}},
 		{"oracle.rp that is not an object", "", `{"oracle":{"rp":"http://127.0.0.1:7777"}}`,
 			[]string{machine, "oracle.rp"}},
+		{"a url that is not a string", "", `{"oracle":{"rp":{"url":["http://user:s3cret@example.com/mcp"]}}}`,
+			[]string{machine, "oracle.rp.url"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFx(t)
@@ -126,7 +128,7 @@ func TestAReviewRouteFaultIsRefusedNamingTheFileAndTheKey(t *testing.T) {
 					t.Fatalf("the refusal names %q: %v", w, err)
 				}
 			}
-			if strings.Contains(err.Error(), "example.com") {
+			if strings.Contains(err.Error(), "example.com") || strings.Contains(err.Error(), "s3cret") {
 				t.Fatalf("the refusal never quotes the URL, which may carry a credential: %v", err)
 			}
 		})

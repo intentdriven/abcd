@@ -44,6 +44,11 @@ type Server struct {
 	Delay time.Duration
 	// NoTools leaves the tools capability out of initialize.
 	NoTools bool
+	// ProtocolVersion is the revision initialize answers with; Version when
+	// empty.
+	ProtocolVersion string
+	// Session is the session id initialize assigns; SessionID when empty.
+	Session string
 
 	mu      sync.Mutex
 	methods []string
@@ -130,8 +135,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.NoTools {
 			caps = map[string]any{}
 		}
-		w.Header().Set("Mcp-Session-Id", SessionID)
-		s.reply(w, m.ID, map[string]any{"protocolVersion": Version, "capabilities": caps,
+		session, version := s.Session, s.ProtocolVersion
+		if session == "" {
+			session = SessionID
+		}
+		if version == "" {
+			version = Version
+		}
+		w.Header().Set("Mcp-Session-Id", session)
+		s.reply(w, m.ID, map[string]any{"protocolVersion": version, "capabilities": caps,
 			"serverInfo": map[string]any{"name": "mcptest", "version": "0"}}, nil)
 	case "tools/list":
 		tools := []any{}

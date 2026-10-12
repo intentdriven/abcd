@@ -165,11 +165,53 @@ func New(rawURL, tool string) (*Client, error) {
 		tool = DefaultTool
 	}
 	return &Client{url: rawURL, tool: tool, hc: &http.Client{
-		// Never proxied (a nil Proxy): the address is this machine.
-		Transport: &http.Transport{},
+		// Never proxied (a nil Proxy), and dialled only at a loopback address,
+		// whatever a host name resolves to: the address is this machine.
+		Transport: &http.Transport{DialContext: dialLoopback(net.DefaultResolver.LookupIPAddr)},
 		// The address is pinned: a redirect is never followed.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
+}
+
+// errNotLoopback is a dial refused because the address is not this machine's.
+var errNotLoopback = errors.New("the MCP server's address resolves to no loopback address")
+
+// dialLoopback dials only a loopback address: a host name is resolved here,
+// through lookup, and only its loopback addresses are dialled, so a name that
+// resolves elsewhere (localhost in a hosts file, a search domain) never takes a
+// request off the machine.
+func dialLoopback(lookup func(ctx context.Context, host string) ([]net.IPAddr, error)) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	var d net.Dialer
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		var ips []net.IP
+		if ip := net.ParseIP(host); ip != nil {
+			ips = []net.IP{ip}
+		} else {
+			found, err := lookup(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			for _, a := range found {
+				ips = append(ips, a.IP)
+			}
+		}
+		err = errNotLoopback
+		for _, ip := range ips {
+			if !ip.IsLoopback() {
+				continue
+			}
+			conn, derr := d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if derr == nil {
+				return conn, nil
+			}
+			err = derr
+		}
+		return nil, err
+	}
 }
 
 func (c *Client) connectTimeout() time.Duration {
@@ -190,6 +232,7 @@ func (c *Client) callTimeout() time.Duration {
 // text the tool answered, its text parts joined. ctx bounds everything; a
 // ctx the caller ends is returned as its own error, never as an *Error.
 func (c *Client) Review(ctx context.Context, request string) (string, error) {
+	defer c.hc.CloseIdleConnections()
 	s := &session{c: c}
 	defer s.close()
 	setup, cancel := context.WithTimeout(ctx, c.connectTimeout())
@@ -528,6 +571,8 @@ func classify(ctx context.Context, err error, what string) error {
 		return failf(KindTimeout, "%s ran out of time", what)
 	case errors.Is(err, errTooLarge):
 		return failf(KindUnparsable, "%s: the answer is larger than %d bytes", what, MaxResponseBytes)
+	case errors.Is(err, errNotLoopback):
+		return failf(KindRefused, "%s: the MCP server's address resolves to no address on this machine, so nothing was sent", what)
 	}
 	var oe *net.OpError
 	if errors.As(err, &oe) && oe.Op == "dial" {
