@@ -8,8 +8,8 @@
 // and a rule domain's recall word hit on exactly the same prompts. The
 // per-session ledger is SessionState.Recalled, keyed on each item's content,
 // cleared by the loader's resets. The budget is what the rules leave of the
-// loader's one per-turn budget (rules.InjectionBudgetBytes). Until the
-// relevance ranking lands (step 4), the candidates are taken in id order.
+// loader's one per-turn budget (rules.InjectionBudgetBytes), and the
+// relevance ranking (ranking.go, BM25F) decides which candidates fit it.
 //
 // Notes come from both memory.json layers (step 2) and pages from both page
 // scopes (step 3, pages.go), through one path. Nothing here writes to stdout
@@ -18,6 +18,7 @@ package recall
 
 import (
 	"sort"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/memnote"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -40,8 +41,10 @@ const (
 )
 
 // Item is one thing the recall can bring back: a note or a page. Key is its
-// ledger key and its place in the id order — a note's id (mem-…), and a
-// page's "page:<filename>" after every note.
+// ledger key and the ranking's last tie-break — a note's id (mem-…), and a
+// page's "page:<filename>". At is when it was written, the ranking's
+// recency tie-break: a note's written_at, a page's latest ingested_at, the
+// zero time when it records none.
 type Item struct {
 	Key    string
 	Kind   string
@@ -49,6 +52,7 @@ type Item struct {
 	Title  string
 	Body   string
 	Recall []string
+	At     time.Time
 }
 
 // Refusal names a layer, page scope or page the recall could not read, and
@@ -89,7 +93,8 @@ func noteItems(machine, project []memnote.Note, root string) []Item {
 }
 
 func noteItem(n memnote.Note, layer string) Item {
-	return Item{Key: n.ID, Kind: KindNote, Layer: layer, Title: n.Title, Body: n.Body, Recall: append([]string(nil), n.Recall...)}
+	at, _ := time.Parse(time.RFC3339, n.WrittenAt)
+	return Item{Key: n.ID, Kind: KindNote, Layer: layer, Title: n.Title, Body: n.Body, Recall: append([]string(nil), n.Recall...), At: at}
 }
 
 // rootCommit is the repository's root commit; a seam for the tests.

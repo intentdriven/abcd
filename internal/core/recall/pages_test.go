@@ -141,7 +141,7 @@ func TestWorkspacePageSuppressesTheMachinePage(t *testing.T) {
 
 	res := readAndRecall(t, home, repo, "rotate the auth tokens", nil)
 	want := []string{"page:fact_eng_auth-flow.md", "page:fact_eng_auth-keys.md"}
-	if !slices.Equal(res.Recalled, want) {
+	if !slices.Equal(slices.Sorted(slices.Values(res.Recalled)), want) {
 		t.Fatalf("recalled %v, want %v", res.Recalled, want)
 	}
 	if !strings.Contains(res.Text, "The project's auth page") || strings.Contains(res.Text, "The person's own auth page") {
@@ -165,5 +165,19 @@ func TestPageWithoutRecallIsNeverACandidate(t *testing.T) {
 	}
 	if res := readAndRecall(t, home, repo, "auth tokens short-lived keychain", nil); res.Text != "" {
 		t.Fatalf("a page with no recall list came back:\n%s", res.Text)
+	}
+}
+
+// TestPageItemsCarryTheirIngestDate: a page item's At, the ranking's recency
+// tie-break, is the page's latest ingested_at.
+func TestPageItemsCarryTheirIngestDate(t *testing.T) {
+	home, repo, workspace, _ := pagesFixture(t)
+	if err := os.WriteFile(filepath.Join(workspace, "fact_eng_auth-flow.md"),
+		[]byte("---\nrecall: [auth]\nsource:\n  class: session_memory\n  ingested_at: 2026-10-01\n---\n# Auth\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	items, _ := ReadItems(home, repo)
+	if len(items) != 1 || items[0].At.Format("2006-01-02") != "2026-10-01" {
+		t.Fatalf("items = %+v", items)
 	}
 }

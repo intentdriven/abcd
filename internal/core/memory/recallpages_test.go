@@ -169,3 +169,31 @@ func TestMachineRecallPagesAreReadAsTheMachineFilesAre(t *testing.T) {
 		t.Fatalf("the read created %s: %v", abcdhome.Path(empty), err)
 	}
 }
+
+// TestRecallPagesCarryTheirLatestIngestDate: a page's recency, the
+// ranking's tie-break, is the latest ingested_at its source block records —
+// one source's, or the latest of several — and the zero time when it records
+// none, never the file's modification time, which a checkout sets.
+func TestRecallPagesCarryTheirLatestIngestDate(t *testing.T) {
+	repo := t.TempDir()
+	mem := filepath.Join(repo, ".abcd", "memory")
+	writeStoreFile(t, mem, "fact_eng_one.md", recallPageText("One source", "auth"), 0o644)
+	writeStoreFile(t, mem, "fact_eng_many.md", "---\nrecall: [auth]\nsource:\n  classes: [session_memory]\n  sources:\n"+
+		"    - {class: session_memory, ingested_at: 2026-09-01}\n    - {class: session_memory, ingested_at: 2026-10-05}\n---\n# Many sources\n", 0o644)
+	writeStoreFile(t, mem, "fact_eng_none.md", "---\nrecall: [auth]\n---\n# No source block\n", 0o644)
+
+	at := map[string]string{}
+	pages, refused := ReadRecallPages(repo)
+	if len(refused) != 0 {
+		t.Fatalf("refused = %+v", refused)
+	}
+	for _, p := range pages {
+		at[p.Filename] = p.IngestedAt.Format("2006-01-02")
+		if p.Filename == "fact_eng_none.md" && !p.IngestedAt.IsZero() {
+			t.Fatalf("a page with no source block has a date: %v", p.IngestedAt)
+		}
+	}
+	if at["fact_eng_one.md"] != "2026-10-01" || at["fact_eng_many.md"] != "2026-10-05" {
+		t.Fatalf("ingest dates = %v", at)
+	}
+}

@@ -67,24 +67,34 @@ type rulesPromptDomain struct {
 	Form   string   `json:"form"`
 }
 
-// rulesPromptNote is one matched note in the diagnostic.
+// rulesPromptNote is one matched note in the diagnostic. Rank is its place in
+// the one ranked order notes and pages share (1 first), Score its BM25F
+// score, and Terms each matched term with the fields it was found in and its
+// contribution (recall.Rank).
 type rulesPromptNote struct {
-	ID    string   `json:"id"`
-	Title string   `json:"title"`
-	Layer string   `json:"layer"`
-	Hits  []string `json:"hits"`
-	Form  string   `json:"form"`
+	ID    string             `json:"id"`
+	Title string             `json:"title"`
+	Layer string             `json:"layer"`
+	Hits  []string           `json:"hits"`
+	Rank  int                `json:"rank"`
+	Score float64            `json:"score"`
+	Terms []recall.TermScore `json:"terms"`
+	Form  string             `json:"form"`
 }
 
 // rulesPromptPage is one matched page in the diagnostic: its key is the one
-// the router's envelope names it by (page:<filename>).
+// the router's envelope names it by (page:<filename>); Rank, Score and Terms
+// are a note's.
 type rulesPromptPage struct {
-	Key      string   `json:"key"`
-	Filename string   `json:"filename"`
-	Title    string   `json:"title"`
-	Layer    string   `json:"layer"`
-	Hits     []string `json:"hits"`
-	Form     string   `json:"form"`
+	Key      string             `json:"key"`
+	Filename string             `json:"filename"`
+	Title    string             `json:"title"`
+	Layer    string             `json:"layer"`
+	Hits     []string           `json:"hits"`
+	Rank     int                `json:"rank"`
+	Score    float64            `json:"score"`
+	Terms    []recall.TermScore `json:"terms"`
+	Form     string             `json:"form"`
 }
 
 // rulesPromptView is `rules --prompt`'s --json envelope.
@@ -126,17 +136,22 @@ func rulesPrompt(rs rules.RuleSet, root, prompt string) rulesPromptView {
 	for _, key := range mem.Recalled {
 		recalled[key] = true
 	}
-	for _, c := range recall.Candidates(items, prompt) {
+	for i, c := range recall.Rank(items, prompt) {
 		form := promptFormOverBudget
 		if recalled[c.Item.Key] {
 			form = promptFormFull
 		}
+		terms := c.Terms
+		if terms == nil {
+			terms = []recall.TermScore{}
+		}
 		if c.Item.Kind == recall.KindPage {
 			v.Pages = append(v.Pages, rulesPromptPage{Key: c.Item.Key, Filename: strings.TrimPrefix(c.Item.Key, recall.PageKeyPrefix),
-				Title: c.Item.Title, Layer: c.Item.Layer, Hits: c.Hits, Form: form})
+				Title: c.Item.Title, Layer: c.Item.Layer, Hits: c.Hits, Rank: i + 1, Score: c.Score, Terms: terms, Form: form})
 			continue
 		}
-		v.Notes = append(v.Notes, rulesPromptNote{ID: c.Item.Key, Title: c.Item.Title, Layer: c.Item.Layer, Hits: c.Hits, Form: form})
+		v.Notes = append(v.Notes, rulesPromptNote{ID: c.Item.Key, Title: c.Item.Title, Layer: c.Item.Layer, Hits: c.Hits,
+			Rank: i + 1, Score: c.Score, Terms: terms, Form: form})
 	}
 	return v
 }
@@ -148,6 +163,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 		return
 	}
 	fmt.Fprintln(w, "abcd rules --prompt — what this prompt brings back to a fresh session (nothing written)")
+	if len(v.Notes)+len(v.Pages) > 0 {
+		fmt.Fprintln(w, "Notes and pages share one ranked order (#1 first), by relevance score (BM25F); under each, every matched term, the fields it was found in and what it added.")
+	}
 	if len(v.Domains) == 0 {
 		fmt.Fprintln(w, "Domains: none matched")
 	} else {
@@ -161,8 +179,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 	} else {
 		fmt.Fprintln(w, "Notes:")
 		for _, n := range v.Notes {
-			fmt.Fprintf(w, "  %s  %s (%s layer) — hit by %s — %s\n", n.ID, termsafe.Sanitize(n.Title), n.Layer,
-				termsafe.Sanitize(strings.Join(n.Hits, ", ")), promptFormWords(n.Form))
+			fmt.Fprintf(w, "  #%d %s  %s (%s layer) — hit by %s — score %.4f — %s\n", n.Rank, n.ID, termsafe.Sanitize(n.Title), n.Layer,
+				termsafe.Sanitize(strings.Join(n.Hits, ", ")), n.Score, promptFormWords(n.Form))
+			renderTermScores(w, n.Terms)
 		}
 	}
 	if len(v.Pages) == 0 {
@@ -170,12 +189,30 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 	} else {
 		fmt.Fprintln(w, "Pages:")
 		for _, p := range v.Pages {
-			fmt.Fprintf(w, "  %s  %s (%s layer) — hit by %s — %s\n", p.Key, termsafe.Sanitize(p.Title), p.Layer,
-				termsafe.Sanitize(strings.Join(p.Hits, ", ")), promptFormWords(p.Form))
+			fmt.Fprintf(w, "  #%d %s  %s (%s layer) — hit by %s — score %.4f — %s\n", p.Rank, p.Key, termsafe.Sanitize(p.Title), p.Layer,
+				termsafe.Sanitize(strings.Join(p.Hits, ", ")), p.Score, promptFormWords(p.Form))
+			renderTermScores(w, p.Terms)
 		}
 	}
 	for _, u := range v.Unreadable {
 		fmt.Fprintf(w, "unreadable: %s (%s recalled from it)\n", termsafe.Sanitize(refusalText(u)), refusalLoss(u))
+	}
+}
+
+// renderTermScores writes, under a ranked note or page, each matched term
+// with the fields it was found in and what it contributed to the score.
+func renderTermScores(w io.Writer, terms []recall.TermScore) {
+	for _, ts := range terms {
+		var found []string
+		for _, f := range []struct {
+			name string
+			n    int
+		}{{recall.FieldRecall, ts.Recall}, {recall.FieldTitle, ts.Title}, {recall.FieldBody, ts.Body}} {
+			if f.n > 0 {
+				found = append(found, fmt.Sprintf("%s %d", f.name, f.n))
+			}
+		}
+		fmt.Fprintf(w, "      %s — %s — %.4f\n", ts.Term, strings.Join(found, ", "), ts.Contribution)
 	}
 }
 

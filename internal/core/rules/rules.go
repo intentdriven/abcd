@@ -30,6 +30,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -707,6 +708,17 @@ type promptIndex struct {
 	padded        string          // " tok tok " for boundary/phrase matching
 	stemmedPadded string          // " stem stem " for stemmed phrase matching
 	stems         map[string]bool // candidate stems of the single tokens
+	terms         []PromptTerm    // each distinct stem, with its candidate roots
+}
+
+// PromptTerm is one distinct stem of a prompt's tokens, as the memory
+// recall's ranking weighs it (spc-2610111627213138 step 4): Stem is the root
+// stem gives the token, and Roots every candidate root the term rule matches
+// the token by (stemVariants), so a word whose stem is among them is the term
+// found exactly where termHit would hit it.
+type PromptTerm struct {
+	Stem  string
+	Roots []string
 }
 
 // indexPrompt lowercases, collapses non-alphanumeric runs to single spaces, and
@@ -717,11 +729,25 @@ func indexPrompt(s string) promptIndex {
 	idx := promptIndex{padded: " " + collapsed + " ", stems: map[string]bool{}}
 	tokens := strings.Fields(collapsed)
 	stemmed := make([]string, 0, len(tokens))
+	at := map[string]int{}
 	for _, tok := range tokens {
-		for _, v := range stemVariants(tok) {
+		variants := stemVariants(tok)
+		for _, v := range variants {
 			idx.stems[v] = true
 		}
-		stemmed = append(stemmed, stem(tok))
+		s := stem(tok)
+		stemmed = append(stemmed, s)
+		i, seen := at[s]
+		if !seen {
+			i = len(idx.terms)
+			at[s] = i
+			idx.terms = append(idx.terms, PromptTerm{Stem: s})
+		}
+		for _, v := range variants {
+			if !slices.Contains(idx.terms[i].Roots, v) {
+				idx.terms[i].Roots = append(idx.terms[i].Roots, v)
+			}
+		}
 	}
 	idx.stemmedPadded = " " + strings.Join(stemmed, " ") + " "
 	return idx
@@ -1021,6 +1047,29 @@ func TermMatcher(prompt string) func(term string) bool {
 	}
 	idx := indexPrompt(prompt)
 	return idx.termHit
+}
+
+// PromptTerms is the prompt index's query terms for the memory recall's
+// ranking: each distinct stem of the prompt's tokens, in the order the prompt
+// first uses it, with its candidate roots. It reads the bytes TermMatcher
+// reads, from the same index.
+func PromptTerms(prompt string) []PromptTerm {
+	if len(prompt) > maxPromptBytes {
+		prompt = prompt[:maxPromptBytes]
+	}
+	return indexPrompt(prompt).terms
+}
+
+// TextStems is the stem of each token of text, in order — lower-cased, split
+// on every run of characters that is not a letter or a digit, each token
+// stemmed as termHit stems a recall keyword's token — so the ranking counts a
+// note's or page's words in the form the term rule compares them in.
+func TextStems(text string) []string {
+	tokens := strings.Fields(nonAlnumRe.ReplaceAllString(strings.ToLower(text), " "))
+	for i, tok := range tokens {
+		tokens[i] = stem(tok)
+	}
+	return tokens
 }
 
 // Hits names what made d match prompt, for the `rules --prompt` diagnostic:

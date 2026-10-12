@@ -3658,7 +3658,11 @@ session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
 layer and the recall words that hit, each in full or as not fitting the
-per-turn budget. It reads against an empty ledger and writes nothing.
+per-turn budget. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.
 

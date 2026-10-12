@@ -1219,7 +1219,11 @@ lists each memory page it recalls from the project's `.abcd/memory/` or
 hook's envelope gives it), with its `filename`, `title`, `layer` and the
 recall words that hit. A page comes back only when its frontmatter declares
 a `recall:` list, and a page in the project's store suppresses the machine's
-page of the same name. Each carries a `form`: `full`, or `over-budget` when
+page of the same name. Notes and pages share one ranked order: each carries
+its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
+term with how often it was found in the item's `recall` words, `title` and
+`body` and its `contribution` to the score; the ranking decides which items
+fit the budget. Each carries a `form`: `full`, or `over-budget` when
 it would not fit the per-turn budget and would come back on a later prompt
 instead. `disabled` is true under the kill switch, and then nothing comes
 back; `unreadable` names a `memory.json`, page store or page that could not

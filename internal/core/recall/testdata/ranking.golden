@@ -1,0 +1,44 @@
+prompt: the auth tokens expire before the deploy
+  mem-2610111200000001 2.335928
+    the recall=0 title=0 body=2 0.056166
+    auth recall=1 title=1 body=0 0.717787
+    token recall=1 title=1 body=1 0.740001
+    expire recall=0 title=1 body=0 0.565113
+    before recall=0 title=0 body=1 0.256862
+  page:fact_eng_auth-flow.md 1.970187
+    the recall=0 title=0 body=2 0.050277
+    auth recall=1 title=1 body=1 0.704009
+    token recall=0 title=1 body=2 0.641218
+    expire recall=0 title=0 body=1 0.355695
+    deploy recall=0 title=0 body=1 0.218989
+  page:fact_eng_deploy-window.md 0.779122
+    the recall=0 title=0 body=1 0.042951
+    before recall=0 title=0 body=1 0.266065
+    deploy recall=1 title=1 body=2 0.470105
+  mem-2610111200000002 0.516409
+    the recall=0 title=1 body=1 0.063133
+    deploy recall=1 title=1 body=1 0.453276
+prompt: deploy the release
+  page:fact_eng_deploy-window.md 1.546113
+    deploy recall=1 title=1 body=2 0.470105
+    the recall=0 title=0 body=1 0.042951
+    release recall=1 title=0 body=0 1.033056
+  mem-2610111200000002 0.516409
+    deploy recall=1 title=1 body=1 0.453276
+    the recall=0 title=1 body=1 0.063133
+prompt: run the tests with the race detector
+  mem-2610111200000003 2.738434
+    run recall=0 title=0 body=1 0.384005
+    the recall=0 title=2 body=1 0.069278
+    test recall=1 title=1 body=1 1.142576
+    race recall=1 title=1 body=1 1.142576
+prompt: login fails after the token refresh
+  page:fact_eng_auth-flow.md 2.186949
+    login recall=1 title=0 body=0 0.932215
+    after recall=0 title=0 body=1 0.563239
+    the recall=0 title=0 body=2 0.050277
+    token recall=0 title=1 body=2 0.641218
+  mem-2610111200000001 1.456814
+    the recall=0 title=0 body=2 0.056166
+    token recall=1 title=1 body=1 0.740001
+    refresh recall=0 title=0 body=1 0.660648

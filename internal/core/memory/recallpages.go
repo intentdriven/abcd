@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -29,6 +30,11 @@ type RecallPage struct {
 	Body string
 	// Recall is the page's recall: frontmatter list, empty when it has none.
 	Recall []string
+	// IngestedAt is the latest ingested_at the page's source block records
+	// (one source's, or the latest of several), the zero time when it records
+	// none. It is the page's own record of when it was written, which travels
+	// with it; the file's modification time is whenever a checkout wrote it.
+	IngestedAt time.Time
 }
 
 // RecallRefusal names a scope or a page the read refused, and why. File is
@@ -100,7 +106,8 @@ func recallPagesFrom(store *storeHandle, shown string, read func(string, int64) 
 		}
 		p := parsePage(string(raw))
 		info := pageInfoOf(name, p)
-		pages = append(pages, RecallPage{Filename: name, Summary: info.Summary, Body: p.body, Recall: recallList(p.fm)})
+		pages = append(pages, RecallPage{Filename: name, Summary: info.Summary, Body: p.body, Recall: recallList(p.fm),
+			IngestedAt: latestIngest(p.source())})
 	}
 	return pages, refused
 }
@@ -118,6 +125,30 @@ func recallList(fm map[string]any) []string {
 		}
 	}
 	return out
+}
+
+// latestIngest is the latest ingested_at date a source block records, in
+// its single-source or multi-source shape; the zero time when none parses.
+func latestIngest(source map[string]any) time.Time {
+	entries := []any{source}
+	if list, ok := source["sources"].([]any); ok {
+		entries = append(entries, list...)
+	}
+	var latest time.Time
+	for _, e := range entries {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		s, ok := m["ingested_at"].(string)
+		if !ok {
+			continue
+		}
+		if at, err := time.Parse(time.DateOnly, s); err == nil && at.After(latest) {
+			latest = at
+		}
+	}
+	return latest
 }
 
 // recallReadError words a refused page read without the expanded path.

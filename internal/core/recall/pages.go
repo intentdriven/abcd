@@ -8,7 +8,7 @@ import (
 
 // pages.go — memory pages join the recall (spc-2610111627213138 step 3). A
 // page is an item when its frontmatter carries a recall: list; its key is
-// "page:<filename>", after every note in the id order.
+// "page:<filename>".
 
 // PageKeyPrefix begins a page item's key; the rest is its filename.
 const PageKeyPrefix = "page:"
@@ -39,7 +39,7 @@ func pageItems(workspace, machine []memory.RecallPage) []Item {
 
 func pageItem(p memory.RecallPage, layer string) Item {
 	return Item{Key: PageKeyPrefix + p.Filename, Kind: KindPage, Layer: layer, Title: p.Summary, Body: p.Body,
-		Recall: append([]string(nil), p.Recall...)}
+		Recall: append([]string(nil), p.Recall...), At: p.IngestedAt}
 }
 
 // readPages reads both page scopes through the memory store's recall read —

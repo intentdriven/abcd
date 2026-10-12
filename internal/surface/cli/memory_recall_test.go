@@ -422,3 +422,66 @@ func TestARefusedPageIsNamedAndTheRestComeBack(t *testing.T) {
 		t.Fatalf("stderr carries the expanded home:\n%s", errlog)
 	}
 }
+
+// TestRulesPromptShowsEachTermsContribution: `rules --prompt` ranks the
+// notes and pages the prompt recalls, one order across both, and shows each
+// one's score and, for each matched term, the fields it was found in and
+// what it contributed; --json carries the same, the contributions summing to
+// the score.
+func TestRulesPromptShowsEachTermsContribution(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	id := addRaceNote(t, "session-one")
+	writeRecallPage(t, filepath.Join(repo, ".abcd", "memory"), "fact_eng_test-layout.md",
+		"# Where the tests live\n\nBeside their package.\n", 0o644, "test")
+
+	out, stderr, err := runCLISplit(t, "rules", "--prompt", "run the race tests")
+	if err != nil {
+		t.Fatalf("rules --prompt: %v\n%s", err, stderr)
+	}
+	for _, want := range []string{"#1 " + id, "#2 page:fact_eng_test-layout.md", "score ",
+		"race — recall 1, title 1", "test — recall 1, title 1, body 1 — "} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rules --prompt does not show %q:\n%s", want, out)
+		}
+	}
+
+	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "run the race tests", "--json")
+	if err != nil {
+		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+	}
+	type ranked struct {
+		Rank  int     `json:"rank"`
+		Score float64 `json:"score"`
+		Terms []struct {
+			Term         string  `json:"term"`
+			Recall       int     `json:"recall"`
+			Title        int     `json:"title"`
+			Body         int     `json:"body"`
+			Contribution float64 `json:"contribution"`
+		} `json:"terms"`
+	}
+	var env struct {
+		Notes []ranked `json:"notes"`
+		Pages []ranked `json:"pages"`
+	}
+	if err := json.Unmarshal([]byte(jout), &env); err != nil {
+		t.Fatalf("rules --prompt --json is not one document: %v\n%s", err, jout)
+	}
+	if len(env.Notes) != 1 || len(env.Pages) != 1 || env.Notes[0].Rank != 1 || env.Pages[0].Rank != 2 ||
+		env.Notes[0].Score <= env.Pages[0].Score {
+		t.Fatalf("notes %+v pages %+v", env.Notes, env.Pages)
+	}
+	for _, r := range append(env.Notes, env.Pages...) {
+		sum := 0.0
+		for _, term := range r.Terms {
+			if term.Recall+term.Title+term.Body == 0 || term.Contribution <= 0 {
+				t.Fatalf("a term with no field or no contribution: %+v", term)
+			}
+			sum += term.Contribution
+		}
+		if len(r.Terms) == 0 || sum < r.Score-1e-9 || sum > r.Score+1e-9 {
+			t.Fatalf("the terms %+v do not add up to the score %v", r.Terms, r.Score)
+		}
+	}
+}

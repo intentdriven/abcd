@@ -34,11 +34,12 @@ type Result struct {
 	Ledger   map[string]string
 }
 
-// Recall matches the items against the prompt, drops every candidate already
-// sent this session with unchanged content, and takes the rest in id order
-// while they fit the budget: the first that does not fit stops the take, so
-// an item never comes back ahead of one before it in the order. It performs
-// no I/O and never reflects prompt bytes into the block.
+// Recall matches the items against the prompt, ranks the candidates (Rank),
+// drops every one already sent this session with unchanged content, and
+// takes the rest in ranked order while they fit the budget: the first that
+// does not fit stops the take, so an item never comes back ahead of one
+// ranked above it. It performs no I/O and never reflects prompt bytes into
+// the block.
 func Recall(req Request) Result {
 	ledger := map[string]string{}
 	for k, v := range req.Ledger {
@@ -49,7 +50,7 @@ func Recall(req Request) Result {
 		return res
 	}
 	var fresh []Item
-	for _, c := range Candidates(req.Items, req.Prompt) {
+	for _, c := range Rank(req.Items, req.Prompt) {
 		if ledger[c.Item.Key] == signature(c.Item) {
 			continue
 		}
