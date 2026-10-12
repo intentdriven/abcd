@@ -55,3 +55,26 @@ func TestTheBoundsAreTheShippedOnes(t *testing.T) {
 		t.Fatalf("Default, Min, Max = %s, %s, %s; want 2h, 1m, 24h", Default, Min, Max)
 	}
 }
+
+// TestAFutureDatedStampHoldsNoMoreThanADayFromTheReader: a claim written by a
+// clock running ahead (a laptop that thinks it is next year) is clamped from
+// the reader's now rather than from its own claimed-at, so at no reading does
+// it hold more than a day ahead; an unreadable stamp written ahead is held for
+// its grace from the reader's now in the same way (review finding R4 on
+// spc-2610031753359849 steps 1-3).
+func TestAFutureDatedStampHoldsNoMoreThanADayFromTheReader(t *testing.T) {
+	ahead := t0.Add(365 * 24 * time.Hour)
+	v := Judge(Stamp{ClaimedAt: ahead, ExpiresAt: ahead.Add(Default)}, time.Minute, t0)
+	if !v.Live || !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+		t.Fatalf("a claim dated a year ahead = %+v, want live until the reader's now plus a day, %s", v, t0.Add(Max))
+	}
+	v = Judge(Stamp{Unreadable: true, WrittenAt: ahead}, time.Minute, t0)
+	if !v.Live || !v.EffectiveExpiry.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("an unreadable stamp written a year ahead = %+v, want held for its grace from now, %s", v, t0.Add(time.Minute))
+	}
+	// A claim dated in the past is unchanged.
+	v = Judge(Stamp{ClaimedAt: t0, ExpiresAt: t0.Add(30 * 24 * time.Hour)}, time.Minute, t0.Add(time.Hour))
+	if !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+		t.Fatalf("a past claim = %+v, want clamped to its claimed-at plus a day", v)
+	}
+}

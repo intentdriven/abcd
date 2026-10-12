@@ -606,6 +606,16 @@ These are the facilitator's design calls; none changes a criterion.
   the stage; the fence stops the run.
 - `abcd peers` exits 1 when its fetch fails, after rendering the last view.
 - `build --release` changes nothing in the run's state.
+- **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
+  is clamped from the reader's clock as well as its own: `lease.Judge` takes
+  the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an
+  unreadable stamp's hold as `min(WrittenAt, now) + grace`. This strengthens
+  "neither a far-ahead clock nor a hand-edited expiry can hold a record past a
+  day": no single reading promises more than a day from the reader's now, so
+  a laptop whose clock reads next year shows a day's hold, not a year's. The
+  clamp is applied at every reading, so such a claim keeps holding while its
+  writer's clock stays ahead; the in-run claim shares the judgement and its
+  tests pass unchanged.
 
 ## Open point
 

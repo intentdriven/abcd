@@ -44,8 +44,9 @@ type Stamp struct {
 // Verdict is a claim judged at a moment.
 type Verdict struct {
 	// EffectiveExpiry is when the claim stops holding: a readable claim's
-	// expiry clamped to a day after it was claimed, or an unreadable one's
-	// WrittenAt plus the grace.
+	// expiry clamped to a day after it was claimed (or after now, when it is
+	// dated ahead of the reader), or an unreadable one's WrittenAt (or now)
+	// plus the grace.
 	EffectiveExpiry time.Time
 	// Live is true while now is before EffectiveExpiry.
 	Live bool
@@ -55,17 +56,30 @@ type Verdict struct {
 }
 
 // Judge says whether a claim holds at now. A readable claim's effective expiry
-// is min(ExpiresAt, ClaimedAt + Max), so neither a far-ahead clock nor a
-// hand-edited expiry can hold a record past a day from its claim; an
-// unreadable one is held until WrittenAt + grace.
+// is min(ExpiresAt, min(ClaimedAt, now) + Max), so neither a far-ahead clock
+// nor a hand-edited expiry can hold a record past a day from its claim, nor
+// past a day from the reader's own now when the claim is dated ahead of it;
+// an unreadable one is held until min(WrittenAt, now) + grace.
+//
+// A claim dated ahead of the reader is clamped at every reading, so it still
+// holds while the writer's clock stays ahead: the clamp bounds what one
+// reading may promise, not how long a clock may run fast.
 func Judge(s Stamp, grace time.Duration, now time.Time) Verdict {
 	if s.Unreadable {
-		exp := s.WrittenAt.Add(grace)
+		exp := earlier(s.WrittenAt, now).Add(grace)
 		return Verdict{EffectiveExpiry: exp, Live: now.Before(exp), Unreadable: true}
 	}
 	exp := s.ExpiresAt
-	if ceiling := s.ClaimedAt.Add(Max); ceiling.Before(exp) {
+	if ceiling := earlier(s.ClaimedAt, now).Add(Max); ceiling.Before(exp) {
 		exp = ceiling
 	}
 	return Verdict{EffectiveExpiry: exp, Live: now.Before(exp)}
+}
+
+// earlier is the earlier of two times.
+func earlier(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
 }
