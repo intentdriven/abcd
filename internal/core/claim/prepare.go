@@ -82,9 +82,10 @@ type prepared struct {
 // prepare checks a request in the order the refusals promise: the id before
 // any ref name is formed, then the footprint and the lease before any git
 // runs, then the person's identity, holder and working copy from the
-// checkout. A reservation's message is composed and measured against the cap
-// and the outbound policy here too, so a message that may not be written is
-// refused before anything reaches the remote.
+// checkout. A reservation's message, and the tombstone that would release it,
+// are composed and measured against the cap and the outbound policy here too,
+// so a message that may not be written is refused before anything reaches the
+// remote, and a reservation accepted is one that can be released.
 func prepare(root string, req Request, o Options) (*prepared, error) {
 	id, err := reservableID(req.Record)
 	if err != nil {
@@ -119,8 +120,14 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		return nil, err
 	}
 	if !req.Release {
-		if err := checkMessage(root, p.reservation().text()); err != nil {
-			return nil, err
+		// The reservation is measured by the longer of its own message and the
+		// tombstone that will one day release it (a longer subject and an
+		// Abcd-Released-At line), so a reservation the writer accepts can
+		// always be released.
+		for _, text := range []string{p.reservation().text(), p.tombstone(req.Footprint).text()} {
+			if err := checkMessage(root, text); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return p, nil
