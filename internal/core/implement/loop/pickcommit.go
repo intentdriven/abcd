@@ -61,6 +61,13 @@ var commitTimeout = 10 * time.Minute
 // can shorten it.
 var worktreeAddTimeout = 60 * time.Minute
 
+// resetTimeout bounds the lane's reset --hard (resetLaneTree), as
+// worktreeAddTimeout bounds the checkout and for the same reason: the reset
+// rewrites the tree's files through the repository's content filters, a Git
+// LFS smudge downloading what it names, so its time scales with the tree and
+// the network. A var so a test can shorten it.
+var resetTimeout = 60 * time.Minute
+
 // commitStopGrace is how long a commitGit command that ran past commitTimeout
 // and the processes it started have, once told to stop (SIGTERM to their
 // process group, on which git removes its lock files), before they are killed
@@ -97,9 +104,9 @@ func pickMessage(st State) string {
 // working tree, or writes it where the person's own git runs no hook (the
 // land's staging, a restart's clean, a merge's abort); a command that runs
 // the repository's hooks on the person's own git goes through commitGit (a
-// commit, a merge, a reset --hard) or worktreeAddGit (the lane's `git
-// worktree add`). Each sees the repository as the person's own git does:
-// gitutil.WorkingTreeCommand, which keeps the person's global config (a
+// commit, a merge), resetLaneTree (a reset --hard) or worktreeAddGit (the
+// lane's `git worktree add`). Each sees the repository as the person's own
+// git does: gitutil.WorkingTreeCommand, which keeps the person's global config (a
 // content filter a global `git lfs install` defines, a global ignore file)
 // with the program-starting knobs and automatic maintenance pinned off.
 func pickGit(dir string, args ...string) (string, error) {
@@ -107,12 +114,13 @@ func pickGit(dir string, args ...string) (string, error) {
 }
 
 // commitGit is pickGit for a command that runs the repository's hooks on the
-// person's own git, in a lane's worktree: the pick commit, a sync's merge, and
-// the reset --hard that a restart and the undo of a stopped sync make
-// (resetLaneTree), which runs the repository's reference-transaction and
-// post-index-change hooks. gitutil.WorkingTreeCommitCommand, so the
-// repository's hooks, its commit signing, its merge's signature check and its
-// merge drivers run as they do on the person's own commit, merge and reset
+// person's own git, in a lane's worktree: the pick commit and a sync's merge,
+// and, on the same command with a bound of its own, the reset --hard that a
+// restart and the undo of a stopped sync make (resetLaneTree), which runs the
+// repository's reference-transaction and post-index-change hooks. It runs
+// gitutil.WorkingTreeCommitCommand, so the repository's hooks, its commit
+// signing, its merge's signature check and its merge drivers run as they do
+// on the person's own commit, merge and reset
 // (iss-2610111729399920, iss-2610120640452939). A restart's clean stays on
 // pickGit: `git clean` runs no hook, so the pins change nothing there.
 //
@@ -170,14 +178,19 @@ var errCommitStalled = errors.New("a signing prompt or hook did not finish")
 // errCheckoutStalled names a worktreeAddGit command stopped at its bound.
 var errCheckoutStalled = errors.New("the checkout (its content filters, such as a Git LFS download, and its post-checkout hook) did not finish")
 
+// errResetStalled names a resetLaneTree stopped at its bound.
+var errResetStalled = errors.New("the reset (its content filters, such as a Git LFS download, and the repository's hooks) did not finish")
+
 // resetLaneTree resets the lane's worktree at dir to head, index and files,
-// as the person's own `git reset --hard` does (commitGit): the repository's
-// reference-transaction and post-index-change hooks run, and the files its
-// filters smudge are written through them. It is the one reset --hard the loop
-// makes: a restart's, once the uncommitted work is saved aside, and the undo
-// of a sync's merge stopped at its deadline.
+// as the person's own `git reset --hard` does (commitGit's command): the
+// repository's reference-transaction and post-index-change hooks run, and the
+// files its filters smudge are written through them. It is the one reset
+// --hard the loop makes: a restart's, once the uncommitted work is saved
+// aside, and the undo of a sync's merge stopped at its deadline. It is bounded
+// by resetTimeout rather than commitTimeout, and a stop there is refused as a
+// reset that did not finish (errResetStalled), never as a signing prompt.
 func resetLaneTree(dir, head string) error {
-	_, err := commitGit(dir, "reset", "--hard", "--quiet", head)
+	_, err := boundedGit(dir, resetTimeout, errResetStalled, []string{"reset", "--hard", "--quiet", head})
 	return err
 }
 

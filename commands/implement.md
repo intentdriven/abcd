@@ -325,7 +325,9 @@ was left uncommitted (staged, unstaged or untracked) is saved aside under the
 lane's directory, `aside/<UTC stamp>/` with `changes.patch`, `aside.json` and any
 partial receipt, once the patch is proved to apply to that commit; the lane's
 worktree is reset and cleaned as your own git resets and cleans it (the
-repository's hooks run on the reset, bounded as a commit is); the run record
+repository's hooks run on the reset, which, since its time scales with the
+tree as a checkout's does, is bounded at sixty minutes, a reset stopped there
+refusing the restart naming the reset); the run record
 names the aside for review; and
 the implementer await is re-told. The brief never names the aside, so no agent
 builds on it. It is refused, changing nothing, while the run has an outage

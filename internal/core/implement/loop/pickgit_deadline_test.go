@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -110,4 +111,35 @@ func TestAPickCommitAndASyncMergeWhoseHookNeverFinishesAreRefused(t *testing.T) 
 	began = time.Now()
 	err = syncMerge(r.Root(), "sync", "side")
 	assertStopped(t, r, head, began, err)
+}
+
+// TestALaneResetStoppedAtItsBoundIsNamedAsAReset is the review finding on the
+// restart's and the undo's reset --hard: it was bound by the commit deadline
+// and refused as "a signing prompt or hook did not finish", though a reset
+// rewrites the tree through the repository's filters (a large Git LFS
+// re-smudge) and no signing program runs on it. It has a bound of its own,
+// and a stop there names the reset.
+func TestALaneResetStoppedAtItsBoundIsNamedAsAReset(t *testing.T) {
+	r := stalledCommitRepo(t)
+	for _, h := range []string{"reference-transaction", "post-index-change"} {
+		sleeper(t, filepath.Join(r.Root(), ".git", "hooks", h))
+	}
+	shortCommitTimeout(t, time.Second)
+	was := resetTimeout
+	resetTimeout = time.Second
+	t.Cleanup(func() { resetTimeout = was })
+
+	head := r.Git("rev-parse", "HEAD")
+	began := time.Now()
+	err := resetLaneTree(r.Root(), head)
+	if took := time.Since(began); took > 20*time.Second {
+		t.Fatalf("the reset took %s; its bound did not stop it", took)
+	}
+	if !errors.Is(err, errResetStalled) || errors.Is(err, errCommitStalled) {
+		t.Fatalf("a stalled reset must be refused as a reset: %v", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "git reset: the reset (") || !strings.Contains(msg, "did not finish within 1s") || strings.Contains(msg, "signing") {
+		t.Fatalf("the refusal must name the reset and its bound, and no signing prompt: %v", err)
+	}
 }
