@@ -1,6 +1,7 @@
 package dogfood
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -64,11 +65,41 @@ func mainSource(marker string) string {
 }
 
 // fixture is an upstream working repository holding an abcd-shaped module, a
-// bare repository it pushes to (the reviewed remote, standing in for the
-// forge), and a clone of the bare repository, the checkout under test, whose
-// origin/main is the reviewed main.
+// bare repository it pushes to (the reviewed remote's storage, standing in for
+// the forge), and a clone of the bare repository, the checkout under test,
+// whose origin/main is the reviewed main. The line a test declares names the
+// forge by url, an https URL the builder accepts, and the lsRemote seam
+// answers for it from the bare repository: production refuses a path or
+// file:// remote, so the tests reach theirs through the seam alone.
 type fixture struct {
-	upstream, remote, checkout, home string
+	upstream, remote, url, checkout, home string
+}
+
+// forgeURL is the reviewed remote every fixture declares. .invalid never
+// resolves, so a check that bypassed the seam could not reach a real host.
+const forgeURL = "https://forge.example.invalid/intentdriven/abcd.git"
+
+// forge points the lsRemote seam at the fixture's bare repository for the
+// rest of the test: asked for f.url, it runs a real `git ls-remote` against
+// the bare repository and reads the answer with the builder's own parser;
+// asked for any other remote, it fails as an unresolvable host would.
+func (f fixture) forge(t *testing.T) {
+	t.Helper()
+	env := gittest.Env(t)
+	prev := lsRemote
+	t.Cleanup(func() { lsRemote = prev })
+	lsRemote = func(ctx context.Context, _, url, branch string) (string, error) {
+		if url != f.url {
+			return "", errors.New("could not resolve host")
+		}
+		cmd := exec.CommandContext(ctx, "git", "-c", "protocol.file.allow=always", "ls-remote", "--", f.remote, "refs/heads/"+branch)
+		cmd.Env = env
+		out, err := cmd.Output()
+		if err != nil {
+			return "", err
+		}
+		return tipFromLsRemote(string(out), branch)
+	}
 }
 
 // goCaches are the build and module caches of the account running the tests,
@@ -105,7 +136,9 @@ func newFixture(t *testing.T, module string) fixture {
 	git(t, up, "push", "-q", remote, "main")
 	parent := realDir(t)
 	git(t, parent, "clone", "-q", remote, "checkout")
-	return fixture{upstream: up, remote: remote, checkout: filepath.Join(parent, "checkout"), home: realDir(t)}
+	f := fixture{upstream: up, remote: remote, url: forgeURL, checkout: filepath.Join(parent, "checkout"), home: realDir(t)}
+	f.forge(t)
+	return f
 }
 
 // list writes the person's opt-in list naming paths, at mode 0600.
@@ -125,7 +158,7 @@ func (f fixture) list(t *testing.T, paths ...string) {
 // fixture's reviewed remote and branch, the line shape the rung builds from.
 func (f fixture) declare(t *testing.T) {
 	t.Helper()
-	f.list(t, f.checkout+"\t"+f.remote+"\tmain")
+	f.list(t, f.checkout+"\t"+f.url+"\tmain")
 }
 
 // land commits a new main.go printing marker on the upstream and fetches it
@@ -213,7 +246,7 @@ func TestListedCheckoutBuildsTheReviewedTip(t *testing.T) {
 	if !strings.Contains(notes(p), "building it in the background") {
 		t.Fatalf("the first Resolve did not say a build was starting: %q", notes(p))
 	}
-	if p.Checkout.URL != f.remote || p.Checkout.Branch != "main" || p.Checkout.Commit != "" {
+	if p.Checkout.URL != f.url || p.Checkout.Branch != "main" || p.Checkout.Commit != "" {
 		t.Fatalf("checkout = %+v, want the declared remote and main, and no verified tip yet", *p.Checkout)
 	}
 	tip := git(t, f.upstream, "rev-parse", "HEAD")

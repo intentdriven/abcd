@@ -254,8 +254,10 @@ plugin surface, and a future MCP server share one engine.
 - **`core/dogfood/`** — which abcd binary a hook runs in a checkout the person
   opted in to dogfooding through `~/.abcd.noindex/dogfood-roots`
   (iss-2610070547057816), and the build it runs. The list is read through
-  `fsutil.HomeDeclarationEntry`, each line naming a checkout, the remote its
-  reviewed branch lives on, and that branch; a listed main checkout covers the
+  `fsutil.HomeDeclarationEntry`, each line naming a checkout, the https or ssh
+  remote its reviewed branch lives on (a path, `file://`, `git://` or `http://`
+  remote is refused, as one an agent or the network path can move), and that
+  branch; a listed main checkout covers the
   worktrees it records. `Build`, run in the background, is the only caller of
   the network: it reads the branch's tip with `git ls-remote` against the
   declared remote, records it in the store under a lock, and builds that commit,

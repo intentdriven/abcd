@@ -41,6 +41,15 @@
 // returns the reviewed tip, and no agent commit changes the guard that judges
 // the agent's next command.
 //
+// That holds only for a remote no agent can move, so the declared remote is
+// read over https or ssh alone (remoteRefusal). A filesystem path or a file://
+// URL names a repository this account can write, which an agent moves to its
+// own commit with one `git fetch` into it, and git:// and http:// let anyone on
+// the network path answer; a line declaring any of them is refused out loud
+// and builds nothing. Which https or ssh remote is declared stays the person's
+// call: it must be one the agent cannot push to, such as a protected branch
+// on a forge.
+//
 // The build is the reviewed commit or nothing. The checkout's object store,
 // its refs/replace/* and its repository-local attributes are writable by
 // anyone who can commit there, so the commit and every tree under it are read
@@ -58,8 +67,10 @@
 //
 // What this does not defend is the account itself. The declaration and the
 // store are protected by being this uid's alone, so anything running as this
-// account can still edit the declaration or replace a file in the store; what
-// no longer chooses the build is anything in the checkout.
+// account can still edit the declaration or replace a file in the store, and
+// the build runs under the account's own toolchain environment (the go
+// toolchain and module cache, GOENV, PATH, ~/.ssh/config), which stays the
+// account's; what no longer chooses the build is anything in the checkout.
 package dogfood
 
 import (
@@ -159,8 +170,11 @@ const (
 	maxLsRemoteBytes = 64 << 10
 
 	// allowedProtocols are the transports a check may use (GIT_ALLOW_PROTOCOL),
-	// so a declared URL cannot name a transport that runs a program, ext::.
-	allowedProtocols = "file:git:http:https:ssh"
+	// the two remoteRefusal admits. A declared URL cannot name a transport that
+	// runs a program (ext::), a repository this account can write (file, which
+	// git's local-path transport is too), or a plaintext one (git, http), even
+	// if it got past parseRemote; there is deliberately no way to widen it.
+	allowedProtocols = "https:ssh"
 
 	lockName     = ".build.lock"
 	failedSuffix = ".failed"
@@ -333,8 +347,8 @@ func listedCheckout(home, cwd string) (*Checkout, string) {
 	remote, branch, problem := parseRemote(fields)
 	if problem != "" {
 		return nil, "abcd dogfood: " + fsutil.DisplayPath(repo) + " is listed in " + RootsDisplay + ", but " + problem +
-			", so nothing is built and the installed release runs. A line is the checkout, a tab, the URL of the remote its reviewed branch lives on, and optionally a tab and the branch (" +
-			DefaultBranch + " when left out): printf '%s\\t%s\\t%s\\n' '<checkout>' '<url>' '" + DefaultBranch + "' >> " + RootsDisplay
+			", so nothing is built and the installed release runs. A line is the checkout, a tab, the https:// or ssh URL of the remote its reviewed branch lives on, and optionally a tab and the branch (" +
+			DefaultBranch + " when left out): printf '%s\\t%s\\t%s\\n' '<checkout>' '<https-or-ssh-url>' '" + DefaultBranch + "' >> " + RootsDisplay
 	}
 	return &Checkout{Toplevel: top, Repo: repo, URL: remote, Branch: branch}, ""
 }
@@ -356,10 +370,86 @@ func parseRemote(fields []string) (remote, branch, problem string) {
 	if strings.HasPrefix(remote, "-") || strings.ContainsFunc(remote, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return "", "", "its remote URL is not one git can be handed safely"
 	}
+	if why := remoteRefusal(remote); why != "" {
+		return "", "", "its remote " + shownRemote(remote) + " is REFUSED, because " + why +
+			" (declare an https:// or ssh remote whose branch no agent can move, such as a protected branch on a forge)"
+	}
 	if !validBranch(branch) {
 		return "", "", "its branch is not a branch name"
 	}
 	return remote, branch, ""
+}
+
+// urlSchemeRe is the scheme of a URL git recognises as one ("<scheme>://").
+var urlSchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
+
+// scpHostRe is the host of an scp-like remote ([user@]host:path): a DNS name
+// or an address, nothing git or ssh could read as an option.
+var scpHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+
+// remoteRefusal says why a declared remote cannot vouch for the reviewed tip,
+// "" when it is one the builder reads over https or ssh. The tip the builder
+// records is only as trustworthy as the remote it is read from, so the
+// remote must be one no agent in the checkout can move:
+//
+//   - a filesystem path (absolute, relative or ~) and a file:// URL name a
+//     repository this account can write, and an agent running as this
+//     account moves its branch with one `git fetch` into it;
+//   - git:// and http:// are plaintext, so anyone on the network path can
+//     answer with the tip they choose;
+//   - any other transport, a remote helper ("<transport>::<address>")
+//     included, is not one the builder uses.
+//
+// What is left is https:// and ssh, as ssh://… or scp-like [user@]host:path,
+// and git's own rule decides which is which: a remote with no ":", or with a
+// "/" before its first ":", is a local path.
+func remoteRefusal(remote string) string {
+	if scheme, rest, ok := strings.Cut(remote, "://"); ok && urlSchemeRe.MatchString(scheme) {
+		switch scheme {
+		case "https", "ssh":
+		case "file":
+			return "a file:// URL names a repository anything running as this account can write"
+		case "git", "http":
+			return scheme + ":// is a plaintext transport, on which anyone on the network path can answer with the tip they choose"
+		default:
+			return "the builder reads a remote over https:// or ssh only, not the " + scheme + ":// transport"
+		}
+		u, err := url.Parse(remote)
+		if err != nil || u.Opaque != "" || rest == "" {
+			return "it is not a URL git can read"
+		}
+		if h := u.Hostname(); h == "" || strings.HasPrefix(h, "-") || (u.User != nil && strings.HasPrefix(u.User.Username(), "-")) {
+			return "it names no host to read from"
+		}
+		return ""
+	}
+	if strings.Contains(remote, "::") {
+		return "it names a remote-helper transport (\"<transport>::<address>\"), which the builder does not use"
+	}
+	colon := strings.IndexByte(remote, ':')
+	if slash := strings.IndexByte(remote, '/'); colon < 0 || (slash >= 0 && slash < colon) {
+		return "a filesystem path names a repository anything running as this account can write"
+	}
+	host := remote[:colon]
+	if at := strings.LastIndexByte(host, '@'); at >= 0 {
+		host = host[at+1:]
+	}
+	if !scpHostRe.MatchString(host) {
+		return "it names no host to read from"
+	}
+	if remote[colon+1:] == "" {
+		return "it names no repository on its host"
+	}
+	return ""
+}
+
+// shownRemote is a declared remote as a note shows it: a path with the home
+// folded to ~, a URL with any credentials left out.
+func shownRemote(remote string) string {
+	if filepath.IsAbs(remote) {
+		return fsutil.RedactHome(remote)
+	}
+	return displayURL(remote)
 }
 
 // branchRe is the characters a declared branch may hold; validBranch adds
@@ -706,8 +796,15 @@ func lsRemoteGit(ctx context.Context, dir, remote, branch string) (string, error
 	if out.overflow {
 		return "", fmt.Errorf("its answer exceeded %d bytes", maxLsRemoteBytes)
 	}
+	return tipFromLsRemote(out.buf.String(), branch)
+}
+
+// tipFromLsRemote reads the commit refs/heads/<branch> names from the output
+// of `git ls-remote`: the one line naming exactly that ref.
+func tipFromLsRemote(out, branch string) (string, error) {
+	ref := "refs/heads/" + branch
 	var tip string
-	for _, line := range strings.Split(out.buf.String(), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		oid, name, ok := strings.Cut(strings.TrimRight(line, "\r"), "\t")
 		if !ok || name != ref {
 			continue

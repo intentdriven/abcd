@@ -216,8 +216,14 @@ func dogfoodCLIFixture(t *testing.T, entry func(checkout, upstream string) strin
 	return home, checkout, up
 }
 
+// dogfoodForgeURL is the reviewed remote a listed line declares: an https
+// URL, as the builder accepts, that never resolves. The verb under test reads
+// nothing over the network, and a path to the fixture's upstream would be
+// refused as a remote this account can write.
+const dogfoodForgeURL = "https://forge.example.invalid/intentdriven/abcd.git"
+
 func unlisted(string, string) string         { return "" }
-func listedWithRemote(c, up string) string   { return c + "\t" + up + "\tmain" }
+func listedWithRemote(c, _ string) string    { return c + "\t" + dogfoodForgeURL + "\tmain" }
 func listedWithoutRemote(c, _ string) string { return c }
 
 // swapSpawn records the build requests `hook dogfood-binary` makes.
@@ -258,7 +264,7 @@ func TestDogfoodBinaryVerb(t *testing.T) {
 		}
 	})
 	t.Run("listed", func(t *testing.T) {
-		home, checkout, up := dogfoodCLIFixture(t, listedWithRemote)
+		home, checkout, _ := dogfoodCLIFixture(t, listedWithRemote)
 		asked := swapSpawn(t)
 		var out, errOut strings.Builder
 		if code := Run([]string{"hook", "dogfood-binary"}, &out, &errOut); code != 0 || out.Len() != 0 || len(*asked) != 1 {
@@ -287,7 +293,7 @@ func TestDogfoodBinaryVerb(t *testing.T) {
 			t.Fatal(err)
 		}
 		rec := fmt.Sprintf(`{"commit":%q,"url":%q,"branch":"main","tracking":%q,"checked":%q}`,
-			tip, up, tip, time.Now().UTC().Format(time.RFC3339Nano))
+			tip, dogfoodForgeURL, tip, time.Now().UTC().Format(time.RFC3339Nano))
 		if err := os.WriteFile(filepath.Join(store, dogfood.TipName), []byte(rec), 0o600); err != nil {
 			t.Fatal(err)
 		}

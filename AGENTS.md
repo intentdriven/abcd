@@ -203,10 +203,16 @@ run the installed release, so in a source checkout the shell guard and the rules
 loader lag `main` by up to a release. A checkout listed in
 `~/.abcd.noindex/dogfood-roots` runs, in every hook, a build of its reviewed
 branch's tip as the remote the person declares reports it. A line is the
-checkout's absolute path, a tab, that remote's URL, and optionally a tab and the
-branch (`main` when left out); `#` starts a comment, and the file is a regular
-file you own that no one else can write, the `trusted-roots` shape. A line with
-no remote builds nothing and says so. The tip is read with `git ls-remote` by a
+checkout's absolute path, a tab, that remote's `https://` or ssh URL
+(`ssh://…` or `user@host:path`), and optionally a tab and the branch (`main`
+when left out); `#` starts a comment, and the file is a regular file you own
+that no one else can write, the `trusted-roots` shape. The remote must be one
+the agent cannot move, such as a protected branch on a forge: a filesystem
+path or `file://` URL names a repository your account, and so the agent, can
+write, and `git://` and `http://` let anyone on the network path choose the
+tip, so a line declaring any of them is refused. A line with no remote, or a
+refused one, builds nothing and says so on stderr, and the installed release
+runs. The tip is read with `git ls-remote` by a
 background builder, never by a hook, and recorded in the store; only that record
 chooses the build. The checkout's HEAD, its remote-tracking refs, `origin/HEAD`
 and its remote config choose nothing, so no agent commit, and no ref or remote
@@ -217,9 +223,11 @@ remote, as does a record older than 30 minutes. The build is made into
 (a `git fetch` brings it); until it is ready, or when the check or build fails,
 the installed release runs and says so on stderr. Listing the main checkout
 covers the worktrees it records. Anything running as your account can still
-edit the declaration or replace a file in the store. The opt-in is the person's
-own act, never an agent's:
-`mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' '<remote-url>' main >> ~/.abcd.noindex/dogfood-roots`.
+edit the declaration or replace a file in the store, and the build runs under
+the account's own toolchain environment (the go toolchain, the module cache,
+`GOENV`, `PATH`, `~/.ssh/config`), which stays the account's. The opt-in is the
+person's own act, never an agent's; for this repository it is
+`mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots`.
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`

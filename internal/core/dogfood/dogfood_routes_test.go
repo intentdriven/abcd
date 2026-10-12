@@ -205,7 +205,7 @@ func TestAlteredObjectStoreFailsTheBuild(t *testing.T) {
 // check is asked for again until the re-check bound or a moved ref.
 func TestUnreachableRemoteRunsTheRelease(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout+"\t"+filepath.Join(realDir(t), "absent.git"))
+	f.list(t, f.checkout+"\thttps://absent.example.invalid/abcd.git")
 	p := Resolve(f.home, f.checkout)
 	if p.Checkout == nil || !p.StartBuild {
 		t.Fatalf("Resolve = %+v, want a check asked for", p)
@@ -231,7 +231,8 @@ func TestUnreachableRemoteDropsTheEarlierBuild(t *testing.T) {
 	if p := settle(t, f.home, f.checkout); p.Binary == "" {
 		t.Fatalf("premise: the reviewed tip builds: %+v", p)
 	}
-	t.Cleanup(func() { lsRemote = lsRemoteGit })
+	prev := lsRemote
+	t.Cleanup(func() { lsRemote = prev })
 	lsRemote = func(context.Context, string, string, string) (string, error) {
 		return "", errors.New("could not resolve host")
 	}
@@ -276,10 +277,11 @@ func TestResolveNeverReadsTheNetwork(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
 	f.declare(t)
 	calls := 0
-	t.Cleanup(func() { lsRemote = lsRemoteGit })
+	forge := lsRemote
+	t.Cleanup(func() { lsRemote = forge })
 	lsRemote = func(ctx context.Context, dir, url, branch string) (string, error) {
 		calls++
-		return lsRemoteGit(ctx, dir, url, branch)
+		return forge(ctx, dir, url, branch)
 	}
 	resolve := func(state string) Plan {
 		t.Helper()

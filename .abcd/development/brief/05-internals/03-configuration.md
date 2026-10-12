@@ -616,9 +616,10 @@ hazard rule that has landed on the default branch since the last release is not
 enforced there until the next release ships. A checkout the person opts in to
 **dogfooding** runs a build of the latest reviewed default branch in its hooks
 instead (iss-2610070547057816). The opt-in is one line per checkout in
-`~/.abcd.noindex/dogfood-roots`: the checkout's absolute path, a tab, the URL of
-the remote its reviewed branch lives on, and optionally a tab and that branch
-(`main` when left out); `#` starts a comment:
+`~/.abcd.noindex/dogfood-roots`: the checkout's absolute path, a tab, the
+`https://` or ssh URL (`ssh://…` or scp-like `user@host:path`) of the remote its
+reviewed branch lives on, and optionally a tab and that branch (`main` when left
+out); `#` starts a comment. For abcd's own checkout the line is:
 
 ```
 mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '/path/to/abcd' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots
@@ -631,7 +632,20 @@ holds the same shape: honoured only as a regular file this uid owns that no one
 else can write, within 64 KiB, reached through no symlinked folder. A list
 failing any of that is IGNORED in every checkout, with one stderr line naming
 the check it failed. A line that names a checkout but no remote builds nothing,
-and its stderr line gives the shape a line takes. Nothing recognises abcd's
+and its stderr line gives the shape a line takes.
+
+**Which remotes can vouch for the tip.** The builder records whatever the
+declared remote answers, so the remote must be one the agent cannot move, such
+as a protected branch on a forge. A filesystem path (absolute, relative or
+`~`) and a `file://` URL name a repository this account can write, and an agent
+running as the account moves its branch to the agent's own commit with one
+`git -C <mirror> fetch <checkout> +HEAD:refs/heads/main`; `git://` and
+`http://` are plaintext, so anyone on the network path can answer with the tip
+they choose. A line declaring any of these, or another transport (a remote
+helper's `<transport>::<address>` included), is REFUSED: nothing is built, the
+installed release runs, and one stderr line names the line's checkout and
+remote and why. git's own rule tells a path from an ssh remote: a remote with
+no `:`, or with a `/` before its first `:`, is a local path. Nothing recognises abcd's
 source by itself: a repository carrying abcd's module path and `cmd/abcd` is
 built and run only when the person listed it, because recognising it would hand
 a repository posing as abcd a way to have its own code run by the hooks.
@@ -657,8 +671,8 @@ chooses the build. The background builder, `hook dogfood-build`, asks the
 remote with `git ls-remote -- <url> refs/heads/<branch>`: under the isolated
 git environment, in a store directory with discovery stopped above it so no
 repository's config applies, with `GIT_TERMINAL_PROMPT=0` and every askpass
-blanked so it never asks for credentials, with its transports held to `file`,
-`git`, `http`, `https` and `ssh`, within 60 seconds and 64 KiB of output, taking
+blanked so it never asks for credentials, with its transports held to `https`
+and `ssh` (`GIT_ALLOW_PROTOCOL`, which no flag widens), within 60 seconds and 64 KiB of output, taking
 only the line that names exactly `refs/heads/<branch>`. It records the answer,
 under the build lock, in `verified-tip.json` (the commit, URL, branch, the
 moment of the check, and the remote-tracking ref's commit at that moment), at
@@ -722,8 +736,13 @@ list pays one file test per hook.
 **What the rung does not defend is the account.** The declaration and the store
 are protected by being this uid's alone, so anything running as this account
 can still edit `~/.abcd.noindex/dogfood-roots` or replace a file in the store.
-The checkout's refs, remotes, replacement objects and object store no longer
-choose the build.
+The build runs under the account's own toolchain environment, which stays the
+account's: the go toolchain and module cache, `GOENV`, `PATH`, and the
+`~/.ssh/config` an ssh remote is reached through. The declared remote is only
+as good as its branch protection: the rung refuses the remotes this account or
+the network path can move, and the person declares one the agent cannot push
+to. The checkout's refs, remotes, replacement objects and object store no
+longer choose the build.
 
 ## The two `.abcd/` scopes
 
