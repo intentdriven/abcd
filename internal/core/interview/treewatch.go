@@ -360,6 +360,27 @@ func (r *treeReader) placeGitDirs() error {
 		if err := r.sizeGitReads(); err != nil {
 			return err
 		}
+		// A gitlink added to the index since was not pinned: its .git
+		// pointer is held to the state it had then, absent, or git status
+		// would place the submodule's git directory where the pointer leads.
+		// What git reads whole is sized above and the files placing git's
+		// own directory read unchanged, so listing the index reads the one
+		// the pin placed (iss-2610050504094430).
+		links, err := gitutil.Gitlinks(r.repo)
+		if err != nil {
+			return err
+		}
+		for _, l := range links {
+			p := filepath.Join(r.pin.top, filepath.FromSlash(l), ".git")
+			key := r.keyOf(filepath.Dir(p), filepath.Base(p))
+			if _, pinned := r.pin.pointers[key]; !pinned && pointerState(p) != "absent" {
+				moved = append(moved, key)
+			}
+		}
+		if len(moved) > 0 {
+			slices.Sort(moved)
+			return &redirectedError{Paths: moved}
+		}
 	}
 	gitDir, common, top, err := r.namedGitDirs()
 	if err != nil {

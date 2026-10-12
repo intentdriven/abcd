@@ -1411,21 +1411,24 @@ func TestASubmodulesPlacingFilesArePinnedBeforeGitRuns(t *testing.T) {
 		name string
 		// write changes a placing file after the first reading, returning
 		// the key the refusal must name.
-		write func(t *testing.T, repo string) string
+		write func(t *testing.T, r *writtenRun) string
 	}{
-		{name: "a gitlink's .git pointer rewritten", write: func(t *testing.T, repo string) string {
+		{name: "a gitlink's .git pointer rewritten", write: func(t *testing.T, r *writtenRun) string {
+			repo := r.repo
 			if err := os.WriteFile(filepath.Join(repo, "sub", ".git"), []byte("gitdir: "+elsewhere(t)+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			return "sub/.git"
 		}},
-		{name: "a submodule's commondir written", write: func(t *testing.T, repo string) string {
+		{name: "a submodule's commondir written", write: func(t *testing.T, r *writtenRun) string {
+			repo := r.repo
 			if err := os.WriteFile(filepath.Join(repo, ".git", "modules", "sub", "commondir"), []byte(elsewhere(t)+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			return ".git/modules/sub/commondir"
 		}},
-		{name: "a commondir in a submodule git directory made since", write: func(t *testing.T, repo string) string {
+		{name: "a commondir in a submodule git directory made since", write: func(t *testing.T, r *writtenRun) string {
+			repo := r.repo
 			dir := filepath.Join(repo, ".git", "modules", "planted")
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
@@ -1436,6 +1439,18 @@ func TestASubmodulesPlacingFilesArePinnedBeforeGitRuns(t *testing.T) {
 				}
 			}
 			return ".git/modules/planted/commondir"
+		}},
+		{name: "a gitlink added to the index since, its .git pointing elsewhere", write: func(t *testing.T, r *writtenRun) string {
+			repo := r.repo
+			sha := strings.TrimSpace(r.git.Git("rev-parse", "HEAD"))
+			r.git.Git("update-index", "--add", "--cacheinfo", "160000,"+sha+",planted")
+			if err := os.MkdirAll(filepath.Join(repo, "planted"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(repo, "planted", ".git"), []byte("gitdir: "+elsewhere(t)+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return "planted/.git"
 		}},
 	} {
 		t.Run(c.name+" is refused before git runs", func(t *testing.T) {
@@ -1448,7 +1463,7 @@ func TestASubmodulesPlacingFilesArePinnedBeforeGitRuns(t *testing.T) {
 			if _, err := readTreePinned(r.repo, "", pin); err != nil {
 				t.Fatalf("a second reading of an unchanged tree is refused: %v", err)
 			}
-			named := c.write(t, r.repo)
+			named := c.write(t, r)
 			err := readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
 			var moved *redirectedError
 			if !errors.As(err, &moved) || !slices.Equal(moved.Paths, []string{named}) {
