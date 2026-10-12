@@ -30,6 +30,15 @@ import (
 // files, so a finding that doubles a record in other words is filed with a
 // typed link naming it; nil files unmatched.
 func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.Config) (intent.ConsistencyIngestResult, error) {
+	return IngestConsistencyChunks(repoRoot, [][]byte{payload}, date, mc)
+}
+
+// IngestConsistencyChunks is IngestConsistency over an overflowing emit's
+// chunk set: one payload per chunk (itd-2609291923559186, A4). The set is
+// refused, with nothing filed and no report written, unless it holds exactly
+// one valid payload for every chunk of one emit, and findings that share a key
+// across chunks are filed once.
+func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc *match.Config) (intent.ConsistencyIngestResult, error) {
 	var ledger, open []Issue
 	var filedHere []string
 	loaded := false
@@ -120,7 +129,7 @@ func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.C
 		return intent.ConsistencyFiling{IssueID: res.ID, Match: res.Match}, nil
 	}
 	return intent.IngestConsistency(intent.ConsistencyIngestRequest{
-		RepoRoot: repoRoot, Payload: payload, Date: date, File: filer, Check: check,
+		RepoRoot: repoRoot, Payloads: payloads, Date: date, File: filer, Check: check,
 	})
 }
 

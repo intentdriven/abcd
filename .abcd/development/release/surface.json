@@ -2248,7 +2248,7 @@
         {
           "name": "findings-json",
           "shorthand": "",
-          "type": "string",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },

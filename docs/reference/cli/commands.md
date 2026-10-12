@@ -2473,13 +2473,13 @@ Emit the consistency request over the brief and every intent, or one intent agai
 
 Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.
 
-**Usage:** `abcd intent consistency ingest --findings-json <path> [flags]`
+**Usage:** `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [flags]`
 
 **Flags:**
 
 ```
-      --findings-json string   path to the consistency findings JSON the intent-auditor returned
-      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --findings-json stringArray   path to the consistency findings JSON the intent-auditor returned; give it once per chunk of an overflowing corpus
+      --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**

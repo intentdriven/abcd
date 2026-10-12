@@ -762,7 +762,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
-| `--findings-json` | string |
+| `--findings-json` | stringArray |
 | `--route` | stringArray |
 
 ### `abcd intent edge`
