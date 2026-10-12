@@ -29,7 +29,7 @@ func laneAtValidate(t *testing.T, repo *gittest.Repo) {
 	}
 	var state struct {
 		Lanes []struct{ Worktree, Branch string } `json:"lanes"`
-		RunID string                             `json:"run_id"`
+		RunID string                              `json:"run_id"`
 	}
 	laneDir := filepath.Dir(filepath.Join(repo.Root(), filepath.FromSlash(await.Awaiting.Receipt)))
 	st, err := os.ReadFile(filepath.Join(filepath.Dir(laneDir), "state.json"))
