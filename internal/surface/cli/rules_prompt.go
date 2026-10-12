@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -23,7 +24,9 @@ import (
 // of the loader's per-turn budget. The machine layer is read under the home
 // the rules user layer was (rules.UserHome), the project's under root, the
 // root the loader resolved. A layer that cannot be read is named on stderr
-// and recalls nothing, while the rules, already rendered, still inject. The
+// and recalls nothing, while the rules, already rendered, still inject; so
+// is a root-commit lookup git did not answer in time, which leaves the tied
+// notes out this turn. The
 // loader's kill switch silences the recall: nothing is read, nothing comes
 // back, and the ledger is kept as it was. here answers the repository's root
 // commit for the notes tied to one, asked only once a tied note matched.
@@ -35,7 +38,14 @@ func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map
 	for _, r := range refused {
 		diagnosticLine(w, "abcd memory: %s; recalling no notes from it", refusalText(r))
 	}
-	return recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here})
+	res := recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here})
+	if res.RootErr != nil {
+		// git did not answer in time: the tied notes are left out, and,
+		// unrecorded, tried again on the next turn.
+		diagnosticLine(w, "abcd memory: this repository's root commit: %s; recalling no notes tied to it this turn",
+			fsutil.RedactHome(res.RootErr.Error()))
+	}
+	return res
 }
 
 // routerRootCommit is the repository's root commit as the prompt router asks

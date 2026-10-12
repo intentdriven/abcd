@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // countRootCommitSpawns puts a git on PATH that logs every root-commit lookup
@@ -65,5 +69,42 @@ func TestPromptRouterLooksUpTheRootOncePerPrompt(t *testing.T) {
 	}
 	if n := spawned() - before; n > 1 {
 		t.Fatalf("a prompt matching a tied note spawned %d root-commit lookups, want at most one", n)
+	}
+}
+
+// TestARootLookupTimeoutIsNamedAndRetried (F2): when git does not answer the
+// root-commit lookup in time, the router says so on stderr in the recall's
+// diagnostic shape, the rules still inject, and the tied note is left
+// unrecorded — so the next turn, with git answering, brings it back.
+func TestARootLookupTimeoutIsNamedAndRetried(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	id := addRaceNote(t, "session-one") // tied to this repository
+
+	prev := routerRootCommit
+	t.Cleanup(func() { routerRootCommit = prev })
+	routerRootCommit = func(context.Context, string) (string, error) {
+		return "", fmt.Errorf("git rev-list -n 1 --max-parents=0 HEAD: %w", gitutil.ErrGitTimedOut)
+	}
+	env, errlog := recallRouterJSON(t, "session-two", repo, "commit and push the tests")
+	if env.Error != "" || !slices.Contains(env.Injected, "COMMITTING") {
+		t.Fatalf("a root lookup timeout stopped the rules: %+v\nstderr:\n%s", env, errlog)
+	}
+	if env.Recalled == nil || len(*env.Recalled) != 0 || strings.Contains(env.Text, "## MEMORY") {
+		t.Fatalf("a tied note came back with no root: %+v", env)
+	}
+	want := "abcd memory: this repository's root commit: "
+	if !strings.Contains(errlog, want) || !strings.Contains(errlog, "did not answer in time") ||
+		!strings.Contains(errlog, "recalling no notes tied to it this turn") {
+		t.Fatalf("stderr does not name the timeout:\n%s", errlog)
+	}
+	if n := strings.Count(errlog, want); n != 1 {
+		t.Fatalf("the timeout was named %d times, want once:\n%s", n, errlog)
+	}
+
+	routerRootCommit = prev
+	next, _ := recallRouterJSON(t, "session-two", repo, "the tests again")
+	if next.Recalled == nil || !slices.Equal(*next.Recalled, []string{id}) {
+		t.Fatalf("the tied note was recorded on the turn it was left out: %+v", next)
 	}
 }

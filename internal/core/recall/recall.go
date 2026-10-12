@@ -29,12 +29,15 @@ type Request struct {
 // Result is one prompt's recall. Text is empty when nothing new comes back.
 // Recalled names each item Text carries, in order; Omitted each new
 // candidate that did not fit the budget, not recorded and so retried on the
-// next turn. Ledger is the updated recalled ledger, a copy.
+// next turn. Ledger is the updated recalled ledger, a copy. RootErr is the
+// root-commit lookup's error (git did not answer in time) when a tied item
+// matched and was left out for it — unrecorded, so retried on the next turn.
 type Result struct {
 	Text     string
 	Recalled []string
 	Omitted  []string
 	Ledger   map[string]string
+	RootErr  error
 }
 
 // Recall matches the items against the prompt, drops every candidate already
@@ -52,7 +55,8 @@ func Recall(req Request) Result {
 	if req.Disabled {
 		return res
 	}
-	cands, _ := Matching(req.Items, req.Prompt, req.Root)
+	cands, rootErr := Matching(req.Items, req.Prompt, req.Root)
+	res.RootErr = rootErr
 	var fresh []Item
 	for _, c := range cands {
 		if ledger[c.Item.Key] == signature(c.Item) {
