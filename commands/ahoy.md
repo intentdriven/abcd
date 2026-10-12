@@ -712,7 +712,9 @@ and under `--yes`, the pair is never asked, so a piped answer stream keeps its
 order; the result lists `readme.offered` under `optional_skipped`, and its
 summary names the flag. A terminal run whose `.abcd/config.json` does not
 exist (abcd's starter files declined) has nowhere to store the answer, so it
-does not ask the pair either, and lists it the same way.
+does not ask the pair either, and lists it the same way; its summary then
+names the starter files first, since `--readme-parts` is refused until they
+exist.
 
 Through this page, relay the pair with your question tool. While it is open,
 the bare detection (`ahoy --json`) carries a `readme` object (per part its

@@ -1418,6 +1418,13 @@
       "sentence": "Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.",
       "flags": [
         {
+          "name": "root-sha",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "yes",
           "shorthand": "",
           "type": "bool",
@@ -1537,6 +1544,13 @@
           "name": "all-repos",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "root-sha",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }
