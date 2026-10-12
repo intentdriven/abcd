@@ -624,3 +624,31 @@ func TestConsistencyIngestSetsAsideANonOwnerFinding(t *testing.T) {
 		t.Fatalf("report lacks %q:\n%s", line, report)
 	}
 }
+
+// TestConsistencyIngestRefusesAnEndOutsideItsChunk: an end in a corpus
+// document the chunk's manifest does not list is refused, writing nothing.
+func TestConsistencyIngestRefusesAnEndOutsideItsChunk(t *testing.T) {
+	r, _ := chunkRepo(t, 7, 1000, nil)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(manifestOf(t, root, em.Chunks[0].CorpusPath), cxChunkPath(7)) {
+		t.Fatalf("chunk 1 holds %s; the fixture needs it outside", cxChunkPath(7))
+	}
+	payloads := [][]byte{chunkPayload(t, root, em.Chunks[0], cxFinding{class: "naming_conflict", severity: "minor",
+		summary: "outside", explanation: "One end is in no document of this chunk.",
+		ends: []cxEnd{{cxChunkPath(1), cxChunkQuote(1)}, {cxChunkPath(7), cxChunkQuote(7)}}})}
+	for _, ch := range em.Chunks[1:] {
+		payloads = append(payloads, chunkPayload(t, root, ch))
+	}
+	f := &fakeFiler{}
+	_, err = ingestChunks(t, root, payloads, f)
+	if err == nil || !strings.Contains(err.Error(), "payload 1 of") || !strings.Contains(err.Error(), "not a document in the corpus manifest") {
+		t.Fatalf("err = %v; want chunk 1's payload refused for an end outside its manifest", err)
+	}
+	if _, serr := os.Stat(filepath.Join(root, ReviewsShelfRelDir)); len(f.calls) != 0 || serr == nil {
+		t.Fatalf("the refused ingest filed %d findings or wrote the reviews shelf", len(f.calls))
+	}
+}

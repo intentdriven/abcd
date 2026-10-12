@@ -219,4 +219,52 @@ func TestIntentConsistencyChunksOnAKeylessProvider(t *testing.T) {
 	if rc.ConnectionUsed != "openrouter" || rc.ProviderCall == nil {
 		t.Fatalf("receipt = %+v", rc)
 	}
+	var routes []oracle.ReceiptRoute
+	member(t, []byte(stdout), "chunk_routes", &routes)
+	if len(routes) != res.Overflow.Chunks {
+		t.Fatalf("chunk_routes lists %d receipts for %d chunks", len(routes), res.Overflow.Chunks)
+	}
+	for i, r := range routes {
+		if r.ConnectionUsed != "openrouter" || r.ProviderCall == nil {
+			t.Errorf("chunk %d's receipt = %+v; want the provider call", i+1, r)
+		}
+	}
+}
+
+// TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost: a provider
+// unreachable from chunk 2 on leaves every chunk to the host, and chunk 1's
+// answer is not ingested.
+func TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost(t *testing.T) {
+	srcRoot := repoRootFromTest(t)
+	repo := consistencyChunkCLIRepo(t)
+	t.Setenv("ABCD_PLUGIN_ROOT", srcRoot)
+	receiptRe := regexp.MustCompile(`- receipt_id: (rcp-[0-9a-f]{12})`)
+	var p *chatFake
+	p = newChatFake(t, "local-model", func(body string) string {
+		// The first answer closes its connection and the listener, so the
+		// next send cannot reach the provider.
+		p.srv.Config.SetKeepAlivesEnabled(false)
+		_ = p.srv.Listener.Close()
+		m := receiptRe.FindStringSubmatch(body)
+		rel := ".abcd/.work.local/reviews/" + m[1]
+		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
+	})
+	pointMachine(t, os.Getenv("HOME"), p.srv.URL, false, "", "intent-auditor")
+	stdout, stderr, err := runCLISplit(t, "intent", "consistency", "--json")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	if p.calls.Load() != 1 || !strings.Contains(stderr, "chunk 2 of") || !strings.Contains(stderr, "chunks are left to the host") {
+		t.Fatalf("provider called %d times; stderr:\n%s", p.calls.Load(), stderr)
+	}
+	var em consistencyChunkEmitted
+	if err := json.Unmarshal([]byte(stdout), &em); err != nil || em.Status != "issued" || len(em.Chunks) < 2 {
+		t.Fatalf("emit = %+v, %v; want every chunk issued to the host\n%s", em, err, stdout)
+	}
+	if open, _ := filepath.Glob(filepath.Join(repo, ".abcd/work/issues/open/*.md")); len(open) != 0 {
+		t.Fatalf("chunk 1's answer was ingested: %v", open)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd/work/reviews")); err == nil {
+		t.Fatal("a report was written")
+	}
 }
