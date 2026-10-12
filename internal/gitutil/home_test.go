@@ -153,8 +153,8 @@ func TestAccountHomeNeverComesFromHOME(t *testing.T) {
 
 // TestPlantedHOMEIsRefusedByTheRealLookup drives the production lookup, not a
 // substitute: with HOME pointed into a checkout the account database does not
-// name, the checkout is refused. Built with -tags osusergo it also covers
-// darwin's pure-Go os/user, the variant whose Current falls back to $HOME.
+// name, the checkout is refused. Built with -tags osusergo it covers the build
+// in which os/user would fall back to $HOME, which abcd then does not call.
 // os/user caches Current for the process, so against a lookup that went
 // through it this test is only decisive when it is the first to call it.
 func TestPlantedHOMEIsRefusedByTheRealLookup(t *testing.T) {
