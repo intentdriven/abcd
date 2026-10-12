@@ -30,6 +30,15 @@ const ledgerRel = ".abcd/work/issues"
 // maxListing caps the store's ls-files answer.
 const maxListing = 16 << 20
 
+// The modes of the store's folder and of each private record in it: this
+// account's alone. git makes a worktree at the umask (0755 by default), and
+// capture writes a record at 0644, either of which lets every account in the
+// owner's group, or on the machine, read the advisory's text.
+const (
+	storeRootMode os.FileMode = 0o700
+	recordMode    os.FileMode = 0o600
+)
+
 // RefusalError is a refusal with nothing written: the reason, and the one
 // thing the person can do about it. The surfaces exit 2 on it.
 type RefusalError struct {
@@ -148,6 +157,9 @@ func (s Store) create(home string) error {
 	if _, err := gitutil.Run(s.Checkout, "worktree", "add", "--detach", "--", s.Root, base); err != nil {
 		return refuse("git could not add the embargo store: "+fsutil.RedactHome(err.Error()), "settle what git reports, then run it again")
 	}
+	if err := os.Chmod(s.Root, storeRootMode); err != nil {
+		return refuse("the embargo store was made, but its folder could not be closed to other accounts", "run `chmod 700` on the store, then run it again")
+	}
 	return nil
 }
 
@@ -156,10 +168,15 @@ func (s Store) create(home string) error {
 // store is not a real directory that is this repository's own worktree; when
 // it resolves inside the checkout; when its HEAD is on a branch; when its
 // state file is refused (state.go); or when its index tracks a record the
-// state names. A refusal never names a record's file or an advisory.
+// state names; or when another account could read its folder or a record
+// the state names. A refusal never names a record's file or an advisory.
 func (s Store) Verify() (State, error) {
 	if !fsutil.IsRealDir(s.Root) {
 		return State{}, refuse("the embargo store is not a real directory", "move aside whatever occupies its path, then run `abcd embargo intake`")
+	}
+	if fi, err := os.Stat(s.Root); err != nil || fi.Mode().Perm()&0o077 != 0 {
+		return State{}, refuse("the embargo store's folder is open to other accounts on this machine (a group or other permission bit), so they can read its private records",
+			"run `chmod 700` on the store, then run it again")
 	}
 	if inside(s.Root, s.Checkout) {
 		return State{}, refuse("the embargo store resolves inside this checkout, where its records are one `git add` from the public history",
@@ -187,7 +204,59 @@ func (s Store) Verify() (State, error) {
 	if err := s.refuseTracked(st); err != nil {
 		return State{}, err
 	}
+	if err := s.refuseRecordsOpen(st); err != nil {
+		return State{}, err
+	}
 	return st, nil
+}
+
+// refuseRecordsOpen refuses when a record the state links to an advisory, in
+// any status folder of the store's ledger, carries a group or other
+// permission bit. The store's other records are the public ledger's own,
+// checked out with the worktree, and are not judged.
+func (s Store) refuseRecordsOpen(st State) error {
+	if len(st.Advisories) == 0 {
+		return nil
+	}
+	ledger := filepath.Join(s.Root, filepath.FromSlash(ledgerRel))
+	statuses, err := os.ReadDir(ledger)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return refuse("the embargo store's ledger could not be listed", "check the permissions of the store, then run it again")
+	}
+	for _, d := range statuses {
+		if !d.IsDir() {
+			continue
+		}
+		entries, err := os.ReadDir(filepath.Join(ledger, d.Name()))
+		if err != nil {
+			return refuse("the embargo store's ledger could not be listed", "check the permissions of the store, then run it again")
+		}
+		for _, e := range entries {
+			if !isPrivateRecord(e.Name(), st) {
+				continue
+			}
+			fi, err := os.Lstat(filepath.Join(ledger, d.Name(), e.Name()))
+			if err != nil || (fi.Mode().IsRegular() && fi.Mode().Perm()&0o077 != 0) {
+				return refuse("a private record in the embargo store is open to other accounts on this machine (a group or other permission bit)",
+					"run `chmod -R go-rwx` on the store, then run it again")
+			}
+		}
+	}
+	return nil
+}
+
+// isPrivateRecord reports whether a ledger file name is the record of an
+// advisory the state holds.
+func isPrivateRecord(base string, st State) bool {
+	for _, a := range st.Advisories {
+		if base == a.IssueID+".md" || strings.HasPrefix(base, a.IssueID+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 // refuseTracked refuses when the store's index tracks a record the state
@@ -201,12 +270,9 @@ func (s Store) refuseTracked(st State) error {
 		return refuse("git could not list what the embargo store tracks", "settle what git reports, then run it again")
 	}
 	for _, p := range bytes.Split(out, []byte{0}) {
-		base := filepath.Base(string(p))
-		for _, a := range st.Advisories {
-			if base == a.IssueID+".md" || strings.HasPrefix(base, a.IssueID+"-") {
-				return refuse("the embargo store's index tracks a private record",
-					"unstage it with `git -C <store> rm --cached` on that record, keeping the file, then run it again")
-			}
+		if len(p) > 0 && isPrivateRecord(filepath.Base(string(p)), st) {
+			return refuse("the embargo store's index tracks a private record",
+				"unstage it with `git -C <store> rm --cached` on that record, keeping the file, then run it again")
 		}
 	}
 	return nil

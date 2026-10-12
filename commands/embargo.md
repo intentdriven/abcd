@@ -15,7 +15,9 @@ created detached and never committed. The record never enters this
 repository's public ledger, and the link from an advisory to its record lives
 in the store's state, not in the record. Every sub-verb checks the store
 before it reads or writes it, and refuses, writing nothing, when the store is
-on a branch, tracks a private record, or sits inside the checkout.
+on a branch, tracks a private record, sits inside the checkout, or is open to
+other accounts on the machine: the store's folder is kept at `700` and each
+private record at `600`, and a refusal names the `chmod` that restores them.
 
 Every request to GitHub is the person's own `gh`, signed in to an account that
 may read and edit the repository's security advisories; abcd holds no token.

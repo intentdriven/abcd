@@ -213,6 +213,12 @@ func mint(s Store, st *State, a remoteAdvisory, severity string, now time.Time) 
 		return MintedRecord{}, refuse("the private record could not be written in the embargo store: "+err.Error(),
 			"settle what it reports, then run it again; advisories recorded before it are kept")
 	}
+	recPath := filepath.Join(s.Root, filepath.FromSlash(res.Path))
+	if err := os.Chmod(recPath, recordMode); err != nil {
+		_ = os.Remove(recPath)
+		return MintedRecord{}, refuse("the private record could not be closed to other accounts, so it was removed",
+			"check the permissions of the store, then run it again; advisories recorded before it are kept")
+	}
 	entry := Advisory{GHSAID: a.GHSAID, IssueID: res.ID, Title: a.Summary, Severity: severity, ForgeState: a.State}
 	if a.CVEID != nil && *a.CVEID != "" {
 		cve := *a.CVEID
@@ -220,7 +226,7 @@ func mint(s Store, st *State, a remoteAdvisory, severity string, now time.Time) 
 	}
 	st.Advisories = append(st.Advisories, entry)
 	if err := s.SaveState(*st); err != nil {
-		_ = os.Remove(filepath.Join(s.Root, filepath.FromSlash(res.Path)))
+		_ = os.Remove(recPath)
 		st.Advisories = st.Advisories[:len(st.Advisories)-1]
 		return MintedRecord{}, err
 	}

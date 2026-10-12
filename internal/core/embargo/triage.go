@@ -1,6 +1,7 @@
 package embargo
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -161,9 +162,15 @@ func Triage(req TriageRequest) (TriageResult, error) {
 			VerdictNotAVulnerability: "not a vulnerability: " + reason,
 			VerdictPublicTrack:       "moved to the public track: " + reason,
 		}[req.Verdict]
-		if _, err := capture.Wontfix(capture.WontfixRequest{RepoRoot: s.Root, ID: a.IssueID, Reason: note}); err != nil {
+		moved, err := capture.Wontfix(capture.WontfixRequest{RepoRoot: s.Root, ID: a.IssueID, Reason: note})
+		if err != nil {
 			return TriageResult{}, refuse("the private record could not be moved to wontfix/ in the store: "+err.Error(),
 				"settle what it reports, then run it again")
+		}
+		// The move writes the record afresh, at the ledger's 0644.
+		if err := os.Chmod(filepath.Join(s.Root, filepath.FromSlash(moved.Path)), recordMode); err != nil {
+			return TriageResult{}, refuse("the private record was moved to wontfix/ in the store, but could not be closed to other accounts",
+				"run `chmod -R go-rwx` on the store, then run triage again")
 		}
 		status = string(capture.StateWontfix)
 	}

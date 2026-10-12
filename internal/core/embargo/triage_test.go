@@ -39,6 +39,10 @@ func seedStore(t *testing.T) seeded {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Intake closes each record it mints to this account alone; so does the seed.
+	if err := os.Chmod(filepath.Join(s.Root, filepath.FromSlash(res.Path)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	st := emptyState()
 	st.Repo = "example/example"
 	st.Advisories = []Advisory{{GHSAID: "GHSA-xxxx-xxxx-xxxx", IssueID: res.ID, Title: seededTitle, Severity: "major", ForgeState: "triage"}}
@@ -124,6 +128,12 @@ func TestTriageEachVerdict(t *testing.T) {
 			}
 			if sd.recordIn("wontfix") != tc.wontfix || sd.recordIn("open") == tc.wontfix {
 				t.Fatalf("record in wontfix/ = %v, want %v", sd.recordIn("wontfix"), tc.wontfix)
+			}
+			if tc.wontfix {
+				m, _ := filepath.Glob(filepath.Join(sd.s.Root, ".abcd", "work", "issues", "wontfix", sd.issID+"-*.md"))
+				if fi, err := os.Stat(m[0]); err != nil || fi.Mode().Perm() != 0o600 {
+					t.Fatalf("the moved private record's mode is %v (%v), want 0600", fi.Mode().Perm(), err)
+				}
 			}
 			_, statErr := os.Stat(sd.draftPath())
 			if (statErr == nil) != tc.draft || (res.Draft != "") != tc.draft {

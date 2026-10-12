@@ -133,6 +133,9 @@ func TestIntakeMintsPrivateRecordInStore(t *testing.T) {
 	if filepath.Base(matches[0]) != m.IssueID+"-private-report.md" {
 		t.Errorf("record named %s, want the neutral slug", filepath.Base(matches[0]))
 	}
+	if fi, err := os.Stat(matches[0]); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("the private record's mode is %v (%v), want 0600", fi.Mode().Perm(), err)
+	}
 	s := Store{Root: res.Store, Checkout: f.repo.Root()}
 	st, err := s.Verify()
 	if err != nil {

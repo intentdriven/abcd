@@ -112,8 +112,12 @@ records and the broken state are out of scope (see Out of scope).
 - `VerifyStore` runs before every sub-verb that reads or writes the store and
   refuses (exit 2, nothing written) when: the store's HEAD is not detached;
   `git -C <store> ls-files` lists any record path the state names; the store
-  path resolves inside the current checkout; or `state.json` is not a regular
-  file this account owns with no group or other write bit.
+  path resolves inside the current checkout; `state.json` is not a regular
+  file this account owns with no group or other write bit; or the store's
+  folder, or a record the state names, carries any group or other permission
+  bit. The store's folder is set to 0700 when it is made and each private
+  record to 0600 when it is minted or moved, since git makes the worktree at
+  the umask and capture writes a record at 0644.
 
 ### How `gh` is called
 
@@ -383,6 +387,16 @@ Each is held by a named test above.
    (TestCheckRunsNoRepoDiffDriver).
 8. abcd holds no token; every remote call is the person's own `gh` against an
    explicit github.com host (TestRunnerNamesHostExplicitly).
+
+## Progress
+
+Fixes from the security review of 2026-10-12, each held by a named test:
+
+- **Step 3, the store's modes.** The store's folder is 0700 and each private
+  record 0600 (minted by intake, moved by triage); `Verify` refuses a folder
+  or a named record with any group or other bit, naming the `chmod` that
+  restores it (TestStoreRootOwnerOnly, TestVerifyStoreRefusesRootOpenToOthers,
+  TestVerifyStoreRefusesRecordOpenToOthers).
 
 ## Out of scope
 

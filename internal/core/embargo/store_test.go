@@ -161,3 +161,71 @@ func TestVerifyStoreRefusesAPlainDirectory(t *testing.T) {
 	_, _, err = Open(f.home, f.repo.Root())
 	mustRefuse(t, err, "worktree")
 }
+
+// TestStoreRootOwnerOnly: git makes a worktree at the umask's 0755, which lets
+// every account on the machine list the store and read its private records;
+// Open closes the store's folder to everyone but this account.
+func TestStoreRootOwnerOnly(t *testing.T) {
+	f := newFixture(t)
+	s, _, err := Open(f.home, f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(s.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("the store's folder is %#o, want 0700", perm)
+	}
+}
+
+// TestVerifyStoreRefusesRootOpenToOthers: a store's folder another account
+// can read or enter is refused, and the refusal says how to close it.
+func TestVerifyStoreRefusesRootOpenToOthers(t *testing.T) {
+	f := newFixture(t)
+	s, _, err := Open(f.home, f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(s.Root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Verify()
+	mustRefuse(t, err, "chmod 700")
+	if _, _, err := Open(f.home, f.repo.Root()); err == nil {
+		t.Fatal("Open accepted a store open to other accounts")
+	}
+}
+
+// TestVerifyStoreRefusesRecordOpenToOthers: a private record the state names
+// that another account could read is refused, without naming the record.
+func TestVerifyStoreRefusesRecordOpenToOthers(t *testing.T) {
+	f := newFixture(t)
+	s, _, err := Open(f.home, f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveState(sampleState()); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(s.Root, ".abcd", "work", "issues", "wontfix")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rec := filepath.Join(dir, "iss-2610120000000002-private-report.md")
+	if err := os.WriteFile(rec, []byte("---\nid: iss-2610120000000002\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Verify(); err != nil {
+		t.Fatalf("an owner-only private record was refused: %v", err)
+	}
+	if err := os.Chmod(rec, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Verify()
+	mustRefuse(t, err, "go-rwx")
+	if strings.Contains(err.Error(), "private-report") || strings.Contains(err.Error(), "iss-2610120000000002") {
+		t.Fatalf("the refusal names the record: %v", err)
+	}
+}
