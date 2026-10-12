@@ -174,6 +174,12 @@ type segment struct {
 	// stream a pipe from the fetch would be, behind a file name
 	// (fileCarries, iss-2610120916248850).
 	runsFetched bool
+	// fetched is the names fetches wrote by the end of this command, its
+	// own call's earlier commands and what its carrier was handed included,
+	// and fetchedIn what the command whose string this is was handed: a
+	// string a shell runs after a fetch runs the fetched file as the line
+	// around it would (fileCarries). nil where no fetch came before.
+	fetched, fetchedIn *fetchedSet
 	// home and at name the segment in the tokenize call that emitted it,
 	// list.segs[at]; home is nil for a segment built anywhere else. They are
 	// what a command's own string is filed under (segList.payloads).

@@ -241,6 +241,8 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 						psegs[i].stdinIn = append(append([]feed(nil), psegs[i].stdinIn...), stdin...)
 					}
 					psegs[i].argsIn = args
+					// The string runs after what fetched before its carrier.
+					psegs[i].fetchedIn = s.fetched
 					psegs[i].carrier, psegs[i].depth, psegs[i].end = item.base+k+1, item.depth+1, s.end
 				}
 				if s.home != nil {

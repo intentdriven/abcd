@@ -515,27 +515,45 @@ func fileCarries(segs []segment) {
 	var written map[string][]feed
 	var wild, all []feed
 	var assigned map[string]bool
-	var fetched map[string]bool
-	fetchedWild := false
+	// fetched starts from what the string's carrier was handed, and is
+	// copied before it grows, so each command keeps the set as of itself.
+	var fetched *fetchedSet
+	if len(segs) > 0 {
+		fetched = segs[0].fetchedIn
+	}
+	fetch := func(name string, wildName bool) {
+		n := &fetchedSet{names: map[string]bool{}}
+		if fetched != nil {
+			for k := range fetched.names {
+				n.names[k] = true
+			}
+			n.wild = fetched.wild
+		}
+		if wildName {
+			n.wild = true
+		} else {
+			n.names[path.Clean(name)] = true
+		}
+		fetched = n
+	}
 	isFetched := func(w string) bool {
 		if isUnknown(w) || strings.ContainsRune(w, varMark) {
-			return fetchedWild
+			return fetched.wild
 		}
-		return fetched[path.Clean(w)]
+		return fetched.names[path.Clean(w)]
 	}
 	for k := range segs {
 		s := &segs[k]
-		if len(fetched) > 0 || fetchedWild {
-			s.runsFetched = runsFetchedFile(*s, isFetched)
+		if fetched != nil {
+			s.runsFetched = s.runsFetched || runsFetchedFile(*s, isFetched)
 		}
 		names, wildName := fetchWrites(*s)
 		for _, n := range names {
-			if fetched == nil {
-				fetched = map[string]bool{}
-			}
-			fetched[path.Clean(n)] = true
+			fetch(n, false)
 		}
-		fetchedWild = fetchedWild || wildName
+		if wildName && (fetched == nil || !fetched.wild) {
+			fetch("", true)
+		}
 		if len(all) > 0 {
 			if assigned == nil {
 				assigned = namesAssigned(segs)
@@ -583,12 +601,9 @@ func fileCarries(segs []segment) {
 			if fetches(*s) || runsFetch(fs) {
 				switch {
 				case !r.target.ok:
-					fetchedWild = true
+					fetch("", true)
 				case r.target.text != "/dev/null":
-					if fetched == nil {
-						fetched = map[string]bool{}
-					}
-					fetched[path.Clean(r.target.text)] = true
+					fetch(r.target.text, false)
 				}
 			}
 			all = mergeRuns(append(all, fs...))
@@ -601,6 +616,7 @@ func fileCarries(segs []segment) {
 			}
 			written[r.target.text] = mergeRuns(append(written[r.target.text], fs...))
 		}
+		s.fetched = fetched
 	}
 }
 
@@ -686,6 +702,14 @@ var operandAssigners = []string{"read", "mapfile", "readarray", "getopts", "prin
 // shell's script or standard input, a `source` or `.` operand, or a path
 // run directly. Names are matched as the line writes them, as the pid-list
 // carry matches them; a name the line does not fix can be any file.
+
+// fetchedSet is the names the line's fetches wrote, and whether one wrote a
+// name the line does not fix, which can be any file. It is never changed
+// once a command holds it.
+type fetchedSet struct {
+	names map[string]bool
+	wild  bool
+}
 
 // fetchers are the programs that write what a network fetch returns.
 var fetchers = []string{"curl", "wget"}
