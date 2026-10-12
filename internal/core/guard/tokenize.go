@@ -104,6 +104,11 @@ type segment struct {
 	// in. It rides on an empty segment of its own, as substitutionUnread
 	// does, and namesIFS reads it.
 	namesIFSInText bool
+	// assignsInText is the names a `${NAME:=w}` or `${NAME=w}` anywhere in
+	// the text a tokenize call read can assign (expansionAssigns), riding on
+	// an empty segment of its own as namesIFSInText does; namesAssigned
+	// reads it.
+	assignsInText []string
 	// ifsSplit records, per token index, a spelled word whose fields rest on
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
@@ -1992,7 +1997,38 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// depth 0, so it is read once, there.
 		segs = append(segs, segment{chain: chain, namesIFSInText: true})
 	}
+	if depth == 0 {
+		if names := expansionAssigns(line); len(names) > 0 {
+			segs = append(segs, segment{chain: chain, assignsInText: names})
+		}
+	}
 	return segs, nil
+}
+
+// expansionAssigns is every name a `${NAME:=w}` or `${NAME=w}` in text
+// assigns, wherever it stands, a quoted one included: reaching past what
+// the shell assigns only keeps a word read as any file the line wrote.
+func expansionAssigns(text string) []string {
+	var out []string
+	for i := 0; i+2 < len(text); i++ {
+		if text[i] != '$' || text[i+1] != '{' {
+			continue
+		}
+		j := i + 2
+		for j < len(text) && (text[j] == '_' || text[j] >= 'a' && text[j] <= 'z' || text[j] >= 'A' && text[j] <= 'Z' ||
+			j > i+2 && text[j] >= '0' && text[j] <= '9') {
+			j++
+		}
+		if j == i+2 || j >= len(text) {
+			continue
+		}
+		if text[j] == '=' || text[j] == ':' && j+1 < len(text) && text[j+1] == '=' {
+			if name := text[i+2 : j]; !containsString(out, name) {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // unwordedIFS reports whether line holds the name IFS more times than the

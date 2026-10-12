@@ -562,7 +562,9 @@ func fileCarries(segs []segment) {
 					}
 					for name, fs := range written {
 						tally(1)
-						if unknownCouldBe(tok, name) {
+						// A relative name is also the file a word whose
+						// fixed tail is `/NAME` names (`$PWD/p` for p).
+						if unknownCouldBe(tok, name) || !strings.HasPrefix(name, "/") && unknownCouldBe(tok, "/"+name) {
 							got = append(got, fs...)
 						}
 					}
@@ -624,7 +626,9 @@ func onlyOutsideVariables(s segment, i int, assigned map[string]bool) bool {
 
 // namesAssigned is every name a command of segs can assign: by an assignment
 // word anywhere in it (a prefix, a declarer's operand, `+=`), an array
-// assignment, a `for` or `select` loop, and any name-shaped word of a
+// assignment, a `for` or `select` loop, a `${NAME:=w}` or `${NAME=w}`
+// anywhere in the text, REPLY, which a bare read and a select set, and any
+// name-shaped word of a
 // command that assigns its operands (read, mapfile, getopts, printf -v and
 // the rest), or of one whose name the line does not fix. It reaches past
 // what the shell assigns, which only keeps a word read as any file.
@@ -637,6 +641,13 @@ func namesAssigned(segs []segment) map[string]bool {
 		if len(s.tokens) >= 2 && (s.tokens[0] == "for" || s.tokens[0] == "select") {
 			out[s.tokens[1]] = true
 		}
+		// select sets REPLY to the line it reads, as a bare read does.
+		if len(s.tokens) > 0 && s.tokens[0] == "select" {
+			out["REPLY"] = true
+		}
+		for _, n := range s.assignsInText {
+			out[n] = true
+		}
 		for _, t := range s.tokens {
 			tally(1)
 			if eq := strings.IndexByte(t, '='); eq > 0 && isName(strings.TrimSuffix(t[:eq], "+")) {
@@ -647,6 +658,9 @@ func namesAssigned(segs []segment) map[string]bool {
 			tok := s.tokens[a.idx]
 			if !isUnknown(tok) && !nameCouldBeAny(tok, operandAssigners) {
 				continue
+			}
+			if nameCouldBe(tok, "read") {
+				out["REPLY"] = true
 			}
 			for _, w := range s.tokens[a.idx+1:] {
 				if isName(w) {
