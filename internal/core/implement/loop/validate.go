@@ -885,8 +885,9 @@ func LoadReviewRoute(r layered.Roots, agentPrompt func(role string) (string, err
 // for, the reason and abcd's detail, the host as the route that runs it) is
 // written to the run's state and record, which the summary counts per route
 // and per role. No return is written for it, so nothing stands where the
-// host's agent writes. A step interrupted while the route works falls back on
-// nothing: it is refused, and the review stays awaiting.
+// host's agent writes. A step interrupted while the route works (the person,
+// or a host's command timeout) falls back too, as interrupted, so every review
+// the route was asked for and did not return has its receipt.
 func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, steps Stages, o Options, rr *ReviewRoute) (StepResult, error) {
 	if rr == nil || res.Awaiting == nil || !res.handed || res.Route != nil || res.Fallback != nil {
 		return res, nil

@@ -21,6 +21,7 @@ package oracle
 // and checked, and that is all.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -68,6 +69,19 @@ func LoadReview(r layered.Roots) (ReviewRoute, error) {
 	s, err := layered.Load(layered.Config, r)
 	if err != nil {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
+	}
+	// oracle.rp must be an object before the claim reads it: the claim's
+	// refusal quotes a value that is not one, and a URL written there in place
+	// of the block can carry a credential no refusal may echo.
+	blocks, err := s.Lookup(RPKey)
+	if err != nil {
+		return ReviewRoute{}, fmt.Errorf("review route: %w", err)
+	}
+	for _, f := range blocks {
+		if _, err := layered.Decode[map[string]json.RawMessage](f.Raw); err != nil {
+			return ReviewRoute{}, fmt.Errorf("review route: %s (%s layer): %s is not an object; it takes url and tool",
+				f.Origin, f.Layer, RPKey)
+		}
 	}
 	if err := s.Claim(RPKey, "url", "tool"); err != nil {
 		return ReviewRoute{}, fmt.Errorf("review route: %w", err)

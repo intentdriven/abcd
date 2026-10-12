@@ -109,8 +109,10 @@ func TestAReviewRouteFaultIsRefusedNamingTheFileAndTheKey(t *testing.T) {
 			[]string{machine, "oracle.rp.port", "url, tool"}},
 		{"a tool that is not a name", "", `{"oracle":{"rp":{"url":"http://127.0.0.1:7777","tool":"two words"}}}`,
 			[]string{machine, "oracle.rp.tool"}},
-		{"oracle.rp that is not an object", "", `{"oracle":{"rp":"http://127.0.0.1:7777"}}`,
+		{"oracle.rp that is not an object", "", `{"oracle":{"rp":"http://user:s3cret@example.com/mcp"}}`,
 			[]string{machine, "oracle.rp"}},
+		{"oracle.rp that is not an object, in the repository", `{"oracle":{"rp":"http://user:s3cret@example.com/mcp"}}`, "",
+			[]string{".abcd/config.json", "oracle.rp"}},
 		{"a url that is not a string", "", `{"oracle":{"rp":{"url":["http://user:s3cret@example.com/mcp"]}}}`,
 			[]string{machine, "oracle.rp.url"}},
 	} {

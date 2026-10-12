@@ -157,7 +157,7 @@ which owns model choice, credentials and execution, and abcd consumes the
 structured result.
 
 Concrete backends are **opt-in adapters** behind the same seam, for an operator
-who wants abcd to reach a model directly. Two ship. A provider API, hosted or a
+who wants abcd to reach a model directly. Three ship. A provider API, hosted or a
 local OpenAI-compatible server, is reached through the OpenAI-compatible adapter
 by pointing an agent's `oracle.roles` entry at `<provider>/<model>` on a
 connection `abcd ahoy connect` configured
