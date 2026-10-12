@@ -2730,7 +2730,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// fault that emits no envelope.
 				emitGroundsReceipt(cmd, *asJSON, rec)
 			}
-			res, err := intent.Ready(repoRoot, args[0])
+			// The gate plus the build's open-questions check, so READY means the
+			// build will not refuse the record for a question it still asks
+			// (iss-2610101610446956).
+			res, err := intent.ReadyWithQuestions(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent ready: " + err.Error()}
 			}
@@ -3763,6 +3766,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// superseded plugin root answers here just as confidently
 				// (iss-2609020113012227).
 				SupersededRoot: supersededRootNote()}
+			if res.Readme != nil {
+				for _, a := range res.Readme.Asks {
+					out.ReadmeTool = append(out.ReadmeTool, hostCall(a))
+				}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -3871,6 +3879,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		installTools  []string
 		answersPath   string
 		answeredIn    string
+		readmeParts   string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3883,6 +3892,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			opts, err := installOptionsFromFlags(cmd, yes, adopt, refuseAdopt, dev, attribution, allowStale, binDir, visibility, docsTarget, oracleBackend, scanDeep)
 			if err != nil {
 				return err
+			}
+			// The README question's answer (spc-2610031704338417): refused,
+			// naming the parts abcd writes, before anything is written.
+			if cmd.Flags().Changed("readme-parts") {
+				if _, perr := ahoy.ParseReadmeParts(readmeParts); perr != nil {
+					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
+				}
+				opts.ReadmeParts = readmeParts
 			}
 			named, err := installToolNames(installTools)
 			if err != nil {
@@ -3979,7 +3996,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if len(res.OptionalSkipped) > 0 {
 					label := "optional, not covered by --yes"
 					if !yes {
-						label = "optional, asked only at a terminal"
+						label = "optional, not asked in this run"
 					}
 					fmt.Fprintf(w, "  %s: %s\n", label, strings.Join(res.OptionalSkipped, ", "))
 					for _, id := range res.OptionalSkipped {
@@ -3995,6 +4012,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					}
 					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
+					if slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID) {
+						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
 				}
 			}); rerr != nil {
@@ -4028,6 +4048,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
+	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	ahoyCmd.AddCommand(installCmd)
 
@@ -4048,6 +4069,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, receipt, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy uninstall\n")
 				fmt.Fprintf(w, "  marker removed: %v\n", receipt.Marker.Removed)
+				fmt.Fprintf(w, "  readme: %s\n", termsafe.Sanitize(receipt.Readme.Note))
 				fmt.Fprintf(w, "  symlink: %s\n", symlinkNote(receipt))
 				fmt.Fprintf(w, "  status line: %s\n", receipt.StatusLine.Note)
 			})
@@ -4359,6 +4381,8 @@ func optionalSkipReason(id string) string {
 		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
 	case ahoy.ConventionsRetireGapID:
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
+	case ahoy.ReadmeOfferGapID:
+		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
 	}
 	return ""
 }
@@ -4532,20 +4556,51 @@ func (p *stdinPrompter) Confirm(question string) bool {
 // has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
 	if h, ok := ahoy.HelpIn(p.cwd, key); ok {
-		if h.Flag != "" && p.yesApproved && !p.yesTold {
-			p.yesTold = true
-			fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
-		}
-		fmt.Fprintf(p.w, "\n%s\n", h.About)
-		for _, c := range h.Choices {
-			fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
-		}
-		if hint := h.FlagHint(); hint != "" {
-			fmt.Fprintf(p.w, "  (%s)\n", hint)
-		} else if h.ChangeLater != "" {
-			fmt.Fprintf(p.w, "  (%s %s)\n", question.Default.ChangeLaterPrefix, h.ChangeLater)
-		}
+		p.help(h)
 	}
+	return p.ask(key, choices, def)
+}
+
+// PromptHelped asks the value question h with the help a run built for it,
+// which makes the prompter an ahoy.HelpedPrompter: the help Prompt prints,
+// then its current setting and the lines an answer would write here, or why
+// it writes none (spc-2610031704338417). The question line is Prompt's, so a
+// transcript lines up as before. The example is read from the repository, so
+// every line is sanitised.
+func (p *stdinPrompter) PromptHelped(h ahoy.PromptHelp, choices []string, def string) string {
+	p.help(h)
+	if h.Now != "" {
+		fmt.Fprintf(p.w, "  %s %s\n", question.Default.NowPrefix, termsafe.Sanitize(h.Now))
+	}
+	if intro := h.ExampleIntro(); intro != "" {
+		fmt.Fprintf(p.w, "  %s\n", termsafe.Sanitize(intro))
+	}
+	for _, ln := range h.Example {
+		fmt.Fprintf(p.w, "    %s\n", termsafe.Sanitize(ln))
+	}
+	return p.ask(h.Key, choices, def)
+}
+
+// help prints core's explanation of a value question above it.
+func (p *stdinPrompter) help(h ahoy.PromptHelp) {
+	if h.Flag != "" && p.yesApproved && !p.yesTold {
+		p.yesTold = true
+		fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
+	}
+	fmt.Fprintf(p.w, "\n%s\n", h.About)
+	for _, c := range h.Choices {
+		fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
+	}
+	if hint := h.FlagHint(); hint != "" {
+		fmt.Fprintf(p.w, "  (%s)\n", hint)
+	} else if h.ChangeLater != "" {
+		fmt.Fprintf(p.w, "  (%s %s)\n", question.Default.ChangeLaterPrefix, h.ChangeLater)
+	}
+}
+
+// ask writes the question line and reads its answer: the default for an
+// empty line or end of input.
+func (p *stdinPrompter) ask(key string, choices []string, def string) string {
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)
 	line, _ := p.r.ReadString('\n')
 	line = strings.TrimSpace(line)

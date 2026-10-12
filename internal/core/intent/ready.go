@@ -52,7 +52,7 @@ type ReadyResult struct {
 	// open spec that realises the remainder (adr-2609151513118583).
 	SpecID string       `json:"spec_id"`
 	Ready  bool         `json:"ready"`
-	Checks []ReadyCheck `json:"checks"` // always exactly 8, fixed order
+	Checks []ReadyCheck `json:"checks"` // always exactly 8 from Ready, fixed order; ReadyWithQuestions appends a 9th, open_questions
 	// Conditions is the record's scope conditions with their minted identities —
 	// the observable surface the identity criteria assert against. Empty for a
 	// record whose conditions are absent, or recorded as the nullity token.
@@ -144,6 +144,54 @@ func ReadyIn(repoRoot string, store spec.Store, it Intent) (ReadyResult, error) 
 		}
 	}
 	return res, nil
+}
+
+// CheckOpenQuestions names the row ReadyWithQuestions reports after Ready's
+// eight: the build's own open-questions check, under the build's name for it.
+const CheckOpenQuestions = StartCheckOpenQuestions
+
+// ReadyWithQuestions is the verdict `abcd intent ready` reports: Ready's eight
+// checks, then the open-questions check the build runs before it starts
+// (startOpenQuestionsRow, the one statement of it StartChecksIn also reads),
+// reported last and GATING. Without it the verb called a record READY that the
+// build then refused at check (open_questions), so READY did not mean the build
+// would start (iss-2610101610446956). Ready itself is unchanged: the status
+// board and the build read its eight rows and apply the open-questions check
+// among their own pre-start checks.
+//
+// A shipped, superseded or discipline record is never built, so the row reports
+// not applicable there rather than name a planning interview nobody may hold;
+// the bucket check has already settled its verdict. Errors are Ready's.
+func ReadyWithQuestions(repoRoot, intentID string) (ReadyResult, error) {
+	res, err := Ready(repoRoot, intentID)
+	if err != nil {
+		return ReadyResult{}, err
+	}
+	data, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(res.Path)), res.Path)
+	if err != nil {
+		return ReadyResult{}, err
+	}
+	c := openQuestionsCheck(res, string(data))
+	res.Checks = append(res.Checks, c)
+	if !c.OK {
+		res.Ready = false
+	}
+	return res, nil
+}
+
+// openQuestionsCheck renders the build's open-questions row as a readiness
+// check, exempting the buckets that are never built.
+func openQuestionsCheck(r ReadyResult, content string) ReadyCheck {
+	c := ReadyCheck{Name: CheckOpenQuestions}
+	switch r.Bucket {
+	case BucketShipped, BucketSuperseded, BucketDisciplines:
+		c.OK = true
+		c.Detail = "not applicable — a " + r.Bucket + " record is never built"
+		return c
+	}
+	row := startOpenQuestionsRow(r.IntentID, content)
+	c.OK, c.Detail, c.Remedy = row.OK, row.Detail, row.Remedy
+	return c
 }
 
 // bucketCheck reports the lifecycle-state gate: only a planned intent may be

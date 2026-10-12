@@ -271,7 +271,8 @@ func CheckLoad(req LoadRequest) LoadResult {
 // other home-scope files use: a regular file, not a symlink, owned by the
 // caller, writable by nobody else, at most 4 KiB. The check never creates the
 // file or ~/.abcd.noindex/. An absent file is silent; any refusal or parse fault makes
-// the whole file unusable, and both limits take their defaults.
+// the whole file unusable, and every limit takes its default. The waiter reads
+// its wait limit through the same read.
 func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 	def := machineload.DefaultLimits(cores)
 	out := func(l machineload.Limits, source, malformed string) (machineload.Limits, LoadLimits) {
@@ -309,7 +310,7 @@ func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 	if fault != nil {
 		return out(def, LimitsDefaultAfterMalformed, fault.Error())
 	}
-	if l.StrayFromFile || l.ExtremeFromFile {
+	if l.StrayFromFile || l.ExtremeFromFile || l.WaitFromFile {
 		return out(l, LimitsFile, "")
 	}
 	return out(l, LimitsDefault, "")

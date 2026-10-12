@@ -88,6 +88,9 @@ const (
 	// re-emit the review reader attaches to an owed entry; the record tests pin
 	// that the command is built from this path.
 	verbIntentAudit = "intent audit"
+	// verbIntentInterview is the planning interview a planned intent is sent to
+	// when an unanswered open question is all that keeps it from ready.
+	verbIntentInterview = "intent interview"
 )
 
 // RecommendedVerbPaths enumerates every abcd verb path the next-move table can
@@ -95,7 +98,7 @@ const (
 // for the surface-side anti-drift test.
 func RecommendedVerbPaths() []string {
 	return []string{
-		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbIntentAudit, verbSpecClose,
+		verbIntentPlan, verbIntentReady, verbIntentInterview, verbIntentLink, verbIntentUnhold, verbIntentAudit, verbSpecClose,
 		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix, verbCaptureReframe,
 	}
 }
@@ -290,13 +293,24 @@ func describeIntent(repoRoot, id string) (Description, error) {
 			"hold the planning interview (a human-session act), then `abcd " + verbIntentPlan + " " + id + "`",
 		}
 	case intent.BucketPlanned:
-		ready, err := intent.Ready(repoRoot, id)
+		// The verdict `abcd intent ready` reports, open questions included: plain
+		// Ready called a record ready that the verb and the build both refuse on an
+		// unanswered question, so this page said "implement" where they said no
+		// (iss-2610111759346608).
+		ready, err := intent.ReadyWithQuestions(repoRoot, id)
 		if err != nil {
 			return Description{}, err
 		}
 		if ready.Ready {
 			d.NextMoves = []string{
 				"ready — implement against the spec body; when done, `abcd " + verbSpecClose + " " + ready.SpecID + "`" + closeShips(id),
+			}
+		} else if q, only := onlyOpenQuestionsFails(ready); only {
+			// Everything else is in place: what is left is the planning interview's
+			// work, not the implementer's.
+			d.NextMoves = []string{
+				"open questions — " + q.Detail + "; hold the planning interview (`abcd " + verbIntentInterview + " " + id +
+					"`, a human-session act) to settle each in the record's `## Decisions`, then re-check with `abcd " + verbIntentReady + " " + id + "`",
 			}
 		} else {
 			for _, c := range ready.Checks {
@@ -341,6 +355,25 @@ func describeIntent(repoRoot, id string) (Description, error) {
 		d.NextMoves = append([]string{move}, d.NextMoves...)
 	}
 	return d, nil
+}
+
+// onlyOpenQuestionsFails reports the open-questions row when it is the one
+// GATING check a not-ready verdict fails. Advisory rows are left out of the
+// question as they are out of the verdict: a ready intent's page does not list
+// them either.
+func onlyOpenQuestionsFails(r intent.ReadyResult) (intent.ReadyCheck, bool) {
+	var q intent.ReadyCheck
+	found := false
+	for _, c := range r.Checks {
+		if c.OK || c.Advisory {
+			continue
+		}
+		if c.Name != intent.CheckOpenQuestions {
+			return intent.ReadyCheck{}, false
+		}
+		q, found = c, true
+	}
+	return q, found
 }
 
 // shippedReviewMove renders a shipped intent's next move from its review state,

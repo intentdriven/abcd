@@ -105,7 +105,9 @@ const (
 	// RefusalSurfaceGuard: the surface guardrail failed or could not compare.
 	RefusalSurfaceGuard RefusalKind = "surface-guard"
 	// RefusalUnfixedFinding: a consequential finding this cycle captured is
-	// still open, with no recorded decision to defer it.
+	// still open, with no recorded decision to defer it; or an open issue
+	// record differs from HEAD, where the guard reads the ledger, at any
+	// severity (raised as its own entry, iss-2610090642371836).
 	RefusalUnfixedFinding RefusalKind = "unfixed-finding"
 	// RefusalDeletedFinding: a consequential record the anchor held in open/ has
 	// been removed from the ledger rather than answered. It is a kind of its own

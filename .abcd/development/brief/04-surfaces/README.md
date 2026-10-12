@@ -55,10 +55,13 @@ command file and skill directory has a row here. The bare `/abcd` top-level name
 no sub-verb, so its command file is the rule's configured bare command and is
 exempt from the file check.
 
-The reverse sweep reaches those two directories and no others. The prompt files
-under `agents/`, which a harness registers as invocable agents, are checked in
-neither direction: nothing asserts that one has a row here, and nothing notices
-when one is added or removed. iss-2610110456358519 tracks that gap.
+The same rule sweeps a third directory, `agents/`, whose prompt files a harness
+registers as invocable agents. It holds them to the table in
+[§ The agent pages](#the-agent-pages) in both directions: every markdown file
+directly under `agents/` has a row there, and every row there names a file that
+exists, so an agent page added or removed without the same edit to the table
+fails the record gate (iss-2610110456358519). A directory under `agents/` holds
+an agent's fixtures and is not an agent.
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
 file in this directory carries a `## Sub-verbs` table recording, per verb, its
@@ -369,6 +372,38 @@ skill/command boundary is documented in
 a sub-verb of `/abcd:intent`, since its mid-session glossary writes and
 per-session output are command-shaped, and the `intent` parent ships no `grill`
 sub-verb.
+
+## The agent pages
+
+Every markdown file directly under [`agents/`](../../../../agents) is a prompt a
+harness registers as an invocable agent, and each has one row below. **Serves**
+names the verb that builds the agent's input or validates what it returns, or
+none when the host agent invokes it directly; **Documented in** is the chapter
+or section holding its contract. The `surface_coverage` rule holds the rows to
+the directory in both directions ([§ How much of this table a machine keeps
+honest](#how-much-of-this-table-a-machine-keeps-honest)), so adding or removing
+an agent page means adding or removing its row in the same change.
+
+| Agent | Serves | Documented in | Purpose |
+|---|---|---|---|
+| [`cold-reading-comparative`](../../../../agents/cold-reading-comparative.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the comparative position: how options of a candidate's shape ordinarily behave against each declared criterion |
+| [`cold-reading-detection`](../../../../agents/cold-reading-detection.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the detection position: where the shipped tree is in tension with the claim record |
+| [`cold-reading-entailment`](../../../../agents/cold-reading-entailment.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the entailment position: what a design commits to without stating it |
+| [`cold-reading-widening`](../../../../agents/cold-reading-widening.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the widening position: the configurations a design's construal admits that it has not committed to |
+| [`docs-currency-reviewer`](../../../../agents/docs-currency-reviewer.md) | `docs` | [`10-docs.md`](10-docs.md) | Verifies each user-facing documentation claim against the code that implements it, as the release gate's semantic pass |
+| [`graveyard-interpreter`](../../../../agents/graveyard-interpreter.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Says what a packed lifeboat's graveyard tried and why it was left behind |
+| [`intent-auditor`](../../../../agents/intent-auditor.md) | `intent` | [`05-intent.md`](05-intent.md) | Audits a shipping intent's promise against the delivered code, or the brief and intents against each other |
+| [`lifeboat-reviewer`](../../../../agents/lifeboat-reviewer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Audits a packed lifeboat against its source repository and returns a verdict |
+| [`planning-interviewer`](../../../../agents/planning-interviewer.md) | `intent` | [`05-intent.md`](05-intent.md) | Runs an intent's planning interview and edits the intent record after each answer |
+| [`press-release-composer`](../../../../agents/press-release-composer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Composes a lifeboat's press release from its packed brief, spine, and principles |
+| [`principle-distiller`](../../../../agents/principle-distiller.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Distils durable principles from a packed lifeboat's decision record |
+| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
+| [`reflection-composer`](../../../../agents/reflection-composer.md) | `reflect` | [`09-reflect.md`](09-reflect.md) | Runs a cut release's retrospective interview and drafts its answers |
+| [`release-changelog-composer`](../../../../agents/release-changelog-composer.md) | `launch` | [`04-launch.md`](04-launch.md) | Composes a release cut's changelog lines and release page from the records that shipped in it |
+| [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Reviews a diff that builds and passes its checks, for correctness first |
+| [`scribe`](../../../../agents/scribe.md) | `scribe` | [`32-scribe.md`](32-scribe.md) | Transcribes a returned reading and its dispositions into the ledger's declared shapes |
+| [`security-reviewer`](../../../../agents/security-reviewer.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Reviews a diff or design adversarially at a trust boundary |
+| [`sota-researcher`](../../../../agents/sota-researcher.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Researches the state of the art on one engineering question |
 
 ## Agents no verb dispatches
 

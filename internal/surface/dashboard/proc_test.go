@@ -1,7 +1,10 @@
 package dashboard
 
 import (
+	"errors"
+	"io/fs"
 	"os"
+	"syscall"
 	"testing"
 )
 
@@ -41,6 +44,28 @@ func TestReplacedExecutableIsTheSameProcess(t *testing.T) {
 	} {
 		if got := executableOf(c.link); got != c.want {
 			t.Errorf("executableOf(%q) = %q, want %q", c.link, got, c.want)
+		}
+	}
+}
+
+// TestAReadRacingTheExitIsAGoneProcess holds stop to a server that exits while
+// its process entry is read: the read then fails with ESRCH rather than
+// ENOENT, and that is a gone process, not a failure to stop it.
+func TestAReadRacingTheExitIsAGoneProcess(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"no entry", &fs.PathError{Op: "open", Path: "/proc/1/stat", Err: syscall.ENOENT}, true},
+		{"exit race on read", &fs.PathError{Op: "read", Path: "/proc/1/stat", Err: syscall.ESRCH}, true},
+		{"exit race on readlink", &fs.PathError{Op: "readlink", Path: "/proc/1/exe", Err: syscall.ESRCH}, true},
+		{"bare ESRCH", syscall.ESRCH, true},
+		{"permission", &fs.PathError{Op: "readlink", Path: "/proc/1/exe", Err: syscall.EACCES}, false},
+		{"other", errors.New("an unreadable process status line"), false},
+	} {
+		if got := processGone(c.err); got != c.want {
+			t.Errorf("%s: processGone(%v) = %v, want %v", c.name, c.err, got, c.want)
 		}
 	}
 }

@@ -44,12 +44,31 @@ func SetupValueQuestion(n int, cwd, key string, choices []string, def string) qu
 	return valueQuestion(n, h, choices, def)
 }
 
+// SetupHelpedQuestion is the n-th question of setup, PromptHelped(h,
+// choices, def) as the shared type: SetupValueQuestion over the help built for
+// this run, its current setting the question's Now and its example quoted
+// after the material. Its Default is def, so a drawn list starts on the
+// answer an empty answer takes at the stdin door (the README pair, the one
+// question set asked through PromptHelped, keeps its answers in one order
+// whatever the default); no text marks it.
+func SetupHelpedQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
+	q := valueQuestion(n, h, choices, def)
+	q.Default = def
+	return q
+}
+
+// exampleLead is how a question introduces its whole example
+// (PromptHelp.ExampleIntro).
+const exampleLead = "Here it writes:"
+
 // valueQuestion is SetupValueQuestion over the help h.
 //
 // A help that ends on its own question (its About's last sentence asks it)
 // is asked by that question, and a choice whose value is SetupLaterValue is
 // the question's own decide-later answer, with its own meaning, never a
-// second one beside it.
+// second one beside it. A help built for this run carries its current
+// setting, which is the question's Now, and its example: the lines, exactly
+// as written, after the material, or the reason it writes none, closing it.
 func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Question {
 	later := question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],
 		Meaning: "Leaves the value unset, so the install lists it again next time."}
@@ -70,13 +89,27 @@ func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Q
 	if body, own := splitConfirm(about); strings.HasSuffix(about, "?") && len(body) == 1 && own != "" {
 		about, ask = body[0].Text, own
 	}
+	if intro := h.ExampleIntro(); intro != "" {
+		about = strings.TrimSpace(about + " " + intro)
+	}
 	var material []question.Block
 	if about != "" {
 		material = []question.Block{{Kind: question.KindParagraph, Text: about}}
 	}
+	if len(h.Example) > 0 {
+		// The example is the lines the answer writes, as it writes them: a
+		// paragraph of them one a line, which the host shows as they are. A
+		// list would put a bullet before each, and before a line that is
+		// already a list item ("- [Changelog](CHANGELOG.md)") a second one.
+		material = append(material, question.Block{Kind: question.KindParagraph, Text: strings.Join(h.Example, "\n")})
+	}
 	change := h.ChangeLaterLine()
 	if change == "" {
 		change = question.Default.NotApplicable
+	}
+	now := h.Now
+	if now == "" {
+		now = "not set"
 	}
 	return question.Question{
 		ID:          h.Key,
@@ -85,7 +118,7 @@ func valueQuestion(n int, h PromptHelp, choices []string, def string) question.Q
 		Ask:         ask,
 		Options:     opts,
 		Later:       later,
-		Now:         "not set",
+		Now:         now,
 		ChangeLater: change,
 	}
 }

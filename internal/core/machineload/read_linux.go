@@ -23,3 +23,9 @@ func Read() (Snapshot, error) {
 	}
 	return snap, err
 }
+
+// ReadArgs reads the exact argv of each of pids, the program name dropped, from
+// /proc/<pid>/cmdline. A pid that has exited is absent from the result.
+func ReadArgs(pids []int) (map[int][]string, error) {
+	return readCmdlines(os.DirFS("/proc"), pids), nil
+}

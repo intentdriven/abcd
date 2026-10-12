@@ -422,9 +422,9 @@ keyed on the repository's root commit in the full form the sibling stores use,
 on a branch `build/<run-id>-<lane-id>` cut from the default branch (origin's
 `HEAD` as last fetched, else the first of `main`, `master`, `trunk` and
 `develop`), never from whatever the checkout has checked out. The store's own
-verbs are a draft (itd-2609091014076309), so the lane is a plain
-`git worktree add` into the store's path. The path is derived, never taken: the
-run id and the lane id are each held to their own shape, and the name they
+verbs are planned and not yet shipped (itd-2609091014076309), so the lane is a
+plain `git worktree add` into the store's path. The path is derived, never
+taken: the run id and the lane id are each held to their own shape, and the name they
 compose must be one path segment of letters, digits, `.`, `_` and `-`, not led
 by `-` or `.` and holding no `..`, so no component can leave the store. Every
 level of the store is made one at a time and proved a real directory that is
@@ -617,13 +617,36 @@ until the last step.
    cannot be read or parsed is refused, which also arms nothing. Where a queue
    exists but nothing requires approval, the step's note, the run record and
    the run's status say "left open for a person to merge: the ruleset requires
-   no approval", and no later step arms it. Nothing is pushed to the
-   lane after this step.
+   no approval", and no later step arms it. Before arming, the loop asks the
+   forge whether the pull request merges (`gh pr view` for its `mergeable`
+   and `mergeStateStatus` fields), and one the forge reports `CONFLICTING` is
+   refused at exit 2, unarmed, since the merge queue never takes it
+   (iss-2610110908443341). Nothing is pushed to the lane after this step.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,
-   and the lane is done. A pull request closed without merging, or merged in a
-   way that rewrote the head, is refused and nothing is cleaned up.
+   and the lane is done. The wait names the forge's verdict, and `UNKNOWN`, a
+   verdict the forge computes lazily and has not computed yet, keeps it
+   waiting. A pull request closed without merging, or merged in a way that
+   rewrote the head, is refused and nothing is cleaned up, and so is an open
+   one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is
+   not the merge's contention wait.
+
+   The forge computes mergeability without the merge drivers `.gitattributes`
+   names, so a lane that appended to a `merge=union` file the default branch
+   also appended to merges cleanly here and conflicts there. A conflict
+   refusal names what the checkout can say: the files a merge of the default
+   branch and the pushed head conflicts in with every merge driver switched to
+   git's built-in text merge (`merge-tree`, which writes no ref, index or
+   worktree), and the driver each carries at the pushed head ("GitHub reports a
+   conflict; locally these files carry merge drivers the forge ignores: …"), or
+   that no local merge reproduces it ("GitHub reports a conflict this checkout
+   cannot reproduce", a stale verdict that pushing a merge of the default
+   branch makes the forge compute again). It writes nothing, and the loop
+   neither pushes to the lane nor merges: the remedy is a person's hand merge
+   in the lane's worktree (disarm, merge the default branch in, preflight,
+   push, re-arm with the queue's method), or closing the pull request and
+   handing the lane back.
 
 **The run record and the transcripts** (piece 10; criterion 10). The record
 verb reads a run's state back as its record: every lane with its spec step,
@@ -658,9 +681,9 @@ the remedy as fields.
 - The pace and the window clock: itd-2609201925079472 and its design record,
   spc-2609202134341288; the layered reader it resolves through is the model
   tier's (itd-2609170822093401).
-- The worktree store the lane's checkout lives in: itd-2609091014076309 (a
-  draft), the rule it enacts, adr-2609091248200336, and the location that
-  rule's successor sets, adr-2610031751065746.
+- The worktree store the lane's checkout lives in: itd-2609091014076309
+  (planned, not yet shipped), the rule it enacts, adr-2609091248200336, and the
+  location that rule's successor sets, adr-2610031751065746.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
 - The pick: itd-2609211116005482 and its design record, spc-2609212015048113.

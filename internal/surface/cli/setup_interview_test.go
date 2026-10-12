@@ -180,6 +180,11 @@ func newSetupRun(t *testing.T) setupRun {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// The README question is answered already, for the drain rule's reason:
+	// it too is put only to a person at a terminal (spc-2610031704338417).
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte(`{"readme": {"parts": []}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return setupRun{home: home, repo: repo}
 }
 

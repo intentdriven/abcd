@@ -2,6 +2,7 @@ package loop
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -146,11 +147,47 @@ func TestTheSyncMergeRunsNoConfiguredMergeDriver(t *testing.T) {
 			if clean := f.plainMerge(t); clean == tc.conflict {
 				t.Fatalf("fixture: the built-in merge's outcome is clean=%v, want conflict=%v", clean, tc.conflict)
 			}
-			if want := f.result(t); got != want {
+			want := f.result(t)
+			if !driverHasLabels(t) {
+				// Below git 2.44 a driver is not given the conflict labels
+				// (iss-2610111549593667): the markers are compared without them.
+				got, want = withoutMarkerLabels(got), withoutMarkerLabels(want)
+			}
+			if got != want {
 				t.Fatalf("the sync merge's result is not git's built-in result:\ngot:\n%s\nwant:\n%s", got, want)
 			}
 		})
 	}
+}
+
+// driverHasLabels reports whether the git on PATH gives a merge driver the
+// conflict labels (%S, %X, %Y), which arrived in git 2.44.
+func driverHasLabels(t *testing.T) bool {
+	t.Helper()
+	cmd := exec.Command("git", "version")
+	cmd.Env = gitutil.ScrubbedEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var major, minor int
+	if _, err := fmt.Sscanf(string(out), "git version %d.%d", &major, &minor); err != nil {
+		t.Fatalf("reading %q: %v", out, err)
+	}
+	return major > 2 || (major == 2 && minor >= 44)
+}
+
+// withoutMarkerLabels cuts the label off every conflict-marker line.
+func withoutMarkerLabels(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		for _, m := range []string{"<<<<<<<", "|||||||", ">>>>>>>"} {
+			if strings.HasPrefix(l, m+" ") {
+				lines[i] = m
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // TestTheSyncMergeRefusesADriverItCannotSwitchOff: a driver name `git -c`

@@ -65,8 +65,22 @@ inbound = outbound statement is the whole of it.
   (`make fmt` applies it); when the declared toolchain cannot be fetched,
   preflight refuses and names the skew rather than falling back to the `go` on
   PATH. The repository
-  ships its hooks in [`.githooks/`](../.githooks/); they are per-machine opt-in —
-  run `git config core.hooksPath .githooks` once per clone to arm the
+  ships its hooks in [`.githooks/`](../.githooks/); they are per-machine opt-in,
+  and how to arm them turns on the hooks directory git already runs in the
+  clone, which `go run ./cmd/abcd ahoy --json` reports as `banlist.hooks_path`:
+
+  - `unarmed` — point git at the committed hooks, once per clone:
+
+    ```bash
+    git config core.hooksPath .githooks
+    ```
+
+  - `foreign` — a global or system hooks dispatcher is in force. Leave it
+    alone: a local `core.hooksPath` would shadow it in this clone. Have the
+    dispatcher call the hooks in `.githooks/` instead.
+  - `armed` — nothing to do.
+
+  Armed, they run the
   pre-commit name guard (it reads this machine's private banlist,
   `.abcd/.work.local/private-names.txt`, which `abcd banlist add --private`
   provisions; with no banlist it warns loudly and lets the commit through),
