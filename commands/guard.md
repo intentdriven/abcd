@@ -410,7 +410,9 @@ where none or two exist, `CDPATH` holds more entries than the guard looks
 through, or an entry or the current directory is not fixed by the line, it is
 a **block** (`script-unread`) whose reason says whether the line set
 `CDPATH` or the environment exported it: name the directory as `./sub` or by
-its absolute path. The verdicts:
+its absolute path. After `unset CDPATH` on the line (or zsh's `unset cdpath`,
+which in bash is another variable) no `CDPATH` is searched, in that shell or in
+a child it starts. The verdicts:
 
 - a registry blocker at command position in the script is a **block**
   (`script-runs-hazard`), naming the script, the line and the entry, and so is

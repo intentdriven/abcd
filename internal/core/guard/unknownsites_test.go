@@ -104,6 +104,7 @@ var wordReaders = map[string]string{
 	"lastSite":       "commandSites",
 	"carrierShell":   "isUnknown and nameCouldBe: a carrier whose name the line does not fix runs a shell the guard cannot place, so its string is read both ways",
 	"needsShell":     "commandSites and isUnknown: a name the line does not fix is not read as a `source`, as targetsOf does not read one",
+	"unset":          "isUnknown on every operand: a word the line does not fix may be `-f`, so it unsets nothing the reading follows",
 
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).

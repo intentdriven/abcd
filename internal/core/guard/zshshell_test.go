@@ -1,6 +1,10 @@
 package guard
 
-import "testing"
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 // The readings bash and zsh give a line differently. A line the guard knows
 // runs under zsh (a `zsh -c` string, a script zsh runs) is read as zsh
@@ -82,4 +86,46 @@ func TestZshSourceLooksInTheWorkingDirectoryFirst(t *testing.T) {
 		{`cd {d}/w3 && PATH={d}/p1 && source lib.sh`, VerdictAllow, ""},
 		{`cd {d}/w1 && source ./../w3/lib.sh`, VerdictAllow, ""},
 	})
+}
+
+// TestUnsetCDPATHIsNotSearched — iss-2610111730597708. After `unset CDPATH`
+// a `cd` searches no CDPATH, in the shell that unset it and in a child it
+// starts, so a `cd name` is judged without the CDPATH the environment
+// exported. zsh's cdpath is CDPATH there; in bash `unset cdpath` leaves
+// CDPATH as it was. Verified against /bin/bash 3.2 and /bin/zsh 5.9 with
+// CDPATH exported.
+func TestUnsetCDPATHIsNotSearched(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"a/sub/s.sh": "echo benign",
+		"b/sub/s.sh": "echo benign",
+	})
+	f := NewFiles(filepath.Join(dir, "a"))
+	f.home = ""
+	f.cdpath = filepath.Join(dir, "b")
+	r := Defaults().ReadingFrom(f)
+	for _, c := range []scriptCase{
+		{`unset CDPATH; cd sub && bash s.sh`, VerdictAllow, ""},
+		{`unset CDPATH && cd sub && bash s.sh`, VerdictAllow, ""},
+		{`unset -v CDPATH; cd sub && bash s.sh`, VerdictAllow, ""},
+		{`unset CDPATH; bash -c 'cd sub && source s.sh'`, VerdictAllow, ""},
+		{`zsh -c 'unset cdpath; cd sub && source s.sh'`, VerdictAllow, ""},
+
+		// CDPATH set again, the environment's, a function of that name
+		// unset, and bash's cdpath, which is not CDPATH, still block.
+		{`unset CDPATH; CDPATH={d}/b cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`unset CDPATH; CDPATH={d}/b; cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`unset -f CDPATH; cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+		{`bash -c 'unset cdpath; cd sub && source s.sh'`, VerdictBlock, scriptUnreadEntryID},
+		{`unset cdpath; cd sub && bash s.sh`, VerdictBlock, scriptUnreadEntryID},
+	} {
+		cmd := strings.ReplaceAll(c.cmd, "{d}", dir)
+		d, err := r.Check(cmd)
+		if err != nil {
+			t.Fatalf("Check(%q): %v", c.cmd, err)
+		}
+		if d.Verdict != c.want || d.EntryID != c.id {
+			t.Errorf("%s\n  = %s/%s, want %s/%s\n  %s", c.cmd, d.Verdict, d.EntryID, c.want, c.id, d.Message)
+		}
+	}
 }

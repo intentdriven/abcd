@@ -1003,15 +1003,40 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 			}
 			out = n
 		case name == "unset":
-			n := out.clone()
-			for _, w := range args {
-				delete(n.vars, trackedName(w))
-				delete(n.exported, trackedName(w))
-			}
-			out = n
+			out = out.unset(args)
 		}
 	}
 	return out
+}
+
+// unset is the state after `unset` with args. A variable it unsets is no
+// longer the line's: the shell falls back to nothing, so an unset CDPATH is
+// one that searches nothing, here and in a child the shell starts
+// (iss-2610111730597708). zsh's fpath, cdpath and path are their tied
+// variables only in zsh; elsewhere unsetting one leaves the tied variable as
+// it was. `-f` unsets functions, never a variable, and a word the line does
+// not fix may be `-f`, so it leaves every variable as it was.
+func (st *shellState) unset(args []string) *shellState {
+	for _, w := range args {
+		if isUnknown(w) || strings.ContainsRune(w, varMark) || len(w) > 1 && w[0] == '-' && strings.ContainsRune(w[1:], 'f') {
+			return st
+		}
+	}
+	n := st.clone()
+	for _, w := range args {
+		key, tracked := st.trackedKey(w)
+		if !tracked || (key != w && st.shell != shellZsh) {
+			continue
+		}
+		if key == "CDPATH" {
+			n.vars[key] = varVal{ok: true}
+			n.exported[key] = true
+			continue
+		}
+		delete(n.vars, key)
+		delete(n.exported, key)
+	}
+	return n
 }
 
 // withArray is the state after a command whose words are elements of a
