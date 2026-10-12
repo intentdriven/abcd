@@ -347,7 +347,9 @@ does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
-`PATH` and then in the working directory when it has no slash; a `PATH=` prefix
+`PATH` and then in the working directory when it has no slash, as bash does,
+while zsh's `source` looks in the working directory first and its `.` only on
+`PATH`; a `PATH=` prefix
 on the `source` itself is the `PATH` searched, a relative or empty entry resolving
 against the working directory, and an entry of that prefix the line does not fix
 is a **block**, `script-unread`; zsh ties its `path` array to `PATH`, so a
@@ -355,8 +357,8 @@ is a **block**, `script-unread`; zsh ties its `path` array to `PATH`, so a
 a child of that zsh is handed, while in bash and the other shells `path` is an
 ordinary variable; where the guard cannot tell which shell runs the line —
 anything but a `zsh -c` string, another shell's string, or a file a named shell
-runs — it reads the line both ways from the command that assigns `path` on, and
-judges each file either shell would run), the file a
+runs — it reads the line both ways from the command that assigns `path` or
+sources a bare name on, and judges each file either shell would run), the file a
 redirection makes a shell's standard input when it has no `-c` string and no
 script (`bash < s.sh`, `bash -s < s.sh`, `exec 3< s.sh; bash <&3`), and the
 startup files the line selects — `BASH_ENV=f`, `ENV=f` on an interactive shell

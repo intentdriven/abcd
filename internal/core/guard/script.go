@@ -697,14 +697,25 @@ func (st *shellState) placed(s segment) []*shellState {
 	return []*shellState{z, o}
 }
 
-// needsShell reports whether s reads a word only zsh ties to a tracked
-// variable: an assignment to path, which zsh ties to PATH.
+// needsShell reports whether s reads a word bash and zsh read differently:
+// an assignment to path, which zsh ties to PATH, or a `source` or `.` of a
+// bare name, which zsh and bash search for in different places
+// (sourceLookup).
 func needsShell(s segment) bool {
 	if s.arrayOf == "path" {
 		return true
 	}
 	for _, t := range s.tokens {
 		if name, _, ok := assignment(t); ok && name == "path" {
+			return true
+		}
+	}
+	for _, a := range commandSites(s) {
+		tok := s.tokens[a.idx]
+		if isUnknown(tok) || (tok != "source" && tok != ".") {
+			continue
+		}
+		if w, ok := fixedToken(s, sourceIndex(s, a.idx)); ok && !strings.Contains(w, "/") && !strings.HasPrefix(w, "~") {
 			return true
 		}
 	}
@@ -1639,9 +1650,10 @@ func sourceWord(s segment, site int) string {
 	return ""
 }
 
-// sourcePath resolves a `source`/`.` operand as bash does: a word with a
-// slash as a path, any other searched on PATH and then in the working
-// directory. ok is false where the line does not fix the word, where it is a
+// sourcePath resolves a `source`/`.` operand as the state's shell does: a
+// word with a slash as a path, any other searched on PATH and then in the
+// working directory, or in zsh, for `source`, in the working directory and
+// then on PATH, and for `.` on PATH alone. ok is false where the line does not fix the word, where it is a
 // stream (the stream refusal reads it), or where no file is found by search.
 func sourcePath(rc *readCtx, st *shellState, s segment, site int) (string, bool) {
 	p, ok, _ := sourceLookup(rc, st, s, site)
@@ -1672,7 +1684,17 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 			}
 		}
 	}
-	return searchPath(rc, st, pv, set, w, true, prefix)
+	if st.shell != shellZsh {
+		return searchPath(rc, st, pv, set, w, true, prefix)
+	}
+	if s.tokens[site] == "source" {
+		if p, ok := st.resolve(rc, w, false); ok {
+			if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
+				return p, true, false
+			}
+		}
+	}
+	return searchPath(rc, st, pv, set, w, false, prefix)
 }
 
 // searchPath finds a bare name on PATH — pv when set, as the line set it,

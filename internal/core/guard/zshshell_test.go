@@ -45,3 +45,41 @@ func TestZshPathArrayIsPATH(t *testing.T) {
 		{`for f in a b; do path={d}/$f; echo "$path"; done`, VerdictAllow, ""},
 	})
 }
+
+// TestZshSourceLooksInTheWorkingDirectoryFirst — iss-2610111730551327. zsh's
+// `source` of a bare name looks in the working directory before PATH, and
+// its `.` only on PATH; bash's both search PATH first and then the working
+// directory. Verified against /bin/zsh 5.9 and /bin/bash 3.2 with a planted
+// pair: from a directory holding lib.sh, with PATH naming another, zsh's
+// `source lib.sh` runs the working directory's and its `. lib.sh` and
+// bash's both run PATH's.
+func TestZshSourceLooksInTheWorkingDirectoryFirst(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"w1/lib.sh": hazardLine,
+		"p1/lib.sh": "echo benign",
+		"w2/lib.sh": "echo benign",
+		"p2/lib.sh": hazardLine,
+		"w3/lib.sh": "echo benign",
+	})
+	runScriptCases(t, dir, []scriptCase{
+		// zsh runs the working directory's file.
+		{`cd {d}/w1 && zsh -c 'PATH={d}/p1; source lib.sh'`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/w1 && zsh -c 'PATH={d}/p1 source lib.sh'`, VerdictBlock, scriptHazardEntryID},
+		// A line the guard cannot place is read both ways.
+		{`cd {d}/w1 && PATH={d}/p1 && source lib.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/w1 && PATH={d}/p1 source lib.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/w2 && PATH={d}/p2 && source lib.sh`, VerdictBlock, scriptHazardEntryID},
+		// bash, and zsh's `.`, run PATH's.
+		{`cd {d}/w2 && bash -c 'PATH={d}/p2; source lib.sh'`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d}/w1 && zsh -c 'PATH={d}/p2; . lib.sh'`, VerdictBlock, scriptHazardEntryID},
+
+		// The file the shell does not run is not judged.
+		{`cd {d}/w2 && zsh -c 'PATH={d}/p2; source lib.sh'`, VerdictAllow, ""},
+		{`cd {d}/w1 && bash -c 'PATH={d}/p1; source lib.sh'`, VerdictAllow, ""},
+		{`cd {d}/w1 && zsh -c 'PATH={d}/p1; . lib.sh'`, VerdictAllow, ""},
+		// Both readings land on a benign file.
+		{`cd {d}/w3 && source lib.sh`, VerdictAllow, ""},
+		{`cd {d}/w3 && PATH={d}/p1 && source lib.sh`, VerdictAllow, ""},
+		{`cd {d}/w1 && source ./../w3/lib.sh`, VerdictAllow, ""},
+	})
+}
