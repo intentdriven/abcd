@@ -341,7 +341,14 @@ what it runs is text the guard read as data. So is a shell handed the stdin
 device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
 `source` handed a process substitution as its script (`bash <(curl …)`, `bash <
 <(curl …)`, `source <(curl …)`, zsh's `source =(…)`, `bash --init-file <(…) -i
--c true`). A command
+-c true`), and a script the same line downloads to a file and then runs as a
+shell's script or standard input, a `source` or `.` operand, or a path
+(`curl -o i.sh … && bash i.sh`, `curl … > i.sh; source i.sh`, `wget …/i.sh &&
+sh i.sh`, `curl -O …/i.sh && ./i.sh`): the file is one curl's `-o` or `-O`,
+wget's `-O` or saved name, a `tee` a fetch feeds or a redirection of what a
+fetch printed writes, matched by the name the line writes it under, and a
+name the line does not fix can be any file. Download it in one command, read
+it, and run it in the next. A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 

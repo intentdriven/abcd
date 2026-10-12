@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"net/url"
 	"path"
 	"sort"
 	"strings"
@@ -514,8 +515,27 @@ func fileCarries(segs []segment) {
 	var written map[string][]feed
 	var wild, all []feed
 	var assigned map[string]bool
+	var fetched map[string]bool
+	fetchedWild := false
+	isFetched := func(w string) bool {
+		if isUnknown(w) || strings.ContainsRune(w, varMark) {
+			return fetchedWild
+		}
+		return fetched[path.Clean(w)]
+	}
 	for k := range segs {
 		s := &segs[k]
+		if len(fetched) > 0 || fetchedWild {
+			s.runsFetched = runsFetchedFile(*s, isFetched)
+		}
+		names, wildName := fetchWrites(*s)
+		for _, n := range names {
+			if fetched == nil {
+				fetched = map[string]bool{}
+			}
+			fetched[path.Clean(n)] = true
+		}
+		fetchedWild = fetchedWild || wildName
 		if len(all) > 0 {
 			if assigned == nil {
 				assigned = namesAssigned(segs)
@@ -558,6 +578,17 @@ func fileCarries(segs []segment) {
 				continue
 			}
 			fs := outputOf(*s)
+			if fetches(*s) || runsFetch(fs) {
+				switch {
+				case !r.target.ok:
+					fetchedWild = true
+				case r.target.text != "/dev/null":
+					if fetched == nil {
+						fetched = map[string]bool{}
+					}
+					fetched[path.Clean(r.target.text)] = true
+				}
+			}
 			all = mergeRuns(append(all, fs...))
 			if !r.target.ok {
 				wild = mergeRuns(append(wild, fs...))
@@ -630,6 +661,210 @@ func namesAssigned(segs []segment) map[string]bool {
 // operandAssigners are the builtins that assign the names they are handed.
 var operandAssigners = []string{"read", "mapfile", "readarray", "getopts", "printf", "let", "local",
 	"declare", "typeset", "export", "readonly", "vared", "zparseopts", "print"}
+
+// A script downloaded to a file and run on the same line
+// (iss-2610120916248850) is the stream `curl … | sh` is, behind a file name:
+// what runs is text the guard never read, and the file it could read at
+// check time is not the one the download leaves. fileCarries records the
+// names the line's fetches write — a redirection of output a fetch printed,
+// curl's -o and -O, wget's -O or the name it saves under, a tee fed by a
+// fetch — and marks a later command that runs one (segment.runsFetched): a
+// shell's script or standard input, a `source` or `.` operand, or a path
+// run directly. Names are matched as the line writes them, as the pid-list
+// carry matches them; a name the line does not fix can be any file.
+
+// fetchers are the programs that write what a network fetch returns.
+var fetchers = []string{"curl", "wget"}
+
+// fetches reports whether s itself runs a fetch.
+func fetches(s segment) bool {
+	for _, a := range commandSites(s) {
+		if nameCouldBeAny(s.tokens[a.idx], fetchers) {
+			return true
+		}
+	}
+	return false
+}
+
+// runsFetch reports whether any command of runs is a fetch.
+func runsFetch(runs []feed) bool {
+	for _, f := range runs {
+		for i := f.lo; i < f.hi && i < len(f.list.segs); i++ {
+			tally(1)
+			if fetches(f.list.segs[i]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fetchWrites is the files s's commands write from a fetch by naming them
+// (redirections are fileCarries'): curl's -o value or, with -O, each URL's
+// last path segment; wget's -O value, else each URL's last path segment
+// under its -P directory; and every operand of a tee a fetch feeds. wild
+// reports a name the line does not fix. A value of `-` is standard output.
+func fetchWrites(s segment) (names []string, wild bool) {
+	add := func(w string) {
+		switch {
+		case isUnknown(w) || strings.ContainsRune(w, varMark):
+			wild = true
+		case w != "-" && w != "" && w != "/dev/null":
+			names = append(names, w)
+		}
+	}
+	for _, a := range commandSites(s) {
+		tok := s.tokens[a.idx]
+		args := s.tokens[a.idx+1:]
+		switch {
+		case isUnknown(tok):
+		case nameCouldBe(tok, "curl"):
+			out, remote, urls := fetchArgs(args, 'o', "--output", 'O', "--remote-name", curlValueShorts)
+			for _, o := range out {
+				add(o)
+			}
+			if remote || containsString(args, "--remote-name-all") {
+				for _, u := range urls {
+					add(urlBase(u))
+				}
+			}
+		case nameCouldBe(tok, "wget"):
+			out, _, urls := fetchArgs(args, 'O', "--output-document", 0, "", wgetValueShorts)
+			for _, o := range out {
+				add(o)
+			}
+			if len(out) == 0 {
+				dir, _, _ := fetchArgs(args, 'P', "--directory-prefix", 0, "", wgetValueShorts)
+				for _, u := range urls {
+					b := urlBase(u)
+					add(b)
+					if len(dir) > 0 && !isUnknown(b) {
+						add(path.Join(dir[len(dir)-1], b))
+					}
+				}
+			}
+		case nameCouldBe(tok, "tee"):
+			runs := append([]feed(nil), s.stdinIn...)
+			if s.piped.list != nil {
+				runs = append(runs, s.piped)
+			}
+			if !runsFetch(runs) {
+				continue
+			}
+			for _, w := range args {
+				if !strings.HasPrefix(w, "-") {
+					add(w)
+				}
+			}
+		}
+	}
+	return names, wild
+}
+
+// curlValueShorts and wgetValueShorts are the short options of each that
+// take a value, so the rest of a cluster after one is its value.
+const (
+	curlValueShorts = "AbcCdDeEFHKmoPQrtTuUwxXyYz"
+	wgetValueShorts = "aABdDeiIlOoPQRtTUwX"
+)
+
+// fetchArgs walks a fetch's arguments: the values of the short option short
+// or the long option long (glued, `=`-joined or the next word), whether the
+// short option flag or the long option flagLong is given, and the URLs.
+func fetchArgs(args []string, short byte, long string, flag byte, flagLong string, valueShorts string) (vals []string, flagged bool, urls []string) {
+	for i := 0; i < len(args); i++ {
+		w := args[i]
+		tally(1)
+		switch {
+		case isUnknown(w) && (knownLead(w) == "" || strings.HasPrefix(w, "-")):
+			// A word the line does not fix may be the option itself, its
+			// value unknown.
+			vals = append(vals, unknownText)
+		case w == "--":
+			for _, u := range args[i+1:] {
+				if strings.Contains(u, "://") {
+					urls = append(urls, u)
+				}
+			}
+			return vals, flagged, urls
+		case long != "" && w == long:
+			if i+1 < len(args) {
+				vals = append(vals, args[i+1])
+				i++
+			}
+		case long != "" && strings.HasPrefix(w, long+"="):
+			vals = append(vals, w[len(long)+1:])
+		case flagLong != "" && w == flagLong:
+			flagged = true
+		case len(w) > 1 && w[0] == '-' && w[1] != '-':
+			for j := 1; j < len(w); j++ {
+				c := w[j]
+				if c == flag {
+					flagged = true
+					continue
+				}
+				if strings.IndexByte(valueShorts, c) < 0 {
+					continue
+				}
+				v := w[j+1:]
+				if v == "" && i+1 < len(args) {
+					v = args[i+1]
+					i++
+				}
+				if c == short {
+					vals = append(vals, v)
+				}
+				break
+			}
+		case strings.Contains(w, "://"):
+			urls = append(urls, w)
+		}
+	}
+	return vals, flagged, urls
+}
+
+// urlBase is the last path segment of a URL, the name a fetch saves it under;
+// unknownText where the line does not fix it.
+func urlBase(u string) string {
+	if isUnknown(u) || strings.ContainsRune(u, varMark) {
+		return unknownText
+	}
+	p, err := url.Parse(u)
+	if err != nil {
+		return unknownText
+	}
+	b := path.Base(p.Path)
+	if b == "/" || b == "." {
+		return "index.html"
+	}
+	return b
+}
+
+// runsFetchedFile reports whether s runs a file isFetched names as a script:
+// a shell's script operand, `--rcfile`/`--init-file` value or standard
+// input, a `source` or `.` operand, or a path run directly.
+func runsFetchedFile(s segment, isFetched func(string) bool) bool {
+	stdin := false
+	for _, r := range s.redirects {
+		if (r.op == "<" || r.op == "<>") && (r.fd == -1 || r.fd == 0) && isFetched(r.target.text) {
+			stdin = true
+		}
+	}
+	for _, a := range commandSites(s) {
+		tok := s.tokens[a.idx]
+		args := s.tokens[a.idx+1:]
+		carried := func(i int) bool { return variableCarried(s, a.idx+1+i) }
+		switch {
+		case nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, stdin, carried, isFetched):
+			return true
+		case nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, stdin, carried, isFetched):
+			return true
+		case !isUnknown(tok) && strings.Contains(tok, "/") && isFetched(tok):
+			return true
+		}
+	}
+	return false
+}
 
 // mergeRuns holds runs as one covering run per tokenize call they name: the
 // commands between two runs of one call are read with them, which can only

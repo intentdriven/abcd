@@ -141,9 +141,10 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		for k := range item.segs {
 			s := item.segs[k]
 			out[item.base+k].carries, out[item.base+k].processSearch = s.carries, s.processSearch
+			out[item.base+k].runsFetched = s.runsFetched
 			if s.home != nil && s.at < len(s.home.segs) {
 				h := &s.home.segs[s.at]
-				h.carries, h.processSearch = s.carries, s.processSearch
+				h.carries, h.processSearch, h.runsFetched = s.carries, s.processSearch, s.runsFetched
 			}
 		}
 		for k, s := range item.segs {
@@ -2160,15 +2161,18 @@ func readsScriptStream(s segment) bool {
 		tok := s.tokens[a.idx]
 		args := s.tokens[a.idx+1:]
 		carried := func(i int) bool { return variableCarried(s, a.idx+1+i) }
-		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, s.stdinStream, carried) {
+		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, s.stdinStream, carried, noFile) {
 			return true
 		}
-		if nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, s.stdinStream, carried) {
+		if nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, s.stdinStream, carried, noFile) {
 			return true
 		}
 	}
 	return false
 }
+
+// noFile is the file predicate of a reading that names no file a stream.
+func noFile(string) bool { return false }
 
 // sourceBuiltins read a file into the running shell: a script by another name.
 var sourceBuiltins = []string{"source", "."}
@@ -2199,7 +2203,10 @@ func scriptIsStream(op string, stdin bool) bool {
 // `--version` or `--help` prints and exits without reading anything. Each
 // unknown word is read every way readWord reads it, and a stream any reading
 // runs is enough.
-func shellReadsStream(args []string, stdin bool, carried func(int) bool) bool {
+//
+// fetched reports a word naming a file the line wrote from a network fetch,
+// which as the script is the same stream (runsFetchedFile).
+func shellReadsStream(args []string, stdin bool, carried func(int) bool, fetched func(string) bool) bool {
 	seen := map[int]bool{}
 	stack := []int{0}
 	for len(stack) > 0 {
@@ -2223,7 +2230,7 @@ func shellReadsStream(args []string, stdin bool, carried func(int) bool) bool {
 				if stdin {
 					return true
 				}
-			} else if !carried(i+1) && scriptIsStream(args[i+1], stdin) {
+			} else if !carried(i+1) && scriptIsStream(args[i+1], stdin) || fetched(args[i+1]) {
 				return true
 			}
 		case a == "-":
@@ -2250,10 +2257,13 @@ func shellReadsStream(args []string, stdin bool, carried func(int) bool) bool {
 			if (r.flag || r.takes) && clusterCouldCarry(a, 's') && stdin {
 				return true
 			}
-			if r.operand && !carried(i) && scriptIsStream(a, stdin) {
+			if r.operand && (!carried(i) && scriptIsStream(a, stdin) || fetched(a)) {
 				return true
 			}
 		case a == "--rcfile" || a == "--init-file":
+			if i+1 < len(args) && fetched(args[i+1]) {
+				return true
+			}
 			stack = append(stack, i+2)
 		case strings.HasPrefix(a, "--"):
 			// --norc, --noprofile, --posix, --login: no value.
@@ -2272,7 +2282,7 @@ func shellReadsStream(args []string, stdin bool, carried func(int) bool) bool {
 				stack = append(stack, i+1)
 			}
 		default:
-			if scriptIsStream(a, stdin) {
+			if scriptIsStream(a, stdin) || fetched(a) {
 				return true // the first operand is the script file
 			}
 		}
@@ -2286,12 +2296,12 @@ var shellStreamValueOptions = []string{"-o", "-O", "+o", "+O", "--rcfile", "--in
 
 // sourceReadsStream reports whether `source`/`.` is handed a stream as the
 // file it reads: its first operand, after an optional `--`.
-func sourceReadsStream(args []string, stdin bool, carried func(int) bool) bool {
+func sourceReadsStream(args []string, stdin bool, carried func(int) bool, fetched func(string) bool) bool {
 	for i, a := range args {
 		if a == "--" && i == 0 {
 			continue
 		}
-		return !carried(i) && scriptIsStream(a, stdin)
+		return !carried(i) && scriptIsStream(a, stdin) || fetched(a)
 	}
 	return false
 }
@@ -2311,6 +2321,20 @@ func interpreterStreamSignal() payloadSignal {
 			"the stdin device or a process substitution — so the commands that shell runs are text the guard read as data and has not checked.",
 		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them. " +
 			"A script file is read and judged when it is run, so write it in one command and run it in the next.",
+	}
+}
+
+// fetchedScriptSignal is the verdict on a line that runs a script it
+// downloaded to a file (iss-2610120916248850): the stream `curl … | sh` is,
+// behind a file name, so it is refused under the same entry.
+func fetchedScriptSignal() payloadSignal {
+	return payloadSignal{
+		id:      interpreterStreamEntryID,
+		verdict: VerdictBlock,
+		family:  familyInterpreterStream,
+		reason: "This command runs a script the same line downloads to a file (curl or wget writes it, then a shell, `source` or the path runs it), " +
+			"so what runs is text the guard has not read, as if the download were piped into the shell.",
+		successor: "Download the script in one command, read it, and run it in the next, where the guard reads the file the shell runs.",
 	}
 }
 

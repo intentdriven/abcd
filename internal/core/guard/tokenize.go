@@ -164,6 +164,11 @@ type segment struct {
 	// listing: a search by name, which an entry that names pgrep as a
 	// source reads as one (fileCarries, segmentHits).
 	processSearch bool
+	// runsFetched records a shell, `source` or direct run of a file an
+	// earlier command of the same text wrote from a network fetch: the
+	// stream a pipe from the fetch would be, behind a file name
+	// (fileCarries, iss-2610120916248850).
+	runsFetched bool
 	// home and at name the segment in the tokenize call that emitted it,
 	// list.segs[at]; home is nil for a segment built anywhere else. They are
 	// what a command's own string is filed under (segList.payloads).
