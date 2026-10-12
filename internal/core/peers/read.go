@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -105,11 +106,21 @@ func read(root string, titles bool) (Report, error) {
 	}
 	checkedOut := map[string]bool{}
 	self := realPath(root)
+	store := embargoStore(root)
 	for _, wt := range wts {
 		if wt.bare || realPath(wt.path) == self {
 			if wt.branch != "" {
 				checkedOut[wt.branch] = true
 			}
+			continue
+		}
+		if store != "" && realPath(wt.path) == store {
+			// Private records live here: skipped unread, and counted with
+			// neither its path nor its branch (adr-2610120558328615).
+			if wt.branch != "" {
+				checkedOut[wt.branch] = true
+			}
+			rep.Skipped = append(rep.Skipped, Skipped{Source: SourceWorktree, Reason: SkipEmbargo})
 			continue
 		}
 		p, skip, viaBranch := readWorktree(root, common, wt, merged, defaultRef)
@@ -147,6 +158,20 @@ func read(root string, titles bool) (Report, error) {
 		rep.Peers[i].Rows = rep.diff(rep.Peers[i], titles)
 	}
 	return rep, nil
+}
+
+// embargoStore is where this repository's embargo store lives on this
+// machine, resolved, or "" when abcd's home cannot be named.
+func embargoStore(root string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	p, err := embargo.StorePath(home, root)
+	if err != nil {
+		return ""
+	}
+	return realPath(p)
 }
 
 // readWorktree reads one linked worktree, or says why it is spent. viaBranch

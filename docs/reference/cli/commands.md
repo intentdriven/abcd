@@ -1162,6 +1162,167 @@ abcd drain --dry-run
   abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json
 ```
 
+### `abcd embargo`
+
+Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.
+
+**Usage:** `abcd embargo`
+
+Keep this repository's private security advisories private until their fix
+ships. Each advisory GitHub holds in triage or draft becomes a private record
+in the embargo store, a detached worktree in abcd's machine-scoped worktree
+store that is never committed; the link from advisory to record lives in the
+store's state, never in the record. Every sub-verb verifies the store before
+it reads or writes it, and refuses, writing nothing, when it is on a branch,
+tracks a private record, or sits inside this checkout.
+
+Every remote call is the person's own `gh` against github.com; abcd holds no
+token. close and publish each act on GitHub only with --approve naming the
+digest of exactly the text or plan they showed, and a host passes it only
+after the person, in that session, has seen it and said yes.
+
+Exit 2 on a refusal (nothing written) and on a check finding.
+
+#### `abcd embargo check`
+
+Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.
+
+**Usage:** `abcd embargo check [flags]`
+
+The outbound embargo check: before anything is made public, read a commit
+range (--range <a>..<b>: each commit's message and the lines it adds, a
+merge's against its first parent) and any texts (--file <path>, repeatable;
+- reads stdin), and refuse every unpublished advisory's id, a CVE id
+reserved for one, its title, the store's location on this machine, and any
+other advisory id --allow does not name. A finding names where the match is
+and never repeats it.
+
+Limits: a title shorter than 12 characters is not matched on its own (its
+id still is); a paraphrase or a count ("fixes several private reports") is
+not recognised, and stays the author's to avoid. The check warns when the
+last intake is more than a day old.
+
+Exit 0 clean, or when no embargo store exists on this machine; exit 2 on any
+finding.
+
+**Flags:**
+
+```
+      --allow stringArray   an advisory id of another project, already public, that may appear (repeatable)
+      --file stringArray    a text to read (repeatable; - reads stdin)
+      --range string        a commit range <a>..<b> whose messages and added lines are read
+```
+
+#### `abcd embargo close`
+
+Show an advisory's closing text and digest, or close it on GitHub with it: Writes GitHub and the store only with --approve; refuses a digest for other text.
+
+**Usage:** `abcd embargo close <iss-N|GHSA-id> [flags]`
+
+Close one advisory whose verdict is not-abcds or not-a-vulnerability on
+GitHub, with the closing explanation its triage drafted. GitHub offers no
+comment on a repository advisory, so the explanation is posted at the head of
+the advisory's description, with the reporter's own text kept whole below a
+separator line.
+
+Without --approve it reads the advisory and shows exactly the text that would
+be posted and the digest that approves it; nothing but that read is sent. With
+--approve <digest> it re-reads both and closes only when the digest is the
+one over exactly that text and the description as read, then reads the
+advisory back to confirm it is closed with the text. A digest for any other
+text sends nothing. A host passes --approve only after the person, in that
+session, has seen the text and said yes to it.
+
+**Flags:**
+
+```
+      --approve string   the digest shown for the text; only on the person's yes to exactly that text
+```
+
+**Example:**
+
+```
+abcd embargo close GHSA-xxxx-xxxx-xxxx
+```
+
+#### `abcd embargo intake`
+
+Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.
+
+**Usage:** `abcd embargo intake`
+
+List the repository's security advisories in the triage and draft states
+(GitHub's REST API, through your own `gh`) and mint one private record per
+advisory not seen before, in the embargo store's own ledger. The store is
+made on first use, detached at the default branch's tip. Severity maps
+critical to critical, high to major, medium and low to minor; an advisory
+with no severity is listed for you to set on GitHub and not recorded. A
+re-run records nothing twice. Nothing is written to this checkout's ledger
+or committed anywhere.
+
+#### `abcd embargo publish`
+
+Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.
+
+**Usage:** `abcd embargo publish [flags]`
+
+Show the publication plan for the release tag (--release, default the highest
+vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet
+published, its record resolved in that release, its fix commit, the first
+release tag holding the fix, the patched version that gives, and the affected
+range in GitHub's form. An advisory whose record is not resolved there, whose
+fix is in no release tag, whose package is not set on GitHub, or whose text
+carries a secret, a private name or another advisory still under embargo is
+left out, saying why. Without --approve nothing but reads is sent.
+
+With --approve <digest> of exactly the plan shown it publishes one advisory as
+a canary and reads it back, then the rest the same way, stopping at the first
+mismatch, and confirms none is left in draft. A host passes --approve only
+after the person, in that session, has seen the plan and said yes to it.
+
+**Flags:**
+
+```
+      --approve string   the plan's digest; only on the person's yes to exactly that plan
+      --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest)
+```
+
+#### `abcd embargo triage`
+
+Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.
+
+**Usage:** `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
+
+Record your verdict on one private advisory, with who decided it (--by) and
+when (the clock, never typed). The verdicts:
+
+  vulnerability        the record stays open in the store, to be fixed
+  not-abcds            needs --exists-without and --cannot-help, the two
+                       halves of abcd-fixes-what-it-adds
+  not-a-vulnerability  needs --reason
+  public-track         needs --reason; prints the `abcd capture` command to
+                       run in the public checkout
+
+The two closing verdicts move the record to the store's wontfix/ and draft
+the closing explanation, printed here, for `abcd embargo close`. A second
+triage of the same advisory keeps the earlier verdict in its history. An
+unknown verdict, or one missing its reason, is refused with nothing written.
+
+**Flags:**
+
+```
+      --by string               who decided the verdict (required)
+      --cannot-help string      not-abcds: why abcd cannot help without changing how the repository works
+      --exists-without string   not-abcds: why the problem would exist without abcd
+      --reason string           why: required for not-a-vulnerability and public-track
+```
+
+**Example:**
+
+```
+abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "Alice Example" --reason "the behaviour is the documented one"
+```
+
 ### `abcd embark`
 
 Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict.

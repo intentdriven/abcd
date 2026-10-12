@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -543,5 +544,36 @@ func TestAGoneWorktreeOnAMergedBranchIsCountedOnce(t *testing.T) {
 	}
 	if len(rep.Skipped) != 1 || rep.Skipped[0].Branch != "feat/gone" || rep.Skipped[0].Reason != peers.SkipGone {
 		t.Fatalf("skipped = %+v, want feat/gone once, as gone", rep.Skipped)
+	}
+}
+
+// TestPeersSkipsEmbargoStore: the embargo store is a detached worktree of this
+// repository holding private records (adr-2610120558328615, decision 3), so
+// the listing skips it unread, says so by its reason alone and never names
+// its location, and no private record's id or title reaches a row, a
+// location or the count.
+func TestPeersSkipsEmbargoStore(t *testing.T) {
+	f := newFixture(t)
+	store, err := embargo.StorePath(f.home, f.here())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f.git(f.here(), "worktree", "add", "-q", "--detach", store, "main")
+	f.write(store, ".abcd/work/issues/open/iss-700-private-report.md", issue("iss-700", "A sample private report"))
+
+	for _, read := range []func(string) (peers.Report, error){peers.Read, peers.Scan} {
+		rep, err := read(f.here())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Live() != 0 || rep.IDCount() != 0 || len(rep.Locate("iss-700")) != 0 {
+			t.Fatalf("the embargo store was read as a peer: %+v", rep)
+		}
+		if len(rep.Skipped) != 1 || rep.Skipped[0].Reason != peers.SkipEmbargo || rep.Skipped[0].Path != "" || rep.Skipped[0].Branch != "" {
+			t.Fatalf("skipped %+v, want the embargo store alone, unnamed", rep.Skipped)
+		}
 	}
 }
