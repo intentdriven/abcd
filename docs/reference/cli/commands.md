@@ -1819,7 +1819,8 @@ One waiter opens at a time. The one that opens takes a machine-wide hold,
 `~/.abcd.noindex/load-wait.json`, and every other waiter stays shut while it is in force.
 Without a command the hold lasts 2m0s, long enough for the load average to show
 the work admitted. With a command after `--` (`abcd implement load --wait -- make
-preflight`) the waiter runs it once the gate opens and exits with its exit code;
+preflight`) the waiter runs it once the gate opens and exits with its exit code,
+or with 128+N, as a shell does, when signal N killed it;
 the hold lasts until the command has started its own race run, the command exits,
 or 60 minutes pass, and a hold whose waiter has died, or whose pid now
 belongs to another process (a different start time), is reclaimed by the next

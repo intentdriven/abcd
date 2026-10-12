@@ -11,6 +11,14 @@ production_mode: hand-written
 found_at: "internal/core/ahoy/defaults/prepare-commit-msg"
 remedy: "Give the scaffolded prepare-commit-msg header the same three-way core.hooksPath advice as commands/prepare-this-repo.md step 5 (unarmed: set core.hooksPath; foreign: have the global dispatcher call .githooks/; armed: nothing), and add the file to TestHooksPathSiblingsArmOnlyWhenUnarmed's sibling list with the shellCommentBranchEnd judge, watched fail first."
 duplicates: [iss-2610111820465940]
+resolution: "The scaffolded prepare-commit-msg header now gives the three-way core.hooksPath advice keyed on banlist.hooks_path (unarmed: set core.hooksPath; foreign: have the global dispatcher call .githooks/; armed: nothing), matching the scaffolded pre-commit header; TestHooksPathSiblingsArmOnlyWhenUnarmed judges the file with shellCommentBranchEnd."
+impact: fix
+resolved_by:
+  commit: "1e0c4cc503ce1b9784a536c36d3317cdb3771226"
 ---
 
 The prepare-commit-msg hook ahoy install scaffolds into adopted repositories (internal/core/ahoy/defaults/prepare-commit-msg, header lines 20-22) still tells every clone to run 'git config core.hooksPath .githooks' unconditionally, shadowing a foreign global hooks dispatcher. The fourth sibling of the advice iss-2610101903385281 made conditional, found by the lane for iss-2610111820465940 (the scaffolded pre-commit). A sweep of every core.hooksPath mention on main at 2026-10-11 found no other unconditional instruction.
+
+## Grounds
+
+- pursued: TestHooksPathSiblingsArmOnlyWhenUnarmed passes with prepare-commit-msg in its sibling list, after failing on the unconditional line 22 before the change; it would be shown wrong by an adopted repo whose prepare-commit-msg header still tells a foreign-dispatcher clone to set a local core.hooksPath, or by the detector passing a header with no hooks_path branches.

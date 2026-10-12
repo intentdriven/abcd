@@ -89,7 +89,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "`, and every other waiter stays shut while it is in force.\n" +
 			"Without a command the hold lasts " + implement.WaitSettle.String() + ", long enough for the load average to show\n" +
 			"the work admitted. With a command after `--` (`abcd implement load --wait -- make\n" +
-			"preflight`) the waiter runs it once the gate opens and exits with its exit code;\n" +
+			"preflight`) the waiter runs it once the gate opens and exits with its exit code,\n" +
+			"or with 128+N, as a shell does, when signal N killed it;\n" +
 			"the hold lasts until the command has started its own race run, the command exits,\n" +
 			"or " + strconv.Itoa(int(implement.WaitCommandCap.Minutes())) + " minutes pass, and a hold whose waiter has died, or whose pid now\n" +
 			"belongs to another process (a different start time), is reclaimed by the next\n" +
@@ -188,7 +189,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, command
 // SIGTERM to the waiter is forwarded to the command, and the waiter goes on
 // waiting for it: a waiter that died first would orphan the command, whose
 // hold then reads as a dead holder's, and the next waiter would be admitted
-// beside the orphan. The caller releases the hold once this returns.
+// beside the orphan. A command killed by signal N returns 128+N, as a shell
+// reports it, so a command stopped by SIGTERM never reads as one that failed
+// with 1. The caller releases the hold once this returns.
 func runGated(cmd *cobra.Command, command []string) (int, error) {
 	c := exec.Command(command[0], command[1:]...)
 	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
@@ -217,6 +220,9 @@ wait:
 	case errors.As(err, &exit):
 		if code := exit.ExitCode(); code > 0 {
 			return code, nil
+		}
+		if sig, ok := signalledBy(exit.ProcessState); ok {
+			return 128 + sig, nil
 		}
 		return 1, nil
 	default:
