@@ -80,6 +80,13 @@ var Known = map[string]bool{
 	// removable by hand — a record without either is ordinary — but KNOWN, or
 	// the reader would drop every linked record as malformed.
 	"duplicates": true, "refines": true,
+	// finding_key is the stable key of the consistency finding a record was
+	// filed for (itd-2609291923559186 G1): `cfk-` and sixteen hex digits,
+	// written by the pass's filer and read back so a contradiction found again
+	// links to its record, or is marked addressed by a resolved or won't-fix
+	// one, instead of being filed twice. Optional — only a filed finding
+	// carries one — but KNOWN, or the reader would drop every keyed record.
+	"finding_key": true,
 	// shipped_in names the release that already carried this record's work, so the
 	// derivation can leave it out of a later cut (iss-2608241612087533). Optional
 	// and rare — only a ledger-hygiene close, for a fix released long ago, has

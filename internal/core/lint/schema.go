@@ -37,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -1475,6 +1476,17 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		v := r.scalar(f.value)
 		if !issueschema.SlugRe.MatchString(v) {
 			add("slug", f.line, "invalid slug '"+v+"'; a slug is kebab-case (lower-case alphanumerics joined by single hyphens) and capture refuses any other shape")
+		}
+	}
+
+	// finding_key: the stable key of the consistency finding the record was
+	// filed for (itd-2609291923559186 G1). Capture writes it in one shape only,
+	// and the reader refuses and skips a record carrying any other, so this gate
+	// reports it in the reader's terms. A blank is the reader-parity leg's.
+	if f, present := r.fields["finding_key"]; present && !isNull(strings.TrimSpace(f.value)) {
+		v := r.scalar(f.value)
+		if !findingkey.Valid(v) {
+			add("finding_key", f.line, "invalid finding_key '"+v+"'; a finding key is cfk- and sixteen lowercase hex digits, and capture refuses any other shape and skips the record")
 		}
 	}
 

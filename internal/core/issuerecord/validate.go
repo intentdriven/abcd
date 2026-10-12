@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -160,12 +161,18 @@ func ValidateStrict(fm map[string]any) error {
 	}
 
 	// Optional scalar strings.
-	for _, opt := range []string{"found_at", "lapsed_at", "details", "remedy", "suggested_fix", "wontfix_reason", "resolution"} {
+	for _, opt := range []string{"found_at", "lapsed_at", "details", "remedy", "suggested_fix", "wontfix_reason", "resolution", "finding_key"} {
 		if v, present := fm[opt]; present {
 			if _, isStr := v.(string); !isStr {
 				return fmt.Errorf("%w: %q must be a string", ErrMalformedFrontmatter, opt)
 			}
 		}
+	}
+	// finding_key, when present, is a finding key's one shape: capture writes
+	// no other, and record_schema reports any other, so the writer, this reader
+	// and the committed-ledger gate agree (itd-2609291923559186 G1).
+	if v, present := fm["finding_key"]; present && !findingkey.Valid(v.(string)) {
+		return fmt.Errorf("%w: finding_key %q is not a finding key (cfk- and sixteen lowercase hex digits)", ErrMalformedFrontmatter, v)
 	}
 	// lapsed_at is optional for every category, lapse included, and an RFC 3339
 	// instant whenever it is present. spc-60 made it REQUIRED on a lapse; that
