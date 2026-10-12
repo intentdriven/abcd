@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -78,5 +79,27 @@ func TestCaptureRefusesAMalformedFindingKey(t *testing.T) {
 		if err := ReadRefusal(fmt.Sprintf(rec, bad), "open", "iss-5-keyed.md"); err == nil {
 			t.Errorf("the reader accepts finding_key %s", bad)
 		}
+	}
+}
+
+// TestTheRedactorLeavesAFindingKeyAlone: a finding key is a content hash, not a
+// credential, so the ledger's redactor neither rewrites the key capture writes
+// as finding_key nor one a record's prose carries.
+func TestTheRedactorLeavesAFindingKeyAlone(t *testing.T) {
+	root := gittest.NewRepo(t).Root()
+	key := findingkey.Derive("premise_contradiction",
+		findingkey.End{Path: ".abcd/development/intents/planned/itd-10-one-spec.md", Quote: "An intent carries exactly one spec."},
+		findingkey.End{Path: ".abcd/development/intents/shipped/itd-11-many-specs.md", Quote: "An intent owns one or more specs."})
+	if out, n, _ := redactLedgerText(root, "finding_key: "+key); n != 0 || !strings.Contains(out, key) {
+		t.Fatalf("the redactor rewrote a finding key (%d span(s)): %q", n, out)
+	}
+	res, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Filed under finding key " + key + ".", Severity: "minor",
+		Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := readLedgerFile(t, root, res.Path)
+	if res.Redacted != 0 || !strings.Contains(raw, "\nfinding_key: "+key+"\n") || !strings.Contains(raw, "finding key "+key+".") {
+		t.Fatalf("capture redacted %d span(s); want the key verbatim in frontmatter and body:\n%s", res.Redacted, raw)
 	}
 }
