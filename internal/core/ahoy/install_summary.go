@@ -84,7 +84,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Action: "Nothing. Commit the file with the rest.",
 	},
 	writeGitignore: {
-		What:   "Told git which abcd files stay on this machine, in a fenced block in .gitignore.",
+		What:   "Made sure .gitignore tells git which abcd files stay on this machine, putting in abcd's fenced block only what the file did not already list.",
 		Why:    "Your private notes and scratch files, and for a public repository abcd's records, are never committed by accident.",
 		Action: "Nothing. Leave the fenced block as it is; abcd keeps it up to date.",
 	},
