@@ -147,7 +147,11 @@ func rateLimitWindow(repoRoot, runID, laneID string, aw Await, fl *runner.Failur
 // worktree reset to the branch's last commit, and its await dropped. A save
 // the loop refuses keeps the await and leaves the worktree, and cp says why.
 func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw Await, fl *runner.Failure, cp *Checkpoint, now time.Time) {
-	k := slices.IndexFunc(lane.Awaits, func(a Await) bool { return samePath(repoRoot, a.Receipt, aw.Receipt) })
+	// A restart keeps the receipt path and re-tells the await from a new
+	// Since, so the await is matched by both.
+	k := slices.IndexFunc(lane.Awaits, func(a Await) bool {
+		return samePath(repoRoot, a.Receipt, aw.Receipt) && a.Since.Equal(aw.Since)
+	})
 	if k < 0 {
 		// The await is gone already: its receipt was handed back, or a
 		// restart re-told it, before the response was read.

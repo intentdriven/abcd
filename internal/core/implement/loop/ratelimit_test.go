@@ -250,3 +250,36 @@ func TestARateLimitedValidatorLeavesTheWorktreeAndIsHandedOutAgain(t *testing.T)
 	f.now = *res.NextEligibleAt
 	f.stepUntil(t, "the ruthless reviewer is handed out again", func(st State) bool { return st.Lanes[0].awaitsRole(RoleRuthless) })
 }
+
+// A rate-limit response read after a restart re-told the await it came from
+// meets an await the gone agent no longer holds: the receipt path is the same,
+// but its Since is the restart's, so the fresh agent's work is not saved aside
+// and its worktree is not reset (iss-2610100913088696).
+func TestARateLimitAfterARestartLeavesTheReToldAwait(t *testing.T) {
+	f := newParFixture(t, "1. One\n", Options{})
+	f.stepUntil(t, "the implementer is out", func(st State) bool { return len(st.Lanes) == 1 && st.Lanes[0].awaitsRole(RoleImplementer) })
+	gone := f.await(t, "lane-1", RoleImplementer)
+	f.now = f.now.Add(time.Minute)
+	if _, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
+		t.Fatal(err)
+	}
+	fresh := f.await(t, "lane-1", RoleImplementer)
+	if fresh.Receipt != gone.Receipt || fresh.Since.Equal(gone.Since) {
+		t.Fatalf("the restart re-tells the await at the same path with a new Since: %+v, was %+v", fresh, gone)
+	}
+	l := f.lane(t, "lane-1")
+	if err := os.WriteFile(filepath.Join(l.Worktree, "fresh.txt"), []byte("the fresh agent at work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rateLimitWindow(f.repo.Root(), f.runID, "lane-1", gone,
+		&runner.Failure{Runner: runner.Claude, Reason: runner.ReasonRateLimited, Detail: "its event stream reports a rejected rate_limit_event and the run did not finish"}, f.opts()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.await(t, "lane-1", RoleImplementer); !got.Since.Equal(fresh.Since) {
+		t.Fatalf("the re-told await stays out: %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(l.Worktree, "fresh.txt")); err != nil {
+		t.Fatalf("the fresh agent's worktree is not reset: %v", err)
+	}
+	asideOf(t, f.abs(RunRelDir+"/"+f.runID+"/lane-1"))
+}
