@@ -213,8 +213,8 @@ replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
 under a run id it does not name. The state is schema version 10. Version 10
 added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
-kept the await when it could not save the gone agent's return aside, which
-`--restart` re-tells. Version 9 is its strict subset, read as a run no rate
+kept the await when it could not save the gone agent's return aside, which a
+restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate
 limit kept an await of; a file of version 9 or lower carrying `kept` is
 refused, and an abcd that writes version 9 refuses a version-10 file as a
 version it does not know. Version 9
