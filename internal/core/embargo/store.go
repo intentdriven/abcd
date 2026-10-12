@@ -1,0 +1,215 @@
+// Package embargo keeps private security advisories private until they are
+// published (itd-2610112239022766, spc-2610120557432880). Its records live in
+// the embargo store, a worktree in the machine-scoped worktree store that is
+// created detached and never committed, and every sub-verb verifies the store
+// before it reads or writes anything (adr-2610120558328615, decisions 1 and
+// 2). This file is the store; state.go is its state file.
+package embargo
+
+import (
+	"bytes"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
+)
+
+// StoreName is the store's folder under the repository's level of the
+// worktree store.
+const StoreName = "embargo"
+
+// ledgerRel is where a private record sits inside the store: the ledger's own
+// layout, so the capture and resolve code read it unchanged.
+const ledgerRel = ".abcd/work/issues"
+
+// maxListing caps the store's ls-files answer.
+const maxListing = 16 << 20
+
+// RefusalError is a refusal with nothing written: the reason, and the one
+// thing the person can do about it. The surfaces exit 2 on it.
+type RefusalError struct {
+	Reason string
+	Remedy string
+}
+
+func (e *RefusalError) Error() string {
+	if e.Remedy == "" {
+		return "embargo: " + e.Reason
+	}
+	return "embargo: " + e.Reason + " (" + e.Remedy + ")"
+}
+
+func refuse(reason, remedy string) error { return &RefusalError{Reason: reason, Remedy: remedy} }
+
+// Store is the embargo store of one repository: Root is the store worktree,
+// Checkout the working-tree root of the checkout it belongs to.
+type Store struct {
+	Root     string `json:"root"`
+	Checkout string `json:"checkout"`
+}
+
+// StorePath is where the store of the repository at repoRoot lives under
+// home: worktrees/<root-sha>/embargo in abcd's home, keyed on the root commit
+// so every worktree of the repository finds the same store
+// (adr-2610031751065746).
+func StorePath(home, repoRoot string) (string, error) {
+	sha := gitutil.RootCommit(repoRoot)
+	if !gitutil.IsFullSHA(sha) {
+		return "", refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
+	}
+	return abcdhome.Path(home, "worktrees", sha, StoreName), nil
+}
+
+// Open returns the store of the repository at repoRoot, making it on first
+// use as a detached worktree at the default branch's tip, and verifies it
+// either way. created reports that this call made it. A store that would sit
+// inside the checkout is refused before anything is made.
+func Open(home, repoRoot string) (s Store, created bool, err error) {
+	top, err := gitutil.Toplevel(repoRoot)
+	if err != nil {
+		return Store{}, false, refuse("this is not inside a git checkout", "run it from the repository's checkout")
+	}
+	p, err := StorePath(home, top)
+	if err != nil {
+		return Store{}, false, err
+	}
+	s = Store{Root: p, Checkout: top}
+	if inside(p, top) {
+		return Store{}, false, refuse("the embargo store would sit inside this checkout, where its records are one `git add` from the public history",
+			"run abcd with a home directory outside the repository")
+	}
+	switch _, err := os.Lstat(p); {
+	case errors.Is(err, fs.ErrNotExist):
+		if err := s.create(home); err != nil {
+			return Store{}, false, err
+		}
+		created = true
+	case err != nil:
+		return Store{}, false, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
+	}
+	if _, err := s.Verify(); err != nil {
+		return Store{}, created, err
+	}
+	return s, created, nil
+}
+
+// create makes the store's parent levels, each a real directory this account
+// alone can write, and adds the store detached at the default branch's tip:
+// with no branch, nothing in it has a ref to push.
+func (s Store) create(home string) error {
+	rel := filepath.ToSlash(strings.TrimPrefix(filepath.Dir(s.Root), filepath.Clean(home)+string(filepath.Separator)))
+	if err := fsutil.EnsureRealDirAll(home, rel, abcdhome.DirMode); err != nil {
+		return refuse("the worktree store could not be made as a real directory under abcd's home", "move aside whatever occupies it")
+	}
+	parent := filepath.Dir(s.Root)
+	fi, err := os.Lstat(parent)
+	if err != nil || fsutil.CallersAlone(parent, fi) != nil {
+		return refuse("the worktree store's folder for this repository is not this account's alone", "fix its owner or mode, then run it again")
+	}
+	defRef := gitutil.DefaultRef(s.Checkout)
+	if defRef == "" {
+		return refuse("the repository has no default branch to start the embargo store from", "fetch the remote, then run it again")
+	}
+	base, err := gitutil.Run(s.Checkout, "rev-parse", "--verify", "--quiet", defRef+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(base) {
+		return refuse("the default branch's tip could not be resolved", "fetch the remote, then run it again")
+	}
+	if _, err := gitutil.Run(s.Checkout, "worktree", "add", "--detach", "--", s.Root, base); err != nil {
+		return refuse("git could not add the embargo store: "+fsutil.RedactHome(err.Error()), "settle what git reports, then run it again")
+	}
+	return nil
+}
+
+// Verify is the check every sub-verb runs before it reads or writes the
+// store, and returns the store's state. It refuses, writing nothing, when the
+// store is not a real directory that is this repository's own worktree; when
+// it resolves inside the checkout; when its HEAD is on a branch; when its
+// state file is refused (state.go); or when its index tracks a record the
+// state names. A refusal never names a record's file or an advisory.
+func (s Store) Verify() (State, error) {
+	if !fsutil.IsRealDir(s.Root) {
+		return State{}, refuse("the embargo store is not a real directory", "move aside whatever occupies its path, then run `abcd embargo intake`")
+	}
+	if inside(s.Root, s.Checkout) {
+		return State{}, refuse("the embargo store resolves inside this checkout, where its records are one `git add` from the public history",
+			"move the store out of the checkout")
+	}
+	top, err := gitutil.Toplevel(s.Root)
+	if err != nil || !samePath(top, s.Root) {
+		return State{}, refuse("the embargo store's folder is not a git worktree of its own", "move it aside, then run `abcd embargo intake` to make the store")
+	}
+	storeCommon, err1 := gitutil.RevParseAbsPath(s.Root, "--git-common-dir")
+	ownCommon, err2 := gitutil.RevParseAbsPath(s.Checkout, "--git-common-dir")
+	if err1 != nil || err2 != nil || !samePath(storeCommon, ownCommon) {
+		return State{}, refuse("the embargo store is not a worktree of this repository", "move it aside, then run `abcd embargo intake` to make the store")
+	}
+	if _, exitOne, err := gitutil.RunCappedExitOne(s.Root, 4096, "symbolic-ref", "--quiet", "HEAD"); err != nil {
+		return State{}, refuse("git could not say whether the embargo store's HEAD is detached", "settle what git reports, then run it again")
+	} else if !exitOne {
+		return State{}, refuse("the embargo store's HEAD is on a branch, which gives its records a ref that can be pushed",
+			"detach it with `git -C <store> switch --detach`, then run it again")
+	}
+	st, err := s.loadState()
+	if err != nil {
+		return State{}, err
+	}
+	if err := s.refuseTracked(st); err != nil {
+		return State{}, err
+	}
+	return st, nil
+}
+
+// refuseTracked refuses when the store's index tracks a record the state
+// links to an advisory: one commit, and it is in the public history.
+func (s Store) refuseTracked(st State) error {
+	if len(st.Advisories) == 0 {
+		return nil
+	}
+	out, err := gitutil.RunCappedBytes(s.Root, maxListing, "ls-files", "-z", "--", ledgerRel)
+	if err != nil {
+		return refuse("git could not list what the embargo store tracks", "settle what git reports, then run it again")
+	}
+	for _, p := range bytes.Split(out, []byte{0}) {
+		base := filepath.Base(string(p))
+		for _, a := range st.Advisories {
+			if base == a.IssueID+".md" || strings.HasPrefix(base, a.IssueID+"-") {
+				return refuse("the embargo store's index tracks a private record",
+					"unstage it with `git -C <store> rm --cached` on that record, keeping the file, then run it again")
+			}
+		}
+	}
+	return nil
+}
+
+// inside reports whether p is dir or lies beneath it, after resolving the
+// symlinks of the longest part of each that exists.
+func inside(p, dir string) bool {
+	rel, err := filepath.Rel(resolve(dir), resolve(p))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func samePath(a, b string) bool { return resolve(a) == resolve(b) }
+
+// resolve is filepath.EvalSymlinks over the longest existing prefix of p, with
+// the rest joined on: a path not made yet still resolves through the links
+// above it (macOS's /var is one).
+func resolve(p string) string {
+	p = filepath.Clean(p)
+	var rest []string
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(append([]string{r}, rest...)...)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(append([]string{p}, rest...)...)
+		}
+		rest = append([]string{filepath.Base(p)}, rest...)
+		p = parent
+	}
+}
