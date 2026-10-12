@@ -10,7 +10,6 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement"
 remedy: "Shape-check or mask the outage span text where implement record reads the run log, with a test forging a span."
-refines: [iss-2610121542258412, iss-2610121516559163, iss-2610121532247004]
 ---
 
 The run log's outage spans reach abcd implement record --json raw: their text comes from the run log the session appends to, so a hand-edited or repository-shipped log carrying a control or bidi rune puts it on the stream.

@@ -10,8 +10,6 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/claude.go"
 remedy: "Hold the reported model to one plain line (termsafe.Sanitize equality, or mask it) where the runner records it, as receipts now hold their model (iss-2610121532247004), with a test."
-duplicates: [iss-2610121542263820]
-refines: [iss-2610121542258412, iss-2610121516552317]
 ---
 
 The claude runner (internal/core/runner/claude.go) copies the external tool's reported model into the route record, which reaches abcd implement record --json raw, so a tool reporting a model name with a control or bidi rune puts it on the stream.
