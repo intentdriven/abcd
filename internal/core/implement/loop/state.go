@@ -809,7 +809,9 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", rel+" carries a receipt's model or resolution the loop never writes: a control, bidi or zero-width character in its text",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
-	return st, nil
+	// The repository and tool text it stores is shown masked, never refused,
+	// so a run abcd wrote stays readable (iss-2610121542240257).
+	return st.masked(), nil
 }
 
 // stateStepNamed is a state file of versions 1 to 3, which named the lane's
@@ -951,8 +953,11 @@ func serialCarries(st State, version int) error {
 // writeState is the state file's one writer: a whole-file atomic replacement
 // inside the checkout's os.Root, so a reader sees the old state or the new one,
 // never half of either. The caller holds the lock.
+//
+// The repository and tool text the state carries is stored masked
+// (State.masked, iss-2610121542240257).
 func writeState(root *os.Root, st State) error {
-	data, err := json.MarshalIndent(st, "", "  ")
+	data, err := json.MarshalIndent(st.masked(), "", "  ")
 	if err != nil {
 		return err
 	}
