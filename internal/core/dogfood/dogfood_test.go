@@ -260,7 +260,7 @@ func TestListedCheckoutBuildsTheReviewedTip(t *testing.T) {
 	if got := run(t, bin); got != "reviewed-1" {
 		t.Fatalf("the build printed %q, want the reviewed tip's reviewed-1", got)
 	}
-	rec := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, TipName)
+	rec := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, TipName(f.url, "main"))
 	if fi, err := os.Stat(rec); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("the verified tip is recorded at 0600: %v %v", fi, err)
 	}

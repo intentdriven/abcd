@@ -132,10 +132,6 @@ const (
 	// branch prompts a fresh check when it moves. It never names the source.
 	TrackingRemote = "origin"
 
-	// TipName is the store's record of the last check of the declared remote,
-	// beside the builds it chooses between.
-	TipName = "verified-tip.json"
-
 	// maxRootsBytes caps the list read: a hand-kept list of checkouts is a
 	// few hundred bytes.
 	maxRootsBytes = 64 << 10
@@ -271,7 +267,14 @@ func Resolve(home, cwd string) Plan {
 	c.RootSHA = root
 	c.Tracking = trackingTip(c.Repo, c.Branch)
 	storeAbs := filepath.Join(home, filepath.FromSlash(path.Join(StoreRelPath, root)))
-	rec, recNote := readTip(home, root)
+	// A store another user can write is never read or built into: it is
+	// refused out loud, and no build is asked for, since Build would refuse
+	// it too and say so only in a log no one reads.
+	if storeExists(home, root) && !storeAlone(home, root) {
+		return Plan{Checkout: c, Notes: []string{"abcd dogfood: IGNORED " + abcdhome.Display("dogfood", root) +
+			" — it is not this account's alone (a directory in it is not a real directory this account owns, or others can write it); the installed release runs"}}
+	}
+	rec, recNote := readTip(home, root, TipName(c.URL, c.Branch))
 	current := rec != nil && rec.URL == c.URL && rec.Branch == c.Branch
 	due := !current || rec.Tracking != c.Tracking || now().Sub(rec.Checked) >= recheckAfter || rec.Checked.After(now())
 	running := building(storeAbs)
@@ -543,7 +546,7 @@ type tipRecord struct {
 // record that is absent is nil with no note; one that is present but not this
 // account's alone, or unreadable, is nil with a note saying so, and a check
 // is asked for that replaces it.
-func readTip(home, rootSHA string) (*tipRecord, string) {
+func readTip(home, rootSHA, name string) (*tipRecord, string) {
 	if !storeAlone(home, rootSHA) {
 		return nil, ""
 	}
@@ -552,11 +555,11 @@ func readTip(home, rootSHA string) (*tipRecord, string) {
 		return nil, ""
 	}
 	defer r.Close()
-	fi, err := r.Lstat(TipName)
+	fi, err := r.Lstat(name)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ""
 	}
-	shown := abcdhome.Display("dogfood", rootSHA, TipName)
+	shown := abcdhome.Display("dogfood", rootSHA, name)
 	refused := "abcd dogfood: IGNORED " + shown + " — "
 	if err != nil {
 		return nil, refused + "it could not be read"
@@ -564,10 +567,10 @@ func readTip(home, rootSHA string) (*tipRecord, string) {
 	if !fi.Mode().IsRegular() {
 		return nil, refused + "it is not a regular file"
 	}
-	if fsutil.CallersAlone(filepath.Join(home, filepath.FromSlash(path.Join(StoreRelPath, rootSHA, TipName))), fi) != nil {
+	if fsutil.CallersAlone(filepath.Join(home, filepath.FromSlash(path.Join(StoreRelPath, rootSHA, name))), fi) != nil {
 		return nil, refused + "it is not this account's alone"
 	}
-	f, err := r.OpenFile(TipName, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := r.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, refused + "it could not be read"
 	}
@@ -589,11 +592,12 @@ func readTip(home, rootSHA string) (*tipRecord, string) {
 // writeTip replaces the store's record through fsutil.WriteFileAtomic, so a
 // reader sees the old record or the new one, never part of either.
 func writeTip(storeAbs string, rec tipRecord) error {
+	name := TipName(rec.URL, rec.Branch)
 	body, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomic(filepath.Join(storeAbs, TipName), append(body, '\n'), abcdhome.FileMode)
+	return fsutil.WriteFileAtomic(filepath.Join(storeAbs, name), append(body, '\n'), abcdhome.FileMode)
 }
 
 // storeAlone reports whether every level of the repository's store is a real
@@ -1231,4 +1235,27 @@ func short(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// TipName is the store's record of the last check of the remote url and
+// branch a line declares, beside the builds it chooses between. The store is
+// keyed on the repository's root commit, which two clones of one repository
+// share, so each declaration keeps its own record: one record for both had
+// two clones declared with different branches overwrite each other's, and
+// neither ever settled.
+func TipName(url, branch string) string {
+	sum := sha256.Sum256([]byte(url + "\t" + branch))
+	return "verified-tip-" + hex.EncodeToString(sum[:8]) + ".json"
+}
+
+// storeExists reports whether any level of the repository's store exists, as
+// anything: a store not yet made is made by the first build, but one that is
+// there must be the account's alone.
+func storeExists(home, rootSHA string) bool {
+	for _, level := range []string{StoreRelPath, path.Join(StoreRelPath, rootSHA)} {
+		if _, err := os.Lstat(filepath.Join(home, filepath.FromSlash(level))); err == nil {
+			return true
+		}
+	}
+	return false
 }

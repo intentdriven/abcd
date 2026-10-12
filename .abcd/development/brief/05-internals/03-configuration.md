@@ -677,9 +677,11 @@ repository's config applies, with `GIT_TERMINAL_PROMPT=0` and every askpass
 blanked so it never asks for credentials, with its transports held to `https`
 and `ssh` (`GIT_ALLOW_PROTOCOL`, which no flag widens), within 60 seconds and 64 KiB of output, taking
 only the line that names exactly `refs/heads/<branch>`. It records the answer,
-under the build lock, in `verified-tip.json` (the commit, URL, branch, the
-moment of the check, and the remote-tracking ref's commit at that moment), at
-0600 and judged as the binary is. It builds that commit only once the checkout
+under the build lock, in `verified-tip-<hash>.json` (the commit, URL, branch,
+the moment of the check, and the remote-tracking ref's commit at that moment),
+one per declared remote and branch since two clones of one repository share a
+store, at 0600 and judged as the binary is. A store another user can write is
+refused out loud and nothing is built into it. It builds that commit only once the checkout
 holds it; a tip the checkout has not fetched is recorded with a note saying to
 run `git fetch`, and nothing is built. A check that fails records no tip.
 
@@ -698,7 +700,7 @@ only caller of the network, and `Resolve`, the hook's half, reads the record.
 ```
 ~/.abcd.noindex/dogfood/
   <root-sha>/
-    verified-tip.json         the last check of the declared remote
+    verified-tip-<hash>.json  the last check of one declared remote and branch
     <commit>/abcd             the build of that commit
     <commit>.log              its export and build output
     <commit>.failed           present after a failed build

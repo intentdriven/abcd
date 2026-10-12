@@ -102,7 +102,7 @@ func newDogfoodBuildCommand() *cobra.Command {
 		Long: `Asks the remote declared for the checkout the working directory is in, in
 ` + dogfood.RootsDisplay + `, for the tip of its reviewed branch (git ls-remote,
 never prompting for credentials, bounded in time), records the answer in
-` + dogfood.StoreDisplay + `/<root-sha>/` + dogfood.TipName + `, and builds that commit
+` + dogfood.StoreDisplay + `/<root-sha>/verified-tip-<hash>.json, one per declared remote and branch, and builds that commit
 into ` + dogfood.StoreDisplay + `/<root-sha>/<commit>/abcd once the checkout holds
 it. A build already there is kept; a build another process is running is left
 to it. The hook shims start this in the background; run it by hand to check
