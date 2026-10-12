@@ -189,7 +189,22 @@ type InstallOptions struct {
 	// install (--install-tool), which is that answer given in advance. Every
 	// other category is still asked, or pre-answered, as before.
 	ApproveDependency bool
+	// VerifyProvenance verifies a release artefact's SLSA build provenance by
+	// its sha256, returning the verified signer identity. Promoting the
+	// plugin's cached release binary to the PATH copy runs it before anything
+	// is written, and any failure refuses (iss-2610120617515834): the cache
+	// was checked against checksums.txt from the same release page as the
+	// binary, which whoever can change that page can change too. The front
+	// door supplies abcd update's own in-process check
+	// (update.ReleaseProvenance), one primitive for both verbs; this package
+	// cannot import it, because update imports ahoy. Nil refuses every
+	// promotion: there is no unverified path.
+	VerifyProvenance ProvenanceCheck
 }
+
+// ProvenanceCheck verifies a release artefact's build provenance by its
+// sha256 digest and returns the verified signer identity.
+type ProvenanceCheck func(digest []byte) (signer string, err error)
 
 // InstallResult is the outcome of Install.
 type InstallResult struct {

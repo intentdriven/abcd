@@ -15,6 +15,10 @@ import (
 // as the abcd binary rather than run the tests.
 const cliTestAsBinaryEnv = "ABCD_CLI_TEST_AS_BINARY"
 
+// shippedAhoyReleaseProvenance is ahoyReleaseProvenance as the binary ships it,
+// kept before TestMain stands a stub in.
+var shippedAhoyReleaseProvenance ahoy.ProvenanceCheck
+
 // TestMain defaults the ahoy build-vintage seam to a fresh, determinable,
 // non-dogfood value for the whole package. runCLI executes the commands
 // in-process through this unstamped go-test binary, so without the override
@@ -27,6 +31,15 @@ const cliTestAsBinaryEnv = "ABCD_CLI_TEST_AS_BINARY"
 // own, the user layer reads as absent, and a test that sets HOME to a fixture
 // gets that fixture's user layer (spc-23).
 func TestMain(m *testing.M) {
+	// No `ahoy install` here asks GitHub's attestations API or the Sigstore
+	// TUF repository: a cache the fixtures bind is promoted through a
+	// stand-in that accepts it, and the provenance tests put the shipping
+	// check back over recorded bundles (ahoy_provenance_test.go). The shipping
+	// value is kept so the wiring itself stays asserted.
+	shippedAhoyReleaseProvenance = ahoyReleaseProvenance
+	ahoyReleaseProvenance = func([]byte) (string, error) {
+		return "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main", nil
+	}
 	// The deep installability tier re-executes the running binary as its
 	// isolated child. Under `go test` that binary is this test binary, so it
 	// stands in for abcd when the runner marks it: the real subprocess path runs

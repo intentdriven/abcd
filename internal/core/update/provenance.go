@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/urlguard"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/root"
@@ -80,6 +82,44 @@ type githubAttestations struct {
 
 func newGitHubAttestations(u *Updater) *githubAttestations {
 	return &githubAttestations{u: u, endpoint: attestationEndpoint, trusted: u.sigstoreTrustedRoot, policy: releasePolicy}
+}
+
+// VerifyReleaseProvenance verifies one release asset's SLSA build provenance
+// by its sha256 and returns the verified signer identity: the check Apply
+// runs before a swap, for a verb that promotes a release asset it did not
+// download itself. ahoy install runs it before promoting the plugin's cached
+// release binary to the PATH copy (iss-2610120617515834), so both verbs hold
+// a release binary to one primitive. The client is built per call, only when
+// a promotion needs it, and like ReleaseAssets' it ignores the proxy and CA
+// overrides without unsetting them: it runs inside another verb's process,
+// which the updater's process-wide scrub would change under it. The network
+// it touches is GitHub's attestations API and the Sigstore TUF repository,
+// keyed by the digest of a release already chosen: it discovers nothing
+// (adr-38 tier 3).
+func VerifyReleaseProvenance(digest []byte) (string, error) {
+	return newReleaseProvenance(releaseOrigin, urlguard.BlockedIP, false).verify(digest)
+}
+
+// newReleaseProvenance is the test-reachable constructor behind
+// VerifyReleaseProvenance: the updater's attestation check over a client that
+// leaves the process environment alone.
+func newReleaseProvenance(origin string, blocked func(net.IP) bool, allowHTTP bool) *githubAttestations {
+	return newGitHubAttestations(newReleaseAssets(origin, blocked, allowHTTP).u)
+}
+
+// ReleaseProvenanceForTest builds the same check against an attestations
+// endpoint a test serves and a fixed Sigstore trusted root, so a caller's
+// tests can hold their wiring to recorded real bundles without the network.
+// Never used by the shipping binary.
+func ReleaseProvenanceForTest(endpoint string, trustedRootJSON []byte) (func(digest []byte) (string, error), error) {
+	tr, err := root.NewTrustedRootFromJSON(trustedRootJSON)
+	if err != nil {
+		return nil, err
+	}
+	g := newReleaseProvenance(releaseOrigin, nil, true)
+	g.endpoint = endpoint
+	g.trusted = func() (root.TrustedMaterial, error) { return tr, nil }
+	return g.verify, nil
 }
 
 func (g *githubAttestations) verify(digest []byte) (string, error) {

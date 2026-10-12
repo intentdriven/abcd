@@ -465,6 +465,11 @@ leave the user's shell profile alone.
 
 The entry install writes is the abcd-owned copy of the verified release binary,
 taken from the persistent plugin data directory a session's hooks provision.
+Before writing it, install verifies that binary's signed build provenance with
+the same in-process check `abcd update` makes; when the check fails or cannot
+reach GitHub's attestations API or the Sigstore TUF repository, install writes
+no entry and its note names what failed and how to check the release by hand
+with `gh attestation verify`. Relay that note verbatim.
 When no verified copy is there, install writes no entry at all rather than a
 symlink into the plugin root, which stops working at the next plugin update, and
 its note names the command to run first: the install one-liner in the README,

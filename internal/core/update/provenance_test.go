@@ -344,3 +344,58 @@ func TestTUFFetcherSignalsANotFound(t *testing.T) {
 		t.Fatalf("a 404 must be metadata.ErrDownloadHTTP{404}, got %#v", err)
 	}
 }
+
+// --- the check other verbs run before promoting a release asset ---
+
+// TestReleaseProvenanceIsTheUpdatersCheck: the check ahoy install runs
+// (iss-2610120617515834) is the updater's own attestation check, pinned to
+// the same API, policy and trusted-root source, one primitive for both verbs.
+func TestReleaseProvenanceIsTheUpdatersCheck(t *testing.T) {
+	g := newReleaseProvenance(releaseOrigin, nil, false)
+	if g.endpoint != attestationEndpoint {
+		t.Errorf("endpoint = %q", g.endpoint)
+	}
+	if g.policy != releasePolicy {
+		t.Errorf("policy = %+v", g.policy)
+	}
+	if g.trusted == nil {
+		t.Error("the check must fetch a trusted root")
+	}
+}
+
+// TestReleaseProvenanceLeavesTheEnvironmentAlone: unlike the updater, which
+// owns its process, the check runs inside another verb, so it ignores the
+// proxy and CA overrides without unsetting them.
+func TestReleaseProvenanceLeavesTheEnvironmentAlone(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://192.0.2.1:3128")
+	t.Setenv("SSL_CERT_FILE", "/nonexistent/ca.pem")
+	g := newReleaseProvenance(releaseOrigin, nil, false)
+	if got := os.Getenv("HTTPS_PROXY"); got != "http://192.0.2.1:3128" {
+		t.Errorf("HTTPS_PROXY was changed to %q", got)
+	}
+	if got := os.Getenv("SSL_CERT_FILE"); got != "/nonexistent/ca.pem" {
+		t.Errorf("SSL_CERT_FILE was changed to %q", got)
+	}
+	tr, ok := g.u.client.Transport.(*http.Transport)
+	if !ok || tr.Proxy != nil {
+		t.Errorf("the check's client must honour no proxy: %#v", g.u.client.Transport)
+	}
+}
+
+// TestReleaseProvenanceForTestVerifiesRecordedBundles: the test-built check
+// is the same verifier against a served API and a fixed trusted root: the
+// release's own bundle verifies its digest, and refuses other bytes.
+func TestReleaseProvenanceForTestVerifiesRecordedBundles(t *testing.T) {
+	api := attestationAPI(t, map[string][]byte{"*": fixture(t, "abcd-v0.13.4-linux-amd64.attestations.json")})
+	check, err := ReleaseProvenanceForTest(api.URL+"/attestations/", fixture(t, "trusted_root.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signer, err := check(mustHex(t, linuxAmd64V0134)); err != nil || !strings.Contains(signer, "release.yml") {
+		t.Fatalf("the release's own provenance must verify: %q %v", signer, err)
+	}
+	other := sha256.Sum256([]byte("a binary the release workflow never built"))
+	if _, err := check(other[:]); err == nil {
+		t.Fatal("a real bundle must not vouch for bytes it does not name")
+	}
+}

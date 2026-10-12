@@ -50,7 +50,7 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 	idMustGit(t, repo, "init")
 
 	p := &choiceRecordingPrompter{asked: map[string][]string{}}
-	if _, err := Install(repo, InstallOptions{}, p); err != nil {
+	if _, err := Install(repo, InstallOptions{VerifyProvenance: acceptProvenance}, p); err != nil {
 		t.Fatal(err)
 	}
 

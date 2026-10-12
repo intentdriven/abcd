@@ -207,6 +207,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		attribution: opts.Attribution,
 		outbound:    opts.OutboundHook,
 		confirmTool: opts.ConfirmTool,
+		provenance:  opts.VerifyProvenance,
 		readmeFlag:  opts.ReadmeParts,
 	}
 
@@ -411,7 +412,8 @@ type applyCtx struct {
 	outbound    bool     // --outbound-hook: opt this repo into the committed commit-msg gate
 	binTarget   string   // the resolved PATH entry this run installs (never re-derived)
 	confirmTool tools.Confirm
-	readmeFlag  string // --readme-parts as given; "" when not given
+	readmeFlag  string          // --readme-parts as given; "" when not given
+	provenance  ProvenanceCheck // the build-provenance check a cache promotion must pass; nil refuses
 
 	visibilityForced bool     // an explicit --visibility override overwrote a valid value
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
@@ -1569,6 +1571,21 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			return // idempotent: the entry already is the verified artefact
 		}
 	}
+	// The attested hash came from checksums.txt on the same release page as
+	// the binary, so it proves the cache arrived intact, not who built it:
+	// whoever can change that page can change both (iss-2610120617515834).
+	// The build provenance release.yml signed is what a page edit cannot
+	// forge, so the bytes about to be written are checked against it, through
+	// the same in-process check abcd update runs, before anything at target
+	// is touched. Any failure refuses; there is no unverified promotion.
+	if perr := a.verifyProvenance(sum[:]); perr != nil {
+		a.refuse("refused to install the PATH entry: the cached artefact " + displayPath(artefact) +
+			" matches the checksum the plugin bootstrap verified, but its build provenance could not be verified, so nothing was installed: " +
+			errText(perr) + ". That checksum came from the same release page as the binary, so only the provenance the release workflow signed shows who built it. " +
+			"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check the release by hand with `" +
+			ghAttestationVerifyCommand(cacheAssetName()) + "` after downloading it. " + coldCacheRemedy)
+		return
+	}
 	if kind == binTargetOwnedSymlink || kind == binTargetDevShim {
 		if err := os.Remove(target); err != nil {
 			a.refuse("could not replace the existing PATH entry " + displayPath(target) + ": " + errText(err))
@@ -1584,6 +1601,16 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	}
 	a.recordEntry(target, want)
 	a.note(writeCommandEntry, target)
+}
+
+// verifyProvenance runs the front door's build-provenance check; a run
+// without one refuses.
+func (a *applyCtx) verifyProvenance(digest []byte) error {
+	if a.provenance == nil {
+		return errors.New("no build-provenance check is configured for this run")
+	}
+	_, err := a.provenance(digest)
+	return err
 }
 
 // recordEntry stamps ~/.abcd.noindex/path-entry for the entry abcd just installed at

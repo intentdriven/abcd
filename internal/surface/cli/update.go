@@ -24,6 +24,13 @@ import (
 // constructs it (the adr-38 seam extended to the update verb, spc-32 AC8).
 var newUpdater = func() updater { return update.NewGitHubUpdater() }
 
+// ahoyReleaseProvenance is the build-provenance check `ahoy install` hands
+// core for promoting the plugin's cached release binary to the PATH copy
+// (iss-2610120617515834): abcd update's own in-process check, so both verbs
+// hold a release binary to one primitive. A variable only so tests can stand
+// in for the network.
+var ahoyReleaseProvenance ahoy.ProvenanceCheck = update.VerifyReleaseProvenance
+
 // updater is what the verb asks of the release client: resolve a tag, then
 // apply it. An interface so a test drives the swap path with no network, the
 // way version.go's newReleaseFetcher hands back a vintage.ReleaseFetcher.

@@ -102,7 +102,12 @@ copy is made only from a cache that `~/.abcd.noindex/cache-attestation` vouches 
 the directory it names, holding the hash it names, at a release no older than
 the newest-release mark — so a data directory pointed at by an environment
 variable alone is never promoted onto `PATH`, and neither is an older release's
-copy restored into the attested directory. Neither
+copy restored into the attested directory. Before it writes the copy, the
+install verb also verifies the cached binary's signed build provenance, the
+same check `abcd update` makes, so it reaches GitHub's attestations API and the
+Sigstore TUF repository; when that check fails or cannot run, offline
+included, it writes no entry and says what failed. An entry that already holds
+those bytes is left as it is without asking. Neither
 record counts when `~/.abcd.noindex` is a symlink — a dotfiles checkout, say — and
 nothing abcd writes goes through one: the hooks, the install verb and the
 one-liner each refuse it and say so, as the rules loader refuses a

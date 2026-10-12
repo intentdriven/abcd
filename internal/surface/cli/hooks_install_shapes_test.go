@@ -159,6 +159,7 @@ func runAhoyInstall(t *testing.T, dev bool, dataDir string) (home, binDir string
 			"oracle_backend": "host-delegated",
 			"scan_deep":      "false",
 		},
+		VerifyProvenance: ahoyReleaseProvenance,
 	}, ahoy.RefusingPrompter{})
 	if err != nil {
 		t.Fatal(err)

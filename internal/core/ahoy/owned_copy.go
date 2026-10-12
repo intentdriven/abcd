@@ -35,7 +35,18 @@ const maxPathEntryBytes = 4 << 10
 // cacheAssetPath is the verified release artefact for this platform inside the
 // persistent data dir — the same name and layout hooks/bootstrap.sh writes.
 func cacheAssetPath(dataDir string) string {
-	return filepath.Join(dataDir, "cache", "abcd-"+runtime.GOOS+"-"+runtime.GOARCH)
+	return filepath.Join(dataDir, "cache", cacheAssetName())
+}
+
+// cacheAssetName is this platform's release asset name.
+func cacheAssetName() string { return "abcd-" + runtime.GOOS + "-" + runtime.GOARCH }
+
+// ghAttestationVerifyCommand is the hand check of a downloaded release asset's
+// build provenance, the same policy abcd update and ahoy install verify in
+// process: signed by this repository's release workflow. hooks/bootstrap.sh
+// and the install one-liner run exactly this when gh is present.
+func ghAttestationVerifyCommand(file string) string {
+	return "gh attestation verify " + file + " --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"
 }
 
 // cacheMetaPath is the cache's provenance record (release_tag / release_sha /
