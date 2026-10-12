@@ -284,13 +284,14 @@ func accountSourcesAt(t *testing.T, nsswitch *string, uid, gid uint32) accountSo
 
 // The account files are the machine's whole account list only when the name
 // service switch reads them alone. A host whose nsswitch.conf names a
-// directory service (sss, ldap, winbind, nis), systemd's account sources, or
-// a merge of another source into a file's group, takes accounts and group
-// members from where the files do not show, with no `+` line in either file
-// to say so; its group members are unread, so a group-writable home there is
-// refused, naming the chmod that repairs it. A host whose switch names the
-// files alone, or that has no nsswitch.conf (glibc's default, compat, which
-// the `+` check covers), still reads a private group as the owner's alone.
+// directory service (sss, ldap, winbind, nis), merged into a file's group or
+// not, takes accounts and group members from where the files do not show,
+// with no `+` line in either file to say so; its group members are unread, so
+// a group-writable home there is refused, naming the chmod that repairs it. A
+// host whose switch names the files alone, or systemd beside them (a local
+// source: switchReadsLocalSources says why), or that has no nsswitch.conf
+// (glibc's default, compat, which the `+` check covers), still reads a private
+// group as the owner's alone.
 func TestGroupMembersAreUnreadWhenTheNameServiceSwitchNamesAnotherSource(t *testing.T) {
 	const uid, gid = 1001, 1001
 	for _, c := range []struct {
@@ -301,9 +302,10 @@ func TestGroupMembersAreUnreadWhenTheNameServiceSwitchNamesAnotherSource(t *test
 		{"the group line alone names ldap", "passwd: files\ngroup:  files ldap\n", false},
 		{"the passwd line alone names winbind", "passwd: compat winbind\ngroup: compat\n", false},
 		{"nis", "passwd: files nis\ngroup: files nis\n", false},
-		{"systemd", "passwd: files systemd\ngroup: files systemd\n", false},
-		{"a merge into the files' groups", "passwd: files\ngroup: files [SUCCESS=merge] files\n", false},
-		{"a merge spelt with spaces", "passwd: files\ngroup: files [ success = merge ]\n", false},
+		{"a merge of sss into the files' groups", "passwd: files\ngroup: files [SUCCESS=merge] sss\n", false},
+		{"a merge spelt with spaces, of ldap", "passwd: files\ngroup: files [ success = merge ] ldap\n", false},
+		{"systemd", "passwd: files systemd\ngroup: files systemd\n", true},
+		{"systemd merged into the files' groups", "passwd: files systemd\ngroup: files [SUCCESS=merge] systemd\n", true},
 		{"initgroups names sss", "passwd: files\ngroup: files\ninitgroups: files sss\n", false},
 		{"an unterminated action", "passwd: files\ngroup: files [NOTFOUND=return\n", false},
 		{"files alone", "# comment\npasswd: files # local only\ngroup: files\nhosts: files dns\n", true},

@@ -238,8 +238,8 @@ var systemAccountSources = accountSources{
 
 // groupMembersFrom is gid's members from src's account files
 // (membersFromAccountFiles), read only when the name service switch takes
-// accounts and groups from those files alone (switchReadsFilesAlone). A
-// switch that names another source (sss, ldap, winbind, nis, systemd) takes
+// accounts and groups from local sources alone (switchReadsLocalSources). A
+// switch that names a directory service (sss, ldap, winbind, nis) takes
 // accounts and group members from where the files do not show, with no `+`
 // line in either file to say so, so then the members are unread and a
 // group-writable directory is refused. No switch configuration at all is
@@ -252,7 +252,7 @@ func groupMembersFrom(src accountSources, gid uint32) ([]uint32, bool) {
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		if err != nil || !switchReadsFilesAlone(conf) {
+		if err != nil || !switchReadsLocalSources(conf) {
 			return nil, false
 		}
 		break
@@ -268,20 +268,24 @@ func groupMembersFrom(src accountSources, gid uint32) ([]uint32, bool) {
 	return membersFromAccountFiles(passwd, group, gid)
 }
 
-// switchReadsFilesAlone reports whether an nsswitch.conf takes the databases
+// switchReadsLocalSources reports whether an nsswitch.conf takes the databases
 // that decide who is in a group (passwd, group, and initgroups, which sets a
-// login's supplementary groups) from the account files alone: every source
-// their lines name is `files` or `compat`, and no action merges one source's
-// group into another's (`[SUCCESS=merge]`, in any case or spacing). A database
-// the file does not name takes glibc's default, which is the files. Anything
-// else, an action bracket left open included, is not files alone.
+// login's supplementary groups) from local sources alone: every source their
+// lines name is `files`, `compat` or `systemd`. A database the file does not
+// name takes glibc's default, which is the files. An action (`[NOTFOUND=return]`,
+// `[SUCCESS=merge]`) only orders or merges the sources its line names, so it
+// adds none; one whose bracket is left open is not read as local.
 //
-// systemd counts as another source: nss-systemd adds the accounts of
-// systemd-homed and of userdb records, and a login's supplementary groups
-// from their memberships, none of which /etc/passwd or /etc/group shows. So a
-// host whose switch names it (the default on several distributions) refuses a
-// group-writable home, whose repair the refusal names (`chmod g-w`).
-func switchReadsFilesAlone(conf []byte) bool {
+// systemd counts as local. The accounts it adds (systemd-homed, userdb
+// records, dynamic users) are this machine's, and one it puts in the owner's
+// private group already writes, without abcd, every file the owner's umask
+// leaves group-writable (shell startup files, ~/.gitconfig), so admitting a
+// group-writable home under it gives that account no reach it lacked. A
+// directory service (sss, ldap, winbind, nis) is another matter: its members
+// cannot be known from this machine at all, so it, and any source not named
+// here, makes the members unread and a group-writable home is refused, naming
+// the repair (`chmod g-w`).
+func switchReadsLocalSources(conf []byte) bool {
 	for _, line := range strings.Split(string(conf), "\n") {
 		line, _, _ = strings.Cut(line, "#")
 		db, services, ok := strings.Cut(line, ":")
@@ -297,23 +301,16 @@ func switchReadsFilesAlone(conf []byte) bool {
 		for {
 			before, after, bracket := strings.Cut(rest, "[")
 			for _, svc := range strings.Fields(before) {
-				if svc != "files" && svc != "compat" {
+				if svc != "files" && svc != "compat" && svc != "systemd" {
 					return false
 				}
 			}
 			if !bracket {
 				break
 			}
-			action, tail, closed := strings.Cut(after, "]")
+			_, tail, closed := strings.Cut(after, "]")
 			if !closed {
 				return false
-			}
-			action = strings.ReplaceAll(strings.ToLower(action), "=", " = ")
-			f := strings.Fields(action)
-			for i := 0; i+1 < len(f); i++ {
-				if f[i] == "=" && f[i+1] == "merge" {
-					return false
-				}
 			}
 			rest = tail
 		}
