@@ -3765,6 +3765,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// superseded plugin root answers here just as confidently
 				// (iss-2609020113012227).
 				SupersededRoot: supersededRootNote()}
+			if res.Readme != nil {
+				for _, a := range res.Readme.Asks {
+					out.ReadmeTool = append(out.ReadmeTool, hostCall(a))
+				}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -4008,7 +4013,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
 					if slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID) {
-						fmt.Fprint(w, "    the README question was not asked: answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
+						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
 				}
 			}); rerr != nil {
@@ -4550,20 +4555,51 @@ func (p *stdinPrompter) Confirm(question string) bool {
 // has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
 	if h, ok := ahoy.HelpIn(p.cwd, key); ok {
-		if h.Flag != "" && p.yesApproved && !p.yesTold {
-			p.yesTold = true
-			fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
-		}
-		fmt.Fprintf(p.w, "\n%s\n", h.About)
-		for _, c := range h.Choices {
-			fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
-		}
-		if hint := h.FlagHint(); hint != "" {
-			fmt.Fprintf(p.w, "  (%s)\n", hint)
-		} else if h.ChangeLater != "" {
-			fmt.Fprintf(p.w, "  (%s %s)\n", question.Default.ChangeLaterPrefix, h.ChangeLater)
-		}
+		p.help(h)
 	}
+	return p.ask(key, choices, def)
+}
+
+// PromptHelped asks the value question h with the help a run built for it,
+// which makes the prompter an ahoy.HelpedPrompter: the help Prompt prints,
+// then its current setting and the lines an answer would write here, or why
+// it writes none (spc-2610031704338417). The question line is Prompt's, so a
+// transcript lines up as before. The example is read from the repository, so
+// every line is sanitised.
+func (p *stdinPrompter) PromptHelped(h ahoy.PromptHelp, choices []string, def string) string {
+	p.help(h)
+	if h.Now != "" {
+		fmt.Fprintf(p.w, "  %s %s\n", question.Default.NowPrefix, termsafe.Sanitize(h.Now))
+	}
+	if intro := h.ExampleIntro(); intro != "" {
+		fmt.Fprintf(p.w, "  %s\n", termsafe.Sanitize(intro))
+	}
+	for _, ln := range h.Example {
+		fmt.Fprintf(p.w, "    %s\n", termsafe.Sanitize(ln))
+	}
+	return p.ask(h.Key, choices, def)
+}
+
+// help prints core's explanation of a value question above it.
+func (p *stdinPrompter) help(h ahoy.PromptHelp) {
+	if h.Flag != "" && p.yesApproved && !p.yesTold {
+		p.yesTold = true
+		fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
+	}
+	fmt.Fprintf(p.w, "\n%s\n", h.About)
+	for _, c := range h.Choices {
+		fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
+	}
+	if hint := h.FlagHint(); hint != "" {
+		fmt.Fprintf(p.w, "  (%s)\n", hint)
+	} else if h.ChangeLater != "" {
+		fmt.Fprintf(p.w, "  (%s %s)\n", question.Default.ChangeLaterPrefix, h.ChangeLater)
+	}
+}
+
+// ask writes the question line and reads its answer: the default for an
+// empty line or end of input.
+func (p *stdinPrompter) ask(key string, choices []string, def string) string {
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)
 	line, _ := p.r.ReadString('\n')
 	line = strings.TrimSpace(line)

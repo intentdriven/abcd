@@ -159,7 +159,27 @@ func Detect(cwd string) (DetectionResult, error) {
 }
 
 // DryRun runs Detect and returns the envelope (Adopted=nil). Zero writes.
-func DryRun(cwd string) (DetectionResult, error) { return Detect(cwd) }
+//
+// While the README question is open it also carries the README view
+// (readmeView), which the plugin page relays the question pair from; Detect
+// alone, which the hooks and the status board call, derives no part.
+func DryRun(cwd string) (DetectionResult, error) {
+	det, err := Detect(cwd)
+	if err != nil || !hasGapID(det.Gaps, ReadmeOfferGapID) {
+		return det, err
+	}
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return DetectionResult{}, err
+	}
+	if v, ok := readmeView(abs); ok {
+		det.Readme = &v
+	}
+	return det, nil
+}
+
+// hasGapID reports whether gaps holds the gap id.
+func hasGapID(gaps []Gap, id string) bool { return gapIDSet(gaps)[id] }
 
 // classify keys on the signal hierarchy (brief step 0 / itd-40).
 func classify(cwd string, id RepoIdentity, idx *historyIndex) (FolderKind, map[string]any) {

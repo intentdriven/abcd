@@ -115,6 +115,10 @@ type DetectionResult struct {
 	// store is trackable" to a consumer that never asked about a repo.
 	Banlist *BanlistHealth `json:"banlist,omitempty"`
 	Gaps    []Gap          `json:"gaps"`
+	// Readme is the README question pair as the plugin page relays it, carried
+	// by DryRun while the question is open (readme.offered) and omitted
+	// otherwise (spc-2610031704338417).
+	Readme *ReadmeView `json:"readme,omitempty"`
 
 	// pluginRoot is the resolved plugin root; not serialized.
 	pluginRoot string

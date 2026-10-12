@@ -50,10 +50,13 @@ func (s readmeSettings) public() bool { return s.Visibility == "public" }
 // readmeDerived is one chosen part's derivation: a body that passed every
 // check, or the reason it is omitted (each reason leads with the part's name).
 // Notes carry what a check noted without refusing (a docs-lint warning).
+// Short, where the reason lists what it found, says it in a few words (how
+// many workflows, not their names), for a question with no rows to spare.
 type readmeDerived struct {
 	Name   string
 	Body   string
 	Reason string
+	Short  string
 	Notes  []string
 }
 
@@ -88,11 +91,11 @@ func deriveReadmeParts(root string, s readmeSettings) []readmeDerived {
 		if !chosen[name] {
 			continue
 		}
-		src.notes = nil
+		src.notes, src.short = nil, ""
 		body, addrs, reason := src.derive(name)
 		d := readmeDerived{Name: name}
 		if reason != "" {
-			d.Reason = name + " omitted: " + reason
+			d.Reason, d.Short = name+" omitted: "+reason, src.short
 		} else {
 			var checked []string
 			d.Body, d.Reason, checked = checks.run(name, body, addrs)
@@ -118,6 +121,9 @@ type readmeSource struct {
 	// notes is what deriving the current part noted without omitting it (a
 	// contents entry listed without a link); deriveReadmeParts takes them.
 	notes []string
+	// short is the current part's reason in a few words, where its reason
+	// lists what it found; deriveReadmeParts takes it.
+	short string
 }
 
 func (r *readmeSource) derive(name string) (body string, addrs []readmeAddr, reason string) {
@@ -311,6 +317,7 @@ func (r *readmeSource) workflow() (string, string) {
 	if len(list) > shown {
 		list, more = list[:shown], fmt.Sprintf(" and %d more", len(found)-shown)
 	}
+	r.short = fmt.Sprintf("%d workflows in .github/workflows/ and none is ci.yml or ci.yaml", len(found))
 	return "", fmt.Sprintf("several workflows in .github/workflows/ and none is ci.yml or ci.yaml: %s%s", strings.Join(list, ", "), more)
 }
 
@@ -577,11 +584,18 @@ func (r *readmeSource) contents() (string, string) {
 	// the forge makes the anchor from; text is what the list shows. A heading
 	// whose anchor abcd cannot be sure of is listed without a link, and a
 	// note says which and why.
-	heading := func(i, level int, slugText, text string) {
-		slug, why := seen.anchor(slugText)
+	//
+	// Both are masked (mdrecord.MaskCodeSpans), read once from the heading as
+	// written and carried through with their unmask: a second reading of the
+	// unmasked text would pair two spans a stripped tag had sat between
+	// (iss-2610112237411831).
+	heading := func(i, level int, slugText, text string, unmask func(string, bool) string) {
+		slug, why := seen.anchor(slugText, unmask)
 		if inPart[i] || text == "" || (level != 2 && level != 3) {
 			return
 		}
+		// A code span over a setext heading's lines is listed on one line.
+		listed := strings.ReplaceAll(escapeLinkText(text, unmask), "\n", " ")
 		indent := ""
 		if level == 3 {
 			indent = "  "
@@ -589,11 +603,11 @@ func (r *readmeSource) contents() (string, string) {
 			hasH2 = true
 		}
 		if why != "" {
-			out = append(out, indent+"- "+escapeLinkText(text))
+			out = append(out, indent+"- "+listed)
 			r.notes = append(r.notes, fmt.Sprintf("contents part: the heading at line %d is listed without a link: %s", i+1, why))
 			return
 		}
-		out = append(out, indent+"- ["+escapeLinkText(text)+"](#"+slug+")")
+		out = append(out, indent+"- ["+listed+"](#"+slug+")")
 	}
 	// A setext heading is the paragraph its underline ends, so the open
 	// paragraph's lines are kept, with the line it began on; inBlock is a
@@ -629,8 +643,8 @@ func (r *readmeSource) contents() (string, string) {
 			para, inBlock = nil, false
 			// The space a stripped tag leaves before the text is in the
 			// anchor, as it is in the forge's.
-			text := headingText(m[2])
-			heading(i, len(m[1]), text, strings.TrimSpace(text))
+			text, unmask := headingText(m[2])
+			heading(i, len(m[1]), text, strings.TrimSpace(text), unmask)
 			continue
 		}
 		if para != nil {
@@ -641,8 +655,8 @@ func (r *readmeSource) contents() (string, string) {
 				}
 				// The forge's page keeps the line break between a heading's
 				// lines, which its anchor drops; the list shows a space.
-				joined := headingText(strings.Join(para, "\n"))
-				heading(paraAt, level, joined, strings.TrimSpace(strings.ReplaceAll(joined, "\n", " ")))
+				joined, unmask := headingText(strings.Join(para, "\n"))
+				heading(paraAt, level, joined, strings.TrimSpace(strings.ReplaceAll(joined, "\n", " ")), unmask)
 				para = nil
 				continue
 			}
@@ -820,9 +834,10 @@ const (
 // abcd cannot be sure of the anchor, the reason it is not given.
 //
 // A code span is read as the text it renders: a reference or a shortcode in
-// one is text, and the slug is made from the span's content.
-func (s *readmeSlugger) anchor(text string) (string, string) {
-	masked, unmask := mdrecord.MaskCodeSpans(text)
+// one is text, and the slug is made from the span's content. masked is the
+// heading's text with its code spans masked, as headingText returns it, and
+// unmask the function that restores them.
+func (s *readmeSlugger) anchor(masked string, unmask func(string, bool) string) (string, string) {
 	masked = decodeCharRefs(masked)
 	why := ""
 	if emojiShortcodeRe.MatchString(masked) {
@@ -882,15 +897,28 @@ var inlineTagRe = regexp.MustCompile(`<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Z
 // (iss-2610111850405447). The spaces around a dropped tag are kept. A code
 // span shows its text as written, so neither reaches into one; the span is
 // kept with its backticks, which the list shows as code.
-func headingText(src string) string {
+//
+// The text comes back masked, with the function that restores its spans: the
+// spans are read once, from the heading as written (iss-2610112237411831).
+func headingText(src string) (string, func(string, bool) string) {
 	masked, unmask := mdrecord.MaskCodeSpans(src)
-	return unmask(inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), false)
+	return inlineTagRe.ReplaceAllString(inlineLinkRe.ReplaceAllString(masked, "$1"), ""), unmask
 }
 
-// escapeLinkText keeps a heading's text from closing the link it sits in. A
-// bracket in a code span closes nothing and a backslash there is literal, so
-// a span is left as written.
-func escapeLinkText(s string) string {
-	masked, unmask := mdrecord.MaskCodeSpans(s)
-	return unmask(strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(masked), false)
+// spanJoinRe is a masked code span with a backtick or another span directly
+// after it, or a backtick directly before it: written out side by side, the
+// backtick runs would merge and a reader would pair them differently.
+var spanJoinRe = regexp.MustCompile("(\x00[0-9]+\x00)(\x00|`)|(`)(\x00[0-9]+\x00)")
+
+// escapeLinkText keeps a heading's text from closing the link it sits in, and
+// restores its code spans as written. A bracket in a code span closes nothing
+// and a backslash there is literal, so a span is left as written. Where a
+// stripped tag or link left a span touching another span or a backtick, a
+// space keeps them apart, as the list shows a setext heading's line break.
+func escapeLinkText(masked string, unmask func(string, bool) string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(masked)
+	for spanJoinRe.MatchString(escaped) {
+		escaped = spanJoinRe.ReplaceAllString(escaped, "$1$3 $2$4")
+	}
+	return unmask(escaped, false)
 }

@@ -365,3 +365,47 @@ func TestDecodeKeys(t *testing.T) {
 		t.Errorf("a split rune: %v rest %q, want the lead byte kept", keys, rest)
 	}
 }
+
+// TestPickerStartsOnTheQuestionsDefault: a question's Default is the entry its
+// cursor starts on, Later included, so Enter alone takes it; the options keep
+// their order. A question with no Default, or one naming no entry, starts on
+// the first option.
+func TestPickerStartsOnTheQuestionsDefault(t *testing.T) {
+	part := func(def string) question.Question {
+		return question.Question{
+			ID: "readme.abcd-badge", Chip: "Setup Q2", Ask: "Which answer does this repository take?",
+			Options: []question.Option{{Value: "on", Label: "on"}, {Value: "off", Label: "off"}},
+			Later:   question.Option{Value: "later", Label: "Decide later"},
+			Default: def,
+		}
+	}
+	cases := []struct {
+		def, want string
+		later     bool
+	}{
+		{"off", "off", false},
+		{"later", "later", true},
+		{"", "on", false},
+		{"maybe", "on", false},
+	}
+	for _, c := range cases {
+		p := NewPicker(question.Ask{Questions: []question.Question{part(c.def)}})
+		if out := press(p, KeyEnter); out != Done {
+			t.Fatalf("Default %q: Enter left the list %v", c.def, out)
+		}
+		got := p.Answers()
+		if len(got) != 1 || got[0].Value != c.want || got[0].Later != c.later {
+			t.Errorf("Default %q: Enter answered %+v, want %q", c.def, got, c.want)
+		}
+	}
+	// Two tabs, each starting on its own default.
+	p := NewPicker(question.Ask{Questions: []question.Question{part("off"), func() question.Question {
+		q := part("")
+		q.ID = "readme.licence"
+		return q
+	}()}})
+	press(p, KeyEnter, KeyEnter)
+	if got := p.Answers(); len(got) != 2 || got[0].Value != "off" || got[1].Value != "on" {
+		t.Errorf("two tabs answered %+v, want off then on", got)
+	}
+}

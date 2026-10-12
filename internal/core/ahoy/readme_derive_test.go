@@ -436,6 +436,35 @@ func TestContentsStripsInlineHTMLFromHeadings(t *testing.T) {
 	}, "\n"))
 }
 
+// TestContentsMasksCodeSpansOnce: a heading's code spans are read once, from
+// the heading as written (iss-2610112237411831). Where a stripped tag or link
+// sat between two spans, the anchor is made from both spans' rendered text and
+// the list keeps them two spans, a space apart, as a setext heading's line
+// break is listed as a space; a second reading would pair the spans across
+// the join into one.
+func TestContentsMasksCodeSpansOnce(t *testing.T) {
+	readme := strings.Join([]string{
+		"# P",
+		"",
+		"## `a`<br>` b `",
+		"",
+		"## `GET`<br>`POST`",
+		"",
+		"## `x`[](y)`z`",
+		"",
+		"## ``<br>`a`",
+		"",
+	}, "\n")
+	root := readmeRepo(t, "", map[string]string{"README.md": readme})
+	d := derivedPart(t, deriveReadmeParts(root, readmeSettings{Parts: []string{"contents"}}), "contents")
+	wantBody(t, d, strings.Join([]string{
+		"- [`a` ` b `](#ab)",
+		"- [`GET` `POST`](#getpost)",
+		"- [`x` `z`](#xz)",
+		"- [`` `a`](#a)",
+	}, "\n"))
+}
+
 // TestContentsSkipsHeadingsInsideHTMLBlocks: a line inside an HTML block is
 // HTML to the forge, so a heading written there renders as text and has no
 // anchor (iss-2610111851312171). A block such as a div ends at the first

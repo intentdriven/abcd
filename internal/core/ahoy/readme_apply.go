@@ -7,8 +7,9 @@ package ahoy
 // The owner's answer is `readme.parts` in .abcd/config.json:
 //
 //   - absent: not yet answered. Detection raises the optional readme.offered
-//     gap, which every run reports under optional_skipped with the flag that
-//     answers it; the question pair itself is asked by step 4, at a terminal;
+//     gap. A person at a terminal, in a run that is not --yes, is asked the
+//     question pair (readme_ask.go); every other run reports the gap under
+//     optional_skipped with the flag that answers it;
 //   - `[]`: answered no. Never asked again, and abcd's parts already in
 //     README.md are removed as a narrowed set removes them;
 //   - a list: the chosen parts, which every setup run derives from the project
@@ -262,9 +263,11 @@ func readmeLeftNote(cwd string, err error) string {
 	return "README.md was left as it is: " + errText(withoutFolder(filepath.Join(cwd, readmeFileName), err))
 }
 
-// stepReadme stores a --readme-parts answer, then writes the chosen parts
-// into README.md. It runs after stepMarker and before stepSymlink, the place
-// the README pair takes in setup's fixed order (decision 7). It asks nothing.
+// stepReadme asks the question pair while it is unanswered, of a person at a
+// terminal (askReadme), stores that answer or a --readme-parts one, then
+// writes the chosen parts into README.md. It runs after stepMarker and before
+// stepSymlink, the place the README pair takes in setup's fixed order
+// (decision 7).
 func (a *applyCtx) stepReadme() {
 	ans, err := loadReadmeAnswer(a.cwd, a.readmeFlag)
 	if err != nil {
@@ -278,6 +281,14 @@ func (a *applyCtx) stepReadme() {
 		return
 	}
 	a.forgetGoneReadme()
+	if a.asksReadme(ans) {
+		parts, answered := a.askReadme(ans.vis)
+		if !answered {
+			return // decided later: nothing stored, so the next run asks again
+		}
+		// The answer is stored as the flag's would be, and echoed the same way.
+		ans.flag, ans.flagSet = parts, true
+	}
 	if ans.flagChanges() && !a.storeReadmeParts(ans) {
 		return
 	}
@@ -291,8 +302,9 @@ func (a *applyCtx) stepReadme() {
 	a.syncReadme(parts, ans.vis)
 }
 
-// storeReadmeParts saves the flag's answer under the config's lock, echoing
-// the change. Nothing is written into README.md for an answer not saved.
+// storeReadmeParts saves the answer, the flag's or the one the pair was
+// given, under the config's lock, echoing the change. Nothing is written into
+// README.md for an answer not saved.
 func (a *applyCtx) storeReadmeParts(ans readmeAnswer) bool {
 	err := withConfigLock(a.cwd, func() error {
 		cfg, err := readConfig(a.cwd)
@@ -306,7 +318,7 @@ func (a *applyCtx) storeReadmeParts(ans readmeAnswer) bool {
 		return writeConfig(a.cwd, cfg)
 	})
 	if err != nil {
-		a.refuse("the README answer (--readme-parts) was not saved, so README.md was left as it is: " + errText(err))
+		a.refuse("the README answer was not saved, so README.md was left as it is: " + errText(err))
 		return false
 	}
 	a.echoChange("readme.parts", readmePartsText(ans.stored, ans.storedSet && ans.storedBad == ""), readmePartsText(ans.flag, true))
