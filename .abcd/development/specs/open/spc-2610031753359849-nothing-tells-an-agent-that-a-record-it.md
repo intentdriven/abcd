@@ -229,7 +229,10 @@ resolves under `refs/remotes/origin/`. A fetch is a git command that reaches the
 remote; it is lifted from the land stage's `netGit` into one runner,
 `gitutil.Net`, which both the loop and the claim package call: hooks run, the
 developer's own configuration less any injected `GIT_DIR` or `GIT_CONFIG_*`,
-`GIT_TERMINAL_PROMPT=0` so a credential prompt can never hang a session, a
+`GIT_TERMINAL_PROMPT=0` so git's own credential prompt cannot hang a
+session, ssh in batch mode where abcd composes the ssh command (ssh reads the
+terminal itself, so a first host-key question would otherwise wait; a
+developer's own `GIT_SSH_COMMAND` or `core.sshCommand` is left as it is), a
 timeout, and capped output.
 
 After every successful fetch the verb writes the time to

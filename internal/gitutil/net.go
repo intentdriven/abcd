@@ -21,7 +21,10 @@ const (
 	// The bounds a stalled connection meets.
 	netLowSpeedLimit = "1000"
 	netLowSpeedTime  = "60"
-	netSSHOptions    = "-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+	// BatchMode keeps ssh from asking anything on the terminal (a first
+	// host-key question, a passphrase): GIT_TERMINAL_PROMPT reaches git's
+	// own prompts, and ssh reads the terminal itself.
+	netSSHOptions = "-o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
 )
 
 // Net runs one git command that reaches the remote, from the checkout at dir:
@@ -30,13 +33,17 @@ const (
 //
 // The repository's hooks run (the pre-push gate is the point), under the
 // developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*
-// (ScrubbedEnv), with GIT_TERMINAL_PROMPT=0 so a credential prompt can never
-// hang a session. A connection that stalls is cut off in about a minute rather
-// than at NetTimeout, so a lost network is met as a failure a caller can read
-// (iss-2610080620372731): an HTTP transfer slower than netLowSpeedLimit bytes
-// a second for netLowSpeedTime is aborted, and ssh, unless the developer
-// configured their own ssh command, gives up a connect after 30 seconds and a
-// silent connection after four missed keepalives. Stdout is returned within
+// (ScrubbedEnv), with GIT_TERMINAL_PROMPT=0 so git's own credential prompt
+// cannot hang a session. ssh reads the terminal itself, so the ssh command Net
+// composes runs in batch mode: a host-key question or a passphrase prompt is a
+// failure, not a wait. A developer's own ssh command is left as it is, and
+// whether it can prompt is theirs. A connection that stalls is cut off in
+// about a minute rather than at NetTimeout, so a lost network is met as a
+// failure a caller can read (iss-2610080620372731): an HTTP transfer slower
+// than netLowSpeedLimit bytes a second for netLowSpeedTime is aborted, and
+// ssh, unless the developer configured their own ssh command, gives up a
+// connect after 30 seconds and a silent connection after four missed
+// keepalives. Stdout is returned within
 // netOutputCap, on a failure too (a porcelain push reports its rejections
 // there); a failure's error carries git's bounded stderr.
 func Net(dir string, args ...string) (string, error) {
@@ -70,7 +77,7 @@ func Net(dir string, args ...string) (string, error) {
 }
 
 // netSSHCommand is the ssh command Net runs git's ssh transport through: ssh
-// with the connect and keepalive bounds, or "" when the developer chose their
+// in batch mode with the connect and keepalive bounds, or "" when the developer chose their
 // own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as it is.
 func netSSHCommand(dir string) string {
 	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
