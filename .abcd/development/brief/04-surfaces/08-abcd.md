@@ -100,7 +100,18 @@ positional on the namespace root is not a `show` sub-verb, so the form stays
 inside the naming discipline. For an issue id it also names the checkout and
 branch whose ledger it read, as every ledger verb does: a stderr line in the
 plain render and a `ledger` member in the machine-readable one
-(iss-2609202053570475).
+(iss-2609202053570475). For an issue or an intent in a checkout with a remote
+named `origin`, it names the record's reservation on the shared remote
+(itd-2609091034175565), read from disk alone through the reader every render
+shares (`claim.View`), with no fetch and no push: a `reservation:` line in the
+plain render and a `reservation` member in the machine-readable one (`state`,
+`holder`, `copy`, `effective_expiry`, `released_by`, `unreadable`,
+`fetched_at`, `age_seconds`, `text`). The line says the holder, `this copy` or
+`another copy of yours` when the reservation is the reader's own, the
+effective expiry and the view's age (`as of the last fetch 12 minutes ago`).
+A view no abcd fetch dated, holding nothing for the record, reads `unknown`,
+saying nothing has been fetched here and that `abcd peers` fetches, never
+`none`; one a plain `git fetch` left is shown with its age unknown.
 
 A bundle's shared spec is read through every member it lists, as its close
 reads them (itd-34): its links carry `intents` beside `intent`, a superseded
@@ -299,7 +310,9 @@ block's `order` field names that order (`pick`).
 The text render is a `status:` heading with the three counts, then `Now:` and
 `Next:`, one line per intent: its id, its title, and in brackets its lane state
 or `next up`, then `target <value>` when the intent names the release it must
-land by (itd-2609212103572513 criterion 4); then `Later: N intents`, Later as a count alone (ruling BV1 of
+land by (itd-2609212103572513 criterion 4), then the reservation another copy
+holds on the record (`reserved by octo until <expiry>, as of the last fetch
+12 minutes ago`); then `Later: N intents`, Later as a count alone (ruling BV1 of
 2026-09-29), its rows left to the JSON and the site's Status page. The JSON
 carries a `status` object with `now`, `next` and `later` in full, each row
 `id`, `title`, `bucket`, and
@@ -308,7 +321,11 @@ intent that has one), `lane` (`run`, `lane`, `stage`, `awaiting`, and
 `branch` and `in_flight` once the lane's branch is cut: in flight while that
 branch exists and the intent's spec is open), `failing_checks` or
 `target_release` (a planned intent's target, `next` or `vX.Y.Z`) when they
-apply, and `order`. A Now row of a run started for an issue carries `kind`
+apply, `reserved` when another copy holds a live reservation on the record (or
+an unreadable one within its hold) as the checkout last fetched it, and
+`order`. The board adds `reserved` from disk alone after the block is read;
+the site's Status page never carries it, and it does not move the head (the
+build's peers check decides that). A Now row of a run started for an issue carries `kind`
 `issue`, the issue's ledger folder as `bucket`, and the issue's one-line
 summary prefixed `issue: ` as `title`, read from the issue ledger; a lane
 whose pull request has merged (at its land stage, its branch's tip on the

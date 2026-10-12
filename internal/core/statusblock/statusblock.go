@@ -111,6 +111,11 @@ type Row struct {
 	// Failing names the gating readiness checks a Later planned row fails, in
 	// the gate's own order.
 	Failing []string `json:"failing_checks,omitempty"`
+	// Reserved names the reservation another copy holds on the record, as the
+	// checkout last fetched it, with the view's age (itd-2609091034175565).
+	// Read never sets it: the bare board adds it from disk alone, and the
+	// site's Status page, which shows no other checkout's holdings, never does.
+	Reserved string `json:"reserved,omitempty"`
 }
 
 // Lane is one lane's state as the build's state file records it.

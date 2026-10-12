@@ -17,8 +17,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -64,7 +66,14 @@ type Description struct {
 	Path      string            `json:"path"`
 	Links     map[string]string `json:"links,omitempty"`
 	NextMoves []string          `json:"next_moves,omitempty"`
+	// Reservation is an issue's or an intent's reservation on the shared
+	// remote as this checkout last fetched it, read from disk alone; nil for
+	// every other family and in a checkout with no remote named origin.
+	Reservation *claim.Line `json:"reservation,omitempty"`
 }
+
+// clock is the time a reservation is judged at; tests fix it.
+var clock = time.Now
 
 // The verb paths a next move may recommend — one closed list, so the
 // anti-drift test can assert every recommended verb resolves to a registered
@@ -122,9 +131,9 @@ func Describe(repoRoot, id string) (Description, error) {
 	}
 	switch m[1] {
 	case "iss":
-		return describeIssue(repoRoot, id)
+		return withReservation(repoRoot, id)(describeIssue(repoRoot, id))
 	case "itd":
-		return describeIntent(repoRoot, id)
+		return withReservation(repoRoot, id)(describeIntent(repoRoot, id))
 	case "spc":
 		return describeSpec(repoRoot, id)
 	case "adm":
@@ -135,6 +144,20 @@ func Describe(repoRoot, id string) (Description, error) {
 		return describeReframe(repoRoot, id)
 	default:
 		return describeADR(repoRoot, id)
+	}
+}
+
+// withReservation attaches id's reservation line to a description that was
+// found: the view as last fetched, no fetch and no push (itd-2609091034175565).
+func withReservation(repoRoot, id string) func(Description, error) (Description, error) {
+	return func(d Description, err error) (Description, error) {
+		if err != nil {
+			return d, err
+		}
+		if l, ok := claim.LineFor(repoRoot, id, clock(), claim.Options{}); ok {
+			d.Reservation = &l
+		}
+		return d, nil
 	}
 }
 

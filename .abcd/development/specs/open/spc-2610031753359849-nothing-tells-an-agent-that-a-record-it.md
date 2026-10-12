@@ -725,6 +725,27 @@ These are the facilitator's design calls; none changes a criterion.
     reservation of `commands/reserve.md` names `commands/reserve.md`.
   - An unreadable reservation is counted by neither: it has no holder and no
     footprint that can be read. It still holds its own record.
+- **What step 11 settled** (the record and board renders, 2026-10-12):
+  - The board's reservation text is shown and never judged: a row's
+    `reserved` member is added from disk after the block is read, and it does
+    not move the head. The head follows the build's peers check
+    (`loop.StatusPeers`), which gains the reservation in step 12, so the head
+    and `build next`'s pick stay one between the two steps (ruling CC1). The
+    board therefore reads `claim.View` in `board_status.go`, and step 11
+    changes nothing in `internal/core/implement/loop`.
+  - The board marks every row, Now, Next and Later, a run's issue row
+    included, with the reservation another copy holds on its record: a live
+    one, or an unreadable one within its hold. This copy's own is never
+    marked. The board does not resolve the reader's username, so the
+    reader's other copy is marked as any holder is, by name.
+  - `abcd <record-id>` carries the line for an issue or an intent only, and
+    only in a checkout with a remote named `origin`: with no such remote
+    there are no reservations to show, and no line rather than `unknown`.
+    Its `copy` is `this copy`, or `another copy` when the holder is the
+    username the reader resolves to by the reservation verb's own rule; a
+    view that cannot be read renders `unknown` with the reason.
+  - The view's age is worded in whole units: under a minute, minutes below
+    two hours, hours below two days, then days.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

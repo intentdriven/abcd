@@ -329,6 +329,11 @@ func NewRootCommand() *cobra.Command {
 					for _, m := range d.NextMoves {
 						fmt.Fprintf(w, "  next: %s\n", termsafe.Sanitize(m))
 					}
+					// The reservation as last fetched, from disk alone; its
+					// holder is a username a writer chose, so it is masked.
+					if d.Reservation != nil {
+						fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(d.Reservation.Text))
+					}
 				})
 			}
 			// The banner: interactive-TTY bare invocation only, per adr-49 —
