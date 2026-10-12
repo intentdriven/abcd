@@ -64,17 +64,28 @@ func ReadRecallPages(repoRoot string) ([]RecallPage, []RecallRefusal) {
 }
 
 // ReadMachineRecallPages reads the machine scope, ~/.abcd.noindex/memory/
-// under home, read only: the directory is opened through
-// fsutil.OpenHomeScope, so a symlinked ~/.abcd.noindex or memory/ is refused,
-// and each page through the declaration's guarded read relative to that
-// descriptor, as the machine memory.json is read: a regular file this account
-// owns that no one else can write. An absent scope, no absolute home, or a
-// home or ~/.abcd.noindex this account cannot search yields nothing.
+// under home, read only, with the guards the machine memory.json is read
+// with: the directory is opened through fsutil.OpenHomeDeclarationScope, so a
+// symlinked ~/.abcd.noindex or memory/ is refused, and so is one another
+// account can change; each page is read through the declaration's guarded
+// read relative to that descriptor, a regular file this account owns that no
+// one else can write. An absent scope, no absolute home, or a home or
+// ~/.abcd.noindex this account cannot search yields nothing, whatever the
+// directories above it are.
 func ReadMachineRecallPages(home string) ([]RecallPage, []RecallRefusal) {
 	if home == "" || !filepath.IsAbs(home) {
 		return nil, nil
 	}
-	root, err := fsutil.OpenHomeScope(home, abcdhome.Rel("memory"))
+	// Absence is decided before any directory is judged, as
+	// ReadHomeDeclaration decides it, so an exposed ~/.abcd.noindex that
+	// holds no page scope costs nothing and says nothing.
+	if _, err := os.Lstat(abcdhome.Path(home, "memory")); err != nil {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission) {
+			return nil, nil
+		}
+		return nil, []RecallRefusal{{File: machineStoreDisplay, Err: recallReadError(err)}}
+	}
+	root, err := fsutil.OpenHomeDeclarationScope(home, abcdhome.Rel("memory"))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission) {
 			return nil, nil

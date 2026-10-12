@@ -220,6 +220,18 @@ func OpenHomeScope(home, dir string) (*os.Root, error) {
 	return openHomeScope(home, dir, false, 0, nil)
 }
 
+// OpenHomeDeclarationScope is OpenHomeScope for a reader that takes every
+// file below dir as the caller's word, as ReadHomeDeclaration takes one:
+// each directory level below home is also judged on its own descriptor, and
+// one every account can write, or one owned by an account that is neither
+// this uid nor root, is refused with a *HomeScopeExposedError naming it
+// (ErrHomeScopeExposed), because whoever can change the directory can put a
+// file of the caller's own shape in it. The files read through the root
+// still need their own guards (ReadHomeDeclarationDenyingIn).
+func OpenHomeDeclarationScope(home, dir string) (*os.Root, error) {
+	return openHomeScope(home, dir, false, 0, vetDeclarationDir)
+}
+
 // EnsureHomeScope is OpenHomeScope for a writer: each missing level is created
 // at perm (a single mkdir relative to the level above, which never follows a
 // link at the name it creates) before it is judged and opened, so the walk

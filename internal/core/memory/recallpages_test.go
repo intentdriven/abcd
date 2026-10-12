@@ -197,3 +197,37 @@ func TestRecallPagesCarryTheirLatestIngestDate(t *testing.T) {
 		t.Fatalf("ingest dates = %v", at)
 	}
 }
+
+// TestMachineRecallPagesRefuseADirectoryOthersCanChange: the machine scope's
+// directories are judged as the machine memory.json's are — one every
+// account can write is refused, its pages unread, and named in tilde form —
+// while an exposed ~/.abcd.noindex holding no memory/ still reads as absent.
+func TestMachineRecallPagesRefuseADirectoryOthersCanChange(t *testing.T) {
+	for name, exposed := range map[string][]string{"abcd-home": nil, "memory": {"memory"}} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			dir := abcdhome.Path(home, "memory")
+			writeStoreFile(t, dir, "fact_eng_auth-flow.md", recallPageText("Anyone could have put this here", "auth"), 0o600)
+			if err := os.Chmod(abcdhome.Path(home, exposed...), 0o777); err != nil {
+				t.Fatal(err)
+			}
+			pages, refused := ReadMachineRecallPages(home)
+			if len(pages) != 0 || len(refused) != 1 || !errors.Is(refused[0].Err, fsutil.ErrHomeScopeExposed) {
+				t.Fatalf("an exposed directory's pages were read: pages %+v refused %+v", pages, refused)
+			}
+			if msg := refused[0].Err.Error(); strings.Contains(msg, home) || !strings.Contains(msg, abcdhome.Display(exposed...)+" can be written by every account") {
+				t.Fatalf("the refusal does not name the directory in tilde form: %s", msg)
+			}
+		})
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(abcdhome.Path(home), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if pages, refused := ReadMachineRecallPages(home); len(pages) != 0 || len(refused) != 0 {
+		t.Fatalf("an exposed home with no page scope read %+v %+v", pages, refused)
+	}
+}
