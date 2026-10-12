@@ -402,7 +402,7 @@ func TestARestartOfTwoKeptAwaitsProvesBothBeforeSavingEither(t *testing.T) {
 	}
 	before := f.state(t)
 	_, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts())
-	if r := mustRefusal(t, err); !strings.Contains(r.Reason, second.Receipt+" cannot be read") {
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, `"`+second.Receipt+`" cannot be read`) {
 		t.Fatalf("the refusal names the unreadable partial return: %+v", r)
 	}
 	noAside(t, f.abs(RunRelDir+"/"+f.runID+"/lane-1"))

@@ -22,11 +22,25 @@ func TestARestartRefusesAReceiptOutsideTheLanesDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	laneDir := RunRelDir + "/" + runID + "/lane-1"
+	// A directory inside the lane's directory that is a symlink to the checkout
+	// root, and a file whose name folds to the patch's on a case-insensitive
+	// filesystem.
+	if err := os.Symlink("../../../../..", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Changes.patch"), []byte("ATTACKER\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, receipt := range []string{
 		"planted.txt",
 		laneDir + "/../../../../../planted.txt",
 		laneDir + "/" + AsideDirName + "/20261012T000000Z/" + AsidePatchName,
 		laneDir + "/" + AsidePatchName,
+		laneDir + "/link/planted.txt",
+		laneDir + "/Changes.patch",
+		laneDir + "/ASIDE/20261012T000000Z/receipt.json",
+		laneDir + "/a\u017fide/20261012T000000Z/receipt.json",
+		laneDir + "/ASIDE.JSON",
 	} {
 		t.Run(receipt, func(t *testing.T) {
 			err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {

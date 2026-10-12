@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/restart.go"
 remedy: "hold an await's receipt to a clean file of the lane's own directory outside its asides before a restart or checkpoint reads or removes it, refusing anything else with nothing changed, with a test per escape shape"
-resolution: "proveAside, which both the restart and the rate-limit checkpoint run before anything is written, now holds the await's receipt to a clean file of the lane's own directory outside its asides (laneOwnReceipt) and refuses anything else with nothing changed"
+resolution: "proveAside, which both the restart and the rate-limit checkpoint run before anything is written, now holds the await's receipt to a clean file of the lane's own directory outside its asides (laneOwnReceipt), comparing names folded as a case-insensitive filesystem resolves them and proving every directory on the way real so no symlink inside the lane's directory reaches past it, and refuses anything else with nothing changed"
 impact: fix
 ---
 

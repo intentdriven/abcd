@@ -319,7 +319,7 @@ type provedAside struct {
 // is the one the lane's state names. A refusal changes nothing.
 func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Await, reset bool) (provedAside, error) {
 	laneID := lane.ID
-	if err := laneOwnReceipt(runID, laneID, aw.Receipt); err != nil {
+	if err := laneOwnReceipt(repoRoot, runID, laneID, aw.Receipt); err != nil {
 		return provedAside{}, err
 	}
 	p := provedAside{reset: reset, head: lane.HeadSHA, files: []string{}}
@@ -360,7 +360,7 @@ func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Awai
 	case err == nil:
 		p.partial, p.receiptName = data, filepath.Base(aw.Receipt)
 	case !errors.Is(err, os.ErrNotExist):
-		return provedAside{}, refuse(stageRestart, "", laneID, "the partial receipt at "+aw.Receipt+" cannot be read: "+fsutil.RedactHome(err.Error()),
+		return provedAside{}, refuse(stageRestart, "", laneID, fmt.Sprintf("the partial receipt at %q cannot be read: ", fsutil.RedactHome(aw.Receipt))+fsutil.RedactHome(err.Error()),
 			"move it out of the lane's directory yourself, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 	}
 	return p, nil
@@ -489,16 +489,38 @@ func outageOpen(repoRoot, laneID string) error {
 // (`.env`, `go.mod`) would have it moved into the lane's aside, and one naming
 // a file of the lane's asides could overwrite a saved patch. So a path that is
 // not a clean file of the lane's own directory outside its asides is refused,
-// as derivedLaneWorktree refuses a worktree the loop did not derive.
-func laneOwnReceipt(runID, laneID, receipt string) error {
+// as derivedLaneWorktree refuses a worktree the loop did not derive. Names are
+// compared folded, as a case-insensitive filesystem resolves them, and every
+// directory on the way must be real, since os.Root follows a symlink that
+// stays inside the checkout.
+func laneOwnReceipt(repoRoot, runID, laneID, receipt string) error {
 	dir, err := laneRel(runID, laneID, stageRestart)
 	if err != nil {
 		return err
 	}
 	clean := path.Clean(receipt)
-	base := path.Base(clean)
-	if clean != receipt || !strings.HasPrefix(clean, dir+"/") || strings.HasPrefix(clean, dir+"/"+AsideDirName+"/") ||
-		base == AsideFileName || base == AsidePatchName {
+	bad := clean != receipt || !strings.HasPrefix(clean, dir+"/")
+	if !bad {
+		// Names are compared folded, as a case-insensitive filesystem (the Mac's
+		// default) resolves them: `ASIDE/` is the asides and `Changes.patch` the
+		// saved patch there.
+		parts := strings.Split(strings.TrimPrefix(clean, dir+"/"), "/")
+		for _, p := range parts[:len(parts)-1] {
+			bad = bad || strings.EqualFold(p, AsideDirName)
+		}
+		base := parts[len(parts)-1]
+		bad = bad || strings.EqualFold(base, AsideFileName) || strings.EqualFold(base, AsidePatchName)
+	}
+	if !bad {
+		// os.Root follows a symlink that stays inside the checkout, so a
+		// symlinked directory inside the lane's would reach any file of it:
+		// every directory on the way is proved real. A missing one is no
+		// escape: there is nothing under it to read.
+		if _, err := fsutil.ProbeRealDirAll(repoRoot, path.Dir(clean)); err != nil {
+			bad = true
+		}
+	}
+	if bad {
 		return refuse(stageRestart, "", laneID,
 			fmt.Sprintf("the run's state names %q as an await's receipt, which is not a file of the lane's own directory %s, so it is neither read nor removed", fsutil.RedactHome(receipt), dir),
 			"restore the run's state file; nothing was changed")
