@@ -1464,8 +1464,9 @@ func entryAnswers(target, pluginRoot string) bool {
 // refuses loudly and installs nothing — and the very bytes that were verified
 // are written 0755 with the provenance recorded in the data dir's path-entry.
 // A legacy owned symlink or a dev shim at the target is replaced (the heal); an
-// owned copy already matching is left alone, and so is any owned copy when
-// there is no usable cache to refresh it from. Otherwise, without a usable
+// owned copy already matching is left alone, and so is an owned copy whose
+// build provenance verifies when there is no usable cache to refresh it from
+// (adoptOwnedCopy). Otherwise, without a usable
 // cache it writes nothing and refuses, naming the command that provides a verified copy
 // (coldCacheRefusal): the only other entry there is to write is a symlink into
 // the plugin root, which the next plugin update strands
@@ -1522,11 +1523,13 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	}
 	if !present || unbound != "" {
 		if kind == binTargetOwnedCopy {
-			// The verified copy is already in place — the one the install
-			// one-liner writes is exactly this shape — and a cold cache has
-			// nothing to refresh it from, so it is adopted as it stands.
-			// Refusing here would answer the operator who has just run the
-			// remedy below with that same remedy, a loop it cannot close.
+			// The copy is already in place — the one the install one-liner
+			// writes is exactly this shape — and a cold cache has nothing to
+			// refresh it from, so it is adopted as it stands once it passes
+			// the check a promotion passes (adoptOwnedCopy). Answering with
+			// the remedy below would send the operator who has just run it
+			// round a loop it cannot close.
+			a.adoptOwnedCopy(target)
 			return
 		}
 		// No verified artefact, so no entry is written (iss-2609100506263330).
@@ -1606,6 +1609,40 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	}
 	a.recordEntry(target, want)
 	a.note(writeCommandEntry, target)
+}
+
+// adoptOwnedCopy adopts the owned copy at target on a cold cache only when
+// its build provenance verifies (iss-2610120955431790). The copy was written
+// by an earlier promotion, by abcd update, or by the install one-liner, which
+// without gh checks only the same-page checksums.txt; adopting it unchecked
+// would let it stand as abcd's entry on a weaker check than any promotion.
+// The bytes are read once and hashed, and the check is the one a promotion
+// runs, bound to the release the copy's own build metadata names (read, never
+// run), so an older release's genuine build fails it as a newer one. A copy
+// that fails is not adopted and is left as it is: it is abcd's own record's,
+// and removing it would leave no abcd at all, so the refusal says what
+// replaces it.
+func (a *applyCtx) adoptOwnedCopy(target string) {
+	at := displayPath(target)
+	data, err := fsutil.ReadGuarded(target, maxBinaryArtefactBytes)
+	if err != nil {
+		a.refuse("refused to adopt the PATH entry " + at + ": it could not be read to verify its build provenance (" + errText(err) + "), so it was not adopted and was left as it is.")
+		return
+	}
+	sum := sha256.Sum256(data)
+	tag, rerr := copyRelease(data)
+	perr := rerr
+	if perr == nil {
+		perr = a.verifyProvenance(tag, sum[:])
+	}
+	if perr == nil {
+		return
+	}
+	a.refuse("refused to adopt the PATH entry " + at + ": the copy there is the one " + abcdhome.Display("path-entry") +
+		" records, but its build provenance could not be verified, so it was not adopted and was left as it is: " +
+		errText(perr) + ". Its recorded checksum shows only that it is the file that was installed, not who built it; only the provenance the release workflow signed shows that. " +
+		"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check it by hand with `" +
+		ghAttestationVerifyCommand(target, tag) + "`. " + coldCacheRemedy)
 }
 
 // verifyProvenance runs the front door's build-provenance check; a run

@@ -1,10 +1,14 @@
 package ahoy
 
 import (
+	"bytes"
 	"debug/buildinfo"
+	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -97,4 +101,44 @@ func buildValue(s string, n int, mark string) string {
 		return s
 	}
 	return string([]rune(s)[:n]) + mark
+}
+
+// pseudoVersionTail is the commit stamp a Go pseudo-version ends in
+// (yyyymmddhhmmss-abcdefabcdef): the version Go gives a build from an
+// untagged commit, which names no release.
+var pseudoVersionTail = regexp.MustCompile(`[0-9]{14}-[0-9a-f]{12}$`)
+
+// copyRelease names the release an owned PATH copy claims to be, read from
+// its bytes' build metadata, never by running it. A seam: the package's
+// fixtures are shell scripts with no build metadata, so TestMain stands in a
+// fixed release and the tests of the reader itself put the real one back.
+var copyRelease = releaseTagOfBinary
+
+// releaseTagOfBinary reads the release tag a binary's Go build metadata
+// claims (releaseOfBuild), or why it claims none.
+func releaseTagOfBinary(data []byte) (string, error) {
+	bi, err := buildinfo.Read(bytes.NewReader(data))
+	if err != nil {
+		return "", errors.New("it carries no Go build metadata, so it names no release")
+	}
+	return releaseOfBuild(bi)
+}
+
+// releaseOfBuild is the release an abcd build claims: the main module version
+// Go stamps from the release tag the build was made at. A release build is
+// made at its tag from a clean tree, so anything else (a source build's
+// (devel), a pseudo-version from an untagged commit, a +dirty tree, or
+// another program) names no release.
+func releaseOfBuild(bi *debug.BuildInfo) (string, error) {
+	if bi.Path != abcdMainPackage {
+		return "", errors.New("it is not an abcd build: a Go program built from " + buildValue(bi.Path, maxBuildValueRunes, "…"))
+	}
+	v := bi.Main.Version
+	if _, ok := parseReleaseTag(v); !ok || strings.Contains(v, "+") || pseudoVersionTail.MatchString(v) {
+		if v == "" {
+			v = "none"
+		}
+		return "", errors.New("its build metadata names no release tag (version " + buildValue(v, maxBuildValueRunes, "…") + "), so it is not a release build")
+	}
+	return v, nil
 }
