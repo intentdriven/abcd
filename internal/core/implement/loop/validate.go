@@ -52,6 +52,7 @@ package loop
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -63,7 +64,10 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -778,4 +782,267 @@ func validationNote(lane Lane, receipt string) string {
 		return note
 	}
 	return ""
+}
+
+// The reviewer route (itd-6, spc-2609211950427074). With oracle.review set to
+// rp, a review the stage hands to the host (the ruthless or the security
+// reviewer, on the host's route) is sent instead to RepoPrompt over MCP: the
+// loop renders the request beside the reviewer's brief (its agent definition,
+// the lane's record, the reports and the diff), the route answers with the
+// reviewer's whole return, and the loop writes it to the return path the
+// host's agent would have written and records its verdict through the same
+// receipt, so a review the route ran differs from a host-run one in its route
+// alone. The intent-auditor and the implementer stay on the host (decision 2:
+// reviews, not audits). A role the machine routes to a runner keeps its
+// runner. The route is reached outside the run's lock, as a runner is.
+
+// ReviewRequestFileName is the request a reviewer route is sent, beside the
+// reviewer's brief.
+const ReviewRequestFileName = "request.md"
+
+// StageReview is the refusal stage of the reviewer route.
+const StageReview = "review"
+
+// Bounds on a review request's parts.
+const (
+	maxReviewDiffBytes  = 512 * 1024
+	maxAgentPromptBytes = 64 * 1024
+)
+
+// Reviewer is the validator interface a reviewer route other than the host
+// implements: the request the loop renders in, the reviewer's whole return
+// out. The loop reads the verdict from the return and records it, as it does a
+// host reviewer's. An error is a review that did not come back; one with a
+// Reason method names why.
+type Reviewer interface {
+	Review(ctx context.Context, request string) (string, error)
+}
+
+// ReviewRoute is the reviewer route the configuration selected.
+type ReviewRoute struct {
+	// Name is the route as oracle.review names it; the record names it.
+	Name string
+	// Reviewer reaches the route; nil when this machine names no server for
+	// it, and Absent says so.
+	Reviewer Reviewer
+	Absent   string
+	// AgentPrompt is a reviewer's agent definition, the head of its request.
+	AgentPrompt func(role string) (string, error)
+}
+
+// LoadReviewRoute reads the reviewer route (oracle.LoadReview) at the roots a
+// step starts from and refuses in the loop's refusal shape on a fault, before
+// anything moves. nil is the host's route: nothing differs from a run that
+// configures none.
+func LoadReviewRoute(r layered.Roots, agentPrompt func(role string) (string, error)) (*ReviewRoute, error) {
+	rv, err := oracle.LoadReview(r)
+	if err != nil {
+		return nil, refuse(StageReview, "", "", err.Error(),
+			"correct the review route the reason names; nothing was sent and nothing is written")
+	}
+	if rv.Route != oracle.ReviewRP {
+		return nil, nil
+	}
+	rr := &ReviewRoute{Name: rv.Route, AgentPrompt: agentPrompt}
+	if rv.RP == nil {
+		rr.Absent = fmt.Sprintf("%s is %s in %s, and %s names no %s.url", oracle.ReviewKey, rv.Route, rv.Origin,
+			layered.Config.MachineOrigin(), oracle.RPKey)
+		return rr, nil
+	}
+	c, err := rv.RP.Client()
+	if err != nil {
+		return nil, refuse(StageReview, "", "", err.Error(), "correct "+oracle.RPKey+".url in "+layered.Config.MachineOrigin())
+	}
+	rr.Reviewer = c
+	return rr, nil
+}
+
+// DriveReview sends the review this call handed to the host to rr instead:
+// a ruthless or security reviewer res hands out, which no runner ran or fell
+// back from. The route's return is written to the review's return path and
+// handed back through the receipt, which verifies it and records its verdict
+// with the route that ran it. Anything else, and a nil rr, is res unchanged.
+func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, steps Stages, o Options, rr *ReviewRoute) (StepResult, error) {
+	if rr == nil || res.Awaiting == nil || !res.handed || res.Route != nil || res.Fallback != nil {
+		return res, nil
+	}
+	aw := *res.Awaiting
+	words, ok := reviewerVerdicts[aw.Role]
+	if !ok {
+		return res, nil
+	}
+	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
+	if err == nil {
+		_, err = parseVerdict(ret, words)
+	}
+	if err != nil {
+		return res, refuse(StageReview, "", res.Lane, fmt.Sprintf("the %s route did not run the %s: %v", rr.Name, aw.Role, err),
+			"the lane still awaits the review: "+handedMove(aw))
+	}
+	if err := writeRoundFile(repoRoot, aw.Receipt, []byte(ret)); err != nil {
+		return res, err
+	}
+	route := runner.RouteRecord{Asked: rr.Name, Ran: rr.Name}
+	r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &route)
+	if err != nil {
+		return res, err
+	}
+	r.Route = &route
+	return r, nil
+}
+
+// sendReview renders the review's request beside its brief and sends it.
+func sendReview(ctx context.Context, repoRoot, runID, laneID string, aw Await, rr *ReviewRoute) (string, error) {
+	if rr.Reviewer == nil {
+		return "", errors.New(rr.Absent)
+	}
+	req, err := reviewRequest(repoRoot, runID, laneID, aw, rr.AgentPrompt)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))
+	if err := writeRoundFile(repoRoot, dir+"/"+ReviewRequestFileName, []byte(req)); err != nil {
+		return "", err
+	}
+	return rr.Reviewer.Review(ctx, req)
+}
+
+// reviewRequest renders the request a reviewer route is sent: the reviewer's
+// agent definition, the lane's brief with the record it was rendered from,
+// the implementer's report and each fix round's, and the lane's diff, whole,
+// since the route reads no file of the checkout.
+func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(string) (string, error)) (string, error) {
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return "", err
+	}
+	var lane Lane
+	for _, l := range st.Lanes {
+		if l.ID == laneID {
+			lane = l
+		}
+	}
+	n := len(lane.Validation)
+	if n == 0 {
+		return "", fmt.Errorf("%s has no round to review", laneID)
+	}
+	r := lane.Validation[n-1]
+	if !slices.ContainsFunc(r.Validators, func(v ValidatorRun) bool { return v.Role == aw.Role && v.Return == aw.Receipt }) {
+		return "", fmt.Errorf("round %d of %s hands no %s the return %s", r.Round, laneID, aw.Role, aw.Receipt)
+	}
+	if agentPrompt == nil {
+		return "", errors.New("no agent definition can be read for the request")
+	}
+	prompt, err := agentPrompt(aw.Role)
+	if err != nil {
+		return "", err
+	}
+	if len(prompt) > maxAgentPromptBytes {
+		return "", fmt.Errorf("the %s agent definition is larger than %d bytes", aw.Role, maxAgentPromptBytes)
+	}
+	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", lane.BaseSHA+".."+r.HeadSHA)
+	if err != nil {
+		return "", fmt.Errorf("the lane's diff: %w", err)
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("opening the checkout: %w", err)
+	}
+	defer root.Close()
+	brief, err := fsutil.ReadGuardedInRoot(root, lane.Brief, maxRecordBytes)
+	if err != nil {
+		return "", fmt.Errorf("the lane's brief %s: %w", lane.Brief, errCause(err))
+	}
+	type report struct{ title, body string }
+	var reports []report
+	add := func(title, receiptRel string) error {
+		if receiptRel == "" {
+			return nil
+		}
+		body, err := reportOf(repoRoot, root, runID, lane.ID, receiptRel)
+		if err != nil {
+			return err
+		}
+		reports = append(reports, report{title, body})
+		return nil
+	}
+	if err := add("The implementer's report", lane.Receipt); err != nil {
+		return "", err
+	}
+	for _, prev := range lane.Validation {
+		if prev.Round < r.Round && prev.Fix != "" {
+			if err := add(fmt.Sprintf("Round %d's fix report (findings applied, or rejected in writing with the reason)", prev.Round), prev.Fix); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	var b strings.Builder
+	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
+	p("# Review request: %s, round %d of %s in %s\n\n", aw.Role, r.Round, lane.ID, st.RunID)
+	p("## Your agent definition\n\n%s\n\n", strings.TrimSpace(prompt))
+	p("## The review\n\n")
+	p("You are a fresh %s: you did not implement this lane, and nothing its implementer wrote binds your\n", aw.Role)
+	p("judgement. No one will answer a question about this request; what it does not settle, say so in\n")
+	p("your return. Everything the review reads is below.\n\n")
+	if iss := st.Issue(); iss != "" {
+		p("- the run: `abcd build %s`, fixing %s by its remedy\n", st.Key, iss)
+		p("- the lane: %s, %q\n", lane.ID, lane.StepTitle)
+	} else {
+		p("- the run: `abcd build %s`, building %s against %s\n", st.Key, st.Intent, st.Spec)
+		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
+	}
+	p("- the branch: `%s`, its diff `%s..%s` below\n\n", lane.Branch, lane.BaseSHA, r.HeadSHA)
+	p("## The record: the lane's brief\n\n%s\n\n", fenced("markdown", string(brief)))
+	for _, rp := range reports {
+		p("## %s\n\n%s\n\n", rp.title, fenced("markdown", rp.body))
+	}
+	p("## The diff\n\n%s\n\n", fenced("diff", string(diff)))
+	words := make([]string, 0, len(reviewerVerdicts[aw.Role]))
+	for _, w := range reviewerVerdicts[aw.Role] {
+		words = append(words, w.word)
+	}
+	p("## What you answer\n\n")
+	p("Answer with your whole return, in your agent definition's shape. It ends with one `### Verdict`\n")
+	p("section stating exactly one of: %s. The loop writes your answer to the review's return and\n", strings.Join(words, ", "))
+	p("records the verdict itself; a verdict written anywhere else is nobody's.\n")
+	return b.String(), nil
+}
+
+// reportOf is the report a verified receipt names, read through the guarded
+// reader.
+func reportOf(repoRoot string, root *os.Root, runID, laneID, receiptRel string) (string, error) {
+	rc, err := readReceipt(repoRoot, root, receiptRel, laneID)
+	if err != nil {
+		return "", err
+	}
+	if rc.Report == "" || !fsutil.ValidRelPath(rc.Report) {
+		return "", fmt.Errorf("%s names no report", receiptRel)
+	}
+	dir, err := laneRel(runID, laneID, StageValidate)
+	if err != nil {
+		return "", err
+	}
+	data, err := fsutil.ReadGuardedInRoot(root, dir+"/"+rc.Report, maxReportBytes)
+	if err != nil {
+		return "", fmt.Errorf("the report %s names: %w", receiptRel, errCause(err))
+	}
+	return string(data), nil
+}
+
+// fenced is s in a code fence longer than any run of backticks it holds.
+func fenced(lang, s string) string {
+	n, run := 3, 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '`' {
+			run++
+			if run >= n {
+				n = run + 1
+			}
+		} else {
+			run = 0
+		}
+	}
+	f := strings.Repeat("`", n)
+	return f + lang + "\n" + strings.TrimRight(s, "\n") + "\n" + f
 }

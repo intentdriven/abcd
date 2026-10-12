@@ -251,6 +251,13 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   trade-off) adopted as adr-7's decision gate; and the `to-prd` PRD section
   shape itd-27's silent synthesis phase follows.
   <https://github.com/mattpocock/skills>
+- **The Model Context Protocol** — the protocol the RepoPrompt reviewer route
+  speaks (`internal/adapter/repoprompt`, itd-6): its Streamable HTTP
+  transport, spoken with the standard library alone (JSON-RPC 2.0 over POST,
+  an answer as one JSON body or as server-sent events, the `Mcp-Session-Id`
+  and `MCP-Protocol-Version` headers), and the initialize, `tools/list` and
+  `tools/call` exchanges one review takes.
+  <https://modelcontextprotocol.io/specification/2025-06-18/basic/transports>
 - **GitLab's documentation-testing severity policy** — the warn-then-promote
   discipline the writing-style guide's preamble adopts: deterministic prose
   checks may block, heuristics stay advisory, and a rule is promoted to
@@ -300,6 +307,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   `where` / `fix` / `policyInfo`) the `abcd lint` rule model adapts as data,
   separate from the evaluator (itd-85). The tool itself is archived and is not a
   dependency.
+- **RepoPrompt** — the reviewer the opt-in `oracle.review = rp` route sends a
+  build lane's ruthless and security reviews to, over the MCP server the person
+  runs on their own machine (itd-6, `internal/adapter/repoprompt`): RepoPrompt
+  answers with whichever model the person configured in it, and abcd never
+  starts, installs or configures it. <https://repoprompt.com>
 - **The Rust RFC process** — the required "Prior Art" section on intents.
 - **signulll's post on product thinkers (<https://x.com/signulll/status/2030404483897815089>)** —
   the *product thinker* framing: the person who holds a product's why, who it

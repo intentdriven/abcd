@@ -58,6 +58,10 @@ type RPServer struct {
 	Tool string
 }
 
+// Client is the adapter that reaches the server. It connects when a review is
+// sent, never before.
+func (s RPServer) Client() (*repoprompt.Client, error) { return repoprompt.New(s.URL, s.Tool) }
+
 // LoadReview reads and checks the reviewer route. A fault is an error naming
 // the file and the key; none falls through to the default.
 func LoadReview(r layered.Roots) (ReviewRoute, error) {

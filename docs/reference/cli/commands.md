@@ -2290,6 +2290,16 @@ asked for, the reason and the route that runs it. A role left unset is the host'
 the call is exactly the host-driven step. A step that re-tells an await starts nothing.
 An interrupt kills the runner's process group.
 
+With oracle.review set to rp (in .abcd/config.json or ~/.abcd.noindex/config.json, the
+MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review
+the step hands to the host is sent instead to that MCP oracle, with a request rendered
+beside the reviewer's brief (its agent definition, the lane's brief, the reports and the
+diff): the answer is written to the review's return path and its verdict recorded through
+the same receipt, and the result's route names rp. A route that does not answer refuses
+the step and the review stays awaiting for the host. The intent-auditor, and a reviewer
+routed to a runner, are unchanged; with oracle.review unset or host nothing changes, and
+abcd never starts, installs or configures the oracle.
+
 The run's window clock: once the run's working window has elapsed, the call starts
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
 agent already started may still hand back its receipt. Before next_eligible_at the call
