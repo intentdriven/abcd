@@ -71,6 +71,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The validators, by the agent definition each is started as.
@@ -803,20 +804,31 @@ const ReviewRequestFileName = "request.md"
 // StageReview is the refusal stage of the reviewer route.
 const StageReview = "review"
 
-// Bounds on a review request's parts.
+// Bounds on a review request's parts, and on a fallback's detail as its
+// receipt carries it.
 const (
 	maxReviewDiffBytes  = 512 * 1024
 	maxAgentPromptBytes = 64 * 1024
+	maxFallbackDetail   = 300
 )
 
 // Reviewer is the validator interface a reviewer route other than the host
 // implements: the request the loop renders in, the reviewer's whole return
 // out. The loop reads the verdict from the return and records it, as it does a
-// host reviewer's. An error is a review that did not come back; one with a
-// Reason method names why.
+// host reviewer's. An error is a review that did not come back: one with a
+// Reason method names the fallback's reason, and its text is the detail.
 type Reviewer interface {
 	Review(ctx context.Context, request string) (string, error)
 }
+
+// reviewFailure is a review the route did not return, with its reason.
+type reviewFailure struct {
+	reason runner.Reason
+	detail string
+}
+
+func (f *reviewFailure) Error() string  { return f.detail }
+func (f *reviewFailure) Reason() string { return string(f.reason) }
 
 // ReviewRoute is the reviewer route the configuration selected.
 type ReviewRoute struct {
@@ -862,6 +874,17 @@ func LoadReviewRoute(r layered.Roots, agentPrompt func(role string) (string, err
 // back from. The route's return is written to the review's return path and
 // handed back through the receipt, which verifies it and records its verdict
 // with the route that ran it. Anything else, and a nil rr, is res unchanged.
+//
+// A review the route does not return falls back (scope 3): no server on this
+// machine, a refused connection, a bound run out, the server's error, an
+// answer that is not the protocol's, or a return with no verdict the loop can
+// record. The host's own agent is handed the same brief and return path, as
+// res already names them, and one fallback receipt (the role, the route asked
+// for, the reason and abcd's detail, the host as the route that runs it) is
+// written to the run's state and record, which the summary counts per route
+// and per role. No return is written for it, so nothing stands where the
+// host's agent writes. A step interrupted while the route works falls back on
+// nothing: it is refused, and the review stays awaiting.
 func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, steps Stages, o Options, rr *ReviewRoute) (StepResult, error) {
 	if rr == nil || res.Awaiting == nil || !res.handed || res.Route != nil || res.Fallback != nil {
 		return res, nil
@@ -873,11 +896,27 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	}
 	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
 	if err == nil {
-		_, err = parseVerdict(ret, words)
+		if _, perr := parseVerdict(ret, words); perr != nil {
+			err = &reviewFailure{runner.ReasonInvalid, "its return states no verdict the loop can record: " + perr.Error()}
+		}
 	}
 	if err != nil {
-		return res, refuse(StageReview, "", res.Lane, fmt.Sprintf("the %s route did not run the %s: %v", rr.Name, aw.Role, err),
-			"the lane still awaits the review: "+handedMove(aw))
+		if ctx.Err() != nil {
+			return res, refuse(StageReview, "", res.Lane, fmt.Sprintf("the step was interrupted before the %s route returned the %s", rr.Name, aw.Role),
+				"the lane still awaits the review: "+handedMove(aw))
+		}
+		fb := runner.FallbackReceipt{At: o.now(), Role: aw.Role, Asked: rr.Name, Reason: runner.ReasonFailed, Detail: fallbackDetail(err), Ran: runner.Host}
+		var why interface{ Reason() string }
+		if errors.As(err, &why) {
+			fb.Reason = runner.Reason(why.Reason())
+		}
+		if err := recordFallback(repoRoot, runID, res.Lane, fb, o); err != nil {
+			return res, err
+		}
+		res.Fallback = &fb
+		res.Next = fmt.Sprintf("the %s route did not return the %s (%s; recorded as a fallback), so the host runs it: %s",
+			rr.Name, aw.Role, fb.Reason, res.Next)
+		return res, nil
 	}
 	if err := writeRoundFile(repoRoot, aw.Receipt, []byte(ret)); err != nil {
 		return res, err
@@ -891,10 +930,20 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	return r, nil
 }
 
+// fallbackDetail is a failure's text as a fallback receipt carries it:
+// sanitised for a terminal, and bounded.
+func fallbackDetail(err error) string {
+	d := termsafe.Sanitize(err.Error())
+	if len(d) > maxFallbackDetail {
+		d = strings.ToValidUTF8(d[:maxFallbackDetail], "") + "..."
+	}
+	return d
+}
+
 // sendReview renders the review's request beside its brief and sends it.
 func sendReview(ctx context.Context, repoRoot, runID, laneID string, aw Await, rr *ReviewRoute) (string, error) {
 	if rr.Reviewer == nil {
-		return "", errors.New(rr.Absent)
+		return "", &reviewFailure{runner.ReasonAbsent, rr.Absent}
 	}
 	req, err := reviewRequest(repoRoot, runID, laneID, aw, rr.AgentPrompt)
 	if err != nil {

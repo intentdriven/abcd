@@ -118,3 +118,22 @@ choice, recorded for review; none changes a criterion.
   connection and the session's set-up, thirty minutes for the review call,
   8 MiB for an answer; the address is never proxied and a redirect is never
   followed.
+- 2026-10-12 (agent's choice, for review): **`fell_back: host` is the run's
+  fallback receipt.** A review the route does not return is recorded as the
+  run already records a role a runner did not run: one `runner.FallbackReceipt`
+  in the state's `fallbacks` and a `fallback` line in the record (the role,
+  `asked: rp`, the reason, abcd's own detail, `ran: host`), which `implement
+  status` and `implement record` count per route and per role. No state field
+  is added, so the run-state schema is unchanged. The host is handed the same
+  brief and return path the step named, and no return is written for the
+  route, so nothing stands where the host's agent writes.
+- 2026-10-12 (agent's choice, for review): **Every review the route does not
+  return falls back, not only a refused connection or a timeout.** No server
+  named on this machine (`absent`), a refused connection or one closed before
+  an answer (`unreachable`), a bound run out (`timeout`), the server's error
+  (`refused`), an answer that is not the protocol's (`unparsable`), a return
+  with no verdict the loop can record (`invalid`), and a request that could
+  not be composed (`failed`) each hand the review to the host with its
+  receipt, as the runner falls back on every failure but a rate limit, so no
+  review is stranded behind a refusal. A step the person interrupts falls back
+  on nothing: it is refused and the review stays awaiting.

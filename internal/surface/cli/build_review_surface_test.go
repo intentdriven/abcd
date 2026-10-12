@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,5 +104,63 @@ func TestAReviewTheStepHandsOutGoesToTheMCPOracleWhenConfigured(t *testing.T) {
 	}
 	if status := mustImplement(t, "implement", "status"); !strings.Contains(status, "ruthless-reviewer SHIP") {
 		t.Fatalf("the status names the verdict the loop recorded:\n%s", status)
+	}
+}
+
+// TestAReviewTheOracleDoesNotReturnFallsBackAndIsCountedAtTheFrontDoor is
+// criterion 2 at the front door: the route configured and nothing listening
+// at its address, `implement step` hands the host the review as before with a
+// fallback naming the role, rp, the reason and the host, and `implement
+// status` and `implement record` count it per route and per role.
+func TestAReviewTheOracleDoesNotReturnFallsBackAndIsCountedAtTheFrontDoor(t *testing.T) {
+	pluginRoot := repoRootForTest(t)
+	repo := buildRepo(t)
+	repo.Write("AGENTS.md", "# AGENTS.md\n\n- Run make check.\n")
+	repo.Commit("conventions")
+	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	laneAtValidate(t, repo)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := "http://" + ln.Addr().String() + "/mcp"
+	ln.Close()
+	writeMachineConfig(t, `{"oracle":{"review":"rp","rp":{"url":"`+dead+`"}}}`)
+
+	var res struct {
+		Awaiting *struct {
+			Role    string `json:"role"`
+			Receipt string `json:"receipt"`
+		} `json:"awaiting"`
+		Fallback *struct {
+			Role, Asked, Reason, Detail, Ran string
+		} `json:"fallback"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "implement", "step", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Awaiting == nil || res.Awaiting.Role != "ruthless-reviewer" {
+		t.Fatalf("the host is handed the review: %+v", res)
+	}
+	if fb := res.Fallback; fb == nil || fb.Role != "ruthless-reviewer" || fb.Asked != "rp" || fb.Reason != "unreachable" ||
+		fb.Ran != "host" || !strings.Contains(fb.Detail, "connection refused") {
+		t.Fatalf("the payload states the review fell back and why: %+v", res.Fallback)
+	}
+	if text := mustImplement(t, "implement", "status"); !strings.Contains(text, "fallbacks: 1 (by runner: rp 1; by role: ruthless-reviewer 1)") {
+		t.Fatalf("the status counts the fallback:\n%s", text)
+	}
+	var rec struct {
+		FallbackCounts struct {
+			Total    int            `json:"total"`
+			ByRunner map[string]int `json:"by_runner"`
+		} `json:"fallback_counts"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "implement", "record", "--json")), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.FallbackCounts.Total != 1 || rec.FallbackCounts.ByRunner["rp"] != 1 {
+		t.Fatalf("the record counts the fallback: %+v", rec.FallbackCounts)
 	}
 }

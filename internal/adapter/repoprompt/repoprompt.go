@@ -129,13 +129,14 @@ const (
 	KindFailed      Kind = "failed"
 )
 
-// Error is a review that did not come back.
+// Error is a review that did not come back: its kind, and abcd's own account
+// of it, which is its text.
 type Error struct {
 	Kind   Kind
 	Detail string
 }
 
-func (e *Error) Error() string { return "repoprompt " + string(e.Kind) + ": " + e.Detail }
+func (e *Error) Error() string { return e.Detail }
 
 // Reason is the failure's kind as a fallback receipt records it.
 func (e *Error) Reason() string { return string(e.Kind) }
@@ -530,7 +531,7 @@ func classify(ctx context.Context, err error, what string) error {
 	}
 	var oe *net.OpError
 	if errors.As(err, &oe) && oe.Op == "dial" {
-		return failf(KindUnreachable, "nothing answered at the MCP server's address (%s)", dialCause(oe))
+		return failf(KindUnreachable, "nothing answered at the MCP server's address: %s", dialCause(oe))
 	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &oe) {
 		return failf(KindUnreachable, "%s: the connection closed before an answer", what)

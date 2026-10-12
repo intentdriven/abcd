@@ -2,10 +2,12 @@ package loop
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
@@ -149,4 +151,157 @@ func wordsOf(role string) []string {
 		out = append(out, w.word)
 	}
 	return out
+}
+
+// deadAddress is a loopback address where nothing listens.
+func deadAddress(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	return "http://" + addr + "/mcp"
+}
+
+// reviewOut hands out the lane's next review at validate and returns the
+// step's result.
+func reviewOut(t *testing.T, root, id string, stages Stages, role string) StepResult {
+	t.Helper()
+	res, err := advance(root, id, stages, Options{})
+	if err != nil || res.Awaiting == nil || res.Awaiting.Role != role {
+		t.Fatalf("the validate stage hands out the %s: %+v %v", role, res, err)
+	}
+	return res
+}
+
+// TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt is criterion
+// 2: the route configured and RepoPrompt unreachable, refusing the connection
+// or running out of time, the review goes to the host's own agent with the
+// same brief and return path, one fallback receipt states that it fell back
+// and why, and the run record and its summary name it; the host's return is
+// then recorded as any validator's is, so no review is skipped. A route
+// selected with no server on this machine, and an answer with no verdict the
+// loop can record, fall back the same way.
+func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T) {
+	prompt := func(role string) (string, error) { return "# " + role + "\n", nil }
+	slow := &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message"}}, Delay: 2 * time.Second}
+	slowClient, err := repoprompt.New(mcptest.Start(t, slow), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	slowClient.CallTimeout = 100 * time.Millisecond
+	deadClient, err := repoprompt.New(deadAddress(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	noVerdict := rpServer(func(string) string { return "### Findings\n\n- none\n" })
+	noVerdictClient, err := repoprompt.New(mcptest.Start(t, noVerdict), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name   string
+		rr     *ReviewRoute
+		reason runner.Reason
+		detail string
+	}{
+		{"connection refused", &ReviewRoute{Name: "rp", Reviewer: deadClient, AgentPrompt: prompt}, "unreachable", "connection refused"},
+		{"a timeout", &ReviewRoute{Name: "rp", Reviewer: slowClient, AgentPrompt: prompt}, "timeout", "ran out of time"},
+		{"no server on this machine", &ReviewRoute{Name: "rp", Absent: "this machine names no oracle.rp.url", AgentPrompt: prompt},
+			runner.ReasonAbsent, "names no oracle.rp.url"},
+		{"an answer with no verdict", &ReviewRoute{Name: "rp", Reviewer: noVerdictClient, AgentPrompt: prompt},
+			runner.ReasonInvalid, "no Verdict section"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo := briefRepo(t, agentsMarked)
+			start, err := Start(repo.Root(), "itd-10", Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, stages := start.RunID, DefaultStages()
+			implemented(t, repo, id, stages, "one.txt")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+
+			got, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, c.rr)
+			if err != nil {
+				t.Fatalf("a review the route did not return falls back, it is not refused: %v", err)
+			}
+			if got.Awaiting == nil || *got.Awaiting != aw || got.Route != nil {
+				t.Fatalf("the host is handed the same brief and return path: %+v", got)
+			}
+			fb := got.Fallback
+			if fb == nil || fb.Role != RoleRuthless || fb.Asked != "rp" || fb.Ran != runner.Host || fb.Reason != c.reason ||
+				!strings.Contains(fb.Detail, c.detail) {
+				t.Fatalf("the receipt states the review fell back to the host and why: %+v", fb)
+			}
+			if !strings.Contains(got.Next, "fallback") || !strings.Contains(got.Next, string(c.reason)) || !strings.Contains(got.Next, aw.Brief) {
+				t.Fatalf("the next move names the fallback and the brief: %s", got.Next)
+			}
+			if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
+				t.Fatal("no return is written for a review the route did not return")
+			}
+
+			rec, err := ReadRecord(repo.Root(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rec.Fallbacks) != 1 || rec.FallbackCounts.Total != 1 || rec.FallbackCounts.ByRunner["rp"] != 1 ||
+				rec.FallbackCounts.ByRole[RoleRuthless] != 1 {
+				t.Fatalf("the summary counts the fallback per route and per role: %+v", rec.FallbackCounts)
+			}
+			var line string
+			for _, e := range rec.Record {
+				if e.Stage == StageFallback {
+					line = e.Note
+				}
+			}
+			if !strings.Contains(line, "routed to rp") || !strings.Contains(line, string(c.reason)) || !strings.Contains(line, "host runs it") {
+				t.Fatalf("the run record names the fallback: %q", line)
+			}
+
+			// The host's own agent runs the review, and its verdict is the
+			// loop's, as any validator's is.
+			path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
+			if err := os.WriteFile(path, []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Receipt(repo.Root(), id, path, stages, Options{}); err != nil {
+				t.Fatal(err)
+			}
+			st, _ := ReadState(repo.Root(), id)
+			if v := st.Lanes[0].Validation[0].Validators[0]; v.Verdict != "SHIP" || !v.Pass {
+				t.Fatalf("the host's verdict is recorded: %+v", v)
+			}
+		})
+	}
+}
+
+// TestAnInterruptedStepFallsBackOnNothing: a step the person interrupts
+// while the route works is refused, records no fallback, and leaves the
+// review awaiting, so nothing is lost and nothing is miscounted.
+func TestAnInterruptedStepFallsBackOnNothing(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := start.RunID, DefaultStages()
+	implemented(t, repo, id, stages, "one.txt")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	slow := &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message"}}, Delay: 2 * time.Second}
+	rr := rpRoute(t, slow)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := DriveReview(ctx, repo.Root(), id, res, stages, Options{}, rr); err == nil {
+		t.Fatal("an interrupted step is refused")
+	} else if r, ok := AsRefusal(err); !ok || r.Stage != StageReview {
+		t.Fatalf("the refusal is the review route's: %v", err)
+	}
+	st, _ := ReadState(repo.Root(), id)
+	if len(st.Fallbacks) != 0 || st.Lanes[0].awaiting() == nil {
+		t.Fatalf("no fallback is recorded and the review still awaits: %+v %+v", st.Fallbacks, st.Lanes[0].Awaits)
+	}
 }
