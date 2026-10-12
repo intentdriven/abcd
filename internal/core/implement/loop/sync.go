@@ -16,6 +16,7 @@ package loop
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -91,8 +92,20 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
 	} else {
+		// The merge starts from a clean worktree, so the only change a merge
+		// stopped at its deadline can leave is the loop's own, and undoing
+		// it (undoStalledSync) never resets away a change the loop did not
+		// make.
+		if dirty, err := pickGit(lane.Worktree, "status", "--porcelain", "-z", "--untracked-files=all"); err != nil {
+			return Outcome{}, false, fmt.Errorf("reading the lane's worktree: %w", err)
+		} else if dirty != "" {
+			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
+				"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
-		if err := syncMerge(lane.Worktree, msg, merged); err != nil {
+		if err := syncMerge(lane.Worktree, msg, merged); errors.Is(err, errCommitStalled) {
+			return Outcome{}, false, undoStalledSync(*lane, def, err)
+		} else if err != nil {
 			conflicted, _ := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
 			// A merge the repository refused before it began (its
 			// merge.verifySignatures, say) left none to abort.
@@ -123,6 +136,32 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
 	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s after %s landed: merge commit %s; a fresh round judges it, and counts no fix round",
 		lane.ID, def, shortSHA(merged), strings.Join(siblings, ", "), shortSHA(tip))}, true, nil
+}
+
+// undoStalledSync undoes a sync's merge stopped at its deadline (a
+// pre-merge-commit hook or a signing prompt nobody answered). Git stopped
+// there has written the merged result to the lane's index and files and
+// recorded no merge to abort, so every later step would be refused over it
+// (iss-2610111729399920). While the lane's HEAD is still the judged head, the
+// attempt is the loop's own (the merge began from a clean worktree), and the
+// worktree is reset to that head (resetLaneTree), as a restart resets it; the
+// refusal names what was undone. A HEAD that moved is left as it is: the next
+// step finds the merge commit, or refuses the branch.
+func undoStalledSync(lane Lane, def string, stalled error) error {
+	reason := "git could not merge " + def + " into " + lane.Branch + ": " + fsutil.RedactHome(stalled.Error())
+	remedy := "answer the repository's signing prompt, or settle the hook that waits, then run `abcd implement step` again"
+	head, err := pickGit(lane.Worktree, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	if head = strings.TrimSpace(head); err != nil || head != lane.HeadSHA {
+		return refuse(string(StageLand), "", lane.ID, reason+"; the lane's HEAD is no longer the judged head "+shortSHA(lane.HeadSHA)+", so nothing was undone",
+			"settle what git reports in the lane's worktree, then run `abcd implement step` again")
+	}
+	if err := resetLaneTree(lane.Worktree, lane.HeadSHA); err != nil {
+		return refuse(string(StageLand), "", lane.ID, reason+"; undoing the stopped merge failed too: "+fsutil.RedactHome(err.Error()),
+			"reset the lane's worktree to its judged head "+lane.HeadSHA+" (`git reset --hard`), then run `abcd implement step` again")
+	}
+	return refuse(string(StageLand), "", lane.ID,
+		reason+"; the loop's merge attempt is undone: the merged result git had staged is reset away, and the lane's worktree is clean at its judged head "+shortSHA(lane.HeadSHA),
+		remedy)
 }
 
 // syncMerge merges merged into the lane's worktree with a merge commit, as the
