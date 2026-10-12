@@ -70,7 +70,12 @@ For an advisory whose verdict is `not-abcds` or `not-a-vulnerability`. GitHub
 offers no comment on a repository advisory, so the explanation is posted at the
 head of the advisory's description, with the reporter's own text kept whole
 below a separator line. Without `--approve` it sends nothing but a read: show
-the user `text` exactly as returned, then `approve_with`.
+the user `text` exactly as returned, then `approve_with`. The reporter reads
+that text, so it is refused before it is shown when it carries a secret, a
+name the private-names layer bans, or another advisory still under embargo
+(its id, reserved CVE id or title); the refusal names the kind and the line,
+never the match, and the remedy is to record the verdict again with a reason
+that does not carry it.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in
 this session, has read that text and said yes to it. Never supply the digest on

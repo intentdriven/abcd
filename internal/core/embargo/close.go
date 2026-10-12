@@ -135,9 +135,9 @@ func closeDigest(ghsa, text, description string) string {
 // sets the advisory closed with the composed description, and a read-back must
 // show it closed with the approved text in place before closed_at is stamped.
 //
-// The text is scanned before it is shown, with the outbound scanner and the
-// private-names layer: the advisory stays private after closing, but its
-// reporter reads the text.
+// The text is scanned before it is shown, with the outbound scanner, the
+// private-names layer, and every other advisory still under embargo: the
+// advisory stays private after closing, but its reporter reads the text.
 func Close(req CloseRequest) (CloseResult, error) {
 	s, st, err := OpenExisting(req.Home, req.RepoRoot)
 	if err != nil {
@@ -161,7 +161,7 @@ func Close(req CloseRequest) (CloseResult, error) {
 	if err != nil {
 		return CloseResult{}, err
 	}
-	if err := scanClosingText(s.Checkout, text); err != nil {
+	if err := scanClosingText(s.Checkout, text, othersDenySet(st, a.GHSAID)); err != nil {
 		return CloseResult{}, err
 	}
 
@@ -222,17 +222,23 @@ func forgeStateWord(state string) string {
 }
 
 // scanClosingText refuses a closing text that carries what its reader must
-// not see (scanOutbound). The refusal names the kind and the line, never the
-// match.
-func scanClosingText(checkout, text string) error {
+// not see (scanOutbound), or names another advisory still under embargo
+// (others, the set the publication plan holds an advisory's text to): the
+// reporter of one advisory must not learn of another. The refusal names the
+// kind and the line, never the match.
+func scanClosingText(checkout, text string, others denySet) error {
 	f, err := scanOutbound(checkout, "the closing text", text, false)
 	if err != nil {
 		return err
 	}
+	remedy := "record the verdict again with `abcd embargo triage`, with a reason that does not carry it"
 	if f == nil {
+		if m := others.matches(text); len(m) > 0 {
+			return refuse(fmt.Sprintf("the closing text names another advisory still under embargo (%s on line %d), which its reader must not see; nothing was shown or sent",
+				m[0].kind, strings.Count(text[:m[0].start], "\n")+1), remedy)
+		}
 		return nil
 	}
-	remedy := "record the verdict again with `abcd embargo triage`, with a reason that does not carry it"
 	if f.kind == kindPrivateName {
 		return refuse(fmt.Sprintf("the closing text carries a name the private-names layer bans on line %d; nothing was shown or sent", f.line), remedy)
 	}

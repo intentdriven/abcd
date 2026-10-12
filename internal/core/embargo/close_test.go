@@ -367,3 +367,58 @@ func TestCloseScanFindingRefusesShowAndClose(t *testing.T) {
 		})
 	}
 }
+
+// TestCloseRefusesTextNamingAnotherEmbargoedAdvisory: the reporter reads the
+// closing text, so a text naming another advisory still under embargo, by
+// its id, reserved CVE id or title, refuses the show and the close alike
+// before anything is sent, saying why without repeating it. The advisory's
+// own id and a published advisory's id pass.
+func TestCloseRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
+	const otherTitle = "a sample sibling report title"
+	for name, tc := range map[string]struct {
+		line   string
+		refuse bool
+	}{
+		"other id":     {"see also " + strings.ToLower(ghsaClosed), true},
+		"other cve":    {"tracked with " + cveOpen, true},
+		"other title":  {"like " + strings.ToUpper(otherTitle), true},
+		"own id":       {"this is GHSA-xxxx-xxxx-xxxx", false},
+		"published id": {"as in " + ghsaPublished, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cf := newCloseFixture(t)
+			st, err := cf.s.Verify()
+			if err != nil {
+				t.Fatal(err)
+			}
+			at := fixedNow
+			st.Advisories = append(st.Advisories,
+				Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000002", Title: otherTitle, CVEID: strp(cveOpen),
+					Severity: "minor", ForgeState: "triage"},
+				Advisory{GHSAID: ghsaPublished, IssueID: "iss-2610120000000003", Title: titlePublishd, CVEID: strp(cvePublished),
+					Severity: "major", ForgeState: "published", Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at})
+			if err := cf.s.SaveState(st); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(cf.draftPath(), []byte(cf.draft(t)+"\n"+tc.line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if !tc.refuse {
+				cf.show(t)
+				return
+			}
+			for _, approve := range []string{"", strings.Repeat("0", 64)} {
+				_, err := cf.close(approve)
+				mustRefuse(t, err, "another advisory still under embargo")
+				for _, leak := range []string{ghsaClosed, strings.ToLower(ghsaClosed), cveOpen, otherTitle} {
+					if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(leak)) {
+						t.Fatalf("the refusal repeats the finding: %v", err)
+					}
+				}
+			}
+			if len(cf.g.calls()) != 0 {
+				t.Fatal("a refused close called gh")
+			}
+		})
+	}
+}
