@@ -90,7 +90,7 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 		return out, nil
 	}
 	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := netGit(repoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+	if _, err := gitutil.Net(repoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
 		r := refuse(StageDrain, "", "", "git could not fetch "+def+" from "+Remote+" to find the merged lanes: "+err.Error(),
 			"the next `abcd drain` looks again")
 		for _, run := range parked {

@@ -417,7 +417,7 @@ func modelGap(lane Lane, what, gap string) error {
 
 // hookedGit runs one git command in the lane's worktree with the repository's
 // hooks running, under the developer's own configuration less any injected
-// GIT_DIR or GIT_CONFIG_* (as netGit), with no terminal prompt.
+// GIT_DIR or GIT_CONFIG_* (as gitutil.Net), with no terminal prompt.
 func hookedGit(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
 	defer cancel()
@@ -492,7 +492,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, r
 	}
 	ref := "refs/heads/" + lane.Branch
-	if _, err := netGit(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
+	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
 		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
 			return Outcome{}, r
 		}
@@ -505,52 +505,6 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil
-}
-
-// netGit runs one git command that reaches the remote, from the checkout the
-// run lives in. Its hooks run (the pre-push gate is the point), under the
-// developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*.
-// A connection that stalls is cut off in about a minute rather than at
-// netTimeout, so a lost network is met as a failure the outage classifier
-// reads while the run's lock is held only briefly (iss-2610080620372731): an
-// HTTP transfer slower than netLowSpeedLimit bytes a second for
-// netLowSpeedTime is aborted, and ssh, unless the developer configured their
-// own ssh command, gives up a connect after netConnectTimeout and a silent
-// connection after netServerAlive missed keepalives.
-func netGit(dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
-	defer cancel()
-	full := append([]string{"-c", "core.quotePath=false",
-		"-c", "http.lowSpeedLimit=" + netLowSpeedLimit, "-c", "http.lowSpeedTime=" + netLowSpeedTime, "-C", dir}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	if ssh := netSSHCommand(dir); ssh != "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
-	}
-	return runCapped(cmd, "git "+args[0])
-}
-
-// The bounds netGit sets on a stalled connection.
-const (
-	netLowSpeedLimit = "1000"
-	netLowSpeedTime  = "60"
-	netSSHOptions    = "-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
-)
-
-// netSSHCommand is the ssh command netGit runs git's ssh transport through:
-// ssh with the connect and keepalive bounds, or "" when the developer chose
-// their own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as
-// it is.
-func netSSHCommand(dir string) string {
-	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
-		return ""
-	}
-	cmd := exec.Command("git", "-C", dir, "config", "--get", "core.sshCommand")
-	cmd.Env = gitutil.ScrubbedEnv()
-	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-		return ""
-	}
-	return "ssh " + netSSHOptions
 }
 
 // runCapped runs cmd, returning its stdout within the forge cap and its
@@ -1081,7 +1035,7 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 // remote-tracking ref, and returns the ref.
 func fetchDefault(c Context, lane Lane, def string) (string, error) {
 	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := netGit(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+	if _, err := gitutil.Net(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
 		if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
 			return "", r
 		}
