@@ -79,13 +79,36 @@ func FilterOverrides(root string) ([]string, error) {
 	return out, nil
 }
 
-// BuiltinMergeDriver is the merge.<name>.driver command line that makes a
-// driver git's built-in text merge: `git merge-file` over the three versions,
-// with the conflict-marker size and the three conflict labels git passes a
-// driver, and the histogram diff git's merge itself uses. Its result, clean
-// or conflicted, is byte for byte the built-in driver's, and it exits non-zero
-// on a conflict, as a driver must.
-const BuiltinMergeDriver = "git merge-file --marker-size=%L --diff-algorithm=histogram -L %X -L %S -L %Y %A %O %B"
+// git 2.44 taught merge-file --diff-algorithm and gave a merge driver its
+// conflict labels as %S, %X and %Y (RelNotes 2.44.0). An older git rejects the
+// option, so a driver passing it fails every merge it is asked for, and leaves
+// the placeholders unexpanded (iss-2610111549593667).
+const (
+	mergeDriverFloorMajor = 2
+	mergeDriverFloorMinor = 44
+)
+
+// BuiltinMergeDriver returns the merge.<name>.driver command line that makes
+// a driver git's built-in text merge: `git merge-file` over the three
+// versions, with the conflict-marker size git passes a driver, exiting
+// non-zero on a conflict, as a driver must.
+//
+// From git 2.44 it also passes the conflict labels and the histogram diff
+// git's merge itself uses, so the result, clean or conflicted, is byte for
+// byte the built-in driver's. Below 2.44 merge-file can take neither (it reads
+// no diff algorithm from config, and a driver is not given the labels), so the
+// driver runs merge-file's default diff with fixed labels: the repository's
+// driver still never starts, but a conflict's markers read ours, base and
+// theirs, and where the two diffs align a changed region differently the
+// result can differ from git's own merge of the same commits, in where a
+// conflict's hunks fall or in whether a region conflicts at all. A version the
+// probe cannot read gets that form, which every git accepts.
+func BuiltinMergeDriver() string {
+	if ok, _ := gitVersion.atLeast(mergeDriverFloorMajor, mergeDriverFloorMinor); ok {
+		return "git merge-file --marker-size=%L --diff-algorithm=histogram -L %X -L %S -L %Y %A %O %B"
+	}
+	return "git merge-file --marker-size=%L -L ours -L base -L theirs %A %O %B"
+}
 
 // MergeDriverOverrides returns the `git -c` overrides that make every merge
 // driver the repository at root configures git's built-in text merge —
@@ -105,8 +128,9 @@ func MergeDriverOverrides(root string) ([]string, error) {
 		return nil, err
 	}
 	out := []string{"-c", "merge.default=text"}
+	driver := BuiltinMergeDriver()
 	for _, name := range names {
-		out = append(out, "-c", "merge."+name+".driver="+BuiltinMergeDriver)
+		out = append(out, "-c", "merge."+name+".driver="+driver)
 	}
 	return out, nil
 }

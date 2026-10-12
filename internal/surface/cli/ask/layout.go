@@ -66,7 +66,8 @@ func Layout(a question.Ask, width int, mode term.ColorMode) []string {
 
 // Draw draws a in the frame f, top to bottom: the chip line (the chip, then
 // the tab strip when a has more than one part), the material (each paragraph
-// wrapped on its own, each list item with a hanging indent), the ask, the
+// wrapped on its own, a paragraph of lines a line for each, each list item
+// with a hanging indent), the ask, the
 // options numbered from 1 with Later as the last number, and the Now: and
 // Change later: lines the question carries. One blank line separates each.
 //
@@ -216,10 +217,28 @@ func (d drawer) chipLine(a question.Ask, tab int) string {
 }
 
 // block draws one material block: a paragraph wrapped at measure, or a list
-// with each item's continuation lines hanging beneath its text.
+// with each item's continuation lines hanging beneath its text. A paragraph
+// whose text holds line breaks is drawn a line for each, as the host's
+// question tool shows it and the row estimate counts it: each line as it is,
+// its leading spaces kept, and one wider than the measure wrapped with its
+// continuation hanging. The lines a README part would write are quoted so.
 func (d drawer) block(b question.Block, measure int) []string {
 	if b.Kind != question.KindList {
-		return hanging(b.Text, indent, 0, measure)
+		if !strings.Contains(b.Text, "\n") {
+			return hanging(b.Text, indent, 0, measure)
+		}
+		var out []string
+		for _, ln := range strings.Split(b.Text, "\n") {
+			switch {
+			case ln == "":
+				out = append(out, "")
+			case textwidth.Columns(ln) <= measure:
+				out = append(out, strings.Repeat(" ", indent)+ln)
+			default:
+				out = append(out, hanging(ln, indent, hang, measure)...)
+			}
+		}
+		return out
 	}
 	var out []string
 	for _, it := range b.Items {

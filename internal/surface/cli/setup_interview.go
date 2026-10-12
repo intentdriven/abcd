@@ -173,6 +173,20 @@ func (p *drawnPrompter) Prompt(key string, choices []string, def string) string 
 	return a.Value
 }
 
+// PromptHelped draws the value question h with the help the run built for it
+// (its current setting and its example), which makes the drawn door an
+// ahoy.HelpedPrompter; deciding later answers nothing, as Prompt's does.
+func (p *drawnPrompter) PromptHelped(h ahoy.PromptHelp, choices []string, def string) string {
+	p.n++
+	q := ahoy.SetupHelpedQuestion(p.n, h, choices, def)
+	a := p.put(q)
+	p.record(q, a.Value, "", interview.Terminal)
+	if a.Later {
+		return ""
+	}
+	return a.Value
+}
+
 // Confirm draws the approval; deciding later declines.
 func (p *drawnPrompter) Confirm(text string) bool {
 	q := p.confirm(text)

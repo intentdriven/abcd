@@ -1,19 +1,23 @@
 ---
 id: itd-39
 slug: scope-aware-memory-retrieval
-spec_id: null
-kind: standalone
+spec_id: spc-2610111627213138
+kind: bundle-member
 suggested_kind: standalone
 reclassification_history: []
-blocked_by: [itd-36, itd-3]
+blocked_by: []
 severity: minor
+related_intents: [itd-2610091918433290]
+related_adrs: [adr-2610091918443997]
+bundle: memory-recall
+impact: additive
 ---
 
 # abcd Surfaces the Right Memory at the Right Moment
 
 ## Press Release
 
-> **abcd ships scope-aware memory retrieval so the project's accumulated knowledge reaches you exactly when it's relevant — and never floods your context when it isn't.** Memory pages carry `recall` keywords. The same `UserPromptSubmit` hook that injects modular rules (itd-3) also scans each prompt against memory pages across two scopes — the workspace and the user's personal store — and injects only the matching pages. Injection is budget-aware: with a fresh context window abcd surfaces full pages; as the window depletes it falls back to one-line index entries, then to nothing. Memory stops being an all-or-nothing wall and becomes a just-in-time lookup.
+> **abcd ships scope-aware memory retrieval so the project's accumulated knowledge reaches you exactly when it's relevant — and never floods your context when it isn't.** Memory pages carry `recall` keywords. The same `UserPromptSubmit` hook that injects modular rules (itd-3) also scans each prompt against memory pages across two scopes — the workspace and the user's personal store — and injects only the matching pages. Injection is budget-aware: with a fresh context window abcd surfaces full pages; as the window depletes it falls back to one-line index entries, and stays at them to the end of the session. Memory stops being an all-or-nothing wall and becomes a just-in-time lookup.
 >
 > "Our `.abcd/memory/` had grown to 140 pages across two years," said Carol, tech lead. "Loading all of it was impossible and loading none of it meant agents kept relearning the same pitfalls. Now a prompt about the auth module pulls the three auth pages and nothing else — and when I'm deep in a long session it quietly drops to titles-only so it never crowds out the actual work."
 
@@ -59,16 +63,27 @@ The failure mode itd-3 guards against is *unbounded scaffolding outside the repo
 
 ## Open Questions
 
-- Should the three context-bracket thresholds be shared with itd-3's rule injection or tuned separately for memory? (Rules are smaller per-item than memory pages.)
-- Does the `DEPLETED`-bracket "titles-only" fallback need a relevance ranking, or is recall-keyword match count sufficient?
-- Release placement is deferred until itd-36's storage model has shipped and accumulated real corpus.
+- None for the product thinker. The three questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec.
 
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+
+## Decisions
+
+- 2026-10-11, product thinker: "Build both together". Memory pages (this intent) and memory notes (itd-2610091918433290) share one recall and are planned as one bundle. Where this intent's criteria overlap the notes intent's (the brackets; never reading the host's memory files), both criteria stand and one mechanism serves both.
+- 2026-10-11, technical facilitator, the first question first left here: "Share the brackets". Memory recall uses the rules loader's context brackets (itd-3); there are no thresholds tuned separately for memory.
+- 2026-10-11, technical facilitator, the second question first left here: "A relevance ranking". When the context is short and only some matching titles fit, a relevance ranking chooses the ones that stay, not the raw count of matching recall words. The spec designs a simple ranking whose choice can be explained, cites its prior art, and adds no dependency unless the person signs off.
+- 2026-10-11, technical facilitator, how recall ends: "never send nothing". Recall goes full, then one-line index entries, and stays at them to the end of the session; there is no bracket in which matched pages come back as nothing, because a compaction or a new session resets recall anyway, so the one-line entries cost little and a session never loses sight of a page that matches. The press release's earlier wording, "then to nothing", was accepted into the plan with this bundle on 2026-10-11 and changed the same day by this ruling. The `DEPLETED` bracket under What's In Scope already ends at index lines and is unchanged.
+- 2026-10-11, technical facilitator, the diagnostic: the `abcd memory recall [keyword]` subcommand under What's In Scope is `abcd rules --prompt "<text>"`, on the existing `rules` verb, showing the rules, notes and pages one prompt would bring back, in which bracket, with the ranking's reasons. Since the verb split, `memory` is the agents' notes command and the rules verb already renders what the loader injects.
+- 2026-10-11, settled on the record, the third question first left here: release placement no longer waits. itd-36's storage model has shipped, and its store is now reached as `library ingest`, `library ask` and `library lint` (itd-2610090831227812).
 
 ## References
 
 - Deferred to by: `itd-42` (coherence-aware grill) — itd-42's Tier 3 is index-level only; full-body cross-intent comparison at scale is this intent's selective-retrieval problem.
 
 [carl]: https://github.com/ChristopherKahler/carl "CARL — Context Augmentation & Reinforcement Layer (Kahler)"
+
+## Grounds
+
+- pursued: We expect the right page to reach an agent when it matters, without crowding the context. Shown wrong if matched pages are mostly irrelevant, or if recall crowds out the work.

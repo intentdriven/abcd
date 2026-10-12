@@ -297,7 +297,9 @@ and receipt verbs act on the one run in progress in the checkout and refuse nami
 the runs when there are several. Their refusals name the stage, the reason and
 the remedy, and a pause
 before the run's next eligible time, a lock held by another invocation, or a
-landing waiting for its pull request to merge, is contention at exit 3. The
+landing waiting for its pull request to merge, is contention at exit 3; a
+pull request the forge reports conflicting is not such a wait but a refusal
+at exit 2, since it never merges without a person. The
 record verb reads a run's record back at the end, and on a complete run captures
 the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
@@ -409,6 +411,8 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--site` | string |
+| `--timeout` | duration |
+| `--wait` | bool |
 
 ### `abcd implement log`
 

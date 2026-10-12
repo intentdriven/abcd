@@ -34,6 +34,13 @@ type Question struct {
 	// which would remove that row; the Terminal draws it as one line after
 	// the options. It counts as one option toward the limits' floor.
 	Typed string `json:"typed,omitempty"`
+	// Default is the value of the entry a drawn list's cursor starts on (an
+	// option's or Later's), so Enter alone takes it; with none, or one no
+	// entry carries, the cursor starts on the first option. It moves the
+	// cursor and nothing else: the options keep their order, and no text
+	// says it (Fields leaves it out), since an answer marked or put first
+	// would read as recommended.
+	Default string `json:"default,omitempty"`
 }
 
 // TypedTextPrefix opens the line of the question text that says what the
