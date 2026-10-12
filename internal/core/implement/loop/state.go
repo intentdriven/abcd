@@ -798,6 +798,13 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
+	// A lane's stored hand-back carries only text the loop writes, so none
+	// reaches a --json stream raw; the refusal does not echo it
+	// (iss-2610121516559163).
+	if !st.handBacksWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
 	return st, nil
 }
 
