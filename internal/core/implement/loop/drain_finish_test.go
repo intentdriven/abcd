@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // Merged lanes are finished (spc-2609212015054359 step 3, iss-2610090936460789):
@@ -28,7 +30,7 @@ func drainLandFixture(t *testing.T) *landFixture {
 	repo.Write(".abcd/work/rulesets/main-protection.json", queueRuleset("MERGE"))
 	repo.Commit("the ruleset mirror")
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	repo.Git("init", "-q", "--bare", "--initial-branch=main", bare)
+	gittest.InitBare(t, bare)
 	repo.Git("remote", "add", "origin", bare)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
