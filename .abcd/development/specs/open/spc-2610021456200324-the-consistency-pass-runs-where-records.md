@@ -449,6 +449,25 @@ These are the facilitator's design calls. None changes a criterion.
 - **The verb** is `abcd intent consistency precommit`, with exit 0 to proceed,
   1 only for the stop refusal, and 2 for a fault.
 
+### Agent's choices, 2026-10-12 (for review)
+
+The building agent made these calls where the spec is silent, taking the
+narrowest reading that meets the criteria. Each is open to review.
+
+- **Step 1, the addressing folder.** `ConsistencyFiling` carries `Folder`
+  beside `Addressed`. Without it the row's `AddressedBy` could not name the
+  record's folder.
+- **Step 1, the reader refuses a malformed key too.** `issuerecord.ValidateStrict`
+  refuses a `finding_key` that is not the key's shape, as it refuses a
+  malformed `lapsed_at`. Capture, the reader and `record_schema` therefore
+  agree. `record_schema`'s own leg names a non-blank malformed value; a blank
+  one is left to the reader-parity backstop.
+- **Step 1, several closed records with one key.** When no open record
+  carries the key, the first resolved or won't-fix record in ledger order
+  addresses the finding.
+- **Step 1, the duplicate refusal names the key.** "finding N repeats
+  finding M" now ends with the key the two share.
+
 ## Open point
 
 _None open._ Both points were settled on 2026-10-02:
