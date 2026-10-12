@@ -295,3 +295,130 @@ func TestRulesPromptRefusesAPositionalDomain(t *testing.T) {
 		t.Fatalf("a refused form rendered:\n%s", out)
 	}
 }
+
+// writeMemoryPage writes one memory page into dir, with a recall: list when
+// recall is given.
+func writeRecallPage(t *testing.T, dir, name, body string, mode os.FileMode, recall ...string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fm := "---\n"
+	if len(recall) > 0 {
+		fm += "recall: [" + strings.Join(recall, ", ") + "]\n"
+	}
+	fm += "source:\n  class: session_memory\n---\n"
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(fm+body), mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestANoteAndAPageComeBackTogether (N2): a note and a page that both match
+// a prompt about tests come back together, in one block, through the one
+// recall the prompt router runs.
+func TestANoteAndAPageComeBackTogether(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	id := addRaceNote(t, "session-one")
+	writeRecallPage(t, filepath.Join(repo, ".abcd", "memory"), "fact_eng_test-layout.md",
+		"# The tests live beside their package\n\nTable tests, one file per verb.\n", 0o644, "test")
+
+	env, _ := recallRouterJSON(t, "session-two", repo, "why are the tests failing?")
+	if env.Recalled == nil || !slices.Equal(slices.Sorted(slices.Values(*env.Recalled)), []string{id, "page:fact_eng_test-layout.md"}) {
+		t.Fatalf("recalled = %v, want the note and the page\n%s", env.Recalled, env.Text)
+	}
+	if strings.Count(env.Text, "## MEMORY") != 1 {
+		t.Fatalf("the note and the page did not come back in one block:\n%s", env.Text)
+	}
+	for _, want := range []string{"The tests need the race flag", "The tests live beside their package", "Table tests, one file per verb."} {
+		if !strings.Contains(env.Text, want) {
+			t.Fatalf("the block does not carry %q:\n%s", want, env.Text)
+		}
+	}
+}
+
+// TestRulesPromptShowsMatchedPages: `rules --prompt` lists each page the
+// prompt recalls, from either scope, with its key, layer and hitting words,
+// and names no page the prompt does not match.
+func TestRulesPromptShowsMatchedPages(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	workspace := filepath.Join(repo, ".abcd", "memory")
+	writeRecallPage(t, workspace, "fact_eng_auth-flow.md", "# Auth uses short-lived tokens\n\nThe page's own words.\n", 0o644, "auth", "login")
+	writeRecallPage(t, workspace, "fact_eng_billing.md", "# Billing runs nightly\n", 0o644, "billing")
+	writeRecallPage(t, abcdhome.Path(home, "memory"), "fact_eng_auth-keys.md", "# Auth keys live in the keychain\n", 0o600, "auth")
+
+	out, stderr, err := runCLISplit(t, "rules", "--prompt", "the auth login is broken")
+	if err != nil {
+		t.Fatalf("rules --prompt: %v\n%s", err, stderr)
+	}
+	for _, want := range []string{"Pages:", "page:fact_eng_auth-flow.md  Auth uses short-lived tokens (project layer) — hit by auth, login",
+		"page:fact_eng_auth-keys.md  Auth keys live in the keychain (machine layer) — hit by auth"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rules --prompt does not show %q:\n%s", want, out)
+		}
+	}
+	for _, not := range []string{"Billing", "The page's own words."} {
+		if strings.Contains(out, not) {
+			t.Fatalf("rules --prompt shows %q:\n%s", not, out)
+		}
+	}
+
+	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "the auth login is broken", "--json")
+	if err != nil {
+		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+	}
+	var env struct {
+		Pages []struct {
+			Key      string   `json:"key"`
+			Filename string   `json:"filename"`
+			Title    string   `json:"title"`
+			Layer    string   `json:"layer"`
+			Hits     []string `json:"hits"`
+			Form     string   `json:"form"`
+		} `json:"pages"`
+	}
+	if err := json.Unmarshal([]byte(jout), &env); err != nil {
+		t.Fatalf("rules --prompt --json is not one document: %v\n%s", err, jout)
+	}
+	if len(env.Pages) != 2 {
+		t.Fatalf("pages = %+v", env.Pages)
+	}
+	p := env.Pages[0]
+	if p.Key != "page:fact_eng_auth-flow.md" || p.Filename != "fact_eng_auth-flow.md" || p.Title != "Auth uses short-lived tokens" ||
+		p.Layer != "project" || !slices.Equal(p.Hits, []string{"auth", "login"}) || p.Form != "full" {
+		t.Fatalf("pages[0] = %+v", p)
+	}
+	if env.Pages[1].Key != "page:fact_eng_auth-keys.md" || env.Pages[1].Layer != "machine" {
+		t.Fatalf("pages[1] = %+v", env.Pages[1])
+	}
+}
+
+// TestARefusedPageIsNamedAndTheRestComeBack: a machine page others can write
+// is refused and named on stderr, in tilde form; the scope's other pages and
+// the rules still come back.
+func TestARefusedPageIsNamedAndTheRestComeBack(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	machine := abcdhome.Path(home, "memory")
+	writeRecallPage(t, machine, "fact_eng_auth-flow.md", "# Kept to this account\n", 0o600, "commit")
+	writeRecallPage(t, machine, "fact_eng_auth-keys.md", "# Anyone can rewrite this\n", 0o666, "commit")
+
+	env, errlog := recallRouterJSON(t, "refused-page", repo, "commit the fix")
+	if !slices.Contains(env.Injected, "COMMITTING") || env.Recalled == nil || !slices.Equal(*env.Recalled, []string{"page:fact_eng_auth-flow.md"}) {
+		t.Fatalf("injected %v recalled %v:\n%s\nstderr:\n%s", env.Injected, env.Recalled, env.Text, errlog)
+	}
+	if strings.Contains(env.Text, "Anyone can rewrite this") {
+		t.Fatalf("a page others can write came back:\n%s", env.Text)
+	}
+	if !strings.Contains(errlog, abcdhome.Display("memory", "fact_eng_auth-keys.md")) || !strings.Contains(errlog, "recalling nothing from it") {
+		t.Fatalf("stderr does not name the refused page:\n%s", errlog)
+	}
+	if strings.Contains(errlog, home) {
+		t.Fatalf("stderr carries the expanded home:\n%s", errlog)
+	}
+}

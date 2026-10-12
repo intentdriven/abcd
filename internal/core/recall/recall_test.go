@@ -76,7 +76,7 @@ func TestANoteInTheProjectsFileIsRecalled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".abcd", "memory.json"), []byte(project), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	items, refused := ReadNotes(t.TempDir(), repo)
+	items, refused := readNotes(t.TempDir(), repo)
 	if len(refused) != 0 {
 		t.Fatalf("refused = %+v", refused)
 	}

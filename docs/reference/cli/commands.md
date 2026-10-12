@@ -3656,15 +3656,16 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget. It reads against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.
 
 **Flags:**
 
 ```
-      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls
+      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls
 ```
 
 ### `abcd scribe`
