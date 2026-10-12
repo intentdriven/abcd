@@ -1921,8 +1921,8 @@ func sourcePath(rc *readCtx, st *shellState, s segment, site int) (string, bool)
 	return p, ok
 }
 
-// sourceLookup is sourcePath, and whether the search ran into a directory
-// the line does not fix: a PATH entry, or zsh's working directory. A `PATH=` prefix on the `source` itself is the PATH
+// sourceLookup is sourcePath, and whether the search ran into a PATH entry
+// the line does not fix. A `PATH=` prefix on the `source` itself is the PATH
 // its search reads (iss-2610111600031244), and there an entry the line does
 // not fix — a variable, or a relative entry where the working directory is
 // unknown — means the file the shell finds is not one the guard can name.
@@ -1951,16 +1951,16 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 		return p, ok, unfixed, tried
 	}
 	if s.tokens[site] == "source" {
-		// zsh looks in the working directory first: where the line leaves
-		// it unknown, PATH's file is not the one to read in its place.
-		p, ok := st.resolve(rc, w, false)
-		if !ok {
-			return "", false, true, nil
+		// zsh looks in the working directory first. Where the line leaves
+		// it unknown, the file there is unread, as a `./name` source there
+		// is, and PATH's, which runs when the directory does not hold the
+		// name, is read.
+		if p, ok := st.resolve(rc, w, false); ok {
+			if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
+				return p, true, false, nil
+			}
+			tried = append(tried, p)
 		}
-		if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
-			return p, true, false, nil
-		}
-		tried = append(tried, p)
 	}
 	p, ok, unfixed = searchPath(rc, st, pv, set, w, false, set, &tried)
 	return p, ok, unfixed, tried
@@ -2621,15 +2621,13 @@ func cdpathSignal(fromEnv bool) payloadSignal {
 	}
 }
 
-// sourcePathUnfixedSignal is the block for a `source` whose search reaches a
-// directory the line does not fix: an entry of a PATH the line sets, or the
-// working directory zsh's `source` looks in first.
+// sourcePathUnfixedSignal is the block for a `source` whose search reaches an
+// entry of a PATH the line sets that the line does not fix.
 func sourcePathUnfixedSignal() payloadSignal {
 	return payloadSignal{
 		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
-		reason: "This command sources a file by name, and a directory its search looks in before it finds one — an " +
-			"entry of the PATH the line sets, or the working directory zsh's source looks in first — is not fixed " +
-			"by the line, so the file the shell finds is not one the guard can read.",
+		reason: "This command sources a file by name through a PATH the line sets, and an entry of that PATH is not " +
+			"fixed by the line, so the file the shell finds is not one the guard can read.",
 		successor: "Source the file by its path (source ./lib.sh), or set PATH to fixed absolute directories.",
 	}
 }

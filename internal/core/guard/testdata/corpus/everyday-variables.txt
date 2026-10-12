@@ -59,3 +59,8 @@ ps -o pid= -p 4242 | xargs kill
 pgrep -l make > procs.txt; cat procs.txt
 lsof -i :8080 > holders.txt; cat holders.txt
 X='echo hi'; eval "$X"
+
+# --- a bare-name source in a directory the line does not fix -----------------
+cd "$(git rev-parse --show-toplevel)" && source .envrc
+cd "$(mktemp -d)" && source setup.sh
+pushd "$(dirname "$0")" && source env.sh && popd
