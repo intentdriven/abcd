@@ -1213,19 +1213,13 @@ func reportOf(repoRoot string, root *os.Root, runID, laneID, receiptRel string) 
 	return string(data), nil
 }
 
-// fenced is s in a code fence longer than any run of backticks it holds.
+// fenced is s in a tilde fence longer than any run of tildes it holds, so no
+// line of it can close the fence.
 func fenced(lang, s string) string {
-	n, run := 3, 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '`' {
-			run++
-			if run >= n {
-				n = run + 1
-			}
-		} else {
-			run = 0
-		}
+	n := 3
+	for strings.Contains(s, strings.Repeat("~", n)) {
+		n++
 	}
-	f := strings.Repeat("`", n)
+	f := strings.Repeat("~", n)
 	return f + lang + "\n" + strings.TrimRight(s, "\n") + "\n" + f
 }
