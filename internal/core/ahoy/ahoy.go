@@ -253,6 +253,9 @@ type InstallResult struct {
 	// unverifiedCheck is the hand check for the owned copy whose provenance
 	// failed, which the summary gives under UnverifiedCopyGapID.
 	unverifiedCheck string
+	// unverifiedWhy names why that copy was not verified when a fact other
+	// than the check says so (its release is older than the mark).
+	unverifiedWhy string
 }
 
 // ApplyResult is the outcome of one apply step.

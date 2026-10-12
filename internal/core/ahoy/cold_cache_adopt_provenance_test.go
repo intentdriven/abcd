@@ -295,3 +295,49 @@ func TestHandCheckNeverSplicesAnUnshapedTag(t *testing.T) {
 		t.Errorf("a release tag is named: %q", cmd)
 	}
 }
+
+// TestColdCopyOlderThanTheMarkIsUnverified: with no cache, the copy's release
+// comes from its own build metadata, so an older release's genuine build
+// would verify as itself. The newest-release mark holds the cold path to the
+// same floor the warm path and the bootstrap keep.
+func TestColdCopyOlderThanTheMarkIsUnverified(t *testing.T) {
+	target, _ := plainCopy(t)
+	if err := RecordReleaseMark("v0.13.5", true); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recordingProvenance{}
+	opts := installOpts()
+	opts.VerifyProvenance = rec.check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnverifiedCopyReported(t, res, target)
+	var what string
+	for _, it := range res.Summary {
+		if slices.Contains(it.Refs, UnverifiedCopyGapID) {
+			what = it.What + " " + it.Why
+		}
+	}
+	for _, v := range []string{stubCopyRelease, "v0.13.5"} {
+		if !strings.Contains(what, v) {
+			t.Errorf("the summary must name %s: %q", v, what)
+		}
+	}
+}
+
+// TestColdCopyAtTheMarkIsAdopted: a copy at the mark is the newest release
+// this machine knows, and adopts as before.
+func TestColdCopyAtTheMarkIsAdopted(t *testing.T) {
+	_, _ = plainCopy(t)
+	if err := RecordReleaseMark(stubCopyRelease, true); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(gitRepo(t), installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(res.Remaining, UnverifiedCopyGapID) {
+		t.Errorf("a copy at the mark must adopt; remaining %v, notes %v", res.Remaining, res.Notes)
+	}
+}

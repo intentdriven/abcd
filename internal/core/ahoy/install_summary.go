@@ -315,9 +315,17 @@ var remainingHelp = SummaryItem{
 
 // unverifiedCopyHelp explains an owned PATH copy whose build provenance did not
 // verify, with the hand check for that file.
-func unverifiedCopyHelp(check string) SummaryItem {
+func unverifiedCopyHelp(check, why string) SummaryItem {
 	if check == "" {
 		check = ghAttestationVerifyCommand("<the abcd on your PATH>", "")
+	}
+	if why != "" {
+		return SummaryItem{
+			What:   "The abcd on your PATH is " + why + ", so it was not adopted; it was left as it is.",
+			Why:    "With no verified cache to compare it with, the copy names its own release, and a release older than the newest this machine has known is refused so an old build cannot stand in for a newer one.",
+			Action: "Reinstall the newest release with the install one-liner in the README, or run abcd update; check the copy by hand with `" + check + "`.",
+			Refs:   []string{UnverifiedCopyGapID},
+		}
 	}
 	return SummaryItem{
 		What:   "The abcd on your PATH could not be verified as a release build of abcd, so it was not adopted; it was left as it is.",
@@ -393,7 +401,7 @@ func (r *InstallResult) explain() {
 	var rest []string
 	for _, id := range r.Remaining {
 		if id == UnverifiedCopyGapID {
-			r.Summary = append(r.Summary, unverifiedCopyHelp(r.unverifiedCheck))
+			r.Summary = append(r.Summary, unverifiedCopyHelp(r.unverifiedCheck, r.unverifiedWhy))
 			continue
 		}
 		rest = append(rest, id)

@@ -482,7 +482,7 @@ bytes, even when nothing else is left to do and even when it holds the cached
 release's bytes (the bootstrap refreshes it from the cache on the checksum
 alone when `gh` cannot verify). It is bound to the release the cache
 attestation names when the copy holds the cache's bytes, and otherwise to the
-release its build metadata names (read, never run). A copy that fails, or that cannot be checked, is not
+release its build metadata names (read, never run). A copy naming a release older than `~/.abcd.noindex/release-mark`, the newest release this machine has installed or verified, fails that check. A copy that fails, or that cannot be checked, is not
 adopted and is left as it is: the run ends `partial`, never `clean` or
 `already_up_to_date`, with a `symlink.unverified` item in `remaining` whose
 summary gives the `gh attestation verify` command for that file. Relay that
