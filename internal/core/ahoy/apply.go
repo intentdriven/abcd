@@ -100,6 +100,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
 	}
 
+	// A --readme-parts value naming a part abcd does not write stops the run
+	// before its first write, naming the parts it does.
+	if opts.ReadmeParts != "" {
+		if _, perr := ParseReadmeParts(opts.ReadmeParts); perr != nil {
+			return InstallResult{Status: "refused", Notes: []string{perr.Error()}}, nil
+		}
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -152,6 +160,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		!(!opts.Yes && len(optionalAskable(det.Gaps, p)) > 0) &&
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
+		!readmeWouldChange(abs, opts) &&
 		!modeForced {
 		// One state reaches here that is NOT a no-op: a config.json that could not
 		// be parsed. It raises exactly one gap, deliberately non-resolvable — the
@@ -169,8 +178,11 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 				OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
 			}, nil
 		}
+		// The README parts this run had nothing to write still say what was
+		// omitted or left, since no apply step runs to say it.
 		return InstallResult{
 			Status:          "already_up_to_date",
+			Notes:           readmeStandingNotes(abs, opts),
 			OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
 		}, nil
 	}
@@ -193,6 +205,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		binTarget:   binTargetPath,
 		attribution: opts.Attribution,
 		confirmTool: opts.ConfirmTool,
+		readmeFlag:  opts.ReadmeParts,
 	}
 
 	// Ordered apply steps.
@@ -213,6 +226,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.stepAttributionHook()
 	ac.stepHistory()
 	ac.stepMarker(cfg)
+	// After stepMarker, before stepSymlink: the README pair's place in
+	// setup's fixed order (decision 7).
+	ac.stepReadme()
 	ac.stepSymlink()
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
@@ -391,6 +407,7 @@ type applyCtx struct {
 	attribution bool     // --attribution: opt this repo into the committed prompt hook
 	binTarget   string   // the resolved PATH entry this run installs (never re-derived)
 	confirmTool tools.Confirm
+	readmeFlag  string // --readme-parts as given; "" when not given
 
 	visibilityForced bool     // an explicit --visibility override overwrote a valid value
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
@@ -1853,10 +1870,13 @@ func (a *applyCtx) stepVersionStamp() {
 	a.note(writeSetupRecord, configPath(a.cwd))
 }
 
-// Uninstall removes the marker block and the owned PATH entry (the spc-35 owned
-// copy plus its provenance record, or a legacy pinned symlink) only. It never
-// mutates hooks.json or the .abcd/ namespace, and leaves the download cache to
-// the harness's own uninstall.
+// Uninstall removes the marker block, abcd's README parts, abcd's status line
+// (handed back to the command it replaced) and the owned PATH entry (the
+// spc-35 owned copy plus its provenance record, or a legacy pinned symlink)
+// only. It never mutates hooks.json, and leaves the download cache to the
+// harness's own uninstall. Its one write in the .abcd/ namespace is
+// clearing readme.created from .abcd/config.json once the README.md that
+// record vouches for is gone (uninstallReadme); nothing else there is touched.
 //
 // binDir names the directory to look in, for the one case detection cannot
 // derive: an install placed by `--bin-dir` in a directory that is not on PATH is
@@ -1880,6 +1900,10 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 			receipt.Marker.Skipped = append(receipt.Marker.Skipped, name)
 		}
 	}
+
+	// README parts: whatever the stored answer says, as the loop above
+	// ignores docs.target (spc-2610031704338417).
+	receipt.Readme = uninstallReadme(abs)
 
 	// Status line: hand the harness back the command recorded before abcd took
 	// the row (spc-70). Decided by the SHAPE of the harness's command, so it is
@@ -2038,10 +2062,11 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // optionalGapIDs are the advisory gaps install closes only against an answered
 // prompt, never under --yes: the identity pin (see stepIdentityPin), the
 // status-line offer (see stepStatusLine), the two model-tier routing offers
-// (see stepOracleRouting), the drain eligibility record (see stepDrainRule)
-// and the retirement of a tool's own conventions file (see
-// stepConventionsFiles). In the order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+// (see stepOracleRouting), the drain eligibility record (see stepDrainRule),
+// the retirement of a tool's own conventions file (see
+// stepConventionsFiles) and the README question (see stepReadme). In the
+// order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
@@ -2062,20 +2087,28 @@ func optionalSkipped(opts InstallOptions, gaps []Gap, p Prompter) []string {
 	if opts.Yes {
 		return optionalPending(gaps)
 	}
-	if atTerminal(p) {
-		return nil
-	}
-	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return !slices.Contains(terminalOnlyGapIDs, id) })
+	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return optionalAsked(id, p) })
 }
 
 // optionalAskable is optionalPending less the offers that will not be asked of
 // p: the terminal-only offers are put only to a person at a terminal.
 func optionalAskable(gaps []Gap, p Prompter) []string {
-	pending := optionalPending(gaps)
-	if atTerminal(p) {
-		return pending
+	return slices.DeleteFunc(optionalPending(gaps), func(id string) bool { return !optionalAsked(id, p) })
+}
+
+// optionalAsked reports whether a run that is not --yes puts the optional
+// offer id to p. The terminal-only offers are put only to a person at a
+// terminal. The README question is answered by --readme-parts alone until its
+// question pair is asked (spc-2610031704338417 step 4), so no run asks it yet,
+// and every run that leaves it unanswered reports it.
+func optionalAsked(id string, p Prompter) bool {
+	switch {
+	case id == ReadmeOfferGapID:
+		return false
+	case slices.Contains(terminalOnlyGapIDs, id):
+		return atTerminal(p)
 	}
-	return slices.DeleteFunc(pending, func(id string) bool { return slices.Contains(terminalOnlyGapIDs, id) })
+	return true
 }
 
 // optionalPending reports which of the optional gaps are the remaining work.
@@ -2191,6 +2224,9 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 		present[ConfigChange] = true
 		lines[ConfigChange] = append(lines[ConfigChange], flagChanges...)
 	}
+	// The README question is its own consent (open question 5): its category
+	// is never asked, approved or declined.
+	delete(present, Readme)
 	approved := map[GapCategory]bool{}
 	switch {
 	case opts.ApprovedCategories != nil:

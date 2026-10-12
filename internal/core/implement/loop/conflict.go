@@ -130,7 +130,7 @@ func localConflict(root, tracking, head string) conflictFinding {
 	if err != nil {
 		return conflictFinding{err: err}
 	}
-	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver, "-c", "merge.renormalize=false",
+	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
 		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", tracking, head)
 	out, conflicted, err := gitutil.RunCappedExitOne(root, maxGitOutput, args...)
 	if err != nil {

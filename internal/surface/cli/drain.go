@@ -240,6 +240,7 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		parts = append(parts, fmt.Sprintf("%d %s", counts[o], o))
 	}
 	fmt.Fprintf(w, "  ledger: %s (`abcd drain --dry-run` lists each)\n", strings.Join(parts, ", "))
+	renderDrainCounts(w, res.Counts)
 	if res.NextEligibleAt != nil {
 		fmt.Fprintf(w, "  next_eligible_at: %s\n", res.NextEligibleAt.UTC().Format(time.RFC3339))
 	}
@@ -252,6 +253,28 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		fmt.Fprintln(w, "  ended: the run gave up on a lost connection")
 	}
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(res.Next))
+}
+
+// renderDrainCounts is the summary's counts (itd-82 scope 8): the lanes by
+// outcome and the pull requests they opened, the hand-backs by route, the
+// rule's flags, the judgements, the passed issues, and the spend in agent
+// runs, named a floor when a lane's run could not be read.
+func renderDrainCounts(w io.Writer, c loop.DrainCounts) {
+	fmt.Fprintf(w, "  counts: %d lane(s) opened (%d in progress, %d pull request(s) opened, %d handed back); "+
+		"hand-backs routed: %d promoted, %d flagged for a decision record, %d flagged with a home; "+
+		"%d flagged by the rule; %d host judgement(s); %d passed\n",
+		c.LanesOpened, c.InProgress, c.PullRequests, c.LanesHandedBack, c.Promotions, c.DecisionRecords, c.Homes,
+		c.RuleFlags, c.Judgements, c.Passed)
+	floor := ""
+	if len(c.Spend.Unread) > 0 {
+		floor = "at least "
+	}
+	fmt.Fprintf(w, "  spend:  %s%d agent run(s) (%d implementer(s), %d validator(s)) across the drain's lanes, the unit the budget check counts in",
+		floor, c.Spend.AgentRuns, c.Spend.Implementers, c.Spend.Validators)
+	if floor != "" {
+		fmt.Fprintf(w, "; the state of %s could not be read", termsafe.Sanitize(strings.Join(c.Spend.Unread, ", ")))
+	}
+	fmt.Fprintln(w)
 }
 
 // isDrainRuleRefusal reports whether err is the rule load refusing: every one

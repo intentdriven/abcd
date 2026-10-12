@@ -1,0 +1,25 @@
+---
+schema_version: 1
+id: "iss-2610110941289527"
+slug: "the-merge-queue-s-check-timeout-was"
+severity: "major"
+category: "bug"
+source: "agent-finding"
+found_during: "merge-pipeline evidence from abcd-0b, 2026-10-11"
+origin: researcher-authored
+production_mode: hand-written
+found_at: ".abcd/work/rulesets/main-protection.json"
+remedy: "once the macOS leg runs only in the queue, measure a queue entry's macOS wait plus run time and set check_response_timeout_minutes above its p90, with the measurement on this record; meanwhile keep max_entries_to_build within the macOS slots"
+resolution: "the macOS suite runs once, in the queue, in one pass (#933), and the queue builds 4 entries with a 90-minute check timeout (ruleset 19969675); over 24 queue runs the macOS wait plus run p90 is 35.6 minutes and no entry dropped on a timeout"
+impact: fix
+resolved_by:
+  commit: "5a915fd2c"
+---
+
+The merge queue's check timeout was shorter than one macOS queue entry takes: over 33 merge-group ci runs (2026-10-10 18:00Z to 2026-10-11 09:40Z) a macOS job waited a median 40 minutes for a runner (p90 68, max 81) and then ran a median 40 (p90 44), so an entry needed about 80 minutes against a 45-minute timeout. Every entry that had to wait was removed: #903 and #906 twice each, #908, #910, #913 and #915 once (#913 at 04:46:54Z with every check green but macOS, run 38110208736). Nothing merged from 03:36Z to 09:38Z with 15 entries queued. The person has since set 2 entries and 90 minutes (ruleset 19969675, mirror PR #926); 90 is still tight against 80.
+
+**A second way an entry drops (2026-10-11).** The macOS job's own `timeout-minutes: 45` removes entries too: merge-group run 38131330623 (pr-914) had `check (macos-latest)` start at 10:18:34Z and cancelled at 11:03:56Z, 45m22s later, inside "Test (race, internal)", and the queue removed #914 at 11:04:27Z, counting the cancelled check as a failure.
+
+**After #933 (one sample, 2026-10-11).** #933 moved the macOS suite to the merge queue only and made it one race-enabled pass. Its own queue run, 38134740530, ran `check (macos-latest)` in 24.7 minutes (the pass 23.6), against a median of 40 before, and waited 0.1 minutes for a runner, against a median of 40 (p90 68) before. With the person's ruling of 4 entries built at once and a 90-minute check timeout, one entry's wait plus run is now well inside the timeout. That is one run: the remedy's p90 over a day of queue runs is still owed before this record is resolved.
+
+**The remedy's measurement (2026-10-11, 24 merge-group runs since #933 merged, 11:40Z to 16:30Z).** `check (macos-latest)` waited for a runner a median of 0.1 minutes (p90 0.8, max 26.9) and ran a median of 30.1 minutes (p90 33.0, max 35.5); wait plus run had a median of 30.6 minutes and a p90 of 35.6 (max 57.9). The queue's check timeout is 90 minutes and the queue builds 4 entries at once (ruleset 19969675, mirrored in `.abcd/work/rulesets/main-protection.json` on main), so the timeout sits at two and a half times the p90 and the macOS job's own 45-minute ceiling is 12 minutes above its slowest run. No entry dropped on a timeout in the window: of the 24 runs 22 passed, and the 2 cancelled were superseded runs (pr-903, pr-923) that queue-sweep cancelled at 13:08Z because their queue refs were gone, leaving the live pr-922 runs alone.

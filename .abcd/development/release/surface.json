@@ -281,6 +281,13 @@
           "hidden": false
         },
         {
+          "name": "readme-parts",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "refuse-adopt",
           "shorthand": "",
           "type": "bool",

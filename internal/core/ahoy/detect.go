@@ -119,6 +119,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectConfigIntegrity(abs)...)
 		gaps = append(gaps, detectConfigValues(abs)...)
 		gaps = append(gaps, detectMarkerDrift(abs)...)
+		gaps = append(gaps, detectReadme(abs)...)
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectOracleRouting(abs)...)

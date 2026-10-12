@@ -193,29 +193,42 @@ func TestSurpriseRedrawsAnIDThisProcessAlreadyWrote(t *testing.T) {
 	}
 }
 
-// The redraw is confined to the process's own writes: a record already in the
-// ledger that this process did not write is a peer's, and a mint that lands on
-// it is still refused, writing nothing.
-func TestSurpriseRefusesACollisionWithAPeersRecord(t *testing.T) {
+// iss-2610110359273529: a mint that lands on a record this process did not
+// write — a peer's committed record — draws again, exactly as a clash with the
+// process's own record does and as the iss and reading-item allocators do
+// (spc-33 ruling 2). A redraw never overwrites, so the peer's record is left
+// byte-for-byte as it was and the surprise lands on the redrawn id.
+func TestSurpriseRedrawsPastAPeersRecord(t *testing.T) {
 	repo, ir, item := readingFixture(t, "detection")
 	dir := filepath.Join(ir, issueschema.SurprisesDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	peer := filepath.Join(dir, "srp-2610092000060042.md")
-	if err := os.WriteFile(peer, []byte("a peer's record\n"), 0o644); err != nil {
+	peerBody := []byte("a peer's record\n")
+	if err := os.WriteFile(peer, peerBody, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// draw1=0x002A (42, the peer's id -> redraw), draw2=0x0007 (7).
 	setMinter(t, recordid.Minter{
 		Now:     func() time.Time { return time.Date(2026, 10, 9, 20, 0, 6, 0, time.UTC) },
 		Entropy: bytes.NewReader([]byte{0x00, 0x2A, 0x00, 0x07}),
 	})
-	before := ledgerDigest(t, ir)
-	_, err := Surprise(SurpriseRequest{RepoRoot: repo, IssuesRoot: ir, OccasionedBy: item, Text: surpriseText})
-	if !errors.Is(err, ErrDuplicateIssueID) {
-		t.Fatalf("a mint on a peer's record: err = %v, want ErrDuplicateIssueID", err)
+	res, err := Surprise(SurpriseRequest{RepoRoot: repo, IssuesRoot: ir, OccasionedBy: item, Text: surpriseText})
+	if err != nil {
+		t.Fatalf("a mint on a peer's record must redraw, not refuse: %v", err)
 	}
-	if ledgerDigest(t, ir) != before {
-		t.Fatal("a refused surprise changed the ledger")
+	if res.ID != "srp-2610092000060007" {
+		t.Fatalf("mint = %q, want the redrawn srp-2610092000060007", res.ID)
+	}
+	got, err := os.ReadFile(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, peerBody) {
+		t.Fatalf("the peer's record changed:\n%s", got)
+	}
+	if files := surpriseFiles(t, ir); len(files) != 2 {
+		t.Fatalf("surprise records = %v, want the peer's and the redrawn one", files)
 	}
 }

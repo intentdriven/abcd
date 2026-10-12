@@ -404,6 +404,7 @@
       "commands_dir": "commands",
       "bare_command": "abcd",
       "skills_dir": "skills",
+      "agents_dir": "agents",
       "registry": ".abcd/development/brief/04-surfaces/README.md",
       "snapshot": ".abcd/development/release/surface.json",
       "host_delegated": [],
