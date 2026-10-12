@@ -13,7 +13,7 @@ remedy: "Record every declared exclusion fragment that matched no bundle file in
 resolution: "The scan result now names every declared exclusion fragment that matched no payload file (scan.unmatched_exclusions), judged against every file, and the dry-run, the ship report and the cut's precheck each carry a warning naming it, refusing under strict_warnings. Proved by TestUnmatchedExclusionIsNamed (internal/adapter/scanner), TestUnmatchedExclusionWarns and TestPrecheckWarnsOnUnmatchedExclusion (internal/core/launch), each watched failing first; a matching fragment raises no warning or refusal even under strict_warnings, and the existing exclusion tests still pass."
 impact: fix
 resolved_by:
-  commit: "18c841458"
+  commit: "d316a336a"
 ---
 
 The release scan accepts an exclude_path_fragments entry that matches no payload file without a word, so a typo'd exclusion (generatd/ for generated/) reads as working while the files it was meant to leave out are scanned, and a fragment left behind after a rename silently stands ready to exclude whatever later takes that name. Found by the follow-up to lane X's whole-segment exclusion fix (iss-2610111600051340) on 2026-10-12; whole-segment matching makes a near-miss fragment match nothing where a substring match often still hit, so the silent case is now the common one.
