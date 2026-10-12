@@ -5,7 +5,7 @@ slug: "guard-reads-bash-env-literally"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-10"
+found_during: "private security advisory GHSA-2c9x-jxfm-w3wc, filed 2026-10-10"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/script.go"
@@ -16,6 +16,6 @@ impact: fix
 
 The guard judges `BASH_ENV` as literal text, but bash expands the value (command substitution, parameters, tilde) before using it as a filename, so `BASH_ENV='$(<blocker>)' bash -c true` runs the blocker during that expansion, and `BASH_ENV='$HOME/f' bash -c true` runs a file the guard never reads.
 
-A private security report, handled in this release; its advisory is published or closed with the release.
+Private security advisory GHSA-2c9x-jxfm-w3wc (draft, severity high). Follows GHSA-r2w5-wf2r-jmf8, which closed the fixed-path form. Full text, evidence and reproduction: .abcd/.work.local/scratch/security-drain-2026-10-11/advisories/ in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
-Evidence (main 3d171421a): `shellTargets` (internal/core/guard/script.go) passes the stored BASH_ENV text unchanged to `startup`, which resolves it as a path.
+Evidence (main 3d171421a): `shellTargets` (internal/core/guard/script.go) passes the stored BASH_ENV text unchanged to `startup`, which resolves it as a path. Reproduced at that commit with `abcd guard check --command`: the `$(...)` form and the `HOME=<dir> BASH_ENV='$HOME/evil.sh'` form are both allow (exit 0); the control `BASH_ENV=<dir>/evil.sh bash -c true` blocks (exit 1).

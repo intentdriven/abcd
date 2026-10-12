@@ -5,7 +5,7 @@ slug: "guard-allows-zsh-equals-process"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-10"
+found_during: "private security advisory GHSA-8m66-666c-8995, filed 2026-10-10"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/tokenize.go"
@@ -16,6 +16,6 @@ impact: fix
 
 The guard allows `zsh -c` lines that bypass it through process substitution spelled `=(...)`: zsh writes the substitution to a temporary file and sources it, while the tokenizer reads `=` as a plain word, so a bundled blocker inside an `echo` or `cat` runs as the operator with exit 0.
 
-A private security report, handled in this release; its advisory is published or closed with the release.
+Private security advisory GHSA-8m66-666c-8995 (draft, severity high). Full text, evidence and reproduction: .abcd/.work.local/scratch/security-drain-2026-10-11/advisories/ in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
-Evidence (main 3d171421a): `tokenizeAt` (internal/core/guard/tokenize.go) enters process substitution only for `<(` and `>(`; `targetsOf` (internal/core/guard/script.go) returns no file for the operand `=`.
+Evidence (main 3d171421a): `tokenizeAt` (internal/core/guard/tokenize.go) enters process substitution only for `<(` and `>(`; `targetsOf` (internal/core/guard/script.go) returns no file for the operand `=`. Reproduced at that commit with `abcd guard check --command`: `zsh -c 'source =(echo "<blocker>")'` and `zsh -c 'source =(cat <file>)'` are allow (exit 0), while the `source <(echo "<blocker>")` control blocks as interpreter-reads-stream (exit 1).

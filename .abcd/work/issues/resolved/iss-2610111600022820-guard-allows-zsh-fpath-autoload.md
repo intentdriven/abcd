@@ -5,7 +5,7 @@ slug: "guard-allows-zsh-fpath-autoload"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-10"
+found_during: "private security advisory GHSA-jh4q-4cgv-5crr, filed 2026-10-10"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/script.go"
@@ -17,6 +17,6 @@ impact: fix
 
 The guard allows a zsh line that loads a function file through `FPATH` or `fpath` and `autoload`: zsh reads the file and runs its body when the function is called, and the guard never opens it, so a bundled blocker in that file runs as the operator with exit 0.
 
-A private security report, handled in this release; its advisory is published or closed with the release.
+Private security advisory GHSA-jh4q-4cgv-5crr (draft, severity high). Full text, evidence and reproduction: .abcd/.work.local/scratch/security-drain-2026-10-11/advisories/ in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
-Evidence (main 3d171421a): `trackedVars` (internal/core/guard/script.go) lists BASH_ENV, ENV, HOME, ZDOTDIR and PATH, not FPATH; `targetsOf` skips `autoload` as a command that reads no file.
+Evidence (main 3d171421a): `trackedVars` (internal/core/guard/script.go) lists BASH_ENV, ENV, HOME, ZDOTDIR and PATH, not FPATH; `targetsOf` skips `autoload` as a command that reads no file. Reproduced at that commit with `abcd guard check --command` and a blocker in `<dir>/fp/p`: `FPATH=<dir>/fp zsh -c 'autoload p; p'` and `zsh -c 'fpath=(<dir>/fp); autoload p; p'` are both allow (exit 0).
