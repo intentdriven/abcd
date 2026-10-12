@@ -50,7 +50,9 @@ type installerRun struct {
 	release      []byte // the binary the stub release serves
 }
 
-// runInstaller runs the committed template with HOME, curl and gh sandboxed.
+// runInstaller runs the installer as abcd site build renders it from the
+// committed template (the script abcdev.app serves at /install.sh), with HOME,
+// curl and gh sandboxed.
 // The stub curl answers the two release downloads from a fixture directory by
 // the URL's last segment; the release binary is a script that reports
 // installedTag; prepare runs against the sandbox home before the install.
@@ -61,7 +63,7 @@ func runInstaller(t *testing.T, gh ghBehaviour, prepare func(home string)) insta
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(script, tmpl, 0o755); err != nil {
+	if err := os.WriteFile(script, renderInstallScript(tmpl, fixtureStamp), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return runInstallForm(t, []string{"sh", script}, gh, prepare)
@@ -84,7 +86,11 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 		prepare(r.home)
 	}
 
-	r.release = []byte("#!/bin/sh\n[ \"$1\" = --version ] && echo 'abcd " + installedTag + "' && echo '  install:   pinned'\nexit 0\n")
+	// The stub knows only --version, as abcd does: anything else is an unknown
+	// command, exit 2, so a form that ran `abcd version` would fail here as it
+	// fails for a reader (iss-2610120704269048).
+	r.release = []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'abcd " + installedTag + "'; echo '  install:   pinned'; exit 0; fi\n" +
+		"echo \"Error: unknown command \\\"$1\\\" for \\\"abcd\\\"\" >&2\nexit 2\n")
 	release := t.TempDir()
 	sum := sha256.Sum256(r.release)
 	manifest := ""
@@ -269,6 +275,24 @@ func assertInstallerWarning(t *testing.T, out, why string) {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the warning must say %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestInstallerEndsWithTheInstalledVersion: the install's last line is the
+// version the installed binary reports through --version, the one way abcd
+// prints it, so an install that succeeded ends in success rather than in an
+// unknown-command error (iss-2610120704269048).
+func TestInstallerEndsWithTheInstalledVersion(t *testing.T) {
+	r := runInstaller(t, ghVerifies, nil)
+	if r.err != nil {
+		t.Fatalf("a verified install must exit 0: %v\n%s", r.err, r.out)
+	}
+	lines := strings.Split(strings.TrimSpace(r.out), "\n")
+	if last := lines[len(lines)-1]; strings.TrimSpace(last) != "install:   pinned" || !strings.Contains(r.out, "abcd "+installedTag+"\n") {
+		t.Errorf("the install must end with the installed binary's --version report:\n%s", r.out)
+	}
+	if strings.Contains(r.out, "unknown command") {
+		t.Errorf("the install ran a command abcd does not have:\n%s", r.out)
 	}
 }
 

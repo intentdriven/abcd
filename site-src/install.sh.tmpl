@@ -264,6 +264,8 @@ record_mark() {
 
 # report prints the PATH fix when the install directory is not on PATH, then runs
 # the installed binary so the last line of the install is the version installed.
+# --version is the one way abcd prints it: there is no `version` command, and
+# running one ended a successful install in an error (iss-2610120704269048).
 report() {
 	case ":$PATH:" in
 	*":$1:"*) ;;
@@ -272,7 +274,7 @@ report() {
 		printf 'abcd install: %s is not on your PATH. Add this line to your shell profile:\n\n    export PATH="%s:$PATH"\n\n' "$1" "$1"
 		;;
 	esac
-	"$1/abcd" version
+	"$1/abcd" --version
 }
 
 main() {
