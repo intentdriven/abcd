@@ -706,6 +706,15 @@ These are the facilitator's design calls; none changes a criterion.
     `--delete` operands) would be needed, each taught as its own lesson, and a
     deletion by `--prune` or `--mirror` cannot be named at all; the hook sees
     every deletion however it was spelled.
+  - The hook's exemption is a declared table of receipt-less prefixes, one
+    row per prefix: the prefix, the shape check a push under it must pass,
+    the record that rules it, and the act that ends a ref there, named when
+    a delete is refused. The reservation prefix is its only row, ruled by
+    adr-2610031352212697, with the empty-tree walk plus the fast-forward the
+    non-fast-forward guard already demands as its shape check. A new row
+    needs its own ruling record and its own shape check; a row without a
+    shape check, or naming one the hook does not define, exempts nothing,
+    and a prefix the table does not name needs a receipt.
 - **What step 10 settled** (the cap and the overlap, 2026-10-12):
   - Both are judged after the push table has chosen the act and before the
     commit is written, on the view the act just fetched, read by the same
