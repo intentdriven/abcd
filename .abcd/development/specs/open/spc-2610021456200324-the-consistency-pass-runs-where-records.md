@@ -475,8 +475,9 @@ narrowest reading that meets the criteria. Each is open to review.
   tree, so a dropped edge drops its entry. The test does not demand the edge
   stay one-way, so answering one never fails a test.
 - **Step 2, where a finding sits.** On the file that declares the link, at the
-  field's line, naming the other file; the key ends the message and is also a
-  `key` field in `--json`.
+  field's line, naming the other file. The key ends the message. It is also the
+  lint finding's `Key` field, which no front door prints yet: a seam for step
+  4's gate.
 - **Step 2, one `routed_from` finding per routing record.** Entries routed from
   one record share both files and so one key, and are one finding.
 - **Step 2, the item label.** A label counts only bounded on both sides by a
@@ -495,6 +496,14 @@ narrowest reading that meets the criteria. Each is open to review.
 - **Step 3, an unreviewed document's size** is its framed size: its manifest
   line, its BEGIN and END lines and its text. That is the number compared with
   a group's budget.
+- **Step 3, "the space a chunk leaves" is a group's space.** A whole-corpus
+  chunk is two groups, each filled to half of what the header leaves, so a
+  document over half cannot share a chunk with every other document. Such a
+  document is named as unreviewed, even when it alone would fit a chunk. At
+  the bundled 512 KiB no document in this tree comes near half. At the
+  64 KiB floor, brief pages over about 32 KB go unreviewed. Pairing such a
+  document with re-packed groups, as a scoped run pins its scope, is left for
+  review.
 - **Step 3, the header allowance** is an upper bound, rendered at worst-case
   number widths. Every rendered chunk is still checked against the limit, and
   a chunk over it refuses the emit with nothing written.
