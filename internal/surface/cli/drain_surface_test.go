@@ -567,3 +567,49 @@ func TestDrainRefusesControlRunesInItsStoredText(t *testing.T) {
 		}
 	}
 }
+
+// TestDrainJSONCarriesNoRawRuneFromTheLedger (iss-2610121516552317): a
+// record deferred past a tag carrying U+202E and U+009B, read with no release
+// tag to judge it by, and a record whose frontmatter carries them, reach
+// `drain --dry-run --json` and `drain --json` masked, and the drain state the
+// move writes reads back.
+func TestDrainJSONCarriesNoRawRuneFromTheLedger(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
+	deferred := captureWithRemedy(t, "the lexer drops a token", "--category", "bug", "--remedy", "rewrite it")
+	open := filepath.Join(repo, filepath.FromSlash(capture.LedgerRelPath), "open")
+	matches, _ := filepath.Glob(filepath.Join(open, deferred+"-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("no open record for %s", deferred)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	withDeferral := strings.Replace(string(raw), "\nslug: ", "\ndeferred_after: \"v0.1.0\u202e\u009b\"\ndeferral_reason: a person's reason\nslug: ", 1)
+	if withDeferral == string(raw) {
+		t.Fatal("the record names its slug")
+	}
+	if err := os.WriteFile(matches[0], []byte(withDeferral), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(open, "iss-7-broken.md"), []byte("---\nschema_version: \"1\u202e\u009b\"\nid: \"iss-7\"\n---\n\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"drain", "--dry-run", "--json"}, {"drain", "--json"}, {"drain", "--json"}} {
+		code, out, errOut := implementCLI(t, args...)
+		if code != 0 {
+			t.Fatalf("%v exited %d:\n%s%s", args, code, out, errOut)
+		}
+		if strings.ContainsAny(out, "\u202e\u009b") {
+			t.Fatalf("%v: a raw control rune reaches the --json stream: %q", args, out)
+		}
+		if !strings.Contains(out, "anchor unknown") || !strings.Contains(out, "unsupported schema_version") {
+			t.Fatalf("%v: both records keep their dispositions: %s", args, out)
+		}
+	}
+}
