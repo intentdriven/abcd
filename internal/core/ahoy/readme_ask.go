@@ -260,8 +260,8 @@ func (v ReadmeView) q1Help() PromptHelp {
 }
 
 // help is the part's help in this project: its current setting, and its
-// example cut to the lines that fit the rows a question may take, or the
-// reason it writes none, said as fully as fits.
+// example cut to the lines the question can quote within the limits, or the
+// reason it writes none, said as fully as the limits allow.
 func (pv ReadmePartView) help() PromptHelp {
 	h, _ := readmeHelp(readmePartKeyPrefix + pv.Name)
 	h.Now = pv.Now
@@ -270,51 +270,53 @@ func (pv ReadmePartView) help() PromptHelp {
 	return h
 }
 
-// readmeReasonTooLong is said where neither a part's reason nor its short form
-// fits the rows a question may take; the view's reason keeps it whole.
-const readmeReasonTooLong = "its reason is too long to show here"
+// readmeReasonNotShown is said where neither a part's reason nor its short
+// form can be quoted within the limits (too tall for the rows, or tripping a
+// style rule); the view's reason keeps it whole.
+const readmeReasonNotShown = "its reason is not shown here"
 
 // fitReason is the first of reasons (the whole reason, then its short form)
-// that the question h asks still fits the rows limit with, else
-// readmeReasonTooLong; "" where there is no reason.
+// that the question h asks still passes the limits with, else
+// readmeReasonNotShown; "" where there is no reason.
 func fitReason(h PromptHelp, def string, reasons ...string) string {
 	if len(reasons) == 0 || reasons[0] == "" {
 		return ""
 	}
 	for _, r := range reasons {
 		h.ExampleNone = r
-		if r != "" && measureRows(h, def) {
+		if r != "" && measureFits(h, def) {
 			return r
 		}
 	}
-	return readmeReasonTooLong
+	return readmeReasonNotShown
 }
 
-// measureRows is fitsRows, through which the cuts measure each candidate
+// measureFits is fitsLimits, through which the cuts measure each candidate
 // question, so a test can count how many they build.
-var measureRows = fitsRows
+var measureFits = fitsLimits
 
-// fitsRows reports whether the question h asks, with def its default, fits
-// the rows limit (question.Default.Rows at its columns).
-func fitsRows(h PromptHelp, def string) bool {
+// fitsLimits reports whether the question h asks, with def its default,
+// passes every limit (question.CheckLimits): the rows (question.Default.Rows
+// at its columns) and the style rules alike. The host's question hook denies
+// a setup question on any finding but the rows (guard_question.go), so a
+// quoted README line that trips a style rule (an em dash in a list item, a
+// bold or dunder heading, iss-2610120129098206) would close the page's whole
+// call; the cut leaves it out instead.
+func fitsLimits(h PromptHelp, def string) bool {
 	q := valueQuestion(0, h, choiceValues(h.Choices), def)
 	q.Chip = setupChip(1)
-	for _, f := range question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{}) {
-		if f.Rule == question.RuleRows {
-			return false
-		}
-	}
-	return true
+	return len(question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{})) == 0
 }
 
-// fitExample is lines, or as many of them as fit the question h asks within
-// the rows limit (question.Default.Rows at its columns), and how many it
-// leaves out, which the question's lead says (PromptHelp.ExampleIntro). The
-// lines shown are exact; none is cut.
+// fitExample is lines, or as many of the first of them as the question h asks
+// can quote within the limits (fitsLimits), and how many it leaves out, which
+// the question's lead says (PromptHelp.ExampleIntro). It stops before the
+// first line too tall for the rows or tripping a style rule. The lines shown
+// are exact; none is cut.
 func fitExample(h PromptHelp, lines []string, def string) ([]string, int) {
 	return fitLines(lines, func(ex []string, left int) bool {
 		h.Example, h.ExampleLeft = ex, left
-		return measureRows(h, def)
+		return measureFits(h, def)
 	})
 }
 
@@ -323,8 +325,10 @@ func fitExample(h PromptHelp, lines []string, def string) ([]string, int) {
 // no example of more lines than the limit has rows can fit: the cut starts
 // there, not at the last line, and fits is called at most
 // question.Default.Rows+1 times however many lines there are (a README of
-// thousands of headings, read whole, is one contents line each). Where not
-// even one line fits, it shows none and leaves them all out.
+// thousands of headings, read whole, is one contents line each). It keeps the
+// longest run of first lines that fits, so a line that trips a rule ends the
+// run before it. Where not even one line fits, it shows none and leaves them
+// all out.
 func fitLines(lines []string, fits func(ex []string, left int) bool) ([]string, int) {
 	if len(lines) == 0 || len(lines) <= question.Default.Rows && fits(lines, 0) {
 		return lines, 0

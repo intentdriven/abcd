@@ -708,10 +708,13 @@ one, in one line above the next call; then ask each later call in turn, each
 holding at most four parts as tabs. Every part's tab offers `on`, `off`, then
 `Decide later`, in that order whatever the part's default: keep the order,
 and never move the default first, which would read as recommending it. A
-tab's example is the exact lines the part would write, as many as the tab has
-rows for, its lead saying how many there are; where a part writes nothing and
-its reason is too long for the tab, the tab says it in a few words and the
-view's `reason` holds it whole. Then pass the answer:
+tab's example is the exact lines the part would write, as many of the first
+of them as the tab can quote within the limits (its rows, and the style rules
+your question hook checks, so a heading with an em dash or bold markup ends
+the quote before it), its lead saying how many there are; where a part writes
+nothing and its reason cannot be quoted in the tab, the tab says it in a few
+words or says it is not shown, and the view's `reason` holds it whole. Then
+pass the answer:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --readme-parts <list>|none --json

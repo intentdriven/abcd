@@ -44,7 +44,8 @@ type PromptHelp struct {
 	// the question's own ("not set").
 	Now string `json:"now,omitempty"`
 	// Example is the exact lines answering yes writes in this repository, or
-	// as many of them as a question has rows for, ExampleLeft how many more it
+	// as many of the first of them as a question can quote within the limits
+	// (its rows and the style rules), ExampleLeft how many more it
 	// writes, and ExampleNone, where it writes none, the reason. All are per
 	// run, read from the project, and terminal-safe as set.
 	Example     []string `json:"example,omitempty"`
@@ -66,9 +67,9 @@ func (h PromptHelp) ExampleIntro() string {
 		return fmt.Sprintf("Here it writes %d lines, the first %d of them:", total, len(h.Example))
 	case h.ExampleLeft > 0:
 		if total == 1 {
-			return "Here it writes 1 line, too long to show here."
+			return "Here it writes 1 line, not shown here."
 		}
-		return fmt.Sprintf("Here it writes %d lines, too long to show here.", total)
+		return fmt.Sprintf("Here it writes %d lines, not shown here.", total)
 	case h.ExampleNone != "":
 		return "Here it writes nothing: " + strings.TrimSuffix(h.ExampleNone, ".") + "."
 	}

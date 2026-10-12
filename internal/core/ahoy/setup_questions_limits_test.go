@@ -136,7 +136,9 @@ func askLabel(a question.Ask, tab int) string {
 // readmeLimitAsks is every call the README pair makes, in the projects whose
 // words are tallest: a public project with long names, every link, a long
 // table of contents and a build workflow, so every part has an example to
-// show; a project not declared public, whose Q1 says so; a public project
+// show; a public project whose README's headings, quoted in its table of
+// contents, would trip a style rule (an em dash in a list item, a bold or a
+// dunder heading, iss-2610120129098206); a project not declared public, whose Q1 says so; a public project
 // where no part can be written, so every tab says why instead; and a public
 // project whose eight long-named workflows hold no ci.yml, so the build badge's
 // reason would name every one of them.
@@ -168,8 +170,12 @@ func readmeLimitAsks(t *testing.T) []question.Ask {
 		workflows[".github/workflows/"+n+".yml"] = "on: push\n"
 	}
 	many := readmeRepo(t, "https://github.com/owner/repo.git", workflows)
+	styled := readmeRepo(t, "https://github.com/owner/repo.git", map[string]string{
+		"README.md":         "# Project\n\n## Usage\n\n## Install — fast\n\n## The **core** of __init__\n",
+		".abcd/config.json": `{"repo": {"visibility": "public"}}`,
+	})
 	var out []question.Ask
-	for _, repo := range []string{full, private, empty, many} {
+	for _, repo := range []string{full, private, empty, many, styled} {
 		v, ok := readmeView(repo)
 		if !ok {
 			t.Fatalf("no README view in %s", repo)

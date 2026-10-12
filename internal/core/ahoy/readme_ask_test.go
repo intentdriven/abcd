@@ -488,15 +488,15 @@ func TestReadmeViewIsLinearInTheHeadings(t *testing.T) {
 		}
 		repo := readmeRepo(t, "", map[string]string{"README.md": readme.String(), ".abcd/config.json": `{"repo": {"visibility": "private"}}`})
 		calls := 0
-		swap := measureRows
-		t.Cleanup(func() { measureRows = swap })
-		measureRows = func(h PromptHelp, def string) bool {
+		swap := measureFits
+		t.Cleanup(func() { measureFits = swap })
+		measureFits = func(h PromptHelp, def string) bool {
 			calls++
 			return swap(h, def)
 		}
 		start := time.Now()
 		v, ok := readmeView(repo)
-		measureRows = swap
+		measureFits = swap
 		if !ok {
 			t.Fatal("no view while the pair is unanswered")
 		}
@@ -542,7 +542,7 @@ func TestFitLinesChecksABoundedNumberOfCandidates(t *testing.T) {
 // its question as fully as the rows limit allows. Eight long-named workflows
 // and no ci.yml make the build badge's whole reason too tall, so its tab says
 // how many workflows there are, and the view's reason still names them; a
-// reason with no short form that does not fit says it is too long to show.
+// reason with no short form that does not fit is not shown.
 func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
 	files := map[string]string{"README.md": "# Project\n", ".abcd/config.json": `{"repo": {"visibility": "public"}}`}
 	for i := range 8 {
@@ -566,8 +566,8 @@ func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
 		t.Errorf("the build badge's tab says %q, want the short form counting the workflows", got)
 	}
 	long := strings.Repeat("a reason that goes on ", 200)
-	if got := fitReason(bb.help(), "on", long, ""); got != readmeReasonTooLong {
-		t.Errorf("a reason too long to fit is said as %q, want %q", got, readmeReasonTooLong)
+	if got := fitReason(bb.help(), "on", long, ""); got != readmeReasonNotShown {
+		t.Errorf("a reason too long to fit is said as %q, want %q", got, readmeReasonNotShown)
 	}
 	if got := fitReason(bb.help(), "on", ""); got != "" {
 		t.Errorf("no reason is said as %q", got)
@@ -645,4 +645,62 @@ func choiceLabels(q question.Question) []string {
 		out = append(out, o.Label)
 	}
 	return out
+}
+
+// TestReadmeCutsStopBeforeAStyleFinding: a quoted example or reason is held to
+// every limit the host's question hook checks, not the rows alone
+// (iss-2610120129098206). A table of contents whose second line has an em
+// dash in a list item and whose third a bold heading shows the line before
+// them; one whose first line trips a rule shows none and says how many it
+// writes; a reason that trips a rule is not shown. Every tab then passes the
+// limits, so the page can ask it.
+func TestReadmeCutsStopBeforeAStyleFinding(t *testing.T) {
+	contents := func(readme string) (ReadmePartView, PromptHelp) {
+		t.Helper()
+		repo := readmeRepo(t, "", map[string]string{"README.md": readme, ".abcd/config.json": `{"repo": {"visibility": "private"}}`})
+		v, ok := readmeView(repo)
+		if !ok {
+			t.Fatal("no view while the pair is unanswered")
+		}
+		for _, a := range v.Asks {
+			for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
+				t.Errorf("%s: %s", askLabel(a, f.Tab), f)
+			}
+		}
+		for _, pv := range v.Parts {
+			if pv.Name == "contents" {
+				return pv, v.helps["contents"]
+			}
+		}
+		t.Fatal("no contents part")
+		return ReadmePartView{}, PromptHelp{}
+	}
+	pv, h := contents("# Project\n\n## Usage\n\n## Install — fast\n\n## The **core** of __init__\n")
+	if len(pv.Example) != 3 {
+		t.Errorf("the view's example holds %d lines, want all 3", len(pv.Example))
+	}
+	if want := []string{"- [Usage](#usage)"}; strings.Join(h.Example, "\n") != strings.Join(want, "\n") || h.ExampleLeft != 2 {
+		t.Errorf("the tab quotes %q leaving %d, want %q leaving 2", h.Example, h.ExampleLeft, want)
+	}
+	if got, want := h.ExampleIntro(), "Here it writes 3 lines, the first 1 of them:"; got != want {
+		t.Errorf("lead %q, want %q", got, want)
+	}
+	_, h = contents("# Project\n\n## Install — fast\n\n## Usage\n")
+	if len(h.Example) != 0 || h.ExampleLeft != 2 {
+		t.Errorf("the tab quotes %q leaving %d, want none leaving 2", h.Example, h.ExampleLeft)
+	}
+	if got, want := h.ExampleIntro(), "Here it writes 2 lines, not shown here."; got != want {
+		t.Errorf("lead %q, want %q", got, want)
+	}
+	h.Example, h.ExampleLeft = nil, 1
+	if got, want := h.ExampleIntro(), "Here it writes 1 line, not shown here."; got != want {
+		t.Errorf("lead %q, want %q", got, want)
+	}
+	h.Example, h.ExampleLeft = nil, 0
+	if got, want := fitReason(h, "off", "no **LICENSE** file", ""), "its reason is not shown here"; got != want {
+		t.Errorf("a reason tripping a style rule is said as %q, want %q", got, want)
+	}
+	if got, want := fitReason(h, "off", "no **LICENSE** file", "no licence"), "no licence"; got != want {
+		t.Errorf("a reason tripping a style rule falls back to %q, want its short form %q", got, want)
+	}
 }
