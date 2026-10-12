@@ -21,7 +21,7 @@ pass preflight, so it could mint no receipt, could not push, and the work was
 redone by hand on the person's computer
 ([iss-2610120729087253](../../../work/issues/open/iss-2610120729087253-cloud-session-work-trapped-without.md)).
 The intent that answers the six findings of that day,
-[itd-2610120738075547](../../intents/drafts/itd-2610120738075547-a-person-hands-an-item-from-their.md),
+[itd-2610120738075547](../../intents/planned/itd-2610120738075547-a-person-hands-an-item-from-their.md),
 deferred the question of whether such work may reach the shared remote (its
 Q3) and the branch name it would use (Q3b).
 

@@ -1,8 +1,8 @@
 ---
 id: itd-2610120738075547
 slug: a-person-hands-an-item-from-their
-spec_id: null
-kind: null
+spec_id: spc-2610120941441282
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609091034175565]
@@ -12,11 +12,12 @@ production_mode: hand-written
 related_issues: [iss-2610120729071657, iss-2610120729094755, iss-2610120729076366, iss-2610120729083126, iss-2610120729087253, iss-2610120724251698]
 related_intents: [itd-2609150819440345, itd-152, itd-107, itd-22]
 related_adrs: [adr-2610120937435856]
+impact: additive
 ---
 
 # Work handed to a cloud session comes back, or says why not
 
-Typed links: `builds_on` [itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md) (reservations on the shared remote, being built now: a cloud session reserves the item it takes, which is how every other session, local or cloud, sees that it is held; this record adds nothing to the reservation itself); `related_issues`, the six findings of 2026-10-12 this record answers, each listed under Why This Matters. `related_intents`, prose relations no typed field carries: [itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md) (the wider register of running sessions, kept for later; this record's list covers only the cloud sessions abcd briefed, read from the remote), [itd-152](../shipped/itd-152-autonomous-cloud-runs-in-sibling-repos.md) (shipped: tool footers and session links leaking from cloud runs into public text; a report this record posts publicly is held to that same outbound check, nothing more), [itd-107](itd-107-autonomous-routines-assemble-from-one.md) (routine prompts assembled from one versioned template; the cloud brief here is a one-off brief for one item, and may later become one of that template's archetypes) and [itd-22](itd-22-harness-portability.md) (the host-profile seam: the host connector this record's first rung writes for one host, decision 1, is a piece of that seam, not a second one). `related_adrs`: [adr-2610120937435856](../../decisions/adrs/2610120937435856-a-cloud-session-s-unchecked-work-goes.md) (the trust rule this record's work-in-progress branches need, decision 3; brief invariant 23).
+Typed links: `builds_on` [itd-2609091034175565](itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md) (reservations on the shared remote, being built now: a cloud session reserves the item it takes, which is how every other session, local or cloud, sees that it is held; this record adds nothing to the reservation itself); `related_issues`, the six findings of 2026-10-12 this record answers, each listed under Why This Matters. `related_intents`, prose relations no typed field carries: [itd-2609150819440345](../drafts/itd-2609150819440345-which-session-holds-which-worktree.md) (the wider register of running sessions, kept for later; this record's list covers only the cloud sessions abcd briefed, read from the remote), [itd-152](../shipped/itd-152-autonomous-cloud-runs-in-sibling-repos.md) (shipped: tool footers and session links leaking from cloud runs into public text; a report this record posts publicly is held to that same outbound check, nothing more), [itd-107](../drafts/itd-107-autonomous-routines-assemble-from-one.md) (routine prompts assembled from one versioned template; the cloud brief here is a one-off brief for one item, and may later become one of that template's archetypes) and [itd-22](../drafts/itd-22-harness-portability.md) (the host-profile seam: the host connector this record's first rung writes for one host, decision 1, is a piece of that seam, not a second one). `related_adrs`: [adr-2610120937435856](../../decisions/adrs/2610120937435856-a-cloud-session-s-unchecked-work-goes.md) (the trust rule this record's work-in-progress branches need, decision 3; brief invariant 23).
 
 ## Press Release
 
@@ -36,7 +37,7 @@ On 2026-10-12 three issues that needed no decision were moved to cloud agent ses
 - **Finished work was trapped.** Without a passing preflight there is no receipt, the push hook refuses the push, and skipping the hook is forbidden, so a finished fix (two commits and a resolved record) stayed in the container and was redone locally ([iss-2610120729087253](../../../work/issues/open/iss-2610120729087253-cloud-session-work-trapped-without.md)).
 - **The reports stayed in transcripts.** The person copied one session's stop report into a local session by hand; the other two were still unread when the findings were filed ([iss-2610120729083126](../../../work/issues/open/iss-2610120729083126-cloud-session-reports-only-in-transcript.md)).
 
-A second person now works on the project from another computer, and a cloud session has no machine-local state in common with either of them: it shares only the remote. Whatever lets the person send work out and get it back has to live where the cloud session can reach it, which is the same ground the reservation record ([itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)) stands on.
+A second person now works on the project from another computer, and a cloud session has no machine-local state in common with either of them: it shares only the remote. Whatever lets the person send work out and get it back has to live where the cloud session can reach it, which is the same ground the reservation record ([itd-2609091034175565](itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)) stands on.
 
 ### What the host offers today (evidence, 2026-10-12)
 
@@ -55,8 +56,8 @@ Run by hand under [`decompose-before-filing`](../../principles/decompose-before-
 | Part | Type | Home | Verdict |
 | --- | --- | --- | --- |
 | Composing a brief for one item that is ready to build and starting the cloud session with it (abcd starts it, decision 2) | capability | this intent | file here |
-| The host connector: the one place everything specific to one host lives (starting a session, its login, its settings file and setup hook, its environment markers), so another host plugs in later without a change elsewhere (decision 1) | design constraint | this intent, as C12; a piece of the host-profile seam [itd-22](itd-22-harness-portability.md) names, not a second seam | file here |
-| Listing the cloud sessions and collecting each one's result, landing handed-back work through a local preflight | capability | this intent; "who holds what" comes from reservations ([itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md), `builds_on`) | file here |
+| The host connector: the one place everything specific to one host lives (starting a session, its login, its settings file and setup hook, its environment markers), so another host plugs in later without a change elsewhere (decision 1) | design constraint | this intent, as C12; a piece of the host-profile seam [itd-22](../drafts/itd-22-harness-portability.md) names, not a second seam | file here |
+| Listing the cloud sessions and collecting each one's result, landing handed-back work through a local preflight | capability | this intent; "who holds what" comes from reservations ([itd-2609091034175565](itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md), `builds_on`) | file here |
 | Preparing the cloud machine (the full abcd toolchain through the repository's settings file, a non-root user, decisions 8 and 10) and checking it before work starts | capability | this intent | file here |
 | The report channel every session writes, finished or stopped | capability | this intent | file here |
 | A work-in-progress prefix (the connector's; `claude/abcd-wip/` for the first host) the push hook admits without a receipt as one entry of its declared list, and that a ruleset plus a required check keep off the default branch | trust rule | [adr-2610120937435856](../../decisions/adrs/2610120937435856-a-cloud-session-s-unchecked-work-goes.md) plus brief invariant 23 | minted and accepted 2026-10-12 (decision 3); it covers only admitting the branch, never landing from it, since no cloud receipt is trusted (decision 9) |
@@ -77,15 +78,15 @@ This would be shown wrong if, on the proof rung or on the first three items hand
 
 ## Scope Conditions
 
-- Holds for the hosted cloud sessions of claude.ai, started through abcd's plugin for that host (decision 1). Another host (opencode, for example) is out of scope until a connector for it is written; nothing outside the connector may assume the first host.
-- Holds on abcd's own repository first. A managed repository is a later rung, and its version must leave that repository's own git settings, hooks and tools as they are.
-- Hypothesis until the first rung proves it: the hosted machine lets the setup step create a normal (non-root) user and run every check as that user (decision 8). Untested on 2026-10-12; if it cannot be done, C1 fails and the runner is re-decided.
-- Holds while the person renews the host login by hand at most every 30 days (decision 11). A run that meets an expired login stops and says so; it never keeps going on a stored credential.
-- Holds while the plan's own limits are the only cap on concurrent cloud sessions the person wants (decision 6); abcd counts sessions and refuses none for their number.
-- Hypothesis until the first rung proves it: the hosted machine's forge proxy accepts a push to the connector's work-in-progress name, `claude/abcd-wip/<item-id>` (decision 3). If it refuses, the session's work cannot leave the cloud under invariant 23, and the prefix is put back to the person (decision 3).
-- Holds while the forge's REST interface is reachable from inside the session, which the fallback report comment (decision 4) needs when the push itself fails; the GraphQL route is blocked there.
-- Holds while unfinished work on a public repository may be public: a work-in-progress branch is readable by anyone who can read the repository, which the facilitator accepted (decision 3) and C13 bounds by never handing out an item that is not public yet.
-- Holds while the person's own computer can run the full preflight: every cloud result is re-checked there before it lands (decision 9), so a cloud session never lands work on its own.
+- Holds for the hosted cloud sessions of claude.ai, started through abcd's plugin for that host (decision 1). Another host (opencode, for example) is out of scope until a connector for it is written; nothing outside the connector may assume the first host. <!-- cond: cond-2610120941441293 -->
+- Holds on abcd's own repository first. A managed repository is a later rung, and its version must leave that repository's own git settings, hooks and tools as they are. <!-- cond: cond-2610120941449297 -->
+- Hypothesis until the first rung proves it: the hosted machine lets the setup step create a normal (non-root) user and run every check as that user (decision 8). Untested on 2026-10-12; if it cannot be done, C1 fails and the runner is re-decided. <!-- cond: cond-2610120941449476 -->
+- Holds while the person renews the host login by hand at most every 30 days (decision 11). A run that meets an expired login stops and says so; it never keeps going on a stored credential. <!-- cond: cond-2610120941447469 -->
+- Holds while the plan's own limits are the only cap on concurrent cloud sessions the person wants (decision 6); abcd counts sessions and refuses none for their number. <!-- cond: cond-2610120941447835 -->
+- Hypothesis until the first rung proves it: the hosted machine's forge proxy accepts a push to the connector's work-in-progress name, `claude/abcd-wip/<item-id>` (decision 3). If it refuses, the session's work cannot leave the cloud under invariant 23, and the prefix is put back to the person (decision 3). <!-- cond: cond-2610120941442772 -->
+- Holds while the forge's REST interface is reachable from inside the session, which the fallback report comment (decision 4) needs when the push itself fails; the GraphQL route is blocked there. <!-- cond: cond-2610120941448599 -->
+- Holds while unfinished work on a public repository may be public: a work-in-progress branch is readable by anyone who can read the repository, which the facilitator accepted (decision 3) and C13 bounds by never handing out an item that is not public yet. <!-- cond: cond-2610120941441981 -->
+- Holds while the person's own computer can run the full preflight: every cloud result is re-checked there before it lands (decision 9), so a cloud session never lands work on its own. <!-- cond: cond-2610120941447151 -->
 
 ## Acceptance Criteria
 
@@ -113,17 +114,17 @@ This would be shown wrong if, on the proof rung or on the first three items hand
 - **A cap on concurrent cloud sessions enforced by abcd.** There is none beyond the plan's own (decision 6); the first rung counts at most.
 - **A login kept for abcd in a credential store.** The person renews the host login by hand (decision 11).
 - **Merging handed-back work automatically.** C9 offers a passing copy for landing; the person, or a local session under the usual rules, opens and merges it.
-- **Messages between cloud and local sessions** while they run; reports are read after the fact. The session mailbox is [itd-2609151838312703](itd-2609151838312703-sessions-on-one-machine-or-one-local.md)'s, and it never leaves the local network.
-- **The wider register of running sessions** ([itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md)).
-- **Recurring cloud routines** and their template ([itd-107](itd-107-autonomous-routines-assemble-from-one.md)).
-- **Deleting spent work-in-progress branches.** The proxy refuses deletions; a sweep from an ordinary machine is the reservation record's tidy-up route ([itd-118](itd-118-merged-work-leaves-no-residue-abcd.md)).
+- **Messages between cloud and local sessions** while they run; reports are read after the fact. The session mailbox is [itd-2609151838312703](../drafts/itd-2609151838312703-sessions-on-one-machine-or-one-local.md)'s, and it never leaves the local network.
+- **The wider register of running sessions** ([itd-2609150819440345](../drafts/itd-2609150819440345-which-session-holds-which-worktree.md)).
+- **Recurring cloud routines** and their template ([itd-107](../drafts/itd-107-autonomous-routines-assemble-from-one.md)).
+- **Deleting spent work-in-progress branches.** The proxy refuses deletions; a sweep from an ordinary machine is the reservation record's tidy-up route ([itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md)).
 - **The two issue-local halves**: the worktree guidance (iss-2610120729076366) and the tests that should name their prerequisites (iss-2610120724251698), routed above.
 
 ## Decisions
 
 Ruled by the product thinker on 2026-10-12, answering the draft's open questions (numbered by the question each answers):
 
-1. **Q1, the runner: "Anthropic's hosted cloud sessions first, through the Claude plugin."** With it, a constraint: other hosts (opencode, for example) follow later, so the runner sits behind a host connector, and nothing outside that connector names one host. Reason: it is what was used on 2026-10-12 and can be started from a terminal, and the connector keeps abcd's core host-agnostic ([adr-39](../../decisions/adrs/0039-host-tier-policy.md), [itd-22](itd-22-harness-portability.md)). Criteria C10 to C12.
+1. **Q1, the runner: "Anthropic's hosted cloud sessions first, through the Claude plugin."** With it, a constraint: other hosts (opencode, for example) follow later, so the runner sits behind a host connector, and nothing outside that connector names one host. Reason: it is what was used on 2026-10-12 and can be started from a terminal, and the connector keeps abcd's core host-agnostic ([adr-39](../../decisions/adrs/0039-host-tier-policy.md), [itd-22](../drafts/itd-22-harness-portability.md)). Criteria C10 to C12.
 2. **Q2, who starts the session: abcd starts it.** Settled without a question by the product thinker's own statement, "I'd like abcd local to orchestrate this in future", which leaves one defensible answer. Criterion C10.
 3. **Q3 and Q3b, work-in-progress branches and their prefix: yes, and the connector owns the prefix.** Decided on 2026-10-12 by the technical facilitator on the product thinker's explicit delegation that day: "decide the deferred item so that you can plan the intent. I want it ready to be build in a few days (while I'm away)". A cloud session that cannot pass the checks still pushes its work to a work-in-progress branch, so nothing is trapped; the push hook admits such a branch without a preflight receipt as one entry of its declared list of receipt-less prefixes (the list the reservation build introduces), and a ruleset plus a required check that fails on a work-in-progress source branch keep it from ever reaching the default branch. Reason: decision 9 already re-checks every cloud result on the person's computer, so the receipt was never what made cloud work trusted; the risk the receipt guarded, unchecked work landing, is held by the ruleset, the required check and the local collect. Cost accepted: on a public repository unfinished work is public. Q3b: the host connector owns the prefix and the host-agnostic core never names it; for Anthropic's hosted sessions it is `claude/abcd-wip/<item-id>`, inside the host's own branch namespace in case its proxy admits only that, and narrow enough that a person's own hand-pushed `claude/` branches still need a receipt. That the proxy accepts a push to that name is a scope condition the first rung proves. The facilitator's fallback, if the proxy refuses the name, was the session's assigned branch with the report saying so; at planning that was found to need the hook to admit a branch outside the declared prefix, which invariant 23 forbids, so a refusal at the proof rung puts the prefix back to the person, and a refusal during a later run sends the report through the tracking-issue fallback (decision 4) naming the refusal. Ruled by [adr-2610120937435856](../../decisions/adrs/2610120937435856-a-cloud-session-s-unchecked-work-goes.md) and brief invariant 23. Criterion C7.
 4. **Q4, where reports go: a report file committed on the work-in-progress branch, with a comment on the one tracking issue as the fallback.** Decided by the technical facilitator on the same delegation, revisiting the provisional answer as it said it would once Q3 was answered. The report file travels with the work, and abcd's list and collect read it back reliably without forge access; the comment on the tracking issue, through the forge's REST interface, is used only when the push itself fails, which keeps the product thinker's provisional reason (it is the only channel that works when nothing can be pushed). Criteria C6 and C8.
@@ -155,3 +156,7 @@ None. Q3, Q3b and Q4 were decided on 2026-10-12 by the technical facilitator on 
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: (technical facilitator, on the product thinker's delegation of 2026-10-12, for review on return) we expect that putting the hold, the work checked or not, and the report of every cloud session on the shared remote ends the hand work of 2026-10-12, because every failure that day depended on something that was not on the remote; it is wrong if, after the proof rung, any of the first three items handed to the cloud still needs its report copied out of a transcript or its fix redone locally for a reason other than a check that genuinely fails.
