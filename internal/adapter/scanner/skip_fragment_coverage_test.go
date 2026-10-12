@@ -235,3 +235,34 @@ func TestExclusionMatchesWholePathSegments(t *testing.T) {
 		})
 	}
 }
+
+// iss-2610120929469571: a declared exclusion that matches no bundle file is
+// named in the scan result, in config order; one that matches a file, even a
+// file an earlier exclusion already left out, is not.
+func TestUnmatchedExclusionIsNamed(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".abcd/config/pii.json", `{"exclude_path_fragments": [`+
+		`{"fragment": "generatd/", "reason": "rebuilt by the release"}, `+
+		`{"fragment": "testdata/vectors/", "reason": "published test vectors"}, `+
+		`{"fragment": "vectors/", "reason": "the same vectors"}, `+
+		`{"fragment": "old/notes.md", "reason": "renamed away"}]}`)
+	files := []BundleFile{
+		{LogicalPath: "generated/a.md", ResolvedPath: writeFile(t, root, "generated/a.md", "clean content\n")},
+		{LogicalPath: "testdata/vectors/v1.bin", ResolvedPath: writeFile(t, root, "testdata/vectors/v1.bin", "\x00opaque\x00")},
+		{LogicalPath: "commands/a.md", ResolvedPath: writeFile(t, root, "commands/a.md", "clean content\n")},
+	}
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := sc.ScanBundle(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.UnmatchedExclusions, ","); got != "generatd/,old/notes.md" {
+		t.Fatalf("unmatched exclusions = %q, want the typo and the renamed path in config order: %+v", got, res)
+	}
+	if !contains(res.Excluded, "testdata/vectors/v1.bin") || res.FilesScanned != 2 {
+		t.Errorf("the matching exclusion must still exclude, and the rest be scanned: %+v", res)
+	}
+}
