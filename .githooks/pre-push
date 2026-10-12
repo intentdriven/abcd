@@ -101,6 +101,17 @@ reservation_shape() {
   fi
 }
 
+# shape_check runs the shape check a row names on <remote_sha> <local_sha>,
+# or, given the name alone, succeeds when it is a shape check at all. Each one
+# is spelled here by name, so no command ever runs under a name read from the
+# table; a name with no arm here is no shape check.
+shape_check() {
+  case "$1" in
+  reservation_shape) [ "$#" -eq 1 ] || reservation_shape "$2" "$3" ;;
+  *) return 1 ;;
+  esac
+}
+
 # The receipt-less prefixes: branches a push may move without a preflight
 # receipt, because the shape check proves the push changes no file. One row
 # per prefix, its fields separated by "|":
@@ -108,14 +119,19 @@ reservation_shape() {
 #   prefix | shape check | the record that rules it | the act that ends one
 #
 # The shape check is a function above, given <remote_sha> <local_sha>, that
-# succeeds only for a push of the prefix's own shape. The last field is named
+# succeeds only for a push of the prefix's own shape, with its own arm in
+# shape_check. The last field is named
 # when a delete under the prefix is refused, with <name> standing for the
 # branch's name after the prefix: a ref under a receipt-less prefix is never
 # deleted by a push.
 #
 # A new row needs its own ruling record and its own shape check. A prefix with
-# no shape check, or one naming a function this hook does not define, is never
-# receipt-less: its pushes are gated as any branch is.
+# no shape check, or one naming a check shape_check has no arm for, is never
+# receipt-less: its pushes are gated as any branch is. The next row expected is
+# cloud sessions' work-in-progress branches, ruled by adr-2610120937435856: a
+# prefix ending in abcd-wip/ with at most one segment before it, matched by
+# that suffix shape alone so the hook never names a host. It is added with its
+# own shape check by the spec that delivers it, not here.
 receiptless_prefixes=(
   "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
 )
@@ -128,7 +144,7 @@ receiptless_row() {
   for row in "${receiptless_prefixes[@]}"; do
     IFS='|' read -r row_prefix row_shape row_ruling row_end <<<"$row"
     [ -n "$row_prefix" ] && [ -n "$row_shape" ] || continue
-    declare -F "$row_shape" >/dev/null || continue
+    shape_check "$row_shape" || continue
     case "$1" in
     "$row_prefix"*) return 0 ;;
     esac
@@ -179,7 +195,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
   # A receipt-less prefix: a push of its row's shape needs no receipt. Any
   # other push under it is gated as any branch is.
-  if receiptless_row "$branch" && "$row_shape" "$remote_sha" "$local_sha"; then
+  if receiptless_row "$branch" && shape_check "$row_shape" "$remote_sha" "$local_sha"; then
     continue
   fi
 
