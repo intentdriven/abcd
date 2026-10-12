@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // iss-2609151847117977. The cache attestation pins a binary hash and nothing
@@ -138,7 +140,7 @@ func TestReleaseMarkOnlyRisesUnlessLoweredOnPurpose(t *testing.T) {
 		}
 	}
 	home, _ := homeScope()
-	fi, err := os.Stat(filepath.Join(home, ".abcd.noindex", releaseMarkFile))
+	fi, err := os.Stat(abcdhome.Path(home, releaseMarkFile))
 	if err != nil || fi.Mode().Perm() != 0o600 {
 		t.Errorf("the mark must be mode 0600: %v (%v)", fi, err)
 	}
