@@ -2176,12 +2176,17 @@ names merges each path it covers, and each file it writes passes through the rep
 smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses
 the step, naming what git reported. A merge still waiting after ten minutes on a signing
 prompt or a hook (a passphrase dialog nobody answers) is stopped and refuses the step,
-so an unattended run is never held by it.
+so an unattended run is never held by it; the merged result git had staged is reset away,
+leaving the lane's worktree clean at its judged head, and the refusal says so. A sync
+starts only from a clean worktree, so that reset never touches a change the loop did not
+make.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
 cut from the default branch, as your own `git worktree add` makes one (the repository's
-post-checkout hook runs, as Git LFS needs); brief renders the lane's brief from that base (the intent,
+post-checkout hook runs, as Git LFS needs); its checkout's time scales with the tree, so it
+is bounded at sixty minutes rather than the ten of a commit or a merge, and one stopped
+there refuses the stage naming the checkout and the bound; brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
@@ -2211,7 +2216,8 @@ for a lane that is not held or while any lane still has work.
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
 (aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
-proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
+proved to apply to that commit, the lane's worktree is reset and cleaned as your own git
+resets and cleans it (the repository's hooks run on the reset), the run record
 names the aside for review, and the implementer await is re-told; the brief never names
 the aside. It is refused, changing nothing, while the run has an outage (open or given
 up), for a blank --yielded, for a lane with no implementer out, or for a worktree that

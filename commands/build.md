@@ -339,7 +339,10 @@ A lane's stages run in order:
    `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
    `build/<run-id>-<lane-id>` cut from the default branch, as your own
    `git worktree add` makes one: the repository's post-checkout hook runs
-   (the one `git lfs install` installs). Nothing is made beside the checkout. In a run `build next` started, the first lane's
+   (the one `git lfs install` installs). The checkout's time scales with the
+   tree (a Git LFS download), so it is bounded at sixty minutes, not the ten
+   minutes a commit or a merge in the lane is bounded at; a checkout stopped
+   there refuses the stage, naming the checkout and the bound. Nothing is made beside the checkout. In a run `build next` started, the first lane's
    worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the
