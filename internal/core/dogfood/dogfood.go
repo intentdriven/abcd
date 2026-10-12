@@ -4,64 +4,84 @@
 // In abcd's own source checkout the installed release guards the session,
 // so a hazard rule that landed on the default branch after the last release
 // is not enforced there until the next one ships. The person opts a checkout
-// in by listing it in ~/.abcd.noindex/dogfood-roots, one absolute path per
-// line, "#" starting a comment; inside a listed checkout, and inside every
-// worktree that checkout records as its own, the hooks run a build of the
-// latest reviewed default branch, and everywhere else the installed release,
+// in by listing it in ~/.abcd.noindex/dogfood-roots, one checkout per line:
+// its absolute path, a tab, the URL of the remote its reviewed branch lives
+// on, and optionally a tab and that branch, main when left out; "#" starts a
+// comment. Inside a listed checkout, and inside every worktree that checkout
+// records as its own, the hooks run a build of that branch's tip as the
+// declared remote reports it, and everywhere else the installed release,
 // unchanged.
 //
-// Three properties are load-bearing.
+// Four properties are load-bearing.
 //
 // The opt-in is the PERSON'S, read from their home and never from a
 // repository. Recognising abcd's source by its module path was rejected: a
 // repository posing as abcd would get its own code run by the hooks. The list
-// is read through fsutil.HomeDeclarationNames, the one reader behind every
-// "declare this checkout" opt-in (trusted-roots, local-transcript-roots,
-// filter-roots), so it is honoured only as a regular file this account owns
-// that no one else can write, within its size cap, reached through no
-// symlinked folder; a list failing that is IGNORED out loud and the installed
-// release runs everywhere.
+// is read through fsutil.HomeDeclarationEntry, the fields-bearing form of the
+// one reader behind every "declare this checkout" opt-in (trusted-roots,
+// local-transcript-roots, filter-roots), so it is honoured only as a regular
+// file this account owns that no one else can write, within its size cap,
+// reached through no symlinked folder; a list failing that is IGNORED out
+// loud and the installed release runs everywhere. A line that names a
+// checkout but no remote builds nothing, and says so.
 //
-// The build's SOURCE is the default branch's remote-tracking tip
-// (refs/remotes/origin/<default>), never the checkout's HEAD or its working
-// tree: the remote tip moves only through review and the merge queue, so no
-// agent commit in any checkout changes the guard that judges that agent's
-// next command. sourceCommit is the one function that decides it. Nothing
-// here fetches; the tip is whatever the checkout last fetched, and a
-// `git fetch` moves it.
+// The build's SOURCE is the tip the declared remote reports for the declared
+// branch, and the store's record of that answer is the only thing that
+// chooses a build. The background builder asks the remote (`git ls-remote`
+// under the isolated git environment, outside every repository, never
+// prompting for credentials, bounded in time and in output), records the
+// answer in the store under the build lock, and builds that commit once the
+// checkout holds it. Resolve, the hook's half, never touches the network and
+// names a ready build only for the recorded tip. The checkout's own refs and
+// config choose nothing: refs/remotes/origin/*, origin/HEAD and remote.origin.*
+// are all an agent in the checkout can rewrite with ordinary git commands, so
+// refs/remotes/origin/<branch> serves only to prompt a fresh check when it is
+// not what it was at the last one, as the record's age does once it passes
+// recheckAfter. Moving a local ref therefore costs at most one ls-remote, which
+// returns the reviewed tip, and no agent commit changes the guard that judges
+// the agent's next command.
 //
-// A failure never weakens the guard below the installed release: a build
-// that is missing, running, failed, or not runnable leaves Resolve naming no
-// binary, the hook runs the installed release, and a note says why on stderr.
-// The PreToolUse shim adds the run-time half: a dogfood guard that answers
-// exit 1, which is a warn or "NOT CHECKED", or that dies, hands the same
-// command to the installed release, whose deny stands.
+// The build is the reviewed commit or nothing. The checkout's object store,
+// its refs/replace/* and its repository-local attributes are writable by
+// anyone who can commit there, so the commit and every tree under it are read
+// with replacement objects off and re-hashed against their names
+// (verifiedTree), and the export is checked blob by blob against that verified
+// tree (verifyExport) before anything is built.
 //
-// The build is the reviewed commit or nothing: the export is checked blob by
-// blob against the commit's tree (verifyExport), because `git archive`
-// honours repository-local attributes anyone who can commit in the checkout
-// can write. What this does not defend is the account itself: the store, like
-// the plugin root the installed release lives in, is protected by being this
-// uid's alone, and a process running as that uid can replace either binary or
-// move refs/remotes/origin/* by hand. The rung is no weaker there than the
-// installed release already is.
+// A failure never weakens the guard below the installed release: no declared
+// remote, a remote that cannot be read, a tip the checkout has not fetched,
+// and a build that is missing, running, failed, or not runnable each leave
+// Resolve naming no binary, the hook runs the installed release, and a note
+// says why on stderr. The PreToolUse shim adds the run-time half: a dogfood
+// guard that answers exit 1, which is a warn or "NOT CHECKED", or that dies,
+// hands the same command to the installed release, whose deny stands.
+//
+// What this does not defend is the account itself. The declaration and the
+// store are protected by being this uid's alone, so anything running as this
+// account can still edit the declaration or replace a file in the store; what
+// no longer chooses the build is anything in the checkout.
 package dogfood
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -94,12 +114,23 @@ const (
 	// BinaryName is the build's file name inside its commit directory.
 	BinaryName = "abcd"
 
-	// SourceRemote is the remote whose default branch a build is made from.
-	SourceRemote = "origin"
+	// DefaultBranch is the reviewed branch of a line that names none.
+	DefaultBranch = "main"
+
+	// TrackingRemote is the remote whose remote-tracking ref for the declared
+	// branch prompts a fresh check when it moves. It never names the source.
+	TrackingRemote = "origin"
+
+	// TipName is the store's record of the last check of the declared remote,
+	// beside the builds it chooses between.
+	TipName = "verified-tip.json"
 
 	// maxRootsBytes caps the list read: a hand-kept list of checkouts is a
 	// few hundred bytes.
 	maxRootsBytes = 64 << 10
+
+	// maxTipBytes caps the read of the store's record.
+	maxTipBytes = 16 << 10
 
 	// worktreeListCap bounds `git worktree list`.
 	worktreeListCap = 1 << 20
@@ -108,12 +139,28 @@ const (
 	// removed after each successful build.
 	keepBuilds = 3
 
+	// recheckAfter is how old the record of the last check may grow before a
+	// hook asks for another, whatever the local refs say. The build it
+	// recorded keeps running meanwhile.
+	recheckAfter = 30 * time.Minute
+
 	// retryAfter is how long a failed build of one commit is left alone before
-	// a hook starts it again. A tip that moved starts at once.
+	// a hook starts it again. A remote-tracking ref that moved starts it at
+	// once.
 	retryAfter = 30 * time.Minute
 
 	// buildTimeout bounds one export and build.
 	buildTimeout = 15 * time.Minute
+
+	// lsRemoteTimeout bounds one check of the declared remote.
+	lsRemoteTimeout = 60 * time.Second
+
+	// maxLsRemoteBytes caps what the check reads back: one ref is one line.
+	maxLsRemoteBytes = 64 << 10
+
+	// allowedProtocols are the transports a check may use (GIT_ALLOW_PROTOCOL),
+	// so a declared URL cannot name a transport that runs a program, ext::.
+	allowedProtocols = "file:git:http:https:ssh"
 
 	lockName     = ".build.lock"
 	failedSuffix = ".failed"
@@ -124,8 +171,8 @@ const (
 // ErrBuildRunning is Build's answer when another build holds the store's lock.
 var ErrBuildRunning = errors.New("another dogfood build is running")
 
-// Checkout is a listed checkout a session runs in, and the commit its build
-// is made from.
+// Checkout is a listed checkout a session runs in, the remote the person
+// declared for it, and the tip the store last verified there.
 type Checkout struct {
 	// Toplevel is the session's working tree.
 	Toplevel string
@@ -134,8 +181,14 @@ type Checkout struct {
 	// Every git read and the export run there.
 	Repo    string
 	RootSHA string
-	// Ref is the remote-tracking ref the build is made from.
-	Ref    string
+	// URL and Branch are the reviewed remote and branch the person's line
+	// declares for Repo.
+	URL, Branch string
+	// Tracking is the commit refs/remotes/origin/<Branch> names in Repo, "" when
+	// none. It only prompts a check; it is never built.
+	Tracking string
+	// Commit is the tip the store last verified on URL, "" before a check has
+	// succeeded.
 	Commit string
 }
 
@@ -147,15 +200,18 @@ func (c Checkout) LogDisplay() string {
 	return abcdhome.Display("dogfood", c.RootSHA, c.Commit+logSuffix)
 }
 
+// Source names the declared branch and remote as a message shows them, with
+// any credentials in the URL left out.
+func (c Checkout) Source() string { return c.Branch + " on " + displayURL(c.URL) }
+
 // Plan is what a hook runs.
 type Plan struct {
 	// Binary is the build to run, "" for the installed release.
 	Binary string
-	// Checkout is set when the session's checkout is listed and its source
-	// commit resolved.
+	// Checkout is set when the session's checkout is listed with a remote.
 	Checkout *Checkout
-	// StartBuild asks the caller to start a build of Checkout in the
-	// background; the installed release runs meanwhile.
+	// StartBuild asks the caller to start a check and build of Checkout in
+	// the background; Binary, or the installed release, runs meanwhile.
 	StartBuild bool
 	// Notes are whole lines for stderr, each starting "abcd dogfood:".
 	Notes []string
@@ -165,11 +221,17 @@ type Plan struct {
 // a test can force either branch.
 var caseFolding = fsutil.CaseFoldingFS
 
-// now is the clock the retry window reads, a variable for tests.
+// now is the clock the retry and re-check windows read, a variable for tests.
 var now = time.Now
 
+// lsRemote asks url for the commit refs/heads/<branch> names. It is the one
+// network call in the package, made by Build alone, and a variable so a test
+// can prove Resolve never makes it.
+var lsRemote = lsRemoteGit
+
 // Resolve decides what a hook standing in cwd runs. home is the person's home
-// directory. It writes nothing; a build it asks for is the caller's to start.
+// directory. It writes nothing and reads nothing over the network; a check or
+// build it asks for is the caller's to start.
 func Resolve(home, cwd string) Plan {
 	if home == "" {
 		return Plan{}
@@ -187,34 +249,46 @@ func Resolve(home, cwd string) Plan {
 		}
 		return Plan{}
 	}
-	ref, commit, err := sourceCommit(c.Repo)
-	if err != nil {
-		return Plan{Notes: []string{"abcd dogfood: " + fsutil.DisplayPath(c.Toplevel) + " is listed in " + RootsDisplay +
-			", but " + err.Error() + "; the installed release runs"}}
-	}
 	root, err := gitutil.RootCommit(c.Repo)
 	if err != nil || !gitutil.IsFullSHA(root) {
 		return Plan{Notes: []string{"abcd dogfood: " + fsutil.DisplayPath(c.Toplevel) + " is listed in " + RootsDisplay +
 			", but its root commit could not be read; the installed release runs"}}
 	}
-	c.Ref, c.Commit, c.RootSHA = ref, commit, root
-	if bin, ok := readyBinary(home, root, commit); ok {
-		return Plan{Binary: bin, Checkout: c}
-	}
-	what := gitutil.ShortRef(ref) + " at " + c.Short()
-	logShown := c.LogDisplay()
+	c.RootSHA = root
+	c.Tracking = trackingTip(c.Repo, c.Branch)
 	storeAbs := filepath.Join(home, filepath.FromSlash(path.Join(StoreRelPath, root)))
-	if building(storeAbs) {
-		return Plan{Checkout: c, Notes: []string{"abcd dogfood: the build of " + what +
-			" is still running (log: " + logShown + "); the installed release runs until it is ready"}}
+	rec, recNote := readTip(home, root)
+	current := rec != nil && rec.URL == c.URL && rec.Branch == c.Branch
+	due := !current || rec.Tracking != c.Tracking || now().Sub(rec.Checked) >= recheckAfter || rec.Checked.After(now())
+	running := building(storeAbs)
+	var notes []string
+	if recNote != "" {
+		notes = append(notes, recNote)
 	}
-	if fi, err := os.Lstat(filepath.Join(storeAbs, commit+failedSuffix)); err == nil && now().Sub(fi.ModTime()) < retryAfter {
-		return Plan{Checkout: c, Notes: []string{"abcd dogfood: the build of " + what +
-			" FAILED (log: " + logShown + "); the installed release runs instead, and the build is tried again after " +
-			retryAfter.String() + " or when " + gitutil.ShortRef(ref) + " moves"}}
+	if current && rec.Commit != "" {
+		c.Commit = rec.Commit
+		if bin, ok := readyBinary(home, root, rec.Commit); ok {
+			return Plan{Binary: bin, Checkout: c, StartBuild: due && !running, Notes: notes}
+		}
 	}
-	return Plan{Checkout: c, StartBuild: true, Notes: []string{"abcd dogfood: no build yet of " + what +
-		"; building it in the background (log: " + logShown + "), and the installed release runs until it is ready"}}
+	if running {
+		return Plan{Checkout: c, Notes: append(notes, "abcd dogfood: the check and build of "+c.Source()+
+			" is still running (logs in "+abcdhome.Display("dogfood", root)+"); the installed release runs until it is ready")}
+	}
+	if current && !due {
+		if rec.Note != "" {
+			return Plan{Checkout: c, Notes: append(notes, rec.Note+"; the installed release runs, and "+
+				c.Source()+" is checked again after "+recheckAfter.String()+" or when "+trackingShort(c.Branch)+" moves")}
+		}
+		if fi, err := os.Lstat(filepath.Join(storeAbs, rec.Commit+failedSuffix)); err == nil && now().Sub(fi.ModTime()) < retryAfter {
+			return Plan{Checkout: c, Notes: append(notes, "abcd dogfood: the build of "+c.Source()+" at "+c.Short()+
+				" FAILED (log: "+c.LogDisplay()+"); the installed release runs instead, and the build is tried again after "+
+				retryAfter.String()+" or when "+trackingShort(c.Branch)+" moves")}
+		}
+	}
+	return Plan{Checkout: c, StartBuild: true, Notes: append(notes, "abcd dogfood: no verified build yet of "+c.Source()+
+		"; checking the remote and building it in the background (logs in "+abcdhome.Display("dogfood", root)+
+		"), and the installed release runs until it is ready")}
 }
 
 // listedCheckout resolves the session's working tree and reports it when the
@@ -222,17 +296,18 @@ func Resolve(home, cwd string) Plan {
 // of its repository is listed AND that main working tree records the session's
 // tree among its own worktrees. The second half is read from the listed
 // checkout, never from the session's tree, so a directory whose .git merely
-// points into a listed repository is not covered by it. note is a refusal to
-// say out loud, empty when the tree is simply not listed.
+// points into a listed repository is not covered by it. The remote is the one
+// the listed checkout's line declares. note is a refusal to say out loud,
+// empty when the tree is simply not listed.
 func listedCheckout(home, cwd string) (*Checkout, string) {
 	top, err := gitutil.Toplevel(cwd)
 	if err != nil {
 		return nil, ""
 	}
-	declared := func(p string) (bool, string) {
-		return fsutil.HomeDeclarationNames(home, RootsRelPath, maxRootsBytes, p, caseFolding())
+	declared := func(p string) ([]string, bool, string) {
+		return fsutil.HomeDeclarationEntry(home, RootsRelPath, maxRootsBytes, p, caseFolding())
 	}
-	on, why := declared(top)
+	fields, on, why := declared(top)
 	if why != "" {
 		return nil, "abcd dogfood: IGNORED " + RootsDisplay + " — " + why + "; the installed release runs in every checkout"
 	}
@@ -246,7 +321,7 @@ func listedCheckout(home, cwd string) (*Checkout, string) {
 		if same(main, top) {
 			return nil, ""
 		}
-		if on, _ = declared(main); !on {
+		if fields, on, _ = declared(main); !on {
 			return nil, ""
 		}
 		repo = main
@@ -255,7 +330,79 @@ func listedCheckout(home, cwd string) (*Checkout, string) {
 		return nil, "abcd dogfood: REFUSED — " + fsutil.DisplayPath(top) + " points at the listed checkout " +
 			fsutil.DisplayPath(repo) + " as its repository, but that checkout does not record it as one of its worktrees; the installed release runs"
 	}
-	return &Checkout{Toplevel: top, Repo: repo}, ""
+	remote, branch, problem := parseRemote(fields)
+	if problem != "" {
+		return nil, "abcd dogfood: " + fsutil.DisplayPath(repo) + " is listed in " + RootsDisplay + ", but " + problem +
+			", so nothing is built and the installed release runs. A line is the checkout, a tab, the URL of the remote its reviewed branch lives on, and optionally a tab and the branch (" +
+			DefaultBranch + " when left out): printf '%s\\t%s\\t%s\\n' '<checkout>' '<url>' '" + DefaultBranch + "' >> " + RootsDisplay
+	}
+	return &Checkout{Toplevel: top, Repo: repo, URL: remote, Branch: branch}, ""
+}
+
+// parseRemote reads the fields after a listed checkout's path: the remote's
+// URL, then optionally the branch. problem says what is wrong with them, ""
+// when they are usable.
+func parseRemote(fields []string) (remote, branch, problem string) {
+	if len(fields) == 0 || fields[0] == "" {
+		return "", "", "its line names no remote to read the reviewed tip from"
+	}
+	if len(fields) > 2 {
+		return "", "", "its line has more fields than a checkout, a remote URL and a branch"
+	}
+	remote, branch = fields[0], DefaultBranch
+	if len(fields) == 2 && fields[1] != "" {
+		branch = fields[1]
+	}
+	if strings.HasPrefix(remote, "-") || strings.ContainsFunc(remote, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return "", "", "its remote URL is not one git can be handed safely"
+	}
+	if !validBranch(branch) {
+		return "", "", "its branch is not a branch name"
+	}
+	return remote, branch, ""
+}
+
+// branchRe is the characters a declared branch may hold; validBranch adds
+// git's structural rules on top.
+var branchRe = regexp.MustCompile(`^[A-Za-z0-9._/+-]+$`)
+
+// validBranch holds a declared branch to a conservative subset of
+// check-ref-format: no empty component, no component starting with "." or
+// ending ".lock", no "..", and no leading "-".
+func validBranch(b string) bool {
+	if !branchRe.MatchString(b) || strings.HasPrefix(b, "-") || strings.Contains(b, "..") || strings.HasSuffix(b, ".") {
+		return false
+	}
+	for _, part := range strings.Split(b, "/") {
+		if part == "" || strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") {
+			return false
+		}
+	}
+	return true
+}
+
+// displayURL is url with any user information left out, so a token in an
+// https URL never reaches stderr.
+func displayURL(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.User != nil {
+		u.User = nil
+		return u.String()
+	}
+	return raw
+}
+
+// trackingShort is the remote-tracking ref that prompts a check, as a person
+// names it.
+func trackingShort(branch string) string { return TrackingRemote + "/" + branch }
+
+// trackingTip is the commit refs/remotes/origin/<branch> names in repo, "" when
+// it names none. It is a prompt to check the remote and nothing more.
+func trackingTip(repo, branch string) string {
+	commit, err := gitutil.Run(repo, "rev-parse", "--verify", "--quiet", "refs/remotes/"+TrackingRemote+"/"+branch+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(commit) {
+		return ""
+	}
+	return commit
 }
 
 // recordsWorktree reports whether the checkout at repo lists tree among its
@@ -285,24 +432,91 @@ func same(a, b string) bool {
 	return err == nil && os.SameFile(fa, fb)
 }
 
-// sourceCommit is the ONE place that decides which commit a listed checkout's
-// build is made from: the default branch's remote-tracking tip, resolved as
-// the implement loop's landing resolves it (gitutil.DefaultRef, held to the
-// SourceRemote remote). The tip moves only through review and the merge queue,
-// so neither a commit on HEAD nor anything uncommitted reaches the build; no
-// local branch is a fallback, because a local branch is what an agent commits
-// to. Nothing is fetched: a hook never touches the network.
-func sourceCommit(repo string) (ref, commit string, err error) {
-	ref = gitutil.DefaultRef(repo)
-	name, ok := strings.CutPrefix(ref, "refs/remotes/"+SourceRemote+"/")
-	if !ok || name == "" || name == "HEAD" {
-		return "", "", fmt.Errorf("it has no default branch on the remote %s to build from (run `git fetch %s` in it)", SourceRemote, SourceRemote)
+// tipRecord is the store's record of the last check of a repository's
+// declared remote, written by Build under the store's lock.
+type tipRecord struct {
+	// Commit is the tip the remote reported, "" when the check failed.
+	Commit string `json:"commit,omitempty"`
+	// URL and Branch are what was checked; a record for another declaration
+	// chooses nothing.
+	URL    string `json:"url"`
+	Branch string `json:"branch"`
+	// Tracking is the remote-tracking ref's commit when the check was asked for.
+	Tracking string `json:"tracking,omitempty"`
+	// Checked is when the check was made.
+	Checked time.Time `json:"checked"`
+	// Note says why the check left nothing to build, "" when it did not.
+	Note string `json:"note,omitempty"`
+}
+
+// readTip reads the store's record for the repository rooted at rootSHA. A
+// record that is absent is nil with no note; one that is present but not this
+// account's alone, or unreadable, is nil with a note saying so, and a check
+// is asked for that replaces it.
+func readTip(home, rootSHA string) (*tipRecord, string) {
+	if !storeAlone(home, rootSHA) {
+		return nil, ""
 	}
-	commit, err = gitutil.Run(repo, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	if err != nil || !gitutil.IsFullSHA(commit) {
-		return "", "", fmt.Errorf("%s does not name a commit", gitutil.ShortRef(ref))
+	r, err := fsutil.OpenHomeScope(home, path.Join(StoreRelPath, rootSHA))
+	if err != nil {
+		return nil, ""
 	}
-	return ref, commit, nil
+	defer r.Close()
+	fi, err := r.Lstat(TipName)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ""
+	}
+	shown := abcdhome.Display("dogfood", rootSHA, TipName)
+	refused := "abcd dogfood: IGNORED " + shown + " — "
+	if err != nil {
+		return nil, refused + "it could not be read"
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, refused + "it is not a regular file"
+	}
+	if fsutil.CallersAlone(filepath.Join(home, filepath.FromSlash(path.Join(StoreRelPath, rootSHA, TipName))), fi) != nil {
+		return nil, refused + "it is not this account's alone"
+	}
+	f, err := r.OpenFile(TipName, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, refused + "it could not be read"
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !os.SameFile(st, fi) {
+		return nil, refused + "it was replaced while it was read"
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxTipBytes+1))
+	if err != nil || len(raw) > maxTipBytes {
+		return nil, refused + "it could not be read"
+	}
+	var rec tipRecord
+	if err := json.Unmarshal(raw, &rec); err != nil || (rec.Commit != "" && !gitutil.IsFullSHA(rec.Commit)) {
+		return nil, refused + "it is not a record this build wrote"
+	}
+	return &rec, ""
+}
+
+// writeTip replaces the store's record through fsutil.WriteFileAtomic, so a
+// reader sees the old record or the new one, never part of either.
+func writeTip(storeAbs string, rec tipRecord) error {
+	body, err := json.MarshalIndent(rec, "", "  ")
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomic(filepath.Join(storeAbs, TipName), append(body, '\n'), abcdhome.FileMode)
+}
+
+// storeAlone reports whether every level of the repository's store is a real
+// directory owned by this uid that no one else can write.
+func storeAlone(home, rootSHA string) bool {
+	for _, level := range []string{StoreRelPath, path.Join(StoreRelPath, rootSHA)} {
+		p := filepath.Join(home, filepath.FromSlash(level))
+		fi, err := os.Lstat(p)
+		if err != nil || !fi.IsDir() || fsutil.CallersAlone(p, fi) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // readyBinary is the finished build of commit for the repository rooted at
@@ -319,18 +533,18 @@ func readyBinary(home, rootSHA, commit string) (string, bool) {
 		return "", false
 	}
 	defer r.Close()
-	for _, level := range []string{StoreRelPath, path.Join(StoreRelPath, rootSHA), dir} {
-		p := filepath.Join(home, filepath.FromSlash(level))
-		fi, err := os.Lstat(p)
-		if err != nil || !fi.IsDir() || fsutil.CallersAlone(p, fi) != nil {
-			return "", false
-		}
+	if !storeAlone(home, rootSHA) {
+		return "", false
+	}
+	p := filepath.Join(home, filepath.FromSlash(dir))
+	if fi, err := os.Lstat(p); err != nil || !fi.IsDir() || fsutil.CallersAlone(p, fi) != nil {
+		return "", false
 	}
 	fi, err := r.Lstat(BinaryName)
 	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o100 == 0 {
 		return "", false
 	}
-	bin := filepath.Join(home, filepath.FromSlash(dir), BinaryName)
+	bin := filepath.Join(p, BinaryName)
 	if fsutil.CallersAlone(bin, fi) != nil {
 		return "", false
 	}
@@ -346,17 +560,27 @@ func building(storeAbs string) bool {
 	return errors.Is(err, fsutil.ErrLockContention)
 }
 
-// Build makes the build of c.Commit, unless one is already there, and returns
-// its path. It holds the store's lock for the whole export and build, so two
-// hooks firing at once cannot race it: the second gets ErrBuildRunning at
-// once. The source is a clean export of the commit (`git archive`, checked
-// against the commit's tree) into a fresh directory under the store, never the
-// working tree, and the finished
-// binary is moved into place by one rename, so a reader sees no build or a
-// whole one. A failure leaves a marker beside the log that Resolve reads.
+// Build checks the declared remote for the reviewed tip, records the answer
+// in the store, and makes the build of that tip unless one is already there,
+// returning its path. It is the only caller of the network. It holds the
+// store's lock for the whole check, export and build, so two hooks firing at
+// once cannot race it: the second gets ErrBuildRunning at once.
+//
+// c.Commit is ignored: the commit built is the one the remote reports now,
+// never one a caller names. A remote that cannot be read records no tip, and
+// a tip the checkout does not hold yet is recorded with a note to fetch it and
+// is not built; either way Resolve then names no build and says why. The
+// source is a clean export of the tip (`git archive`, checked against the
+// commit's verified tree) into a fresh directory under the store, never the
+// working tree, and the finished binary is moved into place by one rename, so
+// a reader sees no build or a whole one. A failed build leaves a marker
+// beside its log that Resolve reads.
 func Build(home string, c Checkout) (string, error) {
-	if !gitutil.IsFullSHA(c.RootSHA) || !gitutil.IsFullSHA(c.Commit) {
-		return "", errors.New("the checkout's root commit or source commit is not a full object name")
+	if !gitutil.IsFullSHA(c.RootSHA) {
+		return "", errors.New("the checkout's root commit is not a full object name")
+	}
+	if _, _, problem := parseRemote([]string{c.URL, c.Branch}); problem != "" {
+		return "", errors.New("the declared remote is not usable: " + problem)
 	}
 	storeRel := path.Join(StoreRelPath, c.RootSHA)
 	r, err := fsutil.EnsureHomeScope(home, storeRel, abcdhome.DirMode)
@@ -364,20 +588,47 @@ func Build(home string, c Checkout) (string, error) {
 		return "", fmt.Errorf("preparing the build store: %w", err)
 	}
 	r.Close()
+	if !storeAlone(home, c.RootSHA) {
+		return "", errors.New("the build store is not this account's alone")
+	}
 	storeAbs := filepath.Join(home, filepath.FromSlash(storeRel))
 	var bin string
 	err = fsutil.WithFileLock(filepath.Join(storeAbs, lockName), 0, func() error {
-		if p, ok := readyBinary(home, c.RootSHA, c.Commit); ok {
+		rec := tipRecord{URL: c.URL, Branch: c.Branch, Tracking: c.Tracking, Checked: now()}
+		ctx, cancel := context.WithTimeout(context.Background(), lsRemoteTimeout)
+		tip, err := lsRemote(ctx, storeAbs, c.URL, c.Branch)
+		cancel()
+		if err != nil {
+			rec.Note = "abcd dogfood: the reviewed remote could not be read (" + c.Source() + ": " + err.Error() + ")"
+			if werr := writeTip(storeAbs, rec); werr != nil {
+				return fmt.Errorf("recording the check: %w", werr)
+			}
+			return fmt.Errorf("reading %s: %w", c.Source(), err)
+		}
+		rec.Commit = tip
+		if !hasCommit(c.Repo, tip) {
+			rec.Note = "abcd dogfood: " + c.Source() + " is at " + short(tip) + ", which " + fsutil.DisplayPath(c.Repo) +
+				" does not hold yet, so nothing is built; run `git fetch` there"
+			if werr := writeTip(storeAbs, rec); werr != nil {
+				return fmt.Errorf("recording the check: %w", werr)
+			}
+			return fmt.Errorf("%s is at %s, which the checkout does not hold yet; run `git fetch` in it", c.Source(), short(tip))
+		}
+		if err := writeTip(storeAbs, rec); err != nil {
+			return fmt.Errorf("recording the check: %w", err)
+		}
+		c.Commit = tip
+		if p, ok := readyBinary(home, c.RootSHA, tip); ok {
 			bin = p
 			return nil
 		}
 		p, err := build(storeAbs, c)
 		if err != nil {
-			_ = os.WriteFile(filepath.Join(storeAbs, c.Commit+failedSuffix), []byte(err.Error()+"\n"), 0o600)
-			return err
+			_ = os.WriteFile(filepath.Join(storeAbs, tip+failedSuffix), []byte(err.Error()+"\n"), abcdhome.FileMode)
+			return fmt.Errorf("%w (log: %s)", err, c.LogDisplay())
 		}
-		_ = os.Remove(filepath.Join(storeAbs, c.Commit+failedSuffix))
-		prune(storeAbs, c.Commit)
+		_ = os.Remove(filepath.Join(storeAbs, tip+failedSuffix))
+		prune(storeAbs, tip)
 		bin = p
 		return nil
 	})
@@ -387,14 +638,108 @@ func Build(home string, c Checkout) (string, error) {
 	return bin, err
 }
 
+// builderEnv is the environment of every git command the builder runs: the
+// isolated environment with replacement objects off, so refs/replace/* in the
+// checkout (which `git replace` writes) cannot stand another object in for
+// the reviewed one.
+func builderEnv(extra ...string) []string {
+	return append(append(gitutil.IsolatedEnv(), "GIT_NO_REPLACE_OBJECTS=1"), extra...)
+}
+
+// boundedBuffer keeps at most limit bytes and records whether more came.
+type boundedBuffer struct {
+	buf      bytes.Buffer
+	limit    int
+	overflow bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if room := b.limit - b.buf.Len(); room < len(p) {
+		b.overflow = true
+		if room > 0 {
+			b.buf.Write(p[:room])
+		}
+		return len(p), nil
+	}
+	return b.buf.Write(p)
+}
+
+// lsRemoteGit is lsRemote: `git ls-remote -- <url> refs/heads/<branch>` run in
+// dir (a directory of the store, with discovery stopped at its parent, so no
+// repository's config applies), under the isolated environment, with no
+// credential prompt of any kind, the transports held to allowedProtocols, and
+// output capped. git matches a pattern against the tail of each ref, so the
+// answer is the line naming exactly refs/heads/<branch>, and it must be the
+// only one.
+func lsRemoteGit(ctx context.Context, dir, remote, branch string) (string, error) {
+	ref := "refs/heads/" + branch
+	args := append(gitutil.ExecPins(), "ls-remote", "--", remote, ref)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	cmd.Env = builderEnv(
+		"GIT_CEILING_DIRECTORIES="+filepath.Dir(dir),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_ASKPASS=",
+		"SSH_ASKPASS=",
+		"GIT_SSH_COMMAND=ssh -o BatchMode=yes",
+		"GIT_ALLOW_PROTOCOL="+allowedProtocols,
+	)
+	cmd.Stdin = nil
+	cmd.WaitDelay = 5 * time.Second
+	out := &boundedBuffer{limit: maxLsRemoteBytes}
+	errOut := &boundedBuffer{limit: 2048}
+	cmd.Stdout, cmd.Stderr = out, errOut
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("no answer within %s", lsRemoteTimeout)
+		}
+		msg := strings.TrimSpace(errOut.buf.String())
+		if i := strings.LastIndexByte(msg, '\n'); i >= 0 {
+			msg = strings.TrimSpace(msg[i+1:])
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		// git names the URL in its own messages; credentials in it stay out.
+		return "", errors.New(strings.ReplaceAll(msg, remote, displayURL(remote)))
+	}
+	if out.overflow {
+		return "", fmt.Errorf("its answer exceeded %d bytes", maxLsRemoteBytes)
+	}
+	var tip string
+	for _, line := range strings.Split(out.buf.String(), "\n") {
+		oid, name, ok := strings.Cut(strings.TrimRight(line, "\r"), "\t")
+		if !ok || name != ref {
+			continue
+		}
+		if tip != "" || !gitutil.IsFullSHA(oid) {
+			return "", fmt.Errorf("its answer for %s is not one commit", ref)
+		}
+		tip = oid
+	}
+	if tip == "" {
+		return "", fmt.Errorf("it has no branch %s", branch)
+	}
+	return tip, nil
+}
+
+// hasCommit reports whether repo holds commit as a commit object, read with
+// replacement objects off and nothing fetched.
+func hasCommit(repo, commit string) bool {
+	cmd := exec.Command("git", append(gitutil.ExecPins(), "-C", repo, "cat-file", "-t", commit)...)
+	cmd.Env = builderEnv()
+	out, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(out)) == "commit"
+}
+
 // build exports c.Commit and builds ./cmd/abcd from it, logging both steps.
 func build(storeAbs string, c Checkout) (string, error) {
-	logf, err := os.OpenFile(filepath.Join(storeAbs, c.Commit+logSuffix), os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
+	logf, err := os.OpenFile(filepath.Join(storeAbs, c.Commit+logSuffix), os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, abcdhome.FileMode)
 	if err != nil {
 		return "", fmt.Errorf("opening the build log: %w", err)
 	}
 	defer logf.Close()
-	fmt.Fprintf(logf, "abcd dogfood: building %s at %s from %s\n", gitutil.ShortRef(c.Ref), c.Commit, c.Repo)
+	fmt.Fprintf(logf, "abcd dogfood: building %s at %s from %s\n", c.Source(), c.Commit, c.Repo)
 	tmp, err := os.MkdirTemp(storeAbs, tmpPrefix)
 	if err != nil {
 		return "", err
@@ -402,16 +747,20 @@ func build(storeAbs string, c Checkout) (string, error) {
 	defer os.RemoveAll(tmp)
 	src, out := filepath.Join(tmp, "src"), filepath.Join(tmp, "out")
 	for _, d := range []string{src, out} {
-		if err := os.Mkdir(d, 0o700); err != nil {
+		if err := os.Mkdir(d, abcdhome.DirMode); err != nil {
 			return "", err
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
 	defer cancel()
+	want, err := verifiedTree(ctx, c.Repo, c.Commit)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", short(c.Commit), err)
+	}
 	if err := export(ctx, c.Repo, c.Commit, src, logf); err != nil {
 		return "", fmt.Errorf("exporting %s: %w", short(c.Commit), err)
 	}
-	if err := verifyExport(c.Repo, c.Commit, src); err != nil {
+	if err := verifyExport(want, src); err != nil {
 		return "", fmt.Errorf("exporting %s: %w", short(c.Commit), err)
 	}
 	if err := goBuild(ctx, src, filepath.Join(out, BinaryName), logf); err != nil {
@@ -437,10 +786,142 @@ func build(storeAbs string, c Checkout) (string, error) {
 	return filepath.Join(final, BinaryName), nil
 }
 
+// treeEntry is one blob of a verified tree: its mode and object name.
+type treeEntry struct{ mode, oid string }
+
+// maxTreeObjects and maxTreeBytes bound verifiedTree's walk: how many commit
+// and tree objects it reads, and how many bytes of them in all.
+const (
+	maxTreeObjects = 1 << 20
+	maxTreeBytes   = 64 << 20
+)
+
+// verifiedTree reads commit and every tree under it from repo through one
+// `git cat-file --batch`, with replacement objects off, re-hashes each object
+// against its name, and returns the commit's blobs by path. git checks the
+// hash of a commit and of a root tree when it parses them, but `git archive`
+// and `git ls-tree` read a subtree without checking it, so a loose object
+// written over a subtree of the reviewed commit, or an object store borrowed
+// through alternates, would otherwise put other files in the build.
+func verifiedTree(ctx context.Context, repo, commit string) (map[string]treeEntry, error) {
+	newHash, ok := objectHash(commit)
+	if !ok {
+		return nil, errors.New("the commit is not a full object name")
+	}
+	rawLen := newHash().Size()
+	cmd := exec.CommandContext(ctx, "git", append(gitutil.ExecPins(), "-C", repo, "cat-file", "--batch")...)
+	cmd.Env = builderEnv()
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	// The walk stops at its first refusal with git perhaps still writing an
+	// answer nobody reads, so git is ended rather than waited for.
+	defer func() {
+		stdin.Close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	rd := bufio.NewReader(stdout)
+	objects, total := 0, 0
+	read := func(oid, wantType string) ([]byte, error) {
+		objects++
+		if objects > maxTreeObjects {
+			return nil, fmt.Errorf("the commit holds more than %d trees", maxTreeObjects)
+		}
+		if _, err := io.WriteString(stdin, oid+"\n"); err != nil {
+			return nil, err
+		}
+		header, err := rd.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		f := strings.Fields(header)
+		if len(f) != 3 || f[0] != oid || f[1] != wantType {
+			return nil, fmt.Errorf("object %s is not the %s the commit records", short(oid), wantType)
+		}
+		size, err := strconv.Atoi(f[2])
+		if err != nil || size < 0 {
+			return nil, fmt.Errorf("object %s has an unreadable size", short(oid))
+		}
+		if total += size; total > maxTreeBytes {
+			return nil, fmt.Errorf("the commit's trees exceed %d bytes", maxTreeBytes)
+		}
+		body := make([]byte, size+1)
+		if _, err := io.ReadFull(rd, body); err != nil {
+			return nil, err
+		}
+		body = body[:size]
+		h := newHash()
+		fmt.Fprintf(h, "%s %d\x00", wantType, size)
+		h.Write(body)
+		if hex.EncodeToString(h.Sum(nil)) != oid {
+			return nil, fmt.Errorf("object %s does not hash to its name (the checkout's object store was altered)", short(oid))
+		}
+		return body, nil
+	}
+	body, err := read(commit, "commit")
+	if err != nil {
+		return nil, err
+	}
+	first, _, _ := strings.Cut(string(body), "\n")
+	rootTree, ok := strings.CutPrefix(first, "tree ")
+	if !ok || len(rootTree) != len(commit) {
+		return nil, errors.New("the commit names no tree")
+	}
+	want := map[string]treeEntry{}
+	type pending struct{ dir, oid string }
+	queue := []pending{{"", rootTree}}
+	for len(queue) > 0 {
+		t := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		body, err := read(t.oid, "tree")
+		if err != nil {
+			return nil, err
+		}
+		for len(body) > 0 {
+			sp := bytes.IndexByte(body, ' ')
+			nul := bytes.IndexByte(body, 0)
+			if sp <= 0 || nul <= sp+1 || len(body) < nul+1+rawLen {
+				return nil, fmt.Errorf("tree %s is malformed", short(t.oid))
+			}
+			mode, name := string(body[:sp]), string(body[sp+1:nul])
+			oid := hex.EncodeToString(body[nul+1 : nul+1+rawLen])
+			body = body[nul+1+rawLen:]
+			if name == "." || name == ".." || strings.Contains(name, "/") {
+				return nil, fmt.Errorf("tree %s holds an entry named %q", short(t.oid), name)
+			}
+			p := name
+			if t.dir != "" {
+				p = t.dir + "/" + name
+			}
+			switch mode {
+			case "40000":
+				queue = append(queue, pending{p, oid})
+			case "160000":
+				// a submodule's commit: archive writes no content for it
+			case "100644", "100755", "120000":
+				want[p] = treeEntry{mode: mode, oid: oid}
+			default:
+				return nil, fmt.Errorf("tree %s holds %s at an unknown mode %s", short(t.oid), p, mode)
+			}
+		}
+	}
+	return want, nil
+}
+
 // export writes the tree of commit, read from the repository at repo, into
-// dst: `git archive` piped into `tar`, under the isolated git environment,
-// with every content filter the repository configures blanked
-// (gitutil.FilterOverrides), so no program the repository names runs.
+// dst: `git archive` piped into `tar`, under the builder's git environment
+// (isolated, replacement objects off), with every content filter the
+// repository configures blanked (gitutil.FilterOverrides), so no program the
+// repository names runs.
 func export(ctx context.Context, repo, commit, dst string, log io.Writer) error {
 	filters, err := gitutil.FilterOverrides(repo)
 	if err != nil {
@@ -448,7 +929,7 @@ func export(ctx context.Context, repo, commit, dst string, log io.Writer) error 
 	}
 	args := append(append(gitutil.ExecPins(), filters...), "-C", repo, "archive", "--format=tar", commit)
 	git := exec.CommandContext(ctx, "git", args...)
-	git.Env = gitutil.IsolatedEnv()
+	git.Env = builderEnv()
 	git.Stderr = log
 	tar := exec.CommandContext(ctx, "tar", "-x", "-f", "-", "-C", dst)
 	tar.Stdout, tar.Stderr = log, log
@@ -471,44 +952,17 @@ func export(ctx context.Context, repo, commit, dst string, log io.Writer) error 
 	return nil
 }
 
-// maxTreeListing caps `git ls-tree -r` of the commit being verified.
-const maxTreeListing = 64 << 20
-
-// verifyExport proves the export in dst is the tree of commit and nothing
-// else: every blob of the commit is present with the content the commit
-// records (its object id recomputed from the exported bytes, a symlink's from
-// its target), and nothing is present that the commit does not hold. `git
-// archive` honours attributes, and repository-local ones
-// (.git/info/attributes, core.attributesFile) are writable by anyone who can
-// commit in the checkout: export-ignore drops a file, export-subst and eol
-// rewrite one. The reviewed commit is what is built, or nothing is.
-func verifyExport(repo, commit, dst string) error {
-	newHash, ok := objectHash(commit)
-	if !ok {
-		return errors.New("the commit is not a full object name")
-	}
-	out, err := gitutil.RunCapped(repo, maxTreeListing, "ls-tree", "-r", "-z", "--full-tree", commit)
-	if err != nil {
-		return fmt.Errorf("listing the commit's tree: %w", err)
-	}
-	type entry struct{ mode, oid string }
-	want := map[string]entry{}
-	for _, rec := range strings.Split(out, "\x00") {
-		if rec == "" {
-			continue
-		}
-		meta, p, ok := strings.Cut(rec, "\t")
-		f := strings.Fields(meta)
-		if !ok || len(f) != 3 {
-			return fmt.Errorf("unreadable tree entry %q", rec)
-		}
-		if f[1] != "blob" {
-			continue // a submodule's commit: archive writes no content for it
-		}
-		want[p] = entry{mode: f[0], oid: f[2]}
-	}
+// verifyExport proves the export in dst is the verified tree want and
+// nothing else: every blob is present with the content the tree records (its
+// object id recomputed from the exported bytes, a symlink's from its target),
+// and nothing is present that the tree does not hold. `git archive` honours
+// attributes, and repository-local ones (.git/info/attributes,
+// core.attributesFile) are writable by anyone who can commit in the checkout:
+// export-ignore drops a file, export-subst and eol rewrite one. The reviewed
+// commit is what is built, or nothing is.
+func verifyExport(want map[string]treeEntry, dst string) error {
 	seen := 0
-	err = filepath.WalkDir(dst, func(abs string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(dst, func(abs string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -541,6 +995,10 @@ func verifyExport(repo, commit, dst string) error {
 			if body, err = os.ReadFile(abs); err != nil {
 				return err
 			}
+		}
+		newHash, ok := objectHash(e.oid)
+		if !ok {
+			return fmt.Errorf("the tree records %s under an unreadable object name", rel)
 		}
 		h := newHash()
 		fmt.Fprintf(h, "blob %d\x00", len(body))

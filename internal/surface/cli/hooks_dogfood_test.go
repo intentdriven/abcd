@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/dogfood"
@@ -164,9 +166,10 @@ func TestGuardFallsBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
 	})
 }
 
-// dogfoodCLIFixture is a listed clone whose origin/main is its upstream's
-// main, with HOME pointed at a home holding the list. It returns the clone.
-func dogfoodCLIFixture(t *testing.T, listed bool) (home, checkout string) {
+// dogfoodCLIFixture is a clone of an upstream, with HOME pointed at a home
+// holding a list whose line is entry(checkout, upstream): "" names another
+// path. It returns the home, the clone and the upstream.
+func dogfoodCLIFixture(t *testing.T, entry func(checkout, upstream string) string) (home, checkout, upstream string) {
 	t.Helper()
 	g := func(dir string, args ...string) string {
 		t.Helper()
@@ -201,17 +204,21 @@ func dogfoodCLIFixture(t *testing.T, listed bool) (home, checkout string) {
 	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	entry := "/nowhere"
-	if listed {
-		entry = checkout
+	line := entry(checkout, up)
+	if line == "" {
+		line = "/nowhere"
 	}
-	if err := os.WriteFile(abcdhome.Path(home, "dogfood-roots"), []byte(entry+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "dogfood-roots"), []byte(line+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
 	t.Chdir(checkout)
-	return home, checkout
+	return home, checkout, up
 }
+
+func unlisted(string, string) string         { return "" }
+func listedWithRemote(c, up string) string   { return c + "\t" + up + "\tmain" }
+func listedWithoutRemote(c, _ string) string { return c }
 
 // swapSpawn records the build requests `hook dogfood-binary` makes.
 func swapSpawn(t *testing.T) *[]string {
@@ -224,21 +231,34 @@ func swapSpawn(t *testing.T) *[]string {
 }
 
 // TestDogfoodBinaryVerb: in an unlisted checkout the verb prints nothing,
-// says nothing and starts nothing; in a listed one with no build it prints
-// nothing, says the build is starting and starts it in the background; once
-// the build is in the store it prints the build's path and starts nothing.
-// Every outcome exits 0, so a shim always has the installed release.
+// says nothing and starts nothing; in a listed one with no verified build it
+// prints nothing, says the check and build are starting and starts them in the
+// background; once the store records a verified tip with its build, it prints
+// the build's path and starts nothing; and a line naming no remote starts
+// nothing and says why. Every outcome exits 0, so a shim always has the
+// installed release.
 func TestDogfoodBinaryVerb(t *testing.T) {
 	t.Run("unlisted", func(t *testing.T) {
-		dogfoodCLIFixture(t, false)
+		dogfoodCLIFixture(t, unlisted)
 		asked := swapSpawn(t)
 		var out, errOut strings.Builder
 		if code := Run([]string{"hook", "dogfood-binary"}, &out, &errOut); code != 0 || out.Len() != 0 || errOut.Len() != 0 || len(*asked) != 0 {
 			t.Fatalf("exit %d, stdout %q, stderr %q, builds %v; want silence and no build", code, out.String(), errOut.String(), *asked)
 		}
 	})
+	t.Run("listed without a remote", func(t *testing.T) {
+		dogfoodCLIFixture(t, listedWithoutRemote)
+		asked := swapSpawn(t)
+		var out, errOut strings.Builder
+		if code := Run([]string{"hook", "dogfood-binary"}, &out, &errOut); code != 0 || out.Len() != 0 || len(*asked) != 0 {
+			t.Fatalf("exit %d, stdout %q, builds %v; want no build named and none started", code, out.String(), *asked)
+		}
+		if !strings.Contains(errOut.String(), "names no remote") {
+			t.Fatalf("stderr %q does not say the line names no remote", errOut.String())
+		}
+	})
 	t.Run("listed", func(t *testing.T) {
-		home, checkout := dogfoodCLIFixture(t, true)
+		home, checkout, up := dogfoodCLIFixture(t, listedWithRemote)
 		asked := swapSpawn(t)
 		var out, errOut strings.Builder
 		if code := Run([]string{"hook", "dogfood-binary"}, &out, &errOut); code != 0 || out.Len() != 0 || len(*asked) != 1 {
@@ -251,18 +271,24 @@ func TestDogfoodBinaryVerb(t *testing.T) {
 		if plan.Checkout == nil {
 			t.Fatalf("Resolve = %+v", plan)
 		}
-		dir := abcdhome.Path(home, "dogfood", plan.Checkout.RootSHA, plan.Checkout.Commit)
+		tip := strings.TrimSpace(gitOut(t, checkout, "rev-parse", "origin/main"))
+		store := abcdhome.Path(home, "dogfood", plan.Checkout.RootSHA)
+		dir := filepath.Join(store, tip)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chmod(abcdhome.Path(home, "dogfood"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(filepath.Dir(dir), 0o700); err != nil {
-			t.Fatal(err)
+		for _, d := range []string{abcdhome.Path(home, "dogfood"), store} {
+			if err := os.Chmod(d, 0o700); err != nil {
+				t.Fatal(err)
+			}
 		}
 		bin := filepath.Join(dir, dogfood.BinaryName)
-		if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		rec := fmt.Sprintf(`{"commit":%q,"url":%q,"branch":"main","tracking":%q,"checked":%q}`,
+			tip, up, tip, time.Now().UTC().Format(time.RFC3339Nano))
+		if err := os.WriteFile(filepath.Join(store, dogfood.TipName), []byte(rec), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		out.Reset()
@@ -271,6 +297,19 @@ func TestDogfoodBinaryVerb(t *testing.T) {
 			t.Fatalf("exit %d, stdout %q, stderr %q, builds %v; want the build named, silence, and no new build", code, out.String(), errOut.String(), *asked)
 		}
 	})
+}
+
+// gitOut runs git in dir under the test's isolated environment.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = gittest.Env(t)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
 }
 
 // guardRig is a plugin root whose installed-release guard writes relOut and

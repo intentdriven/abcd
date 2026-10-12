@@ -168,9 +168,9 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
 person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
 checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
-the path of a build of the latest reviewed default branch (`origin`'s, as last
-fetched) once it is ready: run that path in place of the plugin-root binary,
-and the plugin-root binary while it prints nothing.
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 ## `news` — what an update changed, and the setup that waits
 

@@ -254,12 +254,16 @@ plugin surface, and a future MCP server share one engine.
 - **`core/dogfood/`** — which abcd binary a hook runs in a checkout the person
   opted in to dogfooding through `~/.abcd.noindex/dogfood-roots`
   (iss-2610070547057816), and the build it runs. The list is read through
-  `fsutil.HomeDeclarationNames`; a listed main checkout covers the worktrees it
-  records; the build is made from `origin`'s default-branch tip as last fetched
-  (`sourceCommit`, the one place that chooses it), never HEAD, exported with
-  `git archive` and built under a lock into
-  `~/.abcd.noindex/dogfood/<root-sha>/<commit>/`. Every failure leaves the
-  installed release running, said on stderr. The hook shims reach it through
+  `fsutil.HomeDeclarationEntry`, each line naming a checkout, the remote its
+  reviewed branch lives on, and that branch; a listed main checkout covers the
+  worktrees it records. `Build`, run in the background, is the only caller of
+  the network: it reads the branch's tip with `git ls-remote` against the
+  declared remote, records it in the store under a lock, and builds that commit,
+  its commit and trees re-hashed and its `git archive` export checked against
+  them, into `~/.abcd.noindex/dogfood/<root-sha>/<commit>/`. `Resolve`, the
+  hook's half, names a build only for the recorded tip; the checkout's refs and
+  remote config never choose one. Every failure leaves the installed release
+  running, said on stderr. The hook shims reach it through
   `hook dogfood-binary`.
 - **`core/board/`** — the status board's one renderer (spc-2610031844142274):
   the product thinker's view and the facilitator's, each as text fitted or

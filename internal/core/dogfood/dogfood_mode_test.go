@@ -22,14 +22,15 @@ func TestABuildUnderAGroupWritableUmaskIsReady(t *testing.T) {
 	t.Cleanup(func() { syscall.Umask(old) })
 
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	p := Resolve(f.home, f.checkout)
 	if p.Checkout == nil {
 		t.Fatalf("premise: a listed checkout resolves a source commit: %+v", p)
 	}
 	// A directory an earlier build left for this commit, its binary refused
 	// as group-writable.
-	stale := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, p.Checkout.Commit)
+	tip := git(t, f.upstream, "rev-parse", "HEAD")
+	stale := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, tip)
 	if err := os.MkdirAll(stale, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestABuildUnderAGroupWritableUmaskIsReady(t *testing.T) {
 // once a build succeeds.
 func TestPruneRemovesLogsOfCommitsThatNeverBuilt(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	p := Resolve(f.home, f.checkout)
 	if p.Checkout == nil {
 		t.Fatalf("premise: a listed checkout resolves a source commit: %+v", p)
@@ -83,7 +84,7 @@ func TestPruneRemovesLogsOfCommitsThatNeverBuilt(t *testing.T) {
 			t.Fatalf("the %s of a commit that never built is pruned: %v", suffix, err)
 		}
 	}
-	if _, err := os.Lstat(filepath.Join(store, p.Checkout.Commit+logSuffix)); err != nil {
+	if _, err := os.Lstat(filepath.Join(store, git(t, f.upstream, "rev-parse", "HEAD")+logSuffix)); err != nil {
 		t.Fatalf("the kept build's log stays: %v", err)
 	}
 }

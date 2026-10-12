@@ -201,16 +201,25 @@ its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`
 The `go run` rule reaches an agent; it cannot reach the plugin's hooks, which
 run the installed release, so in a source checkout the shell guard and the rules
 loader lag `main` by up to a release. A checkout listed in
-`~/.abcd.noindex/dogfood-roots` (one absolute path per line, `#` starting a
-comment, a regular file you own that no one else can write: the `trusted-roots`
-shape) runs, in every hook, a build of `origin`'s default branch as last
-fetched. It is never HEAD, so no agent commit changes the guard that judges the
-agent's next command. The build is made in the background into
-`~/.abcd.noindex/dogfood/<root-sha>/<commit>/` and made again when a
-`git fetch` moves the tip; until it is ready, or when it fails, the installed
-release runs and says so on stderr. Listing the main checkout covers the
-worktrees it records. The opt-in is the person's own act, never an agent's:
-`mkdir -p ~/.abcd.noindex && printf '%s\n' '<checkout>' >> ~/.abcd.noindex/dogfood-roots`.
+`~/.abcd.noindex/dogfood-roots` runs, in every hook, a build of its reviewed
+branch's tip as the remote the person declares reports it. A line is the
+checkout's absolute path, a tab, that remote's URL, and optionally a tab and the
+branch (`main` when left out); `#` starts a comment, and the file is a regular
+file you own that no one else can write, the `trusted-roots` shape. A line with
+no remote builds nothing and says so. The tip is read with `git ls-remote` by a
+background builder, never by a hook, and recorded in the store; only that record
+chooses the build. The checkout's HEAD, its remote-tracking refs, `origin/HEAD`
+and its remote config choose nothing, so no agent commit, and no ref or remote
+an agent moves, changes the guard that judges the agent's next command: a moved
+`refs/remotes/origin/<branch>` only prompts one more check of the declared
+remote, as does a record older than 30 minutes. The build is made into
+`~/.abcd.noindex/dogfood/<root-sha>/<commit>/` once the checkout holds the tip
+(a `git fetch` brings it); until it is ready, or when the check or build fails,
+the installed release runs and says so on stderr. Listing the main checkout
+covers the worktrees it records. Anything running as your account can still
+edit the declaration or replace a file in the store. The opt-in is the person's
+own act, never an agent's:
+`mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' '<remote-url>' main >> ~/.abcd.noindex/dogfood-roots`.
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`

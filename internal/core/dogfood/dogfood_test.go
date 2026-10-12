@@ -63,11 +63,12 @@ func mainSource(marker string) string {
 	return "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"" + marker + "\") }\n"
 }
 
-// fixture is an upstream repository holding an abcd-shaped module and a
-// clone of it, the checkout under test, whose origin/main is the upstream's
-// main.
+// fixture is an upstream working repository holding an abcd-shaped module, a
+// bare repository it pushes to (the reviewed remote, standing in for the
+// forge), and a clone of the bare repository, the checkout under test, whose
+// origin/main is the reviewed main.
 type fixture struct {
-	upstream, checkout, home string
+	upstream, remote, checkout, home string
 }
 
 // goCaches are the build and module caches of the account running the tests,
@@ -99,9 +100,12 @@ func newFixture(t *testing.T, module string) fixture {
 	write(t, filepath.Join(up, "cmd", "abcd", "main.go"), mainSource("reviewed-1"))
 	git(t, up, "add", ".")
 	git(t, up, "commit", "-q", "-m", "first")
+	remote := filepath.Join(realDir(t), "remote.git")
+	git(t, up, "init", "-q", "--bare", remote)
+	git(t, up, "push", "-q", remote, "main")
 	parent := realDir(t)
-	git(t, parent, "clone", "-q", up, "checkout")
-	return fixture{upstream: up, checkout: filepath.Join(parent, "checkout"), home: realDir(t)}
+	git(t, parent, "clone", "-q", remote, "checkout")
+	return fixture{upstream: up, remote: remote, checkout: filepath.Join(parent, "checkout"), home: realDir(t)}
 }
 
 // list writes the person's opt-in list naming paths, at mode 0600.
@@ -117,12 +121,20 @@ func (f fixture) list(t *testing.T, paths ...string) {
 	}
 }
 
+// declare writes the person's opt-in list naming the checkout with the
+// fixture's reviewed remote and branch, the line shape the rung builds from.
+func (f fixture) declare(t *testing.T) {
+	t.Helper()
+	f.list(t, f.checkout+"\t"+f.remote+"\tmain")
+}
+
 // land commits a new main.go printing marker on the upstream and fetches it
 // into the checkout, as a merge through review would arrive.
 func (f fixture) land(t *testing.T, source string) string {
 	t.Helper()
 	write(t, filepath.Join(f.upstream, "cmd", "abcd", "main.go"), source)
 	git(t, f.upstream, "commit", "-q", "-am", "landed")
+	git(t, f.upstream, "push", "-q", f.remote, "main")
 	git(t, f.checkout, "fetch", "-q", "origin")
 	return git(t, f.upstream, "rev-parse", "HEAD")
 }
@@ -188,12 +200,12 @@ func TestPosingCheckoutNeverReachesTheBuild(t *testing.T) {
 	}
 }
 
-// TestListedCheckoutBuildsTheReviewedTip: a listed checkout asks for a build
-// of origin/main, the build runs that commit's code, and once it is there
-// Resolve names it without asking again.
+// TestListedCheckoutBuildsTheReviewedTip: a checkout listed with its
+// reviewed remote asks for a check and build, the build runs the tip the
+// remote reports, and once it is there Resolve names it without asking again.
 func TestListedCheckoutBuildsTheReviewedTip(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	p := Resolve(f.home, f.checkout)
 	if p.Binary != "" || !p.StartBuild || p.Checkout == nil {
 		t.Fatalf("first Resolve = %+v, want a build asked for and the installed release meanwhile", p)
@@ -201,10 +213,10 @@ func TestListedCheckoutBuildsTheReviewedTip(t *testing.T) {
 	if !strings.Contains(notes(p), "building it in the background") {
 		t.Fatalf("the first Resolve did not say a build was starting: %q", notes(p))
 	}
-	tip := git(t, f.checkout, "rev-parse", "origin/main")
-	if p.Checkout.Commit != tip || p.Checkout.Ref != "refs/remotes/origin/main" {
-		t.Fatalf("source = %s %s, want refs/remotes/origin/main %s", p.Checkout.Ref, p.Checkout.Commit, tip)
+	if p.Checkout.URL != f.remote || p.Checkout.Branch != "main" || p.Checkout.Commit != "" {
+		t.Fatalf("checkout = %+v, want the declared remote and main, and no verified tip yet", *p.Checkout)
 	}
+	tip := git(t, f.upstream, "rev-parse", "HEAD")
 	bin, err := Build(f.home, *p.Checkout)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -215,8 +227,12 @@ func TestListedCheckoutBuildsTheReviewedTip(t *testing.T) {
 	if got := run(t, bin); got != "reviewed-1" {
 		t.Fatalf("the build printed %q, want the reviewed tip's reviewed-1", got)
 	}
+	rec := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, TipName)
+	if fi, err := os.Stat(rec); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the verified tip is recorded at 0600: %v %v", fi, err)
+	}
 	again := Resolve(f.home, f.checkout)
-	if again.Binary != bin || again.StartBuild || len(again.Notes) != 0 {
+	if again.Binary != bin || again.StartBuild || len(again.Notes) != 0 || again.Checkout.Commit != tip {
 		t.Fatalf("Resolve after the build = %+v, want the build named and silence", again)
 	}
 }
@@ -229,35 +245,51 @@ func TestHeadCommitNeverReachesTheBuild(t *testing.T) {
 	write(t, filepath.Join(f.checkout, "cmd", "abcd", "main.go"), mainSource("agent-head"))
 	git(t, f.checkout, "commit", "-q", "-am", "an agent's own commit")
 	write(t, filepath.Join(f.checkout, "cmd", "abcd", "main.go"), mainSource("agent-uncommitted"))
-	f.list(t, f.checkout)
-	p := Resolve(f.home, f.checkout)
-	head := git(t, f.checkout, "rev-parse", "HEAD")
-	if p.Checkout == nil || p.Checkout.Commit == head {
-		t.Fatalf("Resolve chose HEAD %s as the source: %+v", head, p)
-	}
+	f.declare(t)
 	bin := buildFor(t, f.home, f.checkout)
+	head := git(t, f.checkout, "rev-parse", "HEAD")
+	if strings.Contains(bin, head) {
+		t.Fatalf("the build %s was made from HEAD %s", bin, head)
+	}
 	if got := run(t, bin); got != "reviewed-1" {
 		t.Fatalf("the build printed %q, want the reviewed tip's reviewed-1, not the checkout's own work", got)
 	}
 }
 
-// TestMovedTipRebuilds: when origin/main moves, Resolve asks for a build of
-// the new tip, and the new build runs the new code.
+// TestMovedTipRebuilds: when origin/main moves, Resolve keeps running the
+// verified build and asks for a check, and the check builds the new tip.
 func TestMovedTipRebuilds(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	first := buildFor(t, f.home, f.checkout)
 	moved := f.land(t, mainSource("reviewed-2"))
 	p := Resolve(f.home, f.checkout)
-	if p.Binary != "" || !p.StartBuild || p.Checkout == nil || p.Checkout.Commit != moved {
-		t.Fatalf("Resolve after the tip moved = %+v, want a build of %s asked for", p, moved)
+	if p.Binary != first || !p.StartBuild || p.Checkout == nil {
+		t.Fatalf("Resolve after the tip moved = %+v, want the verified build kept and a check asked for", p)
 	}
 	second, err := Build(f.home, *p.Checkout)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if second == first || run(t, second) != "reviewed-2" {
-		t.Fatalf("the rebuild at %s printed %q, want a new build printing reviewed-2", second, run(t, second))
+	if second == first || !strings.Contains(second, moved) || run(t, second) != "reviewed-2" {
+		t.Fatalf("the rebuild at %s printed %q, want a new build of %s printing reviewed-2", second, run(t, second), moved)
+	}
+	if after := Resolve(f.home, f.checkout); after.Binary != second || after.StartBuild {
+		t.Fatalf("Resolve after the rebuild = %+v, want the new build and no check", after)
+	}
+}
+
+// TestStaleRecordIsCheckedAgain: once the record of the last check is older
+// than the re-check bound, Resolve keeps running its build and asks for a
+// check, whatever the local refs say.
+func TestStaleRecordIsCheckedAgain(t *testing.T) {
+	f := newFixture(t, "github.com/intentdriven/abcd")
+	f.declare(t)
+	bin := buildFor(t, f.home, f.checkout)
+	t.Cleanup(func() { now = time.Now })
+	now = func() time.Time { return time.Now().Add(recheckAfter + time.Minute) }
+	if p := Resolve(f.home, f.checkout); p.Binary != bin || !p.StartBuild {
+		t.Fatalf("Resolve with a stale record = %+v, want the build kept and a check asked for", p)
 	}
 }
 
@@ -266,7 +298,7 @@ func TestMovedTipRebuilds(t *testing.T) {
 // is, and no build is asked for again until the retry window has passed.
 func TestFailedBuildFallsBackLoudly(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	f.land(t, "package main\n\nfunc main() { this does not compile }\n")
 	p := Resolve(f.home, f.checkout)
 	if !p.StartBuild || p.Checkout == nil {
@@ -293,7 +325,7 @@ func TestFailedBuildFallsBackLoudly(t *testing.T) {
 // Build returns ErrBuildRunning at once and Resolve asks for none.
 func TestRunningBuildIsNotRaced(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	p := Resolve(f.home, f.checkout)
 	if p.Checkout == nil {
 		t.Fatalf("Resolve = %+v", p)
@@ -328,7 +360,7 @@ func TestRunningBuildIsNotRaced(t *testing.T) {
 // worktree it records, and the build still comes from origin/main.
 func TestListedMainCoversItsWorktrees(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	wt := filepath.Join(realDir(t), "wt")
 	git(t, f.checkout, "worktree", "add", "-q", "-b", "lane", wt)
 	p := Resolve(f.home, wt)
@@ -342,7 +374,7 @@ func TestListedMainCoversItsWorktrees(t *testing.T) {
 // as a worktree, is refused out loud and never built for.
 func TestBorrowedGitDirIsRefused(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	wt := filepath.Join(realDir(t), "wt")
 	git(t, f.checkout, "worktree", "add", "-q", "-b", "lane", wt)
 	poser := realDir(t)
@@ -358,15 +390,33 @@ func TestBorrowedGitDirIsRefused(t *testing.T) {
 	}
 }
 
-// TestNoRemoteTipRunsTheRelease: a listed checkout with no origin default
-// branch builds nothing, never falls back to a local branch, and says so.
-func TestNoRemoteTipRunsTheRelease(t *testing.T) {
+// TestNoDeclaredRemoteRunsTheRelease: a line naming the checkout but no
+// remote builds nothing, whatever the checkout's own origin says, and the note
+// gives the line's shape.
+func TestNoDeclaredRemoteRunsTheRelease(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	git(t, f.checkout, "remote", "remove", "origin")
 	f.list(t, f.checkout)
 	p := Resolve(f.home, f.checkout)
-	if p.Checkout != nil || p.StartBuild || p.Binary != "" || !strings.Contains(notes(p), "git fetch origin") {
-		t.Fatalf("Resolve with no remote tip = %+v, want the installed release and a note naming the fetch", p)
+	if p.Checkout != nil || p.StartBuild || p.Binary != "" {
+		t.Fatalf("Resolve with no declared remote = %+v, want the installed release", p)
+	}
+	if n := notes(p); !strings.Contains(n, "names no remote") || !strings.Contains(n, "installed release runs") || !strings.Contains(n, "printf") {
+		t.Fatalf("the note does not say the remote is missing, what runs, and how to declare it: %q", n)
+	}
+	if _, err := os.Lstat(abcdhome.Path(f.home, "dogfood")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a line with no remote touched the build store: %v", err)
+	}
+}
+
+// TestCheckoutWithoutOriginStillBuildsTheDeclaredRemote: the checkout's own
+// remotes play no part in choosing the source, so a checkout with no origin
+// at all builds the declared remote's tip.
+func TestCheckoutWithoutOriginStillBuildsTheDeclaredRemote(t *testing.T) {
+	f := newFixture(t, "github.com/intentdriven/abcd")
+	git(t, f.checkout, "remote", "remove", "origin")
+	f.declare(t)
+	if got := run(t, buildFor(t, f.home, f.checkout)); got != "reviewed-1" {
+		t.Fatalf("the build printed %q, want reviewed-1", got)
 	}
 }
 
@@ -418,7 +468,7 @@ func TestUntrustedListIsIgnoredLoudly(t *testing.T) {
 // the build refuse rather than build something other than the commit.
 func TestExportIsTheCommitExactly(t *testing.T) {
 	f := newFixture(t, "github.com/intentdriven/abcd")
-	f.list(t, f.checkout)
+	f.declare(t)
 	main := "package main\n\nimport \"fmt\"\n\nvar marker = \"unguarded\"\n\nfunc main() { fmt.Println(marker) }\n"
 	write(t, filepath.Join(f.upstream, "cmd", "abcd", "guard.go"), "package main\n\nfunc init() { marker = \"guarded\" }\n")
 	git(t, f.upstream, "add", ".")
