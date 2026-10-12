@@ -69,10 +69,10 @@ var worktreeAddTimeout = 60 * time.Minute
 var resetTimeout = 60 * time.Minute
 
 // commitStopGrace is how long a commitGit command that ran past commitTimeout
-// and the processes it started have, once told to stop (SIGTERM to their
-// process group, on which git removes its lock files), before they are killed
-// and git's output pipes closed; and how long a process a hook or signing
-// program left behind may hold those pipes once git has exited.
+// and the processes it started have, once told to stop (SIGTERM to git and
+// each of its descendants, on which git removes its lock files), before they
+// are killed and git's output pipes closed; and how long a process a hook or
+// signing program left behind may hold those pipes once git has exited.
 const commitStopGrace = 5 * time.Second
 
 // pickSubject is the pick commit's subject line.
@@ -125,18 +125,21 @@ func pickGit(dir string, args ...string) (string, error) {
 // pickGit: `git clean` runs no hook, so the pins change nothing there.
 //
 // Because those programs run, the command is bounded: past commitTimeout git
-// and every process it started (its hooks, their children, a signing program
-// it ran) are told to stop together (SIGTERM to the command's own process
-// group, stopAsGroup, so git removes its lock files and a stopped commit
-// leaves no index.lock), killed together commitStopGrace later if they have
-// not, and the call is refused naming the deadline (errCommitStalled). A
-// hook's child is stopped with git because it would otherwise go on writing
-// into the lane's worktree after the loop has given up on the command, and
-// after undoStalledSync has reset that worktree. A program a hook started that
-// outlives a git which finished in time is not killed (the hook's own children
-// are the repository's), but it cannot hold the call either: its hold on
-// git's output is cut after commitStopGrace. A git that exited 0 is a made
-// commit even then.
+// and the processes below it (its hooks, their children, a signing program it
+// ran) are told to stop together (SIGTERM to git and each descendant,
+// stopWithDescendants, so git removes its lock files and a stopped commit
+// leaves no index.lock), killed commitStopGrace later if they have not, and
+// the call is refused naming the deadline (errCommitStalled). A hook's child
+// is stopped with git because it would otherwise go on writing into the
+// lane's worktree after the loop has given up on the command, and after
+// undoStalledSync has reset that worktree; one that has detached (reparented
+// to init) before the stop is out of reach. Git stays in abcd's process
+// group, as the person's own git runs in the shell's, so a prompt on the
+// terminal and an interrupt behave as they do there. A program a hook started
+// that outlives a git which finished in time is not killed (the hook's own
+// children are the repository's), but it cannot hold the call either: its
+// hold on git's output is cut after commitStopGrace. A git that exited 0 is a
+// made commit even then.
 func commitGit(dir string, args ...string) (string, error) {
 	return boundedGit(dir, commitTimeout, errCommitStalled, args)
 }
@@ -156,7 +159,7 @@ func boundedGit(dir string, limit time.Duration, stalled error, args []string) (
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
-	sweep := stopAsGroup(cmd)
+	sweep := stopWithDescendants(cmd)
 	cmd.WaitDelay = commitStopGrace
 	out, err := runTreeGit(cmd, args)
 	sweep()

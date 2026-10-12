@@ -226,8 +226,8 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // lock files (index.lock) and a half-written checkout behind. So the caller
 // sets Cancel to send SIGTERM, on which git removes its locks, and WaitDelay
 // to bound how long a program a hook left running may hold git's output
-// pipes once git has exited (loop.boundedGit does both, and signals git's
-// whole process group). After a Cancel that succeeded, Wait reports the
+// pipes once git has exited (loop.boundedGit does both, and stops git's
+// descendants with it). After a Cancel that succeeded, Wait reports the
 // context's error even when git then exited 0, so a caller that needs to know
 // whether git's work was made checks ProcessState.
 func WorkingTreeCommitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
