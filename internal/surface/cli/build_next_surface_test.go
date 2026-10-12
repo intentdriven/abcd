@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -170,6 +171,39 @@ func TestBuildNextMaxCarriesTheSeriesInJSON(t *testing.T) {
 	ref := refusalDocs(t, 2, "build", "next", "--until-empty", "--json")
 	if ref["stage"] != "pick" || !strings.Contains(ref["reason"].(string), "--max 2") {
 		t.Fatalf("a live series keeps its count, refused in the payload: %v", ref)
+	}
+}
+
+// TestBuildNextRefusesControlRunesInTheSeriesFlags (iss-2610120925598775): a
+// series state whose stored pace flags carry U+202E or U+009B is refused at
+// the pick, exit 2, and no raw rune reaches the --json stream; the flags a
+// series was begun with still round-trip.
+func TestBuildNextRefusesControlRunesInTheSeriesFlags(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	mustImplement(t, "build", "next", "--max", "2", "--pace", "90/0", "--sub-agents", "2", "--fix-rounds", "1", "--json")
+	if out := mustImplement(t, "build", "next", "--json"); !strings.Contains(out, `"pace": "90/0"`) {
+		t.Fatalf("the series' flags round-trip: %s", out)
+	}
+	path := filepath.Join(repo.Root(), filepath.FromSlash(loop.NextSeriesRel))
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := strings.NewReplacer(`"pace": "90/0"`, `"pace": "\u202e90/0"`, `"sub_agents": "2"`, `"sub_agents": "\u009b2"`).Replace(string(raw))
+	if forged == string(raw) {
+		t.Fatal("the series' state carries its flags")
+	}
+	if err := os.WriteFile(path, []byte(forged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ := implementCLI(t, "build", "next", "--json")
+	if strings.ContainsAny(out, "\u202e\u009b") {
+		t.Fatalf("a raw control rune reaches the --json stream: %q", out)
+	}
+	ref := refusalDocs(t, 2, "build", "next", "--json")
+	if code != 2 || ref["stage"] != "pick" || !strings.Contains(ref["reason"].(string), "pace flags") {
+		t.Fatalf("the forged flags are refused at the pick: %d %v", code, ref)
 	}
 }
 
