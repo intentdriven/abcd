@@ -155,7 +155,13 @@ what it did in `next`:
   the run again. One lane at a time.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
-  opens the next lane.
+  opens the next lane. A pull request the forge reports `CONFLICTING` is never
+  armed: its lane stays in progress, and `abcd implement step --run <run-id>`
+  refuses at exit 2 naming the conflicting files and the hand merge that
+  settles it. That is a person's: report it, and do not push to the lane or
+  merge it yourself. One that turns conflicting after it was armed is refused
+  the same way by the run's own step; the drain's part ended at the open pull
+  request.
 - **It finishes merged lanes.** Every move, before it reads the window clock,
   takes the landing's last step for each issue lane in the checkout parked at
   land whose pushed head is now on the default branch: the lane's worktree and
