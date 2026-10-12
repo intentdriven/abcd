@@ -26,7 +26,8 @@ type RecallPage struct {
 	// Summary is the page's index.md summary, derived from the page as
 	// RenderIndex derives it, so the recall reads no index.md.
 	Summary string
-	// Body is the page's text after its frontmatter.
+	// Body is the page's text after its frontmatter, less the line Summary
+	// comes from, trimmed: the title is not counted, or sent, twice.
 	Body string
 	// Recall is the page's recall: frontmatter list, empty when it has none.
 	Recall []string
@@ -117,10 +118,20 @@ func recallPagesFrom(store *storeHandle, shown string, read func(string, int64) 
 		}
 		p := parsePage(string(raw))
 		info := pageInfoOf(name, p)
-		pages = append(pages, RecallPage{Filename: name, Summary: info.Summary, Body: p.body, Recall: recallList(p.fm),
+		pages = append(pages, RecallPage{Filename: name, Summary: info.Summary, Body: bodyAfterSummary(p.body), Recall: recallList(p.fm),
 			IngestedAt: latestIngest(p.source())})
 	}
 	return pages, refused
+}
+
+// bodyAfterSummary is body less its first non-blank line, the one
+// pageInfoOf takes the summary from, trimmed.
+func bodyAfterSummary(body string) string {
+	rest := strings.TrimLeft(body, "\r\n\t ")
+	if i := strings.IndexByte(rest, '\n'); i >= 0 {
+		return strings.TrimSpace(rest[i+1:])
+	}
+	return ""
 }
 
 // recallList is a page's recall: list, its non-blank string entries trimmed.

@@ -181,9 +181,9 @@ func goldenCorpus() []Item {
 		{Key: "mem-2610111200000003", Kind: KindNote, Layer: LayerMachine, At: at("2026-10-09T08:00:00Z"),
 			Title: "The tests need the race flag", Body: "Run the race-enabled tests before saying they pass.", Recall: []string{"test", "race"}},
 		{Key: "page:fact_eng_auth-flow.md", Kind: KindPage, Layer: LayerProject, At: at("2026-10-01T00:00:00Z"),
-			Title: "Auth uses short-lived tokens", Body: "# Auth uses short-lived tokens\n\nTokens expire after an hour; the deploy rotates the signing key.", Recall: []string{"auth", "login"}},
+			Title: "Auth uses short-lived tokens", Body: "Tokens expire after an hour; the deploy rotates the signing key.", Recall: []string{"auth", "login"}},
 		{Key: "page:fact_eng_deploy-window.md", Kind: KindPage, Layer: LayerMachine, At: at("2026-09-20T00:00:00Z"),
-			Title: "Deploy windows", Body: "# Deploy windows\n\nDeploy in the morning, never before a holiday.", Recall: []string{"deploy", "release"}},
+			Title: "Deploy windows", Body: "Deploy in the morning, never before a holiday.", Recall: []string{"deploy", "release"}},
 	}
 }
 

@@ -231,3 +231,19 @@ func TestMachineRecallPagesRefuseADirectoryOthersCanChange(t *testing.T) {
 		t.Fatalf("an exposed home with no page scope read %+v %+v", pages, refused)
 	}
 }
+
+// TestRecallPageBodyDoesNotRepeatItsTitle: a page's title is the line its
+// index summary comes from, so the body the recall weighs and renders is the
+// rest of the page; the title's words are not counted, or sent, twice.
+func TestRecallPageBodyDoesNotRepeatItsTitle(t *testing.T) {
+	repo := t.TempDir()
+	writeStoreFile(t, filepath.Join(repo, ".abcd", "memory"), "fact_eng_auth-flow.md",
+		"---\nrecall: [auth]\n---\n\n# Auth uses short-lived tokens\n\nRefresh them hourly.\n# A later heading stays\n", 0o644)
+	pages, _ := ReadRecallPages(repo)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %+v", pages)
+	}
+	if p := pages[0]; p.Summary != "Auth uses short-lived tokens" || p.Body != "Refresh them hourly.\n# A later heading stays" {
+		t.Fatalf("summary %q body %q", p.Summary, p.Body)
+	}
+}
