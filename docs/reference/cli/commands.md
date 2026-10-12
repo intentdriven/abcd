@@ -1442,7 +1442,8 @@ Delete one staged or quarantined raw transcript for good: Writes the deletion; r
 **Flags:**
 
 ```
-      --yes   confirm the irreversible deletion of an unredacted transcript
+      --root-sha string   discard from the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
+      --yes               confirm the irreversible deletion of an unredacted transcript
 ```
 
 **Example:**
@@ -1547,7 +1548,8 @@ List the ended transcripts not yet redacted into the store: Writes only a missin
 **Flags:**
 
 ```
-      --all-repos   survey every repository in the store, not just this one
+      --all-repos         survey every repository in the store, not just this one
+      --root-sha string   list the pile of the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
 ```
 
 ### `abcd ideate`
