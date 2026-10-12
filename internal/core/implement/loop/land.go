@@ -1107,7 +1107,7 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 	}
 	own := fsutil.RealExistingPath(lane.Worktree)
 	for _, wt := range wts {
-		if wt.Branch != "refs/heads/"+lane.Branch || fsutil.RealExistingPath(wt.Path) == own {
+		if !sameBranchRef(wt.Branch, lane.Branch) || fsutil.RealExistingPath(wt.Path) == own {
 			continue
 		}
 		at := fsutil.RedactHome(wt.Path)
@@ -1151,4 +1151,20 @@ func removeLaneWorktree(c Context, lane Lane) error {
 		return fmt.Errorf("checking the lane's worktree: %w", err)
 	}
 	return nil
+}
+
+// caseFoldingRefs reports whether the platform's filesystem folds case, held
+// as a var so a test can provoke either answer on any host.
+var caseFoldingRefs = fsutil.CaseFoldingFS
+
+// sameBranchRef reports whether listed, a full ref git lists for a worktree,
+// names the branch branch. On a filesystem that folds case, git resolves a
+// loose ref whatever case it is named in, so a state naming build/Lane-1
+// reads and deletes build/lane-1: the names are compared folded there.
+func sameBranchRef(listed, branch string) bool {
+	want := "refs/heads/" + branch
+	if caseFoldingRefs() {
+		return strings.EqualFold(listed, want)
+	}
+	return listed == want
 }
