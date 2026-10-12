@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/memnote"
 	"github.com/intentdriven/abcd/internal/core/rules"
 )
@@ -264,5 +265,40 @@ func TestRootIsAskedOnlyForAMatchedTiedNote(t *testing.T) {
 	}
 	if !slices.Equal(res.Recalled, []string{"mem-2610111200000001", "mem-2610111200000002"}) {
 		t.Fatalf("recalled %v, want the two tied to this repository", res.Recalled)
+	}
+}
+
+// TestReadLayersIsTheOneReader (F3): ReadLayers reads both note layers as
+// they stand — the notes in full, for the memory verb's list — and names a
+// layer it could not read, home-redacted, while still reading the other.
+// ReadNotes is the same read turned into items.
+func TestReadLayersIsTheOneReader(t *testing.T) {
+	home, repo := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	project := `{"schema_version": 1, "notes": [{"id": "mem-2610111200004321", "title": "Deploys need the flag",
+	"body": "Pass the dry-run flag first.", "recall": ["deploy"], "origin": "agent",
+	"written_by": "Example:model-1", "written_at": "2026-10-11T12:00:00Z", "session": null}]}`
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "memory.json"), []byte(project), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	machine := abcdhome.Path(home, "memory.json")
+	if err := os.MkdirAll(filepath.Dir(machine), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(machine, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, refused := ReadLayers(home, repo)
+	if len(l.Project) != 1 || l.Project[0].WrittenBy != "Example:model-1" || len(l.Machine) != 0 {
+		t.Fatalf("layers = %+v", l)
+	}
+	if len(refused) != 1 || refused[0].File != memnote.MachineDisplayPath || strings.Contains(refused[0].Reason, home) {
+		t.Fatalf("refused = %+v", refused)
+	}
+	items, again := ReadNotes(home, repo)
+	if len(items) != 1 || items[0].Key != "mem-2610111200004321" || !slices.Equal(again, refused) {
+		t.Fatalf("ReadNotes = %+v, %+v", items, again)
 	}
 }

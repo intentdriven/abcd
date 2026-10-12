@@ -93,30 +93,44 @@ func noteItem(n memnote.Note, layer string, tie *string) Item {
 	return Item{Key: n.ID, Layer: layer, Title: n.Title, Body: n.Body, Recall: append([]string(nil), n.Recall...), Tie: tie}
 }
 
-// ReadNotes reads both note layers through memnote's layer readers — the
-// machine's under home, the project's under repoRoot, the root the rules
-// loader resolved — and returns their items. A layer that cannot be read is
-// a Refusal and yields no items, never an error: the hook still injects the
-// rules, and recalls what the other layer holds. It asks git nothing: a
-// personal note's tie is judged after matching, against the RootFunc the
-// recall is handed.
-func ReadNotes(home, repoRoot string) ([]Item, []Refusal) {
-	var refused []Refusal
-	var machine, project []memnote.Note
-	if f, _, err := memnote.ReadMachine(home); err != nil {
-		refused = append(refused, Refusal{File: memnote.MachineDisplayPath, Reason: reason(err)})
-	} else {
-		machine = f.Notes
-	}
-	if f, _, err := memnote.ReadRepo(repoRoot); err != nil {
-		refused = append(refused, Refusal{File: memnote.RepoRelPath, Reason: reason(err)})
-	} else {
-		project = f.Notes
-	}
-	return noteItems(machine, project), refused
+// Layers is what a read of both note layers gave: the notes as they stand
+// in the machine's file and in the project's.
+type Layers struct {
+	Machine []memnote.Note
+	Project []memnote.Note
 }
 
-// reason is a refusal's text, home-redacted and terminal-safe.
-func reason(err error) string {
+// ReadLayers is the one reader of both note layers, for the recall and for
+// the memory verb alike: the machine's under home, the project's under
+// repoRoot, the root the rules loader resolved, each through memnote's layer
+// reader. A layer that cannot be read is a Refusal and yields no notes, never
+// an error: the hook still injects the rules, and the verb still shows what
+// the other layer holds. It asks git nothing.
+func ReadLayers(home, repoRoot string) (Layers, []Refusal) {
+	var l Layers
+	var refused []Refusal
+	if f, _, err := memnote.ReadMachine(home); err != nil {
+		refused = append(refused, Refusal{File: memnote.MachineDisplayPath, Reason: Reason(err)})
+	} else {
+		l.Machine = f.Notes
+	}
+	if f, _, err := memnote.ReadRepo(repoRoot); err != nil {
+		refused = append(refused, Refusal{File: memnote.RepoRelPath, Reason: Reason(err)})
+	} else {
+		l.Project = f.Notes
+	}
+	return l, refused
+}
+
+// ReadNotes is ReadLayers turned into the recall's items. A personal note's
+// tie is judged after matching, against the RootFunc the recall is handed.
+func ReadNotes(home, repoRoot string) ([]Item, []Refusal) {
+	l, refused := ReadLayers(home, repoRoot)
+	return noteItems(l.Machine, l.Project), refused
+}
+
+// Reason is a memory error's text as it is printed: home-redacted and
+// terminal-safe.
+func Reason(err error) string {
 	return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 }
