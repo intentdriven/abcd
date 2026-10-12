@@ -41,7 +41,10 @@
 #      record-lint job there repeats the reviews-charter, issue-resolution and
 #      decisions-append gates preflight already ran here.
 #
-#      One exemption: a reservation (`abcd reserve`, itd-2609091034175565) is a
+#      The exemptions are the receipt-less prefixes, declared in the table
+#      below, one row per prefix, each with the shape check a push under it
+#      must pass and the record that rules it. There is one: a reservation
+#      (`abcd reserve`, itd-2609091034175565) is a
 #      branch under refs/heads/abcd-reserved/ holding a chain of commits whose
 #      tree is the empty tree. They change no file, so there is nothing for a
 #      preflight to vouch for, and the verb pushes them with this hook running,
@@ -63,7 +66,6 @@ cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
 remote_name="${1:-}"
-reserved_prefix="abcd-reserved/"
 empty_tree="$(git hash-object -t tree /dev/null)"
 
 # is_null_id succeeds for the null object id git sends for a side that does
@@ -85,6 +87,55 @@ only_empty_trees() {
   [ -z "$(printf '%s\n' "$trees" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ]
 }
 
+# reservation_shape is the reservations' shape check: the push is a
+# fast-forward (or a create) and every commit it moves has the empty tree. The
+# range is everything new on an update, and everything reachable on a create.
+# A remote tip this clone does not hold fails both tests, so the push is gated.
+reservation_shape() {
+  local remote_sha="$1" local_sha="$2"
+  if is_null_id "$remote_sha"; then
+    only_empty_trees "$local_sha"
+  else
+    git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null &&
+      only_empty_trees "$remote_sha..$local_sha"
+  fi
+}
+
+# The receipt-less prefixes: branches a push may move without a preflight
+# receipt, because the shape check proves the push changes no file. One row
+# per prefix, its fields separated by "|":
+#
+#   prefix | shape check | the record that rules it | the act that ends one
+#
+# The shape check is a function above, given <remote_sha> <local_sha>, that
+# succeeds only for a push of the prefix's own shape. The last field is named
+# when a delete under the prefix is refused, with <name> standing for the
+# branch's name after the prefix: a ref under a receipt-less prefix is never
+# deleted by a push.
+#
+# A new row needs its own ruling record and its own shape check. A prefix with
+# no shape check, or one naming a function this hook does not define, is never
+# receipt-less: its pushes are gated as any branch is.
+receiptless_prefixes=(
+  "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
+)
+
+# receiptless_row finds the row whose prefix the branch is under and whose
+# shape check is defined, setting row_prefix, row_shape, row_ruling and
+# row_end; it fails when there is none.
+receiptless_row() {
+  local row
+  for row in "${receiptless_prefixes[@]}"; do
+    IFS='|' read -r row_prefix row_shape row_ruling row_end <<<"$row"
+    [ -n "$row_prefix" ] && [ -n "$row_shape" ] || continue
+    declare -F "$row_shape" >/dev/null || continue
+    case "$1" in
+    "$row_prefix"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 missing=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   branch="${remote_ref#refs/heads/}"
@@ -98,18 +149,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 
-  # A deletion carries no commit to gate, except under the reservation prefix:
-  # a reservation ends with a tombstone, never a deletion, because a deleted
-  # tip reads as absent and the next reserve takes the record with no lease
-  # judgement at all.
+  # A deletion carries no commit to gate, except under a receipt-less prefix:
+  # a ref there ends by the push its row names, never a deletion. For a
+  # reservation that is a tombstone, because a deleted tip reads as absent and
+  # the next reserve takes the record with no lease judgement at all.
   if is_null_id "$local_sha"; then
-    case "$branch" in
-    "$reserved_prefix"*)
-      echo "pre-push: refusing to delete the reservation '$branch': a reservation ends with a tombstone, never a deletion;" >&2
-      echo "          release it with \`abcd reserve ${branch#"$reserved_prefix"} --release\`." >&2
+    if receiptless_row "$branch"; then
+      echo "pre-push: refusing to delete '$branch': a branch under $row_prefix ends by a push, never a deletion ($row_ruling);" >&2
+      echo "          end it with \`${row_end//<name>/${branch#"$row_prefix"}}\`." >&2
       exit 1
-      ;;
-    esac
+    fi
     continue
   fi
 
@@ -128,18 +177,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
   fi
 
-  # A reservation: every commit the push moves has the empty tree, so it needs
-  # no receipt. The range is everything new on an update, and everything
-  # reachable on a create.
-  case "$branch" in
-  "$reserved_prefix"*)
-    if is_null_id "$remote_sha"; then
-      only_empty_trees "$local_sha" && continue
-    else
-      only_empty_trees "$remote_sha..$local_sha" && continue
-    fi
-    ;;
-  esac
+  # A receipt-less prefix: a push of its row's shape needs no receipt. Any
+  # other push under it is gated as any branch is.
+  if receiptless_row "$branch" && "$row_shape" "$remote_sha" "$local_sha"; then
+    continue
+  fi
 
   # The commit the ref will point at: a tag is peeled to the commit it names.
   commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" 2>/dev/null || true)"
