@@ -102,6 +102,7 @@ var wordReaders = map[string]string{
 	"isEvalCarrier":  "commandSites and nameCouldBe",
 	"segChangesDir":  "commandSites and nameCouldBeAny",
 	"lastSite":       "commandSites",
+	"carrierShell":   "isUnknown and nameCouldBe: a carrier whose name the line does not fix runs a shell the guard cannot place, so its string is read both ways",
 
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).

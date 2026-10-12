@@ -104,6 +104,36 @@ func trackedName(name string) string {
 	return name
 }
 
+// The shells a state's commands can run in: one the guard cannot place, zsh,
+// or a shell that is not zsh (bash, sh, ksh and the rest of the family),
+// which read a few words differently (iss-2610111730513071,
+// iss-2610111730551327).
+const (
+	shellUnknown = ""
+	shellZsh     = "zsh"
+	shellOther   = "sh"
+)
+
+// shellOf is the shell a child started by the program called name runs.
+func shellOf(name string) string {
+	if name == "zsh" {
+		return shellZsh
+	}
+	return shellOther
+}
+
+// trackedKey is the name an assignment to name is kept under in st's shell,
+// and whether the reading follows it at all. zsh ties the path array to PATH
+// as it ties fpath to FPATH; in every other shell path is an ordinary
+// variable, so a state whose shell is unknown is split before it reads one
+// (needsShell).
+func (st *shellState) trackedKey(name string) (string, bool) {
+	if name == "path" {
+		return "PATH", st.shell == shellZsh
+	}
+	return trackedName(name), trackedVars[name]
+}
+
 // Files is the directory a command runs in, and the files the guard has read
 // for it. A front door that checks one command against several registries
 // hands each the same Files, so each file is read once per command.
@@ -311,6 +341,9 @@ type shellState struct {
 	// a bare pushd leaves unknown (iss-2610111815024967). It is never
 	// changed in place.
 	stack []string
+	// shell is the shell the commands run in (shellZsh, shellOther), or
+	// shellUnknown where the guard cannot place it.
+	shell string
 }
 
 // pendingCD is a cd the next commands run after: dirs is every directory it
@@ -502,8 +535,10 @@ func (st *shellState) env(s segment, site int) map[string]varVal {
 		}
 	}
 	for i := 0; i < site && i < len(s.tokens); i++ {
-		if name, v, ok := assignment(s.tokens[i]); ok && trackedVars[name] {
-			out[trackedName(name)] = v
+		if name, v, ok := assignment(s.tokens[i]); ok {
+			if key, tracked := st.trackedKey(name); tracked {
+				out[key] = v
+			}
 		}
 	}
 	return out
@@ -511,8 +546,9 @@ func (st *shellState) env(s segment, site int) map[string]varVal {
 
 // childState is the state a child shell starts in: the directory st runs
 // in, and the environment it hands down, every variable of it exported.
-func childState(st *shellState, env map[string]varVal) *shellState {
-	n := &shellState{dir: st.dir, dirOK: st.dirOK, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
+// shell is the child's shell, shellUnknown where the guard cannot name it.
+func childState(st *shellState, env map[string]varVal, shell string) *shellState {
+	n := &shellState{dir: st.dir, dirOK: st.dirOK, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}, shell: shell}
 	for k, v := range env {
 		n.vars[k] = v
 		n.exported[k] = true
@@ -633,6 +669,48 @@ func distinctStates(sts []*shellState) []*shellState {
 	return out
 }
 
+// carrierShell is the shell the string the command at site carries runs in:
+// zsh's or another family member's by name, and one the guard cannot place
+// for any other carrier or a name the line does not fix.
+func carrierShell(s segment, site int) string {
+	if site >= len(s.tokens) || isUnknown(s.tokens[site]) {
+		return shellUnknown
+	}
+	switch tok := s.tokens[site]; {
+	case nameCouldBe(tok, "zsh"):
+		return shellZsh
+	case nameCouldBeAny(tok, shellFamily):
+		return shellOther
+	}
+	return shellUnknown
+}
+
+// placed is st, or where st's shell is unknown and s reads a word bash and
+// zsh read differently (needsShell), st once as each shell: from s on, the
+// line is read both ways, and each file either shell runs is judged.
+func (st *shellState) placed(s segment) []*shellState {
+	if st.shell != shellUnknown || !needsShell(s) {
+		return []*shellState{st}
+	}
+	z, o := st.clone(), st.clone()
+	z.shell, o.shell = shellZsh, shellOther
+	return []*shellState{z, o}
+}
+
+// needsShell reports whether s reads a word only zsh ties to a tracked
+// variable: an assignment to path, which zsh ties to PATH.
+func needsShell(s segment) bool {
+	if s.arrayOf == "path" {
+		return true
+	}
+	for _, t := range s.tokens {
+		if name, _, ok := assignment(t); ok && name == "path" {
+			return true
+		}
+	}
+	return false
+}
+
 // earlier reports whether a runs before b on the line: a command before
 // another, or the command that carries a string before the string's own.
 func earlier(a, b []int) bool {
@@ -681,9 +759,10 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			} else {
 				c := s.carrier - 1
 				site := lastSite(segs[c])
+				shell := carrierShell(segs[c], site)
 				sts = nil
 				for _, cs := range recs[c].states {
-					st := childState(cs, cs.env(segs[c], site))
+					st := childState(cs, cs.env(segs[c], site), shell)
 					cs.applyRedirects(rc, st.fds, segs[c].redirects)
 					if s.fromFixedOutput || isEvalCarrier(segs[c]) {
 						// Another reading of the carrier, or a string eval runs
@@ -697,7 +776,9 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		}
 		var here []*shellState
 		for _, st := range sts {
-			here = append(here, st.at(s)...)
+			for _, a := range st.at(s) {
+				here = append(here, a.placed(s)...)
+			}
 		}
 		here = distinctStates(here)
 		if len(here) > maxShellStates {
@@ -825,8 +906,8 @@ func segChangesDir(s segment) bool {
 
 // after is the state the commands after s run in, in s's shell.
 func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir bool) *shellState {
-	if s.arrayOf != "" && trackedVars[s.arrayOf] {
-		return st.withArray(s)
+	if key, ok := st.trackedKey(s.arrayOf); s.arrayOf != "" && ok {
+		return st.withArray(s, key)
 	}
 	allAssign := len(s.tokens) > 0
 	for _, t := range s.tokens {
@@ -838,11 +919,12 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 	if allAssign {
 		n := st
 		for _, t := range s.tokens {
-			if name, v, _ := assignment(t); trackedVars[name] {
+			name, v, _ := assignment(t)
+			if key, ok := st.trackedKey(name); ok {
 				if n == st {
 					n = st.clone()
 				}
-				n.vars[trackedName(name)] = v
+				n.vars[key] = v
 			}
 		}
 		return n
@@ -894,10 +976,10 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				if !ok {
 					nm = w
 				}
-				if !trackedVars[nm] {
+				nm, tracked := out.trackedKey(nm)
+				if !tracked {
 					continue
 				}
-				nm = trackedName(nm)
 				if ok {
 					n.vars[nm] = v
 				}
@@ -928,8 +1010,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 // separator, is kept as unknownText, so a search reaching it stops there; a
 // `+=` onto a value the line did not set is the account's value, unknown,
 // followed by the elements.
-func (st *shellState) withArray(s segment) *shellState {
-	name := trackedName(s.arrayOf)
+func (st *shellState) withArray(s segment, name string) *shellState {
 	elems := make([]string, 0, len(s.tokens))
 	for i := range s.tokens {
 		w, ok := fixedToken(s, i)
@@ -1356,6 +1437,9 @@ type readTarget struct {
 	// command stands in; env is what a child shell is handed otherwise.
 	sourced bool
 	env     map[string]varVal
+	// shell is the shell a child runs the file in, shellUnknown where the
+	// guard cannot name it (a file run directly).
+	shell string
 	// startup are the startup files a direct-run shell script reads
 	// (BASH_ENV), read once it is classified as one.
 	startupEnv bool
@@ -1582,8 +1666,10 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 	pv, set := st.vars["PATH"]
 	prefix := false
 	for j := 0; j < site && j < len(s.tokens); j++ {
-		if name, v, isAssign := assignment(s.tokens[j]); isAssign && name == "PATH" {
-			pv, set, prefix = v, true, true
+		if name, v, isAssign := assignment(s.tokens[j]); isAssign {
+			if key, tracked := st.trackedKey(name); tracked && key == "PATH" {
+				pv, set, prefix = v, true, true
+			}
 		}
 	}
 	return searchPath(rc, st, pv, set, w, true, prefix)
@@ -1750,7 +1836,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	var out []readTarget
 	var sigs []payloadSignal
 	child := func(p, shown string, kind int) readTarget {
-		return readTarget{path: p, shown: shown, kind: kind, env: env}
+		return readTarget{path: p, shown: shown, kind: kind, env: env, shell: shellOf(name)}
 	}
 	startup := func(varName, value string, tilde bool) {
 		if strings.Contains(value, procSubOperand) {
@@ -1983,7 +2069,7 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		state = st.clone()
 		state.cd = nil
 	} else {
-		state = childState(st, t.env)
+		state = childState(st, t.env, t.shell)
 		state.fds = map[int]fdFile{}
 	}
 	if t.kind == targetDirect && t.startupEnv {
