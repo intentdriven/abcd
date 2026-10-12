@@ -56,3 +56,26 @@ host-reuse hook if it exists.
 | 2 fallback with a receipt | scope 3 |
 | 3 unconfigured unchanged; nothing spawned | scope 1, 4 |
 | 4 pages | scope 5 |
+
+## Settled here
+
+Choices made during the autonomous build on 2026-10-12 where this record is
+silent, each the narrowest reading that meets the criteria. Each is an agent's
+choice, recorded for review; none changes a criterion.
+
+- 2026-10-12 (agent's choice, for review): **No flag sets `oracle.review` in
+  this build.** The criteria name the repository's and the machine's files, so
+  the route is read from those two layers over the bundled `host`, and the
+  resolver's flag layer stays empty for this key.
+- 2026-10-12 (agent's choice, for review): **The server's address is the
+  machine's alone.** The rp route reaches the MCP server named by
+  `oracle.rp.url` (with an optional `oracle.rp.tool`), which only
+  `~/.abcd.noindex/config.json` may declare: the address a review request (the
+  lane's diff and its record) is sent to is the person's own to say, as a
+  provider block's is, so a repository declaring `oracle.rp` is refused naming
+  the machine's file. `oracle.review` itself may sit in either file, the
+  repository's winning, as criterion 1 names both. The URL is admitted only as
+  http or https to localhost or a loopback address, with no credentials, query
+  or fragment, and no refusal quotes it. A repository that selects `rp` on a
+  machine naming no server is not a fault: the route reads as rp with no
+  server, so the opt-in never breaks a collaborator who runs no RepoPrompt.
