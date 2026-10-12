@@ -1796,6 +1796,11 @@ func promptPayloads(tokens []string) []string {
 			continue
 		}
 		name, value := t[:eq], t[eq+1:]
+		// PS4+='…' appends to the prompt, and the text it adds runs as
+		// PS4='…' would (iss-2610121214249290).
+		if n, e, _, _, ok := splitAssignment(t); ok {
+			name, value = n, t[e+1:]
+		}
 		switch {
 		case promptVars[name]:
 			// The expanded prompt is printed, not run, so the value is judged

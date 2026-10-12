@@ -527,27 +527,23 @@ func fixedToken(s segment, i int) (string, bool) {
 
 // assignment splits a NAME=VALUE word; ok is false for any other word.
 func assignment(tok string) (name string, val varVal, ok bool) {
-	if !isAssignment(tok) {
+	name, eq, appends, subscript, ok := splitAssignment(tok)
+	if !ok {
 		return "", varVal{}, false
 	}
-	eq := strings.IndexByte(tok, '=')
+	if appends || subscript {
+		return name, varVal{}, true // a value the word alone does not fix
+	}
 	v := tok[eq+1:]
-	return tok[:eq], varVal{text: v, ok: !isUnknown(v) && !strings.ContainsRune(v, varMark)}, true
+	return name, varVal{text: v, ok: !isUnknown(v) && !strings.ContainsRune(v, varMark)}, true
 }
 
 // assignOp splits an assignment word: NAME=VALUE, or NAME+=VALUE, which bash
 // and zsh read as appending VALUE to NAME's value (iss-2610120953445472). eq
 // is the index of the `=`; ok is false for any other word.
 func assignOp(tok string) (name string, eq int, appends, ok bool) {
-	if isAssignment(tok) {
-		eq = strings.IndexByte(tok, '=')
-		return tok[:eq], eq, false, true
-	}
-	eq = strings.IndexByte(tok, '=')
-	if eq > 1 && tok[eq-1] == '+' && isName(tok[:eq-1]) {
-		return tok[:eq-1], eq, true, true
-	}
-	return "", 0, false, false
+	name, eq, appends, _, ok = splitAssignment(tok)
+	return name, eq, appends, ok
 }
 
 // assigned is the value the assignment word at i of s gives the tracked
@@ -555,7 +551,12 @@ func assignOp(tok string) (name string, eq int, appends, ok bool) {
 // entry by entry (pathValue), and a `+=` appended to the value before it.
 func (st *shellState) assigned(rc *readCtx, s segment, i int, key string) varVal {
 	tok := s.tokens[i]
-	_, eq, appends, _ := assignOp(tok)
+	_, eq, appends, subscript, _ := splitAssignment(tok)
+	if subscript {
+		// An element of the variable (zsh's PATH[1,0]=dir:): a value the
+		// reading does not follow, so a search reaching it stops.
+		return varVal{}
+	}
 	v := tok[eq+1:]
 	val := varVal{text: v, ok: !isUnknown(v) && !strings.ContainsRune(v, varMark)}
 	if key == "PATH" && !val.ok {

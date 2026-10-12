@@ -158,12 +158,17 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 		return v
 	}
 	assign := func(i int) {
-		tok := s.tokens[i]
-		if !isAssignment(tok) {
-			return
+		name, eq, appends, subscript, ok := splitAssignment(s.tokens[i])
+		switch {
+		case !ok:
+		case appends || subscript:
+			// The value is the old one with this added, or one element
+			// of it: no value the reading places, so the word keeps its
+			// mark, read as any value.
+			delete(vals, name)
+		default:
+			add(name, word(i, eq+1))
 		}
-		eq := strings.IndexByte(tok, '=')
-		add(tok[:eq], word(i, eq+1))
 	}
 	if s.arrayOf != "" {
 		return vals
@@ -249,11 +254,6 @@ func addValue(vs []carriedValue, v carriedValue) []carriedValue {
 	merged := carriedValue{tok: unknownText, output: true,
 		feeds: mergeRuns(append(append([]feed(nil), last.feeds...), v.feeds...))}
 	return append(out, merged)
-}
-
-// isName reports whether w is a shell variable name.
-func isName(w string) bool {
-	return w != "" && isAssignment(w+"=")
 }
 
 // carriedUse is one word of a segment whose every variable the text assigned:
@@ -666,8 +666,8 @@ func namesAssigned(segs []segment) map[string]bool {
 		}
 		for _, t := range s.tokens {
 			tally(1)
-			if eq := strings.IndexByte(t, '='); eq > 0 && isName(strings.TrimSuffix(t[:eq], "+")) {
-				out[strings.TrimSuffix(t[:eq], "+")] = true
+			if name, _, _, _, ok := splitAssignment(t); ok {
+				out[name] = true
 			}
 		}
 		for _, a := range commandSites(s) {
