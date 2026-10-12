@@ -1,0 +1,249 @@
+package memory
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/fsutil"
+)
+
+// recallPageText is a typed page with a recall: list.
+func recallPageText(summary string, recall ...string) string {
+	return "---\nrecall: [" + strings.Join(recall, ", ") + "]\nsource:\n  class: session_memory\n  ingested_at: 2026-10-01\n---\n# " + summary + "\n\nThe body.\n"
+}
+
+func writeStoreFile(t *testing.T, dir, name, text string, mode os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(text), mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, name), mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRecallPagesReadsTheIndexedPages: the recall's read yields each page's
+// filename, its index line's summary, its body and its recall: list, for
+// pages named <type>_<domain>_<slug>.md at the store's top level only.
+func TestRecallPagesReadsTheIndexedPages(t *testing.T) {
+	repo := t.TempDir()
+	mem := filepath.Join(repo, ".abcd", "memory")
+	writeStoreFile(t, mem, "fact_eng_auth-flow.md", recallPageText("Auth uses short-lived tokens", "auth", "login"), 0o644)
+	writeStoreFile(t, mem, "fact_eng_silent.md", "---\nsource:\n  class: session_memory\n---\n# No recall list\n", 0o644)
+	writeStoreFile(t, mem, "index.md", recallPageText("not a page", "auth"), 0o644)
+	writeStoreFile(t, mem, "notes.md", recallPageText("not a typed name", "auth"), 0o644)
+	writeStoreFile(t, filepath.Join(mem, "sources"), "fact_eng_nested.md", recallPageText("nested", "auth"), 0o644)
+
+	pages, refused := ReadRecallPages(repo)
+	if len(refused) != 0 {
+		t.Fatalf("refused = %+v", refused)
+	}
+	var names []string
+	for _, p := range pages {
+		names = append(names, p.Filename)
+	}
+	if !slices.Equal(names, []string{"fact_eng_auth-flow.md", "fact_eng_silent.md"}) {
+		t.Fatalf("pages = %v", names)
+	}
+	p := pages[0]
+	if p.Summary != "Auth uses short-lived tokens" || !slices.Equal(p.Recall, []string{"auth", "login"}) ||
+		!strings.Contains(p.Body, "The body.") || strings.Contains(p.Body, "recall:") {
+		t.Fatalf("page = %+v", p)
+	}
+	if len(pages[1].Recall) != 0 {
+		t.Fatalf("a page with no recall list read one: %+v", pages[1])
+	}
+	if got, refused := ReadRecallPages(t.TempDir()); len(got) != 0 || len(refused) != 0 {
+		t.Fatalf("an absent store read %v %v", got, refused)
+	}
+}
+
+// TestRecallPagesRefuseASymlinkedPage: a page committed as a symlink to a
+// file outside the store is never followed — it is not listed as a page, so
+// its target never reaches the recall — in either scope.
+func TestRecallPagesRefuseASymlinkedPage(t *testing.T) {
+	repo := t.TempDir()
+	home := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte(recallPageText("LEAKED outside text", "auth")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{filepath.Join(repo, ".abcd", "memory"), abcdhome.Path(home, "memory")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		plantSymlink(t, outside, filepath.Join(dir, "fact_eng_auth-flow.md"))
+	}
+	workspace, _ := ReadRecallPages(repo)
+	machine, _ := ReadMachineRecallPages(home)
+	for _, p := range append(workspace, machine...) {
+		if strings.Contains(p.Summary+p.Body, "LEAKED") {
+			t.Fatalf("a symlinked page was followed: %+v", p)
+		}
+	}
+}
+
+// TestRecallPagesRefuseASymlinkedStore: the workspace store committed as a
+// directory symlink, and a symlinked ~/.abcd.noindex or memory/, are refused
+// whole and named, never walked.
+func TestRecallPagesRefuseASymlinkedStore(t *testing.T) {
+	target := t.TempDir()
+	writeStoreFile(t, target, "fact_eng_auth-flow.md", recallPageText("LEAKED through the link", "auth"), 0o600)
+
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plantSymlink(t, target, filepath.Join(repo, ".abcd", "memory"))
+	pages, refused := ReadRecallPages(repo)
+	var unsafe *UnsafeStorePathError
+	if len(pages) != 0 || len(refused) != 1 || refused[0].File != ".abcd/memory/" || !errors.As(refused[0].Err, &unsafe) {
+		t.Fatalf("a symlinked workspace store was read: pages %+v refused %+v", pages, refused)
+	}
+
+	for name, link := range map[string]func(home string){
+		"memory": func(home string) {
+			if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			plantSymlink(t, target, abcdhome.Path(home, "memory"))
+		},
+		"abcd-home": func(home string) {
+			real := filepath.Join(t.TempDir(), "dotfiles")
+			if err := os.MkdirAll(filepath.Join(real, "memory"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			writeStoreFile(t, filepath.Join(real, "memory"), "fact_eng_auth-flow.md", recallPageText("LEAKED through the link", "auth"), 0o600)
+			plantSymlink(t, real, abcdhome.Path(home))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			link(home)
+			pages, refused := ReadMachineRecallPages(home)
+			if len(pages) != 0 || len(refused) != 1 || !errors.Is(refused[0].Err, fsutil.ErrHomeScopeSymlinked) {
+				t.Fatalf("a symlinked machine scope was read: pages %+v refused %+v", pages, refused)
+			}
+			if strings.Contains(refused[0].Err.Error(), home) {
+				t.Fatalf("the refusal names the expanded home: %v", refused[0].Err)
+			}
+		})
+	}
+}
+
+// TestMachineRecallPagesAreReadAsTheMachineFilesAre: a machine page is read
+// as the machine memory.json is — a regular file this account owns that no
+// one else can write — and one others can write is refused and named, while
+// the scope's other pages are still read. An absent scope, or no home, reads
+// nothing and creates nothing.
+func TestMachineRecallPagesAreReadAsTheMachineFilesAre(t *testing.T) {
+	home := t.TempDir()
+	dir := abcdhome.Path(home, "memory")
+	writeStoreFile(t, dir, "fact_eng_auth-flow.md", recallPageText("Kept to this account", "auth"), 0o600)
+	writeStoreFile(t, dir, "fact_eng_auth-keys.md", recallPageText("Anyone can rewrite this", "auth"), 0o666)
+
+	pages, refused := ReadMachineRecallPages(home)
+	if len(pages) != 1 || pages[0].Filename != "fact_eng_auth-flow.md" {
+		t.Fatalf("pages = %+v", pages)
+	}
+	if len(refused) != 1 || refused[0].File != abcdhome.Display("memory", "fact_eng_auth-keys.md") ||
+		!strings.Contains(refused[0].Err.Error(), "writable by others") {
+		t.Fatalf("refused = %+v", refused)
+	}
+
+	empty := t.TempDir()
+	for _, h := range []string{empty, "", "relative/home"} {
+		if pages, refused := ReadMachineRecallPages(h); len(pages) != 0 || len(refused) != 0 {
+			t.Fatalf("home %q read %+v %+v", h, pages, refused)
+		}
+	}
+	if _, err := os.Lstat(abcdhome.Path(empty)); !os.IsNotExist(err) {
+		t.Fatalf("the read created %s: %v", abcdhome.Path(empty), err)
+	}
+}
+
+// TestRecallPagesCarryTheirLatestIngestDate: a page's recency, the
+// ranking's tie-break, is the latest ingested_at its source block records —
+// one source's, or the latest of several — and the zero time when it records
+// none, never the file's modification time, which a checkout sets.
+func TestRecallPagesCarryTheirLatestIngestDate(t *testing.T) {
+	repo := t.TempDir()
+	mem := filepath.Join(repo, ".abcd", "memory")
+	writeStoreFile(t, mem, "fact_eng_one.md", recallPageText("One source", "auth"), 0o644)
+	writeStoreFile(t, mem, "fact_eng_many.md", "---\nrecall: [auth]\nsource:\n  classes: [session_memory]\n  sources:\n"+
+		"    - {class: session_memory, ingested_at: 2026-09-01}\n    - {class: session_memory, ingested_at: 2026-10-05}\n---\n# Many sources\n", 0o644)
+	writeStoreFile(t, mem, "fact_eng_none.md", "---\nrecall: [auth]\n---\n# No source block\n", 0o644)
+
+	at := map[string]string{}
+	pages, refused := ReadRecallPages(repo)
+	if len(refused) != 0 {
+		t.Fatalf("refused = %+v", refused)
+	}
+	for _, p := range pages {
+		at[p.Filename] = p.IngestedAt.Format("2006-01-02")
+		if p.Filename == "fact_eng_none.md" && !p.IngestedAt.IsZero() {
+			t.Fatalf("a page with no source block has a date: %v", p.IngestedAt)
+		}
+	}
+	if at["fact_eng_one.md"] != "2026-10-01" || at["fact_eng_many.md"] != "2026-10-05" {
+		t.Fatalf("ingest dates = %v", at)
+	}
+}
+
+// TestMachineRecallPagesRefuseADirectoryOthersCanChange: the machine scope's
+// directories are judged as the machine memory.json's are — one every
+// account can write is refused, its pages unread, and named in tilde form —
+// while an exposed ~/.abcd.noindex holding no memory/ still reads as absent.
+func TestMachineRecallPagesRefuseADirectoryOthersCanChange(t *testing.T) {
+	for name, exposed := range map[string][]string{"abcd-home": nil, "memory": {"memory"}} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			dir := abcdhome.Path(home, "memory")
+			writeStoreFile(t, dir, "fact_eng_auth-flow.md", recallPageText("Anyone could have put this here", "auth"), 0o600)
+			if err := os.Chmod(abcdhome.Path(home, exposed...), 0o777); err != nil {
+				t.Fatal(err)
+			}
+			pages, refused := ReadMachineRecallPages(home)
+			if len(pages) != 0 || len(refused) != 1 || !errors.Is(refused[0].Err, fsutil.ErrHomeScopeExposed) {
+				t.Fatalf("an exposed directory's pages were read: pages %+v refused %+v", pages, refused)
+			}
+			if msg := refused[0].Err.Error(); strings.Contains(msg, home) || !strings.Contains(msg, abcdhome.Display(exposed...)+" can be written by every account") {
+				t.Fatalf("the refusal does not name the directory in tilde form: %s", msg)
+			}
+		})
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(abcdhome.Path(home), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if pages, refused := ReadMachineRecallPages(home); len(pages) != 0 || len(refused) != 0 {
+		t.Fatalf("an exposed home with no page scope read %+v %+v", pages, refused)
+	}
+}
+
+// TestRecallPageBodyDoesNotRepeatItsTitle: a page's title is the line its
+// index summary comes from, so the body the recall weighs and renders is the
+// rest of the page; the title's words are not counted, or sent, twice.
+func TestRecallPageBodyDoesNotRepeatItsTitle(t *testing.T) {
+	repo := t.TempDir()
+	writeStoreFile(t, filepath.Join(repo, ".abcd", "memory"), "fact_eng_auth-flow.md",
+		"---\nrecall: [auth]\n---\n\n# Auth uses short-lived tokens\n\nRefresh them hourly.\n# A later heading stays\n", 0o644)
+	pages, _ := ReadRecallPages(repo)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %+v", pages)
+	}
+	if p := pages[0]; p.Summary != "Auth uses short-lived tokens" || p.Body != "Refresh them hourly.\n# A later heading stays" {
+		t.Fatalf("summary %q body %q", p.Summary, p.Body)
+	}
+}

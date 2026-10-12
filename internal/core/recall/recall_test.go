@@ -49,13 +49,13 @@ func TestNoteRecallUsesTheRuleTermMatch(t *testing.T) {
 		for _, p := range prompts {
 			rs := rules.RuleSet{SchemaVersion: 1, Domains: map[string]rules.Domain{"PROBE": {Recall: []string{w}, Rules: []string{"r"}}}}
 			domain := len(rs.Match(p)) == 1
-			got := len(Candidates(items, p)) == 1
+			got := len(candidates(items, p)) == 1
 			if got != domain {
 				t.Errorf("recall word %q on %q: note candidate = %v, domain match = %v", w, p, got, domain)
 			}
 		}
 	}
-	c := Candidates(noteItems([]memnote.Note{note("mem-2610111200000001", "A lesson", "Body.", "", "test", "race", "pull request")}, nil, thisRoot),
+	c := candidates(noteItems([]memnote.Note{note("mem-2610111200000001", "A lesson", "Body.", "", "test", "race", "pull request")}, nil, thisRoot),
 		"run the tests before the pull requests")
 	if len(c) != 1 || !slices.Equal(c[0].Hits, []string{"test", "pull request"}) {
 		t.Fatalf("candidate hits = %+v", c)
@@ -76,7 +76,7 @@ func TestANoteInTheProjectsFileIsRecalled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".abcd", "memory.json"), []byte(project), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	items, refused := ReadNotes(t.TempDir(), repo)
+	items, refused := readNotes(t.TempDir(), repo)
 	if len(refused) != 0 {
 		t.Fatalf("refused = %+v", refused)
 	}
@@ -146,39 +146,6 @@ func TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget(t *testing.T) {
 	// And the turn after that, it is not sent again.
 	if again := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: next.Ledger}); again.Text != "" {
 		t.Fatalf("an item already sent came back:\n%s", again.Text)
-	}
-}
-
-// TestCandidatesThatFitAreTakenInIDOrder: until step 4's ranking, the
-// candidates are taken in id order, and when only some fit, the survivors are
-// the first in that order — the first that does not fit stops the take, so a
-// later item never comes back ahead of an earlier one.
-func TestCandidatesThatFitAreTakenInIDOrder(t *testing.T) {
-	body := strings.TrimSpace(strings.Repeat("word ", 150)) // about 750 bytes
-	notes := []memnote.Note{
-		note("mem-2610111200000003", "Third", body, "", "test"),
-		note("mem-2610111200000001", "First", body, "", "test"),
-		note("mem-2610111200000004", "Fourth", "Short.", "", "test"),
-		note("mem-2610111200000002", "Second", body, "", "test"),
-	}
-	items := noteItems(notes, nil, thisRoot)
-	all := recallText(items, "the tests")
-	want := []string{"mem-2610111200000001", "mem-2610111200000002", "mem-2610111200000003", "mem-2610111200000004"}
-	if !slices.Equal(all.Recalled, want) {
-		t.Fatalf("recalled %v, want id order %v", all.Recalled, want)
-	}
-	if i, j := strings.Index(all.Text, "First"), strings.Index(all.Text, "Second"); i < 0 || j < i {
-		t.Fatalf("the block is not in id order:\n%s", all.Text)
-	}
-	// Room for two of the long ones: the first two in id order survive, and
-	// the short fourth, which would fit, does not jump the queue.
-	budget := len(headerLine) + 2*len(renderItem(items[0])) + 10
-	some := Recall(Request{Items: items, Prompt: "the tests", Budget: budget})
-	if !slices.Equal(some.Recalled, want[:2]) || !slices.Equal(some.Omitted, want[2:]) {
-		t.Fatalf("recalled %v omitted %v", some.Recalled, some.Omitted)
-	}
-	if len(some.Text) > budget {
-		t.Fatalf("the block is over its budget: %d > %d", len(some.Text), budget)
 	}
 }
 

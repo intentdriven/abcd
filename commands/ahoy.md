@@ -1213,12 +1213,23 @@ prompt in a fresh session, and writes nothing. `domains` lists each rule
 domain the prompt matches, with the recall words that hit (`hits`, or
 `*NAME` for a star activation); `notes` lists each memory note it recalls
 from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
-its `layer` (`machine` or `project`) and the recall words that hit. Each
-carries a `form`: `full`, or `over-budget` when it would not fit the
-per-turn budget and would come back on a later prompt instead. `disabled`
-is true under the kill switch, and then nothing comes back; `unreadable`
-names a `memory.json` that could not be read, and why. Use it when someone
-asks why a rule or a note did, or did not, come back on a prompt. A
+its `layer` (`machine` or `project`) and the recall words that hit; `pages`
+lists each memory page it recalls from the project's `.abcd/memory/` or
+`~/.abcd.noindex/memory/`, by its `key` (`page:<filename>`, the name the
+hook's envelope gives it), with its `filename`, `title`, `layer` and the
+recall words that hit. A page comes back only when its frontmatter declares
+a `recall:` list, and a page in the project's store suppresses the machine's
+page of the same name. Notes and pages share one ranked order: each carries
+its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
+term with how often it was found in the item's `recall` words, `title` and
+`body` and its `contribution` to the score; the ranking decides which items
+fit the budget. Each carries a `form`: `full`, `over-budget` when
+it would not fit the per-turn budget and would come back on a later prompt
+instead, or `too-large` when it is larger than the whole per-turn budget and
+no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
+back; `unreadable` names a `memory.json`, page store or page that could not
+be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
+a rule, a note or a page did, or did not, come back on a prompt. A
 positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
 renders one domain's rules instead.
 

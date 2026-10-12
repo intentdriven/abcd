@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/rules"
 )
 
 // Request is one prompt's recall.
 type Request struct {
-	// Items are what the memory layers yield (noteItems, ReadNotes).
+	// Items are every note and page in reach (ReadItems).
 	Items []Item
 	// Prompt is the prompt the hook was handed.
 	Prompt string
@@ -25,20 +27,27 @@ type Request struct {
 
 // Result is one prompt's recall. Text is empty when nothing new comes back.
 // Recalled names each item Text carries, in order; Omitted each new
-// candidate that did not fit the budget, not recorded and so retried on the
-// next turn. Ledger is the updated recalled ledger, a copy.
+// candidate that did not fit this turn's budget, not recorded and so retried
+// on the next turn; TooLarge each new candidate whose block alone is larger
+// than the whole per-turn budget (rules.InjectionBudgetBytes), which no turn
+// can carry, so it is set aside without stopping the take and never
+// recorded. Ledger is the updated recalled ledger, a copy.
 type Result struct {
 	Text     string
 	Recalled []string
 	Omitted  []string
+	TooLarge []string
 	Ledger   map[string]string
 }
 
-// Recall matches the items against the prompt, drops every candidate already
-// sent this session with unchanged content, and takes the rest in id order
-// while they fit the budget: the first that does not fit stops the take, so
-// an item never comes back ahead of one before it in the order. It performs
-// no I/O and never reflects prompt bytes into the block.
+// Recall matches the items against the prompt, ranks the candidates (Rank),
+// drops every one already sent this session with unchanged content, and
+// takes the rest in ranked order while they fit the budget: the first that
+// does not fit stops the take, so an item never comes back ahead of one
+// ranked above it that a later turn can still carry. An item larger than the
+// whole per-turn budget is set aside as TooLarge instead, so it cannot hold
+// back every item below it on every turn. It performs no I/O and never
+// reflects prompt bytes into the block.
 func Recall(req Request) Result {
 	ledger := map[string]string{}
 	for k, v := range req.Ledger {
@@ -49,7 +58,7 @@ func Recall(req Request) Result {
 		return res
 	}
 	var fresh []Item
-	for _, c := range Candidates(req.Items, req.Prompt) {
+	for _, c := range Rank(req.Items, req.Prompt) {
 		if ledger[c.Item.Key] == signature(c.Item) {
 			continue
 		}
@@ -60,18 +69,21 @@ func Recall(req Request) Result {
 	}
 	var b strings.Builder
 	size := len(headerLine)
-	for i, it := range fresh {
+	stopped := false
+	for _, it := range fresh {
 		block := renderItem(it)
-		if size+len(block) > req.Budget {
-			for _, rest := range fresh[i:] {
-				res.Omitted = append(res.Omitted, rest.Key)
-			}
-			break
+		switch {
+		case len(headerLine)+len(block) > rules.InjectionBudgetBytes:
+			res.TooLarge = append(res.TooLarge, it.Key)
+		case stopped || size+len(block) > req.Budget:
+			stopped = true
+			res.Omitted = append(res.Omitted, it.Key)
+		default:
+			b.WriteString(block)
+			size += len(block)
+			ledger[it.Key] = signature(it)
+			res.Recalled = append(res.Recalled, it.Key)
 		}
-		b.WriteString(block)
-		size += len(block)
-		ledger[it.Key] = signature(it)
-		res.Recalled = append(res.Recalled, it.Key)
 	}
 	if len(res.Recalled) > 0 {
 		res.Text = headerLine + b.String()

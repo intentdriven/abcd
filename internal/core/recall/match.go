@@ -8,10 +8,10 @@ type Candidate struct {
 	Hits []string
 }
 
-// Candidates returns the items any of whose recall words hits prompt under
-// the loader's term rule (rules.TermMatcher), in the items' order — id order
-// from noteItems. The order chooses nothing yet; Recall takes them in it.
-func Candidates(items []Item, prompt string) []Candidate {
+// candidates returns the items any of whose recall words hits prompt under
+// the loader's term rule (rules.TermMatcher), in the items' order. The order
+// chooses nothing: Rank orders the candidates, and Recall takes them in it.
+func candidates(items []Item, prompt string) []Candidate {
 	if len(items) == 0 {
 		return nil
 	}

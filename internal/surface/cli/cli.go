@@ -1679,20 +1679,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	// prompt-router — UserPromptSubmit: recall-match, dedup, inject.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
-		Short: "UserPromptSubmit: inject the rules and memory notes matching the prompt",
+		Short: "UserPromptSubmit: inject the rules, memory notes and pages matching the prompt",
 		Long: `Plain, stdout is the rendered rule block the host injects, followed by a
-"## MEMORY" block of the memory notes the prompt recalls, and nothing on a
-turn with nothing new. With --json, stdout is one envelope in place of the
+"## MEMORY" block of the memory notes and pages the prompt recalls, and nothing
+on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
   {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
-text carries, and recalled the notes; active is the full set of domains in
+text carries, and recalled the notes and pages (a note by its id, a page as
+page:<filename>); active is the full set of domains in
 force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
-unknown. A memory.json that cannot be read is named on stderr and recalls
-nothing, and the rules still inject. Every outcome, an error included,
+unknown. A memory.json, page store or page that cannot be read is named on
+stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -1764,10 +1765,13 @@ exits 0, so the hook can never wedge a session.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
-			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) %v, %d bytes", len(mem.Recalled), mem.Recalled, len(mem.Text))
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) %v, %d bytes", len(mem.Recalled), mem.Recalled, len(mem.Text))
 				if len(mem.Omitted) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) %v did not fit this turn's budget and are tried again on the next", len(mem.Omitted), mem.Omitted)
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) %v did not fit this turn's budget and are tried again on the next", len(mem.Omitted), mem.Omitted)
+				}
+				if len(mem.TooLarge) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) %v are larger than the whole per-turn budget and do not come back in full", len(mem.TooLarge), mem.TooLarge)
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
@@ -2442,8 +2446,14 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
@@ -2500,7 +2510,7 @@ Read-only.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls")
+	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls")
 	return cmd
 }
 
