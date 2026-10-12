@@ -230,8 +230,14 @@ func accountFileGroupMembers(gid uint32) ([]uint32, bool) {
 // gid is, and every account the group's line lists, each as its uid, sorted
 // and once. A group the group file does not hold, or a listed name no
 // account in the password file carries, is unread (false): an account the
-// files do not show could be a member.
+// files do not show could be a member. So is any group when either file
+// carries an NSS compat line (`+` or `-` first: `+::::::`, `+@netgroup`,
+// `-name`), which pulls accounts or members in from NIS or LDAP that the files
+// do not show, or edits them (iss-2609290703091174).
 func membersFromAccountFiles(passwd, group []byte, gid uint32) ([]uint32, bool) {
+	if defersToNetwork(passwd) || defersToNetwork(group) {
+		return nil, false
+	}
 	want := strconv.FormatUint(uint64(gid), 10)
 	uids := map[string]uint32{}
 	var members []uint32
@@ -272,6 +278,17 @@ func membersFromAccountFiles(passwd, group []byte, gid uint32) ([]uint32, bool) 
 	}
 	slices.Sort(members)
 	return slices.Compact(members), true
+}
+
+// defersToNetwork reports whether an account file carries an NSS compat line,
+// one whose first character is `+` or `-`.
+func defersToNetwork(file []byte) bool {
+	for _, line := range strings.Split(string(file), "\n") {
+		if line = strings.TrimSpace(line); strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrHomeScopeSwapped is the refusal for a directory of a home-scoped path that

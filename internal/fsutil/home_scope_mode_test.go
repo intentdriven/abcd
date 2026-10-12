@@ -226,3 +226,30 @@ func TestGroupMembersFromAccountFiles(t *testing.T) {
 		})
 	}
 }
+
+// An NSS compat line (`+` or `-` first) in either account file pulls accounts
+// or group members in from NIS or LDAP, which the files do not show, so a
+// group read from files that carry one is unread whatever its line says
+// (iss-2609290703091174): the group the owner seems alone in may have members
+// the network adds.
+func TestGroupMembersAreUnreadWhenTheAccountFilesDeferToTheNetwork(t *testing.T) {
+	passwd := "root:x:0:0:root:/root:/bin/sh\nbob:x:1001:1001::/home/bob:/bin/sh\n"
+	group := "root:x:0:\nbob:x:1001:\n"
+	for _, c := range []struct{ name, passwd, group string }{
+		{"a passwd line pulling every network account in", passwd + "+::::::\n", group},
+		{"a passwd line pulling a netgroup in", passwd + "+@staff\n", group},
+		{"a passwd line excluding an account", passwd + "-mallory\n", group},
+		{"a group line pulling every network group in", passwd, group + "+:::\n"},
+		{"a group line naming a network group", passwd, group + "+bob\n"},
+		{"a group line excluding a group", passwd, group + "-wheel\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got, ok := membersFromAccountFiles([]byte(c.passwd), []byte(c.group), 1001); ok {
+				t.Fatalf("members(1001) = %v, read; want unread, since the files defer to the network", got)
+			}
+		})
+	}
+	if got, ok := membersFromAccountFiles([]byte(passwd), []byte(group), 1001); !ok || !slices.Equal(got, []uint32{1001}) {
+		t.Fatalf("without a compat line, members(1001) = %v, %v; want [1001], read", got, ok)
+	}
+}
