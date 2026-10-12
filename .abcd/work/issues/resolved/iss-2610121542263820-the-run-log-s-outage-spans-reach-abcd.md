@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement"
 remedy: "Shape-check or mask the outage span text where implement record reads the run log, with a test forging a span."
+resolution: "An outage span's services, kinds and retried work are masked with termsafe.Sanitize where listField reads them from the run log, so implement record --json and implement report --json carry them masked."
+impact: fix
+resolved_by:
+  commit: "ddcd16038b7db79b1444d873152008e657eeea42"
 ---
 
 The run log's outage spans reach abcd implement record --json raw: their text comes from the run log the session appends to, so a hand-edited or repository-shipped log carrying a control or bidi rune puts it on the stream.
