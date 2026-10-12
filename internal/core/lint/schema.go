@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -158,6 +159,12 @@ var (
 	// order so the graph export is deterministic.
 	recordParsedFields = append(append([]string{}, recordHandleFields...), recordGraphFields...)
 )
+
+// UnjudgedGraphField reports whether field is a graph field no rule resolves,
+// so a reader of the graph does not count it dangling.
+func UnjudgedGraphField(field string) bool {
+	return slices.Contains(recordUnjudgedGraphFields, field)
+}
 
 // recordStore describes one identified record store: where the buckets are, and
 // how a well-formed filename spells the id.
