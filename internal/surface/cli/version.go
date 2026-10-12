@@ -57,6 +57,11 @@ type ahoyOutput struct {
 	// reports the same vintage/staleness pair through the same comparator, so a
 	// superseded root produces the same confident wrong answer here.
 	SupersededRoot string `json:"superseded_root,omitempty"`
+	// ReadmeTool is the README question pair, while it is open, as the host's
+	// question tool takes it: one call per ask of the detection's README view,
+	// Q1 alone, then the parts as tabs of at most four (spc-2610031704338417).
+	// The plugin page passes each on unchanged.
+	ReadmeTool []*hostQuestionCall `json:"readme_tool,omitempty"`
 }
 
 // checkResult is the explicit network check's outcome, named source and all.

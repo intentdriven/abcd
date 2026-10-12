@@ -820,7 +820,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request\n" +
 			"open where no merge queue gates the default branch, and pushes nothing after that; and\n" +
 			"once the pushed head is an ancestor of the default branch on origin it removes the lane's\n" +
-			"worktree and branch and the lane is done. Until then the call exits 3 and waits.\n\n" +
+			"worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull\n" +
+			"request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)\n" +
+			"is refused at exit 2 instead, before arming or at the merged check, naming the files a\n" +
+			"local merge with every merge driver off conflicts in and the hand merge that settles it.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +

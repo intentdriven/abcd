@@ -564,6 +564,32 @@ func RunCapped(root string, maxBytes int, args ...string) (string, error) {
 	return out, nil
 }
 
+// RunCappedExitOne is RunCappedBytes for a command whose exit status 1 is an
+// answer rather than a failure: `merge-tree --write-tree` exits 1 when the
+// merge conflicts, with the conflicted paths on stdout. It returns stdout
+// verbatim and whether git exited 1; any other failure is an error carrying
+// git's bounded stderr, and output past maxBytes is an error, never a
+// truncated answer. git also exits 1 on some refusals (merge-tree's "not
+// something we can merge"), so a caller checks the answer's shape.
+func RunCappedExitOne(root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	cmd := isolatedGit(root, args...)
+	w := &capWriter{remaining: maxBytes}
+	e := &capWriter{remaining: 4096}
+	cmd.Stdout, cmd.Stderr = w, e
+	one := false
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+			return nil, false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+		}
+		one = true
+	}
+	if w.overflowed {
+		return nil, false, fmt.Errorf("git %s: output exceeded the %d-byte cap", strings.Join(args, " "), maxBytes)
+	}
+	return w.buf, one, nil
+}
+
 // runBounded is the shared body: run git with stdout and stderr bounded, and
 // report whether stdout was cut short.
 func runBounded(root string, maxBytes int, args ...string) (string, bool, error) {
