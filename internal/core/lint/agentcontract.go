@@ -120,6 +120,22 @@ func checkAgentContract(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 
 	var prompts []agentPrompt
 	var out []Finding
+	// A prompt is judged as the file under the agents tree, and the bump
+	// check reads that path's diff, so an edit made through a link changes
+	// nothing it reads and ships with no prompt_version bump
+	// (iss-2610111724587800). A link anywhere on the path is refused.
+	linked, err := agentsDirLinked(repoRoot, dir)
+	if err != nil {
+		return nil, err
+	}
+	if linked {
+		out = append(out, Finding{
+			File: dir, Line: 1, RuleID: ruleAgentContract, Severity: cfg.Severity,
+			Message: "agents directory " + quote(dir) + " is a symlink or lies under one: the trust contract and its " +
+				"prompt_version bump check read the prompts at this path, and an edit made through the link changes " +
+				"nothing here, so it ships with no bump; make " + dir + " a real directory",
+		})
+	}
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !hasMarkdownExt(name) {
@@ -134,6 +150,14 @@ func checkAgentContract(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		rel := filepath.Join(dir, name)
+		if e.Type()&os.ModeSymlink != 0 {
+			out = append(out, Finding{
+				File: rel, Line: 1, RuleID: ruleAgentContract, Severity: cfg.Severity,
+				Message: "agent prompt " + quote(filepath.ToSlash(rel)) + " is a symlink: the trust contract and its " +
+					"prompt_version bump check read this path, and an edit made to the link's target changes nothing " +
+					"here, so it ships with no bump; replace the link with the prompt itself",
+			})
+		}
 		realPath, err := containedRealPath(repoRoot, filepath.Join(dirAbs, name))
 		if err != nil {
 			return nil, &configError{ruleAgentContract + ": prompt " + quote(rel) + " " + err.Error() +
@@ -458,6 +482,26 @@ func promptVersionAt(repoRoot, rev, rel string) (string, bool, error) {
 // promptVersionOf reads a prompt's declared version, unquoted.
 func promptVersionOf(p agentPrompt) string {
 	return strings.Trim(strings.TrimSpace(p.fields["prompt_version"].value), `"'`)
+}
+
+// agentsDirLinked reports whether the agents directory, or any directory on
+// its repo-relative path, is a symlink.
+func agentsDirLinked(repoRoot, dir string) (bool, error) {
+	cur := repoRoot
+	for _, seg := range strings.Split(filepath.ToSlash(filepath.Clean(dir)), "/") {
+		if seg == "" || seg == "." {
+			continue
+		}
+		cur = filepath.Join(cur, seg)
+		info, err := os.Lstat(cur)
+		if err != nil {
+			return false, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // agentChangelogHeadingRe matches a per-agent entry heading — "### <name>

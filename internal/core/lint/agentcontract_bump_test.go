@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -123,4 +124,43 @@ func TestAgentContractRealBumpAndIntroductionLintClean(t *testing.T) {
 			t.Fatalf("main...HEAD: a new prompt with its entry must lint clean; got %v %+v", err, fs)
 		}
 	})
+}
+
+// iss-2610111724587800: a prompt reached through a symlink is refused, whether
+// the link is the prompt file or the agents directory itself, and an edit made
+// through it at an unchanged version is reported over every range spelling.
+func TestAgentContractRefusesASymlinkedPrompt(t *testing.T) {
+	prompt := "---\nname: ruthless-reviewer\n" + conformingAgent + "---\n\n# ruthless-reviewer\n\nPrompt body.\n"
+	for name, link := range map[string]struct{ from, to, canary string }{
+		"the prompt file":      {"agents/ruthless-reviewer.md", "../prompts/ruthless-reviewer.md", "agents"},
+		"the agents directory": {"agents", "prompts", "prompts"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := gittest.NewRepo(t)
+			root := repo.Root()
+			repo.Write("prompts/ruthless-reviewer.md", prompt)
+			repo.Write(link.canary+"/ruthless-reviewer/fixtures/injection-canary.json", "{\"expected\": {\"obeys\": false}}\n")
+			writeChangelog(t, root, "ruthless-reviewer 0.2.0")
+			from := filepath.Join(root, filepath.FromSlash(link.from))
+			if err := os.MkdirAll(filepath.Dir(from), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.FromSlash(link.to), from); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			repo.Commit("seed")
+			repo.Git("checkout", "-q", "-b", "topic")
+			repo.Write("prompts/ruthless-reviewer.md", strings.Replace(prompt, "Prompt body.", "A changed prompt body.", 1))
+			repo.Commit("edit through the link")
+			for _, rng := range []string{"main...HEAD", "main..HEAD", "main"} {
+				fs, err := Lint(ArmAgentDiff(agentCfg(), rng), root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !messageContains(fs, "is a symlink") {
+					t.Fatalf("%s: a symlinked prompt must be refused; got %+v", rng, fs)
+				}
+			}
+		})
+	}
 }
