@@ -277,9 +277,12 @@ func TestReadmeLaterStoresNothing(t *testing.T) {
 }
 
 // TestAbcdBadgeOffByDefault: the managed-with-abcd badge is offered in every
-// project, off: its question's default answer is off and comes first, its
-// current setting reads off, and a person who takes every default stores the
-// licence and the links (on by default where they can be written) without it.
+// project, off: its question's default answer is off, its current setting
+// reads off, and a person who takes every default stores the licence and the
+// links (on by default where they can be written) without it. Every part's
+// answers come in one order, on, off, then deciding later, whatever its
+// default: an answer put first would read as recommended, and the options
+// widen rather than recommend.
 func TestAbcdBadgeOffByDefault(t *testing.T) {
 	setupHermetic(t)
 	repo := installedRepo(t)
@@ -289,8 +292,21 @@ func TestAbcdBadgeOffByDefault(t *testing.T) {
 	p := &helpedPrompter{confirm: approveCategories, answers: map[string]string{ReadmePromptKey: "yes"}}
 	terminalInstall(t, repo, p)
 	badge := p.find(t, "readme.abcd-badge")
-	if badge.def != "off" || len(badge.choices) == 0 || badge.choices[0] != "off" {
-		t.Errorf("the badge's default is %q among %q, want off, first", badge.def, badge.choices)
+	if badge.def != "off" {
+		t.Errorf("the badge's default is %q, want off", badge.def)
+	}
+	for _, k := range p.readmeKeys()[1:] {
+		if got := p.find(t, k).choices; !reflect.DeepEqual(got, []string{"on", "off", SetupLaterValue}) {
+			t.Errorf("%s offers %q, want on, off, then deciding later", k, got)
+		}
+	}
+	v := buildReadmeView(repo, "public")
+	for _, a := range v.Asks[1:] {
+		for _, q := range a.Questions {
+			if got := choiceLabels(q); !reflect.DeepEqual(got, []string{"on", "off", question.Default.LaterLabels[0]}) {
+				t.Errorf("the page's %s offers %q, want on, off, then deciding later", q.ID, got)
+			}
+		}
 	}
 	if !strings.Contains(badge.help.Now, "off") {
 		t.Errorf("the badge's current setting reads %q, want it to show off", badge.help.Now)
@@ -607,4 +623,13 @@ func quotedExample(text string) (lead string, lines []string, ok bool) {
 		}
 	}
 	return "", nil, false
+}
+
+// choiceLabels is a question's options' labels, deciding later last.
+func choiceLabels(q question.Question) []string {
+	var out []string
+	for _, o := range append(append([]question.Option(nil), q.Options...), q.Later) {
+		out = append(out, o.Label)
+	}
+	return out
 }

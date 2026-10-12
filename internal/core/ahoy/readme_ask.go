@@ -78,8 +78,10 @@ var readmePartOn = map[string]bool{
 	"licence": true, "links": true, "contents": false,
 }
 
-// readmePartChoices are a part's answers, in the order the question offers
-// them.
+// readmePartChoices are a part's answers, in the order every part's question
+// offers them, whatever its default: an answer put first would read as
+// recommended, and abcd's options widen rather than recommend. The default is
+// what an empty answer, or the end of input, takes at the stdin door.
 var readmePartChoices = []ChoiceHelp{
 	{Value: "on", Meaning: "Writes it, and rewrites it from the project on every setup run."},
 	{Value: "off", Meaning: "Leaves it out; a copy abcd wrote before is removed."},
@@ -116,18 +118,8 @@ func readmeHelp(key string) (PromptHelp, bool) {
 		Key:         key,
 		About:       about,
 		ChangeLater: readmeChangeLater,
-		Choices:     readmeChoicesFor(name),
+		Choices:     append([]ChoiceHelp(nil), readmePartChoices...),
 	}, true
-}
-
-// readmeChoicesFor is a part's answers with its default first, then the
-// other, then deciding later: a terminal's cursor starts on the default.
-func readmeChoicesFor(name string) []ChoiceHelp {
-	out := append([]ChoiceHelp(nil), readmePartChoices...)
-	if !readmePartOn[name] {
-		out[0], out[1] = out[1], out[0]
-	}
-	return out
 }
 
 // choiceValues is the values of choices, in order.
