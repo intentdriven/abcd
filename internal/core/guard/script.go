@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -51,8 +52,9 @@ const (
 	scriptWrittenEntryID = "script-written-then-run"
 
 	// scriptUnreadEntryID is the reserved id for a file a shell runs that the
-	// guard did not read: binary (block), unreadable or over the cap (warn),
-	// or past the check's read budget (warn).
+	// guard did not read: binary (block), named by a startup variable the
+	// shell expands first (block), unreadable or over the cap (warn), or past
+	// the check's read budget (warn).
 	scriptUnreadEntryID = "script-unread"
 
 	familyScript = "script file"
@@ -86,7 +88,21 @@ const (
 // trackedVars are the only variables the reading follows: the ones that
 // choose a file a shell reads or where a path resolves. Following no other
 // keeps each state a handful of entries however many a line assigns.
-var trackedVars = map[string]bool{"BASH_ENV": true, "ENV": true, "HOME": true, "ZDOTDIR": true, "PATH": true}
+var trackedVars = map[string]bool{"BASH_ENV": true, "ENV": true, "HOME": true, "ZDOTDIR": true, "PATH": true,
+	"FPATH": true, "fpath": true, "CDPATH": true, "cdpath": true}
+
+// trackedName is the name a tracked variable is kept under: zsh ties the
+// fpath array to FPATH and cdpath to CDPATH, so an assignment to either of a
+// pair sets both.
+func trackedName(name string) string {
+	switch name {
+	case "fpath":
+		return "FPATH"
+	case "cdpath":
+		return "CDPATH"
+	}
+	return name
+}
 
 // Files is the directory a command runs in, and the files the guard has read
 // for it. A front door that checks one command against several registries
@@ -95,6 +111,9 @@ type Files struct {
 	dir  string
 	home string
 	path string
+	// cdpath is CDPATH in the environment the check runs in, which a `cd`
+	// searches unless the line sets its own.
+	cdpath string
 
 	mu    sync.Mutex
 	cache map[string]fileRead
@@ -145,7 +164,7 @@ func NewFiles(dir string) *Files {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = ""
 	}
-	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cache: map[string]fileRead{}, stats: map[string]statResult{}}
+	return &Files{dir: filepath.Clean(dir), home: home, path: os.Getenv("PATH"), cdpath: os.Getenv("CDPATH"), cache: map[string]fileRead{}, stats: map[string]statResult{}}
 }
 
 // ReadingFrom returns r reading the files a command names from f.
@@ -276,7 +295,8 @@ type scriptRun struct {
 // directory (dirOK false where it cannot say), a `cd` the next commands run
 // in only while each is chained after it with `&&`, the variables the line
 // set and which of them are exported, and the descriptors the line opened on
-// files.
+// files. A cd bash and zsh read differently can leave the shell in one of
+// several directories; the reading then carries one state for each.
 type shellState struct {
 	dir      string
 	dirOK    bool
@@ -286,8 +306,10 @@ type shellState struct {
 	fds      map[int]fdFile
 }
 
+// pendingCD is a cd the next commands run after: dirs is every directory it
+// can enter, one per reading of it that fixes one.
 type pendingCD struct {
-	dir   string
+	dirs  []string
 	chain int
 }
 
@@ -322,20 +344,26 @@ func (st *shellState) clone() *shellState {
 	return &n
 }
 
-// at is the state a segment runs in: a pending cd holds for a command chained
-// after it with `&&`, and once the chain breaks the directory is unknown for
-// the rest of the text — never the one the shell would be in had the cd failed.
-func (st *shellState) at(s segment) *shellState {
+// at is every state a segment can run in: a pending cd holds for a command
+// chained after it with `&&`, one state for each directory it can enter, and
+// once the chain breaks the directory is unknown for the rest of the text —
+// never the one the shell would be in had the cd failed.
+func (st *shellState) at(s segment) []*shellState {
 	if st.cd == nil {
-		return st
+		return []*shellState{st}
+	}
+	if s.chain == st.cd.chain && s.afterAnd {
+		out := make([]*shellState, 0, len(st.cd.dirs))
+		for _, d := range st.cd.dirs {
+			n := st.clone()
+			n.dir, n.dirOK = d, true
+			out = append(out, n)
+		}
+		return out
 	}
 	n := st.clone()
-	if s.chain == st.cd.chain && s.afterAnd {
-		n.dir, n.dirOK = st.cd.dir, true
-		return n
-	}
 	n.dir, n.dirOK, n.cd = "", false, nil
-	return n
+	return []*shellState{n}
 }
 
 // unresolved returns st with its directory unknown.
@@ -357,6 +385,13 @@ func (st *shellState) home(rc *readCtx) (string, bool) {
 // resolve makes word an absolute, clean path the way the shell opens it, or
 // reports that the line does not fix one.
 func (st *shellState) resolve(rc *readCtx, word string, tilde bool) (string, bool) {
+	return st.resolveIn(rc, word, tilde, false)
+}
+
+// resolveIn is resolve, or with logical set the path `cd -L` computes: a `..`
+// drops the name before it, as bash does to the operand before it changes
+// directory.
+func (st *shellState) resolveIn(rc *readCtx, word string, tilde, logical bool) (string, bool) {
 	if word == "" {
 		return "", false
 	}
@@ -370,13 +405,42 @@ func (st *shellState) resolve(rc *readCtx, word string, tilde bool) (string, boo
 		}
 		word = fsutil.ExpandTilde(word, home)
 	}
-	if filepath.IsAbs(word) {
+	if !filepath.IsAbs(word) {
+		if !st.dirOK || st.dir == "" {
+			return "", false
+		}
+		word = st.dir + string(filepath.Separator) + word
+	}
+	if logical {
 		return filepath.Clean(word), true
 	}
-	if !st.dirOK || st.dir == "" {
+	return physicalPath(word)
+}
+
+// physicalPath cleans p the way the kernel opens it. A `..` is resolved
+// against the directory the path has reached, symlinks followed, never by
+// dropping the name before it: after `cd link` (logical or not), `../s.sh`
+// is the file beside the link's target (iss-2610111600031244). A path with
+// no `..` cleans lexically, which names the same file. ok is false where a
+// directory before the last `..` does not exist, so no file is there.
+func physicalPath(p string) (string, bool) {
+	parts := strings.Split(p, string(filepath.Separator))
+	last := -1
+	for i, c := range parts {
+		if c == ".." {
+			last = i
+		}
+	}
+	if last < 0 {
+		return filepath.Clean(p), true
+	}
+	// filepath.EvalSymlinks walks the unclean path one name at a time and
+	// takes a `..` from the directory it has resolved to, as the kernel does.
+	real, err := filepath.EvalSymlinks(strings.Join(parts[:last+1], string(filepath.Separator)))
+	if err != nil {
 		return "", false
 	}
-	return filepath.Join(st.dir, word), true
+	return filepath.Join(append([]string{real}, parts[last+1:]...)...), true
 }
 
 // resolveToken resolves token i of s, which the tokenizer has already
@@ -431,7 +495,7 @@ func (st *shellState) env(s segment, site int) map[string]varVal {
 	}
 	for i := 0; i < site && i < len(s.tokens); i++ {
 		if name, v, ok := assignment(s.tokens[i]); ok && trackedVars[name] {
-			out[name] = v
+			out[trackedName(name)] = v
 		}
 	}
 	return out
@@ -528,12 +592,37 @@ type writeTarget struct {
 	ok   bool
 }
 
-// scriptSeg is the reading's record of one segment: the state it runs in,
-// its place on the line, and the files it writes.
+// scriptSeg is the reading's record of one segment: every state it can run
+// in, its place on the line, and the files it writes.
 type scriptSeg struct {
-	state  *shellState
+	states []*shellState
 	order  []int
 	writes []writeTarget
+}
+
+// maxShellStates bounds the states one shell's commands are read in. A line
+// whose cds the shells read differently, one after another, multiplies them;
+// past the bound the directory is unknown and the guard warns through the
+// budget's signal.
+const maxShellStates = 16
+
+// distinctStates drops a state equal to an earlier one: two readings that
+// land in the same directory are read once.
+func distinctStates(sts []*shellState) []*shellState {
+	out := sts[:0:0]
+	for _, st := range sts {
+		dup := false
+		for _, o := range out {
+			if reflect.DeepEqual(o, st) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, st)
+		}
+	}
+	return out
 }
 
 // earlier reports whether a runs before b on the line: a command before
@@ -571,59 +660,91 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}}
 	}
 
-	// The state each segment runs in, walked in order within each shell: the
-	// text's own commands from top, and a string's commands from the state
-	// its carrier hands its child shell.
-	scopes := map[int]*shellState{}
+	// The states each segment runs in, walked in order within each shell:
+	// the text's own commands from top, and a string's commands from the
+	// states its carrier hands its child shell.
+	var signals []payloadSignal
+	scopes := map[int][]*shellState{}
 	for i, s := range segs {
-		st, ok := scopes[s.carrier]
+		sts, ok := scopes[s.carrier]
 		if !ok {
 			if s.carrier == 0 || s.carrier-1 >= i {
-				st = top
+				sts = []*shellState{top}
 			} else {
 				c := s.carrier - 1
-				cs := recs[c].state
 				site := lastSite(segs[c])
-				st = childState(cs, cs.env(segs[c], site))
-				cs.applyRedirects(rc, st.fds, segs[c].redirects)
-				if s.fromFixedOutput || isEvalCarrier(segs[c]) {
-					// Another reading of the carrier, or a string eval runs in
-					// the carrier's own shell.
-					st = cs.clone()
-					st.cd = nil
+				sts = nil
+				for _, cs := range recs[c].states {
+					st := childState(cs, cs.env(segs[c], site))
+					cs.applyRedirects(rc, st.fds, segs[c].redirects)
+					if s.fromFixedOutput || isEvalCarrier(segs[c]) {
+						// Another reading of the carrier, or a string eval runs
+						// in the carrier's own shell.
+						st = cs.clone()
+						st.cd = nil
+					}
+					sts = append(sts, st)
 				}
 			}
 		}
-		st = st.at(s)
-		recs[i].state = st
+		var here []*shellState
+		for _, st := range sts {
+			here = append(here, st.at(s)...)
+		}
+		here = distinctStates(here)
+		if len(here) > maxShellStates {
+			signals = append(signals, rc.budgetSignal()...)
+			here = []*shellState{here[0].unresolved()}
+		}
+		recs[i].states = here
 		if s.carrier > 0 && s.carrier-1 < i {
 			recs[i].order = append(append([]int(nil), recs[s.carrier-1].order...), i)
 		} else {
 			recs[i].order = []int{i}
 		}
-		scopes[s.carrier] = r.after(rc, st, s, dirChangeBelow[i])
+		next := make([]*shellState, len(here))
+		for j, st := range here {
+			next[j] = r.after(rc, st, s, dirChangeBelow[i])
+		}
+		scopes[s.carrier] = next
 	}
 
-	// The targets each segment points a shell at, and only then the writes:
-	// most lines run no script, and pay for nothing more.
+	// The targets each segment points a shell at, in every state it can run
+	// in, and only then the writes: most lines run no script, and pay for
+	// nothing more.
 	type pending struct {
 		seg int
+		st  *shellState
 		t   readTarget
 	}
 	var targets []pending
-	var signals []payloadSignal
 	for i, s := range segs {
-		ts, sigs := r.targetsOf(rc, s, recs[i].state)
-		signals = append(signals, sigs...)
-		for _, t := range ts {
-			targets = append(targets, pending{seg: i, t: t})
+		var seen []readTarget
+		var raised []payloadSignal
+		for _, st := range recs[i].states {
+			ts, sigs := r.targetsOf(rc, s, st)
+			for _, sig := range sigs {
+				if !containsSignal(raised, sig) {
+					raised = append(raised, sig)
+				}
+			}
+			for _, t := range ts {
+				if containsTarget(seen, t) {
+					continue
+				}
+				seen = append(seen, t)
+				targets = append(targets, pending{seg: i, st: st, t: t})
+			}
 		}
+		signals = append(signals, raised...)
 	}
 	if len(targets) == 0 {
 		return signals
 	}
 	for i, s := range segs {
-		recs[i].writes = writesOf(rc, s, recs[i].state)
+		for _, st := range recs[i].states {
+			recs[i].writes = append(recs[i].writes, writesOf(rc, s, st)...)
+		}
 	}
 	for _, p := range targets {
 		if rc.nTargets >= maxScriptTargets {
@@ -639,9 +760,31 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				before = append(before, recs[j].writes...)
 			}
 		}
-		signals = append(signals, r.readTarget(rc, segs[p.seg], recs[p.seg].state, p.t, before)...)
+		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before)...)
 	}
 	return signals
+}
+
+// containsSignal reports whether sigs holds sig, so a verdict two states of
+// one segment raise alike is reported once.
+func containsSignal(sigs []payloadSignal, sig payloadSignal) bool {
+	for _, o := range sigs {
+		if reflect.DeepEqual(o, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsTarget reports whether ts holds t, so a file two states of one
+// segment name alike is read once.
+func containsTarget(ts []readTarget, t readTarget) bool {
+	for _, o := range ts {
+		if reflect.DeepEqual(o, t) {
+			return true
+		}
+	}
+	return false
 }
 
 // lastSite is the last place the segment's command can sit.
@@ -674,6 +817,9 @@ func segChangesDir(s segment) bool {
 
 // after is the state the commands after s run in, in s's shell.
 func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir bool) *shellState {
+	if s.arrayOf != "" && trackedVars[s.arrayOf] {
+		return st.withArray(s)
+	}
 	allAssign := len(s.tokens) > 0
 	for _, t := range s.tokens {
 		if !isAssignment(t) {
@@ -688,7 +834,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				if n == st {
 					n = st.clone()
 				}
-				n.vars[name] = v
+				n.vars[trackedName(name)] = v
 			}
 		}
 		return n
@@ -737,6 +883,7 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 				if !trackedVars[nm] {
 					continue
 				}
+				nm = trackedName(nm)
 				if ok {
 					n.vars[nm] = v
 				}
@@ -751,8 +898,8 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 		case name == "unset":
 			n := out.clone()
 			for _, w := range args {
-				delete(n.vars, w)
-				delete(n.exported, w)
+				delete(n.vars, trackedName(w))
+				delete(n.exported, trackedName(w))
 			}
 			out = n
 		}
@@ -760,10 +907,194 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 	return out
 }
 
-// cdTarget is the state after a `cd`/`pushd` at site: its target, when it
-// exists as a directory now, holds for the commands chained after it with
-// `&&`; any other cd leaves the directory unknown.
+// withArray is the state after a command whose words are elements of a
+// tracked array assignment (`fpath=(a b)`): the `NAME=` word before it set
+// the value empty, and each element is added in order, joined as the tied
+// scalar joins them. An element the line does not fix, or one holding the
+// separator, is kept as unknownText, so a search reaching it stops there; a
+// `+=` onto a value the line did not set is the account's value, unknown,
+// followed by the elements.
+func (st *shellState) withArray(s segment) *shellState {
+	name := trackedName(s.arrayOf)
+	elems := make([]string, 0, len(s.tokens))
+	for i := range s.tokens {
+		w, ok := fixedToken(s, i)
+		if !ok || strings.ContainsRune(w, ':') {
+			w = unknownText
+		}
+		elems = append(elems, w)
+	}
+	n := st.clone()
+	prev, set := n.vars[name]
+	switch {
+	case !set && s.arrayAppend:
+		prev = varVal{text: unknownText, ok: true}
+	case !set:
+		prev = varVal{ok: true}
+	case !prev.ok:
+		prev = varVal{text: unknownText, ok: true}
+	}
+	text := strings.Join(elems, ":")
+	switch {
+	case prev.text != "" && text != "":
+		text = prev.text + ":" + text
+	case prev.text != "":
+		text = prev.text
+	}
+	n.vars[name] = varVal{text: text, ok: true}
+	return n
+}
+
+// cdTarget is the state after a `cd`/`pushd` at site: every directory a
+// reading of it enters (bash's and zsh's, cdOperand), where it exists as a
+// directory now, holds for the commands chained after it with `&&`, and the
+// scripts they name are read in each; a cd no reading fixes a directory for
+// leaves the directory unknown.
 func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
+	n := st.unresolved()
+	c := cdOperand(s, site)
+	var dirs []string
+	add := func(d string, ok bool) {
+		if ok && d != "" && !containsString(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	for _, e := range c.enters {
+		add(st.cdEnters(rc, s, site, e))
+	}
+	if c.stays {
+		add(st.dir, st.dirOK)
+	}
+	if c.subst != nil {
+		add(st.cdSubstitutes(rc, s, *c.subst))
+	}
+	if len(dirs) > 0 {
+		n.cd = &pendingCD{dirs: dirs, chain: s.chain}
+	}
+	return n
+}
+
+// cdEnters is the directory a cd reading e enters by name: the one its
+// CDPATH search can enter (targetsOf blocks one that is not one the guard can
+// name), the operand, or HOME where there is none.
+func (st *shellState) cdEnters(rc *readCtx, s segment, site int, e cdEnter) (string, bool) {
+	if c := cdpathLookup(rc, st, s, site, e); c.searches {
+		return c.dir, c.dir != ""
+	}
+	if e.i < len(s.tokens) {
+		w, fixed := fixedToken(s, e.i)
+		if !fixed || w == "-" || strings.HasPrefix(w, "+") {
+			return "", false
+		}
+		return st.cdLands(rc, w, strings.HasPrefix(w, "~"), e.physical)
+	}
+	target, ok := st.home(rc)
+	if !ok || target == "" {
+		return "", false
+	}
+	if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
+		return "", false
+	}
+	if e.physical {
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			return "", false
+		}
+		target = real
+	}
+	return filepath.Clean(target), true
+}
+
+// cdSubstitutes is the directory zsh's substitution form enters: the current
+// directory's path with the first occurrence of one word replaced by the
+// other, where that names a directory.
+func (st *shellState) cdSubstitutes(rc *readCtx, s segment, c cdSubst) (string, bool) {
+	from, ok1 := fixedToken(s, c.from)
+	to, ok2 := fixedToken(s, c.to)
+	if !ok1 || !ok2 || from == "" || !st.dirOK || !strings.Contains(st.dir, from) {
+		return "", false
+	}
+	return st.cdLands(rc, strings.Replace(st.dir, from, to, 1), false, c.physical)
+}
+
+// cdLands is the directory a `cd` to word enters, or ok false where it names
+// no directory or the line does not fix one. bash's `cd -L` drops a `..` with
+// the name before it, and falls back to the physical path when that names no
+// directory; `-P` resolves it physically, and the directory it lands in is
+// the physical one (iss-2610111600031244).
+func (st *shellState) cdLands(rc *readCtx, word string, tilde, physical bool) (string, bool) {
+	var target string
+	var ok bool
+	if !physical {
+		target, ok = st.resolveIn(rc, word, tilde, true)
+		if fi, err := os.Stat(target); ok && (err != nil || !fi.IsDir()) {
+			physical = true
+		}
+	}
+	if physical {
+		target, ok = st.resolveIn(rc, word, tilde, false)
+	}
+	if !ok || target == "" {
+		return "", false
+	}
+	if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
+		return "", false
+	}
+	if physical {
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			return "", false
+		}
+		target = real
+	}
+	return filepath.Clean(target), true
+}
+
+// cdEnter is a reading of a `cd`/`pushd` that enters the operand at i, or
+// HOME where i is past the last word, physically or logically.
+type cdEnter struct {
+	i        int
+	physical bool
+}
+
+// cdSubst is zsh's substitution form of a `cd`/`pushd`: the word at from in
+// the current directory's path replaced by the word at to.
+type cdSubst struct {
+	from, to int
+	physical bool
+}
+
+// cdReadings is what a `cd`/`pushd` does in bash and in zsh, which read some
+// forms differently; the guard does not know which shell runs the line, so it
+// takes every reading. enters are the readings that enter a directory by
+// name, stays is bash's pushd -n, which stays put, and subst is zsh's
+// substitution form. None of them is set where no reading is one the reader
+// can name.
+type cdReadings struct {
+	enters []cdEnter
+	stays  bool
+	subst  *cdSubst
+}
+
+// cdOperand reads the options and operands of the `cd`/`pushd` at site the
+// way each shell does. bash takes -L, -P (the last of the two deciding), -e
+// and -@, pushd -n too, refuses any other option and a third operand, and
+// enters its operand, or stays put for pushd -n; with two operands an older
+// bash enters the first and a newer one refuses the cd, so the first is
+// taken as entered. zsh takes -L, -P, -q and -s;
+// at the first word it does not take as an option its operands start, and
+// two operands are the substitution form, one is the directory entered, and
+// more are refused. A word starting with `-` with a letter neither shell
+// takes is refused by bash and is zsh's first operand where no earlier word
+// was, so with one more word after zsh's first operand it is the
+// substitution form, and otherwise no reading is taken.
+func cdOperand(s segment, site int) cdReadings {
+	bashLetters := "LPe@"
+	if strings.ToLower(path.Base(s.tokens[site])) == "pushd" {
+		bashLetters += "n"
+	}
+	bashOK, stays, bashPhysical, zshPhysical := true, false, false, false
+	zshFirst := -1
 	i := site + 1
 	for ; i < len(s.tokens); i++ {
 		t := s.tokens[i]
@@ -771,29 +1102,148 @@ func cdTarget(rc *readCtx, st *shellState, s segment, site int) *shellState {
 			i++
 			break
 		}
-		if t == "-L" || t == "-P" || t == "-e" || t == "-@" || t == "-LP" || t == "-PL" {
+		if len(t) < 2 || t[0] != '-' {
+			break
+		}
+		if strings.Trim(t[1:], "LPe@qsn") != "" {
+			if zshFirst < 0 {
+				zshFirst = i
+			}
+			if len(s.tokens)-zshFirst != 2 {
+				return cdReadings{}
+			}
+			return cdReadings{subst: &cdSubst{from: zshFirst, to: zshFirst + 1, physical: zshPhysical}}
+		}
+		if strings.Trim(t[1:], bashLetters) != "" {
+			bashOK = false
+		}
+		zshOption := zshFirst < 0 && strings.Trim(t[1:], "LPqs") == ""
+		if zshFirst < 0 && !zshOption {
+			zshFirst = i
+		}
+		for _, c := range t[1:] {
+			switch c {
+			case 'L', 'P':
+				bashPhysical = c == 'P'
+				if zshOption {
+					zshPhysical = c == 'P'
+				}
+			case 'n':
+				stays = true
+			}
+		}
+	}
+	var r cdReadings
+	if bashOK && len(s.tokens)-i <= 2 {
+		if stays {
+			r.stays = true
+		} else {
+			r.enters = append(r.enters, cdEnter{i: i, physical: bashPhysical})
+		}
+	}
+	if zshFirst < 0 {
+		zshFirst = i
+	}
+	switch len(s.tokens) - zshFirst {
+	case 0, 1:
+		if e := (cdEnter{i: zshFirst, physical: zshPhysical}); len(r.enters) == 0 || r.enters[0] != e {
+			r.enters = append(r.enters, e)
+		}
+	case 2:
+		r.subst = &cdSubst{from: zshFirst, to: zshFirst + 1, physical: zshPhysical}
+	}
+	return r
+}
+
+// cdpathSearch is what the CDPATH search of a `cd`/`pushd` comes to.
+type cdpathSearch struct {
+	// searches is set where the shell searches CDPATH for the operand.
+	searches bool
+	// fromEnv is set where that CDPATH is the one the check's environment
+	// exports, not one the command sets.
+	fromEnv bool
+	// dir is the one directory the search can enter, or "" where the guard
+	// cannot name it.
+	dir string
+}
+
+// cdpathLookup is the CDPATH search of the `cd`/`pushd` at site. The shell
+// searches CDPATH when the operand is not absolute and does not start with
+// `./` or `../` (nor is `.` or `..`), and CDPATH — as the line set it, a
+// prefix on the cd included, else as the environment the check runs in holds
+// it — is not empty. zsh's cdpath is the same variable. The shell then enters
+// the first candidate holding the operand, bash and zsh in different orders:
+// bash tries the CDPATH entries (an empty or `.` entry is the current
+// directory) and then the current directory, zsh the current directory first
+// unless `.` is an entry. Where exactly one candidate exists both enter it,
+// and that is dir; none, two, more entries than maxScriptTargets, or an entry
+// or a current directory the line does not fix, leave dir empty, and the cd
+// blocks (iss-2610111600031244, iss-2610111749083184). e is the reading of
+// the cd that enters its operand by name (cdOperand).
+func cdpathLookup(rc *readCtx, st *shellState, s segment, site int, e cdEnter) cdpathSearch {
+	i, physical := e.i, e.physical
+	w, fixed := fixedToken(s, i)
+	if !fixed {
+		// No operand goes HOME; one the line does not fix leaves the
+		// directory unknown whatever CDPATH holds.
+		return cdpathSearch{}
+	}
+	if w == "-" || strings.HasPrefix(w, "+") || strings.HasPrefix(w, "/") || strings.HasPrefix(w, "~") ||
+		w == "." || w == ".." || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../") {
+		return cdpathSearch{}
+	}
+	v, set := st.vars["CDPATH"]
+	for j := 0; j < site && j < len(s.tokens); j++ {
+		if name, pv, ok := assignment(s.tokens[j]); ok && trackedName(name) == "CDPATH" {
+			v, set = pv, true
+		}
+	}
+	c := cdpathSearch{searches: true}
+	if !set {
+		v, c.fromEnv = varVal{text: rc.files.cdpath, ok: true}, true
+	}
+	if v.ok && v.text == "" {
+		return cdpathSearch{}
+	}
+	if !v.ok {
+		return c
+	}
+	entries := strings.Split(v.text, ":")
+	if len(entries) > maxScriptTargets {
+		return c
+	}
+	words := make([]string, 0, len(entries)+1)
+	cwdEntry := false
+	for _, e := range entries {
+		switch {
+		case isUnknown(e) || strings.ContainsRune(e, varMark) || strings.HasPrefix(e, "~"):
+			return c
+		case e == "" || e == ".":
+			cwdEntry = true
+			words = append(words, w)
+		default:
+			words = append(words, strings.TrimSuffix(e, "/")+"/"+w)
+		}
+	}
+	if !cwdEntry {
+		words = append(words, w)
+	}
+	found := ""
+	for _, cw := range words {
+		if !filepath.IsAbs(cw) && (!st.dirOK || st.dir == "") {
+			return c
+		}
+		d, ok := st.cdLands(rc, cw, false, physical)
+		if !ok || d == found {
 			continue
 		}
-		break
+		if found != "" {
+			return c
+		}
+		found = d
 	}
-	var target string
-	var ok bool
-	if i >= len(s.tokens) {
-		target, ok = st.home(rc)
-	} else if s.tokens[i] == "-" || strings.HasPrefix(s.tokens[i], "+") {
-		ok = false
-	} else {
-		target, ok = st.resolveToken(rc, s, i)
-	}
-	n := st.unresolved()
-	if !ok || target == "" {
-		return n
-	}
-	if fi, err := os.Stat(target); err != nil || !fi.IsDir() {
-		return n
-	}
-	n.cd = &pendingCD{dir: filepath.Clean(target), chain: s.chain}
-	return n
+	c.dir = found
+	return c
 }
 
 // sourcedChangesDir reports whether the file a `source` at site reads holds a
@@ -873,7 +1323,21 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			continue
 		}
 		name := strings.ToLower(path.Base(tok))
-		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") {
+		if name == "cd" || name == "pushd" {
+			blocked := false
+			for _, e := range cdOperand(s, a.idx).enters {
+				if c := cdpathLookup(rc, st, s, a.idx, e); c.searches && c.dir == "" {
+					sigs = append(sigs, cdpathSignal(c.fromEnv))
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+		}
+		first, opaque, autoload := autoloadCall(s, a.idx, name)
+		if !isShellFamily(name) && name != "source" && name != "." && !strings.Contains(tok, "/") && !autoload {
 			continue
 		}
 		// The bound holds before any lookup: a line naming thousands of
@@ -890,13 +1354,22 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			out = append(out, ts...)
 			sigs = append(sigs, ss...)
 		case name == "source" || name == ".":
-			if p, ok := sourcePath(rc, st, s, a.idx); ok {
+			p, ok, unfixed := sourceLookup(rc, st, s, a.idx)
+			if unfixed {
+				sigs = append(sigs, sourcePathUnfixedSignal())
+				continue
+			}
+			if ok {
 				out = append(out, readTarget{path: p, shown: sourceWord(s, a.idx), kind: targetScript, sourced: true, env: env})
 			} else if w := sourceWord(s, a.idx); w != "" && !strings.Contains(w, "/") {
 				if _, fixed := fixedToken(s, sourceIndex(s, a.idx)); fixed && !scriptIsStream(w, s.stdinStream) {
 					rc.note("abcd guard: `%s %s` names no file the shell can find, so there was nothing to read; if the shell reaches it, it refuses it.", tok, w)
 				}
 			}
+		case autoload:
+			ts, ss := autoloadTargets(rc, s, st, a.idx, first, opaque, env)
+			out = append(out, ts...)
+			sigs = append(sigs, ss...)
 		case strings.Contains(tok, "/"):
 			if p, ok := st.resolveToken(rc, s, a.idx); ok {
 				out = append(out, readTarget{path: p, shown: tok, kind: targetDirect, env: env, startupEnv: true})
@@ -904,6 +1377,114 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 		}
 	}
 	return out, sigs
+}
+
+// autoloadCall reports whether the command at site marks functions to be
+// loaded from their files, as zsh's and ksh's `autoload` does, and so do
+// `functions -u` and `typeset -fu` (declare is typeset's other name): the
+// index of its first operand, and whether its operands are not plain names
+// (-m patterns, -w compiled files).
+func autoloadCall(s segment, site int, name string) (first int, opaque, ok bool) {
+	var f, u bool
+	switch name {
+	case "autoload":
+		f, u = true, true
+	case "functions":
+		f = true
+	case "typeset", "declare":
+	default:
+		return 0, false, false
+	}
+	i := site + 1
+	for ; i < len(s.tokens); i++ {
+		t := s.tokens[i]
+		if t == "--" {
+			i++
+			break
+		}
+		if len(t) < 2 || (t[0] != '-' && t[0] != '+') {
+			break
+		}
+		if isUnknown(t) || strings.ContainsRune(t, varMark) {
+			// An option the line does not fix may be any of them.
+			opaque = true
+			continue
+		}
+		for _, c := range t[1:] {
+			switch c {
+			case 'f':
+				f = true
+			case 'u':
+				u = true
+			case 'm', 'w':
+				opaque = true
+			}
+		}
+	}
+	return i, opaque, f && u
+}
+
+// autoloadTargets is the function file each operand of an autoload at site
+// loads. An operand with a slash is that file. A name is searched in the
+// FPATH the line set — the first directory holding it, as a compiled
+// `dir.zwc` or `dir/name.zwc` or as `dir/name` — and where the line leaves
+// FPATH as the account set it, the file is the account's own and stays
+// unseen, as its startup files do. Where the line set FPATH but does not fix
+// a name, or a directory searched before the file is found, what loads is
+// not a file the guard can read, and that blocks (iss-2610111600022820).
+func autoloadTargets(rc *readCtx, s segment, st *shellState, site, first int, opaque bool, env map[string]varVal) ([]readTarget, []payloadSignal) {
+	fp, lineSet := st.vars["FPATH"]
+	for i := 0; i < site && i < len(s.tokens); i++ {
+		if name, v, ok := assignment(s.tokens[i]); ok && trackedName(name) == "FPATH" {
+			fp, lineSet = v, true
+		}
+	}
+	unfixed := []payloadSignal{autoloadUnfixedSignal()}
+	var out []readTarget
+	for i := first; i < len(s.tokens); i++ {
+		w, fixed := fixedToken(s, i)
+		switch {
+		case fixed && strings.Contains(w, "/"):
+			if p, ok := st.resolveToken(rc, s, i); ok {
+				out = append(out, readTarget{path: p, shown: "the function file autoload loads (" + w + ")", kind: targetScript, sourced: true, env: env})
+			} else if lineSet {
+				return nil, unfixed
+			}
+			continue
+		case !lineSet:
+			continue // the account's own FPATH
+		case !fixed || opaque || !fp.ok:
+			return nil, unfixed
+		}
+		var dirs []string
+		if fp.text != "" {
+			dirs = strings.Split(fp.text, ":")
+		}
+		if len(dirs) > maxScriptTargets {
+			return nil, unfixed
+		}
+		for _, d := range dirs {
+			if d == "" || isUnknown(d) || strings.ContainsRune(d, varMark) {
+				return nil, unfixed
+			}
+			dir, ok := st.resolve(rc, d, strings.HasPrefix(d, "~"))
+			if !ok {
+				return nil, unfixed
+			}
+			p, found := "", false
+			for _, c := range []string{dir + ".zwc", filepath.Join(dir, w+".zwc"), filepath.Join(dir, w)} {
+				if fi, err := rc.files.stat(c, false); err == nil && fi.Mode().IsRegular() {
+					p, found = c, true
+					break
+				}
+			}
+			if found {
+				out = append(out, readTarget{path: p, shown: "the function file autoload " + w + " loads (" + p + ")", kind: targetScript, sourced: true, env: env})
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 // sourceIndex is the token index of a `source` at site's file operand, or -1.
@@ -930,44 +1511,76 @@ func sourceWord(s segment, site int) string {
 // directory. ok is false where the line does not fix the word, where it is a
 // stream (the stream refusal reads it), or where no file is found by search.
 func sourcePath(rc *readCtx, st *shellState, s segment, site int) (string, bool) {
+	p, ok, _ := sourceLookup(rc, st, s, site)
+	return p, ok
+}
+
+// sourceLookup is sourcePath, and whether the search ran into a PATH entry
+// the line does not fix. A `PATH=` prefix on the `source` itself is the PATH
+// its search reads (iss-2610111600031244), and there an entry the line does
+// not fix — a variable, or a relative entry where the working directory is
+// unknown — means the file the shell finds is not one the guard can name.
+func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, ok, unfixed bool) {
 	i := sourceIndex(s, site)
 	w, ok := fixedToken(s, i)
 	if !ok || scriptIsStream(w, s.stdinStream) {
-		return "", false
+		return "", false, false
 	}
 	if strings.Contains(w, "/") || strings.HasPrefix(w, "~") {
-		return st.resolveToken(rc, s, i)
+		p, ok := st.resolveToken(rc, s, i)
+		return p, ok, false
 	}
-	return searchPath(rc, st, w, true)
+	pv, set := st.vars["PATH"]
+	prefix := false
+	for j := 0; j < site && j < len(s.tokens); j++ {
+		if name, v, isAssign := assignment(s.tokens[j]); isAssign && name == "PATH" {
+			pv, set, prefix = v, true, true
+		}
+	}
+	return searchPath(rc, st, pv, set, w, true, prefix)
 }
 
-// searchPath finds a bare name on PATH, as the line set it or as the
-// account's, and then, for `source`, in the working directory.
-func searchPath(rc *readCtx, st *shellState, name string, thenCwd bool) (string, bool) {
+// searchPath finds a bare name on PATH — pv when set, as the line set it,
+// else the account's — and then, for `source`, in the working directory. An
+// empty entry is the working directory, and a relative entry resolves
+// against it, as the shell's search does. With strict, an entry the line
+// does not fix stops the search and is reported (unfixed); without, the
+// search skips it, as it always has.
+func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, thenCwd, strict bool) (string, bool, bool) {
 	pathVar := rc.files.path
-	if v, ok := st.vars["PATH"]; ok {
-		if !v.ok {
-			return "", false
+	if set {
+		if !pv.ok {
+			return "", false, strict
 		}
-		pathVar = v.text
+		pathVar = pv.text
 	}
 	for _, d := range filepath.SplitList(pathVar) {
-		if d == "" || !filepath.IsAbs(d) {
-			continue
+		if d == "" {
+			d = "."
 		}
 		p := filepath.Join(d, name)
+		if !filepath.IsAbs(d) {
+			q, ok := st.resolve(rc, p, false)
+			if !ok {
+				if strict {
+					return "", false, true
+				}
+				continue
+			}
+			p = q
+		}
 		if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
-			return p, true
+			return p, true, false
 		}
 	}
 	if thenCwd {
 		if p, ok := st.resolve(rc, name, false); ok {
 			if _, err := rc.files.stat(p, false); err == nil {
-				return p, true
+				return p, true, false
 			}
 		}
 	}
-	return "", false
+	return "", false, false
 }
 
 // shellCall is how a shell-family shell reads its arguments.
@@ -1095,6 +1708,10 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 			sigs = append(sigs, interpreterStreamSignal())
 			return
 		}
+		if shellExpandsStartup(value) {
+			sigs = append(sigs, startupExpandedSignal(varName))
+			return
+		}
 		if p, ok := st.resolve(rc, value, tilde); ok {
 			out = append(out, child(p, "the startup file "+varName+" names ("+value+")", targetStartup))
 		}
@@ -1213,7 +1830,10 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 		default:
 			if p, ok := st.resolveToken(rc, s, idx); ok {
 				if _, err := rc.files.stat(p, true); err != nil && !strings.Contains(w, "/") {
-					if q, found := searchPath(rc, st, w, false); found {
+					// bash searches the PATH it was handed: a prefix on it
+					// included.
+					pv, set := env["PATH"]
+					if q, found, _ := searchPath(rc, st, pv, set, w, false, false); found {
 						p = q
 					}
 				}
@@ -1226,6 +1846,17 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 		}
 	}
 	return out, sigs
+}
+
+// shellExpandsStartup reports whether a BASH_ENV or ENV value holds text the
+// shell expands before it opens the file: bash runs parameter expansion,
+// command substitution and arithmetic expansion on the value
+// (iss-2610111600039059), so a `$` or a backquote in it means the file is not
+// the one the text names, and a substitution in it runs during the expansion,
+// before any file is read. The value is the line's text after its own quoting,
+// so a substitution the line ran itself is not here: its output is unknown.
+func shellExpandsStartup(value string) bool {
+	return strings.ContainsAny(value, "$`")
 }
 
 // readTarget reads one file a command points a shell at and judges it.
@@ -1310,7 +1941,9 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		// A shell script run directly is run by a non-interactive shell, which
 		// reads BASH_ENV first.
 		if v, ok := t.env["BASH_ENV"]; ok && v.ok && v.text != "" {
-			if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
+			if shellExpandsStartup(v.text) {
+				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
+			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
 					kind: targetStartup, env: t.env}, before)...)
 			}
@@ -1478,6 +2111,61 @@ func scriptOversizedSignal(shown string, size int64) payloadSignal {
 		reason: fmt.Sprintf("A shell runs %s, which is %d bytes, over the %d the guard reads, so it has not checked what runs.",
 			shown, size, maxScriptBytes),
 		successor: "Split the script into files under 256 KiB, so the guard reads what runs.",
+	}
+}
+
+// startupExpandedSignal is the block for a startup variable whose value the
+// shell expands before it reads the file: what runs is not text the guard can
+// read from the line.
+func startupExpandedSignal(varName string) payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command hands a shell " + varName + " holding a substitution or a variable, which the shell " +
+			"expands before it reads the file: a substitution there runs, and the file it names is not one the guard can read.",
+		successor: "Set " + varName + " to the startup file's fixed path, or source the file in the command string instead.",
+	}
+}
+
+// cdpathSignal is the block for a `cd` that searches CDPATH where the guard
+// cannot name the directory it enters; fromEnv says the CDPATH is the one the
+// check's environment exports, which the command never names.
+func cdpathSignal(fromEnv bool) payloadSignal {
+	where := "the CDPATH this command sets"
+	successor := "Name the directory as an absolute path or with a leading ./ (cd ./sub), which the shell does not search CDPATH for."
+	if fromEnv {
+		where = "the CDPATH exported in the environment this check runs in, which the command does not set,"
+		successor = "Name the directory as an absolute path or with a leading ./ (cd ./sub), which the shell does not search " +
+			"CDPATH for, or unset CDPATH in the environment the commands run in."
+	}
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command changes directory by a name the shell searches CDPATH for, and " + where +
+			" offers no directory holding it, more than one, more entries than the guard looks through, or one the line " +
+			"does not fix, so the directory the " +
+			"commands after it run in, and the scripts they name, are not ones the guard can read.",
+		successor: successor,
+	}
+}
+
+// sourcePathUnfixedSignal is the block for a `source` whose own PATH prefix
+// holds an entry the line does not fix.
+func sourcePathUnfixedSignal() payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command sources a file by name through a PATH it sets, and an entry of that PATH is not fixed " +
+			"by the line, so the file the shell finds is not one the guard can read.",
+		successor: "Source the file by its path (source ./lib.sh), or set PATH to fixed absolute directories.",
+	}
+}
+
+// autoloadUnfixedSignal is the block for an autoload whose function file the
+// line does not fix: a name, or a directory searched before the file is found.
+func autoloadUnfixedSignal() payloadSignal {
+	return payloadSignal{
+		id: scriptUnreadEntryID, verdict: VerdictBlock, family: familyScript, fromRead: true,
+		reason: "This command autoloads a function from an FPATH the line sets, but the line does not fix the name " +
+			"or a directory searched for it, so the file the shell loads and runs is not one the guard can read.",
+		successor: "Set FPATH (or fpath) to fixed directories and autoload a fixed name, or source the function file by its path.",
 	}
 }
 

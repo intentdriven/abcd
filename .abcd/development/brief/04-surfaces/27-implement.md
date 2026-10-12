@@ -524,6 +524,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--accept-config-change` | bool |
 | `--discard` | string |
 | `--release` | string |
 | `--restart` | string |
