@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -207,22 +208,117 @@ func swapGroupMembersForTest(fn func(uint32) ([]uint32, bool)) (restore func()) 
 }
 
 // accountFileGroupMembers reads gid's members from /etc/passwd and
-// /etc/group (membersFromAccountFiles), where those files hold the machine's
-// accounts. On darwin they do not (directory services do), so the members are
-// unread there, and a group-writable directory is refused.
+// /etc/group (groupMembersFrom), where the name service switch reads those
+// files alone. On darwin they do not hold the machine's accounts (directory
+// services do), so the members are unread there, and a group-writable
+// directory is refused.
 func accountFileGroupMembers(gid uint32) ([]uint32, bool) {
 	if runtime.GOOS == "darwin" {
 		return nil, false
 	}
-	passwd, err := os.ReadFile("/etc/passwd")
+	return groupMembersFrom(systemAccountSources, gid)
+}
+
+// accountSources are the files groupMembersFrom reads: the name service
+// switch's configuration, the first of nsswitch that exists (glibc's own, then
+// the vendor copy a distribution that ships one under /usr/etc falls back
+// to), and the account files.
+type accountSources struct {
+	nsswitch      []string
+	passwd, group string
+}
+
+// systemAccountSources are the machine's. A var so a test can point
+// groupMembersFrom elsewhere; production never reassigns it.
+var systemAccountSources = accountSources{
+	nsswitch: []string{"/etc/nsswitch.conf", "/usr/etc/nsswitch.conf"},
+	passwd:   "/etc/passwd",
+	group:    "/etc/group",
+}
+
+// groupMembersFrom is gid's members from src's account files
+// (membersFromAccountFiles), read only when the name service switch takes
+// accounts and groups from those files alone (switchReadsFilesAlone). A
+// switch that names another source (sss, ldap, winbind, nis, systemd) takes
+// accounts and group members from where the files do not show, with no `+`
+// line in either file to say so, so then the members are unread and a
+// group-writable directory is refused. No switch configuration at all is
+// glibc's built-in default, which reads the files (compat, whose `+` lines
+// membersFromAccountFiles already refuses); one that exists and cannot be
+// read is unread.
+func groupMembersFrom(src accountSources, gid uint32) ([]uint32, bool) {
+	for _, p := range src.nsswitch {
+		conf, err := os.ReadFile(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil || !switchReadsFilesAlone(conf) {
+			return nil, false
+		}
+		break
+	}
+	passwd, err := os.ReadFile(src.passwd)
 	if err != nil {
 		return nil, false
 	}
-	group, err := os.ReadFile("/etc/group")
+	group, err := os.ReadFile(src.group)
 	if err != nil {
 		return nil, false
 	}
 	return membersFromAccountFiles(passwd, group, gid)
+}
+
+// switchReadsFilesAlone reports whether an nsswitch.conf takes the databases
+// that decide who is in a group (passwd, group, and initgroups, which sets a
+// login's supplementary groups) from the account files alone: every source
+// their lines name is `files` or `compat`, and no action merges one source's
+// group into another's (`[SUCCESS=merge]`, in any case or spacing). A database
+// the file does not name takes glibc's default, which is the files. Anything
+// else, an action bracket left open included, is not files alone.
+//
+// systemd counts as another source: nss-systemd adds the accounts of
+// systemd-homed and of userdb records, and a login's supplementary groups
+// from their memberships, none of which /etc/passwd or /etc/group shows. So a
+// host whose switch names it (the default on several distributions) refuses a
+// group-writable home, whose repair the refusal names (`chmod g-w`).
+func switchReadsFilesAlone(conf []byte) bool {
+	for _, line := range strings.Split(string(conf), "\n") {
+		line, _, _ = strings.Cut(line, "#")
+		db, services, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(db)) {
+		case "passwd", "group", "initgroups":
+		default:
+			continue
+		}
+		rest := services
+		for {
+			before, after, bracket := strings.Cut(rest, "[")
+			for _, svc := range strings.Fields(before) {
+				if svc != "files" && svc != "compat" {
+					return false
+				}
+			}
+			if !bracket {
+				break
+			}
+			action, tail, closed := strings.Cut(after, "]")
+			if !closed {
+				return false
+			}
+			action = strings.ReplaceAll(strings.ToLower(action), "=", " = ")
+			f := strings.Fields(action)
+			for i := 0; i+1 < len(f); i++ {
+				if f[i] == "=" && f[i+1] == "merge" {
+					return false
+				}
+			}
+			rest = tail
+		}
+	}
+	return true
 }
 
 // membersFromAccountFiles is gid's members from the account files' contents,

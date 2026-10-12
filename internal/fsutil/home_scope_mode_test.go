@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -251,5 +253,125 @@ func TestGroupMembersAreUnreadWhenTheAccountFilesDeferToTheNetwork(t *testing.T)
 	}
 	if got, ok := membersFromAccountFiles([]byte(passwd), []byte(group), 1001); !ok || !slices.Equal(got, []uint32{1001}) {
 		t.Fatalf("without a compat line, members(1001) = %v, %v; want [1001], read", got, ok)
+	}
+}
+
+// accountSourcesAt writes an nsswitch.conf holding nsswitch (none when
+// nsswitch is absent), and passwd and group files in which gid is the private
+// group of an account with uid, and returns them as accountSources.
+func accountSourcesAt(t *testing.T, nsswitch *string, uid, gid uint32) accountSources {
+	t.Helper()
+	dir := t.TempDir()
+	src := accountSources{
+		nsswitch: []string{filepath.Join(dir, "etc-nsswitch.conf"), filepath.Join(dir, "usr-etc-nsswitch.conf")},
+		passwd:   filepath.Join(dir, "passwd"),
+		group:    filepath.Join(dir, "group"),
+	}
+	files := map[string]string{
+		src.passwd: "root:x:0:0:root:/root:/bin/sh\nalice:x:" + strconv.FormatUint(uint64(uid), 10) + ":" + strconv.FormatUint(uint64(gid), 10) + "::/home/alice:/bin/sh\n",
+		src.group:  "root:x:0:\nalice:x:" + strconv.FormatUint(uint64(gid), 10) + ":\n",
+	}
+	if nsswitch != nil {
+		files[src.nsswitch[0]] = *nsswitch
+	}
+	for p, body := range files {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return src
+}
+
+// The account files are the machine's whole account list only when the name
+// service switch reads them alone. A host whose nsswitch.conf names a
+// directory service (sss, ldap, winbind, nis), systemd's account sources, or
+// a merge of another source into a file's group, takes accounts and group
+// members from where the files do not show, with no `+` line in either file
+// to say so; its group members are unread, so a group-writable home there is
+// refused, naming the chmod that repairs it. A host whose switch names the
+// files alone, or that has no nsswitch.conf (glibc's default, compat, which
+// the `+` check covers), still reads a private group as the owner's alone.
+func TestGroupMembersAreUnreadWhenTheNameServiceSwitchNamesAnotherSource(t *testing.T) {
+	const uid, gid = 1001, 1001
+	for _, c := range []struct {
+		name, conf string
+		read       bool
+	}{
+		{"files sss, no compat line", "passwd: files sss\ngroup: files sss\n", false},
+		{"the group line alone names ldap", "passwd: files\ngroup:  files ldap\n", false},
+		{"the passwd line alone names winbind", "passwd: compat winbind\ngroup: compat\n", false},
+		{"nis", "passwd: files nis\ngroup: files nis\n", false},
+		{"systemd", "passwd: files systemd\ngroup: files systemd\n", false},
+		{"a merge into the files' groups", "passwd: files\ngroup: files [SUCCESS=merge] files\n", false},
+		{"a merge spelt with spaces", "passwd: files\ngroup: files [ success = merge ]\n", false},
+		{"initgroups names sss", "passwd: files\ngroup: files\ninitgroups: files sss\n", false},
+		{"an unterminated action", "passwd: files\ngroup: files [NOTFOUND=return\n", false},
+		{"files alone", "# comment\npasswd: files # local only\ngroup: files\nhosts: files dns\n", true},
+		{"compat, with a return action", "passwd: compat\ngroup: compat [NOTFOUND=return] files\nshadow: files sss\n", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := groupMembersFrom(accountSourcesAt(t, &c.conf, uid, gid), gid)
+			if ok != c.read {
+				t.Fatalf("members(%d) = %v, read %v; want read %v", gid, got, ok, c.read)
+			}
+			if ok && !slices.Equal(got, []uint32{uid}) {
+				t.Fatalf("members(%d) = %v; want [%d]", gid, got, uid)
+			}
+		})
+	}
+	t.Run("no nsswitch.conf", func(t *testing.T) {
+		if got, ok := groupMembersFrom(accountSourcesAt(t, nil, uid, gid), gid); !ok || !slices.Equal(got, []uint32{uid}) {
+			t.Fatalf("members(%d) = %v, %v; want [%d], read, as glibc's default reads the files", gid, got, ok, uid)
+		}
+	})
+	t.Run("the vendor nsswitch.conf when /etc has none", func(t *testing.T) {
+		src := accountSourcesAt(t, nil, uid, gid)
+		if err := os.WriteFile(src.nsswitch[1], []byte("passwd: files sss\ngroup: files sss\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := groupMembersFrom(src, gid); ok {
+			t.Fatalf("members(%d) = %v, read; want unread under the vendor switch naming sss", gid, got)
+		}
+	})
+	t.Run("an nsswitch.conf that cannot be read", func(t *testing.T) {
+		src := accountSourcesAt(t, nil, uid, gid)
+		if err := os.Mkdir(src.nsswitch[0], 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := groupMembersFrom(src, gid); ok {
+			t.Fatalf("members(%d) = %v, read; want unread when the switch cannot be read", gid, got)
+		}
+	})
+}
+
+// End to end: a 0775 ~/.abcd whose group is its owner's private group in the
+// account files is refused on a host whose switch names sss, and the refusal
+// names `chmod g-w`; under a switch naming the files alone it is read.
+func TestAGroupWritableHomeIsRefusedUnderADirectoryService(t *testing.T) {
+	home := abcdHomeAt(t, ".abcd/trusted-roots", 0o775, "/example\n")
+	st, err := os.Stat(filepath.Join(home, ".abcd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid := st.Sys().(*syscall.Stat_t).Gid
+	for _, c := range []struct{ name, conf, repair string }{
+		{"files sss", "passwd: files sss\ngroup: files sss\n", "chmod g-w ~/.abcd"},
+		{"files alone", "passwd: files\ngroup: files\n", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			src := accountSourcesAt(t, &c.conf, uint32(os.Getuid()), gid)
+			restore := swapGroupMembersForTest(func(g uint32) ([]uint32, bool) { return groupMembersFrom(src, g) })
+			defer restore()
+			raw, refusal, err := ReadHomeDeclaration(home, ".abcd/trusted-roots", 1024)
+			if c.repair == "" {
+				if refusal != DeclarationOK || err != nil {
+					t.Fatalf("want the declaration read: refusal %d, err %v", refusal, err)
+				}
+				return
+			}
+			if refusal != DeclarationDirectoryExposed || raw != nil || !strings.Contains(err.Error(), "`"+c.repair+"`") {
+				t.Fatalf("want the declaration refused naming %q: refusal %d, err %v", c.repair, refusal, err)
+			}
+		})
 	}
 }
