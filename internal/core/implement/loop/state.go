@@ -131,11 +131,22 @@ const lockFileName = ".lock"
 // a landing's `check_wait_since` (ruling DR6d-2) is version 9's too, added
 // before any release wrote the version;
 // one of them carrying anything only version 9 writes is refused, and so is a
-// version-9 file carrying `awaiting`, which version 9 never writes. An await's
-// `kept` is version 9's too, added after releases wrote the version: it is
-// written only on an await a rate limit kept, so only such a file is one an
-// earlier release refuses.
-const SchemaVersion = 9
+// file of version 9 or later carrying `awaiting`, which no version since 8
+// writes.
+//
+// Version 10 added an await's `kept` (iss-2610100913086397): why a rate-limit
+// checkpoint kept the await when it could not save the gone agent's return
+// aside, which `--restart` re-tells. Version 9 is its strict subset, read as a
+// run no rate limit kept an await of and written back at version 10; a file of
+// version 9 or lower carrying `kept` is not one its version wrote, and is
+// refused. Releases that write version 9 decode strictly, so a version-10 file
+// reaches them as a version they do not know rather than as a field they do
+// not name.
+const SchemaVersion = 10
+
+// schemaVersionUnkept is the version before an await's `kept`: read, never
+// written.
+const schemaVersionUnkept = 9
 
 // schemaVersionSerial is the version before a run worked in parallel: read and
 // migrated, never written.
@@ -618,6 +629,19 @@ func (s State) validated() bool {
 	return false
 }
 
+// kept reports the first await, in a state, that carries `kept`, which only
+// version 10 writes, or "".
+func (s State) kept() string {
+	for _, l := range s.Lanes {
+		for _, a := range l.Awaits {
+			if a.Kept != "" {
+				return "`kept` on " + l.ID + "'s " + a.Role
+			}
+		}
+	}
+	return ""
+}
+
 // parallel reports what, in a state, only version 9 writes: the name of the
 // first key or stage found, or "".
 func (s State) parallel() string {
@@ -749,7 +773,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnrouted && st.routed():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionSerial:
+	case st.SchemaVersion <= schemaVersionUnkept && st.kept() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnkept:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -783,8 +810,9 @@ type laneStepNamed struct {
 }
 
 // stateAwaitNamed is a state file of version 4 or later read in the shape that
-// carries the lane's one `awaiting`: versions 4 to 8 wrote it, and a version-9
-// file carrying it is refused by name rather than as an unknown field.
+// carries the lane's one `awaiting`: versions 4 to 8 wrote it, and a file of
+// version 9 or later carrying it is refused by name rather than as an unknown
+// field.
 type stateAwaitNamed struct {
 	State
 	Lanes []laneAwaitNamed `json:"lanes"`

@@ -10,6 +10,7 @@ package loop
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -410,5 +411,62 @@ func TestARestartOfTwoKeptAwaitsProvesBothBeforeSavingEither(t *testing.T) {
 	}
 	if got := f.lane(t, "lane-1").Awaits; !slices.Equal(got, before.Lanes[0].Awaits) {
 		t.Fatalf("the awaits are unchanged: %+v, was %+v", got, before.Lanes[0].Awaits)
+	}
+}
+
+// An await's `kept` is version 10's: version 9 is its strict subset, read as a
+// run no rate limit kept an await of and written back at version 10, and a
+// file of version 9 or lower carrying `kept` is not one its version wrote, and
+// is refused naming the version and the key.
+func TestAVersion9StateCarryingAKeptAwaitIsRefused(t *testing.T) {
+	f, _, _, _ := keptValidator(t)
+	path := f.abs(StateRelPath(f.runID))
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// as rewrites the file as a version with lane 0 edited by edit.
+	as := func(version int, edit func(lane map[string]any)) {
+		var doc map[string]any
+		if err := json.Unmarshal(current, &doc); err != nil {
+			t.Fatal(err)
+		}
+		doc["schema_version"] = version
+		edit(doc["lanes"].([]any)[0].(map[string]any))
+		out, _ := json.MarshalIndent(doc, "", "  ")
+		if err := os.WriteFile(path, out, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	unkept := func(lane map[string]any) {
+		for _, a := range lane["awaits"].([]any) {
+			delete(a.(map[string]any), "kept")
+		}
+	}
+	serial := func(lane map[string]any) {
+		lane["awaiting"] = lane["awaits"].([]any)[0]
+		delete(lane, "awaits")
+	}
+	kept := func(lane map[string]any) {
+		lane["awaits"].([]any)[0].(map[string]any)["kept"] = "its partial return could not be saved aside"
+	}
+
+	as(9, unkept)
+	if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.SchemaVersion != SchemaVersion {
+		t.Fatalf("a version-9 file without `kept` reads as the current version: %+v %v", st.SchemaVersion, err)
+	}
+	for name, tc := range map[string]struct {
+		version int
+		edit    func(lane map[string]any)
+	}{
+		"v9 kept": {9, func(lane map[string]any) { unkept(lane); kept(lane) }},
+		"v8 kept": {8, func(lane map[string]any) { unkept(lane); kept(lane); serial(lane) }},
+	} {
+		as(tc.version, tc.edit)
+		_, err := ReadState(f.repo.Root(), f.runID)
+		r := mustRefusal(t, err)
+		if !strings.Contains(r.Reason, fmt.Sprintf("schema version %d", tc.version)) || !strings.Contains(r.Reason, "`kept`") {
+			t.Errorf("%s: refused naming the version and the key: %+v", name, r)
+		}
 	}
 }
