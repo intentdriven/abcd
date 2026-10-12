@@ -17,18 +17,18 @@ front doors, and the enforcement hooks are thin callers into the binary.
 **Rewritten on 2026-09-29 to the product thinker's rulings** (itd-148
 `## Decisions`). This spec no longer mints `abcd worktree new <slug>` or
 `abcd worktree sweep`, and it no longer composes a sweep of its own: the
-store draft owns adding, listing and clearing away worktrees, and this spec
+store intent owns adding, listing and clearing away worktrees, and this spec
 calls those verbs. It **reverses** the scope of the 2026-08-26 planning
 interview in exactly that respect; the block, the allow-set, the seeding and
 the peer visibility stand.
 
 ## Blocked on
 
-- **The store draft's planning interview** (itd-2609091014076309). Ruling Q4
-  of 2026-09-29 plans the store draft first: nothing from the store draft,
+- **The store intent's planning interview** (itd-2609091014076309). Ruling Q4
+  of 2026-09-29 plans the store intent first: nothing from the store intent,
   the merged-worktree clean-up included, is built before its planning
   interview. This spec waits on it because it calls the store's verbs
-  (ruling Q2), which is what itd-148's `blocked_by` on the store draft
+  (ruling Q2), which is what itd-148's `blocked_by` on the store intent
   carries.
 - **The store's add, list and clean-up verbs shipping**, because the
   refusal names the add verb as the route and the seeding runs on the
@@ -45,7 +45,7 @@ the peer visibility stand.
    package's.
 2. **Verb**: the hook entry point, a `check` sub-verb beside the store's
    worktree verbs (its final name follows the store's naming, one of that
-   draft's open questions); the exit code carries the block verdict. It
+   intent's open questions); the exit code carries the block verdict. It
    performs zero writes.
 3. **Hooks**: a PreToolUse-shaped hook routing the host's file-edit and shell
    tools through the check; a git pre-commit backstop installed in the
@@ -109,7 +109,7 @@ asserting no writes from bare invocations.
 
 ## Out of scope
 
-Adding, listing and clearing away worktrees (the store draft,
+Adding, listing and clearing away worktrees (the store intent,
 itd-2609091014076309, including the merge proof and the abandoned-worktree
 dossier this spec once carried), coordination claims (itd-33), post-merge
 remote/branch residue mechanics (itd-118), presence leases

@@ -268,9 +268,14 @@ const worktreeStoreIntent = "itd-2609091014076309"
 // planned/, so the prose contradicted the link beside it; the build surface page
 // and the lane's worktree code repeated the claim as "a draft". The rule must
 // name the folder the record is in and say the store has no verbs because that
-// intent has not shipped; no site may call a planned intent a draft. Dated
-// records (ADRs, the decision log, research notes) say what was true when they
-// were written and are not held here.
+// intent has not shipped; no site may call a planned intent a draft. The
+// planning records that wait on the store (itd-148, its spec spc-42, and
+// iss-213, which itd-148 carries) went on calling it "the store draft" after it
+// was planned (iss-2610111926302792), so they are sites too, found by id in
+// whichever lifecycle folder holds them; a paragraph there is a site when it
+// names the intent or says "store draft". Dated records (ADRs, the decision
+// log, research notes) and the dated "## Deferral" sections inside a record say
+// what was true when they were written and are not held here.
 func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	matches, err := filepath.Glob(filepath.Join(root, ".abcd", "development", "intents", "*", worktreeStoreIntent+"-*.md"))
@@ -305,12 +310,30 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 
 	// Every present-state passage naming the intent, split into paragraphs.
 	sites := map[string][]string{"the CONCURRENCY rule": {rule}}
-	for _, rel := range []string{
+	rels := []string{
 		".abcd/development/brief/04-surfaces/34-build.md",
 		"internal/core/implement/loop/lane.go",
+	}
+	// The planning records waiting on the store, wherever their lifecycle
+	// folder puts them.
+	for _, pattern := range []string{
+		".abcd/development/intents/*/itd-148-*.md",
+		".abcd/development/specs/*/spc-42-*.md",
+		".abcd/work/issues/*/iss-213-*.md",
 	} {
-		for _, p := range strings.Split(readRepoFile(t, root, rel), "\n\n") {
-			if strings.Contains(p, worktreeStoreIntent) {
+		found, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(pattern)))
+		if err != nil || len(found) != 1 {
+			t.Fatalf("want exactly one record matching %s, got %v (err=%v)", pattern, found, err)
+		}
+		rel, err := filepath.Rel(root, found[0])
+		if err != nil {
+			t.Fatalf("relative path of %s: %v", found[0], err)
+		}
+		rels = append(rels, filepath.ToSlash(rel))
+	}
+	for _, rel := range rels {
+		for _, p := range strings.Split(withoutDeferralSections(readRepoFile(t, root, rel)), "\n\n") {
+			if strings.Contains(p, worktreeStoreIntent) || strings.Contains(p, "store draft") {
 				flat := strings.Join(strings.Fields(strings.ReplaceAll(p, "//", " ")), " ")
 				sites[rel] = append(sites[rel], flat)
 			}
@@ -324,11 +347,29 @@ func TestWorktreeStoreRuleNamesTheIntentsActualState(t *testing.T) {
 	}
 	for name, paras := range sites {
 		for _, p := range paras {
-			for _, stale := range []string{"drafts/", "a draft", "drafted", "in drafts"} {
+			for _, stale := range []string{"drafts/", "a draft", "drafted", "in drafts", "store draft", "that draft"} {
 				if strings.Contains(p, stale) {
 					t.Errorf("%s calls %s %q, but the intent is in %s/:\n%s", name, worktreeStoreIntent, stale, bucket, p)
 				}
 			}
 		}
 	}
+}
+
+// withoutDeferralSections drops each dated "## Deferral <date>" section of a
+// record, from its heading to the next level-two heading or the end: such a
+// section repeats the deferral reason as it read on that date, so it is a dated
+// note, not present-state prose.
+func withoutDeferralSections(text string) string {
+	var kept []string
+	skipping := false
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			skipping = strings.HasPrefix(line, "## Deferral ")
+		}
+		if !skipping {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
 }
