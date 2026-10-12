@@ -40,6 +40,10 @@ type Finding struct {
 	RuleID   string
 	Severity string
 	Message  string
+	// Key is the finding key (findingkey.Derive) of a cross-document finding,
+	// which the pre-commit gate reads to tell a new finding from a standing one.
+	// It is empty for every other rule and then left out of the JSON.
+	Key string `json:"key,omitempty"`
 }
 
 const (
@@ -548,6 +552,25 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			return nil, err
 		}
 		findings = append(findings, ec...)
+	}
+
+	// The three cross-document rules (reciprocal.go) read two records' links out
+	// of the same store scan, so they run once here beside the edge rules.
+	for _, a1 := range []struct {
+		rule  string
+		check func(string, Config, RuleConfig) ([]Finding, error)
+	}{
+		{ruleBuildsOnReciprocal, checkBuildsOnReciprocal},
+		{ruleRoutedFromAcknowledged, checkRoutedFromAcknowledged},
+		{ruleRelatedIssuesBacklink, checkRelatedIssuesBacklink},
+	} {
+		if rc, ok := cfg.Rules[a1.rule]; ok && rc.Enabled {
+			fs, err := a1.check(repoRoot, cfg, rc)
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, fs...)
+		}
 	}
 
 	// cross_store_id_claim is the other half of the same cross-store question: it

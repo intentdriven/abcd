@@ -146,7 +146,14 @@ var (
 	// carry, because they are half the record's typed links. They are parsed by
 	// the same scan so the graph never needs a second parser: reading them here
 	// costs one regexp pass per record and adds no finding.
-	recordGraphFields = []string{"spec_id", "intent"}
+	//
+	// `related_issues` and `routed_from` are graph fields for the cross-document
+	// rules (reciprocal.go), which read them back from the other end. Neither is
+	// resolved here, and prose_citation_resolves keeps reading them as it did
+	// (recordUnjudgedGraphFields), so no gate stops looking at them.
+	recordGraphFields = []string{"spec_id", "intent", "related_issues", "routed_from"}
+	// recordUnjudgedGraphFields are the graph fields no rule resolves.
+	recordUnjudgedGraphFields = []string{"related_issues", "routed_from"}
 	// recordParsedFields is every field the scan reads handles out of, in a fixed
 	// order so the graph export is deterministic.
 	recordParsedFields = append(append([]string{}, recordHandleFields...), recordGraphFields...)

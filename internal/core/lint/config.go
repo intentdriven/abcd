@@ -117,6 +117,13 @@ type RuleConfig struct {
 	// ExtraRoots the same way, for the leak class alone: the ledger is committed
 	// free text outside the record's Roots (iss-2608301306580014).
 	ExtraRoots []string `json:"extra_roots"`
+	// ExemptEdges is builds_on_reciprocal's exemption list: the one-way builds_on
+	// edges that stood when the rule landed, each `<source> -> <target>`, sorted.
+	// The ruling on spc-2610021456200324's open point flags only an edge added
+	// after that, and this list holds the rest until the shared warnings baseline
+	// replaces it. It never grows; an entry whose edge is gone is dropped
+	// (TestBuildsOnExemptionsNeverGrow).
+	ExemptEdges []string `json:"exempt_edges"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name
 	// the same directory share one scan of it. spec_lifecycle also reads it to
@@ -448,6 +455,9 @@ var knownRules = map[string]bool{
 	ruleRecordSchema:             true,
 	ruleStaleEdge:                true,
 	ruleEdgeCycle:                true,
+	ruleBuildsOnReciprocal:       true,
+	ruleRoutedFromAcknowledged:   true,
+	ruleRelatedIssuesBacklink:    true,
 	ruleGlossaryFamilyPointer:    true,
 	ruleRecordFamilyKey:          true,
 }
