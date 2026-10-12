@@ -145,7 +145,8 @@ func rateLimitWindow(repoRoot, runID, laneID string, aw Await, fl *runner.Failur
 // checkpointLimited checkpoints the lane whose agent met the rate limit: its
 // uncommitted work (an implementer's) and partial receipt saved aside, its
 // worktree reset to the branch's last commit, and its await dropped. A save
-// the loop refuses keeps the await and leaves the worktree, and cp says why.
+// the loop refuses keeps the await, marked with why, and leaves the worktree;
+// cp says why too, and a restart re-tells the marked await.
 func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw Await, fl *runner.Failure, cp *Checkpoint, now time.Time) {
 	// A restart keeps the receipt path and re-tells the await from a new
 	// Since, so the await is matched by both.
@@ -165,6 +166,8 @@ func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw
 			reason = r.Reason
 		}
 		cp.Kept = reason
+		lane.Awaits = slices.Clone(lane.Awaits)
+		lane.Awaits[k].Kept = reason
 		return
 	}
 	cp.Aside = aside.Path

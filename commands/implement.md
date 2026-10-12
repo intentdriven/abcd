@@ -326,10 +326,16 @@ lane's directory, `aside/<UTC stamp>/` with `changes.patch`, `aside.json` and an
 partial receipt, once the patch is proved to apply to that commit; the lane's
 worktree is reset and cleaned; the run record names the aside for review; and
 the implementer await is re-told. The brief never names the aside, so no agent
-builds on it. It is refused, changing nothing, while the run has an outage
-(open, or given up until `implement outage clear` closes it once the connection
-is back), for a blank `--yielded`, for a lane with no implementer out, and for a
-worktree that is not the one the loop derives.
+builds on it. When a rate limit stops an agent and what it left cannot be saved
+aside, its await is kept and marked in the run state, and the run record says
+so; once you have settled what refused the save, `--restart` re-tells that await
+the same way, a validator's included. A validator edits nothing, so only its
+partial return is saved aside and its worktree is not touched, and a validator
+of the same round that is still out unmarked is left alone. It is refused,
+changing nothing, while the run has an outage (open, or given up until
+`implement outage clear` closes it once the connection is back), for a blank
+`--yielded`, for a lane with neither an implementer out nor an await a rate
+limit kept, and for a worktree that is not the one the loop derives.
 
 The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch

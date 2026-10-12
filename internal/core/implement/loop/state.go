@@ -131,7 +131,10 @@ const lockFileName = ".lock"
 // a landing's `check_wait_since` (ruling DR6d-2) is version 9's too, added
 // before any release wrote the version;
 // one of them carrying anything only version 9 writes is refused, and so is a
-// version-9 file carrying `awaiting`, which version 9 never writes.
+// version-9 file carrying `awaiting`, which version 9 never writes. An await's
+// `kept` is version 9's too, added after releases wrote the version: it is
+// written only on an await a rate limit kept, so only such a file is one an
+// earlier release refuses.
 const SchemaVersion = 9
 
 // schemaVersionSerial is the version before a run worked in parallel: read and
@@ -509,6 +512,10 @@ type Await struct {
 	// called with this path.
 	Receipt string    `json:"receipt"`
 	Since   time.Time `json:"since"`
+	// Kept is why a rate-limit checkpoint kept the await: its agent is gone,
+	// but what it left could not be saved aside (ratelimit.go). A restart
+	// re-tells an await so marked; "" for every other await.
+	Kept string `json:"kept,omitempty"`
 }
 
 // Entry is one line of the run record.

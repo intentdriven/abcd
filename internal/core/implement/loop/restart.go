@@ -207,10 +207,15 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 // uncommitted is saved aside under the lane's directory, the lane's worktree
 // is reset to its last commit and cleaned, the run record names the aside, and
 // the implementer await is re-told so the lead starts a fresh agent from the
-// same brief. It is refused, changing nothing, while the run has an outage
-// (open or given up), for a blank yield, for a lane with no implementer out, for a lane whose worktree is not the
-// one the loop derives for it, and when the saved patch would not apply to
-// the lane's head.
+// same brief. An await a rate-limit checkpoint kept and marked (ratelimit.go),
+// a validator's included, is re-told the same way: a validator edits nothing
+// and may share the worktree with its round, so only its partial return is
+// saved aside and the worktree is not touched, and a validator of the round
+// that is out unmarked is left alone. It is refused, changing nothing, while
+// the run has an outage (open or given up), for a blank yield, for a lane with
+// neither an implementer out nor an await a rate limit kept, for a lane whose
+// worktree is not the one the loop derives for it, and when the saved patch
+// would not apply to the lane's head.
 func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
 	why, err := whyOf(yielded)
 	if err != nil {
@@ -227,36 +232,53 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		if err := outageOpen(repoRoot, laneID); err != nil {
 			return false, err
 		}
-		k := slices.IndexFunc(lane.Awaits, func(a Await) bool { return a.Role == RoleImplementer })
-		if k < 0 {
+		var gone []int
+		for k, a := range lane.Awaits {
+			if a.Role == RoleImplementer || a.Kept != "" {
+				gone = append(gone, k)
+			}
+		}
+		if len(gone) == 0 {
 			return false, refuse(stageRestart, "", laneID,
-				fmt.Sprintf("%s has no implementer out (it is at %s), so there is no gone agent to restart", laneID, lane.Stage),
+				fmt.Sprintf("%s has no implementer out and no await a rate limit kept (it is at %s), so there is no gone agent to restart", laneID, lane.Stage),
 				"run `abcd implement step` to take the lane's next stage; nothing was changed")
 		}
-		aw := lane.Awaits[k]
 		now := o.now()
-		aside, err := saveAside(repoRoot, root, st.RunID, lane, aw, why, true, now)
-		if err != nil {
-			return false, err
+		lane.Awaits = slices.Clone(lane.Awaits)
+		var told []Await
+		for _, k := range gone {
+			aw := lane.Awaits[k]
+			aside, err := saveAside(repoRoot, root, st.RunID, lane, aw, why, aw.Role == RoleImplementer, now)
+			if err != nil {
+				return false, err
+			}
+			if told == nil {
+				res.Aside = aside
+			}
+			aw.Since, aw.Kept = now, ""
+			lane.Awaits[k] = aw
+			told = append(told, aw)
+			saved := "nothing was left uncommitted"
+			if len(aside.Files) > 0 {
+				saved = fmt.Sprintf("%d uncommitted file(s) saved aside for review at %s", len(aside.Files), aside.Path)
+			}
+			if aside.Receipt != "" {
+				saved += ", with its partial receipt"
+			}
+			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: stageRestart,
+				Note: fmt.Sprintf("restarted %s's %s from its last commit %s (%s): %s (aside %s); a fresh %s takes the brief again",
+					laneID, aw.Role, shortSHA(aside.Head), why, saved, aside.Path, aw.Role)})
 		}
-		dir, files, receiptName := aside.Path, aside.Files, aside.Receipt
-		head := aside.Head
-
-		aw.Since = now
-		lane.Awaits[k] = aw
 		st.Lanes[i] = lane
-		saved := "nothing was left uncommitted"
-		if len(files) > 0 {
-			saved = fmt.Sprintf("%d uncommitted file(s) saved aside for review at %s", len(files), dir)
-		}
-		if receiptName != "" {
-			saved += ", with its partial receipt"
-		}
-		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: stageRestart,
-			Note: fmt.Sprintf("restarted %s from its last commit %s (%s): %s (aside %s); a fresh implementer takes the brief again",
-				laneID, shortSHA(head), why, saved, dir)})
 		st.UpdatedAt = now
-		res = RestartResult{StepResult: laneResult(*st, lane, "", &aw), Aside: aside}
+		res.StepResult = laneResult(*st, lane, "", &told[0])
+		if len(told) > 1 {
+			moves := make([]string, len(told))
+			for n, a := range told {
+				moves[n] = handedMove(a)
+			}
+			res.Next = strings.Join(moves, "; and ")
+		}
 		return true, nil
 	})
 	return res, err

@@ -2209,9 +2209,13 @@ last commit: everything left uncommitted is saved aside under the lane's directo
 (aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
 proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
 names the aside for review, and the implementer await is re-told; the brief never names
-the aside. It is refused, changing nothing, while the run has an outage (open or given
-up), for a blank --yielded, for a lane with no implementer out, or for a worktree that
-is not the one the loop derives.
+the aside. An await a rate limit kept, because what its agent left could not be saved
+aside, is marked in the run state, and --restart re-tells it the same way once that is
+settled, a validator's included: only a validator's partial return is saved aside, its
+worktree is not touched, and a validator of the round that is still out unmarked is left
+alone. It is refused, changing nothing, while the run has an outage (open or given up),
+for a blank --yielded, for a lane with neither an implementer out nor an await a rate
+limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts

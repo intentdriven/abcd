@@ -283,3 +283,89 @@ func TestARateLimitAfterARestartLeavesTheReToldAwait(t *testing.T) {
 	}
 	asideOf(t, f.abs(RunRelDir+"/"+f.runID+"/lane-1"))
 }
+
+// keptValidator is a lane whose round has its ruthless and security reviewers
+// out, the ruthless one met by a rate limit whose partial return cannot be
+// saved aside (a symlink stands at its return's path): its await is kept,
+// marked, and the window ends. The security reviewer is out and live, with a
+// partial return of its own. It returns the fixture, the two awaits as they
+// were before the rate limit, and the end of the pause.
+func keptValidator(t *testing.T) (*parFixture, Await, Await, time.Time) {
+	t.Helper()
+	f := newParFixture(t, "1. One\n", Options{Pace: strp(fmt.Sprintf("%d/%d", BundledWorkMinutes, rateLimitPause))})
+	f.stepUntil(t, "the implementer is out", func(st State) bool { return len(st.Lanes) == 1 && len(st.Lanes[0].Awaits) == 1 })
+	f.implement(t, "lane-1", "one.txt")
+	f.stepUntil(t, "both reviewers are out", func(st State) bool {
+		return st.Lanes[0].awaitsRole(RoleRuthless) && st.Lanes[0].awaitsRole(RoleSecurity)
+	})
+	limited, live := f.await(t, "lane-1", RoleRuthless), f.await(t, "lane-1", RoleSecurity)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere.md"), f.abs(limited.Receipt)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f.abs(live.Receipt), []byte("# Review\n\nunder way"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := rateLimitWindow(f.repo.Root(), f.runID, "lane-1", limited,
+		&runner.Failure{Runner: runner.Claude, Reason: runner.ReasonRateLimited, Detail: "its event stream reports a rejected rate_limit_event and the run did not finish"}, f.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.NextEligibleAt == nil || len(res.RateLimit.Checkpoints) != 1 || res.RateLimit.Checkpoints[0].Kept == "" {
+		t.Fatalf("the refused save aside keeps the await: %+v", res.RateLimit)
+	}
+	if kept := f.await(t, "lane-1", RoleRuthless); kept.Kept == "" || !kept.Since.Equal(limited.Since) {
+		t.Fatalf("the kept await is marked in the run state: %+v", kept)
+	}
+	return f, limited, live, *res.NextEligibleAt
+}
+
+// A validator whose partial return could not be saved aside at a rate limit
+// is kept and marked; once the person settles what refused the save,
+// `--restart <lane>` re-tells exactly that await from a fresh Since, as the
+// checkpoint's record says it will, and the lane goes on to pass its round
+// (iss-2610100913086397).
+func TestARestartReTellsAValidatorARateLimitKept(t *testing.T) {
+	f, limited, _, until := keptValidator(t)
+	f.now = until
+	if err := os.Remove(f.abs(limited.Receipt)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts())
+	if err != nil {
+		t.Fatalf("a restart takes the kept validator: %v", err)
+	}
+	fresh := f.await(t, "lane-1", RoleRuthless)
+	if fresh.Kept != "" || !fresh.Since.Equal(until) || fresh.Receipt != limited.Receipt || fresh.Brief != limited.Brief {
+		t.Fatalf("the kept await is re-told, unmarked, from the restart: %+v", fresh)
+	}
+	if res.Awaiting == nil || res.Awaiting.Role != RoleRuthless || !strings.Contains(res.Next, RoleRuthless) {
+		t.Fatalf("the restart names the fresh ruthless reviewer to start: %+v", res.StepResult)
+	}
+	if got := entries(f.state(t), stageRestart)["lane-1"]; len(got) != 1 || !strings.Contains(got[0], RoleRuthless) {
+		t.Fatalf("the record names the restarted reviewer: %+v", got)
+	}
+	f.roundPassed(t, "lane-1")
+	if l := f.lane(t, "lane-1"); l.Stage == StageValidate || len(l.Awaits) != 0 {
+		t.Fatalf("the lane resumes and passes its round: %+v", l)
+	}
+}
+
+// The restart re-tells only the await the rate limit marked: a validator of
+// the same round that is out and live keeps its await, its Since and its
+// partial return.
+func TestARestartLeavesALiveValidatorOfTheSameRound(t *testing.T) {
+	f, limited, live, until := keptValidator(t)
+	f.now = until
+	if err := os.Remove(f.abs(limited.Receipt)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.await(t, "lane-1", RoleSecurity); got != live {
+		t.Fatalf("the live reviewer's await is untouched: %+v, was %+v", got, live)
+	}
+	if got, err := os.ReadFile(f.abs(live.Receipt)); err != nil || string(got) != "# Review\n\nunder way" {
+		t.Fatalf("the live reviewer's partial return stays where it writes it: %q %v", got, err)
+	}
+}
