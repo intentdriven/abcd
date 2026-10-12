@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -98,6 +99,10 @@ func echo(s string) string {
 	}
 	return fmt.Sprintf("%q", s)
 }
+
+// redacted is an error's text with the home directory redacted, as every
+// refusal quotes git's or the filesystem's own reason.
+func redacted(err error) string { return fsutil.RedactHome(err.Error()) }
 
 // reservableID is the record a reservation names, in canonical form, or a
 // refusal. Only an issue or an intent is reservable — the records a build or a

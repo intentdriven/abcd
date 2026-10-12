@@ -100,7 +100,7 @@ func reserve(root string, req Request, o Options) (Result, error) {
 	}
 	tree, err := emptyTree(root)
 	if err != nil {
-		return Result{}, refuse("%s; %s", fsutil.RedactHome(err.Error()), nothingPushed)
+		return Result{}, refuse("%s; %s", redacted(err), nothingPushed)
 	}
 	if err := fetch(root, p.now); err != nil {
 		return Result{}, err
@@ -134,7 +134,7 @@ func reserve(root string, req Request, o Options) (Result, error) {
 // names its holder with the back-off; otherwise the push failure is reported
 // as itself.
 func lostRace(p *prepared, tree string, before judged, perr error) error {
-	pushFailed := refuse("origin refused the reservation push: %s; %s", fsutil.RedactHome(perr.Error()), noReservation)
+	pushFailed := refuse("origin refused the reservation push: %s; %s", redacted(perr), noReservation)
 	if err := fetch(p.root, p.now); err != nil {
 		return pushFailed
 	}
@@ -253,7 +253,7 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 func judge(p *prepared, tree string) (judged, error) {
 	t, ok, err := readTip(p.root, p.id, trackingName(p.id), tree)
 	if err != nil {
-		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, fsutil.RedactHome(err.Error()), noReservation)
+		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
 	j := judged{tip: t, present: ok}
 	if !ok {
@@ -261,7 +261,7 @@ func judge(p *prepared, tree string) (judged, error) {
 	}
 	if j.derived, err = terminalOnDefault(p.root, p.id); err != nil {
 		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
-			p.id, fsutil.RedactHome(err.Error()), noReservation)
+			p.id, redacted(err), noReservation)
 	}
 	if t.Unreadable != "" {
 		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt}, lease.Default, p.now)
@@ -316,7 +316,7 @@ func originDefault(root string) string {
 func originPresent(root string) error {
 	out, err := localGit(root, 64<<10, "remote")
 	if err != nil {
-		return refuse("could not list this checkout's remotes: %s; %s", fsutil.RedactHome(err.Error()), nothingPushed)
+		return refuse("could not list this checkout's remotes: %s; %s", redacted(err), nothingPushed)
 	}
 	names := strings.Fields(out)
 	if slices.Contains(names, Remote) {
@@ -355,10 +355,10 @@ func fetch(root string, now time.Time) error {
 	}
 	trace(args...)
 	if _, err := gitutil.Net(root, args...); err != nil {
-		return refuse("could not read the reservations from %s: %s; %s", Remote, fsutil.RedactHome(err.Error()), noReservation)
+		return refuse("could not read the reservations from %s: %s; %s", Remote, redacted(err), noReservation)
 	}
 	if err := stampFetch(root, now); err != nil {
-		return refuse("fetched the reservations, but could not record when: %s; %s", fsutil.RedactHome(err.Error()), noReservation)
+		return refuse("fetched the reservations, but could not record when: %s; %s", redacted(err), noReservation)
 	}
 	return nil
 }

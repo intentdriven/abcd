@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -31,11 +32,11 @@ func newCheckout(t *testing.T, email string) *gittest.Repo {
 	return r
 }
 
-// machineConfig writes a home's ~/.abcd.noindex/config.json and returns the home.
+// machineConfig writes a home's machine-layer config.json and returns the home.
 func machineConfig(t *testing.T, body string) string {
 	t.Helper()
 	home := t.TempDir()
-	dir := filepath.Join(home, ".abcd.noindex")
+	dir := abcdhome.Path(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -157,7 +157,7 @@ func checkMessage(root, text string) error {
 	}
 	if err != nil {
 		return refuse("the reservation message could not be judged against the outbound policy: %s; %s",
-			fsutil.RedactHome(err.Error()), nothingPushed)
+			redacted(err), nothingPushed)
 	}
 	return nil
 }

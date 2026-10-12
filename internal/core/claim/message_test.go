@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -125,7 +126,7 @@ func TestARepositoryConfiguredUsernameIsNeverUsed(t *testing.T) {
 	r.Write(".abcd/config.json", `{"reservation": {"github_username": "mallory"}}`)
 	log := traced(t)
 	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir()})
-	want := "cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and ~/.abcd.noindex/config.json sets no " +
+	want := "cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and " + abcdhome.Display("config.json") + " sets no " +
 		"reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare = %v; want %q", err, want)

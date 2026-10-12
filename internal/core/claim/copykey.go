@@ -57,11 +57,11 @@ func copyKey(root string) (string, error) {
 	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
-		return "", refuse("cannot open the checkout: %s; %s", fsutil.RedactHome(err.Error()), nothingPushed)
+		return "", refuse("cannot open the checkout: %s; %s", redacted(err), nothingPushed)
 	}
 	defer r.Close()
 	if err := r.Mkdir(stateRelDir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return "", refuse("cannot make %s/: %s; %s", stateRelDir, fsutil.RedactHome(err.Error()), nothingPushed)
+		return "", refuse("cannot make %s/: %s; %s", stateRelDir, redacted(err), nothingPushed)
 	}
 	var raw [copyKeyLen / 2]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -73,14 +73,14 @@ func copyKey(root string) (string, error) {
 		return minted, nil
 	}
 	if !errors.Is(err, os.ErrExist) {
-		return "", refuse("cannot write %s: %s; %s", copyKeyRel, fsutil.RedactHome(err.Error()), nothingPushed)
+		return "", refuse("cannot write %s: %s; %s", copyKeyRel, redacted(err), nothingPushed)
 	}
 	// Another run minted it first, or an earlier one did. A racing writer's
 	// create precedes its write by an instant, so an empty read is retried.
 	for attempt := 0; ; attempt++ {
 		data, err := fsutil.ReadGuardedInRoot(r, copyKeyRel, 256)
 		if err != nil {
-			return "", refuse("cannot read %s: %s; %s", copyKeyRel, fsutil.RedactHome(err.Error()), nothingPushed)
+			return "", refuse("cannot read %s: %s; %s", copyKeyRel, redacted(err), nothingPushed)
 		}
 		key := strings.TrimSpace(string(data))
 		if validCopyKey(key) {
