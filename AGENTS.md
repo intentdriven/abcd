@@ -210,7 +210,10 @@ that no one else can write, the `trusted-roots` shape. The remote must be one
 the agent cannot move, such as a protected branch on a forge: a filesystem
 path or `file://` URL names a repository your account, and so the agent, can
 write, and `git://` and `http://` let anyone on the network path choose the
-tip, so a line declaring any of them is refused. A line with no remote, or a
+tip, so a line declaring any of them is refused. An ssh or https remote on
+this machine (`localhost`, a loopback address, or an ssh alias that resolves
+here) is one the agent can move too: abcd cannot tell such an alias from a
+forge, so declaring one is yours to avoid. A line with no remote, or a
 refused one, builds nothing and says so on stderr, and the installed release
 runs. The tip is read with `git ls-remote` by a
 background builder, never by a hook, and recorded in the store; only that record

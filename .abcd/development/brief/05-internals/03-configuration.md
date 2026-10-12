@@ -641,7 +641,10 @@ as a protected branch on a forge. A filesystem path (absolute, relative or
 running as the account moves its branch to the agent's own commit with one
 `git -C <mirror> fetch <checkout> +HEAD:refs/heads/main`; `git://` and
 `http://` are plaintext, so anyone on the network path can answer with the tip
-they choose. A line declaring any of these, or another transport (a remote
+they choose. An ssh or https remote on this machine (`localhost`, a
+loopback address, or an ssh alias that resolves here) is one the agent can move
+as well, over the filesystem or over ssh; abcd cannot tell such an alias from a
+forge, so it accepts it, and declaring one is the person's residual. A line declaring any of these, or another transport (a remote
 helper's `<transport>::<address>` included), is REFUSED: nothing is built, the
 installed release runs, and one stderr line names the line's checkout and
 remote and why. git's own rule tells a path from an ssh remote: a remote with
