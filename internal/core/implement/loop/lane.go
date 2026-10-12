@@ -214,8 +214,10 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		}
 		// The checkout writes the lane's files as the person's own git
 		// would, through the filters their global config defines
-		// (iss-2610111729375108).
-		if _, err := pickGit(c.RepoRoot, args...); err != nil {
+		// (iss-2610111729375108), and runs the repository's post-checkout
+		// hook (the one `git lfs install` installs), as the person's own
+		// `git worktree add` does (commitGit, iss-2610120640452939).
+		if _, err := commitGit(c.RepoRoot, args...); err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")

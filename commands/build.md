@@ -337,8 +337,9 @@ A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
-   `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
-   beside the checkout. In a run `build next` started, the first lane's
+   `build/<run-id>-<lane-id>` cut from the default branch, as your own
+   `git worktree add` makes one: the repository's post-checkout hook runs
+   (the one `git lfs install` installs). Nothing is made beside the checkout. In a run `build next` started, the first lane's
    worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the

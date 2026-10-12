@@ -85,8 +85,8 @@ func pickMessage(st State) string {
 // verbatim: a porcelain status line opens with a space when the change is
 // unstaged, and the comparison below is made against the line as git wrote it.
 // It is the loop's one route for a git command that writes or judges a lane's
-// working tree (the land's staging, the lane's `git worktree add`, a restart's
-// reset and clean; a commit goes through commitGit), so each sees the
+// working tree (the land's staging, a restart's reset and clean; a commit, a
+// merge and the lane's `git worktree add` go through commitGit), so each sees the
 // repository as the person's own git does: gitutil.WorkingTreeCommand, which
 // keeps the person's global config (a content filter a global `git lfs
 // install` defines, a global ignore file) with the program-starting knobs and
@@ -96,10 +96,13 @@ func pickGit(dir string, args ...string) (string, error) {
 }
 
 // commitGit is pickGit for a command that makes a commit in a lane's worktree
-// (the pick commit, a sync's merge): gitutil.WorkingTreeCommitCommand, so the
-// repository's hooks, its commit signing, its merge's signature check and its
-// merge drivers run as they do on the person's own commit and merge
-// (iss-2610111729399920).
+// (the pick commit, a sync's merge) or makes the worktree (the lane's `git
+// worktree add`): gitutil.WorkingTreeCommitCommand, so the repository's hooks,
+// its commit signing, its merge's signature check and its merge drivers run as
+// they do on the person's own commit, merge and worktree add
+// (iss-2610111729399920, iss-2610120640452939). A restart's reset --hard and
+// clean stay on pickGit: neither runs a hook on the person's own git either,
+// so the pins change nothing there.
 //
 // Because those programs run, the command is bounded: past commitTimeout git
 // is told to stop (SIGTERM, so it removes its lock files and a stopped commit

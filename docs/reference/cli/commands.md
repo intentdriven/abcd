@@ -2180,7 +2180,8 @@ so an unattended run is never held by it.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
-cut from the default branch; brief renders the lane's brief from that base (the intent,
+cut from the default branch, as your own `git worktree add` makes one (the repository's
+post-checkout hook runs, as Git LFS needs); brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
