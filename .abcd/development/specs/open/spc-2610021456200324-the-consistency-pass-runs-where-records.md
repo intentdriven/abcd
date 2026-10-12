@@ -526,6 +526,19 @@ narrowest reading that meets the criteria. Each is open to review.
   digest in chunk order, so the same set given in any order is a noop.
 - **Step 3, several verifiers.** When different verifiers answered the
   chunks, the report's verifier line lists each one.
+- **Step 3, every pair has one owner chunk** (from review). A whole-corpus
+  plan holds two documents of one group in several chunks, so one
+  contradiction could be filed once per chunk under different quotes. Every
+  pair is therefore owned by one chunk:
+  - a cross-group pair by the chunk holding both groups;
+  - group i's own pairs by the chunk pairing it with group i+1, and the last
+    group's by the chunk pairing it with the group before;
+  - in a scoped run, the scope's own pairs by chunk 1.
+
+  A chunk's prompt names the sets whose pairs it does not report. The ingest
+  sets aside a finding from a chunk that does not own its pair, before
+  merging by key, and the report and the result count it (`set_aside`). The
+  rubric is unchanged.
 - **Step 3, the provider route.** The `route` member is the first chunk's
   dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
   back to the harness, every chunk is left to the host. Answers already
