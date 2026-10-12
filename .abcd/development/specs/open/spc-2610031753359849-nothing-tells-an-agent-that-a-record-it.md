@@ -715,9 +715,12 @@ These are the facilitator's design calls; none changes a criterion.
     a delete is refused. The reservation prefix is its only row, ruled by
     adr-2610031352212697, with the empty-tree walk plus the fast-forward the
     non-fast-forward guard already demands as its shape check. A new row
-    needs its own ruling record and its own shape check; a row without a
-    shape check, or naming one the hook does not define, exempts nothing,
-    and a prefix the table does not name needs a receipt.
+    needs its own ruling record and its own shape check, run through its own
+    arm in the hook's `shape_check`, so no command runs under a name read
+    from the table; a row without a shape check, or naming one with no arm,
+    exempts nothing, and a prefix the table does not name needs a receipt.
+    The next row expected is cloud sessions' work-in-progress branches,
+    ruled by adr-2610120937435856, which spc-2610120941441282 adds.
 - **What step 10 settled** (the cap and the overlap, 2026-10-12):
   - Both are judged after the push table has chosen the act and before the
     commit is written, on the view the act just fetched, read by the same
