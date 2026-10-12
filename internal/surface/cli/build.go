@@ -267,8 +267,8 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"excluded it, and nothing is written. Refused too, writing nothing: a negative --max,\n" +
 			"--max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
 			"the one it began with, and, until it is restored or removed, a series state that cannot be\n" +
-			"read, does not parse, or names a count, a pick, an outcome or pace flags the series never\n" +
-			"writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.\n" +
+			"read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series\n" +
+			"never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.\n" +
 			"Exit 2 on a refusal, exit 3 when the chosen intent's run is already in progress or the run\n" +
 			"state or the series is locked.",
 		Args: cobra.NoArgs,

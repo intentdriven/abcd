@@ -670,6 +670,13 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" does not parse as the drain's state: "+why,
 			"the drain is the file's only writer; restore it or remove it")
 	}
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches the drain's --json payload or the refusal of a move
+	// typed with another pace (iss-2610121206163414).
+	if st.Pace != nil && !st.Pace.written() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a pace the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
+	}
 	for _, l := range st.Lanes {
 		if !validIssueKey(l.Issue) || !ValidRunID(l.RunID) {
 			return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a lane that is not an issue and a run",

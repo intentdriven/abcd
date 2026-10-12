@@ -50,6 +50,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -787,6 +788,14 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	}
 	if st.RunID != runID {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches `implement record --json`, a start's payload or a
+	// resume's refusal; the refusal does not echo it (iss-2610121206163414).
+	if st.Pace != nil && !st.Pace.written() {
+		return State{}, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
+			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	return st, nil

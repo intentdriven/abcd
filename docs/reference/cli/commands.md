@@ -379,8 +379,8 @@ No candidate for a first pick is refused, naming each excluded intent and the ch
 excluded it, and nothing is written. Refused too, writing nothing: a negative --max,
 --max with --until-empty, and, while a series is in progress, a count or pace other than
 the one it began with, and, until it is restored or removed, a series state that cannot be
-read, does not parse, or names a count, a pick, an outcome or pace flags the series never
-writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.
+read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series
+never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.
 Exit 2 on a refusal, exit 3 when the chosen intent's run is already in progress or the run
 state or the series is locked.
 

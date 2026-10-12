@@ -192,8 +192,10 @@ Refusals, each writing nothing:
   parse as it (malformed JSON, an unknown or repeated field, another
   `schema_version`), that names no run count a series takes, or that names a
   pick that is not an intent and a run, whose `outcome` is not one the series
-  writes, or whose stored pace flags are not in the form `--pace`,
-  `--sub-agents` and `--fix-rounds` take: refused at the `pick` stage, exit 2, on every `build next`
+  writes, whose stored pace flags are not in the form `--pace`,
+  `--sub-agents` and `--fix-rounds` take, or whose stored pace names a layer
+  other than `flag`, `repo`, `machine` or `bundled`, or an origin carrying a
+  control, bidi or zero-width character: refused at the `pick` stage, exit 2, on every `build next`
   until the file is restored or removed. `build next` is its only writer: tell
   the user, and do not edit it to get past the refusal.
 - the pick's reason refused by the grounds writer's own gate, asked before the

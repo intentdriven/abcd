@@ -207,6 +207,111 @@ func TestBuildNextRefusesControlRunesInTheSeriesFlags(t *testing.T) {
 	}
 }
 
+// forgeStoredPace writes good to path with one stored pace setting's field
+// replaced by bad.
+func forgeStoredPace(t *testing.T, path string, good []byte, setting, field, bad string) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(good, &doc); err != nil {
+		t.Fatal(err)
+	}
+	pace, _ := doc["pace"].(map[string]any)
+	v, ok := pace[setting].(map[string]any)
+	if !ok {
+		t.Fatalf("the file carries pace.%s: %s", setting, good)
+	}
+	v[field] = bad
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// storedPaceForgeries plant U+202E and U+009B in a pace setting's layer and
+// origin.
+var storedPaceForgeries = []struct{ setting, field, bad string }{
+	{"work_minutes", "layer", "‮flag"},
+	{"sub_agents", "layer", "bundled\u009b"},
+	{"work_minutes", "origin", "--pace 90/0‮"},
+	{"sub_agents", "origin", "\u009bbundled"},
+}
+
+// TestBuildNextRefusesControlRunesInTheSeriesPace (iss-2610121206163414): a
+// series state whose stored pace names a layer or an origin carrying U+202E
+// or U+009B is refused at the pick, exit 2, on a plain move and on one typed
+// with another pace, and no raw rune reaches the --json stream; the pace a
+// series was begun with still round-trips.
+func TestBuildNextRefusesControlRunesInTheSeriesPace(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	mustImplement(t, "build", "next", "--max", "2", "--pace", "90/0", "--json")
+	if out := mustImplement(t, "build", "next", "--json"); !strings.Contains(out, `"origin": "--pace 90/0"`) ||
+		!strings.Contains(out, `"layer": "flag"`) || !strings.Contains(out, `"layer": "bundled"`) {
+		t.Fatalf("the series' pace round-trips: %s", out)
+	}
+	path := filepath.Join(repo.Root(), filepath.FromSlash(loop.NextSeriesRel))
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range storedPaceForgeries {
+		forgeStoredPace(t, path, good, c.setting, c.field, c.bad)
+		for _, args := range [][]string{{"build", "next", "--json"}, {"build", "next", "--pace", "60/0", "--json"}} {
+			if _, out, _ := implementCLI(t, args...); strings.ContainsAny(out, "‮\u009b") {
+				t.Fatalf("%s.%s, %v: a raw control rune reaches the --json stream: %q", c.setting, c.field, args, out)
+			}
+			ref := refusalDocs(t, 2, args...)
+			if ref["stage"] != "pick" || !strings.Contains(ref["reason"].(string), "a pace the series never writes") {
+				t.Fatalf("%s.%s, %v: the forged pace is refused at the pick: %v", c.setting, c.field, args, ref)
+			}
+		}
+	}
+}
+
+// TestImplementRecordRefusesControlRunesInTheRunPace (iss-2610121206163414):
+// a run state whose stored pace names a layer or an origin carrying U+202E or
+// U+009B is refused as the run's state, exit 2, by `implement record` and by a
+// resume typed with another pace, and no raw rune reaches the --json stream;
+// the run's pace still round-trips into the record.
+func TestImplementRecordRefusesControlRunesInTheRunPace(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	var res struct {
+		Start struct {
+			RunID string `json:"run_id"`
+		} `json:"start"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--pace", "90/0", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	id := res.Start.RunID
+	if out := mustImplement(t, "implement", "record", "--run", id, "--json"); !strings.Contains(out, `"origin": "--pace 90/0"`) ||
+		!strings.Contains(out, `"layer": "bundled"`) {
+		t.Fatalf("the run's pace round-trips into the record: %s", out)
+	}
+	path := filepath.Join(repo.Root(), filepath.FromSlash(loop.StateRelPath(id)))
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range storedPaceForgeries {
+		forgeStoredPace(t, path, good, c.setting, c.field, c.bad)
+		for _, args := range [][]string{{"implement", "record", "--run", id, "--json"}, {"build", "itd-10", "--pace", "60/0", "--json"}} {
+			if _, out, _ := implementCLI(t, args...); strings.ContainsAny(out, "‮\u009b") {
+				t.Fatalf("%s.%s, %v: a raw control rune reaches the --json stream: %q", c.setting, c.field, args, out)
+			}
+			ref := refusalDocs(t, 2, args...)
+			if ref["stage"] != "state" || !strings.Contains(ref["reason"].(string), "a pace the loop never writes") ||
+				!strings.Contains(ref["remedy"].(string), "restore it or remove the run directory") {
+				t.Fatalf("%s.%s, %v: the forged pace is refused as the run's state: %v", c.setting, c.field, args, ref)
+			}
+		}
+	}
+}
+
 // TestBuildNextRefusesTwoCounts: --max and --until-empty together are refused
 // at the pick, exit 2, writing nothing.
 func TestBuildNextRefusesTwoCounts(t *testing.T) {
