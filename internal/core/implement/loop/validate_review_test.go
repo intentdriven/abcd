@@ -3,6 +3,7 @@ package loop
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -564,5 +565,26 @@ func TestABusyLockLeavesThePlacedReturnStanding(t *testing.T) {
 	st, _ := ReadState(repo.Root(), id)
 	if len(st.Fallbacks) != 0 || st.Lanes[0].awaiting() == nil {
 		t.Fatalf("no fallback is recorded and the review still awaits its hand-back: %+v", st.Fallbacks)
+	}
+}
+
+// TestAReceiptThatErrsTakesThePlacedReturnBack: a receipt that fails with an
+// error that is not a refusal leaves the review open, so the route's return
+// is taken back off the path, where the host's agent could otherwise hand it
+// back as its own.
+func TestAReceiptThatErrsTakesThePlacedReturnBack(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	prev := reviewReceipt
+	reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+		return StepResult{}, errors.New("the state could not be written")
+	}
+	t.Cleanup(func() { reviewReceipt = prev })
+	if _, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor))); err == nil {
+		t.Fatal("the receipt's error is the step's")
+	}
+	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
+		t.Fatal("the placed return is taken back off the path")
 	}
 }

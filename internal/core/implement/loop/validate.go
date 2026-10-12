@@ -929,6 +929,12 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	if err != nil {
 		refusal, ok := AsRefusal(err)
 		if !ok {
+			// The review is still open and nothing verified the return: it is
+			// taken back off the path, where the host's agent could otherwise
+			// hand it back as its own.
+			if rerr := removeRoundFile(repoRoot, aw.Receipt); rerr != nil {
+				return res, errors.Join(err, rerr)
+			}
 			return res, err
 		}
 		if refusal.Contention {
