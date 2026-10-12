@@ -37,8 +37,13 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "update [tag]",
 		Long: "Fetches the named release (or resolves the latest, naming it before acting),\n" +
-			"verifies the platform binary against the same release's checksums.txt, and\n" +
-			"swaps the PATH-installed copy atomically. The verb is the only ask: abcd\n" +
+			"verifies the platform binary against the same release's checksums.txt and\n" +
+			"against the SLSA build provenance the release workflow signed for it\n" +
+			"(fetched from GitHub's attestations API and checked against the Sigstore\n" +
+			"trusted root, pinned to intentdriven/abcd's release.yml), and swaps the\n" +
+			"PATH-installed copy atomically. A binary whose provenance cannot be\n" +
+			"verified, offline included, is refused with the way to install it by hand;\n" +
+			"nothing is swapped unverified. The verb is the only ask: abcd\n" +
 			"never checks for or applies updates on its own (adr-38). A plugin-root\n" +
 			"binary, the dev shim, and package-manager installs are refused with the\n" +
 			"command that owns them. The file being replaced must be provably abcd's:\n" +
@@ -194,6 +199,9 @@ func renderUpdateReport(w io.Writer, asJSON bool, rep update.Report) {
 				fmt.Fprintf(w, "  replaced: sha256 %s — in no published release; %s\n", termsafe.Sanitize(rep.OldDigest), rep.Ownership.Prose())
 			}
 			fmt.Fprintf(w, "  verified: sha256 %s (release checksums.txt)\n", termsafe.Sanitize(rep.Digest))
+			if rep.AttestedBy != "" {
+				fmt.Fprintf(w, "  attested: SLSA build provenance signed by %s\n", termsafe.Sanitize(rep.AttestedBy))
+			}
 		case update.ActionCurrent:
 			fmt.Fprintf(w, "already current: %s is %s (verified against the release checksums)\n", termsafe.Sanitize(rep.TargetPath), termsafe.Sanitize(rep.Tag))
 		case update.ActionRefused:

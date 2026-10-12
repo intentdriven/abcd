@@ -408,7 +408,13 @@ commit, with the checksums generated over the same bytes that are uploaded.
 To move a `~/.local/bin` install to a later release, run `abcd update`; `abcd
 update --check` reports whether one is available and names the command your
 install shape takes, since a plugin-root binary takes a plugin update and a
-package-manager install takes the manager's own upgrade.
+package-manager install takes the manager's own upgrade. `abcd update` checks
+more than the checksum: before it swaps anything it verifies the release's
+signed build provenance, proving the binary was built by this repository's
+release workflow, and it refuses the swap, naming what failed, when that cannot
+be verified, offline included. To do the same check by hand, run `gh
+attestation verify <binary> --repo intentdriven/abcd --signer-workflow
+intentdriven/abcd/.github/workflows/release.yml`.
 
 ## What adopting a repository commits
 

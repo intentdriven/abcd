@@ -10,13 +10,29 @@ block: people
 Complete a chosen update of the PATH-installed binary. The verb's documented
 meaning IS the fetch: it resolves the latest release (or takes an explicit
 tag), verifies the platform binary against the same release's
-`checksums.txt`, and swaps the PATH copy atomically, printing a receipt that
-opens with `abcd updated from <old> to <new>` and names the path, origin and
-digest. abcd never checks for or
+`checksums.txt` and against the SLSA build provenance the release workflow
+signed for it, and swaps the PATH copy atomically, printing a receipt that
+opens with `abcd updated from <old> to <new>` and names the path, origin,
+digest and the provenance signer. abcd never checks for or
 applies updates on its own — this verb reaches the release origin only when
 invoked, as does the one other flag that reaches it, `--fetch-baseline` on
 `launch` and `launch ship`, which downloads a released plugin archive to
 compare against.
+
+**Why two checks.** `checksums.txt` sits on the same release page as the
+binary, so it only proves the download arrived intact: whoever could replace
+the binary could replace the manifest with it. The build provenance is the
+check that does not trust the page. The update looks up the binary's SHA-256
+in GitHub's attestations API (`https://api.github.com/repos/intentdriven/abcd/attestations/sha256:<digest>`,
+read without a token), fetches the Sigstore trusted root through TUF from
+`https://tuf-repo-cdn.sigstore.dev` (anchored on the root built into the
+binary, cached nowhere), and verifies the signed bundle in process: its
+certificate must chain to Sigstore's Fulcio CA, its entry must be in the Rekor
+transparency log, its signer must be `intentdriven/abcd`'s
+`.github/workflows/release.yml` (at `main` or a `v` tag) under GitHub Actions'
+OIDC issuer, and its SLSA provenance must name exactly the downloaded bytes.
+Any failure refuses before anything is staged. All three addresses are reached
+over the same pinned transport as the release download.
 
 The same line announces a swap the plugin bootstrap makes. When a hook that
 discards its output made the swap, the next session start shows the line once,
@@ -39,7 +55,9 @@ which names the command that takes the update for this install's shape.
 abcd never fetches implicitly (adr-38): the network is touched only when the
 caller runs a command whose documented job includes a remote call. The release
 origin is reached by `update --check`, `update`, and `launch --dry-run
---fetch-baseline` or `launch ship --fetch-baseline`; a cited source by `docs
+--fetch-baseline` or `launch ship --fetch-baseline`; GitHub's attestations API
+and Sigstore's TUF repository by `update`, to verify the build provenance; a
+cited source by `docs
 cite refresh`; a URL by `library ingest <url>`; a provider's verification call by
 `ahoy connect` and `ahoy credential <name> --home`; a model provider by a
 delegating verb routed to one (`reading ingest --dispatch` among them); the
@@ -60,8 +78,9 @@ which cannot be answered here):
 "${CLAUDE_PLUGIN_ROOT}/abcd" update v0.7.0 --json
 ```
 
-Report the receipt's `action`, `tag`, `digest`, `target_path`, and
-`old_version` → `new_version` from the JSON. If `env_ignored` is present,
+Report the receipt's `action`, `tag`, `digest`, `attested_by` (the verified
+provenance signer), `target_path`, and `old_version` → `new_version` from the
+JSON. If `env_ignored` is present,
 relay it — it names proxy/CA environment overrides the fetch deliberately
 refused to honour.
 
@@ -99,6 +118,14 @@ refusal is a named shape with a remedy in `refusal`:
   reinstalls OVER the file: never suggest deleting it first, because the verb
   cannot run once it is gone.
 - `absent` — nothing on PATH to update; point at the install remedy.
+- `unverified-provenance` — the binary matched `checksums.txt`, but no build
+  provenance signed by `intentdriven/abcd`'s release workflow verifies for it:
+  none is published, it was signed by another repository or workflow, it names
+  other bytes, or GitHub's attestations API or the Sigstore TUF repository
+  could not be reached (offline included). Nothing was swapped. Relay the
+  detail, which names what failed, and the remedy: retry once both are
+  reachable, or install by hand — download the asset, check it with
+  `gh attestation verify`, then copy it over the PATH copy.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
