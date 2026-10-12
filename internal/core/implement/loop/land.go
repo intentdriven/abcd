@@ -1058,6 +1058,11 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 				"land or move that work, reset the branch to "+shortSHA(ld.Pushed)+", then run `abcd implement step` again")
 		}
 	}
+	if tipErr == nil && gitutil.IsFullSHA(tip) {
+		if err := branchCheckedOutElsewhere(c, *lane); err != nil {
+			return Outcome{}, err
+		}
+	}
 	if err := removeLaneWorktree(c, *lane); err != nil {
 		return Outcome{}, err
 	}
@@ -1084,6 +1089,31 @@ func fetchDefault(c Context, lane Lane, def string) (string, error) {
 			"settle what git reports, then run `abcd implement step` again")
 	}
 	return tracking, nil
+}
+
+// branchCheckedOutElsewhere refuses, before anything is removed, when git
+// lists a worktree other than the lane's own on the lane's branch, naming it.
+// The branch is deleted with `git update-ref -d`, which does not ask, as `git
+// branch -d` does, whether a checkout stands on it: deleting it there would
+// leave that checkout's HEAD naming nothing (the main checkout after a person
+// removed the clean lane worktree and checked the branch out, or a second
+// worktree a person added on it).
+func branchCheckedOutElsewhere(c Context, lane Lane) error {
+	wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
+	if err != nil {
+		return fmt.Errorf("listing the repository's worktrees: %w", err)
+	}
+	own := fsutil.RealExistingPath(lane.Worktree)
+	for _, wt := range wts {
+		if wt.Branch != "refs/heads/"+lane.Branch || fsutil.RealExistingPath(wt.Path) == own {
+			continue
+		}
+		at := fsutil.RedactHome(wt.Path)
+		return refuse(string(StageLand), "", lane.ID,
+			lane.Branch+" is checked out in "+at+", a checkout the loop did not make for this lane, and deleting the branch would leave its HEAD naming nothing",
+			"check out another branch in "+at+" (or remove that worktree), then run `abcd implement step` again")
+	}
+	return nil
 }
 
 // removeLaneWorktree removes the lane's worktree when git lists it at the lane's
