@@ -1384,6 +1384,80 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 	}
 }
 
+// TestASubmodulesPlacingFilesArePinnedBeforeGitRuns: git status reads a
+// gitlink's .git pointer to place the submodule's git directory, and that
+// directory's commondir to place its common directory, so both are pinned at
+// the run's first reading beside the checkout's own pointers. One changed
+// since (here to lead to a directory whose packed refs take git minutes to
+// read) is refused, named, before git runs, as the checkout's own commondir
+// is; so is a commondir written into a submodule's git directory made since.
+func TestASubmodulesPlacingFilesArePinnedBeforeGitRuns(t *testing.T) {
+	// elsewhere is a git directory whose packed refs are a sparse file far
+	// past what git reads quickly.
+	elsewhere := func(t *testing.T) string {
+		t.Helper()
+		dir := bigSparseDir(t, "packed-refs")
+		for _, sub := range []string{"objects", "refs"} {
+			if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	for _, c := range []struct {
+		name string
+		// write changes a placing file after the first reading, returning
+		// the key the refusal must name.
+		write func(t *testing.T, repo string) string
+	}{
+		{name: "a gitlink's .git pointer rewritten", write: func(t *testing.T, repo string) string {
+			if err := os.WriteFile(filepath.Join(repo, "sub", ".git"), []byte("gitdir: "+elsewhere(t)+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return "sub/.git"
+		}},
+		{name: "a submodule's commondir written", write: func(t *testing.T, repo string) string {
+			if err := os.WriteFile(filepath.Join(repo, ".git", "modules", "sub", "commondir"), []byte(elsewhere(t)+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return ".git/modules/sub/commondir"
+		}},
+		{name: "a commondir in a submodule git directory made since", write: func(t *testing.T, repo string) string {
+			dir := filepath.Join(repo, ".git", "modules", "planted")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range map[string]string{"HEAD": "ref: refs/heads/main\n", "commondir": elsewhere(t) + "\n"} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return ".git/modules/planted/commondir"
+		}},
+	} {
+		t.Run(c.name+" is refused before git runs", func(t *testing.T) {
+			r := newWrittenRun(t, "")
+			withSubmodule(t, r)
+			pin := &gitPin{}
+			if _, err := readTreePinned(r.repo, "", pin); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readTreePinned(r.repo, "", pin); err != nil {
+				t.Fatalf("a second reading of an unchanged tree is refused: %v", err)
+			}
+			named := c.write(t, r.repo)
+			err := readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
+			var moved *redirectedError
+			if !errors.As(err, &moved) || !slices.Equal(moved.Paths, []string{named}) {
+				t.Fatalf("err = %v, want the reading refused before git runs, naming %s alone", err, named)
+			}
+		})
+	}
+}
+
 // TestAPipeWhereGitReadsWholeIsRefusedBeforeGitRuns: a FIFO in place of a
 // file git reads whole on every command would block git's read with no writer;
 // the reading names it and runs no git.
