@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/drain.go"
 remedy: "Where the drain builds an issue's disposition reason from ledger text, quote each record path and the deferred_after value with %q (or pass them through termsafe.Sanitize) so no raw control or bidi rune reaches drain --json or a stored judgement note; a test plants a ledger record whose name and deferred_after carry U+202E and U+009B and expects nothing raw on drain --json and a drain.json that still reads back."
+resolution: "The disposition reason capture's eligibility builds for the drain now masks the record's own text where it is composed: the anchor-unknown deferral names deferred_after and the unreadable reason quotes the reader's refusal through termsafe.Sanitize, so no control or bidi rune from the ledger reaches drain --json or a stored judgement note."
+impact: fix
+resolved_by:
+  commit: "45b7d0bd151f8b6d964210f4ed9181066efcab2a"
 ---
 
 abcd drain --json echoes each issue's disposition reason straight from the ledger reader: that text includes the reader's error messages with record paths unquoted and a record's raw deferred_after value, so a repository whose ledger file name or deferred_after carries a control or bidi rune (U+202E, U+009B) puts it raw on the --json stream, and the drain copies the same text into a judgement's note in drain.json, where readDrain (since iss-2610121505153157) then refuses the whole file. Found by the implementer of iss-2610121505153157.
