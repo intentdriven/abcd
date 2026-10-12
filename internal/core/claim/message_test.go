@@ -372,7 +372,7 @@ func TestAReservationNamesNoHostNoHomeAndPassesTheOutboundPolicy(t *testing.T) {
 	if err := checkMessage(r.Root(), p.reservation().text()); err != nil {
 		t.Fatalf("the outbound policy refuses a plain reservation: %v", err)
 	}
-	leaky := p.reservation().text() + "See https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv for the run.\n"
+	leaky := p.reservation().text() + "See https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv for the run.\n" // abcd-lint:allow -- a fixture the outbound policy must refuse
 	if err := checkMessage(r.Root(), leaky); !errors.Is(err, ErrRefused) ||
 		err.Error() != "the reservation message carries harness:session_url, which public text may not carry; nothing was pushed" {
 		t.Fatalf("a message carrying a session URL = %v; want the outbound refusal", err)
