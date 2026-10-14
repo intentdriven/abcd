@@ -127,6 +127,15 @@ func TestARestartsResetRunsTheRepositorysHooks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The hooks are added mid-run, so the run tripwire would stop the restart
+	// over them: the person who installed them accepts them first
+	// (configwatch.go). Only the restart's reset is then left to run them.
+	if _, err := AcceptConfigChange(repo.Root(), runID, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(mark); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 	if _, err := Restart(repo.Root(), runID, "lane-1", "", Options{}); err != nil {
 		t.Fatal(err)
 	}

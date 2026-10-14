@@ -34,6 +34,12 @@ func TestASyncMergeStoppedAtItsDeadlineIsUndone(t *testing.T) {
 
 	hook := filepath.Join(f.repo.Root(), ".git", "hooks", "pre-merge-commit")
 	sleeper(t, hook)
+	// A hook added mid-run stops the next step at the run tripwire until the
+	// person accepts it (configwatch.go); this one is accepted, so the step
+	// reaches the sync's merge and its deadline.
+	if _, err := AcceptConfigChange(f.repo.Root(), f.runID, f.opts()); err != nil {
+		t.Fatal(err)
+	}
 	shortCommitTimeout(t, time.Second)
 	began := time.Now()
 	_, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
@@ -55,6 +61,9 @@ func TestASyncMergeStoppedAtItsDeadlineIsUndone(t *testing.T) {
 	}
 
 	if err := os.Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AcceptConfigChange(f.repo.Root(), f.runID, f.opts()); err != nil {
 		t.Fatal(err)
 	}
 	f.step(t)
