@@ -263,6 +263,12 @@ refuses, naming the gate, the entry's index in `failing` and what is wrong:
   required gate's receipts for the commit, refused once with the count and each
   entry.
 
+A receipt's keys bind case-insensitively, as JSON does in Go: `"Record"` reads
+as `record` and `"Disposition"` as `disposition`. Two spellings of one key in
+the same object, such as `"record"` beside `"Record"`, are refused as a
+duplicate key rather than read last-wins. The values are compared byte for
+byte.
+
 **What the gate does not check.** It checks that a deferred entry's record is
 open, well-formed and named by that entry alone. It cannot check that the record
 describes the finding, or that the record is new rather than an older open issue
