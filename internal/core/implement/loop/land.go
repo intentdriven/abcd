@@ -64,6 +64,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Landing is the land stage's progress on one lane.
@@ -1107,7 +1110,7 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 	}
 	own := fsutil.RealExistingPath(lane.Worktree)
 	for _, wt := range wts {
-		if wt.Branch != "refs/heads/"+lane.Branch || fsutil.RealExistingPath(wt.Path) == own {
+		if !sameBranchRef(wt.Branch, lane.Branch) || fsutil.RealExistingPath(wt.Path) == own {
 			continue
 		}
 		at := fsutil.RedactHome(wt.Path)
@@ -1151,4 +1154,30 @@ func removeLaneWorktree(c Context, lane Lane) error {
 		return fmt.Errorf("checking the lane's worktree: %w", err)
 	}
 	return nil
+}
+
+// caseFoldingRefs reports whether the platform's filesystem folds case, held
+// as a var so a test can provoke either answer on any host.
+var caseFoldingRefs = fsutil.CaseFoldingFS
+
+// sameBranchRef reports whether listed, a full ref git lists for a worktree,
+// names the branch branch. On a filesystem that folds case and Unicode
+// normalisation, git resolves a loose ref however it is spelled, so a state
+// naming build/Lane-1, an NFD spelling of an NFC name, or build/strasse for
+// build/stra\u00dfe reads and deletes the branch. Such a filesystem (APFS) folds
+// with full Unicode case folding over normalised text, which a simple
+// lower-case misses, so the names are compared through refFold there.
+func sameBranchRef(listed, branch string) bool {
+	want := "refs/heads/" + branch
+	if !caseFoldingRefs() {
+		return listed == want
+	}
+	return refFold(listed) == refFold(want)
+}
+
+// refFold is a ref name's key on a filesystem that folds case: full Unicode
+// case folding, then NFC. A Caser is not safe to share, so each call makes
+// its own.
+func refFold(s string) string {
+	return norm.NFC.String(cases.Fold().String(norm.NFC.String(s)))
 }
