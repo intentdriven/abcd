@@ -82,28 +82,36 @@ type rootLookup struct {
 // for cwd (a refused foreign-uid root, which leaves cwd as root), it cannot
 // answer for root either.
 //
-// The lookup it makes itself is bounded by promptRootTimeout: the hook runs
-// on every prompt, and a git that never answers must cost that prompt a
-// moment, not the session. A lookup past its deadline is a timeout
-// (gitutil.ErrGitTimedOut), so the tied notes are left out this turn and the
-// recall's caller names it on stderr.
+// The lookup it makes itself is boundedRootCommit, as the drain's is, so the
+// tied notes are left out this turn on a timeout and the recall's caller
+// names it on stderr.
 func promptRoot(drained rootLookup, root string) recall.RootFunc {
 	return sync.OnceValues(func() (string, error) {
 		if drained.asked {
 			return drained.sha, drained.err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), promptRootTimeout)
-		defer cancel()
-		sha, err := routerRootCommit(ctx, root)
-		if errors.Is(err, context.DeadlineExceeded) {
-			return "", fmt.Errorf("%w (no answer within %s)", gitutil.ErrGitTimedOut, promptRootTimeout)
-		}
-		return sha, err
+		return boundedRootCommit(root)
 	})
 }
 
-// promptRootTimeout bounds the root-commit lookup the recall makes itself.
+// promptRootTimeout bounds every root-commit lookup the prompt router makes.
 const promptRootTimeout = 2 * time.Second
+
+// boundedRootCommit is the prompt router's one root-commit lookup, the live
+// drain's and the recall's alike: routerRootCommit under promptRootTimeout.
+// The hook runs on every prompt, so a git that never answers must cost that
+// prompt a moment, not the session. A lookup past its deadline is a timeout
+// wrapping gitutil.ErrGitTimedOut, so a caller tells "git did not answer"
+// from "no root commit" with errors.Is.
+func boundedRootCommit(root string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), promptRootTimeout)
+	defer cancel()
+	sha, err := routerRootCommit(ctx, root)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "", fmt.Errorf("%w (no answer within %s)", gitutil.ErrGitTimedOut, promptRootTimeout)
+	}
+	return sha, err
+}
 
 // refusalText words a refused layer once: the file, then why, without the
 // "memory: <file>:" prefix the reader's own error already carries.

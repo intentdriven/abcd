@@ -188,3 +188,47 @@ func TestARecallPanicKeepsTheRules(t *testing.T) {
 		t.Fatalf("stderr does not name the failed recall:\n%s", errlog.String())
 	}
 }
+
+// TestDrainRootLookupHasADeadline: the live drain's root-commit lookup runs
+// on the hook's main path, every prompt with a cwd, and the recall reuses
+// its answer. It is bounded as the recall's own lookup is: a git that never
+// answers costs the prompt about two seconds, the rules still inject, the
+// tied notes are left out, and stderr names the timeout for both the drain
+// and the recall.
+func TestDrainRootLookupHasADeadline(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	id := addRaceNote(t, "session-one") // tied to this repository
+
+	prev := routerRootCommit
+	t.Cleanup(func() { routerRootCommit = prev })
+	calls, unbounded := 0, 0
+	routerRootCommit = func(ctx context.Context, root string) (string, error) {
+		calls++
+		dl, ok := ctx.Deadline()
+		if !ok || time.Until(dl) > 3*time.Second {
+			unbounded++
+			return prev(ctx, root)
+		}
+		// git hung until the deadline: the real lookup returns ctx's own error.
+		return "", fmt.Errorf("git rev-list -n 1 --max-parents=0 HEAD: %w", context.DeadlineExceeded)
+	}
+	env, errlog := recallRouterJSON(t, "session-two", repo, "commit and push the tests")
+	if calls == 0 || unbounded != 0 {
+		t.Fatalf("the hook made %d root-commit lookup(s), %d with no deadline of about two seconds", calls, unbounded)
+	}
+	if env.Error != "" || !slices.Contains(env.Injected, "COMMITTING") {
+		t.Fatalf("a drain lookup timeout stopped the rules: %+v\nstderr:\n%s", env, errlog)
+	}
+	if env.Recalled == nil || slices.Contains(*env.Recalled, id) {
+		t.Fatalf("a tied note came back with no root: %+v", env)
+	}
+	for _, want := range []string{
+		"abcd memory: this repository's root commit: git did not answer in time",
+		"abcd history: this repository's root commit: git did not answer in time",
+	} {
+		if !strings.Contains(errlog, want) {
+			t.Fatalf("stderr does not carry %q:\n%s", want, errlog)
+		}
+	}
+}

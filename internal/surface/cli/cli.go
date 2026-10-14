@@ -8,7 +8,6 @@ package cli
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2233,13 +2232,22 @@ var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 
 // whatever happened here, because a transcript backlog must not be able to
 // wedge a session. What it returns is only the root-commit lookup it made,
 // for the memory recall to reuse (promptRoot), so one prompt spawns that
-// full-history rev-list once.
+// full-history rev-list once. That lookup is bounded (boundedRootCommit): a
+// git that does not answer in time drains nothing this turn, says so on
+// stderr, and leaves the recall's tied notes out.
 func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
 	if cwd == "" {
 		return rootLookup{}
 	}
-	rootSHA, rootErr := routerRootCommit(context.Background(), cwd)
+	rootSHA, rootErr := boundedRootCommit(cwd)
 	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
+	if rootErr != nil {
+		// git did not answer in time: nothing is drained this turn, and the
+		// staged transcripts wait for the next one.
+		diagnosticLine(cmd.ErrOrStderr(), "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
+			fsutil.RedactHome(rootErr.Error()))
+		return looked
+	}
 	if rootSHA == "" {
 		return looked // not a git repo with commits: nothing here has a store
 	}
