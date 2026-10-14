@@ -335,13 +335,8 @@ func checkAgentChangelog(repoRoot string, prompts []agentPrompt, cfg RuleConfig)
 }
 
 // checkAgentVersionBump is the diff-armed half: a prompt changed in the range
-// whose diff adds no prompt_version line changed without a bump, so the entry the
-// tree-shaped half demands can never be written for it.
-//
-// The bump is read out of the DIFF rather than by resolving the range's base
-// revision and reading the file there: `git diff --unified=0 <range> -- <path>`
-// already answers "did this line change" in one call, and parsing a base out of
-// the three range spellings would be a second, avoidable grammar.
+// whose parsed prompt_version is the same on both sides of it changed without a
+// bump, so the entry the tree-shaped half demands can never be written for it.
 func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt, cfg RuleConfig) ([]Finding, error) {
 	if cfg.DiffRange == "" {
 		return nil, nil
@@ -366,7 +361,7 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 		if !changed[rel] {
 			continue
 		}
-		bumped, err := promptVersionChanged(repoRoot, cfg.DiffRange, rel)
+		bumped, err := promptVersionChanged(repoRoot, cfg.DiffRange, rel, promptVersionOf(p))
 		if err != nil {
 			return nil, &configError{ruleAgentContract + ": reading the diff for " + quote(rel) + ": " + err.Error()}
 		}
@@ -383,29 +378,81 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 	return out, nil
 }
 
-// promptVersionChanged reports whether the range's diff for one path adds a
-// prompt_version line.
+// promptVersionChanged reports whether the prompt at rel declares a different
+// prompt_version on the two sides of the range: the frontmatter value, parsed
+// as the tree half parses it, never a line of the diff. Reading the diff
+// counted any added line starting "+prompt_version:" as a bump, so a body line
+// of that shape, or one trailing space on the frontmatter line, passed an edit
+// at an unchanged version (iss-2610111600065621).
 //
-// The diff is git's own: --no-ext-diff and --no-textconv keep the
-// repository's diff.external, diff.<driver>.command and
-// diff.<driver>.textconv programs from running and from writing the text this
-// check parses (iss-2610090821531570), as the decisions-append diff already
-// does.
-func promptVersionChanged(repoRoot, rangeSpec, rel string) (bool, error) {
-	filters, err := gitutil.FilterOverrides(repoRoot)
+// The sides are the ones git diff compares for each spelling: A...B is the
+// merge-base of A and B against B, A..B is A against B, and a single revision
+// R is R against the working tree, whose version the tree half already read
+// (worktreeVersion). A prompt absent from the old side is an introduction and
+// counts as a bump; the tree half still demands its changelog entry. Each side
+// is read with cat-file, which runs no diff driver, textconv or filter.
+func promptVersionChanged(repoRoot, rangeSpec, rel, worktreeVersion string) (bool, error) {
+	var oldRev, newRev string
+	if a, b, ok := strings.Cut(rangeSpec, "..."); ok {
+		base, err := gitutil.Run(repoRoot, "merge-base", a, b)
+		if err != nil {
+			return false, err
+		}
+		oldRev, newRev = base, b
+	} else if a, b, ok := strings.Cut(rangeSpec, ".."); ok {
+		oldRev, newRev = a, b
+	} else {
+		oldRev = rangeSpec
+	}
+	oldVersion, present, err := promptVersionAt(repoRoot, oldRev, rel)
 	if err != nil {
 		return false, err
 	}
-	diff, err := gitutil.Run(repoRoot, append(filters, "diff", "--no-ext-diff", "--no-textconv", "--unified=0", rangeSpec, "--", rel)...)
-	if err != nil {
-		return false, err
+	if !present {
+		return true, nil
 	}
-	for _, line := range strings.Split(diff, "\n") {
-		if strings.HasPrefix(line, "+prompt_version:") {
+	newVersion := worktreeVersion
+	if newRev != "" {
+		v, present, err := promptVersionAt(repoRoot, newRev, rel)
+		if err != nil {
+			return false, err
+		}
+		if !present {
 			return true, nil
 		}
+		newVersion = v
 	}
-	return false, nil
+	return oldVersion != newVersion, nil
+}
+
+// promptVersionAt reads the prompt_version the prompt at rel declares in the
+// commit rev names, and whether rel holds a regular file there; a path that is
+// absent, or is a symlink, a tree or a submodule, holds no prompt on that
+// side. A git that cannot answer is an error, never an absence. The read is
+// capped as every read of the agent tree is (maxAgentPromptBytes).
+func promptVersionAt(repoRoot, rev, rel string) (string, bool, error) {
+	sha, err := gitutil.ResolveCommit(repoRoot, rev)
+	if err != nil {
+		return "", false, err
+	}
+	// The path is a literal, never a pattern: a prompt's file name is the
+	// repository's to choose.
+	entry, err := gitutil.Run(repoRoot, "--literal-pathspecs", "ls-tree", "-z", sha, "--", rel)
+	if err != nil {
+		return "", false, err
+	}
+	// "<mode> <type> <oid>\t<path>", NUL-terminated; one entry for a file path.
+	meta, path, _ := strings.Cut(strings.TrimRight(entry, "\x00"), "\t")
+	parts := strings.Fields(meta)
+	if path != rel || len(parts) != 3 || parts[1] != "blob" || (parts[0] != "100644" && parts[0] != "100755") {
+		return "", false, nil
+	}
+	blob, err := gitutil.RunCappedBytes(repoRoot, maxAgentPromptBytes, "cat-file", "blob", parts[2])
+	if err != nil {
+		return "", false, err
+	}
+	fields := frontmatterFields(strings.Split(string(blob), "\n"))
+	return promptVersionOf(agentPrompt{fields: fields}), true, nil
 }
 
 // promptVersionOf reads a prompt's declared version, unquoted.

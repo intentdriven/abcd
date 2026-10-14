@@ -245,6 +245,14 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 				"run `abcd implement step` to take the lane's next stage; nothing was changed")
 		}
 		now := o.now()
+		// Proving and saving the asides and the reset run git in the lane's
+		// worktree: the run tripwire is checked first.
+		if err := configTripwireIn(repoRoot, root, st.RunID); err != nil {
+			if r, ok := AsRefusal(err); ok {
+				r.Lane = laneID
+			}
+			return false, err
+		}
 		lane.Awaits = slices.Clone(lane.Awaits)
 		// Every gone await is proved before anything is saved, so a refusal
 		// on any one of them leaves every aside unwritten and every partial

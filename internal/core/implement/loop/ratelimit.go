@@ -160,6 +160,16 @@ func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw
 		return
 	}
 	why := fmt.Sprintf("rate limit: the %s runner answered the %s with one", fl.Runner, aw.Role)
+	// The save aside runs git in the lane's worktree: a configuration changed
+	// during the run keeps the lane as it is, as a refused save does.
+	if err := configTripwireIn(repoRoot, root, st.RunID); err != nil {
+		reason := fsutil.RedactHome(err.Error())
+		if r, ok := AsRefusal(err); ok {
+			reason = r.Reason + "; " + r.Remedy
+		}
+		cp.Kept = reason
+		return
+	}
 	proved, err := proveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], aw.Role == RoleImplementer)
 	var aside RestartAside
 	if err == nil {

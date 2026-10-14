@@ -2054,6 +2054,13 @@
       "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
       "flags": [
         {
+          "name": "accept-config-change",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "discard",
           "shorthand": "",
           "type": "string",
