@@ -79,6 +79,8 @@ glossary/
 │   ├── disembark.md
 │   ├── intent.md
 │   ├── ledger.md
+│   ├── lens.md
+│   ├── librarian.md
 │   ├── library.md
 │   ├── lifeboat.md
 │   ├── loop.md
@@ -89,6 +91,7 @@ glossary/
 │   ├── phase.md
 │   ├── plan.md
 │   ├── product-thinker.md
+│   ├── reading-pack.md
 │   ├── reading-position.md
 │   ├── record-families.md
 │   ├── record.md
@@ -217,6 +220,8 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | [disembark](core/disembark.md) | stable | The act of packing a lifeboat — `abcd disembark pack <source-repo> <dest>` reads a source repository without writing to it and distils its settled artefacts, decisions, and configuration into a portable lifeboat directory at a destination outside that repository, which a fresh context can later unpack via `/abcd:embark`. |
 | [intent](core/intent.md) | stable | A press-release-shaped description of a feature written before implementation begins, capturing the user problem, proposed solution, and success criteria. |
 | [ledger](core/ledger.md) | stable | An append-or-move store a command writes and a human reads back, the issue ledger under .abcd/work/issues/ when the word stands bare; inside the cold-reading experiment the word means the warm material and its stores, which the read-block keeps from a reading (the ledger context's entries govern that sense). Four further ledgers share the word and are always named in full. |
+| [lens](core/lens.md) | draft | One of nine broad questions the librarian asks around every source (principles and key features, context and timeline, alternatives, evidence and reception, use and best practice, people and sources, rights and media, open questions and glossary, fit to my project), each read for the subject at hand. |
+| [librarian](core/librarian.md) | draft | The engine an agent runs to read the sources a person gives for a subject, search around them along the nine lenses, and record a private reading pack whose every quote matches the text filed for its source. |
 | [library](core/library.md) | draft | The person's collection of outside material (papers, links and the cited notes drawn from them), each item marked confidential or public when it is added, and consulted on request with every answer citing the item it came from. |
 | [lifeboat](core/lifeboat.md) | stable | A portable directory artefact packed by `/abcd:disembark` that captures the distilled knowledge and configuration of a source project so it can be unpacked into a fresh context by `/abcd:embark`. It always lands outside the source repository, at an operator-chosen destination. |
 | [loop](core/loop.md) | draft | The record loop — brief to intent to spec to shipped work to audited verdict and back onto the brief — which shipping closes twice, once by grading the acceptance criteria and once by rewriting the brief passage. Two other loops carry the word and are always qualified: the autonomous-run loop and the lifeboat round-trip. |
@@ -227,6 +232,7 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | [phase](core/phase.md) | superseded | An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. Unqualified it always carries that sense, the brief's own numbered build milestones being plumbing-phases. |
 | [plan](core/plan.md) | stable | The product thinker's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Two further senses share the word, a dated design plan under development/plans/ and a session's planning brief, and each is qualified where it appears. |
 | [product-thinker](core/product-thinker.md) | stable | The person who decides what is built and why — who rules on intents, signs off acceptance criteria, adopts or declines a proposal, and owns the decisions no mode automates (adjudication, dependency sign-off, irreversible acts). One of the two people abcd addresses, beside the technical facilitator. |
+| [reading-pack](core/reading-pack.md) | draft | The private result of one librarian run: ideas, principles, claims and references from the sources, each with its quote, locator, lens, form check and rights, ranked by usefulness to the subject, with the open questions and glossary kept apart. |
 | [reading-position](core/reading-position.md) | stable | One of the four questions a cold reading can be commissioned to answer — widening, entailment, comparative or detection. The position fixes the reading's object, its question and the supply regime its output is validated against; `abcd reading assemble --position` names it. |
 | [record-families](core/record-families.md) | stable | The one page that maps abcd's record families (intent, spec, step, bundle, issue, release, status) and how they relate: what each groups, what groups it, its lifecycle and the verb that moves it. |
 | [record](core/record.md) | stable | One identified, filed document that a command mints and a lint gate reads — an itd-N, spc-N, adr-N, iss-N or rdg-id. "The development record" is the whole durable corpus those records make up, and "a record family" is one lifecycle-bucketed set of them; each of the three is qualified where the other two could be read. |

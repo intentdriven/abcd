@@ -150,11 +150,12 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610111707085098` — Each session takes a persona name, shown in the status line and the session list (draft)
 - `itd-2610141646126492` — A librarian turns sources into a quoted reading pack (draft; bundle ideate-librarian)
 - `itd-2610141646452213` — Ideate starts from a source through the librarian (draft; bundle ideate-librarian)
-- `itd-2610141646454347` — An ideate verdict proves its own legs (draft; bundle ideate-librarian)
+- `itd-2610141646454347` — An ideate verdict proves its own legs (draft)
 - `itd-2610141646456128` — A private ideate verdict stays private (draft; bundle ideate-librarian)
 - `itd-2610141646463379` — A reviewer's extra check must name what it protects (draft)
-- `itd-2610141646467500` — Ingested pages stay private until a person promotes them (draft; bundle ideate-librarian)
+- `itd-2610141646467500` — Ingested pages stay private until a person promotes them (draft)
 - `itd-2610141646469491` — A cheap watcher wakes an agent only when something needs action (draft)
+- `itd-2610142116477426` — A research question becomes a shared, citable note (draft; bundle ideate-librarian)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
