@@ -538,7 +538,10 @@ func (f *fixture) hostSession(t *testing.T) (*client, string) {
 // TestReplayLongerThanTheSendQueue: a log longer than a connection's send
 // queue reaches a newcomer whole, followed by synced, and does not drop it.
 func TestReplayLongerThanTheSendQueue(t *testing.T) {
-	f := newFixture(t, nil)
+	f := newFixture(t, func(c *Config) {
+		c.Limits.UpdatesPerSecond = 1 << 20
+		c.Limits.UpdateBurst = 1 << 20
+	})
 	host, _ := f.hostSession(t)
 	n := sendQueue + 300
 	for i := 0; i < n; i++ {

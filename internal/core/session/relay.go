@@ -89,8 +89,11 @@ type Verifier interface {
 type Limits struct {
 	// MaxMessageBytes caps one frame, text or binary.
 	MaxMessageBytes int
-	// MaxLogBytes caps one session's update log.
+	// MaxLogBytes caps one session's update log. Each entry is charged its
+	// bytes and LogEntryOverhead, what holding it costs beyond them.
 	MaxLogBytes int
+	// MaxLogEntries caps the number of entries in one session's log.
+	MaxLogEntries int
 	// MaxParticipants caps the connections in one session.
 	MaxParticipants int
 	// MaxSessions caps the sessions one relay holds at once.
@@ -116,6 +119,10 @@ type Limits struct {
 	// for a guest's suggestions.
 	SuggestPerSecond int
 	SuggestBurst     int
+	// UpdatesPerSecond and UpdateBurst are one connection's token bucket for
+	// a member's edit updates.
+	UpdatesPerSecond int
+	UpdateBurst      int
 	// MaxHostsPerAddr sessions may be opened from one address within
 	// HostWindow.
 	MaxHostsPerAddr int
@@ -135,6 +142,12 @@ type Limits struct {
 	AdmitWithin time.Duration
 }
 
+// LogEntryOverhead is what each log entry is charged against MaxLogBytes
+// beyond its own bytes: the slice that holds it, its allocation's rounding
+// and the attribution the relay adds to it. Without it a log of one-byte
+// updates would hold many times its limit in memory.
+const LogEntryOverhead = 64
+
 // DefaultLimits are the relay's limits unless a caller sets others. Sixteen
 // sessions of at most 8 MiB of log each keep a relay inside a free host's
 // memory.
@@ -142,6 +155,7 @@ func DefaultLimits() Limits {
 	return Limits{
 		MaxMessageBytes:  256 << 10,
 		MaxLogBytes:      8 << 20,
+		MaxLogEntries:    50000,
 		MaxParticipants:  32,
 		MaxSessions:      16,
 		IdleAfter:        30 * time.Minute,
@@ -156,12 +170,15 @@ func DefaultLimits() Limits {
 		AwarenessBurst:     40,
 		SuggestPerSecond:   1,
 		SuggestBurst:       5,
-		MaxHostsPerAddr:    3,
-		HostWindow:         10 * time.Minute,
-		MaxRejoinTokens:    128,
-		MaxConnections:     256,
-		MaxConnsPerAddr:    16,
-		AdmitWithin:        30 * time.Second,
+		// Typing is a few updates a second; a paste or an undo is a burst.
+		UpdatesPerSecond: 60,
+		UpdateBurst:      200,
+		MaxHostsPerAddr:  3,
+		HostWindow:       10 * time.Minute,
+		MaxRejoinTokens:  128,
+		MaxConnections:   256,
+		MaxConnsPerAddr:  16,
+		AdmitWithin:      30 * time.Second,
 	}
 }
 
@@ -220,6 +237,9 @@ func New(o Options) *Relay {
 	}
 	fill(&l.MaxMessageBytes, d.MaxMessageBytes)
 	fill(&l.MaxLogBytes, d.MaxLogBytes)
+	fill(&l.MaxLogEntries, d.MaxLogEntries)
+	fill(&l.UpdatesPerSecond, d.UpdatesPerSecond)
+	fill(&l.UpdateBurst, d.UpdateBurst)
 	fill(&l.MaxParticipants, d.MaxParticipants)
 	fill(&l.MaxSessions, d.MaxSessions)
 	fill(&l.MaxFailedJoins, d.MaxFailedJoins)
@@ -272,7 +292,7 @@ type room struct {
 	hostLogin  string
 	conns      []*Conn // in join order
 	log        [][]byte
-	logBytes   int
+	logBytes   int               // what the log is charged: each entry's bytes and overhead
 	credits    map[uint32]string // Yjs client id -> member login
 	emptySince time.Time
 	suggests   int
@@ -327,9 +347,10 @@ type Conn struct {
 	left     bool
 	entered  bool  // it has hosted, joined or rejoined
 	seat     *seat // the participant a rejoin token restores
-	// awareness and suggests are the connection's token buckets.
+	// awareness, suggests and updates are the connection's token buckets.
 	awareness bucket
 	suggests  bucket
+	updates   bucket
 }
 
 // ErrTooManyConnections is Connect's refusal: the relay, or the address,
@@ -536,13 +557,18 @@ func (c *Conn) binary(data []byte) {
 			c.fail("read-only", "a guest suggests changes; only a team member edits")
 			return
 		}
-		if rm.logBytes+len(data) > c.r.limits.MaxLogBytes {
+		if !c.updates.take(c.r.now(), c.r.limits.UpdatesPerSecond, c.r.limits.UpdateBurst) {
+			c.rateLimited()
+			return
+		}
+		cost := len(data) + LogEntryOverhead
+		if rm.logBytes+cost > c.r.limits.MaxLogBytes || len(rm.log) >= c.r.limits.MaxLogEntries {
 			c.fail("log-full", "this session's log is full; the host can close it and open a new one")
 			return
 		}
 		entry := append([]byte(nil), data...)
 		rm.log = append(rm.log, entry)
-		rm.logBytes += len(entry)
+		rm.logBytes += cost
 		c.r.forward(rm, c, entry)
 	case data[0] == TagAwareness:
 		if !c.awareness.take(c.r.now(), c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) {

@@ -347,8 +347,8 @@ func TestGuestUpdateIsRefusedWhileAMembersIsForwarded(t *testing.T) {
 	if got := hp.binaries(); len(got) != 1 || got[0][0] != TagAwareness {
 		t.Fatalf("the host received %v, want the guest's awareness", got)
 	}
-	if s := h.r.Stats(); s.LogBytes != 2 {
-		t.Fatalf("log bytes = %d, want 2 (the one update)", s.LogBytes)
+	if s := h.r.Stats(); s.LogBytes != LogEntryOverhead+2 {
+		t.Fatalf("log bytes = %d, want %d (the one update)", s.LogBytes, LogEntryOverhead+2)
 	}
 }
 
@@ -501,7 +501,7 @@ func TestWrongCodesAreLimitedPerAddress(t *testing.T) {
 func TestSizeLimits(t *testing.T) {
 	h := newHarness(t, func(l *Limits) {
 		l.MaxMessageBytes = 64
-		l.MaxLogBytes = 10
+		l.MaxLogBytes = LogEntryOverhead + 12
 		l.MaxParticipants = 2
 		l.MaxSessions = 1
 	})
@@ -516,8 +516,8 @@ func TestSizeLimits(t *testing.T) {
 	if e := hp.last(t, "error"); e == nil || e["code"] != "log-full" {
 		t.Fatalf("past the log limit: error = %v, want log-full", e)
 	}
-	if s := h.r.Stats(); s.LogBytes != 9 {
-		t.Fatalf("log bytes = %d, want 9", s.LogBytes)
+	if s := h.r.Stats(); s.LogBytes != LogEntryOverhead+9 {
+		t.Fatalf("log bytes = %d, want %d (the one update and its overhead)", s.LogBytes, LogEntryOverhead+9)
 	}
 
 	h.join(t, code, "One", "198.51.100.7")
@@ -1037,7 +1037,7 @@ func TestRejoinTokensAreBoundedPerSession(t *testing.T) {
 // as one item, whatever the log's length, so a log longer than any send queue
 // never drops the newcomer; synced follows it.
 func TestReplayIsOneQueuedItem(t *testing.T) {
-	h := newHarness(t, nil)
+	h := newHarness(t, func(l *Limits) { l.UpdatesPerSecond, l.UpdateBurst = 1<<20, 1<<20 })
 	host, _, code := h.host(t, "tok-ada")
 	const n = 3000
 	for i := 0; i < n; i++ {
@@ -1129,5 +1129,76 @@ func TestAConnectionThatEntersNoSessionExpires(t *testing.T) {
 	}
 	if hp.entered != 1 || gp.entered != 1 {
 		t.Fatalf("entered = %d and %d, want each told once", hp.entered, gp.entered)
+	}
+}
+
+// TestTheLogChargesEachEntryAndCapsTheirCount: an entry costs its bytes and
+// a fixed overhead against the log limit, so a log of tiny updates cannot
+// hold many times its limit, and the entries are capped in number too.
+func TestTheLogChargesEachEntryAndCapsTheirCount(t *testing.T) {
+	if d := DefaultLimits(); d.MaxLogEntries != 50000 || LogEntryOverhead != 64 {
+		t.Fatalf("defaults: %d entries, %d bytes of overhead; want 50000 and 64", d.MaxLogEntries, LogEntryOverhead)
+	}
+	h := newHarness(t, func(l *Limits) { l.MaxLogBytes = 150 })
+	host, hp, _ := h.host(t, "tok-ada")
+	host.Receive(context.Background(), update(1))
+	host.Receive(context.Background(), update(2))
+	if e := hp.last(t, "error"); e != nil {
+		t.Fatalf("two one-byte updates: error %v", e)
+	}
+	host.Receive(context.Background(), update(3))
+	if e := hp.last(t, "error"); e == nil || e["code"] != "log-full" {
+		t.Fatalf("a third one-byte update under 150 bytes: error = %v, want log-full", e)
+	}
+
+	h = newHarness(t, func(l *Limits) { l.MaxLogEntries = 3 })
+	host, hp, _ = h.host(t, "tok-ada")
+	for i := 0; i < 3; i++ {
+		host.Receive(context.Background(), update(byte(i)))
+	}
+	if e := hp.last(t, "error"); e != nil {
+		t.Fatalf("three updates: error %v", e)
+	}
+	host.Receive(context.Background(), update(9))
+	if e := hp.last(t, "error"); e == nil || e["code"] != "log-full" {
+		t.Fatalf("a fourth entry past the cap: error = %v, want log-full", e)
+	}
+}
+
+// TestUpdatesAreRateLimitedPerConnection: a member's updates past the bucket
+// are dropped with rate-limited, neither logged nor forwarded, and the
+// connection stays open.
+func TestUpdatesAreRateLimitedPerConnection(t *testing.T) {
+	l := DefaultLimits()
+	if l.UpdatesPerSecond != 60 || l.UpdateBurst != 200 {
+		t.Fatalf("update default = %d/s burst %d, want 60/s burst 200", l.UpdatesPerSecond, l.UpdateBurst)
+	}
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	_, gp := h.join(t, code, "Gus", "198.51.100.7")
+	gp.reset()
+	for i := 0; i < l.UpdateBurst; i++ {
+		host.Receive(context.Background(), update(byte(i)))
+	}
+	if e := hp.last(t, "error"); e != nil {
+		t.Fatalf("within the burst: error %v", e)
+	}
+	host.Receive(context.Background(), update(1))
+	if !rateLimited(t, hp) {
+		t.Fatalf("past the burst: want rate-limited with the connection open, got %v", hp.last(t, "error"))
+	}
+	if n := len(gp.binaries()); n != l.UpdateBurst {
+		t.Fatalf("forwarded %d updates, want %d", n, l.UpdateBurst)
+	}
+	if s := h.r.Stats(); s.LogBytes != l.UpdateBurst*(LogEntryOverhead+2) {
+		t.Fatalf("logged %d bytes, want the burst alone", s.LogBytes)
+	}
+	h.clock.advance(time.Second)
+	hp.reset()
+	for i := 0; i < l.UpdatesPerSecond; i++ {
+		host.Receive(context.Background(), update(byte(i)))
+	}
+	if e := hp.last(t, "error"); e != nil {
+		t.Fatalf("a second later, %d more: error %v", l.UpdatesPerSecond, e)
 	}
 }
