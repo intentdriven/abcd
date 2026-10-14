@@ -13,6 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // testRootSHA keys the fixture stores. It is a well-formed object name, not a
@@ -65,7 +69,7 @@ func TestRecordPrivateLandsInTheHomeStoreOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
-	wantShown := "~/.abcd.noindex/ideas/" + testRootSHA + "/2026-07-28-ideate-a-private-idea.md"
+	wantShown := abcdhome.Display("ideas", testRootSHA, "2026-07-28-ideate-a-private-idea.md")
 	if res.Path != wantShown {
 		t.Errorf("Path = %q, want %q (home-relative, never an absolute home path)", res.Path, wantShown)
 	}
@@ -76,7 +80,7 @@ func TestRecordPrivateLandsInTheHomeStoreOnly(t *testing.T) {
 		t.Errorf("DecisionPath = %q; a private verdict writes no pointer", res.DecisionPath)
 	}
 
-	dir := filepath.Join(home, ".abcd.noindex", "ideas", testRootSHA)
+	dir := abcdhome.Path(home, "ideas", testRootSHA)
 	file := filepath.Join(dir, "2026-07-28-ideate-a-private-idea.md")
 	fi, err := os.Stat(file)
 	if err != nil {
@@ -121,7 +125,7 @@ func TestRecordRefusesWithoutAnAnswer(t *testing.T) {
 				t.Fatalf("err = %v, want a *VisibilityError", err)
 			}
 			assertNothingWritten(t, root)
-			if _, err := os.Stat(filepath.Join(home, ".abcd.noindex")); !os.IsNotExist(err) {
+			if _, err := os.Stat(abcdhome.Path(home)); !os.IsNotExist(err) {
 				t.Errorf("a refused run laid the home store: %v", err)
 			}
 		})
@@ -141,7 +145,7 @@ func TestRecordRefusesAMalformedRootSHA(t *testing.T) {
 					t.Fatal("a malformed root sha was accepted")
 				}
 				assertNothingWritten(t, root)
-				if _, err := os.Stat(filepath.Join(home, ".abcd.noindex")); !os.IsNotExist(err) {
+				if _, err := os.Stat(abcdhome.Path(home)); !os.IsNotExist(err) {
 					t.Errorf("a refused run laid the home store: %v", err)
 				}
 			})
@@ -166,7 +170,7 @@ func TestRecordPrivateRefusesAHomeInsideAWorkingTree(t *testing.T) {
 	if _, err := Record(root, "a-planted-idea", store, encode(t, validPayload()), at); err == nil {
 		t.Fatal("a private verdict was written into a home inside a working tree")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".abcd.noindex")); !os.IsNotExist(err) {
+	if _, err := os.Stat(abcdhome.Path(home)); !os.IsNotExist(err) {
 		t.Errorf("the refused run laid a store inside the working tree: %v", err)
 	}
 }
@@ -206,7 +210,7 @@ func TestRecordPrivateRedactsLikeThePublicStore(t *testing.T) {
 	if res.Redactions == 0 {
 		t.Error("the private verdict reports no redaction")
 	}
-	body, err := os.ReadFile(filepath.Join(home, ".abcd.noindex", "ideas", testRootSHA, "2026-07-28-ideate-a-leaky-private-idea.md"))
+	body, err := os.ReadFile(abcdhome.Path(home, "ideas", testRootSHA, "2026-07-28-ideate-a-leaky-private-idea.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +232,7 @@ func TestRecordPrivateRefusesAnUnresolvedHome(t *testing.T) {
 				t.Fatal("an unresolved home was accepted")
 			}
 			if home != "" {
-				if _, err := os.Stat(filepath.Join(home, ".abcd.noindex")); !os.IsNotExist(err) {
+				if _, err := os.Stat(abcdhome.Path(home)); !os.IsNotExist(err) {
 					t.Errorf("a refused run laid a store under the relative home: %v", err)
 				}
 			}
@@ -242,10 +246,10 @@ func TestRecordPrivateRefusesASymlinkedLevel(t *testing.T) {
 	root := seedRepo(t)
 	home := t.TempDir()
 	elsewhere := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(home, ".abcd.noindex", "ideas")); err != nil {
+	if err := os.Symlink(elsewhere, abcdhome.Path(home, "ideas")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	store := Store{Visibility: VisibilityPrivate, RootSHA: testRootSHA, Home: home}
@@ -258,5 +262,26 @@ func TestRecordPrivateRefusesASymlinkedLevel(t *testing.T) {
 	}
 	for _, e := range entries {
 		t.Errorf("the refused run wrote %s at the link's target", e.Name())
+	}
+}
+
+// TestRecordPrivateWritesIntoTheAccountsOwnTrackedHome proves the dotfiles case
+// itd-2610140858048004 settles: a home that is the account's own git working
+// tree is not refused, because abcd's home ignores itself there; the refusal
+// is kept for a HOME planted inside some other checkout.
+func TestRecordPrivateWritesIntoTheAccountsOwnTrackedHome(t *testing.T) {
+	root := seedRepo(t)
+	home := t.TempDir()
+	if err := os.Mkdir(filepath.Join(home, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	restore := gitutil.SwapAccountHomeForTest(func() (string, error) { return home, nil })
+	defer restore()
+	store := Store{Visibility: VisibilityPrivate, RootSHA: testRootSHA, Home: home}
+	if _, err := Record(root, "a-dotfiles-idea", store, encode(t, validPayload()), at); err != nil {
+		t.Fatalf("a private verdict in the account's own tracked home was refused: %v", err)
+	}
+	if _, err := os.Stat(abcdhome.Path(home, "ideas", testRootSHA, "2026-07-28-ideate-a-dotfiles-idea.md")); err != nil {
+		t.Errorf("the private record is not on disk: %v", err)
 	}
 }

@@ -315,7 +315,11 @@ func validateStore(store Store) error {
 	// The one rule for whether a home may hold abcd's machine-scoped records
 	// (gitutil.HomeInsideWorkingTree): a home inside a git working tree that is
 	// not the account's own is one a commit could carry, and a private verdict
-	// written there is published by the next `git add -A`.
+	// written there is published by the next `git add -A`. The account's own
+	// home is let through even when it is a dotfiles repository, because abcd's
+	// home ignores itself there (internal/core/homeignore,
+	// itd-2610140858048004); a person who deleted that ignore file chose to
+	// let their repository track it.
 	if gitutil.HomeInsideWorkingTree(store.Home) != "" {
 		return errors.New("the home directory lies inside a git working tree, where a commit could carry a private verdict — nothing was written; " +
 			"run abcd with your own HOME")
