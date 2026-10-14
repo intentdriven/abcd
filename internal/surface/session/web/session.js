@@ -138,6 +138,8 @@ const WORDS = Object.freeze({
   ghPRRefused: "The commit is on the branch, but GitHub would not open the pull request. Open it on GitHub from branch",
   ghOther: "GitHub did not complete the request. Try again in a moment.",
   forgedUpdate: "An edit was not applied, because it claimed to be another participant's. It came from",
+  setAside: "Edits that build on a refused edit can never be applied, so this page set them aside to stay in step.",
+  notesHeading: "Warnings",
   pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
 });
 
@@ -292,6 +294,12 @@ function el(tag, props = {}, ...children) {
 function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
+// warn shows a warning that stays on the page, once, as well as a toast.
+function warn(text) {
+  toast(text);
+  if (!notes.includes(text)) notes.push(text);
+  renderSide();
+}
 let toastTimer = 0;
 function toast(text) {
   const t = ui.toast;
@@ -386,6 +394,7 @@ let rosterSeen = false;
 // not attribute: their text is applied but credited to nobody.
 const unattributed = new Set();
 const mine = [];              // a guest's own suggestions
+const notes = [];             // warnings the page keeps showing
 const awaitingAck = [];       // suggestions sent, waiting for "suggested"
 let ws = null;
 let retries = 0;
@@ -522,6 +531,7 @@ function receive(data) {
         // to nobody.
         noteUnattributed(body);
         Y.applyUpdate(doc, body, FROM_RELAY);
+        settlePending();
       } else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY);
     } catch {
       // A frame that does not decode is dropped; the relay forwards only
@@ -569,9 +579,53 @@ function admitUpdate(num, update) {
   if (forgedUpdate(num, update)) {
     const who = session.authors[String(num)];
     toast(WORDS.forgedUpdate + " " + (typeof who === "string" && NAME_RE.test(who) ? "@" + who : "participant p" + num) + ".");
-    return;
+    noteRefused(update);
+  } else {
+    try { Y.applyUpdate(doc, update, FROM_RELAY); } catch { /* an update that does not decode is dropped */ }
   }
-  try { Y.applyUpdate(doc, update, FROM_RELAY); } catch { /* an update that does not decode is dropped */ }
+  settlePending();
+}
+
+// Yjs holds an update that depends on clocks it has not seen as pending, and
+// tries it again as each update arrives. Every page refuses the same forged
+// update, so nothing can ever supply its clocks, and an update that builds on
+// them would wait for ever. refusedFrom is each client id a refused update
+// carried, with the lowest clock it carried there.
+const refusedFrom = new Map();
+function noteRefused(update) {
+  let decoded;
+  try { decoded = Y.decodeUpdate(update); } catch { return; }
+  for (const s of decoded.structs) {
+    const { client, clock } = s.id;
+    if (!refusedFrom.has(client) || clock < refusedFrom.get(client)) refusedFrom.set(client, clock);
+  }
+}
+
+// settlePending sets aside, with a note, what Yjs holds pending that waits on
+// a refused update's clocks. Yjs keeps its pending structs as one merged
+// update, so all of it goes; pending that waits on nothing refused arises only
+// when the relay dropped an update for its rate, and the writer's page sends
+// its recent updates again after that.
+function settlePending() {
+  if (refusedFrom.size === 0) return;
+  const store = doc.store;
+  const waits = (client, clock) => refusedFrom.has(client) && clock >= refusedFrom.get(client);
+  let setAside = false;
+  if (store.pendingStructs && [...store.pendingStructs.missing].some(([client, clock]) => waits(client, clock))) {
+    store.pendingStructs = null;
+    setAside = true;
+  }
+  if (store.pendingDs) {
+    let stuck = true;
+    try {
+      stuck = [...Y.decodeUpdateV2(store.pendingDs).ds.clients].some(([client, ranges]) => ranges.some((r) => waits(client, r.clock + r.len - 1)));
+    } catch { stuck = true; }
+    if (stuck) {
+      store.pendingDs = null;
+      setAside = true;
+    }
+  }
+  if (setAside) warn(WORDS.setAside);
 }
 
 function noteUnattributed(update) {
@@ -2354,6 +2408,10 @@ function badge(p) {
 function renderSide() {
   if (!ui.side) return;
   clear(ui.side);
+  if (notes.length) {
+    ui.side.append(el("section", { class: "notes", role: "alert" }, el("h2", { text: WORDS.notesHeading }),
+      el("ul", {}, ...notes.map((n) => el("li", { text: n })))));
+  }
   if (session.host && session.code && !session.seeding && !session.over) {
     const url = inviteURL();
     let img = null;

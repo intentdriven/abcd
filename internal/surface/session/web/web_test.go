@@ -972,3 +972,26 @@ func TestPageAnswersTheRelaysRefusals(t *testing.T) {
 		t.Errorf("resendRecent does not send the recent updates again, merged:\n%s", resend)
 	}
 }
+
+// Every page refuses the same forged update, so an update that depends on
+// its clocks would wait in Yjs's pending set for ever: the page sets it
+// aside, and says so.
+func TestRefusedUpdatesLeaveNothingPending(t *testing.T) {
+	js := pageScript(t)
+	admit := functionBody(t, js, "admitUpdate")
+	if !strings.Contains(admit, "noteRefused(update)") || !strings.Contains(admit, "settlePending()") {
+		t.Errorf("admitUpdate does not note a refused update and settle what waits on it:\n%s", admit)
+	}
+	if !strings.Contains(functionBody(t, js, "noteRefused"), "refusedFrom.set(") {
+		t.Error("noteRefused does not record the refused clocks")
+	}
+	settle := functionBody(t, js, "settlePending")
+	for _, want := range []string{"store.pendingStructs.missing", "store.pendingStructs = null;", "Y.decodeUpdateV2(store.pendingDs)", "store.pendingDs = null;", "WORDS.setAside"} {
+		if !strings.Contains(settle, want) {
+			t.Errorf("settlePending does not carry %s:\n%s", want, settle)
+		}
+	}
+	if !strings.Contains(js, "  setAside: ") {
+		t.Error("the page has no words for edits set aside")
+	}
+}
