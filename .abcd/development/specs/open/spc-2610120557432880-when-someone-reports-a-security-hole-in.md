@@ -249,7 +249,11 @@ in the set):
    closed advisory's title, since the closed advisory stays private on
    GitHub;
 4. the store path in three forms: absolute, `~/`-relative, and the
-   `worktrees/<root-sha>/embargo` fragment; and `.abcd/.work.local/embargo`.
+   `worktrees/<root-sha>/embargo` fragment. The paths relative to any store
+   (`.abcd/.work.local/embargo/state.json` and
+   `.abcd/.work.local/embargo/close`) are left out on purpose: abcd's own
+   source names them, and they say nothing of where this machine keeps its
+   records (TestCheckPassesStoreRelativeConstants).
 
 Text and deny set are folded alike before matching: NFKC, lower case, every
 dash to the hyphen-minus, invisible format characters dropped, white space
