@@ -212,6 +212,16 @@ quiet	rm -rf ${X%%/*}
 quiet	rm -rf ${name//[^a-z]/}
 quiet	rm -rf ${X/foo/$HOME}
 
+# --- block: stopping whatever holds a port or a file -------------------------
+# iss-2609262259360005, ruling AS: a kill by the holder blocks as a kill by name.
+block	fuser -k 8080/tcp
+block	kill $(lsof -t -i :8080)
+block	lsof -ti:8080 | xargs kill -9
+
+# --- quiet: looking at who holds it ------------------------------------------
+quiet	lsof -i :8080
+quiet	fuser -v 8080/tcp
+
 # --- block: a value the same line assigns and then uses ----------------------
 # iss-2609281134544802, ruling AT: read in place, one line per class.
 block	p=$(pgrep make); kill $p
@@ -237,6 +247,16 @@ block	ps aux | grep make | awk '{print $2}' | xargs kill
 # --- quiet: a pid the caller names or recorded -------------------------------
 quiet	ps -o pid= -p 4242 | xargs kill
 quiet	echo $! > run.pid; kill $(cat run.pid)
+
+# --- block: kill-port, through a package runner or not -----------------------
+# iss-2610112232319827: stopping by holder, as fuser -k is.
+block	npx kill-port 3000
+block	npm exec -- kill-port@latest 3000
+block	pnpm dlx kill-port 3000
+
+# --- quiet: another package, and installing it -------------------------------
+quiet	npx prettier --check .
+quiet	npm install --save-dev kill-port
 
 # --- a search logged to a file, and a recorded pid -------------------------
 # iss-2610120916220240: a variable the line did not set names no file it wrote.
