@@ -789,3 +789,67 @@ func TestAwarenessIsCleanedBeforeItIsApplied(t *testing.T) {
 		t.Errorf("cleanName does not remove control characters and clamp to 40:\n%s", name)
 	}
 }
+
+// The relay sends each member's update on as tag 2 with the sender's
+// participant number, and the roster names each number's login, so a page
+// applies an update only when every client id in it is credited to its
+// sender, and credits an approval or a deletion record only to the login
+// whose client wrote it (security review F6).
+func TestAttributedUpdatesMustBeTheirSendersOwn(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, "const TAG_ATTRIBUTED = 2;") {
+		t.Fatal("session.js does not know the relay's attributed update (tag 2)")
+	}
+	recv := functionBody(t, js, "receive")
+	for _, want := range []string{"bytes[0] === TAG_ATTRIBUTED", "getUint32(1)", "admitUpdate(", "noteUnattributed("} {
+		if !strings.Contains(recv, want) {
+			t.Errorf("receive does not carry %s", want)
+		}
+	}
+	// Until the roster that names the updates' senders arrives, they wait.
+	if !strings.Contains(recv, "if (!rosterSeen) held.push(") {
+		t.Error("receive judges an attributed update before a roster names its sender")
+	}
+	roster := functionBody(t, js, "onRoster")
+	if !strings.Contains(roster, "session.authors = ") || !strings.Contains(roster, "rosterSeen = true;") || !strings.Contains(roster, "admitUpdate(") {
+		t.Errorf("onRoster does not take the authors and judge the waiting updates:\n%s", roster)
+	}
+	forged := functionBody(t, js, "forgedUpdate")
+	for _, want := range []string{"Y.decodeUpdate(update)", "session.authors[String(num)]", "creditedTo(s.id.client) !== login"} {
+		if !strings.Contains(forged, want) {
+			t.Errorf("forgedUpdate does not carry %s:\n%s", want, forged)
+		}
+	}
+	admit := functionBody(t, js, "admitUpdate")
+	at, apply := strings.Index(admit, "forgedUpdate("), strings.Index(admit, "Y.applyUpdate(")
+	if at < 0 || apply < 0 || at > apply || !strings.Contains(admit, "WORDS.forgedUpdate") {
+		t.Errorf("admitUpdate does not drop a forged update, with a warning, before applying:\n%s", admit)
+	}
+	// A tag-0 update is applied but credits nobody.
+	if !strings.Contains(functionBody(t, js, "creditedTo"), "unattributed.has(") {
+		t.Error("a client id from an unattributed update is still credited")
+	}
+	// Approvals and deletion records count only when their writer is theirs.
+	if strings.Contains(functionBody(t, js, "analyse"), "approvals.toArray()") || !strings.Contains(functionBody(t, js, "analyse"), "verifiedApprovals()") {
+		t.Error("analyse reads approvals without checking who wrote them")
+	}
+	va := functionBody(t, js, "verifiedApprovals")
+	for _, want := range []string{"item.id.client", "a.client !== writer", "loginOf(writer) !== a.approver) continue;", "a.ins[0] === writer"} {
+		if !strings.Contains(va, want) {
+			t.Errorf("verifiedApprovals does not carry %s", want)
+		}
+	}
+	del := functionBody(t, js, "deletersOf")
+	if strings.Contains(del, "deletions.dss") || !strings.Contains(del, "verifiedDeleters()") {
+		t.Error("deletersOf reads deletion records without checking who wrote them")
+	}
+	vd := functionBody(t, js, "verifiedDeleters")
+	for _, want := range []string{"item.id.client", "loginOf(desc)"} {
+		if !strings.Contains(vd, want) {
+			t.Errorf("verifiedDeleters does not carry %s", want)
+		}
+	}
+	if !strings.Contains(js, "  forgedUpdate: ") {
+		t.Error("the page has no words for a dropped update")
+	}
+}

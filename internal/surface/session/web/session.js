@@ -123,6 +123,7 @@ const WORDS = Object.freeze({
   ghRefTaken: "GitHub would not create the session's branch; one by that name may already exist. Try again.",
   ghPRRefused: "The commit is on the branch, but GitHub would not open the pull request. Open it on GitHub from branch",
   ghOther: "GitHub did not complete the request. Try again in a moment.",
+  forgedUpdate: "An edit was not applied, because it claimed to be another participant's. It came from",
   pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
 });
 
@@ -145,6 +146,10 @@ const BRIEF_PREFIX = BRIEF_DIR.join("/") + "/";
 const SIGN_IN_SCOPE = "repo";
 const TAG_UPDATE = 0;
 const TAG_AWARENESS = 1;
+// The relay sends every member's update on as tag 2: the tag, the sender's
+// participant number as four big-endian bytes, then the update's bytes as the
+// member sent them. The roster's authors map names each number's login.
+const TAG_ATTRIBUTED = 2;
 // A relay message is at most 256 KiB; the seed is sent in updates of at most
 // SEED_BUDGET bytes of text, and a longer file in pieces of SEED_PIECE UTF-16
 // units (three bytes each at most).
@@ -327,7 +332,15 @@ const session = {
   pending: "",        // "host" when the host button waits for a socket
   roster: [],
   credits: {},        // Yjs client id -> login, from the relay's roster
+  authors: {},        // participant number -> login, from the relay's roster
 };
+// Attributed updates wait here until a roster on this connection names their
+// senders: the relay replays a session's log before it sends the roster.
+const held = [];
+let rosterSeen = false;
+// Client ids seen in an unattributed (tag 0) update, from a relay that does
+// not attribute: their text is applied but credited to nobody.
+const unattributed = new Set();
 const mine = [];              // a guest's own suggestions
 const awaitingAck = [];       // suggestions sent, waiting for "suggested"
 let ws = null;
@@ -361,6 +374,7 @@ function openSocket() {
   const url = session.relay.replace(/^http/, "ws") + "/session";
   const sock = new WebSocket(url);
   sock.binaryType = "arraybuffer";
+  rosterSeen = false;
   ws = sock;
   sock.onopen = () => { if (ws === sock) afterOpen(); };
   sock.onmessage = (ev) => { if (ws === sock) receive(ev.data); };
@@ -436,8 +450,18 @@ function receive(data) {
     if (bytes.length === 0) return;
     const body = bytes.subarray(1);
     try {
-      if (bytes[0] === TAG_UPDATE) Y.applyUpdate(doc, body, FROM_RELAY);
-      else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY);
+      if (bytes[0] === TAG_ATTRIBUTED) {
+        if (bytes.length < 5) return;
+        const num = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(1);
+        const update = bytes.slice(5);
+        if (!rosterSeen) held.push({ num, update });
+        else admitUpdate(num, update);
+      } else if (bytes[0] === TAG_UPDATE) {
+        // An older relay's update, which names no sender: applied, credited
+        // to nobody.
+        noteUnattributed(body);
+        Y.applyUpdate(doc, body, FROM_RELAY);
+      } else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY);
     } catch {
       // A frame that does not decode is dropped; the relay forwards only
       // what a participant's page sent.
@@ -459,6 +483,39 @@ function receive(data) {
     case "closed": endSession(WORDS.ended); break;
     case "error": onError(msg); break;
     default: break;
+  }
+}
+
+// forgedUpdate says whether an attributed update holds anything its sender
+// may not have written: a struct whose client id the roster does not credit
+// to the sender's login, or a sender the roster does not name. Its deletions
+// are not checked: a member may delete anyone's text, and who deleted it is
+// credited from the deletion records, checked in verifiedDeleters.
+function forgedUpdate(num, update) {
+  const login = session.authors[String(num)];
+  if (typeof login !== "string" || login === "") return true;
+  let decoded;
+  try { decoded = Y.decodeUpdate(update); } catch { return true; }
+  for (const s of decoded.structs) {
+    if (creditedTo(s.id.client) !== login) return true;
+  }
+  return false;
+}
+
+// admitUpdate applies an attributed update, or drops all of it and says
+// whose it was (security review F6).
+function admitUpdate(num, update) {
+  if (forgedUpdate(num, update)) {
+    const who = session.authors[String(num)];
+    toast(WORDS.forgedUpdate + " " + (typeof who === "string" && NAME_RE.test(who) ? "@" + who : "participant p" + num) + ".");
+    return;
+  }
+  try { Y.applyUpdate(doc, update, FROM_RELAY); } catch { /* an update that does not decode is dropped */ }
+}
+
+function noteUnattributed(update) {
+  for (const s of Y.decodeUpdate(update).structs) {
+    if (s.id.client !== doc.clientID) unattributed.add(s.id.client);
   }
 }
 
@@ -544,6 +601,9 @@ function onRoster(msg) {
   const before = new Set(session.roster.map((p) => p.id));
   session.roster = Array.isArray(msg.participants) ? msg.participants.filter((p) => p && typeof p.id === "string") : [];
   session.credits = msg.clients && typeof msg.clients === "object" ? msg.clients : {};
+  session.authors = msg.authors && typeof msg.authors === "object" ? msg.authors : {};
+  rosterSeen = true;
+  for (const h of held.splice(0)) admitUpdate(h.num, h.update);
   for (const p of session.roster) {
     if (p.id === session.myId) {
       session.host = p.host === true;
@@ -1148,9 +1208,58 @@ function baseSnapshot() {
   return baseCache.snap;
 }
 
-function loginOf(client) {
+// creditedTo is the login the roster credits a Yjs client id to, or "" for
+// one it does not, or one an unattributed update carried.
+function creditedTo(client) {
+  if (unattributed.has(Number(client))) return "";
   const login = session.credits[String(client)];
-  return typeof login === "string" && NAME_RE.test(login) ? login : "";
+  return typeof login === "string" ? login : "";
+}
+function loginOf(client) {
+  const login = creditedTo(client);
+  return NAME_RE.test(login) ? login : "";
+}
+
+// verifiedApprovals is the approvals each written by its own approver: the
+// Yjs client that wrote the entry is the one it names, credited to the login
+// it names, and the text it says it inserted is that client's. Any member's
+// page can push to the array, so an entry naming someone else counts for
+// nobody (security review F6).
+function verifiedApprovals() {
+  const out = [];
+  for (let item = approvals._start; item !== null; item = item.right) {
+    if (item.deleted) continue;
+    const writer = item.id.client;
+    for (const a of item.content.getContent()) {
+      if (!a || typeof a !== "object" || a.client !== writer || !loginOf(writer) || loginOf(writer) !== a.approver) continue;
+      if (a.ins !== null && !(Array.isArray(a.ins) && a.ins[0] === writer)) continue;
+      out.push(a);
+    }
+  }
+  return out;
+}
+
+// verifiedDeleters is the members' deletion records each written by the
+// member it is filed under: the record's key is a client id, and every Yjs
+// client that wrote the record's entry and its contents must be credited to
+// that client's login.
+function verifiedDeleters() {
+  const out = [];
+  const users = doc.getMap("deletions");
+  for (const [desc, ds] of deletions.dss) {
+    const login = loginOf(desc);
+    const entry = users._map.get(desc);
+    const user = users.get(desc);
+    if (!login || !entry || !(user instanceof Y.Map)) continue;
+    const writers = [entry.id.client];
+    for (const key of ["ids", "ds"]) {
+      const list = user.get(key);
+      if (!(list instanceof Y.Array)) continue;
+      for (let item = list._start; item !== null; item = item.right) writers.push(item.id.client);
+    }
+    if (writers.every((c) => loginOf(c) === login)) out.push([desc, ds]);
+  }
+  return out;
 }
 
 // changesOf lists a file's text as runs: "same" since the base, "add" or
@@ -1196,7 +1305,7 @@ function approvalOf(path, op, list) {
 // deletersOf names the members whose pages recorded deleting a removed run.
 function deletersOf(op) {
   const out = [];
-  for (const [client, ds] of deletions.dss) {
+  for (const [client, ds] of verifiedDeleters()) {
     const ranges = ds.clients.get(op.client) || [];
     if (ranges.some((r) => overlaps(op.clock, op.text.length, r.clock, r.len))) out.push(client);
   }
@@ -1284,7 +1393,7 @@ function analyse() {
   if (!base) return out;
   const baseFiles = baseFilePaths(base);
   const refused = out.refused;
-  const approvalList = approvals.toArray();
+  const approvalList = verifiedApprovals();
   for (const path of [...files.keys()].sort()) {
     if (!briefFile(path, baseFiles)) {
       refused.push(path);
