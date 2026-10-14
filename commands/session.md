@@ -51,14 +51,25 @@ relay; pass it only when the user names the address. `--behind-proxy` trusts
 the proxy's `X-Forwarded-For` entry as each visitor's address, and belongs to
 the team's relay behind its host's proxy. On loopback without it, a visitor
 is counted by the tailnet address Tailscale Serve forwards, and only when the
-connection itself comes from loopback. `--origin` admits a page served from
-another origin besides `https://abcdesign.app` and loopback. `--json` prints
-the start line as an object with `url`, `loopback`, `behind_proxy`, `sign_in`
-and `hint`.
+connection itself comes from loopback. By default it admits a page from
+`https://abcdesign.app` or loopback; `--origin` (repeatable) replaces that
+list, so the relay then admits exactly the origins named. `--json` prints the
+start line as an object with `url`, `loopback`, `behind_proxy`, `sign_in`,
+`repos`, `owners`, `any_repository` and `hint`.
+
+It serves sessions only for the repositories it is given: each `--repo
+owner/name`, every repository of each `--owner` (both repeatable), and each
+entry of `ABCD_SESSION_REPOS`, a comma list of either. Nobody signs in
+against, or hosts, any other. Listening beyond this computer it refuses to
+start without one. On loopback, with none given, it serves this checkout's
+origin repository, or any repository when run outside a GitHub checkout; the
+start line says which.
 
 Team members sign in with the team's own GitHub sign-in app. The relay reads
-its secret from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name, and its public
-client id from `--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`. Never ask the
+its secret from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name, its public
+client id from `--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`, and its kind
+from `ABCD_SESSION_GITHUB_APP_TYPE`: `github-app` (the default) or
+`oauth-app`. Never ask the
 user for the secret, and never print it or pass it on a command line. Without
 them, sign-in is not offered and a team member pastes a personal access token
 instead; the relay asks GitHub for that token's login and whether it may push
@@ -66,12 +77,21 @@ to the repository, and drops the token straight after.
 
 It refuses (exit 2, nothing started) a `--listen` that is not an IP address
 (or `localhost`) and a port, an `--origin` that is not an exact
-`scheme://host[:port]`, and an address it cannot listen on.
+`scheme://host[:port]`, a `--repo` that is not `owner/name`, an `--owner` or
+`ABCD_SESSION_REPOS` entry that is neither, an unknown app type, a relay
+beyond loopback with no repository to serve, and an address it cannot listen
+on.
+
+The relay bounds what it holds: 256 connections, 16 from one address (an IPv4
+address or an IPv6 /48), past which a new one is refused with 503; 30 seconds
+for a connection to host, join or rejoin; a member's updates to 60 a second
+in bursts of 200; and joining by code pauses for everybody for ten minutes
+past 200 wrong codes from everywhere in ten minutes.
 
 ## Blueprint
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" session blueprint --release <vMAJOR.MINOR.PATCH>
+"${CLAUDE_PLUGIN_ROOT}/abcd" session blueprint --release <vMAJOR.MINOR.PATCH> [--relay-origin <https origin>]
 ```
 
 It writes `.abcd/relay/render.yaml`, a Render Blueprint declaring one free web
@@ -80,10 +100,17 @@ release's linux/amd64 binary and checks it against the SHA-256 that release's
 `checksums.txt` publishes. It reads that checksum from the release page when it
 writes the files (the one network read it makes, named on stderr) and pins it
 in the Dockerfile. `--release` defaults to this abcd's own version when that is
-a release. A file left exactly as abcd wrote it is replaced; one that was
-edited, or that abcd did not write, is never overwritten, and then nothing is
-written (exit 2). It refuses outside a checkout abcd manages, and for a
-release that publishes no checksum for the linux/amd64 binary.
+a release. `render.yaml` sets `ABCD_SESSION_REPOS` to this checkout's origin
+repository on github.com, the one the relay serves, and
+`ABCD_SESSION_GITHUB_APP_TYPE` to `github-app`. With `--relay-origin`, the
+deployed relay's https origin once Render has given it one, it also writes
+`.abcd/relay/relays.json`, naming that relay as the one the repository
+trusts; the session page reads it. A file left exactly as abcd wrote it is
+replaced; one that was edited, or that abcd did not write, is never
+overwritten, and then nothing is written (exit 2). It refuses outside a
+checkout abcd manages, in a checkout whose origin is not on github.com, a
+`--relay-origin` that is not `https://host[:port]`, and a release that
+publishes no checksum for the linux/amd64 binary.
 
 Relay what it prints: each file and whether it was written, replaced or left
 unchanged, the release and checksum pinned, and the next steps. The user
@@ -91,7 +118,7 @@ commits both files, chooses New, then Blueprint, on Render, picks the
 repository, sets the Blueprint path to `.abcd/relay/render.yaml`, and sets
 `ABCD_SESSION_GITHUB_CLIENT_ID` and `ABCD_SESSION_GITHUB_CLIENT_SECRET` in the
 service's Environment. `--json` returns `release`, `asset`, `sha256`,
-`checksums_url` and `files`, each with its `path` and `state`.
+`checksums_url`, `repos` and `files`, each with its `path` and `state`.
 
 ## Page
 
