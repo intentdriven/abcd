@@ -175,7 +175,7 @@ asserts: both merges exit 0, both files are present, and
   changes in the same step (spec-moves-with-the-surface). So does whichever
   page then carries the adoption workflow: `commands/prepare-this-repo.md`, or
   `commands/ahoy.md` if the verb split's step 4
-  ([spc-2610100613109045](spc-2610100613109045-a-person-who-types-abcd-sees-only-the.md))
+  ([spc-2610100613109045](../closed/spc-2610100613109045-a-person-who-types-abcd-sees-only-the.md))
   has already folded it there.
 - **The repository lint's decision-durability rule**
   (`internal/core/repolint/rule_decisions.go`). It passes when
