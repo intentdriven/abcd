@@ -66,6 +66,14 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
 .card h2 { font-size: 1rem; margin: 0 0 .3rem; }
 .card p { margin: .3rem 0; color: var(--muted); font-size: .9rem; }
+/* Where the relay stands, and the confirmation a relay the repository's list
+   cannot speak for needs: its origin is shown large, never truncated. */
+.origin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; word-break: break-all; color: var(--ink); }
+.card p.standing { font-size: .85rem; }
+.card p.standing.bad { color: var(--warn); }
+.trust { width: calc(100% - 2rem); max-width: 34rem; margin: 1rem auto 0; border: 2px solid var(--warn); }
+.trust .only { color: var(--ink); font-weight: 600; font-size: 1rem; }
+.trust .origin { display: block; font-size: 1.15rem; margin: .4rem 0; padding: .5rem .6rem; background: var(--bg); border-radius: var(--radius); }
 .row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; align-items: center; }
 
 /* The workspace. */

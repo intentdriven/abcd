@@ -9,10 +9,13 @@
 // as one pull request made with the submitter's own token.
 //
 // What this page talks to, and nothing else: the relay the person names (its
-// WebSocket, /config and /auth/token), https://api.github.com with the
-// person's own token, and github.com for sign-in and pre-filled issues. The
-// GitHub token is held in this module's memory only; it is never stored, put
-// in a URL or logged. The relay's rejoin token, which brings this participant
+// WebSocket, /config and /auth/token), https://api.github.com (without a
+// token for the repository's list of its relays, and with the person's own
+// token), and github.com for sign-in and pre-filled issues. The GitHub token
+// is held in this module's memory only; it is never stored, put in a URL or
+// logged, and it reaches a relay only once the repository's committed relay
+// list names that relay or, where the list cannot be read, the person has
+// confirmed it. The relay's rejoin token, which brings this participant
 // back to the session after a dropped connection or a reload, is not a GitHub
 // token: it is kept in memory and in this tab's session storage.
 // Every piece of text from the brief, the relay or another participant is
@@ -31,6 +34,17 @@ const WORDS = Object.freeze({
   relayLabel: "Relay address",
   relayHint: "The https address of your team's relay, or of the host's computer on Tailscale.",
   relayBad: "Give the relay's https address (plain http only for localhost).",
+  relayChecking: "Checking which relays this repository names…",
+  relayListed: "This repository names this relay in .abcd/relay/relays.json.",
+  relayConfirmed: "You confirmed earlier that your team runs this relay:",
+  relayUnconfirmed: "This repository's relay list could not be read without signing in, so the page cannot check this relay for you. Before any sign-in reaches it, you will be asked to confirm it:",
+  relayRefused: "This repository names the relays its team runs in .abcd/relay/relays.json, and this one is not among them, so the page sends it no sign-in and does not connect to it:",
+  relayNoneUsable: "This repository's .abcd/relay/relays.json names no relay the page can use, so the page sends no sign-in to this one and does not connect to it:",
+  trustHeading: "Check the relay",
+  trustOnly: "Only continue if your team runs this relay:",
+  trustWhy: "Signing in sends your GitHub sign-in to this relay. This repository does not name its relays where the page can read them, so only you can tell whether this is your team's. A link from someone else can name any relay.",
+  trustYes: "My team runs this relay",
+  oauthNote: "This relay signs in through an OAuth app, which asks GitHub for access to every repository you can reach. A GitHub App would be narrower: ask your team to register one.",
   joinHeading: "Join a session",
   joinHint: "Type the code the host's screen shows, or scan its QR code.",
   codeLabel: "Join code",
@@ -164,6 +178,10 @@ const KEY_RELAY = "abcd.session.relay";
 const KEY_NAME = "abcd.session.name";
 const KEY_SIGN_IN = "abcd.session.sign-in";
 const KEY_REJOIN = "abcd.session.rejoin";
+// The relays a person confirmed, per repository: { "owner/repo": [origin] }.
+const KEY_TRUSTED = "abcd.session.trusted-relays";
+// The repository's committed list of its relays: {"relays": [origin, …]}.
+const RELAYS_FILE = ".abcd/relay/relays.json";
 // A relay's rejoin token: 128 random bits, base64url without padding.
 const REJOIN_RE = /^[A-Za-z0-9_-]{22}$/;
 // A participant's awareness colour: the editor writes it into a style
@@ -193,10 +211,36 @@ function takeSignIn() {
   } catch { return null; }
 }
 
+// trustedRelays reads the confirmed relays of every repository; confirmRelay
+// and forgetRelay change this repository's. Nothing else is kept with them.
+function trustedRelays() {
+  try {
+    const all = JSON.parse(recall(KEY_TRUSTED) || "{}");
+    return all !== null && typeof all === "object" && !Array.isArray(all) ? all : {};
+  } catch { return {}; }
+}
+function confirmedRelays() {
+  const list = trustedRelays()[route.slug];
+  return Array.isArray(list) ? list.filter((r) => typeof r === "string") : [];
+}
+function confirmRelay(relay) {
+  const all = trustedRelays();
+  all[route.slug] = confirmedRelays().filter((r) => r !== relay).concat([relay]).slice(-8);
+  remember(KEY_TRUSTED, JSON.stringify(all));
+}
+function forgetRelay(relay) {
+  const all = trustedRelays();
+  all[route.slug] = confirmedRelays().filter((r) => r !== relay);
+  remember(KEY_TRUSTED, JSON.stringify(all));
+}
+
 // ---------------------------------------------------------------------------
-// The GitHub token: module memory only.
+// The GitHub token: module memory only. A token just signed in or pasted is
+// held apart until the relay it would go to is cleared; only then does it
+// become the token verify sends.
 // ---------------------------------------------------------------------------
 let githubToken = "";
+let heldToken = "";
 
 // ---------------------------------------------------------------------------
 // The rejoin token: the relay gives one to each participant, and presenting
@@ -369,7 +413,7 @@ function sendBinary(tag, bytes) {
 }
 
 function openSocket() {
-  if (ws !== null || session.over || !session.relay) return;
+  if (ws !== null || session.over || !session.relay || relayStanding(session.relay) === "refused") return;
   setStatus(session.everJoined ? WORDS.reconnecting : WORDS.connecting, session.everJoined);
   const url = session.relay.replace(/^http/, "ws") + "/session";
   const sock = new WebSocket(url);
@@ -387,7 +431,7 @@ function afterOpen() {
     sendJSON({ type: "rejoin", token: rejoinToken });
     return;
   }
-  if (githubToken) {
+  if (githubToken && relayCleared()) {
     session.verifying = true;
     sendJSON({ type: "verify", token: githubToken, repo: route.slug });
     return;
@@ -571,7 +615,7 @@ function onJoined(msg) {
   setStatus(session.synced ? WORDS.connected : WORDS.syncing, false);
   // Back by the rejoin token after signing in on this page: the relay has not
   // seen this sign-in yet.
-  if (rejoined && githubToken && !session.login && session.role !== "member") sendJSON({ type: "verify", token: githubToken });
+  if (rejoined && githubToken && relayCleared() && !session.login && session.role !== "member") sendJSON({ type: "verify", token: githubToken });
   renderAll();
 }
 
@@ -793,6 +837,9 @@ async function relayConfig() {
     signIn: cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && authorize !== "",
     clientID,
     authorize,
+    // The relay says whether its sign-in app is a GitHub App; a relay that
+    // does not say is taken to run an OAuth app.
+    appType: cfg.app_type === "github-app" ? "github-app" : "oauth-app",
   };
 }
 
@@ -802,8 +849,12 @@ async function startSignIn() {
     session.code = normalizeCode(ui.code.value);
     session.name = ui.name.value.trim().slice(0, 40);
   }
+  // No sign-in starts through a relay the repository does not name, or, where
+  // its list cannot be read, one the person has not confirmed.
+  if (!relayClearedFor("signin")) return;
   let cfg;
   try { cfg = await relayConfig(); } catch { toast(WORDS.cannotConnect); return; }
+  showSignInNote(cfg);
   if (!cfg.signIn) {
     toast(WORDS.signInUnavailable);
     showTokenForm(true);
@@ -821,12 +872,19 @@ async function startSignIn() {
   const q = new URLSearchParams({
     client_id: cfg.clientID,
     redirect_uri: pageURL(),
-    scope: SIGN_IN_SCOPE,
     state,
     code_challenge: b64url(new Uint8Array(digest)),
     code_challenge_method: "S256",
     allow_signup: "false",
   });
+  // A GitHub App takes no scope: its user token can do only what both the app
+  // (its installations and fine-grained permissions) and the person may, and
+  // GitHub recommends Apps over OAuth apps
+  // (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app,
+  // docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps).
+  // An OAuth app needs the repo scope to open the pull request, which reaches
+  // every repository the person can.
+  if (cfg.appType !== "github-app") q.set("scope", SIGN_IN_SCOPE);
   location.assign(cfg.authorize + "?" + q.toString());
 }
 
@@ -848,6 +906,9 @@ async function finishSignIn() {
   session.name = typeof pending.name === "string" ? pending.name : "";
   if (session.code) updateFragment();
   if (!session.relay) { toast(WORDS.signInFailed); return true; }
+  // GitHub's code goes to the relay's exchange only while the relay is still
+  // cleared for this repository.
+  if (!relayCleared()) { toast(refusalWords(session.relay)); renderRelay(); return true; }
   setStatus(WORDS.signingIn, false);
   try {
     const res = await fetch(session.relay + "/auth/token", {
@@ -858,7 +919,7 @@ async function finishSignIn() {
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok || typeof out.access_token !== "string" || out.access_token === "") throw new Error("exchange");
-    githubToken = out.access_token;
+    heldToken = out.access_token;
   } catch {
     setStatus("", false);
     toast(WORDS.signInFailed);
@@ -866,7 +927,7 @@ async function finishSignIn() {
   }
   // Signed in from inside a session: back in as the same participant.
   takeRejoin();
-  connectSignedIn();
+  await presentHeldToken(false);
   return true;
 }
 
@@ -874,13 +935,41 @@ function useToken(value) {
   const t = String(value || "").trim();
   if (!t) return;
   if (!readRelayInput()) return;
-  githubToken = t;
+  heldToken = t;
+  presentHeldToken(false);
+}
+
+// presentHeldToken gives the held token to the relay, once the relay is
+// cleared. With a token, the page first asks api.github.com alone for the
+// repository's relay list, which a private repository shows only then: a list
+// that does not name the relay refuses it, and forgets any confirmation.
+async function presentHeldToken(checked) {
+  if (!heldToken) return;
+  const relay = session.relay;
+  if (!checked && anchor.state !== "listed") {
+    const seen = await readRelayList(heldToken);
+    if (seen.state === "listed") anchor = seen;
+  }
+  if (!heldToken || relay !== session.relay) { heldToken = ""; return; }
+  const standing = relayStanding(relay);
+  if (standing === "refused") {
+    forgetRelay(relay);
+    heldToken = "";
+    toast(refusalWords(relay));
+    renderRelay();
+    return;
+  }
+  if (standing === "unconfirmed") { askTrust("token"); return; }
+  if (standing !== "listed" && standing !== "confirmed") { heldToken = ""; return; }
+  githubToken = heldToken;
+  heldToken = "";
   connectSignedIn();
 }
 
 // connectSignedIn presents the token: on the open connection when there is
 // one, or on a new one.
 function connectSignedIn() {
+  if (!githubToken || !relayCleared()) { githubToken = ""; return; }
   setStatus(WORDS.signingIn, false);
   if (socketOpen()) {
     session.verifying = !session.inRoom;
@@ -889,6 +978,143 @@ function connectSignedIn() {
     openSocket();
   }
   renderAll();
+}
+
+// ---------------------------------------------------------------------------
+// Which relays may have a token (security review F1). A link can name any
+// relay in its fragment, so the repository is the trust anchor: it names its
+// relays in a committed file the page reads from api.github.com, without a
+// token for a public repository. Where that file cannot be read, the person
+// confirms the relay before any sign-in reaches it.
+// ---------------------------------------------------------------------------
+// The anchor: "checking" until GitHub answers, "listed" with the relays the
+// file names (none, for a file that names none the page can use), or
+// "unknown" when the file could not be read.
+let anchor = { state: "checking", relays: [] };
+
+// readRelayList reads the repository's relay list from its default branch,
+// with the token given, or none.
+async function readRelayList(token) {
+  const headers = { Accept: "application/vnd.github+json" };
+  if (token) headers.Authorization = "Bearer " + token;
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), 10000);
+  try {
+    const res = await fetch(GITHUB_API + repoPath() + "/contents/" + RELAYS_FILE, {
+      headers, signal: stop.signal, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+    });
+    if (res.status !== 200) return { state: "unknown", relays: [] };
+    return { state: "listed", relays: relaysIn(await res.json()) };
+  } catch {
+    return { state: "unknown", relays: [] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// relaysIn reads the relays a contents answer names: each exactly an origin,
+// https (or http on this computer, as the page takes a local relay). A file
+// that does not parse names none, so it refuses every relay.
+function relaysIn(body) {
+  try {
+    if (!body || body.type !== "file" || body.encoding !== "base64" || typeof body.content !== "string" || body.content.length > 65536) return [];
+    const list = JSON.parse(decodeBlob(body.content));
+    if (!list || !Array.isArray(list.relays)) return [];
+    const out = [];
+    for (const r of list.relays.slice(0, 32)) {
+      if (typeof r !== "string") continue;
+      let u;
+      try { u = new URL(r); } catch { continue; }
+      const origin = relayOrigin(r);
+      if (origin && origin === u.origin && u.pathname === "/" && !u.search && !u.hash) out.push(origin);
+    }
+    return out;
+  } catch { return []; }
+}
+
+// relayStanding is what the page may do with a relay: "listed" or "confirmed"
+// may have a token, "unconfirmed" must be confirmed first, "refused" gets
+// nothing, "checking" waits for GitHub's answer.
+function relayStanding(relay) {
+  if (!relay) return "";
+  if (anchor.state === "checking") return "checking";
+  if (anchor.state === "listed") return anchor.relays.includes(relay) ? "listed" : "refused";
+  return confirmedRelays().includes(relay) ? "confirmed" : "unconfirmed";
+}
+function relayCleared() {
+  const standing = relayStanding(session.relay);
+  return standing === "listed" || standing === "confirmed";
+}
+function refusalWords(relay) {
+  return (anchor.state === "listed" && anchor.relays.length === 0 ? WORDS.relayNoneUsable : WORDS.relayRefused) + " " + relay;
+}
+
+// relayClearedFor reports whether the relay is cleared; when it is not, it
+// asks the person to confirm it (for a relay the list cannot speak for) or
+// says why it is refused.
+function relayClearedFor(action) {
+  const standing = relayStanding(session.relay);
+  if (standing === "listed" || standing === "confirmed") return true;
+  if (standing === "unconfirmed") askTrust(action);
+  else {
+    heldToken = "";
+    toast(standing === "checking" ? WORDS.relayChecking : refusalWords(session.relay));
+  }
+  renderRelay();
+  return false;
+}
+
+let trustPending = null;
+function askTrust(action) {
+  trustPending = { action, relay: session.relay };
+  ui.trustOrigin.textContent = session.relay;
+  ui.trust.hidden = false;
+  ui.trustCancel.focus();
+}
+function trustAnswered(yes) {
+  const p = trustPending;
+  trustPending = null;
+  ui.trust.hidden = true;
+  if (!p) return;
+  if (!yes || p.relay !== session.relay || relayStanding(p.relay) !== "unconfirmed") {
+    heldToken = "";
+    renderRelay();
+    return;
+  }
+  const relay = p.relay;
+  confirmRelay(relay);
+  if (relayCleared()) remember(KEY_RELAY, relay);
+  renderRelay();
+  if (p.action === "signin") startSignIn();
+  else if (p.action === "token") presentHeldToken(true);
+}
+
+// renderRelay shows where the relay stands, with its origin, on the relay
+// card, which is never hidden for a relay that is not cleared.
+function renderRelay() {
+  if (!ui.relayStanding) return;
+  const relay = session.everJoined ? session.relay : relayOrigin(ui.relay.value);
+  const standing = relayStanding(relay);
+  const words = {
+    checking: WORDS.relayChecking, listed: WORDS.relayListed, confirmed: WORDS.relayConfirmed,
+    unconfirmed: WORDS.relayUnconfirmed, refused: relay ? refusalWords("").trim() : "",
+  }[standing] || "";
+  ui.relayStandingText.textContent = words;
+  ui.relayStandingOrigin.textContent = standing && standing !== "checking" && standing !== "listed" ? relay : "";
+  ui.relayStanding.className = standing === "refused" ? "standing bad" : "standing";
+  ui.relayStanding.hidden = !words;
+  if (!relayCleared()) ui.relayCard.hidden = false;
+}
+
+// showSignInNote says, for a relay that signs in through an OAuth app, that
+// a GitHub App would be narrower.
+function showSignInNote(cfg) {
+  ui.signInNote.textContent = cfg && cfg.signIn && cfg.appType !== "github-app" ? WORDS.oauthNote : "";
+}
+async function refreshSignInNote() {
+  showSignInNote(null);
+  if (!relayCleared()) return;
+  try { showSignInNote(await relayConfig()); } catch { /* the note waits for sign-in */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -1879,8 +2105,12 @@ function build() {
   ui.mode = el("select", { id: "mode" },
     el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
   ui.token = el("input", { id: "token", type: "password", autocomplete: "off", spellcheck: "false" });
+  ui.relay.addEventListener("input", () => renderRelay());
+  ui.relayStandingText = el("span");
+  ui.relayStandingOrigin = el("code", { class: "origin" });
+  ui.relayStanding = el("p", { class: "standing", hidden: true }, ui.relayStandingText, " ", ui.relayStandingOrigin);
   ui.relayCard = el("section", { class: "card" },
-    el("label", { for: "relay", text: WORDS.relayLabel }), ui.relay, el("p", { text: WORDS.relayHint }));
+    el("label", { for: "relay", text: WORDS.relayLabel }), ui.relay, el("p", { text: WORDS.relayHint }), ui.relayStanding);
   ui.joinCard = el("form", { class: "card", onsubmit: (e) => { e.preventDefault(); joinClicked(); } },
     el("h2", { text: WORDS.joinHeading }), el("p", { text: WORDS.joinHint }),
     el("label", { for: "code", text: WORDS.codeLabel }), ui.code,
@@ -1896,9 +2126,10 @@ function build() {
     el("h2", { text: WORDS.hostHeading }),
     el("label", { for: "mode", text: WORDS.modeLabel }), ui.mode,
     el("div", { class: "row" }, el("button", { type: "button", class: "primary", text: WORDS.host, onclick: () => hostClicked() })));
+  ui.signInNote = el("p", { class: "state" });
   ui.teamCard = el("section", { class: "card" },
     el("h2", { text: WORDS.teamHeading }), el("p", { text: WORDS.teamHint }), ui.signedIn,
-    el("div", { class: "row" }, ui.signInButton, ui.tokenToggle), ui.tokenForm, ui.hostRow);
+    el("div", { class: "row" }, ui.signInButton, ui.tokenToggle), ui.signInNote, ui.tokenForm, ui.hostRow);
   ui.start = el("div", { class: "start" }, ui.relayCard, ui.joinCard, ui.teamCard);
 
   // The workspace.
@@ -1925,7 +2156,18 @@ function build() {
   ui.work = el("div", { class: "work", hidden: true },
     ui.files, el("section", { class: "center" }, ui.send, ui.filetitle, ui.editor, ui.guestbar), ui.side);
 
-  app.append(bar, ui.start, ui.work, ui.toast);
+  // The confirmation a relay the repository's list cannot speak for needs
+  // before any sign-in reaches it, shown over the start screen or a session.
+  ui.trustOrigin = el("code", { class: "origin" });
+  ui.trustCancel = el("button", { type: "button", text: WORDS.cancel, onclick: () => trustAnswered(false) });
+  ui.trust = el("section", { class: "card trust", hidden: true, role: "alertdialog", "aria-labelledby": "trust-heading" },
+    el("h2", { id: "trust-heading", text: WORDS.trustHeading }),
+    el("p", { class: "only", text: WORDS.trustOnly }), ui.trustOrigin,
+    el("p", { text: WORDS.trustWhy }),
+    el("div", { class: "row" },
+      el("button", { type: "button", class: "primary", text: WORDS.trustYes, onclick: () => trustAnswered(true) }), ui.trustCancel));
+
+  app.append(bar, ui.trust, ui.start, ui.work, ui.toast);
   return true;
 }
 
@@ -1938,9 +2180,21 @@ function readRelayInput() {
   if (session.inRoom || session.everJoined) return true;
   const relay = relayOrigin(ui.relay.value);
   if (!relay) { toast(WORDS.relayBad); ui.relay.focus(); return false; }
-  if (relay !== session.relay && ws) { const sock = ws; ws = null; sock.close(); }
+  if (relay !== session.relay) {
+    if (ws) { const sock = ws; ws = null; sock.close(); }
+    // A sign-in was cleared for the relay it was made with, never this one.
+    if (githubToken || heldToken) { githubToken = ""; heldToken = ""; session.login = ""; session.member = false; }
+  }
   session.relay = relay;
-  remember(KEY_RELAY, relay);
+  renderRelay();
+  const standing = relayStanding(relay);
+  if (standing === "refused" || standing === "checking") {
+    toast(standing === "checking" ? WORDS.relayChecking : refusalWords(relay));
+    return false;
+  }
+  // Only a cleared relay is remembered: never one a link named and nobody
+  // confirmed.
+  if (relayCleared()) remember(KEY_RELAY, relay);
   return true;
 }
 
@@ -2135,9 +2389,14 @@ async function main() {
   ui.relay.value = session.relay;
   ui.code.value = session.code;
   ui.name.value = session.name;
-  if (frag.get("relay") && session.relay) ui.relayCard.hidden = true;
   setStatus("", false);
   renderAll();
+  renderRelay();
+  // Before anything reaches a relay: which relays does the repository name?
+  anchor = await readRelayList("");
+  renderRelay();
+  if (frag.get("relay") && session.relay && relayCleared()) ui.relayCard.hidden = true;
+  refreshSignInNote();
   if (!(await finishSignIn())) {
     // A reload of a page that was in a session: back in by its rejoin token.
     if (takeRejoin()) openSocket();

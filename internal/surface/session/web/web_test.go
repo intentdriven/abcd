@@ -352,15 +352,15 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 			t.Errorf("session.js names %q", u)
 		}
 	}
-	// localStorage is written in one place, which remembers the relay and
-	// the display name and nothing else.
+	// localStorage is written in one place, which remembers the relay, the
+	// display name and the relays the person confirmed, and nothing else.
 	if n := strings.Count(js, "localStorage.setItem("); n != 1 || !strings.Contains(js, "function remember(key, value) {\n  try { localStorage.setItem(key, value); }") {
 		t.Errorf("localStorage.setItem appears %d times, or outside remember()", n)
 	}
 	remembers := regexp.MustCompile(`remember\(([^)]*)\)`).FindAllStringSubmatch(js, -1)
 	for _, m := range remembers {
-		if m[1] != "key, value" && m[1] != "KEY_RELAY, relay" && m[1] != "KEY_NAME, session.name" {
-			t.Errorf("remember(%s): only the relay address and the display name are remembered", m[1])
+		if m[1] != "key, value" && m[1] != "KEY_RELAY, relay" && m[1] != "KEY_NAME, session.name" && m[1] != "KEY_TRUSTED, JSON.stringify(all" {
+			t.Errorf("remember(%s): only the relay address, the display name and the confirmed relays are remembered", m[1])
 		}
 	}
 	// Session storage holds the sign-in's state and verifier across GitHub's
@@ -371,12 +371,13 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 	if !strings.Contains(functionBody(t, js, "keepRejoin"), "sessionStorage.setItem(KEY_REJOIN, JSON.stringify({ relay: session.relay, repo: route.slug, token }))") {
 		t.Error("keepRejoin stores something besides the relay, the repository and the rejoin token")
 	}
-	// The token lives in one variable and goes only into verify and the
-	// Authorization header: never into storage, a URL, the page or a log.
+	// The token lives in one variable (and, until its relay is cleared, in a
+	// second that holds it) and goes only into verify and the Authorization
+	// header: never into storage, a URL, the page or a log.
 	lines := strings.Split(js, "\n")
 	uses := 0
 	for i, line := range lines {
-		if !strings.Contains(line, "githubToken") {
+		if !strings.Contains(line, "githubToken") && !strings.Contains(line, "heldToken") {
 			continue
 		}
 		uses++
@@ -573,7 +574,7 @@ func TestPageRejoinsWithItsTokenBeforeTheCode(t *testing.T) {
 		t.Error("a reloaded page does not rejoin with its kept token")
 	}
 	// So does a page coming back from GitHub's sign-in.
-	if !strings.Contains(functionBody(t, js, "finishSignIn"), "takeRejoin();\n  connectSignedIn();") {
+	if !strings.Contains(functionBody(t, js, "finishSignIn"), "takeRejoin();\n  await presentHeldToken(false);") {
 		t.Error("a page back from sign-in does not rejoin with its kept token")
 	}
 	if !strings.Contains(functionBody(t, js, "endSession"), "forgetRejoin()") {
@@ -851,5 +852,102 @@ func TestAttributedUpdatesMustBeTheirSendersOwn(t *testing.T) {
 	}
 	if !strings.Contains(js, "  forgedUpdate: ") {
 		t.Error("the page has no words for a dropped update")
+	}
+}
+
+// A link can name any relay in its fragment, so no GitHub token and no
+// sign-in reaches a relay until the repository's committed relay list names
+// it, or, where that list cannot be read, the person has confirmed it
+// (security review F1).
+func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, `const RELAYS_FILE = ".abcd/relay/relays.json";`) {
+		t.Fatal("session.js does not name the repository's relay list")
+	}
+	read := functionBody(t, js, "readRelayList")
+	if !strings.Contains(read, `GITHUB_API + repoPath() + "/contents/" + RELAYS_FILE`) {
+		t.Errorf("readRelayList does not read the list from api.github.com:\n%s", read)
+	}
+	// The anonymous read comes before anything else the page does.
+	main := functionBody(t, js, "main")
+	anon, finish := strings.Index(main, `anchor = await readRelayList("");`), strings.Index(main, "finishSignIn()")
+	if anon < 0 || finish < 0 || anon > finish {
+		t.Errorf("main does not read the relay list before finishing a sign-in:\n%s", main)
+	}
+	// The relay card is hidden only for a relay that is cleared.
+	for _, line := range strings.Split(js, "\n") {
+		if strings.Contains(line, "relayCard.hidden = true") && !strings.Contains(line, "relayCleared()") {
+			t.Errorf("the relay card is hidden for a relay that may not be cleared: %s", strings.TrimSpace(line))
+		}
+	}
+	// Sign-in starts only through a cleared relay, before /config is asked.
+	start := functionBody(t, js, "startSignIn")
+	gate, cfg := strings.Index(start, `if (!relayClearedFor("signin")) return;`), strings.Index(start, "relayConfig()")
+	if gate < 0 || cfg < 0 || gate > cfg {
+		t.Errorf("startSignIn asks the relay before clearing it:\n%s", start)
+	}
+	// GitHub's code goes to the relay's exchange only when it is cleared.
+	fin := functionBody(t, js, "finishSignIn")
+	gate, post := strings.Index(fin, "if (!relayCleared())"), strings.Index(fin, `"/auth/token"`)
+	if gate < 0 || post < 0 || gate > post {
+		t.Errorf("finishSignIn posts the code before clearing the relay:\n%s", fin)
+	}
+	if !strings.Contains(fin, "heldToken = out.access_token;") || !strings.Contains(fin, "await presentHeldToken(false);") {
+		t.Error("finishSignIn does not hold the token for the relay check")
+	}
+	// A token is held, and becomes the token verify sends only once the relay
+	// is cleared, after api.github.com was asked with it.
+	if strings.Contains(functionBody(t, js, "useToken"), "githubToken =") {
+		t.Error("useToken presents the pasted token without the relay check")
+	}
+	present := functionBody(t, js, "presentHeldToken")
+	ask, give := strings.Index(present, "readRelayList(heldToken)"), strings.Index(present, "githubToken = heldToken;")
+	if ask < 0 || give < 0 || ask > give || !strings.Contains(present, "forgetRelay(relay)") {
+		t.Errorf("presentHeldToken does not ask GitHub first and forget a refused relay:\n%s", present)
+	}
+	for _, m := range regexp.MustCompile(`githubToken = ([^;]+);`).FindAllStringSubmatch(js, -1) {
+		if m[1] != `""` && m[1] != "heldToken" {
+			t.Errorf("githubToken is set from %s, not only from a held token", m[1])
+		}
+	}
+	for fn, want := range map[string]string{
+		"afterOpen":       "if (githubToken && relayCleared())",
+		"connectSignedIn": "if (!githubToken || !relayCleared())",
+		"onJoined":        "githubToken && relayCleared()",
+		"readRelayInput":  "if (relayCleared()) remember(KEY_RELAY, relay);",
+		"openSocket":      `relayStanding(session.relay) === "refused"`,
+	} {
+		if !strings.Contains(functionBody(t, js, fn), want) {
+			t.Errorf("%s does not carry %s", fn, want)
+		}
+	}
+	// The confirmation names the relay in plain words.
+	if !strings.Contains(js, `trustOnly: "Only continue if your team runs this relay:"`) {
+		t.Error("the confirmation does not say to continue only for the team's own relay")
+	}
+	if !strings.Contains(functionBody(t, js, "confirmRelay"), "remember(KEY_TRUSTED, JSON.stringify(all));") {
+		t.Error("a confirmed relay is not remembered per repository")
+	}
+}
+
+// Sign-in asks for no OAuth scope when the relay's app is a GitHub App,
+// whose user tokens are bounded by the app's installations and permissions.
+func TestSignInPrefersAGitHubApp(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(functionBody(t, js, "relayConfig"), `cfg.app_type === "github-app"`) {
+		t.Error("relayConfig does not read the relay's app type")
+	}
+	start := functionBody(t, js, "startSignIn")
+	if !strings.Contains(start, `if (cfg.appType !== "github-app") q.set("scope", SIGN_IN_SCOPE);`) {
+		t.Errorf("startSignIn asks for a scope whatever the app type:\n%s", start)
+	}
+	if regexp.MustCompile(`(?s)new URLSearchParams\(\{[^}]*scope`).MatchString(start) {
+		t.Error("the authorize request always carries a scope")
+	}
+	if !strings.Contains(js, "docs.github.com/en/apps/") {
+		t.Error("the GitHub App preference does not cite GitHub's documentation")
+	}
+	if !strings.Contains(js, "  oauthNote: ") {
+		t.Error("the page has no note that a GitHub App is narrower")
 	}
 }
