@@ -1,0 +1,24 @@
+# abcd session blueprint v0.14.1 sha256:d62dec5bbfc9d6e59645aaeb329193d5d7ad6937fc09236d226dc6c3e3b859ab
+# The team's own brief session relay: one free web service built from the
+# Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
+# repository and set the Blueprint path to .abcd/relay/render.yaml. One deploy
+# serves all of the team's sessions. A session lives in the relay's memory
+# only, so a redeploy ends every open session; that is why autoDeploy is off.
+# abcd refuses to overwrite this file once it is edited.
+services:
+  - type: web
+    name: abcd-session-relay
+    runtime: docker
+    plan: free
+    dockerfilePath: ./.abcd/relay/Dockerfile
+    dockerContext: ./.abcd/relay
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      # The team's own GitHub sign-in app. Set both in Render's dashboard
+      # (the service's Environment), never in git. The secret stays on the
+      # relay; the client id is public.
+      - key: ABCD_SESSION_GITHUB_CLIENT_ID
+        sync: false
+      - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
+        sync: false
