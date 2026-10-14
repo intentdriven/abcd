@@ -73,6 +73,9 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
 .card p.standing.bad { color: var(--warn); }
 .trust { width: calc(100% - 2rem); max-width: 34rem; margin: 1rem auto 0; border: 2px solid var(--warn); }
 .trust .only { color: var(--ink); font-weight: 600; font-size: 1rem; }
+.owner { color: var(--ink); }
+.owner strong { font-size: 1.05rem; }
+.card p.owner { font-weight: 600; }
 .trust .origin { display: block; font-size: 1.15rem; margin: .4rem 0; padding: .5rem .6rem; background: var(--bg); border-radius: var(--radius); }
 .row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; align-items: center; }
 

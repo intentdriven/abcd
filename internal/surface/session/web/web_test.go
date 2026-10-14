@@ -454,13 +454,13 @@ func TestIssueLinksAreMeasuredAgainstOneNamedLimit(t *testing.T) {
 	}
 	// The issue body names the file, the base commit, both versions and the credit.
 	body := functionBody(t, js, "issueBody")
-	for _, want := range []string{"p.path", "effectiveMeta().base_sha", "fenced(p.before)", "fenced(p.after)", "creditLines(p)"} {
+	for _, want := range []string{"p.path", "baseCommit()", "fenced(p.before)", "fenced(p.after)", "creditLines(p, mdText)"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("issueBody does not carry %s", want)
 		}
 	}
 	credit := functionBody(t, js, "creditLines")
-	if !strings.Contains(credit, `"Suggested by " + a.guest + " (guest), approved by @" + a.approver`) {
+	if !strings.Contains(credit, `"Suggested by " + show(a.guest) + " (guest), approved by @" + a.approver`) {
 		t.Error("creditLines does not credit a guest's change to its approver")
 	}
 }
@@ -714,7 +714,7 @@ func TestGuestNamesMentionNobody(t *testing.T) {
 		t.Error("a passage's guest name does not go through trailerText")
 	}
 	pr := functionBody(t, js, "prBody")
-	if !strings.Contains(pr, "people.add(trailerText(r.name)") {
+	if !strings.Contains(pr, "people.add(mdText(trailerText(r.name))") {
 		t.Error("prBody names a guest without trailerText")
 	}
 	if !strings.Contains(functionBody(t, js, "openPullRequest"), "const guest = trailerText(a.guest);") {
@@ -924,7 +924,7 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 		"connectSignedIn": "if (!githubToken || !relayCleared())",
 		"onJoined":        "githubToken && relayCleared()",
 		"readRelayInput":  "if (relayCleared()) remember(KEY_RELAY, relay);",
-		"openSocket":      `relayStanding(session.relay) === "refused"`,
+		"openSocket":      "!relayCleared()",
 	} {
 		if !strings.Contains(functionBody(t, js, fn), want) {
 			t.Errorf("%s does not carry %s", fn, want)
@@ -939,25 +939,274 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	}
 }
 
-// Sign-in asks for no OAuth scope when the relay's app is a GitHub App,
-// whose user tokens are bounded by the app's installations and permissions.
-func TestSignInPrefersAGitHubApp(t *testing.T) {
+// Sign-in goes through a GitHub App alone, whose user token reaches only the
+// repositories the app is installed on: the page never asks for an OAuth
+// scope, and a relay whose /config does not say github-app gets no sign-in
+// button, only the token paste (security review 2, item 3).
+func TestSignInIsAGitHubAppsAlone(t *testing.T) {
 	js := pageScript(t)
-	if !strings.Contains(functionBody(t, js, "relayConfig"), `cfg.app_type === "github-app"`) {
-		t.Error("relayConfig does not read the relay's app type")
+	for _, gone := range []string{"SIGN_IN_SCOPE", `q.set("scope"`, "scope:", "oauthNote", `"oauth-app"`} {
+		if strings.Contains(js, gone) {
+			t.Errorf("session.js still carries %s", gone)
+		}
+	}
+	cfg := functionBody(t, js, "relayConfig")
+	if !strings.Contains(cfg, `signIn: cfg.app_type === "github-app" && cfg.sign_in === true`) {
+		t.Errorf("relayConfig offers sign-in for a relay that is not a GitHub App's:\n%s", cfg)
 	}
 	start := functionBody(t, js, "startSignIn")
-	if !strings.Contains(start, `if (cfg.appType !== "github-app") q.set("scope", SIGN_IN_SCOPE);`) {
-		t.Errorf("startSignIn asks for a scope whatever the app type:\n%s", start)
-	}
-	if regexp.MustCompile(`(?s)new URLSearchParams\(\{[^}]*scope`).MatchString(start) {
-		t.Error("the authorize request always carries a scope")
+	gate, assign := strings.Index(start, "if (!cfg.signIn) {"), strings.Index(start, "location.assign(")
+	if gate < 0 || assign < 0 || gate > assign {
+		t.Errorf("startSignIn sends the person to GitHub without a GitHub App:\n%s", start)
 	}
 	if !strings.Contains(js, "docs.github.com/en/apps/") {
-		t.Error("the GitHub App preference does not cite GitHub's documentation")
+		t.Error("the GitHub App rule does not cite GitHub's documentation")
 	}
-	if !strings.Contains(js, "  oauthNote: ") {
-		t.Error("the page has no note that a GitHub App is narrower")
+	// No sign-in button for a relay that offers no GitHub App sign-in.
+	for _, fn := range []string{"renderStart", "renderTop"} {
+		if !strings.Contains(functionBody(t, js, fn), "signInOffered === false") {
+			t.Errorf("%s shows a sign-in button whatever the relay offers", fn)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "refreshSignIn"), "signInOffered = ") {
+		t.Error("the relay's /config does not decide whether sign-in is offered")
+	}
+	// The repository the relay is named by is shown prominently.
+	notice := functionBody(t, js, "ownerNotice")
+	for _, want := range []string{"WORDS.namedBy", "WORDS.onlyIfYouWorkOn", "route.slug", `el("strong"`} {
+		if !strings.Contains(notice, want) {
+			t.Errorf("ownerNotice does not carry %s:\n%s", want, notice)
+		}
+	}
+	if !strings.Contains(js, `namedBy: "This relay is named by"`) || !strings.Contains(js, `onlyIfYouWorkOn: "Only continue if you work on"`) {
+		t.Error("the page does not name the repository a relay is named by")
+	}
+	for _, fn := range []string{"renderRelay", "build"} {
+		if !strings.Contains(functionBody(t, js, fn), "ownerNotice(") {
+			t.Errorf("%s does not show the repository the relay is named by", fn)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "askTrust"), "route.slug") {
+		t.Error("the trust confirmation does not name the repository")
+	}
+}
+
+// The relay list is read fail-closed: only GitHub's 404 means the repository
+// names no relay the page can see, which the person may then confirm. A 403,
+// a 429, a 5xx or a network error means the list could not be checked: the
+// relay is refused, with no confirmation offered (security review 2, item 5).
+func TestTheRelayListIsReadFailClosed(t *testing.T) {
+	js := pageScript(t)
+	read := functionBody(t, js, "readRelayList")
+	for _, want := range []string{
+		`if (res.status === 404) return { state: "unknown", relays: [] };`,
+		`if (res.status !== 200) return { state: "unavailable", relays: [] };`,
+	} {
+		if !strings.Contains(read, want) {
+			t.Errorf("readRelayList does not carry %s:\n%s", want, read)
+		}
+	}
+	if strings.Count(read, `state: "unknown"`) != 1 {
+		t.Errorf("readRelayList reads something other than a 404 as no list:\n%s", read)
+	}
+	if !strings.Contains(read, "} catch {\n    return { state: \"unavailable\", relays: [] };") {
+		t.Errorf("a network error is not read as an unavailable list:\n%s", read)
+	}
+	if !strings.Contains(functionBody(t, js, "relayStanding"), `if (anchor.state === "unavailable") return "unavailable";`) {
+		t.Error("relayStanding does not refuse a relay whose list could not be checked")
+	}
+	cleared := functionBody(t, js, "relayClearedFor")
+	if !strings.Contains(cleared, `if (standing === "unconfirmed") askTrust(action);`) || strings.Count(cleared, "askTrust(") != 1 {
+		t.Errorf("relayClearedFor offers a confirmation for other than an unconfirmed relay:\n%s", cleared)
+	}
+	if !strings.Contains(js, `relayUnavailable: "The page could not check this repository's relay list, so it sends nothing to this relay. Try again later:"`) {
+		t.Error("the page has no words for a relay list it could not check")
+	}
+	if !strings.Contains(functionBody(t, js, "presentHeldToken"), `seen.state === "unavailable"`) {
+		t.Error("a relay list GitHub would not show to the token is not refused")
+	}
+	if !strings.Contains(functionBody(t, js, "trustAnswered"), `relayStanding(p.relay) !== "unconfirmed"`) {
+		t.Error("a confirmation is honoured for a relay that is not unconfirmed")
+	}
+}
+
+// The files a session sends back are confined to the base the host seeded,
+// read through effectiveMeta, whose base_snapshot only the host's login
+// writes: never the member-writable meta map as such (security review 2,
+// item 6).
+func TestBaseFilesComeFromTheHostsSnapshot(t *testing.T) {
+	js := pageScript(t)
+	calls := regexp.MustCompile(`baseFilePaths\(((?:[^()]|\(\))*)\)`).FindAllStringSubmatch(js, -1)
+	if len(calls) < 3 {
+		t.Fatalf("baseFilePaths is called %d times; the scan is not looking at the calls", len(calls))
+	}
+	if n := strings.Count(js, "baseFilePaths("); n != len(calls) {
+		t.Errorf("baseFilePaths( appears %d times, %d of them with a plain argument", n, len(calls))
+	}
+	for _, c := range calls {
+		switch c[1] {
+		case "baseSnapshot()", "base":
+		default:
+			t.Errorf("baseFilePaths(%s) reads a base other than the host's snapshot", c[1])
+		}
+	}
+	for _, fn := range []string{"analyse", "validSuggestion"} {
+		body := functionBody(t, js, fn)
+		if strings.Contains(body, "baseFilePaths(base)") && !strings.Contains(body, "const base = baseSnapshot();") {
+			t.Errorf("%s takes its base from elsewhere than baseSnapshot()", fn)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "baseSnapshot"), "effectiveMeta().base_snapshot") {
+		t.Error("baseSnapshot does not read the host's base_snapshot")
+	}
+	if n := strings.Count(js, "base_snapshot"); n != 3 {
+		t.Errorf("session.js names base_snapshot %d times, want 3: META_ONCE, seed's write and baseSnapshot", n)
+	}
+}
+
+// A suggestion a member's page records lands in the session's log, so the
+// page keeps only its fields, each validated and bounded, and refuses one
+// over the relay's size before sending it (security review 2, item 2).
+func TestStoredSuggestionsAreBounded(t *testing.T) {
+	js := pageScript(t)
+	for _, want := range []string{
+		"const MAX_REPLACEMENT = 64000;", "const MAX_QUOTE_PART = 200;", "const MAX_POSITION_JSON = 256;", "const MAX_SUGGEST_BYTES = 70 * 1024;",
+		`const SUGGESTION_ID_RE = /^s[0-9]{1,9}$/;`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("session.js lacks %s", want)
+		}
+	}
+	valid := functionBody(t, js, "validSuggestion")
+	for _, want := range []string{
+		"b.replacement.length <= MAX_REPLACEMENT", "b.quote.exact.length <= MAX_REPLACEMENT",
+		"b.quote.prefix.length <= MAX_QUOTE_PART", "b.quote.suffix.length <= MAX_QUOTE_PART",
+		"briefFile(b.path, baseFilePaths(base))",
+	} {
+		if !strings.Contains(valid, want) {
+			t.Errorf("validSuggestion does not check %s:\n%s", want, valid)
+		}
+	}
+	stored := functionBody(t, js, "storedSuggestion")
+	for _, want := range []string{
+		"if (!SUGGESTION_ID_RE.test(id) || !validSuggestion(b)) return null;", "boundedPosition(b.anchor)", "boundedPosition(b.head)",
+		"from: cleanName(from)", "utf8Length(JSON.stringify(out)) > MAX_SUGGEST_BYTES",
+	} {
+		if !strings.Contains(stored, want) {
+			t.Errorf("storedSuggestion does not carry %s:\n%s", want, stored)
+		}
+	}
+	if strings.Contains(stored, "b.anchor ??") || strings.Contains(stored, "...b") {
+		t.Errorf("storedSuggestion stores a field as it came:\n%s", stored)
+	}
+	bounded := functionBody(t, js, "boundedPosition")
+	if !strings.Contains(bounded, "cleanPosition(p)") || !strings.Contains(bounded, "MAX_POSITION_JSON") {
+		t.Errorf("boundedPosition does not clean and bound a position:\n%s", bounded)
+	}
+	on := functionBody(t, js, "onSuggest")
+	if !strings.Contains(on, "const stored = storedSuggestion(id, from, msg.body);") || !strings.Contains(on, "if (!stored) return;") {
+		t.Errorf("onSuggest records a suggestion it did not bound:\n%s", on)
+	}
+	send := functionBody(t, js, "sendSuggestion")
+	size, sent := strings.Index(send, "utf8Length(JSON.stringify(body)) > MAX_SUGGEST_BYTES"), strings.Index(send, `sendJSON({ type: "suggest", body })`)
+	if size < 0 || sent < 0 || size > sent {
+		t.Errorf("sendSuggestion sends a suggestion over the relay's size:\n%s", send)
+	}
+	on = functionBody(t, js, "onError")
+	for _, code := range []string{"suggestion-too-big", "too-many-suggestions", "suggestions-full", "bad-suggestion"} {
+		if !strings.Contains(on, `"`+code+`"`) {
+			t.Errorf("onError does not answer %s", code)
+		}
+	}
+	if !strings.Contains(on, "awaitingAck.shift()") {
+		t.Error("a refused suggestion stays waiting for its acknowledgement")
+	}
+}
+
+// The base commit an issue or a pull request names is checked as a commit
+// id, and a guest's name cannot write a link, an image, code or emphasis in
+// either body (security review 2, item 11a).
+func TestBodiesNameOnlyACommitAndInertGuestNames(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, "const COMMIT_RE = /^[0-9a-f]{40}$/;") {
+		t.Fatal("session.js has no pattern for a commit id")
+	}
+	if !strings.Contains(functionBody(t, js, "baseCommit"), "COMMIT_RE.test(sha)") {
+		t.Error("baseCommit does not check the base commit")
+	}
+	for _, fn := range []string{"issueBody", "prBody"} {
+		body := functionBody(t, js, fn)
+		if strings.Contains(body, "effectiveMeta().base_sha") || !strings.Contains(body, "baseCommit()") {
+			t.Errorf("%s names the base commit unchecked:\n%s", fn, body)
+		}
+		if !strings.Contains(body, "creditLines(p, mdText)") {
+			t.Errorf("%s credits guests without neutralising their names", fn)
+		}
+	}
+	md := functionBody(t, js, "mdText")
+	if !strings.Contains(md, "replace(/[\\[\\]()<>`*]/g, \"\\\\$&\")") {
+		t.Errorf("mdText does not escape [ ] ( ) < > ` and *:\n%s", md)
+	}
+	pr := functionBody(t, js, "prBody")
+	for _, want := range []string{"people.add(mdText(trailerText(r.name))", "people.add(mdText(p.guest)", `out.push("- " + mdText(p.guest)`} {
+		if !strings.Contains(pr, want) {
+			t.Errorf("prBody does not carry %s", want)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "creditLines"), `"Suggested by " + show(a.guest) + " (guest), approved by @" + a.approver`) {
+		t.Error("creditLines does not pass a guest's name through its formatter")
+	}
+}
+
+// A static host cannot send frame-ancestors, so the page refuses to run in a
+// frame: framed, it shows a message and never the trust confirmation or any
+// sign-in (security review 2, item 11b).
+func TestThePageRefusesToRunFramed(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(functionBody(t, js, "framed"), "return window.top !== window.self;") {
+		t.Error("framed does not compare the top window with this one")
+	}
+	main := functionBody(t, js, "main")
+	gate, build := strings.Index(main, "if (framed()) { refuseFramed(); return; }"), strings.Index(main, "build()")
+	if gate < 0 || build < 0 || gate > build {
+		t.Errorf("main builds the page before refusing a frame:\n%s", main)
+	}
+	for _, fn := range []string{"askTrust", "startSignIn", "useToken"} {
+		if !strings.Contains(functionBody(t, js, fn), "if (framed()) return;") {
+			t.Errorf("%s runs inside a frame", fn)
+		}
+	}
+	if !strings.Contains(js, "  framedRefused: ") {
+		t.Error("the page has no words for refusing a frame")
+	}
+}
+
+// A guest's join reaches a relay only once it is cleared, as a sign-in does:
+// the display name is not sent to a relay the person has not confirmed
+// (security review 2, item 11d).
+func TestAGuestJoinWaitsForTheRelayToBeCleared(t *testing.T) {
+	js := pageScript(t)
+	join := functionBody(t, js, "joinClicked")
+	gate, open := strings.Index(join, `if (!relayClearedFor("join")) return;`), strings.Index(join, "openSocket()")
+	if gate < 0 || open < 0 || gate > open || gate > strings.Index(join, "proceed()") {
+		t.Errorf("joinClicked joins before the relay is cleared:\n%s", join)
+	}
+	if !strings.Contains(functionBody(t, js, "openSocket"), "!relayCleared()") {
+		t.Error("openSocket connects to a relay that is not cleared")
+	}
+	if !strings.Contains(functionBody(t, js, "trustAnswered"), `p.action === "join"`) {
+		t.Error("a confirmed relay does not go on to the join")
+	}
+}
+
+// A session ends twelve hours after it opened; the page says so.
+func TestThePageSaysASessionExpired(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, `case "closed": endSession(msg.reason === "expired" ? WORDS.expired : WORDS.ended); break;`) {
+		t.Error("the page does not tell an expired session from a closed one")
+	}
+	if !strings.Contains(js, "  expired: ") {
+		t.Error("the page has no words for an expired session")
 	}
 }
 
@@ -1004,7 +1253,7 @@ func TestSessionSettingsAreTheHostsAlone(t *testing.T) {
 			t.Errorf("effectiveMeta does not carry %s:\n%s", want, em)
 		}
 	}
-	for _, fn := range []string{"baseSnapshot", "issueBody", "prBody", "openPullRequest", "renderSend", "renderSide"} {
+	for _, fn := range []string{"baseSnapshot", "baseCommit", "openPullRequest", "renderSend", "renderSide"} {
 		if !strings.Contains(functionBody(t, js, fn), "effectiveMeta()") {
 			t.Errorf("%s does not read the settings through effectiveMeta", fn)
 		}
