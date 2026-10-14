@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -568,5 +569,46 @@ func TestOnlyTheLaneThatCompletesTheRunTombstones(t *testing.T) {
 		if got := completesRun(tc.st, "lane-2"); got != tc.want {
 			t.Errorf("%s: completesRun = %v; want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestATombstoneRefusalIsWrittenTerminalSafe: the tidy-up's clause quotes what
+// origin said, which a remote hook chose, so the landing's note is written
+// terminal-safe, not only masked on read. (git masks a hook's sideband itself;
+// TestTheReleaseClauseIsTerminalSafe covers text that reaches the clause
+// unmasked.)
+func TestATombstoneRefusalIsWrittenTerminalSafe(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.armReserved(t)
+	f.merged(t, l.Landing.Pushed)
+	hook := "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/heads/abcd-reserved/*) printf 'closed \\342\\200\\256here\\n' >&2; exit 1;; esac; done\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(f.bare, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	raw := string(f.stateBytes(t))
+	if !strings.Contains(raw, "could not push the tombstone") {
+		t.Fatalf("the landing names the failed tombstone:\n%s", raw)
+	}
+	if strings.ContainsRune(raw, '\u202e') || strings.Contains(raw, `\u202e`) {
+		t.Fatalf("the landing's note carries origin's bidi override as written:\n%s", raw)
+	}
+}
+
+// TestTheReleaseClauseIsTerminalSafe: the release clause both the landing's
+// tidy-up and the drain's hand-back write quotes a refusal and a holder, both
+// derived from the remote, so it is terminal-safe whatever reaches it.
+func TestTheReleaseClauseIsTerminalSafe(t *testing.T) {
+	was := claimReserve
+	t.Cleanup(func() { claimReserve = was })
+	claimReserve = func(string, claim.Request, claim.Options) (claim.Result, error) {
+		return claim.Result{}, errors.New("origin said \u202edlrow\u009b31m")
+	}
+	clause, failed := releaseReservation(t.TempDir(), "iss-2609300000000101", time.Now())
+	if !failed || !strings.Contains(clause, "origin said") {
+		t.Fatalf("the clause names the failure: %q", clause)
+	}
+	if strings.ContainsAny(clause, "\u202e\u009b") {
+		t.Fatalf("the release clause carries a bidi override or a C1 control: %q", clause)
 	}
 }

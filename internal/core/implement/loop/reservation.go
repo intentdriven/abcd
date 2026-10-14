@@ -42,6 +42,10 @@ const (
 	CheckReservation = "reservation"
 )
 
+// claimReserve is claim.Reserve, a seam a test replaces to feed the release
+// clause a refusal no git would write.
+var claimReserve = claim.Reserve
+
 // fenceMargin is how far past the merge queue's check timeout the land fence
 // renews the reservation, so it covers one run of the queue's checks. It does
 // not cover the time a pull request waits in the queue before its checks
@@ -223,9 +227,12 @@ func tidyReservation(c Context, lane Lane) string {
 // releaseReservation pushes a tombstone over the run's reservation on id
 // while it is still this person's from this copy, and says what came of it:
 // released, already released, left as it stands with its holder named, or a
-// fetch or push that failed (failed is then true). It never refuses.
+// fetch or push that failed (failed is then true). It never refuses. The
+// clause quotes a refusal and a holder, both derived from the remote, so it
+// is returned terminal-safe and home-redacted for every caller.
 func releaseReservation(repoRoot, id string, now time.Time) (clause string, failed bool) {
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Release: true}, claimOptions(now))
+	defer func() { clause = termsafe.Sanitize(fsutil.RedactHome(clause)) }()
+	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true}, claimOptions(now))
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased:
@@ -323,5 +330,5 @@ func releaseHandedBack(repoRoot string, run State, now time.Time) string {
 	if failed {
 		clause += ", so it lapses with its lease"
 	}
-	return termsafe.Sanitize(fsutil.RedactHome(clause))
+	return clause
 }
