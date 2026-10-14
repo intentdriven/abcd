@@ -356,6 +356,13 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 	for i, err := range suite.errs {
 		refuse(err, suite.Refusals[i])
 	}
+	scanWarnings := exclusionWarnings(scan)
+	pre.Warnings = append(pre.Warnings, scanWarnings...)
+	if policy.StrictWarnings {
+		for _, reason := range strictReasons(scanWarnings) {
+			refuse(fmt.Errorf("%w: %s", ErrPayloadScanRefused, reason), reason)
+		}
+	}
 
 	included := make(map[string]struct{}, len(bundle.Included))
 	for _, f := range bundle.Included {

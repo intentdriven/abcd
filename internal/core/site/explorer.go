@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -151,7 +152,7 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 		e.mentions[m.To] = append(e.mentions[m.To], m.From)
 	}
 	for _, d := range c.graph.Dangling {
-		if _, ok := e.byID[d.From]; !ok {
+		if _, ok := e.byID[d.From]; !ok || lint.UnjudgedGraphField(d.Field) {
 			continue
 		}
 		rel := d.Field

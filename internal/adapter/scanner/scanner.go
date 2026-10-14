@@ -109,6 +109,11 @@ type ScanResult struct {
 	// zero-coverage sentinel.
 	Excluded    []string          `json:"excluded,omitempty"`
 	ExcludedWhy map[string]string `json:"excluded_why,omitempty"`
+	// UnmatchedExclusions names, in config order, every declared exclusion
+	// fragment that matched no bundle file. Such a fragment leaves nothing
+	// out, so a typo'd one would read as working while the files it was meant
+	// for are scanned; launch warns on each (iss-2610120929469571).
+	UnmatchedExclusions []string `json:"unmatched_exclusions,omitempty"`
 	// FindingsOmitted counts the findings dropped past maxBundleFindings. They
 	// are counted in HardFails all the same, so a truncated list never reads
 	// as a smaller verdict.
@@ -159,8 +164,9 @@ type Config struct {
 	SkipDirs          []string `json:"skip_dirs"`
 	SkipPathFragments []string `json:"skip_path_fragments"`
 	// ExcludePathFragments are the exclusions the technical facilitator
-	// declares: a bundle file whose path contains a fragment is left out of
-	// the scan by choice and reported so, with the reason, never as scanned.
+	// declares: a bundle file whose path holds a fragment's whole segments
+	// (exclusionMatches) is left out of the scan by choice and reported so,
+	// with the reason, never as scanned.
 	ExcludePathFragments []Exclusion           `json:"exclude_path_fragments"`
 	SkipExtensions       []string              `json:"skip_extensions"`
 	SkipFilenames        []string              `json:"skip_filenames"`
@@ -402,6 +408,11 @@ func (s *Scanner) mergeConfig(cfg Config) error {
 		}
 		if !strings.ContainsFunc(ex.Fragment, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
 			return errUnreadable("exclude_path_fragments: the fragment " + strconv.Quote(ex.Fragment) + " is punctuation alone, which nearly every path contains; name the directory or file")
+		}
+		// A single character names no part of the tree a reviewer can weigh,
+		// as punctuation alone does not (iss-2610111600051340).
+		if utf8.RuneCountInString(strings.Trim(ex.Fragment, "/ \t\r\n")) == 1 {
+			return errUnreadable("exclude_path_fragments: the fragment " + strconv.Quote(ex.Fragment) + " is a single character; name the directory or file")
 		}
 		if strings.TrimSpace(ex.Reason) == "" {
 			return errUnreadable("exclude_path_fragments: the exclusion of " + strconv.Quote(ex.Fragment) + " gives no reason")
@@ -1223,6 +1234,23 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 		res.UnscannedWhy[logical] = why
 	}
 	secrets := secretPatterns(s.patterns)
+	// Every exclusion is judged against every file, not only the first that
+	// excludes it, so a fragment overlapping an earlier one is not reported
+	// as matching nothing.
+	matched := make([]bool, len(s.exclusions))
+	for _, f := range files {
+		l := filepath.ToSlash(f.LogicalPath)
+		for i, ex := range s.exclusions {
+			if !matched[i] && exclusionMatches(l, ex.Fragment) {
+				matched[i] = true
+			}
+		}
+	}
+	for i, ex := range s.exclusions {
+		if !matched[i] {
+			res.UnmatchedExclusions = append(res.UnmatchedExclusions, ex.Fragment)
+		}
+	}
 	for _, f := range files {
 		if why, ok := s.excludedBy(f.LogicalPath); ok {
 			res.Excluded = append(res.Excluded, f.LogicalPath)
@@ -1605,15 +1633,48 @@ func (s *Scanner) unreviewedSkip(logical string) (string, bool) {
 }
 
 // excludedBy reports the reason of the first declared exclusion whose
-// fragment the logical path contains.
+// fragment the logical path matches (exclusionMatches).
 func (s *Scanner) excludedBy(logical string) (string, bool) {
 	l := filepath.ToSlash(logical)
 	for _, ex := range s.exclusions {
-		if strings.Contains(l, ex.Fragment) {
+		if exclusionMatches(l, ex.Fragment) {
 			return ex.Reason, true
 		}
 	}
 	return "", false
+}
+
+// exclusionMatches reports whether the slash path holds the fragment as whole
+// segments: the fragment's segments appear consecutively in the path, and a
+// fragment ending in "/" names a directory, so a path segment must follow
+// them. A fragment starting with "." and holding no "/" is extension-shaped
+// and also matches the end of the file name (".jar" matches tools/wrapper.jar).
+// A substring match let a fragment that is part of a name ("e", "se",
+// "generated/" inside "regenerated/") leave out files nobody declared
+// (iss-2610111600051340).
+func exclusionMatches(slashPath, fragment string) bool {
+	segs := strings.Split(slashPath, "/")
+	if strings.HasPrefix(fragment, ".") && !strings.Contains(fragment, "/") && strings.HasSuffix(segs[len(segs)-1], fragment) {
+		return true
+	}
+	dirOnly := strings.HasSuffix(fragment, "/")
+	want := strings.Split(strings.Trim(fragment, "/"), "/")
+	for i := 0; i+len(want) <= len(segs); i++ {
+		if dirOnly && i+len(want) == len(segs) {
+			break
+		}
+		match := true
+		for j, w := range want {
+			if segs[i+j] != w {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Scanner) skipByFragment(logical string) bool {

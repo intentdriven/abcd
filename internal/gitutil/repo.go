@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -177,6 +178,91 @@ func ScrubbedEnv() []string {
 		env = append(env, kv)
 	}
 	return env
+}
+
+// WorkingTreeCommand builds a git command under root that writes or judges a
+// working tree the way the person's own git does: it reads the person's global
+// and system config (ScrubbedEnv), so the content filters, ignore files and
+// line-ending settings a repository relies on there apply. A filter that a
+// global `git lfs install` defines is the case that made it necessary: under
+// the isolated environment a lane's `git worktree add` and a restart's `reset
+// --hard` wrote Git LFS pointer text where the person's own git writes the
+// files (iss-2610111729375108). The git commands that check files out into a
+// working tree, stage it, clean it or commit from it use this; a read whose
+// answer abcd parses stays isolated.
+//
+// Only which config files git reads changes. The program-starting knobs stay
+// pinned off (ExecPins), automatic maintenance is off on the command line
+// (gc.auto=0, maintenance.auto=false: ScrubbedEnv does not pin them as the
+// isolated environment does, and a commit or merge would otherwise start `gc
+// --auto`, which runs gc.recentObjectsHook, iss-2610091935334207),
+// GIT_NO_LAZY_FETCH=1 keeps a partial clone from fetching a missing object
+// through its promisor remote, and the command passes the lazy-fetch floor
+// guard every isolated command passes.
+func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
+	return workingTreeCommand(context.Background(), root, ExecPins(), args)
+}
+
+// WorkingTreeCommitCommand is WorkingTreeCommand for a git command that runs
+// the repository's hooks on a working tree abcd makes for the work, so a
+// lane's record commit, a merge into a lane, a lane's reset --hard and the
+// `git worktree add` that checks the lane out all use it: the repository's
+// hooks, its commit signing and its merge's signature check run as they do on
+// the person's own commit, merge, reset and checkout, so it is
+// WorkingTreeCommand without those three pins (ExecPins names them:
+// core.hooksPath, commit.gpgsign, merge.verifySignatures). Each is
+// the repository's own behaviour, and a program it names there runs on the
+// person's own next commit with no abcd involved, so switching it off for
+// abcd prevented nothing and changed how the repository works
+// (iss-2610111729399920, principle abcd-fixes-what-it-adds). A content
+// filter and a merge driver the repository configures run too, as they do
+// under WorkingTreeCommand. Everything else is WorkingTreeCommand's.
+//
+// A program the repository's settings start can wait on a person (a GUI
+// pinentry, a hook that prompts), so the command is bound to ctx, which the
+// caller gives a deadline so an unattended run is never held by one nobody
+// answers. It sets no Cancel or WaitDelay itself, and a ctx that expires
+// without them SIGKILLs git (exec.CommandContext's default), which leaves its
+// lock files (index.lock) and a half-written checkout behind. So the caller
+// sets Cancel to send SIGTERM, on which git removes its locks, and WaitDelay
+// to bound how long a program a hook left running may hold git's output
+// pipes once git has exited (loop.boundedGit does both, and stops git's
+// descendants with it). After a Cancel that succeeded, Wait reports the
+// context's error even when git then exited 0, so a caller that needs to know
+// whether git's work was made checks ProcessState.
+func WorkingTreeCommitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
+	return workingTreeCommand(ctx, root, commitPins(), args)
+}
+
+// repositoryCommitKnobs are the ExecPins a commit abcd makes leaves to the
+// repository (WorkingTreeCommitCommand).
+var repositoryCommitKnobs = []string{"core.hooksPath", "commit.gpgsign", "merge.verifySignatures"}
+
+// commitPins is ExecPins less every pin on a repositoryCommitKnobs key.
+func commitPins() []string {
+	pins := ExecPins()
+	var out []string
+	for i := 0; i+1 < len(pins); i += 2 {
+		key, _, _ := strings.Cut(pins[i+1], "=")
+		if !slices.Contains(repositoryCommitKnobs, key) {
+			out = append(out, pins[i], pins[i+1])
+		}
+	}
+	return out
+}
+
+// workingTreeCommand is WorkingTreeCommand and WorkingTreeCommitCommand,
+// pinning pins, bound to ctx.
+func workingTreeCommand(ctx context.Context, root string, pins, args []string) *exec.Cmd {
+	full := append(append(pins,
+		"-c", "core.quotePath=false",
+		"-c", "gc.auto=0",
+		"-c", "maintenance.auto=false",
+		"-C", root), args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = append(ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
+	guardObjectRead(cmd, root, args)
+	return cmd
 }
 
 // CommandLineConfig is the `git -c` configuration the parent environment

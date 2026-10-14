@@ -86,7 +86,7 @@ func TestRaceCandidatesAreGoProcessesOutsideTheChain(t *testing.T) {
 		Proc{PID: 70001, PPID: 1, Name: "zsh"},
 		Proc{PID: 70002, PPID: 1, Name: "gopls"},
 	)
-	got := RaceCandidates(Snapshot{Procs: procs, HasProcs: true}, waiter)
+	got := raceCandidates(Snapshot{Procs: procs, HasProcs: true}, waiter)
 	if !reflect.DeepEqual(got, []int{70000}) {
 		t.Fatalf("candidates = %v, want [70000]", got)
 	}
