@@ -29,9 +29,10 @@ landing), and the run record read back at the end with the run's transcripts.
 | `next` | — | shipped |
 
 The status cell records that the sub-verb is in the command tree, not that its
-intent is delivered: the pick is made once per invocation, and continuing under
-the pace rule (criterion 5) and naming a falsified pick in the run record
-(criterion 6) are not built ([The pick](#the-pick)).
+intent is delivered: the pick is made once per invocation by default, and a
+series (a run count above one, or a run until no candidate is left) continues under the pace rule
+(criterion 5); a lane handed back names the pick falsified in the run record
+(criterion 6) ([The pick](#the-pick)).
 
 ## The checks
 
@@ -148,10 +149,14 @@ carries it, since a rebase or an amend that drops it drops the reason. The
 readiness gate's grounds row skips a run-marked entry when it names the most
 recent conjecture, so the person's entry stays the one it reports.
 
-One pick per invocation. A run count above one, and a run until no candidate
-is left, which continue under the pace rule (criterion 5), are refused by name; so is a pick whose
-intent already has a run in progress. Naming a falsified pick in the run record
-(criterion 6) waits on the unachievable verdict of itd-50.
+One pick per invocation by default. A run count above one, and a run until no
+candidate is left, begin a series kept beside the run state, in
+`.abcd/.work.local/run/next.json`, that continues under the pace rule
+(criterion 5), one move per invocation. Refused by name are a negative count,
+both flags together, a count or pace other than the one a series began with,
+and a pick whose intent already has a run in progress. A lane handed back after
+its fix rounds names the pick falsified in the run record (criterion 6), and the
+intent's grounds entry is left as written.
 
 ## The pace
 
@@ -193,8 +198,15 @@ not pause.
 
 The ceiling binds (criterion 6, ruling DR6): the loop counts the agents out
 from the state, implementers and validators together, and starts nothing above
-the ceiling. The budget check and the rate-limit checkpoint (criteria 7 and 8)
-wait on a runner that reports its quota.
+the ceiling. The budget check (criterion 7) runs last of the start's checks:
+each runner a role is routed to is asked its remaining quota and the run's
+estimate is compared with it, an estimate over the quota is refused at the
+`budget` check, and a runner that reports none (the host included) is named and
+the check skipped out loud. The rate-limit checkpoint (criterion 8) ends the
+window early on a runner's rate-limit response: `next_eligible_at` is written,
+the lane's uncommitted work and partial receipt are saved aside and never built
+on, every other lane is checkpointed at its head, and the first call after the
+pause hands the same work to a fresh agent.
 
 ## The state file
 

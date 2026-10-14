@@ -413,7 +413,7 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  init: absent means every other corpus verb and the
                                  page say so and stop
   load-limits                    the load check's per-machine limits (stray-minutes,
-                                 extreme-load), read-only; abcd never creates it
+                                 extreme-load, wait-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
   credentials.json               the credential store's abcd home: external
                                  credentials by name (a hosting token, a provider's
@@ -466,7 +466,7 @@ by the install verb and by the hook shims that consult `path-entry`, and a recor
 failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the two that widen trust, and a file failing it, or holding a line that
-does not parse, is reported loudly and both of its limits take their defaults.
+does not parse, is reported loudly and all three of its limits take their defaults.
 `rules.json` is read through that guard too, because it injects text into every
 session on the machine, but a file failing it — or failing to parse — fails the
 rules load outright: nothing injects until it is fixed, and the file is named on

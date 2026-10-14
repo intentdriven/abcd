@@ -327,13 +327,17 @@ A shell reading its script from a pipe, a here-document or a here-string
 what it runs is text the guard read as data. So is a shell handed the stdin
 device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
 `source` handed a process substitution as its script (`bash <(curl …)`, `bash <
-<(curl …)`, `source <(curl …)`, `bash --init-file <(…) -i -c true`). A command
+<(curl …)`, `source <(curl …)`, zsh's `source =(…)`, `bash --init-file <(…) -i
+-c true`). A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
-`PATH` and then in the working directory when it has no slash), the file a
+`PATH` and then in the working directory when it has no slash; a `PATH=` prefix
+on the `source` itself is the `PATH` searched, a relative or empty entry resolving
+against the working directory, and an entry of that prefix the line does not fix
+is a **block**, `script-unread`), the file a
 redirection makes a shell's standard input when it has no `-c` string and no
 script (`bash < s.sh`, `bash -s < s.sh`, `exec 3< s.sh; bash <&3`), and the
 startup files the line selects — `BASH_ENV=f`, `ENV=f` on an interactive shell
@@ -345,14 +349,42 @@ assigned `HOME` (`.bash_profile`, else `.bash_login`, else `.profile`, and
 `.zlogout`), and the other shells' profile (`.profile`, yash's `.yash_profile`)
 and rc file (`.kshrc`, `.mkshrc`, `.yashrc`) under an assigned `HOME`. An
 assignment counts as a prefix, through `env`, or exported earlier
-on the line. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
+on the line. A function file `autoload` (or `functions -u`, `typeset -fu`)
+loads is read too: an operand with a slash is that file, and a name is searched
+in the `FPATH` or `fpath` the line sets, where the first directory holding it
+(as `dir.zwc`, `dir/name.zwc` or `dir/name`) is the file read; a compiled
+`.zwc` file is a **block**, and so is a name or a directory searched before the
+file is found that the line does not fix (`script-unread`). A line that leaves
+`FPATH` as the account set it loads the account's own functions, unseen. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
 classify it: a shell-family shebang, or no shebang and no NUL byte, makes it a
 shell script, read the same way; anything else is a program, allowed unread. A
 relative path resolves against the working directory, and against a `cd` or
 `pushd` earlier on the line only when its target exists and the script is
 chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
-is. The verdicts:
+is. bash and zsh read some `cd` and `pushd` forms differently, and the reader
+does not know which shell runs the line, so it reads the scripts after such a
+`cd` in the directory each reading enters, and blocks on a hazard in any of
+them. With bash's `-e` or `-@`, bash enters the operand; with `pushd -n`, bash
+stays put; with a second operand, an older bash enters the first and a newer
+one refuses the `cd`, so the first is read as entered. zsh reads a second
+operand, or an option word it does not take (`-e`, `-@`, `-n`, or any word
+with a letter other than `L`, `P`, `q` and `s`, which bash refuses), as its
+substitution form: it replaces the first occurrence of the first word in the
+current directory's path with the second and enters the result where that
+directory exists. Only where neither reading names a directory is the
+directory unknown. A `..` in a path resolves the way the kernel opens it, against the directory
+a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
+link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
+zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while
+`CDPATH` is set on the line or in the environment the check runs in enters the
+one directory holding the operand when exactly one exists among the current
+directory and each `CDPATH` entry, and the scripts after it are read there;
+where none or two exist, `CDPATH` holds more entries than the guard looks
+through, or an entry or the current directory is not fixed by the line, it is
+a **block** (`script-unread`) whose reason says whether the line set
+`CDPATH` or the environment exported it: name the directory as `./sub` or by
+its absolute path. The verdicts:
 
 - a registry blocker at command position in the script is a **block**
   (`script-runs-hazard`), naming the script, the line and the entry, and so is
@@ -370,6 +402,10 @@ is. The verdicts:
   before a script a shell is pointed at is a **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
+- a `BASH_ENV` or `ENV` value holding a `$` or a backquote (`BASH_ENV='$HOME/f'`,
+  a substitution) is a **block** (`script-unread`): the shell expands it before
+  it opens the file, so a substitution in it runs and the file it names is not
+  one the guard can read;
 - a file a shell is handed that holds a NUL byte in its first 8 KiB is a
   **block** (`script-unread`); one the guard cannot read, or a shell script over
   256 KiB, is a **warn** (`script-unread`);
@@ -388,8 +424,8 @@ check and the run; a writer missing from the list above; a variable a sourced
 file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
-the current directory; `INPUTRC` (key bindings, not commands); ksh's expanded
-`ENV`; a `PROMPT_COMMAND` set as an array; and any spelling not listed here.
+the current directory; `INPUTRC` (key bindings, not commands); a
+`PROMPT_COMMAND` set as an array; and any spelling not listed here.
 
 Startup text a line carries in a variable, rather than in a file, is judged as
 the command it becomes. A `PS0`, `PS1`, `PS2` or `PS4` value is decoded the way
