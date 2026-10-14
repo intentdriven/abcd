@@ -522,3 +522,44 @@ func TestOriginsAreParsedStrictly(t *testing.T) {
 		}
 	}
 }
+
+// hostSession verifies a fresh connection as ada and opens a session,
+// returning the connection and its join code.
+func (f *fixture) hostSession(t *testing.T) (*client, string) {
+	t.Helper()
+	host := f.dial(t, origin)
+	host.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	host.until("verified")
+	host.sendJSON(map[string]string{"type": "host", "repo": "acme/brief"})
+	hosted, _ := host.until("hosted")
+	return host, hosted["code"].(string)
+}
+
+// TestReplayLongerThanTheSendQueue: a log longer than a connection's send
+// queue reaches a newcomer whole, followed by synced, and does not drop it.
+func TestReplayLongerThanTheSendQueue(t *testing.T) {
+	f := newFixture(t, nil)
+	host, _ := f.hostSession(t)
+	n := sendQueue + 300
+	for i := 0; i < n; i++ {
+		host.sendBinary([]byte{core.TagUpdate, byte(i), byte(i >> 8)})
+	}
+	// The rotation's answer comes after every update was handled.
+	host.sendJSON(map[string]string{"type": "rotate"})
+	got, _ := host.until("code")
+	code := got["code"].(string)
+
+	guest := f.dial(t, origin)
+	guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})
+	guest.until("joined")
+	_, replay := guest.until("synced")
+	if len(replay) != n {
+		t.Fatalf("the newcomer received %d updates before synced, want all %d", len(replay), n)
+	}
+	for i, b := range replay {
+		body := b[len(b)-2:]
+		if int(body[0])|int(body[1])<<8 != i&0xffff {
+			t.Fatalf("update %d arrived out of order: %v", i, b)
+		}
+	}
+}

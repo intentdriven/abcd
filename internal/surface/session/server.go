@@ -51,8 +51,9 @@ const (
 	maxAuthBody   = 8 << 10
 	githubTimeout = 15 * time.Second
 	writeTimeout  = 10 * time.Second
-	// sendQueue is how many frames one connection may have waiting; a
-	// connection that falls further behind is dropped.
+	// sendQueue is how many items one connection may have waiting, a log
+	// replay counting as one; a connection that falls further behind is
+	// dropped.
 	sendQueue = 1024
 	// SweepInterval is how often the relay looks for idle sessions.
 	SweepInterval = time.Minute
@@ -295,7 +296,8 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	// BaseContext), which ends every session connection with it.
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	p := &peer{ws: ws, out: make(chan outFrame, sendQueue), cancel: cancel}
+	p := newPeer(cancel, sendQueue)
+	p.ws = ws
 	conn := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
 	done := make(chan struct{})
 	go func() { p.writeLoop(ctx); close(done) }()
@@ -313,22 +315,45 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	_ = ws.CloseNow()
 }
 
-// outFrame is one queued frame, or the close that ends the queue.
+// outFrame is one queued item: a frame, a session's log replay, or the close
+// that ends the queue.
 type outFrame struct {
 	frame  core.Frame
+	log    [][]byte
 	close  bool
 	status websocket.StatusCode
 	reason string
 }
 
 // peer is the relay's handle on one WebSocket: a queue its writer drains in
-// order, so a close the relay asks for follows every frame queued before it.
+// order, so a close the relay asks for follows every item queued before it.
+// The queue holds at most limit items; a log replay is one item however long
+// the log, written frame by frame as the connection takes them.
 type peer struct {
 	ws     *websocket.Conn
-	out    chan outFrame
 	cancel context.CancelFunc
+	wake   chan struct{} // holds one token while items wait
 	mu     sync.Mutex
+	queue  []outFrame
+	limit  int
 	closed bool
+}
+
+func newPeer(cancel context.CancelFunc, limit int) *peer {
+	return &peer{cancel: cancel, wake: make(chan struct{}, 1), limit: limit}
+}
+
+// push queues one item under the lock, or reports that the queue is full.
+func (p *peer) push(f outFrame) bool {
+	if len(p.queue) >= p.limit {
+		return false
+	}
+	p.queue = append(p.queue, f)
+	select {
+	case p.wake <- struct{}{}:
+	default:
+	}
+	return true
 }
 
 func (p *peer) Send(f core.Frame) bool {
@@ -337,12 +362,16 @@ func (p *peer) Send(f core.Frame) bool {
 	if p.closed {
 		return true
 	}
-	select {
-	case p.out <- outFrame{frame: f}:
+	return p.push(outFrame{frame: f})
+}
+
+func (p *peer) SendLog(entries [][]byte) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
 		return true
-	default:
-		return false
 	}
+	return p.push(outFrame{log: entries})
 }
 
 func (p *peer) Close(policy bool, reason string) {
@@ -356,10 +385,28 @@ func (p *peer) Close(policy bool, reason string) {
 	if policy {
 		status = websocket.StatusPolicyViolation
 	}
-	select {
-	case p.out <- outFrame{close: true, status: status, reason: reason}:
-	default:
+	if !p.push(outFrame{close: true, status: status, reason: reason}) {
 		p.cancel()
+	}
+}
+
+// next takes the oldest queued item, waiting for one until ctx ends.
+func (p *peer) next(ctx context.Context) (outFrame, bool) {
+	for {
+		p.mu.Lock()
+		if len(p.queue) > 0 {
+			f := p.queue[0]
+			p.queue[0] = outFrame{}
+			p.queue = p.queue[1:]
+			p.mu.Unlock()
+			return f, true
+		}
+		p.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return outFrame{}, false
+		case <-p.wake:
+		}
 	}
 }
 
@@ -386,28 +433,43 @@ func (p *peer) pingLoop(ctx context.Context) {
 
 func (p *peer) writeLoop(ctx context.Context) {
 	for {
-		select {
-		case <-ctx.Done():
+		f, ok := p.next(ctx)
+		if !ok {
 			return
-		case f := <-p.out:
-			if f.close {
-				_ = p.ws.Close(f.status, f.reason)
-				p.cancel()
-				return
+		}
+		if f.close {
+			_ = p.ws.Close(f.status, f.reason)
+			p.cancel()
+			return
+		}
+		if f.log != nil {
+			for _, entry := range f.log {
+				if !p.write(ctx, core.Frame{Binary: true, Data: entry}) {
+					return
+				}
 			}
-			typ := websocket.MessageText
-			if f.frame.Binary {
-				typ = websocket.MessageBinary
-			}
-			wctx, cancel := context.WithTimeout(ctx, writeTimeout)
-			err := p.ws.Write(wctx, typ, f.frame.Data)
-			cancel()
-			if err != nil {
-				p.cancel()
-				return
-			}
+			continue
+		}
+		if !p.write(ctx, f.frame) {
+			return
 		}
 	}
+}
+
+// write writes one frame, ending the connection when it cannot.
+func (p *peer) write(ctx context.Context, f core.Frame) bool {
+	typ := websocket.MessageText
+	if f.Binary {
+		typ = websocket.MessageBinary
+	}
+	wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	err := p.ws.Write(wctx, typ, f.Data)
+	cancel()
+	if err != nil {
+		p.cancel()
+		return false
+	}
+	return true
 }
 
 // writeJSON answers with a JSON body.

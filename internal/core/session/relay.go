@@ -64,6 +64,13 @@ type Peer interface {
 	// Send queues f without blocking. False means the connection cannot take
 	// it (its queue is full), and the relay drops the connection.
 	Send(f Frame) bool
+	// SendLog queues a session's log replay without blocking, as one item
+	// however long the log is: the transport writes each entry as its own
+	// binary frame, in order, waiting on the connection for each rather than
+	// queueing them, before anything queued after it. The entries are never
+	// changed once logged, so the transport may hold them while it writes.
+	// False means the connection cannot take it, as for Send.
+	SendLog(entries [][]byte) bool
 	// Close ends the connection; policy marks a refusal (WebSocket 1008)
 	// rather than a normal end. It must not call back into the relay.
 	Close(policy bool, reason string)
@@ -659,8 +666,13 @@ func (c *Conn) join(code, name string) {
 func (c *Conn) admitted(token string) {
 	rm := c.room
 	c.sendJSON(map[string]any{"type": "joined", "id": c.id, "role": c.role, "name": c.name, "repo": rm.repo, "host": c.isHost(), "rejoin": token})
-	for _, u := range rm.log {
-		c.send(Frame{Binary: true, Data: u})
+	// The replay is one queued item, not one per entry: a log longer than the
+	// send queue would otherwise drop every newcomer. The slice is capped at
+	// its length, so entries logged later never reach this snapshot.
+	if !c.left && len(rm.log) > 0 && !c.peer.SendLog(rm.log[:len(rm.log):len(rm.log)]) {
+		c.leave()
+		c.peer.Close(true, "too slow")
+		return
 	}
 	c.sendJSON(map[string]string{"type": "synced"})
 	c.r.broadcastRoster(rm)

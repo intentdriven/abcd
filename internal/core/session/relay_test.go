@@ -20,6 +20,7 @@ type fakePeer struct {
 	policy bool
 	reason string
 	full   bool
+	logs   int // log replays queued, each one item
 }
 
 func (p *fakePeer) Send(f Frame) bool {
@@ -29,6 +30,19 @@ func (p *fakePeer) Send(f Frame) bool {
 		return false
 	}
 	p.frames = append(p.frames, Frame{Binary: f.Binary, Data: append([]byte(nil), f.Data...)})
+	return true
+}
+
+func (p *fakePeer) SendLog(entries [][]byte) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.full {
+		return false
+	}
+	p.logs++
+	for _, e := range entries {
+		p.frames = append(p.frames, Frame{Binary: true, Data: append([]byte(nil), e...)})
+	}
 	return true
 }
 
@@ -994,5 +1008,27 @@ func TestRejoinTokensAreBoundedPerSession(t *testing.T) {
 	// A token is never echoed into the relay's state, only its digest.
 	if strings.Contains(h.r.debugState(), toks[3]) {
 		t.Fatal("the relay holds a rejoin token in the clear")
+	}
+}
+
+// TestReplayIsOneQueuedItem: a newcomer's replay is handed to the transport
+// as one item, whatever the log's length, so a log longer than any send queue
+// never drops the newcomer; synced follows it.
+func TestReplayIsOneQueuedItem(t *testing.T) {
+	h := newHarness(t, nil)
+	host, _, code := h.host(t, "tok-ada")
+	const n = 3000
+	for i := 0; i < n; i++ {
+		host.Receive(context.Background(), update(byte(i), byte(i>>8)))
+	}
+	_, gp := h.join(t, code, "Gus", "198.51.100.7")
+	if gp.logs != 1 {
+		t.Fatalf("the replay was queued as %d items, want 1", gp.logs)
+	}
+	if got := len(gp.binaries()); got != n {
+		t.Fatalf("replayed %d entries, want %d", got, n)
+	}
+	if gp.last(t, "synced") == nil || gp.closed {
+		t.Fatalf("the newcomer was not synced, or was closed")
 	}
 }
