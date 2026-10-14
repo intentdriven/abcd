@@ -84,6 +84,7 @@ func newFixture(t *testing.T, mod func(*Config)) *fixture {
 		GitHubAPI:    ghSrv.URL,
 		GitHubWeb:    ghSrv.URL,
 		HTTPClient:   ghSrv.Client(),
+		Repos:        []string{"acme/brief"},
 	}
 	if mod != nil {
 		mod(&cfg)
@@ -261,8 +262,37 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 	}
 }
 
+// TestDisallowedOriginIsRefused: by default the relay admits
+// https://abcdesign.app and loopback pages; given origins replace that list,
+// so then only they are admitted.
 func TestDisallowedOriginIsRefused(t *testing.T) {
-	f := newFixture(t, func(c *Config) { c.Origins = []string{"https://brief.example.org"} })
+	refused := func(f *fixture, o string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		h := http.Header{}
+		if o != "" {
+			h.Set("Origin", o)
+		}
+		_, resp, err := websocket.Dial(ctx, f.wsURL, &websocket.DialOptions{HTTPHeader: h})
+		if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+			t.Errorf("origin %q: err=%v resp=%v, want 403", o, err, resp)
+		}
+	}
+	def := newFixture(t, nil)
+	for _, o := range []string{"https://abcdesign.app", "http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost"} {
+		def.dial(t, o)
+	}
+	for _, o := range []string{"https://brief.example.org", "https://evil.example", "", "null"} {
+		refused(def, o)
+	}
+	f := newFixture(t, func(c *Config) { c.Origins = []string{"https://brief.example.org", "http://localhost:5173"} })
+	for _, o := range []string{"https://abcdesign.app", "http://127.0.0.1:8000", "http://localhost", "http://localhost:5174"} {
+		refused(f, o)
+	}
+	for _, o := range []string{"https://brief.example.org", "http://localhost:5173"} {
+		f.dial(t, o)
+	}
 	for _, o := range []string{"https://evil.example", "", "null", "https://abcdesign.app.evil.example", "http://abcdesign.app"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		h := http.Header{}
@@ -274,9 +304,6 @@ func TestDisallowedOriginIsRefused(t *testing.T) {
 		if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
 			t.Errorf("origin %q: err=%v resp=%v, want 403", o, err, resp)
 		}
-	}
-	for _, o := range []string{"https://abcdesign.app", "https://brief.example.org", "http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost"} {
-		f.dial(t, o)
 	}
 }
 
@@ -525,12 +552,12 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 
 func TestOriginsAreParsedStrictly(t *testing.T) {
 	for _, o := range []string{"https://ok.example", "http://ok.example:8080"} {
-		if _, err := New(Config{Origins: []string{o}}); err != nil {
+		if _, err := New(Config{Origins: []string{o}, LoopbackOnly: true}); err != nil {
 			t.Errorf("%s refused: %v", o, err)
 		}
 	}
 	for _, o := range []string{"*", "ok.example", "https://ok.example/path", "ftp://ok.example", "https://*.example"} {
-		if _, err := New(Config{Origins: []string{o}}); err == nil {
+		if _, err := New(Config{Origins: []string{o}, LoopbackOnly: true}); err == nil {
 			t.Errorf("%s accepted", o)
 		}
 	}
@@ -667,5 +694,118 @@ func TestTheSendQueueGrowsOnEnteringASession(t *testing.T) {
 	}
 	if preRoomQueue > 64 {
 		t.Fatalf("preRoomQueue = %d, want it small", preRoomQueue)
+	}
+}
+
+// TestARelayBeyondLoopbackNeedsItsRepositories: a relay not bound to
+// loopback alone serves only the repositories it is given, and refuses to
+// start without any; a malformed entry is refused too.
+func TestARelayBeyondLoopbackNeedsItsRepositories(t *testing.T) {
+	if _, err := New(Config{}); err == nil {
+		t.Fatal("a relay beyond loopback started with no repositories")
+	}
+	if _, err := New(Config{LoopbackOnly: true}); err != nil {
+		t.Fatalf("a loopback relay with no list: %v", err)
+	}
+	for _, c := range []Config{
+		{Repos: []string{"acme/brief"}},
+		{Owners: []string{"acme"}},
+	} {
+		if _, err := New(c); err != nil {
+			t.Errorf("%+v refused: %v", c, err)
+		}
+	}
+	for _, c := range []Config{
+		{Repos: []string{"acme"}},
+		{Repos: []string{"acme/brief/x"}},
+		{Owners: []string{"acme/brief"}},
+		{Owners: []string{"-acme"}},
+		{Repos: []string{"acme/brief"}, Owners: []string{""}},
+	} {
+		if _, err := New(c); err == nil {
+			t.Errorf("%+v accepted", c)
+		}
+	}
+}
+
+// TestVerifyAgainstAnUnservedRepositoryIsRefused: over the wire, a token
+// presented for a repository the relay does not serve is refused before
+// GitHub is asked.
+func TestVerifyAgainstAnUnservedRepositoryIsRefused(t *testing.T) {
+	f := newFixture(t, nil)
+	c := f.dial(t, origin)
+	c.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "mal/own"})
+	if e, _ := c.until("error"); e["code"] != "repo-not-served" {
+		t.Fatalf("verify: %v, want repo-not-served", e)
+	}
+	c.sendJSON(map[string]string{"type": "host", "repo": "mal/own"})
+	if e, _ := c.until("error"); e["code"] != "repo-not-served" {
+		t.Fatalf("host: %v, want repo-not-served", e)
+	}
+}
+
+// TestConfigNamesTheSignInAppType: /config says whether the sign-in app is
+// a GitHub App (the default) or an OAuth app, and its authorize URL carries
+// no scope, which a GitHub App does not use; an unknown type is refused.
+func TestConfigNamesTheSignInAppType(t *testing.T) {
+	get := func(f *fixture) map[string]any {
+		resp, err := http.Get(f.http.URL + "/config")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	m := get(newFixture(t, nil))
+	if m["app_type"] != "github-app" {
+		t.Fatalf("default app_type = %v, want github-app", m["app_type"])
+	}
+	if u, _ := m["authorize_url"].(string); strings.Contains(u, "scope") || strings.Contains(u, "?") {
+		t.Fatalf("authorize_url = %q, want no scope", u)
+	}
+	if m := get(newFixture(t, func(c *Config) { c.AppType = "oauth-app" })); m["app_type"] != "oauth-app" {
+		t.Fatalf("app_type = %v, want oauth-app", m["app_type"])
+	}
+	if _, err := New(Config{LoopbackOnly: true, AppType: "token"}); err == nil {
+		t.Fatal("an unknown app type was accepted")
+	}
+}
+
+// TestClientAddressBehindRendersProxy: Render's proxy appends the address
+// it saw to X-Forwarded-For and keeps whatever the client sent before it
+// (https://render.com/articles/host-pocketbase-on-render), and Render's own
+// advice is to trust one proxy hop (https://render.com/articles/how-render-handles-ddos-attacks).
+// So behind it the client is the rightmost entry, never the leftmost; an
+// entry that is not an address reads as missing.
+func TestClientAddressBehindRendersProxy(t *testing.T) {
+	at := func(xff ...string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/session", nil)
+		r.RemoteAddr = "10.0.0.1:5555"
+		for _, v := range xff {
+			r.Header.Add("X-Forwarded-For", v)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		name string
+		r    *http.Request
+		want string
+	}{
+		{"the proxy's entry alone", at("203.0.113.9"), "203.0.113.9"},
+		{"a forged entry before the proxy's", at("100.64.0.1, 198.51.100.4, 203.0.113.9"), "203.0.113.9"},
+		{"a forged line before the proxy's", at("100.64.0.1", "203.0.113.9"), "203.0.113.9"},
+		{"IPv6", at("6.6.6.6, 2001:db8::7"), "2001:db8::7"},
+		{"a mapped address", at("::ffff:203.0.113.9"), "203.0.113.9"},
+		{"not an address", at("6.6.6.6, nonsense"), "10.0.0.1"},
+		{"an address with a port", at("203.0.113.9:443"), "10.0.0.1"},
+		{"a trailing comma", at("203.0.113.9, "), "10.0.0.1"},
+	} {
+		if got := clientAddress(c.r, true, false); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }

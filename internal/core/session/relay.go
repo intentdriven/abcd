@@ -208,6 +208,13 @@ type Options struct {
 	Verifier Verifier
 	Now      func() time.Time
 	Rand     io.Reader
+	// Repos and Owners are the repositories the relay serves sessions for:
+	// each owner/name in Repos, and every repository of each owner in
+	// Owners, compared without case. Nobody verifies against, or hosts, any
+	// other. With both empty it serves every repository, which the front
+	// door permits only on a relay bound to loopback alone.
+	Repos  []string
+	Owners []string
 }
 
 // Stats is what the relay holds, in counts: after a session is purged, none of
@@ -249,6 +256,8 @@ type Relay struct {
 	nextConn uint32
 	open     int            // connections held, in a session or not
 	openBy   map[string]int // connections held, by address key
+	repos    map[string]bool
+	owners   map[string]bool
 }
 
 // New builds a relay.
@@ -301,6 +310,13 @@ func New(o Options) *Relay {
 	}
 	if r.rand == nil {
 		r.rand = rand.Reader
+	}
+	r.repos, r.owners = map[string]bool{}, map[string]bool{}
+	for _, repo := range o.Repos {
+		r.repos[strings.ToLower(repo)] = true
+	}
+	for _, owner := range o.Owners {
+		r.owners[strings.ToLower(owner)] = true
 	}
 	r.failed = newAddrWindow(l.MaxFailedJoins, l.FailedJoinWindow, l.MaxTrackedAddrs)
 	r.hosted = newAddrWindow(l.MaxHostsPerAddr, l.HostWindow, l.MaxTrackedAddrs)
@@ -646,6 +662,23 @@ func ValidRepo(s string) bool {
 	return name != "." && name != ".."
 }
 
+// ownerRe is a GitHub owner: letters, digits and single hyphens between
+// them, at most 39 characters.
+var ownerRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9]){0,38}$`)
+
+// ValidOwner reports whether s is a GitHub user or organisation name.
+func ValidOwner(s string) bool { return len(s) <= 39 && ownerRe.MatchString(s) }
+
+// Serves reports whether the relay serves sessions for repo (owner/name).
+func (r *Relay) Serves(repo string) bool {
+	if len(r.repos) == 0 && len(r.owners) == 0 {
+		return true
+	}
+	key := strings.ToLower(repo)
+	owner, _, _ := strings.Cut(key, "/")
+	return r.repos[key] || r.owners[owner]
+}
+
 // verify asks the Verifier about a token, outside the lock.
 func (c *Conn) verify(ctx context.Context, token, repo string) {
 	r := c.r
@@ -674,6 +707,11 @@ func (c *Conn) verify(ctx context.Context, token, repo string) {
 	}
 	if !ValidRepo(repo) {
 		c.fail("bad-repo", "name the repository as owner/name")
+		r.mu.Unlock()
+		return
+	}
+	if !r.Serves(repo) {
+		c.fail("repo-not-served", "this relay serves sessions for other repositories")
 		r.mu.Unlock()
 		return
 	}
@@ -723,6 +761,9 @@ func (c *Conn) host(repo string) {
 		return
 	case !ValidRepo(repo):
 		c.fail("bad-repo", "name the repository as owner/name")
+		return
+	case !r.Serves(repo):
+		c.fail("repo-not-served", "this relay serves sessions for other repositories")
 		return
 	case c.login == "":
 		c.fail("not-verified", "sign in with GitHub before hosting")

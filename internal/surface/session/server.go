@@ -36,9 +36,21 @@ import (
 	core "github.com/intentdriven/abcd/internal/core/session"
 )
 
-// DefaultOrigin is the page's own origin, allowed unless the relay is told
-// otherwise; loopback origins are allowed too, for a page run locally.
+// DefaultOrigin is the page's own origin. With loopback pages, for a page run
+// locally, it is the default allowlist, which Config.Origins replaces.
 const DefaultOrigin = "https://abcdesign.app"
+
+// The kinds of GitHub sign-in app a team registers. A GitHub App's user
+// access token holds only the permissions both the app and the person have,
+// on the repositories the app is installed on, and its authorization takes no
+// scope: "GitHub Apps do not request scopes during authorization to decide
+// which resources the resulting token can access"
+// (https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app).
+// An OAuth app's token is scoped by the page's request instead.
+const (
+	AppTypeGitHubApp = "github-app"
+	AppTypeOAuthApp  = "oauth-app"
+)
 
 // The GitHub endpoints the relay talks to unless a test names others.
 const (
@@ -72,8 +84,9 @@ const (
 
 // Config is what the front door needs.
 type Config struct {
-	// Origins are allowed besides DefaultOrigin and loopback, each an exact
-	// scheme://host[:port].
+	// Origins, each an exact scheme://host[:port], replace the default
+	// allowlist (DefaultOrigin and any loopback page) when given: a relay
+	// serving a page from its own origin admits nothing else.
 	Origins []string
 	// BehindProxy trusts the last X-Forwarded-For entry as the client's
 	// address, which is right only behind a proxy that sets it.
@@ -82,11 +95,19 @@ type Config struct {
 	// own machine, reached through Tailscale Serve. Then, and only for a
 	// loopback peer, the tailnet address Serve forwards is the client's.
 	LoopbackOnly bool
+	// Repos (owner/name) and Owners are the repositories the relay serves
+	// sessions for (core.Options). A relay that is not LoopbackOnly must be
+	// given at least one: otherwise anyone signed in to GitHub could hold
+	// its sessions with a repository of their own.
+	Repos  []string
+	Owners []string
 	// ClientID is the team's GitHub sign-in app's public id.
 	ClientID string
 	// ClientSecret is that app's secret, read from the environment by the
 	// caller. It never leaves the relay but in the exchange with GitHub.
 	ClientSecret string
+	// AppType is the sign-in app's kind, AppTypeGitHubApp unless set.
+	AppType string
 	// GitHubAPI and GitHubWeb default to GitHub's own.
 	GitHubAPI string
 	GitHubWeb string
@@ -100,16 +121,45 @@ type Config struct {
 // Server is the relay's HTTP handler.
 type Server struct {
 	cfg     Config
-	origins map[string]bool
+	origins map[string]bool // the given origins; nil admits the default list
 	relay   *core.Relay
 	client  *http.Client
 }
 
+// ErrNoRepositories is New's refusal of a relay beyond loopback that names
+// no repository to serve.
+var ErrNoRepositories = errors.New("a relay listening beyond this computer serves only the repositories it is given; name at least one")
+
 // New builds the handler, refusing an origin that is not an exact
-// scheme://host[:port] over http or https.
+// scheme://host[:port] over http or https, a repository that is not
+// owner/name, an owner that is not a GitHub name, and a relay beyond
+// loopback with neither.
 func New(cfg Config) (*Server, error) {
-	origins := map[string]bool{DefaultOrigin: true}
+	for _, r := range cfg.Repos {
+		if !core.ValidRepo(r) {
+			return nil, fmt.Errorf("%q is not a repository: give owner/name", r)
+		}
+	}
+	for _, o := range cfg.Owners {
+		if !core.ValidOwner(o) {
+			return nil, fmt.Errorf("%q is not a GitHub owner", o)
+		}
+	}
+	if !cfg.LoopbackOnly && len(cfg.Repos) == 0 && len(cfg.Owners) == 0 {
+		return nil, ErrNoRepositories
+	}
+	switch cfg.AppType {
+	case "":
+		cfg.AppType = AppTypeGitHubApp
+	case AppTypeGitHubApp, AppTypeOAuthApp:
+	default:
+		return nil, fmt.Errorf("%q is not a sign-in app type: give %s or %s", cfg.AppType, AppTypeGitHubApp, AppTypeOAuthApp)
+	}
+	var origins map[string]bool
 	for _, o := range cfg.Origins {
+		if origins == nil {
+			origins = map[string]bool{}
+		}
 		n, ok := normalizeOrigin(o)
 		if !ok {
 			return nil, fmt.Errorf("%q is not an origin: give scheme://host[:port], over http or https, with no path or wildcard", o)
@@ -139,6 +189,8 @@ func New(cfg Config) (*Server, error) {
 		Verifier: GitHub{API: cfg.GitHubAPI, Client: &c},
 		Now:      cfg.Now,
 		Rand:     cfg.Rand,
+		Repos:    cfg.Repos,
+		Owners:   cfg.Owners,
 	})
 	return s, nil
 }
@@ -202,15 +254,19 @@ func normalizeOrigin(s string) (string, bool) {
 	return u.Scheme + "://" + strings.ToLower(u.Host), true
 }
 
-// originAllowed judges a request's Origin: one of the allowed origins, or a
-// loopback page. A request with no Origin is refused: every browser sends
-// one on a WebSocket and on a cross-origin POST.
+// originAllowed judges a request's Origin: one of the given origins exactly,
+// or, when none was given, DefaultOrigin or a loopback page. A request with
+// no Origin is refused: every browser sends one on a WebSocket and on a
+// cross-origin POST.
 func (s *Server) originAllowed(origin string) bool {
 	n, ok := normalizeOrigin(origin)
 	if !ok {
 		return false
 	}
-	if s.origins[n] {
+	if s.origins != nil {
+		return s.origins[n]
+	}
+	if n == DefaultOrigin {
 		return true
 	}
 	u, _ := url.Parse(n)
@@ -223,9 +279,16 @@ func (s *Server) originAllowed(origin string) bool {
 
 // clientAddress is the address the failed-join limit counts.
 //
-//   - Behind a declared proxy (--behind-proxy, the team relay), it is the last
-//     X-Forwarded-For entry: the one that proxy added; anything before it the
-//     client could have written.
+//   - Behind a declared proxy (--behind-proxy, the team relay), it is the
+//     rightmost X-Forwarded-For entry, across every line of the header: the
+//     one that proxy appended, one trusted hop. Anything before it the client
+//     could have written. Render's proxy appends rather than replaces, "so a
+//     caller who sends their own copy of the header controls the leftmost
+//     entry" (https://render.com/articles/host-pocketbase-on-render), and
+//     Render's advice is to trust one hop, Express's 'trust proxy' 1, which
+//     reads the rightmost entry
+//     (https://render.com/articles/how-render-handles-ddos-attacks). An entry
+//     that is not a bare IP address reads as missing.
 //   - On the host's own machine the relay is bound to loopback alone and
 //     Tailscale Serve proxies to it, so every tailnet visitor's socket address
 //     is loopback and one visitor's wrong codes would shut out everyone. There,
@@ -241,8 +304,8 @@ func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
 	if behindProxy {
 		if fwd := r.Header.Values("X-Forwarded-For"); len(fwd) > 0 {
 			parts := strings.Split(fwd[len(fwd)-1], ",")
-			if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
-				return last
+			if a, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil {
+				return a.Unmap().WithZone("").String()
 			}
 		}
 		return host
@@ -509,8 +572,10 @@ func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// serveConfig names the sign-in app's public client id, and whether sign-in
-// is set up at all. It never names the secret.
+// serveConfig names the sign-in app's public client id and kind, and whether
+// sign-in is set up at all. It never names the secret. The authorize URL is
+// bare: it carries no scope, which a GitHub App does not use, and the page
+// adds the request's own parameters (a scope only for an OAuth app).
 func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 	s.cors(w, r)
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -521,6 +586,7 @@ func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 		"client_id":     s.cfg.ClientID,
 		"sign_in":       s.cfg.ClientID != "" && s.cfg.ClientSecret != "",
 		"authorize_url": s.cfg.GitHubWeb + "/login/oauth/authorize",
+		"app_type":      s.cfg.AppType,
 	})
 }
 

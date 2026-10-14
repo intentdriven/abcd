@@ -179,6 +179,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--relay-origin` | string |
 | `--release` | string |
 
 ### `abcd session page`
@@ -200,5 +201,7 @@ Sub-verbs: none.
 | `--client-id` | string |
 | `--listen` | string |
 | `--origin` | stringArray |
+| `--owner` | stringArray |
+| `--repo` | stringArray |
 
 <!-- surface-appendix:end -->
