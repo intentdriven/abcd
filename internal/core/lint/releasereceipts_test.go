@@ -392,3 +392,36 @@ func TestCheckReleaseReceiptsRefusesAnUncommittedVerdictInput(t *testing.T) {
 		})
 	}
 }
+
+// A clone without its tags cannot see the release history the release job
+// judges a deleted manifest or a backdated version by, so the local check
+// would pass a tree the release job refuses. When CHANGELOG.md names an
+// earlier release and no release tag is present, it refuses, naming the
+// reason, rather than vouch for a verdict it cannot reach.
+func TestCheckReleaseReceiptsRefusesACloneWithoutItsTags(t *testing.T) {
+	r, _ := releaseFixture(t)
+	r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [1.1.0] - 2026-02-01\n\n## [1.0.0] - 2026-01-01\n")
+	r.Commit("roll 1.1.0 (content)")
+	roll := r.Git("rev-parse", "HEAD")
+	dir := ".abcd/work/reviews/" + roll + "/"
+	r.Write(dir+"docs-currency-reviewer.json", promote("docs-currency-reviewer", roll))
+	r.Write(dir+"iss35-brief-surface-crosscheck.json", promote("iss35-brief-surface-crosscheck", roll))
+	r.Commit("receipts")
+
+	check, err := lint.CheckReleaseReceipts(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := false
+	for _, p := range check.Problems {
+		named = named || strings.Contains(p.Message, "no release tags")
+	}
+	if check.Pass || !named {
+		t.Fatalf("a clone without its tags must refuse, naming the missing tags, got %+v", check)
+	}
+
+	r.Git("tag", "v1.0.0", "HEAD~2")
+	if check, err = lint.CheckReleaseReceipts(r.Root()); err != nil || !check.Pass {
+		t.Fatalf("with its release tags present the same tree must pass, got %+v, %v", check, err)
+	}
+}

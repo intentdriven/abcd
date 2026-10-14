@@ -278,6 +278,17 @@ in the roll: the reviewers read the roll before any finding exists, and the
 receipts name the roll's sha. `abcd launch receipts` refuses while a capture,
 like a receipt, is still uncommitted.
 
+**What the local check reads.** `abcd launch receipts` holds the working tree to
+the committed one for every input of the verdict: the receipts directory, the
+records the deferred findings name, `.abcd/record-lint.json`, the manifest,
+CHANGELOG.md and the release workflow. Another session's capture of an unrelated
+finding is not an input and is left alone. It cannot see a file git ignores or
+one marked skip-worktree, so a receipt or record hidden either way can pass
+locally and still be refused by the release job, which reads only what is
+committed. It also refuses a clone that carries no release tags while
+CHANGELOG.md names an earlier release, because the gate reads the tags to judge
+the manifest's era and the release's version; `git fetch --tags` clears it.
+
 **Era gating.** The manifest's presence in the armed content tree is the era
 marker. The three refusals above arm only when `manifest.json` is present at the
 gate's armed commit, so receipts written before the manifest existed — the

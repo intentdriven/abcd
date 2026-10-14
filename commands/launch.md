@@ -952,7 +952,9 @@ required-gate names from the committed `release.yml` (which owns that list), der
 the content commit from the receipts directory the way the release job does, and
 runs the release job's own check over it. It reads the working tree, so it
 refuses on an uncommitted receipt or capture — the release job reads the
-committed tree and would not see it.
+committed tree and would not see it. A file git ignores or one marked
+skip-worktree is beyond what it can see, and a clone with no release tags, while
+CHANGELOG.md names an earlier release, is refused until `git fetch --tags`.
 
 Exit codes:
 

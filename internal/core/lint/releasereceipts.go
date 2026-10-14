@@ -22,8 +22,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -202,6 +204,18 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 		})
 	}
 
+	// The release job checks out full history with its tags, and the gate
+	// judges a deleted manifest or a backdated version by them. A clone with no
+	// release tag, while CHANGELOG.md names an earlier release than the one
+	// cut, cannot reach that verdict, so the local check refuses rather than
+	// pass a tree the release job may refuse. A first release, with no earlier
+	// release to have tagged, is not refused.
+	if problem, err := missingTagsProblem(root); err != nil {
+		return ReceiptCheck{}, err
+	} else if problem != "" {
+		check.Problems = append(check.Problems, ReceiptProblem{Path: "CHANGELOG.md", Message: problem})
+	}
+
 	// The repository's content filters are blanked: over receipts whose index
 	// stat no longer matches, git status re-hashes each one through
 	// filter.<name>.clean, a program the repository names
@@ -233,6 +247,25 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 
 	check.Pass = check.Derived && len(check.Problems) == 0 && len(check.Uncommitted) == 0
 	return check, nil
+}
+
+// missingTagsProblem is the local check's refusal of a clone that carries no
+// release tag while CHANGELOG.md names more than one dated release, or "".
+func missingTagsProblem(root string) (string, error) {
+	releases, _, err := changelog.DatedReleases(root)
+	if err != nil || len(releases) < 2 {
+		return "", err
+	}
+	tags, err := releaseTags(root)
+	if err != nil {
+		return "", err
+	}
+	if len(tags) > 0 {
+		return "", nil
+	}
+	return "this clone carries no release tags, though CHANGELOG.md names " + strconv.Itoa(len(releases)-1) +
+		" earlier release(s); the release job reads the tags to judge the release-gate manifest's era and the release's version, " +
+		"so fetch them (git fetch --tags) and run the check again", nil
 }
 
 // verdictInput reports whether a git status line concerns an input of the
