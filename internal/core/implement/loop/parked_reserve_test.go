@@ -204,3 +204,68 @@ func TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson(t *testing.T) {
 		})
 	}
 }
+
+// TestAReceiptRenewsAtHalfLease: an implementer that runs past half the lease
+// with no step between keeps the reservation, since handing its receipt back
+// renews it as a step would.
+func TestAReceiptRenewsAtHalfLease(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	stepTo(t, f.repo, f.runID, f.stages, StageImplement)
+	if res, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil || res.Awaiting == nil {
+		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-61*time.Minute), "internal/widget")
+	before := originReservation(t, f.bare, reservedRef)
+	l := currentLane(t, f.repo, f.runID)
+	dir := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
+	sha := laneCommit(t, f.repo, l, "one.txt")
+	if _, err := Receipt(f.repo.Root(), f.runID, writeReceipt(t, dir, goodReceipt(t, f.runID, l, dir, sha)), f.stages, Options{}); err != nil {
+		t.Fatalf("the implementer's receipt: %v", err)
+	}
+	if after := originReservation(t, f.bare, reservedRef); after.parent != before.commit || after.claimed.Before(now) {
+		t.Fatalf("the receipt renews the reservation: before %+v, after %+v", before, after)
+	}
+	if recordNote(t, f.repo, f.runID, StageReservationRenewed) == "" {
+		t.Fatal("the run record logs the receipt's renewal")
+	}
+}
+
+// TestAStepNamesAReservationAnotherHoldsNow: when the view shows the run's
+// reservation held by another person or copy, a step says so in its answer
+// and logs it once in the run record, rather than passing over it in silence.
+func TestAStepNamesAReservationAnotherHoldsNow(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-130*time.Minute), "internal/widget")
+	q := otherCopy(t, f.bare, quinnEmail)
+	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, clockAt(now.Add(-time.Minute))); err != nil || res.Act != claim.ActTakenOver {
+		t.Fatalf("Q takes the lapsed reservation over: %+v %v", res, err)
+	}
+	if _, err := claim.Fetch(f.repo.Root(), clockAt(now)); err != nil {
+		t.Fatal(err)
+	}
+	res := f.step(t)
+	if !strings.Contains(res.Next, "the reservation on itd-10 is held by quinn") {
+		t.Fatalf("the step names who holds the reservation now: %q", res.Next)
+	}
+	if note := recordNote(t, f.repo, f.runID, StageReservationLost); !strings.Contains(note, "quinn") {
+		t.Fatalf("the run record logs the lost reservation: %q", note)
+	}
+	f.step(t)
+	if n := countStage(t, f, StageReservationLost); n != 1 {
+		t.Fatalf("the lost reservation is logged once, not every step: %d entries", n)
+	}
+}
+
+// countStage counts the run record's entries at stage.
+func countStage(t *testing.T, f *landFixture, stage string) int {
+	t.Helper()
+	n := 0
+	for _, s := range recordStages(t, f.repo, f.runID) {
+		if s == stage {
+			n++
+		}
+	}
+	return n
+}

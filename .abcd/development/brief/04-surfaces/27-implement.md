@@ -345,9 +345,10 @@ lane's base, since every landing there waits on a person (the approval an
 armed merge needs, or the merge of a pull request left open), which is also
 past any queue's `check_response_timeout_minutes`; with no mirror, for the
 default lease. Past the fence the hold rests on renewals at half the lease: each step
-of the run, whatever its stage, and each drain move for a drain lane parked at
-land. A run neither stepped nor drained over for longer than its lease loses
-its reservation. Once the run's last lane has landed, the
+of the run, whatever its stage, each receipt handed back, and each drain move
+for a drain lane parked at land. A run neither stepped, given a receipt nor
+drained over for longer than its lease loses its reservation; one that finds
+it held by another person or copy says so and logs `reservation_lost` once. Once the run's last lane has landed, the
 step pushes a tombstone over the reservation while it is still this person's
 from this copy, leaves another's as it stands and names the holder, and a
 tombstone that fails is named without undoing the landing; the lane branch

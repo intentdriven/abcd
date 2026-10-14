@@ -819,6 +819,12 @@ These are the facilitator's design calls; none changes a criterion.
     renewal at half a day-long fence lease would otherwise cut the hold to
     two hours, and a pull request waiting overnight would be lost two hours
     after this account's drain stopped (the last review, 2026-10-14).
+  - `implement receipt` renews as a step does, so an implementer working past
+    half the lease with no step between keeps the reservation. A step or a
+    receipt whose view shows the reservation held by another person or copy
+    no longer passes over it in silence: its answer names the holder, and the
+    run record logs `reservation_lost` once until something else about the
+    reservation is logged (the last review, 2026-10-14).
   - Clock skew is bounded by the take-over margin and documented, not
     corrected. The expiry is the holder's clock judged by the reader's; the
     committer date is written by the same clock, so it bounds nothing. A

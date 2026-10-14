@@ -55,10 +55,12 @@ func claimOptions(now time.Time) claim.Options {
 // renewReservation renews the run's reservation before a stage, when the view
 // (as last fetched) shows the run's own, from this copy and not released,
 // half through its lease since its Abcd-Claimed-At: it fetches and pushes a
-// renewal that keeps the tip's own term (renewalTerm), and logs reservation_renewed in the run
-// record. Under half its lease nothing is pushed. A renewal that fails is
-// logged and its note returned for the step's answer; the stage still runs,
-// since the land fence is where a lost reservation stops the run.
+// renewal that keeps the tip's own term (renewalTerm), and logs
+// reservation_renewed in the run record. Under half its lease nothing is
+// pushed. A renewal that fails is logged and its note returned for the step's
+// answer; the stage still runs, since the land fence is where a lost
+// reservation stops the run. A view that shows the reservation held by
+// another person or copy is said too, and logged once.
 func renewReservation(repoRoot string, st *State, now time.Time) string {
 	if st.ReservedAt == nil {
 		return ""
@@ -67,16 +69,12 @@ func renewReservation(repoRoot string, st *State, now time.Time) string {
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
-	var own *claim.Reservation
-	for i, r := range snap.Reservations {
-		if recordid.SameID(r.Record, st.Key) {
-			own = &snap.Reservations[i]
-		}
+	own, due, lost := renewalDue(*st, snap, now)
+	if lost != "" {
+		logOnce(st, now, StageReservationLost, lost)
+		return lost
 	}
-	if own == nil || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
-		return ""
-	}
-	if half := own.ClaimedAt.Add(own.EffectiveExpiry.Sub(own.ClaimedAt) / 2); now.Before(half) {
+	if !due {
 		return ""
 	}
 	res, err := claim.Reserve(repoRoot, claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}, claimOptions(now))
@@ -87,6 +85,26 @@ func renewReservation(repoRoot string, st *State, now time.Time) string {
 		Note: fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))})
 	st.UpdatedAt = now
 	return ""
+}
+
+// renewalDue reads the run's reservation from snap: own is the tip, due
+// whether it is this copy's, unreleased and half through its lease, and lost
+// the note to give when the view shows it held by another person or copy.
+func renewalDue(st State, snap claim.Snapshot, now time.Time) (own *claim.Reservation, due bool, lost string) {
+	for i, r := range snap.Reservations {
+		if recordid.SameID(r.Record, st.Key) {
+			own = &snap.Reservations[i]
+		}
+	}
+	if own == nil || (own.State != claim.StateLive && own.State != claim.StateExpired) {
+		return own, false, ""
+	}
+	if own.Copy != claim.CopyThis {
+		return own, false, fmt.Sprintf("the reservation on %s is held by %s from another copy, until %s, so the land fence will not arm this run's merge",
+			st.Key, own.Holder, stamp(own.EffectiveExpiry))
+	}
+	half := own.ClaimedAt.Add(own.EffectiveExpiry.Sub(own.ClaimedAt) / 2)
+	return own, !now.Before(half), ""
 }
 
 // renewalTerm is the lease a renewal pushes: the tip's own term, never
@@ -102,6 +120,30 @@ func renewFailed(st *State, now time.Time, err error) string {
 	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewFailed, Note: note})
 	st.UpdatedAt = now
 	return note
+}
+
+// logOnce appends a reservation entry at stage unless the run record's last
+// reservation entry is already one at stage, so a condition that holds across
+// many steps (origin unreachable, the reservation another's) is logged once
+// until something else about the reservation is.
+func logOnce(st *State, now time.Time, stage, note string) {
+	if last := lastReservationEntry(*st); last != nil && last.Stage == stage {
+		return
+	}
+	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: note})
+	st.UpdatedAt = now
+}
+
+// lastReservationEntry is the run record's last entry about its reservation,
+// nil when there is none.
+func lastReservationEntry(st State) *Entry {
+	for k := len(st.Record) - 1; k >= 0; k-- {
+		switch st.Record[k].Stage {
+		case StageReservationRenewed, StageReservationRenewFailed, StageReservationLost, StageReservation:
+			return &st.Record[k]
+		}
+	}
+	return nil
 }
 
 // stamp renders a time as a reservation carries one: RFC 3339, UTC.
@@ -330,3 +372,7 @@ func releaseHandedBack(repoRoot string, run State, now time.Time) string {
 	}
 	return clause
 }
+
+// StageReservationLost is the run record's stage for a reservation the view
+// shows held by another person or copy.
+const StageReservationLost = "reservation_lost"

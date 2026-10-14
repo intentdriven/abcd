@@ -526,10 +526,13 @@ either can wait overnight; a day is also past any merge queue's
 `check_response_timeout_minutes`. With no mirror at all the lease is the
 default two hours. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
-whatever its stage, an implementer's long stage included, and each `abcd
-drain` move does for a drain's lane parked at land. A run nobody steps, and no
-drain moves over, for longer than its lease loses the reservation, and another
-person may then take the record over. A run whose state records no
+whatever its stage, an implementer's long stage included, so does handing an
+agent's receipt back with `receipt`, and each `abcd drain` move does for a
+drain's lane parked at land. A run nobody steps, hands a receipt to or drains
+over for longer than its lease loses the reservation, and another person may
+then take the record over. A step or a receipt that finds the reservation held
+by another person or copy says so in its answer and logs `reservation_lost` in
+the run record, once. A run whose state records no
 reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the

@@ -806,6 +806,7 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 // and the record names it. The host's receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
 	var res StepResult
+	renewNote := ""
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
@@ -826,6 +827,10 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
 		}
+		// An agent may have worked past half the lease with no step between:
+		// the receipt renews the run's reservation as a step would
+		// (reservation.go), and every path below writes the state.
+		renewNote = renewReservation(repoRoot, st, now)
 		if route != nil {
 			stampRoute(&lane, await.Receipt, route)
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(await.Role, *route)})
@@ -867,6 +872,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		res = laneResult(*st, lane, performed, nil)
 		return true, nil
 	})
+	if err == nil && renewNote != "" {
+		res.Next += "; " + renewNote
+	}
 	return res, err
 }
 
