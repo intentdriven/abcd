@@ -10,7 +10,7 @@ found_at: ".abcd/development/release-gate/manifest.json"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Sign off a release.yml step that refuses a release after v0.4.0 that carries no release-gate manifest?"
 remedy: "Waits on ruling (sign off the release.yml step, or keep CI unchanged): if signed off, add a step before the receipts gate that refuses a release newer than v0.4.0 whose tree lacks .abcd/development/release-gate/manifest.json; if not: put the same refusal in record-lint --release-gate itself, so no CI configuration changes. Prove it with a test that deletes the manifest from a post-v0.4.0 fixture and expects the refusal."
-resolution: "record-lint --release-gate refuses a release newer than v0.4.0 whose tree carries no release-gate manifest, so deleting the manifest no longer reverts the gate to the pre-manifest rules; the refusal lives in the gate itself, so no CI configuration changed"
+resolution: "record-lint --release-gate refuses a release whose tree carries no release-gate manifest when an older release tag's tree carried it, so deleting the manifest no longer reverts the gate to the pre-manifest rules; the era is read from the release tags rather than from a v0.4.0 threshold, so a managed repository whose releases never carried the manifest keeps the pre-manifest rules, and the refusal lives in the gate itself, so no CI configuration changed"
 impact: fix
 ---
 

@@ -1233,8 +1233,9 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// sufficient tier, and any recorded finding must carry a disposition. Its
 	// presence in the content tree is the era marker — a receipt/commit that
 	// predates the manifest is judged by the pre-manifest rules only. A release
-	// newer than v0.4.0 cannot predate it, so the release's arming refuses one
-	// whose tree has none rather than reverting it to those rules (iss-130).
+	// after one whose tag carried the manifest cannot predate it, so the
+	// release's arming refuses one whose tree has none rather than reverting it
+	// to those rules (iss-130).
 	// Read it from repoRoot, the checked-out content tree the gate is armed
 	// against.
 	//
@@ -1283,10 +1284,10 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		}
 	case os.IsNotExist(manifestErr):
 		manifestEra = false
-		// A release after v0.4.0 carries the manifest, so its absence is a
+		// Where an earlier release carried the manifest, its absence is a
 		// deletion, not the pre-manifest era (iss-130).
 		if cfg.release {
-			if msg := missingManifestRefusal(root); msg != "" {
+			if msg := missingManifestRefusal(repoRoot, root); msg != "" {
 				return failClosed(msg), nil
 			}
 		}

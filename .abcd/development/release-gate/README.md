@@ -278,9 +278,14 @@ marker. The three refusals above arm only when `manifest.json` is present at the
 gate's armed commit, so receipts written before the manifest existed — the
 receipts committed under `.abcd/work/reviews/` for earlier releases — stay valid
 for their own commits, judged by the checks that predate the manifest. A release
-newer than v0.4.0 cannot predate the manifest, so a release whose tree has none,
-or whose CHANGELOG.md names no dated release, is refused rather than judged by
-those older checks (iss-130). The manifest's own `schemaVersion` marks the next
+after one whose tag carried the manifest cannot predate it, so the release gate
+reads the release tags (the `verify` job checks out full history) and refuses a
+release whose tree has none when an older release tag's tree carried it, or when
+such a tag exists and CHANGELOG.md names no dated release, rather than judging it
+by those older checks (iss-130). A repository whose releases never carried the
+manifest — a managed repository whose scaffolded release workflow runs the gate —
+keeps the pre-manifest checks, and release tags that cannot be read fail the
+release closed. The manifest's own `schemaVersion` marks the next
 era the same way: a commit whose manifest is `schemaVersion` 1 keeps the
 free-text dispositions its receipts were written to, and the closed vocabulary
 arms at `schemaVersion` 2, which a receipt's `manifestHash` pins like every other
