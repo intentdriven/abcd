@@ -87,7 +87,10 @@ decision log is committed. Both stores are keyed on the repository's root commit
 so a repository with no commit yet is refused, and so is a shallow clone, whose
 graft would stand in for the root and file the verdict where no full clone
 looks. A private verdict is also refused when the home directory lies inside a git working tree that is not the account's
-own, where a commit could carry it. No new record family: a killed idea is a
+own, where a commit could carry it, and when abcd's home ignore file
+(`~/.abcd.noindex/.gitignore`, internal/core/homeignore) cannot be laid before
+the write: the account's own home is admitted only because abcd's home ignores
+itself there. No new record family: a killed idea is a
 research outcome, and the research directory is where a session looks before
 re-proposing one.
 
@@ -146,7 +149,8 @@ something a later reader depends on:
   kebab-case, a component under the research directory symlinked out of the
   repository, a repository with no `.abcd/work/DECISIONS.md` for a public
   verdict's pointer line to land in, or a private verdict whose home lies inside
-  a git working tree that is not the account's own.
+  a git working tree that is not the account's own or where abcd's home
+  ignore file cannot be laid.
 - **There is no store to address**: a working directory with no repository above
   it, or one git will not answer for. The research store belongs to a checkout,
   and laying one where the caller happens to be standing writes a verdict nobody

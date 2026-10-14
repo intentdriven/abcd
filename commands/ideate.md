@@ -159,7 +159,10 @@ answer names:
 | `--public` | `.abcd/development/research/ideas/<root-sha>/` | one dated pointer line appended to `.abcd/work/DECISIONS.md` |
 
 A private record is refused when the home directory lies inside a git working
-tree that is not the account's own, because a commit there could carry it. A
+tree that is not the account's own, because a commit there could carry it.
+Before writing one, the verb makes sure `~/.abcd.noindex/.gitignore` has been
+laid, so a git repository in the home folder passes the record by; where that
+file cannot be laid, the private record is refused and nothing is written. A
 repository with no commit yet has no root commit to key either store on, and a
 shallow clone names its graft in place of the root, so both are refused; fetch
 the full history (`git fetch --unshallow`) and record again.

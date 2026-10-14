@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/homeignore"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -283,5 +284,51 @@ func TestRecordPrivateWritesIntoTheAccountsOwnTrackedHome(t *testing.T) {
 	}
 	if _, err := os.Stat(abcdhome.Path(home, "ideas", testRootSHA, "2026-07-28-ideate-a-dotfiles-idea.md")); err != nil {
 		t.Errorf("the private record is not on disk: %v", err)
+	}
+}
+
+// TestRecordPrivateLaysTheIgnoreFileFirst proves the private store does not
+// rest on the front door: the verb lays abcd's home ignore file itself before
+// the verdict is written, so a run whose front-door lay was skipped or silent
+// still leaves the verdict where a `git add -A` in the home passes it by.
+func TestRecordPrivateLaysTheIgnoreFileFirst(t *testing.T) {
+	root := seedRepo(t)
+	home := t.TempDir()
+	store := Store{Visibility: VisibilityPrivate, RootSHA: testRootSHA, Home: home}
+	if _, err := Record(root, "an-ignored-idea", store, encode(t, validPayload()), at); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if _, err := os.Stat(abcdhome.Path(home, homeignore.IgnoreName)); err != nil {
+		t.Errorf("the private verdict was written with no ignore file laid: %v", err)
+	}
+}
+
+// TestRecordPrivateRefusesWhenTheIgnoreFileCannotBeLaid proves a home the
+// ignore file cannot be laid in takes no private verdict: the verb refuses and
+// writes nothing, rather than leave a verdict a home repository would stage.
+func TestRecordPrivateRefusesWhenTheIgnoreFileCannotBeLaid(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a read-only directory")
+	}
+	root := seedRepo(t)
+	home := t.TempDir()
+	dir := abcdhome.Path(home)
+	if err := os.MkdirAll(filepath.Join(dir, "ideas", testRootSHA), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	store := Store{Visibility: VisibilityPrivate, RootSHA: testRootSHA, Home: home}
+	if _, err := Record(root, "an-unguarded-idea", store, encode(t, validPayload()), at); err == nil {
+		t.Fatal("a private verdict was recorded where the ignore file could not be laid")
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "ideas", testRootSHA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("the refused run wrote %s", e.Name())
 	}
 }

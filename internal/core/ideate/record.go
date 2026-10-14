@@ -34,6 +34,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/homeignore"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -283,6 +284,14 @@ func recordPrivate(v verdictDoc, red *recordRedactor, store Store, name string, 
 		return Result{}, fmt.Errorf("preparing %s: %w", abcdhome.Display("ideas", store.RootSHA), err)
 	}
 	defer dir.Close()
+	// The ignore file is laid here, before the verdict, rather than left to the
+	// front door: that lay is skipped after a failure and silent under --json, and
+	// the account's own home is let through validateStore only because abcd's
+	// home ignores itself there. A home it cannot be laid in takes no verdict.
+	if _, err := homeignore.Lay(store.Home); err != nil {
+		return Result{}, fmt.Errorf("%s could not be laid, so a git repository in the home folder could stage a private verdict — nothing was written: %w",
+			abcdhome.Display(homeignore.IgnoreName), err)
+	}
 	if err := fsutil.CreateExclusiveIn(dir, name, []byte(body), abcdhome.FileMode); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return Result{}, &ExistsError{Path: shown}
