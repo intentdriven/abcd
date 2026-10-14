@@ -228,15 +228,23 @@ added an await's `answered` (itd-6): the reviewer route and the SHA-256 of the
 answer its step placed at the review's return path, written under the run's
 lock with the answer, so a hand-back of that answer is recorded as the route's.
 Version 10 is its strict subset, read as a run no route placed an answer for; a
-file of version 10 or lower carrying `answered` is refused, and an abcd that
-writes version 10 refuses a version-11 file as a version it does not know.
+file of version 10 or lower carrying `answered` is refused. An abcd that writes
+version 10 (v0.14.0 and v0.14.1) decodes a newer file strictly before it checks
+the version, so a version-11 file carrying `answered` reaches it as a file that
+does not parse, with a remedy to restore it or remove the run directory. That
+remedy would throw the run away: the run is intact, so run the newer abcd that
+wrote it instead (`abcd update`), and do not remove the run directory. A
+version-11 file without `answered` reaches it as a version it does not know.
+From version 11 on, the reader refuses a version above its own before any strict
+decode, naming it as a newer abcd's file, whatever that version added.
 Version 10
 added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
 kept the await when it could not save the gone agent's return aside, which a
 restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate
 limit kept an await of; a file of version 9 or lower carrying `kept` is
-refused, and an abcd that writes version 9 refuses a version-10 file as a
-version it does not know. Version 9
+refused. An abcd that writes version 9 (up to v0.13.4) meets a version-10
+file carrying `kept` the same way, as a file that does not parse, and one
+without it as a version it does not know. Version 9
 made a run work in parallel up to its ceiling (ruling DR6): a lane's `awaits`,
 a list replacing the one `awaiting`, the run's `waiting` (the work the ceiling
 holds back, each item with the time first held), a lane's `syncs` (each merge of

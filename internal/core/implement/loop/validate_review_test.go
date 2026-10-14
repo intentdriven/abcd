@@ -930,3 +930,21 @@ func TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind(t *testing.T) {
 		t.Fatalf("nothing but the brief, the request and the return stands in the review's directory: %v", names)
 	}
 }
+
+// TestANewerStateIsReadAsANewerAbcdsWhateverItCarries: a state file of a
+// version above this build's is refused as a newer abcd's before any strict
+// decode, so a field the newer version added never makes it read as a file
+// that does not parse, whose remedy would have the person throw the run away.
+func TestANewerStateIsReadAsANewerAbcdsWhateverItCarries(t *testing.T) {
+	repo, id, _, _ := startAtValidate(t, "one.txt", "")
+	editState(t, repo.Root(), id, func(doc map[string]any) {
+		doc["schema_version"] = SchemaVersion + 1
+		doc["a_later_field"] = map[string]any{"kept": true}
+	})
+	_, err := ReadState(repo.Root(), id)
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, fmt.Sprintf("schema version %d", SchemaVersion+1)) || !strings.Contains(r.Reason, "newer abcd") ||
+		strings.Contains(r.Reason, "does not parse") || strings.Contains(r.Remedy, "restore it or remove") || !strings.Contains(r.Remedy, "do not remove") {
+		t.Fatalf("a newer state is refused as a newer abcd's, keeping the run: %+v", r)
+	}
+}

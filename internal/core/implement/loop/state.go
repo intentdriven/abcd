@@ -140,9 +140,11 @@ const lockFileName = ".lock"
 // aside, which `--restart` re-tells. Version 9 is its strict subset, read as a
 // run no rate limit kept an await of and written back at version 10; a file of
 // version 9 or lower carrying `kept` is not one its version wrote, and is
-// refused. Releases that write version 9 decode strictly, so a version-10 file
-// reaches them as a version they do not know rather than as a field they do
-// not name.
+// refused. Releases that write version 9 (up to v0.13.4) decode a newer file
+// strictly before they check its version: a version-10 file carrying `kept`
+// reaches them as a file that does not parse, with a remedy to restore it or
+// remove the run directory, and one without `kept` as a version they do not
+// know.
 //
 // Version 11 added an await's `answered` (itd-6): the reviewer route and the
 // SHA-256 of the answer its step placed at the await's return path, under the
@@ -150,8 +152,16 @@ const lockFileName = ".lock"
 // return its verifier reads is that answer. Version 10 is its strict subset,
 // read as a run no route placed an answer for and written back at version 11;
 // a file of version 10 or lower carrying `answered` is not one its version
-// wrote, and is refused. Releases that write version 10 decode strictly, so a
-// version-11 file reaches them as a version they do not know.
+// wrote, and is refused. Releases that write version 10 (v0.14.0 and v0.14.1)
+// decode a newer file strictly before they check its version: a version-11
+// file carrying `answered` reaches them as a file that does not parse
+// (`unknown field "answered"`), with a remedy to restore it or remove the run
+// directory, which would throw the run away; the run is intact, and the
+// newer abcd that wrote it reads it. A version-11 file without `answered`
+// reaches them as a version they do not know. From version 11 on, decodeState
+// refuses a version above its own before any strict decode, so whatever a
+// later version adds is read as a newer abcd's file, never as one that does
+// not parse.
 const SchemaVersion = 11
 
 // schemaVersionUnanswered is the version before an await's `answered`: read,
@@ -788,7 +798,9 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		var sr *Refusal
 		if errors.As(err, &sr) {
 			sr.Reason = rel + " " + sr.Reason
-			sr.Remedy = "the loop is the file's only writer; restore it or remove the run directory " + runRel(runID)
+			if sr.Remedy == "" {
+				sr.Remedy = "the loop is the file's only writer; restore it or remove the run directory " + runRel(runID)
+			}
 			return State{}, sr
 		}
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
@@ -904,7 +916,16 @@ func decodeState(data []byte) (State, error) {
 	var peek struct {
 		SchemaVersion int `json:"schema_version"`
 	}
-	if err := json.Unmarshal(data, &peek); err != nil || peek.SchemaVersion < schemaVersionUnpaced || peek.SchemaVersion > SchemaVersion {
+	err := json.Unmarshal(data, &peek)
+	if err == nil && peek.SchemaVersion > SchemaVersion {
+		// A newer abcd wrote it: refused as that before any strict decode, so
+		// a field the newer version added is never read as a file that does
+		// not parse, whose remedy would throw the run away.
+		return State{}, refuse("state", "", "", fmt.Sprintf("is schema version %d, which a newer abcd wrote; this abcd reads versions %d to %d",
+			peek.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
+			"run the newer abcd that wrote it (`abcd update` brings this one up to date); do not remove the run directory, which holds the run")
+	}
+	if err != nil || peek.SchemaVersion < schemaVersionUnpaced {
 		var st State
 		err := jsonstrict.Decode(data, &st)
 		return st, err
