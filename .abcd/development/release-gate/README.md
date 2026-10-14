@@ -226,7 +226,8 @@ release's content tree:
    manifest `schemaVersion` 2 this refusal is the closed vocabulary below.
 
 None of these judges a finding's **content or severity**. Confirmed findings
-route to the maintainer, whose PROMOTE with recorded dispositions is the gate
+route to the technical facilitator cutting the release, whose PROMOTE with
+recorded dispositions is the gate
 (verifier-selects-gates-decide); the gate does not hard-block on a confirmed
 major and keeps no never-worse ratchet across tiers.
 
