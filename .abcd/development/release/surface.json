@@ -1411,6 +1411,13 @@
       "sentence": "Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.",
       "flags": [
         {
+          "name": "root-sha",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "yes",
           "shorthand": "",
           "type": "bool",
@@ -1532,6 +1539,13 @@
           "type": "bool",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "root-sha",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -1575,15 +1589,29 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
+      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ideate record",
       "hidden": false,
       "block": "agents",
-      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
       "flags": [
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "public",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -2039,6 +2067,13 @@
       "hidden": false,
       "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
       "flags": [
+        {
+          "name": "accept-config-change",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "discard",
           "shorthand": "",

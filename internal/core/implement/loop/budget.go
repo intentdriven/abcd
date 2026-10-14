@@ -22,6 +22,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -73,15 +74,19 @@ func estimateShares(cfg *runner.Config, steps int, audits bool) []budgetShare {
 }
 
 // quota asks the named runner for its remaining quota: through the Quota seam
-// when a test sets it, else the runner configuration.
+// when a test sets it, else the runner configuration. The query runs under
+// ghTimeout, the bound the loop already puts on one call to a remote service,
+// so a runner that reports its quota over I/O cannot hang the start.
 func (o Options) quota(name string) (runner.Quota, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
 	if o.Quota != nil {
-		return o.Quota(name)
+		return o.Quota(ctx, name)
 	}
 	if o.Runners == nil {
 		return runner.Quota{}, false, nil
 	}
-	return o.Runners.Quota(context.Background(), name)
+	return o.Runners.Quota(ctx, name)
 }
 
 // budgetCheck is the budget row for a run of chk: the estimate on each route
@@ -114,7 +119,7 @@ func budgetCheck(chk CheckResult, o Options) CheckRow {
 		switch {
 		case err != nil:
 			parts = append(parts, fmt.Sprintf("%s did not report its quota (%s), so the check is skipped for it (%s: an estimated %d agent run(s))",
-				who, termsafe.Sanitize(err.Error()), strings.Join(s.roles, ", "), s.runs))
+				who, termsafe.Sanitize(fsutil.RedactHome(err.Error())), strings.Join(s.roles, ", "), s.runs))
 		case !ok:
 			parts = append(parts, fmt.Sprintf("%s reports no quota (%s: an estimated %d agent run(s)), so the check is skipped for it",
 				who, strings.Join(s.roles, ", "), s.runs))

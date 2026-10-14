@@ -396,6 +396,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--root-sha` | string |
 | `--yes` | bool |
 
 ### `abcd history drain`
@@ -459,5 +460,6 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--all-repos` | bool |
+| `--root-sha` | string |
 
 <!-- surface-appendix:end -->

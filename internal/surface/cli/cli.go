@@ -2321,9 +2321,17 @@ func backlogNotices(skipSHA string) []string {
 	var bytesHeld int64
 	var overdue, quarantined int
 	var oldest time.Time
-	var names []string
+	var names, orphans []string
 	for _, b := range repos {
 		if b.RootSHA == skipSHA {
+			continue
+		}
+		// A pile whose checkout is gone is named on its own line with the
+		// commands that remove it: the aggregate below tells the reader to
+		// open the repository, which for this pile cannot be done
+		// (iss-2609091717146700).
+		if b.Orphaned {
+			orphans = append(orphans, orphanedPileNotice(b))
 			continue
 		}
 		others++
@@ -2338,7 +2346,7 @@ func backlogNotices(skipSHA string) []string {
 		}
 	}
 	if others == 0 {
-		return nil
+		return orphans
 	}
 	where := ""
 	if len(names) > 0 {
@@ -2359,9 +2367,9 @@ func backlogNotices(skipSHA string) []string {
 	if quarantined > 0 {
 		extra += fmt.Sprintf(" %d can never be redacted and are quarantined, awaiting `abcd history discard`.", quarantined)
 	}
-	return []string{fmt.Sprintf(
+	return append(orphans, fmt.Sprintf(
 		"abcd: %d OTHER repositor(y/ies)%s are holding %s of UNREDACTED transcript text that no session here will ever drain — the drain runs per repository.%s%s Run `abcd history staged --all-repos` to see them.",
-		others, where, humanBytes(int(bytesHeld)), age, extra)}
+		others, where, humanBytes(int(bytesHeld)), age, extra))
 }
 
 // readTranscript reads the file named by the Stop payload's transcript_path.
@@ -3944,6 +3952,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				opts.ReadmeParts = readmeParts
 			}
+			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
 				return err
@@ -4056,7 +4065,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
-					if slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID) {
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID):
+					case res.ReadmeAwaitsConfig():
+						// Neither route below works without the config the
+						// answer is kept in (iss-2610120505551170).
+						fmt.Fprint(w, "    the README answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the README question at a terminal, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
+					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
 				}
@@ -4902,6 +4917,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				st = st.Shown()
 				// The outstanding-readings report rides the same board. It is the
 				// SAME function the lint rule calls, not a second scan: an item
 				// nobody has answered has no state to sit in, and two readings of
@@ -5164,6 +5180,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			res = res.Shown()
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
 					fmt.Fprintf(w, "%s  %s  %s  %s%s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss), summaryNote(iss.Body))
@@ -6629,7 +6646,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stop := homeStop(); stop != nil {
 		return renderHomeStop(root, args, stop, stdin, stdout, stderr)
 	}
+	// abcd keeps its home readable only by the account it belongs to: a home
+	// made at the umask by an earlier abcd or by hand is narrowed here, once,
+	// before any verb reads or writes in it (homestop.go, narrowHome).
+	narrowHome()
 
+	// abcd's home ignores itself (itd-2610140858048004): laid before the
+	// command for a home that already exists, and after it for a home the
+	// command has just created. A failed lay is said once and never fails the
+	// command (homestop.go). The status line is the one command it skips: it
+	// writes nothing at all, by the product thinker's ruling of 2026-10-05
+	// (iss-2610050556383525), and every other command lays the file soon enough.
+	if !isStatusline(args) {
+		quiet := jsonRequestedIn(args) || isHookCall(args)
+		if layHomeIgnore(stderr, quiet) {
+			defer layHomeIgnore(stderr, quiet)
+		}
+	}
 	err := root.Execute()
 	if err == nil {
 		return 0

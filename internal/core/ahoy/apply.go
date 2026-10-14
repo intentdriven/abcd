@@ -29,6 +29,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	if err != nil {
 		return res, err
 	}
+	res.readmeAwaitsConfig = slices.Contains(res.OptionalSkipped, ReadmeOfferGapID) && !readmeStorable(cwd)
 	res.explain()
 	return res, nil
 }
@@ -178,6 +179,22 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 				OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 			}, nil
 		}
+		// An owned copy is the entry this run would report as abcd's without
+		// promoting anything, so it is verified first, read-only, and a copy
+		// that fails keeps the run from being reported up to date
+		// (iss-2610120955431790).
+		if !opts.Dev {
+			if note, check, why := entryCopyCheck(binTargetPath, det.pluginRoot, abs, opts.VerifyProvenance); note != "" {
+				return InstallResult{
+					Status:          "partial",
+					Remaining:       []string{UnverifiedCopyGapID},
+					Notes:           append(readmeStandingNotes(abs, opts), note),
+					OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
+					unverifiedCheck: check,
+					unverifiedWhy:   why,
+				}, nil
+			}
+		}
 		// The README parts this run had nothing to write still say what was
 		// omitted or left, since no apply step runs to say it.
 		return InstallResult{
@@ -205,6 +222,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		binTarget:   binTargetPath,
 		attribution: opts.Attribution,
 		confirmTool: opts.ConfirmTool,
+		provenance:  opts.VerifyProvenance,
 		readmeFlag:  opts.ReadmeParts,
 	}
 
@@ -262,6 +280,13 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 	remaining := gapIDs(actionable(final.Gaps))
 
+	if ac.unverifiedCheck != "" {
+		// Detection classifies the copy by its record and never asks the
+		// network, so it reports nothing outstanding; the check this run made
+		// says otherwise, and the run is not reported green over it.
+		remaining = append(remaining, UnverifiedCopyGapID)
+		sort.Strings(remaining)
+	}
 	status := "clean"
 	if len(remaining) > 0 {
 		status = "partial"
@@ -282,6 +307,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		Notes:              ac.notes,
 		OptionalSkipped:    optionalSkipped(opts, abs, final.Gaps, p),
 		writeKinds:         ac.writeKinds,
+		unverifiedCheck:    ac.unverifiedCheck,
+		unverifiedWhy:      ac.unverifiedWhy,
 	}, nil
 }
 
@@ -398,16 +425,19 @@ type applyCtx struct {
 	gapPresent map[string]bool
 	writes     []string
 	// writeKinds runs parallel to writes: what each write is, for the summary.
-	writeKinds  []writeKind
-	changes     []string // human-readable value changes an explicit override forced
-	notes       []string // loud refusals (refuse) and informational lines (inform), in the order they arose
-	autoYes     bool     // --yes: every category auto-approved without interaction
-	devMode     bool     // --dev: install the track-latest shim instead of the symlink
-	modeForced  bool     // the requested install mode differs from the on-disk state
-	attribution bool     // --attribution: opt this repo into the committed prompt hook
-	binTarget   string   // the resolved PATH entry this run installs (never re-derived)
-	confirmTool tools.Confirm
-	readmeFlag  string // --readme-parts as given; "" when not given
+	writeKinds      []writeKind
+	changes         []string // human-readable value changes an explicit override forced
+	notes           []string // loud refusals (refuse) and informational lines (inform), in the order they arose
+	autoYes         bool     // --yes: every category auto-approved without interaction
+	devMode         bool     // --dev: install the track-latest shim instead of the symlink
+	modeForced      bool     // the requested install mode differs from the on-disk state
+	attribution     bool     // --attribution: opt this repo into the committed prompt hook
+	binTarget       string   // the resolved PATH entry this run installs (never re-derived)
+	confirmTool     tools.Confirm
+	readmeFlag      string          // --readme-parts as given; "" when not given
+	provenance      ProvenanceCheck // the build-provenance check a cache promotion must pass; nil refuses
+	unverifiedCheck string          // the hand check for an owned copy whose provenance failed; non-empty reports UnverifiedCopyGapID
+	unverifiedWhy   string          // why that copy was not verified, when a fact other than the check says so (an older release than the mark)
 
 	visibilityForced bool     // an explicit --visibility override overwrote a valid value
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
@@ -1358,12 +1388,18 @@ func markerFilesDropped(from, to string) []string {
 // owned entry (apply-as-update, iss-107). It refuses to clobber a foreign
 // binary.
 func (a *applyCtx) stepSymlink() {
-	if a.det.pluginRoot == "" || a.binTarget == "" {
+	if a.binTarget == "" {
 		return
 	}
 	gapDriven := a.approved[ConfigChange] &&
 		(a.has("symlink.missing") || a.has("symlink.dangling") || a.has("symlink.legacy") || a.has("symlink.superseded"))
-	if !gapDriven && !a.modeForced {
+	if a.det.pluginRoot == "" || (!gapDriven && !a.modeForced) {
+		// Nothing is written, but an owned copy is still the entry this run
+		// reports as abcd's, so it is verified first, read-only
+		// (iss-2610120955431790).
+		if !a.devMode {
+			a.adoptOwnedCopy(a.binTarget)
+		}
 		return
 	}
 	target := a.binTarget
@@ -1458,8 +1494,9 @@ func entryAnswers(target, pluginRoot string) bool {
 // refuses loudly and installs nothing — and the very bytes that were verified
 // are written 0755 with the provenance recorded in the data dir's path-entry.
 // A legacy owned symlink or a dev shim at the target is replaced (the heal); an
-// owned copy already matching is left alone, and so is any owned copy when
-// there is no usable cache to refresh it from. Otherwise, without a usable
+// owned copy already matching is left alone once its provenance verifies, and so is an owned copy whose
+// build provenance verifies when there is no usable cache to refresh it from
+// (adoptOwnedCopy). Otherwise, without a usable
 // cache it writes nothing and refuses, naming the command that provides a verified copy
 // (coldCacheRefusal): the only other entry there is to write is a symlink into
 // the plugin root, which the next plugin update strands
@@ -1516,11 +1553,13 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	}
 	if !present || unbound != "" {
 		if kind == binTargetOwnedCopy {
-			// The verified copy is already in place — the one the install
-			// one-liner writes is exactly this shape — and a cold cache has
-			// nothing to refresh it from, so it is adopted as it stands.
-			// Refusing here would answer the operator who has just run the
-			// remedy below with that same remedy, a loop it cannot close.
+			// The copy is already in place — the one the install one-liner
+			// writes is exactly this shape — and a cold cache has nothing to
+			// refresh it from, so it is adopted as it stands once it passes
+			// the check a promotion passes (adoptOwnedCopy). Answering with
+			// the remedy below would send the operator who has just run it
+			// round a loop it cannot close.
+			a.adoptOwnedCopy(target)
 			return
 		}
 		// No verified artefact, so no entry is written (iss-2609100506263330).
@@ -1560,10 +1599,39 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			" does not match its recorded SHA-256 checksum, so it may be tampered with or corrupted and nothing was installed. Remove that file and start a session with network access to fetch a fresh verified copy.")
 		return
 	}
-	if kind == binTargetOwnedCopy {
-		if cur, ok := fileSHA256Hex(target); ok && cur == want {
-			return // idempotent: the entry already is the verified artefact
+	// An entry already holding these bytes is not written again, but it is
+	// checked like any other: the bootstrap refreshes the PATH copy from the
+	// cache on the same-page checksum alone where gh cannot verify, so equal
+	// bytes are no proof that a provenance check ever passed.
+	cur, _ := fileSHA256Hex(target)
+	equal := kind == binTargetOwnedCopy && cur == want
+	// The attested hash came from checksums.txt on the same release page as
+	// the binary, so it proves the cache arrived intact, not who built it:
+	// whoever can change that page can change both (iss-2610120617515834).
+	// The build provenance release.yml signed is what a page edit cannot
+	// forge, so the bytes about to be written are checked against it, through
+	// the same in-process check abcd update runs, before anything at target
+	// is touched. Any failure refuses; there is no unverified promotion. The
+	// check is bound to the release the attestation names: release.yml signs
+	// every release's build, so only the provenance naming the commit that
+	// tag resolves to shows these are that release's bytes, not an older
+	// release's genuine build re-uploaded under a newer tag. An attestation
+	// naming no release hands the check no tag, and the check refuses it.
+	if perr := a.verifyProvenance(att.releaseTag, sum[:]); perr != nil {
+		if equal {
+			a.unverifiedCheck = ghAttestationVerifyCommand(target, att.releaseTag)
+			a.refuse(unverifiedCopyNote(target, perr, a.unverifiedCheck))
+			return
 		}
+		a.refuse("refused to install the PATH entry: the cached artefact " + displayPath(artefact) +
+			" matches the checksum the plugin bootstrap verified, but its build provenance could not be verified, so nothing was installed: " +
+			errText(perr) + ". That checksum came from the same release page as the binary, so only the provenance the release workflow signed shows who built it. " +
+			"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check the release by hand with `" +
+			ghAttestationVerifyCommand(cacheAssetName(), att.releaseTag) + "` after downloading it. " + coldCacheRemedy)
+		return
+	}
+	if equal {
+		return // the entry already is the verified artefact
 	}
 	if kind == binTargetOwnedSymlink || kind == binTargetDevShim {
 		if err := os.Remove(target); err != nil {
@@ -1580,6 +1648,122 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	}
 	a.recordEntry(target, want)
 	a.note(writeCommandEntry, target)
+}
+
+// adoptOwnedCopy checks the owned copy at target that this run reports as
+// abcd's without writing it (entryCopyCheck), and records the refusal and the
+// outstanding gap the run's status reports when it fails
+// (iss-2610120955431790).
+func (a *applyCtx) adoptOwnedCopy(target string) {
+	if note, check, why := entryCopyCheck(target, a.det.pluginRoot, a.cwd, a.provenance); note != "" {
+		a.refuse(note)
+		a.unverifiedCheck = check
+		a.unverifiedWhy = why
+	}
+}
+
+// entryCopyCheck verifies the owned copy at target before a run that writes
+// nothing there calls it abcd's entry, read-only; anything else at target is
+// not this check's. A copy holding the bytes of a cache the attestation binds
+// is checked as the release that attestation names, the binding the release
+// mark keeps from going backwards; any other copy (a cold cache, or bytes the
+// cache does not hold) as the release its own build metadata names.
+func entryCopyCheck(target, pluginRoot, cwd string, provenance ProvenanceCheck) (note, handCheck, why string) {
+	if target == "" || classifyBinTarget(target, pluginRoot) != binTargetOwnedCopy {
+		return "", "", ""
+	}
+	bound := ""
+	if ownedCopySourceReady(cwd, pluginRoot) {
+		if att, problem := cacheBindingProblem(pluginDataDir(pluginRoot).dir); problem == "" {
+			if cur, ok := fileSHA256Hex(target); ok && cur == att.sha {
+				bound = att.releaseTag
+			}
+		}
+	}
+	return checkOwnedCopy(target, bound, provenance)
+}
+
+// checkOwnedCopy verifies the owned copy at target, read-only. The copy was
+// written by a promotion, by abcd update, by the bootstrap's refresh, or by
+// the install one-liner, and the last two check only the same-page
+// checksums.txt where gh cannot verify; calling it abcd's unchecked would let
+// it stand on a weaker check than any promotion. The bytes are read once and
+// hashed, and the check is the one a promotion runs, bound to tag or, when
+// tag is empty, to the release the copy's own build metadata names (read,
+// never run). On failure it returns the refusal note and the hand check for
+// the file; a copy that fails is not adopted and is left as it is: it is
+// abcd's own record's, and removing it would leave no abcd at all.
+func checkOwnedCopy(target, tag string, provenance ProvenanceCheck) (note, handCheck, why string) {
+	data, err := fsutil.ReadGuarded(target, maxBinaryArtefactBytes)
+	if err != nil {
+		return "refused to adopt the PATH entry " + displayPath(target) + ": it could not be read to verify its build provenance (" + errText(err) + "), so it was not adopted and was left as it is.",
+			ghAttestationVerifyCommand(target, ""), ""
+	}
+	sum := sha256.Sum256(data)
+	var perr error
+	if tag == "" {
+		tag, perr = copyRelease(data)
+		// A release the copy names for itself would let an older release's
+		// genuine build verify as itself, so it is held to the newest-release
+		// mark: the floor a bound cache (cacheBindingProblem) and the
+		// bootstrap keep. A tag the attestation names already met it.
+		if perr == nil {
+			if mark, ok := ReadReleaseMark(); ok && ReleaseOlder(tag, mark) {
+				why = "abcd " + tag + ", older than " + mark + ", the newest release this machine has installed or verified"
+				perr = errors.New("it is " + why + " (to go back to " + tag + " on purpose, run `" + LowerReleaseMarkCommand(tag) + "`)")
+			}
+		}
+	}
+	if perr == nil {
+		if provenance == nil {
+			perr = errors.New("no build-provenance check is configured for this run")
+		} else {
+			_, perr = provenance(tag, sum[:])
+		}
+	}
+	if perr == nil {
+		return "", "", ""
+	}
+	handCheck = ghAttestationVerifyCommand(target, tag)
+	if why != "" {
+		return olderThanMarkNote(target, why, tag, handCheck), handCheck, why
+	}
+	return unverifiedCopyNote(target, perr, handCheck), handCheck, why
+}
+
+// olderThanMarkNote is the refusal for an owned copy whose own release is
+// older than the newest-release mark. It is not unverifiedCopyNote: that text
+// promises a retry once GitHub is reachable fixes it, and nothing a later run
+// fetches can, because the copy is refused for which release it is. The hand
+// check is bound to that older tag, which a genuine older build passes, so the
+// note says what a pass proves and what it does not.
+func olderThanMarkNote(target, why, tag, handCheck string) string {
+	return "refused to adopt the PATH entry " + displayPath(target) + ": the copy there is the one " + abcdhome.Display("path-entry") +
+		" records, but it is " + why + ", so it was not adopted and was left as it is. " +
+		"A retry will not change that: the copy is refused for which release it is, not because its build provenance could not be reached. " +
+		"`" + handCheck + "` would show only that it is a genuine build of " + tag + "; that proves authenticity, not recency, and does not lift the newest-release floor. " +
+		"Reinstall the newest release with the install one-liner in the README (https://github.com/intentdriven/abcd#install), or run `abcd update`, then re-run `abcd ahoy install`. " +
+		"To go back to " + tag + " on purpose, run `" + LowerReleaseMarkCommand(tag) + "`."
+}
+
+// unverifiedCopyNote is the refusal for an owned copy left on PATH whose
+// build provenance did not verify.
+func unverifiedCopyNote(target string, perr error, handCheck string) string {
+	return "refused to adopt the PATH entry " + displayPath(target) + ": the copy there is the one " + abcdhome.Display("path-entry") +
+		" records, but its build provenance could not be verified, so it was not adopted and was left as it is: " +
+		errText(perr) + ". Its recorded checksum shows only that it is the file that was installed, not who built it; only the provenance the release workflow signed shows that. " +
+		"Retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or check it by hand with `" +
+		handCheck + "`. " + coldCacheRemedy
+}
+
+// verifyProvenance runs the front door's build-provenance check; a run
+// without one refuses.
+func (a *applyCtx) verifyProvenance(tag string, digest []byte) error {
+	if a.provenance == nil {
+		return errors.New("no build-provenance check is configured for this run")
+	}
+	_, err := a.provenance(tag, digest)
+	return err
 }
 
 // recordEntry stamps ~/.abcd.noindex/path-entry for the entry abcd just installed at
