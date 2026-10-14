@@ -75,8 +75,8 @@ a disposition was not blank, so every one of those shapes passed.
   `record: iss-<digits>`, with no leading zero; the id names exactly one file in
   the issue ledger; that file sits in `open/`, is read with no symbolic link in
   its path, and is a record the ledger's own reader reads. A missing record, a
-  resolved or wontfix one, an id two files claim, a linked file and a record
-  capture would refuse each refuse the release.
+  resolved or wontfix one, an id two files claim, a linked file, and a record
+  the ledger's reader refuses each refuse the release.
 - **Given** a `fixed` or `invalid` finding, **when** the gate reads it, **then**
   it names no record.
 - **Given** the receipts of every required gate for the release, **when** two or
