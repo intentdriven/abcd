@@ -96,6 +96,29 @@ keeps neither the token nor anything else once it has the answer.
 
 Keeping the relay and its secret safe is the team's responsibility.
 
+## Serve the session page
+
+The page everyone opens is a few plain files that abcd writes for you to put
+on a static host of your choice.
+
+1. Write them into an empty directory:
+
+   ```bash
+   abcd session page --out site
+   ```
+
+   The command writes `index.html`, an identical `404.html`, the page's script
+   and stylesheet, and the editor bundle under `vendor/`. It refuses a
+   directory that holds anything else.
+
+2. Publish that directory on any static host, such as GitHub Pages. The host
+   must answer an unknown path with `404.html`: that is how
+   `/<owner>/<repo>/brief/` reaches the page.
+
+3. Open `https://<your site>/<owner>/<repo>/brief/` and give the page your
+   relay's https address. If you set up a sign-in app, its callback URL is
+   your site's address.
+
 ## Who can join
 
 - Anyone the host gives the join code to joins as a guest. A guest sees the
