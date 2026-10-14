@@ -26,6 +26,14 @@ const BlueprintDir = ".abcd/relay"
 // linux/amd64.
 const relayAsset = "abcd-linux-amd64"
 
+// alpineDigest pins the relay image's base, alpine:3.22, to one multi-arch
+// image index, so a tag moved on the registry cannot change what the relay is
+// built on. Taken on 2026-10-14 from Docker Hub's registry API (the
+// Docker-Content-Digest of library/alpine's 3.22 manifest, an OCI image
+// index). Renew it with `docker buildx imagetools inspect alpine:3.22` when
+// Alpine publishes a fix the relay needs.
+const alpineDigest = "sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8"
+
 // releaseOrigin is where abcd's releases are published.
 const releaseOrigin = "https://github.com/intentdriven/abcd"
 
@@ -122,7 +130,7 @@ func RenderBlueprint(release, digest string) map[string][]byte {
 # release published (pinned below when this file was written), and runs the
 # relay behind the host's proxy. abcd refuses to overwrite this file once it is
 # edited; delete it and run ` + "`abcd session blueprint`" + ` to write it again.
-FROM --platform=linux/amd64 alpine:3.22
+FROM --platform=linux/amd64 alpine:3.22@` + alpineDigest + `
 RUN wget -q -O /usr/local/bin/abcd "` + releaseOrigin + `/releases/download/` + release + `/` + relayAsset + `" \
  && echo "` + digest + `  /usr/local/bin/abcd" | sha256sum -c - \
  && chmod 0755 /usr/local/bin/abcd \
