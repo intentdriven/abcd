@@ -306,7 +306,11 @@ on `PATH`, lands in that one run. It runs a second time, with the attribution
 flag, where the user opts in: that run installs the committed
 `prepare-commit-msg` prompt asking every commit to declare whether a tool
 assisted it, and the choice is recorded, so a later install without the flag
-keeps the hook. The identity verb's render is the follow-on surface and writes
+keeps the hook. The outbound flag is the same kind of opt-in: it installs the
+committed `commit-msg` gate that refuses a live agent-session URL or a tool
+attribution footer in a commit message, running only the abcd binary the clone
+names in `git config --local abcd.binary` and letting the commit through with
+one warning when there is none (iss-2609250834251447). The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 
@@ -1291,6 +1295,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
+| `--outbound-hook` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |
