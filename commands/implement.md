@@ -610,38 +610,59 @@ warning is also written to the run log as a `load` event (`run_log`).
 
 ### Wait for capacity before a preflight or a race run
 
-Gate every `make preflight` and every `go test -race` on a shared machine with
-`--wait`, and never write a waiter loop of your own: a hand-written
+`make preflight` gates itself: before its test stages it runs
+`implement load --wait`, so run it plain, with no wrapper and no waiter loop
+of your own. Gate every other `go test -race` on a shared machine with
+`--wait` too, and never write a waiter loop: a hand-written
 `pgrep -f "go test -race"` loop matched its own shell, whose command line
 carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
-core count) and no other `go test -race` run is live, judged from each go
-process's arguments with the waiter's own process and ancestors excluded. Twice,
-because a busy machine with several sessions already sits near one core-count of
-load; one waiter at a time is kept by the race-run condition and the hold, not
-by the load number; and one race run adds about a core-count, so the peak stays
-near three times the cores, under the extreme limit. It reads the
-machine every 15 seconds, prints one line when it starts waiting and nothing
-more until it opens, and gives up after `--timeout` (30 minutes by default),
+core count), no other `go test -race` run is live, no other `make preflight`
+is running, and no other waiter is ahead of it in the queue (a lower pid) or
+running its command, under any account. All of that is read from the process
+table, which shows every account's processes, judged from each process's
+arguments with the waiter's own process and ancestors excluded: no file another
+account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
+any account, until it opens or reaches its own `--timeout` (it may be shut by
+its own account's stricter `wait-load`, which you cannot see), and a waiter
+running its command holds every later gate for the command's length, by
+design. A preflight whose own waiter is queued takes that waiter's place in the
+queue, and a waiter beneath a waiter running its command (the preflight's own
+gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
+every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
+checks everything again, and opens only if the re-check is clear too, so two
+starters in one quiet minute do not start together. Twice the cores, because a
+busy machine with several sessions already sits near one core-count of load;
+one waiter at a time is kept by the process table and the hold, not by the
+load number; and one race run adds about a core-count, so the peak stays near
+three times the cores, under the extreme limit. Inside `make preflight` each
+test stage then takes a `go test -p` derived from the online cores and the load
+as the stage starts (twice the cores less the load, at most the cores and at
+least a quarter of them), so one run cannot saturate the machine. It reads the
+machine every 15 seconds, prints one line when it starts waiting and one when
+it first finds the machine free, and nothing more until it opens, and gives up
+after `--timeout` (30 minutes by default; `make preflight` gives it two hours),
 exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
-`lock` or `unreadable`). `--json` reports `status` (`open`, `timeout`,
-`skipped` on a CI runner, `unchecked` on an unsupported platform), `waited_on`
-and `waited_s`.
+`preflight`, `waiter`, `lock` or `unreadable`). `--json` reports `status`
+(`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
+platform), `waited_on` and `waited_s`.
 
-One waiter opens at a time: the one that opens writes a machine-wide hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter waits on `lock` while
-it is in force. Without a command the hold lasts two minutes, so run the gated
-work straight after it opens. Prefer the command form,
-`implement load --wait -- make preflight`: it runs the command once the gate
-opens, exits with the command's exit code (128+N, as a shell reports it,
-when signal N killed the command, so a SIGTERM reads 143, never a failed
-gate's 1), and holds the gate until the
-command has started its own race run, the command exits, or 60 minutes pass. A
-hold whose waiter has died, or whose pid now belongs to another process, is
-reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to
-the command, and the waiter waits for it to exit before it exits and releases
-the hold, so the command is never left running without its waiter. A symlinked
-`~/.abcd.noindex` is refused. Relay a timeout as printed; do not loop around it.
+Within one account the waiter that opens also writes a hold,
+`~/.abcd.noindex/load-wait.json`, and every other waiter of that account waits
+on `lock` while it is in force; a hold its own ancestor took does not shut it.
+Without a command the hold lasts two minutes, so run the gated work straight
+after it opens. The command form, `implement load --wait -- go test -race ./...`,
+runs the command once the gate opens, exits with the command's exit code
+(128+N, as a shell reports it, when signal N killed the command, so a SIGTERM
+reads 143, never a failed gate's 1), and holds the gate until the command has
+started its own race run, the command exits, or 60 minutes pass; to every other
+account its waiter is running its command, and shuts their gates, until the
+command exits. A hold whose waiter has died, or whose pid now belongs to
+another process, is reclaimed by the next waiter. A SIGINT or SIGTERM to the
+waiter is passed on to the command, and the waiter waits for it to exit before
+it exits and releases the hold, so the command is never left running without
+its waiter. A symlinked `~/.abcd.noindex` is refused. Relay a timeout as
+printed; do not loop around it.
 
 ## Wait out a lost connection
 
