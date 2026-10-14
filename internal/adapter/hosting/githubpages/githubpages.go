@@ -217,6 +217,9 @@ func (c *client) Inspect(ctx context.Context, s hosting.Site) (hosting.State, er
 	if err := checkSite(s); err != nil {
 		return hosting.State{}, err
 	}
+	// Setup's own public-only check read this same document through the
+	// forge; the provider reads it again rather than take it through the
+	// seam, which carries no forge response (see Setup).
 	out, err := c.call(ctx, "GET", "read the repository", "repos/"+s.Repo, nil)
 	if err != nil {
 		return hosting.State{}, err

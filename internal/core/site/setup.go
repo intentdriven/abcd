@@ -259,6 +259,13 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	// A public-only provider refuses a private repository before anything is
 	// asked or written. A switched-off site is exempt: setup only offers to
 	// take its workflow away.
+	//
+	// This reads GET repos/{repo}, and the github-pages adapter's Inspect
+	// reads it again, as DefaultBranch does. The repeat is kept: the reads sit
+	// on two seams (the Forge here, a hosting.Adapter's own API there), the
+	// check here holds for any public-only provider whatever its Inspect does,
+	// and passing one response through would add the forge's repository
+	// document to the provider seam for a saving of two small reads per run.
 	if prof.PublicOnly && !switchedOff {
 		if forge == nil {
 			return SetupResult{}, fmt.Errorf("site setup: %s publishes public repositories only, and whether this one is public could not be read from the forge", adapter.Name())
