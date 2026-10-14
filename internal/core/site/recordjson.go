@@ -427,7 +427,7 @@ func measureHealth(repoRoot, baselineRel string, graph lint.RecordGraph, index m
 		if _, ok := index[e.From]; !ok {
 			continue
 		}
-		if e.Field != "supersedes" && retired[e.To] {
+		if lint.UnjudgedGraphField(e.Field) || e.Field != "supersedes" && retired[e.To] {
 			continue
 		}
 		rel := e.Field

@@ -62,6 +62,7 @@ func issueFromFrontmatter(fm map[string]any, status State, path, body string) Is
 	iss.BlockedBy = asStrList(fm["blocked_by"])
 	iss.Duplicates = asStrList(fm["duplicates"])
 	iss.Refines = asStrList(fm["refines"])
+	iss.FindingRef = asString(fm["finding_ref"])
 	if rb, ok := fm["resolved_by"].(map[string]any); ok {
 		iss.ResolvedBy = &ResolvedBy{
 			Intent: asString(rb["intent"]),

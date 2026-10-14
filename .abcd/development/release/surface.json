@@ -2280,6 +2280,13 @@
       "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
       "flags": [
         {
+          "name": "max-chunks",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2297,7 +2304,7 @@
         {
           "name": "findings-json",
           "shorthand": "",
-          "type": "string",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },
