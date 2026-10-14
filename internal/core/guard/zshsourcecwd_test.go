@@ -1,6 +1,10 @@
 package guard
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
+)
 
 // TestZshSourceInAnUnknownDirectory: zsh's `source` of a bare name looks in
 // the working directory before PATH. Where the line leaves that directory
@@ -174,4 +178,53 @@ func TestAShellReadingAFileOnStdinInAnUnknownDirectory(t *testing.T) {
 		{`printf x > {d}/w/n.sh; cd "$(mktemp -d)" && bash {d}/w/keep < n.sh`, VerdictAllow, ""},
 	}...)
 	runScriptCases(t, dir, cases)
+}
+
+// TestAWriteInAnUnknownDirectoryByEveryWriter: each writer that names a file
+// relative to the working directory — a one-operand ln, a git clone, a curl
+// keeping the remote name — marks it as written in the unknown directory,
+// so the same name run there blocks and another run there warns; a name the
+// filesystem folds to the run's is the same name; a write in the line's own
+// unknown directory is still the file a child shell runs there; and a path
+// whose last component the quoting leaves literal counts by that name.
+func TestAWriteInAnUnknownDirectoryByEveryWriter(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"w/keep":   "",
+		"h/lib.sh": hazardLine,
+	})
+	folded, foldedBase := VerdictWarn, VerdictAllow
+	foldedID, foldedBaseID := scriptWrittenEntryID, ""
+	if fsutil.CaseFoldingFS() {
+		folded, foldedID = VerdictBlock, scriptWrittenEntryID
+		foldedBase, foldedBaseID = VerdictWarn, scriptWrittenEntryID
+	}
+	runScriptCases(t, dir, []scriptCase{
+		// ln with one operand links the target's name in the directory.
+		{`cd "$X" && ln -s {d}/h/lib.sh && bash lib.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && ln -s {d}/h/lib.sh && bash m.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		// git clone writes the repository's directory.
+		{`cd "$X" && git clone https://example.com/n.git && bash n/x.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		// curl -O writes the URL's last component.
+		{`cd "$X" && curl -O https://example.com/n.sh && bash n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && curl -fsSLO https://example.com/n.sh && source ./n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && curl -O https://example.com/n.sh && bash m.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		// Names compared as the filesystem compares them.
+		{`cd "$X" && printf hi > N.SH && bash n.sh`, folded, foldedID},
+		{`printf x > "$T/N.SH"; cd "$T" && bash n.sh`, foldedBase, foldedBaseID},
+
+		// A child shell runs in the directory it was started in.
+		{`cd "$X" && printf hi > n.sh && bash -c 'bash n.sh'`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && bash -c 'source n.sh'`, VerdictBlock, scriptWrittenEntryID},
+
+		// The last component, after quote removal.
+		{`printf x > $T/"n.sh"; cd "$T" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T"/"n.sh"; cd "$T" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`tee "$T/n.sh" < /dev/null; cd "$T" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cp {d}/w/keep $T/'n.sh'; cd "$T" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T/$n"; cd "$T" && bash n.sh`, VerdictAllow, ""},
+		{`cp {d}/w/keep "$T/$n"; cd "$T" && bash n.sh`, VerdictAllow, ""},
+	})
 }
