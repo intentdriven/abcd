@@ -1729,7 +1729,25 @@ func checkOwnedCopy(target, tag string, provenance ProvenanceCheck) (note, handC
 		return "", "", ""
 	}
 	handCheck = ghAttestationVerifyCommand(target, tag)
+	if why != "" {
+		return olderThanMarkNote(target, why, tag, handCheck), handCheck, why
+	}
 	return unverifiedCopyNote(target, perr, handCheck), handCheck, why
+}
+
+// olderThanMarkNote is the refusal for an owned copy whose own release is
+// older than the newest-release mark. It is not unverifiedCopyNote: that text
+// promises a retry once GitHub is reachable fixes it, and nothing a later run
+// fetches can, because the copy is refused for which release it is. The hand
+// check is bound to that older tag, which a genuine older build passes, so the
+// note says what a pass proves and what it does not.
+func olderThanMarkNote(target, why, tag, handCheck string) string {
+	return "refused to adopt the PATH entry " + displayPath(target) + ": the copy there is the one " + abcdhome.Display("path-entry") +
+		" records, but it is " + why + ", so it was not adopted and was left as it is. " +
+		"A retry will not change that: the copy is refused for which release it is, not because its build provenance could not be reached. " +
+		"`" + handCheck + "` would show only that it is a genuine build of " + tag + "; that proves authenticity, not recency, and does not lift the newest-release floor. " +
+		"Reinstall the newest release with the install one-liner in the README (https://github.com/intentdriven/abcd#install), or run `abcd update`, then re-run `abcd ahoy install`. " +
+		"To go back to " + tag + " on purpose, run `" + LowerReleaseMarkCommand(tag) + "`."
 }
 
 // unverifiedCopyNote is the refusal for an owned copy left on PATH whose

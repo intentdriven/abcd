@@ -411,3 +411,154 @@ func TestOlderThanMarkHandCheckDoesNotLiftTheFloor(t *testing.T) {
 		}
 	}
 }
+
+// TestOlderThanMarkNoteOffersNoRetry: a copy refused for its release is not
+// refused for want of a network, so the note must not promise that a retry
+// once GitHub is reachable fixes it, nor end in the cold-cache remedy, and it
+// must say the hand check proves authenticity, not recency.
+func TestOlderThanMarkNoteOffersNoRetry(t *testing.T) {
+	target, _ := plainCopy(t)
+	if err := RecordReleaseMark("v0.13.5", true); err != nil {
+		t.Fatal(err)
+	}
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{}).check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var note string
+	for _, n := range res.Notes {
+		if strings.Contains(n, "refused to adopt the PATH entry") {
+			note = n
+		}
+	}
+	if note == "" {
+		t.Fatalf("no refusal note for the older copy: %v", res.Notes)
+	}
+	for _, bad := range []string{"Retry once", coldCacheRemedy} {
+		if strings.Contains(note, bad) {
+			t.Errorf("the older-than-mark note must not say %q: %q", bad, note)
+		}
+	}
+	for _, want := range []string{
+		stubCopyRelease + ", older than v0.13.5",
+		"gh attestation verify " + target,
+		"authenticity, not recency",
+		LowerReleaseMarkCommand(stubCopyRelease),
+	} {
+		if !strings.Contains(note, want) {
+			t.Errorf("the older-than-mark note must say %q: %q", want, note)
+		}
+	}
+}
+
+// TestColdCopyWithNoMarkIsAdopted: a machine that has recorded no newest
+// release has no floor to hold the copy to, so the copy is checked as the
+// release it names and adopted when that check passes.
+func TestColdCopyWithNoMarkIsAdopted(t *testing.T) {
+	_, _ = plainCopy(t)
+	if _, ok := ReadReleaseMark(); ok {
+		t.Fatal("the fixture must start with no mark")
+	}
+	rec := &recordingProvenance{}
+	opts := installOpts()
+	opts.VerifyProvenance = rec.check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(res.Remaining, UnverifiedCopyGapID) {
+		t.Errorf("with no mark the copy must adopt; remaining %v, notes %v", res.Remaining, res.Notes)
+	}
+	if !slices.Contains(rec.tags, stubCopyRelease) {
+		t.Errorf("the copy must still be checked as %s; asked %v", stubCopyRelease, rec.tags)
+	}
+}
+
+// TestColdCopyWithAGarbledMarkIsAdopted pins a deliberate fail-open: a mark
+// that does not parse reads as no mark, so the copy adopts as it would on a
+// machine with none. It is the same reading the warm path (cacheBindingProblem,
+// through ReadReleaseMark) and the bootstrap (hooks/bootstrap.sh, which blanks
+// a mark_tag tag_parts cannot read) give the file, and the floor only ever
+// refuses on a fact; a garbled mark is not one. The copy is still held to the
+// provenance check for the release it names.
+func TestColdCopyWithAGarbledMarkIsAdopted(t *testing.T) {
+	for name, body := range map[string]string{
+		"unparsable tag": "release_tag=not a tag!\n",
+		"no tag line":    "\x00\xffgarbage\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _ = plainCopy(t)
+			if err := RecordReleaseMark("v0.13.5", true); err != nil {
+				t.Fatal(err)
+			}
+			home, err := homeScopeErr()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, filepath.FromSlash(releaseMarkRel)), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			rec := &recordingProvenance{}
+			opts := installOpts()
+			opts.VerifyProvenance = rec.check
+			res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if slices.Contains(res.Remaining, UnverifiedCopyGapID) {
+				t.Errorf("a garbled mark reads as no mark, so the copy must adopt; remaining %v, notes %v", res.Remaining, res.Notes)
+			}
+			if !slices.Contains(rec.tags, stubCopyRelease) {
+				t.Errorf("the copy must still be checked as %s; asked %v", stubCopyRelease, rec.tags)
+			}
+		})
+	}
+}
+
+// TestColdPreReleaseCopyBelowAFinalMarkIsUnverified: a pre-release of the
+// version the mark names as final precedes it, so the copy is older and
+// refused.
+func TestColdPreReleaseCopyBelowAFinalMarkIsUnverified(t *testing.T) {
+	target, _ := plainCopy(t)
+	prev := copyRelease
+	copyRelease = func([]byte) (string, error) { return "v0.14.0-rc1", nil }
+	t.Cleanup(func() { copyRelease = prev })
+	if err := RecordReleaseMark("v0.14.0", true); err != nil {
+		t.Fatal(err)
+	}
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{}).check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnverifiedCopyReported(t, res, target)
+	if item := olderThanMarkItem(t, res); !strings.Contains(item.What, "v0.14.0-rc1, older than v0.14.0") {
+		t.Errorf("the summary must name the pre-release as older than the mark: %q", item.What)
+	}
+}
+
+// TestStaleCopyIsNotSentToTheProvenanceCheck: a copy below the mark is
+// refused on that fact alone; the network-bound provenance check is never
+// asked about it, so its answer cannot be mistaken for the copy's standing.
+func TestStaleCopyIsNotSentToTheProvenanceCheck(t *testing.T) {
+	_, _ = plainCopy(t)
+	if err := RecordReleaseMark("v0.13.5", true); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recordingProvenance{}
+	opts := installOpts()
+	opts.VerifyProvenance = rec.check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(res.Remaining, UnverifiedCopyGapID) {
+		t.Fatalf("the stale copy must be refused; remaining %v", res.Remaining)
+	}
+	if len(rec.asked) != 0 {
+		t.Errorf("the provenance check was asked %d time(s) about a copy below the mark (tags %v)", len(rec.asked), rec.tags)
+	}
+}
