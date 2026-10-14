@@ -1,0 +1,393 @@
+package web
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// The files the page is made of, and nothing else.
+var wantFiles = []string{"404.html", "index.html", "session.css", "session.js", "vendor/LICENSES.txt", "vendor/collab.js"}
+
+// listTree lists every entry under dir, slash-separated, directories marked
+// with a trailing slash.
+func listTree(t *testing.T, dir string) []string {
+	t.Helper()
+	var got []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			rel += "/"
+		}
+		got = append(got, rel)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	return got
+}
+
+func TestPageWritesExactlyItsFilesAsEmbedded(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "page")
+	res, err := Write(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := append([]string{"vendor/"}, wantFiles...)
+	sort.Strings(want)
+	if got := listTree(t, out); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("wrote %v, want %v", got, want)
+	}
+	if res.Replaced || len(res.Files) != len(wantFiles) {
+		t.Fatalf("result = %+v", res)
+	}
+	var total int64
+	for _, f := range Files() {
+		got, err := os.ReadFile(filepath.Join(out, filepath.FromSlash(f.Path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, f.Data) {
+			t.Errorf("%s differs from the embedded asset", f.Path)
+		}
+		// Every embedded asset is the committed file beside this test.
+		src := f.Path
+		if src == "404.html" {
+			src = "index.html"
+		}
+		disk, err := os.ReadFile(filepath.FromSlash(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, disk) {
+			t.Errorf("%s differs from the committed %s", f.Path, src)
+		}
+		total += int64(len(got))
+	}
+	if res.Bytes != total {
+		t.Errorf("reported %d bytes, wrote %d", res.Bytes, total)
+	}
+
+	// A second run replaces its own copy, and still writes nothing else.
+	res, err = Write(out)
+	if err != nil || !res.Replaced {
+		t.Fatalf("rewrite: %+v, %v", res, err)
+	}
+	if got := listTree(t, out); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("rewrite left %v", got)
+	}
+}
+
+func Test404IsTheIndex(t *testing.T) {
+	byPath := map[string][]byte{}
+	for _, f := range Files() {
+		byPath[f.Path] = f.Data
+	}
+	if !bytes.Equal(byPath["404.html"], byPath["index.html"]) || len(byPath["index.html"]) == 0 {
+		t.Fatal("404.html is not index.html byte for byte")
+	}
+}
+
+// refused asserts that Write refused out and left it exactly as it was.
+func refused(t *testing.T, out string) {
+	t.Helper()
+	before := listTree(t, out)
+	_, err := Write(out)
+	var ref *Refusal
+	if !errors.As(err, &ref) {
+		t.Fatalf("Write(%s) = %v, want a refusal", out, err)
+	}
+	if after := listTree(t, out); strings.Join(after, ",") != strings.Join(before, ",") {
+		t.Fatalf("a refusal changed the directory: %v -> %v", before, after)
+	}
+}
+
+func TestPageRefusesADirectoryItDidNotWrite(t *testing.T) {
+	t.Run("a foreign file", func(t *testing.T) {
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "notes.txt"), []byte("mine\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refused(t, out)
+	})
+	t.Run("a foreign file beside an earlier copy", func(t *testing.T) {
+		out := t.TempDir()
+		if _, err := Write(out); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(out, "vendor", "extra.js"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refused(t, out)
+	})
+	t.Run("the page's names without its index", func(t *testing.T) {
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "session.js"), []byte("someone else's\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refused(t, out)
+	})
+	t.Run("an index.html the page did not write", func(t *testing.T) {
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "index.html"), []byte("<!doctype html><title>mine</title>\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refused(t, out)
+	})
+	t.Run("a symlink inside", func(t *testing.T) {
+		out := t.TempDir()
+		if _, err := Write(out); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(out, "vendor")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(t.TempDir(), filepath.Join(out, "vendor")); err != nil {
+			t.Fatal(err)
+		}
+		refused(t, out)
+	})
+	t.Run("a symlink or a file as --out", func(t *testing.T) {
+		dir := t.TempDir()
+		link := filepath.Join(dir, "link")
+		if err := os.Symlink(t.TempDir(), link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(link); !errors.As(err, new(*Refusal)) {
+			t.Fatalf("symlink --out: %v", err)
+		}
+		file := filepath.Join(dir, "file")
+		if err := os.WriteFile(file, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Write(file); !errors.As(err, new(*Refusal)) {
+			t.Fatalf("file --out: %v", err)
+		}
+	})
+	t.Run("no --out", func(t *testing.T) {
+		if _, err := Write(""); !errors.As(err, new(*Refusal)) {
+			t.Fatalf("empty --out: %v", err)
+		}
+	})
+}
+
+// provenance is the part of PROVENANCE.json the hash check reads.
+type provenance struct {
+	Bundle      string `json:"bundle"`
+	SHA256      string `json:"sha256"`
+	Entry       string `json:"entry"`
+	EntrySHA256 string `json:"entry_sha256"`
+	Packages    []struct {
+		Name, Version, License, Integrity, Resolved string
+	} `json:"packages"`
+}
+
+// checkProvenance proves the bundle and its entry module in dir are the bytes
+// PROVENANCE.json records (adr-2610141949110653).
+func checkProvenance(dir string) error {
+	raw, err := os.ReadFile(filepath.Join(dir, "PROVENANCE.json"))
+	if err != nil {
+		return err
+	}
+	var p provenance
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	if p.Bundle != "collab.js" || p.Entry != "collab.entry.js" || len(p.Packages) == 0 {
+		return fmt.Errorf("PROVENANCE.json names %q and %q with %d packages", p.Bundle, p.Entry, len(p.Packages))
+	}
+	for _, c := range []struct{ file, want string }{{p.Bundle, p.SHA256}, {p.Entry, p.EntrySHA256}} {
+		data, err := os.ReadFile(filepath.Join(dir, c.file))
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		if got := hex.EncodeToString(sum[:]); got != c.want {
+			return fmt.Errorf("%s has sha256 %s, PROVENANCE.json records %s", c.file, got, c.want)
+		}
+	}
+	for _, pkg := range p.Packages {
+		if pkg.License != "MIT" || !strings.HasPrefix(pkg.Integrity, "sha512-") || !strings.HasPrefix(pkg.Resolved, "https://registry.npmjs.org/") {
+			return fmt.Errorf("package %s@%s: licence %q, integrity %q, resolved %q", pkg.Name, pkg.Version, pkg.License, pkg.Integrity, pkg.Resolved)
+		}
+	}
+	return nil
+}
+
+func TestVendoredBundleMatchesItsProvenance(t *testing.T) {
+	if err := checkProvenance("vendor"); err != nil {
+		t.Fatal(err)
+	}
+	embedded, err := assets.ReadFile("vendor/collab.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	disk, err := os.ReadFile(filepath.Join("vendor", "collab.js"))
+	if err != nil || !bytes.Equal(embedded, disk) {
+		t.Fatalf("the embedded collab.js is not the committed one: %v", err)
+	}
+}
+
+func TestProvenanceCheckCatchesATamperedBundle(t *testing.T) {
+	for _, name := range []string{"collab.js", "collab.entry.js"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range []string{"PROVENANCE.json", "collab.js", "collab.entry.js"} {
+				data, err := os.ReadFile(filepath.Join("vendor", f))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if f == name {
+					data = append(data, []byte("\n// tampered\n")...)
+				}
+				if err := os.WriteFile(filepath.Join(dir, f), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := checkProvenance(dir)
+			if err == nil || !strings.Contains(err.Error(), name+" has sha256") {
+				t.Fatalf("a tampered %s passed the provenance check: %v", name, err)
+			}
+		})
+	}
+}
+
+// cspWant is the page's content-security policy, in full.
+const cspWant = `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https: wss: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'`
+
+func TestPageHTMLLoadsOnlyItsOwnFiles(t *testing.T) {
+	html, err := assets.ReadFile("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(html)
+	for _, want := range []string{
+		`<meta http-equiv="Content-Security-Policy" content="` + cspWant + `">`,
+		`<meta name="referrer" content="no-referrer">`,
+		Generator,
+		`<script type="module" src="../../../session.js"></script>`,
+		`<link rel="stylesheet" href="../../../session.css">`,
+	} {
+		if strings.Count(s, want) != 1 {
+			t.Errorf("index.html does not carry %s exactly once", want)
+		}
+	}
+	// Every src and href: the page's own files, named relative to the
+	// /<owner>/<repo>/brief/ depth so a base path works, or an empty icon.
+	allowed := map[string]bool{
+		"../../../session.js": true, "../../../session.css": true, "../../../vendor/collab.js": true, "data:,": true,
+	}
+	refs := regexp.MustCompile(`(?i)\b(?:src|href)\s*=\s*"([^"]*)"`).FindAllStringSubmatch(s, -1)
+	if len(refs) != 4 {
+		t.Errorf("index.html has %d src/href attributes, want 4: %v", len(refs), refs)
+	}
+	for _, m := range refs {
+		if !allowed[m[1]] {
+			t.Errorf("index.html loads %q", m[1])
+		}
+	}
+	if n := strings.Count(strings.ToLower(s), "<script"); n != 1 {
+		t.Errorf("index.html has %d script elements, want the one module", n)
+	}
+	// Outside the policy's own connect-src list, the HTML names no address.
+	rest := strings.Replace(s, cspWant, "", 1)
+	for _, bad := range []string{"http://", "https://", "ws://", "wss://", "//cdn", "<iframe", "<base", "onload=", "onerror=", "javascript:"} {
+		if strings.Contains(strings.ToLower(rest), bad) {
+			t.Errorf("index.html contains %q", bad)
+		}
+	}
+	css, err := assets.ReadFile("session.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"url(", "@import", "http://", "https://"} {
+		if strings.Contains(string(css), bad) {
+			t.Errorf("session.css contains %q: the stylesheet loads nothing", bad)
+		}
+	}
+}
+
+func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
+	raw, err := assets.ReadFile("session.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(raw)
+	// Text reaches the page through textContent, and nothing is evaluated.
+	for _, bad := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", "console.", "srcdoc", "javascript:"} {
+		if strings.Contains(js, bad) {
+			t.Errorf("session.js contains %q", bad)
+		}
+	}
+	// One import, the vendored bundle beside it.
+	imports := regexp.MustCompile(`(?m)\bfrom\s+"([^"]+)"|\bimport\s*\(`).FindAllStringSubmatch(js, -1)
+	if len(imports) != 1 || imports[0][1] != "./vendor/collab.js" {
+		t.Errorf("session.js imports %v, want ./vendor/collab.js alone", imports)
+	}
+	// The only addresses it names are GitHub's API and sign-in page.
+	urls := regexp.MustCompile(`(?i)\b(?:https?|wss?)://[^\s"'`+"`"+`)]*`).FindAllString(js, -1)
+	for _, u := range urls {
+		if u != "https://api.github.com" && u != "https://github.com/login/oauth/authorize" && u != "https://" {
+			t.Errorf("session.js names %q", u)
+		}
+	}
+	// localStorage is written in one place, which remembers the relay and
+	// the display name and nothing else.
+	if n := strings.Count(js, "localStorage.setItem("); n != 1 || !strings.Contains(js, "function remember(key, value) {\n  try { localStorage.setItem(key, value); }") {
+		t.Errorf("localStorage.setItem appears %d times, or outside remember()", n)
+	}
+	remembers := regexp.MustCompile(`remember\(([^)]*)\)`).FindAllStringSubmatch(js, -1)
+	for _, m := range remembers {
+		if m[1] != "key, value" && m[1] != "KEY_RELAY, relay" && m[1] != "KEY_NAME, session.name" {
+			t.Errorf("remember(%s): only the relay address and the display name are remembered", m[1])
+		}
+	}
+	if n := strings.Count(js, "sessionStorage.setItem("); n != 1 || !strings.Contains(js, "const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };") {
+		t.Errorf("sessionStorage holds something besides the sign-in's state and verifier (%d writes)", n)
+	}
+	// The token lives in one variable and goes only into verify and the
+	// Authorization header: never into storage, a URL, the page or a log.
+	lines := strings.Split(js, "\n")
+	uses := 0
+	for i, line := range lines {
+		if !strings.Contains(line, "githubToken") {
+			continue
+		}
+		uses++
+		for _, bad := range []string{"Storage", "remember(", "console.", "location", "history.", "textContent", "setAttribute", "URLSearchParams", "stash", "+ \"#", "+ \"?"} {
+			if strings.Contains(line, bad) {
+				t.Errorf("session.js:%d puts the token near %q: %s", i+1, bad, strings.TrimSpace(line))
+			}
+		}
+	}
+	if uses < 4 {
+		t.Errorf("found the token variable on %d lines; the check is not looking at it", uses)
+	}
+	// The UI's words sit in one table at the top.
+	if !strings.Contains(js, "const WORDS = Object.freeze({") {
+		t.Error("session.js has no WORDS table")
+	}
+	// Step 4's hook is in place and named.
+	if !strings.Contains(js, "function submitSession() {") {
+		t.Error("session.js has no submitSession hook")
+	}
+}
