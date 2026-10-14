@@ -157,6 +157,23 @@ out="$(cd "$root" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIREC
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
   "$bin" lint outbound --label "commit message" --root "$root" "$artefact" 2>&1)" || rc=$?
 
+# abcd exits 1 for more than a refusal (a stop it raises before any verb runs,
+# an error it gives no code of its own, a binary too old to know `lint
+# outbound`), so an exit 1 is a refusal only when the output carries the verb's
+# own verdict line. Anything else is a check that never ran.
+verdict="abcd lint outbound — ✗ commit message breaks the outbound policy"
+refused=0
+if [ "$rc" -eq 1 ]; then
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line == "$verdict" ]]; then
+      refused=1
+    fi
+  done <<<"$out"
+  if [ "$refused" -eq 0 ]; then
+    skip "the configured abcd exited 1 without judging the message, so it could not judge it"
+  fi
+fi
+
 case "$rc" in
   0)
     ;;

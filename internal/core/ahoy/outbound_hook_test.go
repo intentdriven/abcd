@@ -221,7 +221,7 @@ func stub(t *testing.T, path, ran string, code int) {
 	}
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" > '" + ran + "'\n" +
 		"for a in \"$@\"; do f=$a; done\n" +
-		"if grep -q BAD-FOOTER \"$f\"; then echo 'commit message: a tool attribution footer on line 3'; exit 1; fi\n" +
+		"if grep -q BAD-FOOTER \"$f\"; then echo 'abcd lint outbound — ✗ commit message breaks the outbound policy'; echo '  ✗ line 3, column 1 — harness:attribution_footer (a tool attribution footer)'; exit 1; fi\n" +
 		"echo 'commit message carries no session URL and no tool attribution footer'\n" +
 		"exit " + string(rune('0'+code)) + "\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
@@ -362,6 +362,28 @@ func TestOutboundHookFindsAbcdOnlyWhereThePersonSaid(t *testing.T) {
 		}
 		if warningLines(out) != 1 || !strings.Contains(out, "exit 2") {
 			t.Errorf("want one warning line naming the exit, got:\n%s", out)
+		}
+	})
+
+	// abcd exits 1 for more than a refusal: a standing legacy ~/.abcd before
+	// the stop learned lint outbound, an error Run gives no code of its own,
+	// and a binary too old to know the verb at all. Only lint outbound's own
+	// verdict line makes an exit 1 a refusal; anything else is a check that
+	// never ran, and the gate fails open on it as it promises.
+	t.Run("an exit 1 without the verdict line passes with one warning", func(t *testing.T) {
+		c := newOutboundCase(t)
+		bin := filepath.Join(t.TempDir(), "abcd")
+		script := "#!/bin/sh\necho 'Error: unknown command \"outbound\" for \"abcd lint\"' >&2\nexit 1\n"
+		if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		c.git("config", "--local", "abcd.binary", bin)
+		out, landed := c.commit("subject\n\nBAD-FOOTER")
+		if !landed {
+			t.Fatalf("an exit 1 that judged nothing failed the commit closed:\n%s", out)
+		}
+		if warningLines(out) != 1 || !strings.Contains(out, "could not judge") {
+			t.Errorf("want one warning line saying the binary could not judge, got:\n%s", out)
 		}
 	})
 

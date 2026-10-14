@@ -919,8 +919,9 @@ git config --local abcd.binary /absolute/path/to/abcd
 
 It never searches `PATH`, never reads an environment variable, and never runs a
 file inside the working tree, a symlink that resolves into it included. When no
-usable abcd is configured, or the one configured cannot judge the message, it
-prints one warning line and the commit proceeds: refusing every commit where
+usable abcd is configured, or the one configured cannot judge the message (an
+exit 1 without `lint outbound`'s own verdict line counts as that), it prints one
+warning line and the commit proceeds: refusing every commit where
 abcd is absent would change how the repository works. Only a message abcd
 judges and refuses is blocked. Like the guard hooks, it runs once the clone's
 `core.hooksPath` points at `.githooks`.
