@@ -212,3 +212,24 @@ func TestADrainTakesItsNextIssueSharingAFoundAtWithItsOwnOpenLane(t *testing.T) 
 		t.Fatalf("the bug is reserved with the shared path: %v", fp)
 	}
 }
+
+// TestAHandedBackDrainLaneReleasesItsReservation: once the drain routes a
+// lane's hand-back, the issue is a person's again, so the drain pushes a
+// tombstone over the run's reservation rather than leaving it to hold others
+// off until it lapses; the route says so.
+func TestAHandedBackDrainLaneReleasesItsReservation(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
+	next := drainToLane(t, repo, Options{}, DrainOptions{})
+	r := routeOf(t, next.HandBacks, secondIssue)
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+		t.Fatalf("the handed-back issue's reservation is released: %+v", tomb)
+	}
+	if !strings.Contains(r.Wrote, "released the reservation on "+secondIssue) {
+		t.Fatalf("the route says the reservation was released: %q", r.Wrote)
+	}
+}

@@ -178,7 +178,8 @@ and written nowhere, decision 8), then does the first of these that applies:
    `reservation`, naming the holder; and a reservation refused for this
    checkout's own reason (no GitHub username, `origin` not answering) refuses
    the move. The run records the reservation, which its steps renew, fence
-   and tombstone ([`27-implement.md`](27-implement.md)). Without `origin`
+   and tombstone ([`27-implement.md`](27-implement.md)); a lane handed back
+   has its reservation tombstoned as the drain routes the hand-back. Without `origin`
    nothing is reserved.
 
 The host's answer is taken first of all, before the window clock and the

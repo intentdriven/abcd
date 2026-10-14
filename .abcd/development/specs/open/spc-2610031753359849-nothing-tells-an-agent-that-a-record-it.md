@@ -884,8 +884,14 @@ These are the facilitator's design calls; none changes a criterion.
     the check `reservation`; every other refusal (no username, no local tier,
     `origin` not answering) refuses the drain's move, since it would refuse
     every issue alike.
-  - A lane handed back leaves its reservation to lapse with its lease rather
-    than releasing it; the spec names no release there.
+  - A lane handed back has its reservation released: the drain pushes the
+    tombstone as it routes the lane's hand-back, and the route's `wrote`
+    names the outcome (released, left as it stands with its holder, or a
+    push that failed, which leaves it to lapse). This line first left it to
+    lapse with its lease; the review of 2026-10-14 had it released, since it
+    held every other person off for up to two hours. A run `abcd build
+    <iss-N>` starts holds no reservation until step 13, which must release
+    its hand-back too, outside the drain.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

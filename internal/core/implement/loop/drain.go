@@ -427,6 +427,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			if err != nil {
 				return DrainResult{}, err
 			}
+			// The issue is a person's again: its reservation is released
+			// rather than left to hold others off until it lapses.
+			if rel := releaseHandedBack(repoRoot, run, now); rel != "" {
+				r.Wrote += "; " + rel
+			}
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 		}

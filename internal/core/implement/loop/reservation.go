@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The run record's stages for the run's reservation.
@@ -204,26 +205,36 @@ func completesRun(st State, laneID string) bool {
 // does not complete the run; a failure is named there and never undoes the
 // landing.
 func tidyReservation(c Context, lane Lane) string {
-	id := c.State.Key
 	if c.State.ReservedAt == nil || !completesRun(c.State, lane.ID) {
 		return ""
 	}
-	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Release: true}, claimOptions(c.Now))
+	clause, failed := releaseReservation(c.RepoRoot, c.State.Key, c.Now)
+	if failed {
+		clause += "; the landing stands, and the reservation counts as released while " + c.State.Key + " is finished on the default branch"
+	}
+	return clause
+}
+
+// releaseReservation pushes a tombstone over the run's reservation on id
+// while it is still this person's from this copy, and says what came of it:
+// released, already released, left as it stands with its holder named, or a
+// fetch or push that failed (failed is then true). It never refuses.
+func releaseReservation(repoRoot, id string, now time.Time) (clause string, failed bool) {
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Release: true}, claimOptions(now))
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased:
-		return "the reservation on " + id + " was already released"
+		return "the reservation on " + id + " was already released", false
 	case err == nil:
-		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"
+		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")", false
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
-		return "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"
+		return "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s", false
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
-		return "left the reservation on " + id + " as it stands: your copy on another computer holds it"
+		return "left the reservation on " + id + " as it stands: your copy on another computer holds it", false
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
-		return "left the reservation on " + id + " as it stands: " + err.Error()
+		return "left the reservation on " + id + " as it stands: " + err.Error(), false
 	}
-	return "could not push the tombstone over the reservation on " + id + ": " + err.Error() +
-		"; the landing stands, and the reservation counts as released while " + id + " is finished on the default branch"
+	return "could not push the tombstone over the reservation on " + id + ": " + err.Error(), true
 }
 
 // isPushFailure reports whether err is a reservation act that failed reaching
@@ -293,4 +304,19 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 	return DrainRoute{Issue: issue, From: DrainFromReservation, Kind: "no-found-at", Route: RouteHome,
 		Home:   "the issue's record: give it a found_at naming the file the fix changes, which the drain reserves it with",
 		Reason: issue + " has no found_at path to reserve it with; handed back", Wrote: "nothing: a flag in this summary", At: &now}
+}
+
+// releaseHandedBack releases the reservation of an issue run whose lane was
+// handed back, as the drain routes the hand-back: the issue is a person's
+// again, so it is not left holding others off until it lapses. It returns
+// the route's clause, "" for a run that holds no reservation.
+func releaseHandedBack(repoRoot string, run State, now time.Time) string {
+	if run.ReservedAt == nil || run.Issue() == "" {
+		return ""
+	}
+	clause, failed := releaseReservation(repoRoot, run.Key, now)
+	if failed {
+		clause += ", so it lapses with its lease"
+	}
+	return termsafe.Sanitize(fsutil.RedactHome(clause))
 }
