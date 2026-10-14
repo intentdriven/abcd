@@ -3307,6 +3307,63 @@
       ]
     },
     {
+      "path": "abcd session",
+      "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Run the relay a team's live brief session goes through, or write its deployment blueprint: Writes nothing bare; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd session blueprint",
+      "hidden": false,
+      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file.",
+      "flags": [
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session serve",
+      "hidden": false,
+      "sentence": "Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a --listen that is not an IP address and port.",
+      "flags": [
+        {
+          "name": "behind-proxy",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "client-id",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "listen",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "origin",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd site",
       "hidden": false,
       "group": "agents",

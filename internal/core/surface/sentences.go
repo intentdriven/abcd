@@ -228,6 +228,13 @@ var sentences = map[string]string{
 	"abcd dashboard stop": "Stop the dashboard after checking its process is the one start launched: " +
 		"Writes the run file's removal; refuses when another start or stop holds the lock.",
 
+	"abcd session": "Run the relay a team's live brief session goes through, or write its deployment blueprint: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
+	"abcd session blueprint": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: " +
+		"Writes .abcd/relay/; refuses an edited file.",
+	"abcd session serve": "Run the brief session relay in the foreground, on loopback by default: " +
+		"Writes nothing; refuses a --listen that is not an IP address and port.",
+
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
 	"abcd inbox promote": "File one report as a capture in abcd's own ledger: " +

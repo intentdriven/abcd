@@ -245,7 +245,9 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws.SetReadLimit(int64(s.relay.Limits().MaxMessageBytes))
-	ctx, cancel := context.WithCancel(context.Background())
+	// The request's context ends when the server shuts down (Run's
+	// BaseContext), which ends every session connection with it.
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	p := &peer{ws: ws, out: make(chan outFrame, sendQueue), cancel: cancel}
 	conn := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy))

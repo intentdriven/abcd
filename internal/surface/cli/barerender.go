@@ -43,6 +43,9 @@ var bareRenderExceptions = map[string]string{
 		"a terminal and refuses (exit 2) anywhere else",
 	"scribe": "a parent whose sub-verbs act on a named reading run or on a scribe's " +
 		"returned output; with no operand it has no state of its own to render, so bare prints its sub-verbs",
+	"session": "a parent of serve, which runs the relay in the foreground, and blueprint, " +
+		"which writes the team relay's files; a running relay's sessions live in that " +
+		"process's memory alone, so there is no state to render and bare prints its sub-verbs",
 	"statusline": "its row belongs to a managed repository: there bare renders it with or " +
 		"without the payload (TestStatuslineEmptyStdinStillRendersTheBadge), and anywhere else, " +
 		"this test's scratch repository included, abcd has no row and bare prints nothing of " +

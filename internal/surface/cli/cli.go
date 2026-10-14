@@ -404,6 +404,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newReportCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newDashboardCommand(&asJSON))
+	root.AddCommand(newSessionCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))

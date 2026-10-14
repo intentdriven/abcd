@@ -13,11 +13,13 @@ import (
 	"testing"
 )
 
-// The dashboard is the only listener abcd has (adr-2610032150581128). The
-// scanner below holds the tree to it, in the shape of the home resolver's
-// TestOnlyTheHomeResolverNamesTheHome: it parses every non-test Go file under
-// internal/ and cmd/ (testdata skipped) and reports every call that opens a
-// listener. Only this package may make one.
+// abcd has two listeners, each admitted by adr-2610032150581128: the
+// dashboard, and the brief session's relay, which the record's amendment of
+// 2026-10-14 admits as the second. The scanner below holds the tree to them,
+// in the shape of the home resolver's TestOnlyTheHomeResolverNamesTheHome: it
+// parses every non-test Go file under internal/ and cmd/ (testdata skipped)
+// and reports every call that opens a listener. Only the two allowed packages
+// may make one.
 
 // listenerFuncs are the package functions that open a listener, by import
 // path: a call through any import name of the package is judged.
@@ -35,8 +37,22 @@ var listenerFuncs = map[string][]string{
 // are called on: (*net.ListenConfig).Listen, (*http.Server).ListenAndServe.
 var listenerMethods = []string{"Listen", "ListenPacket", "ListenAndServe", "ListenAndServeTLS", "ServeTLS"}
 
-// listenerPackage is the one package allowed to open a listener.
-const listenerPackage = "internal/surface/dashboard"
+// listenerPackages are the packages allowed to open a listener, each with the
+// record that admits it.
+var listenerPackages = map[string]string{
+	"internal/surface/dashboard": "adr-2610032150581128",
+	"internal/surface/session":   "adr-2610032150581128, as amended 2026-10-14",
+}
+
+// allowedListenerPackage reports the allowed package rel lies in, if any.
+func allowedListenerPackage(rel string) (string, bool) {
+	for pkg := range listenerPackages {
+		if strings.HasPrefix(rel, pkg+"/") {
+			return pkg, true
+		}
+	}
+	return "", false
+}
 
 // listenerTestDoubles are non-test files outside the package that open a
 // listener for tests alone, each with its reason; the test also proves no
@@ -130,11 +146,11 @@ func TestOnlyTheDashboardOpensAListener(t *testing.T) {
 		t.Fatalf("the scan read %d files; it is not looking at the tree", len(files))
 	}
 	var bad []string
-	judged := 0
+	judged := map[string]int{}
 	for rel, f := range files {
 		calls := listenerCalls(fset, f)
-		if strings.HasPrefix(rel, listenerPackage+"/") {
-			judged += len(calls)
+		if pkg, ok := allowedListenerPackage(rel); ok {
+			judged[pkg] += len(calls)
 			continue
 		}
 		if _, ok := listenerTestDoubles[rel]; ok {
@@ -144,12 +160,14 @@ func TestOnlyTheDashboardOpensAListener(t *testing.T) {
 			bad = append(bad, fmt.Sprintf("%s:%d: %s", rel, c.line, c.call))
 		}
 	}
-	if judged == 0 {
-		t.Fatal("the scan found no listener in the dashboard package; it is not looking at the calls")
+	for pkg := range listenerPackages {
+		if judged[pkg] == 0 {
+			t.Fatalf("the scan found no listener in %s; it is not looking at the calls", pkg)
+		}
 	}
 	sort.Strings(bad)
 	for _, b := range bad {
-		t.Errorf("%s opens a listener outside %s: the dashboard is the only listener abcd has (adr-2610032150581128)", b, listenerPackage)
+		t.Errorf("%s opens a listener outside the dashboard and the session relay: they are the only listeners abcd has (adr-2610032150581128 and its amendment of 2026-10-14)", b)
 	}
 	// A test double's package reaches the binary only through an import from
 	// a non-test file; there must be none.
