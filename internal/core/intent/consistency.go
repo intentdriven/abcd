@@ -1036,9 +1036,10 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 // review the report is written from. One unchunked payload is that review. A
 // chunk set must hold exactly one payload for every chunk of one emit: a chunk
 // missing or given twice, chunks of two emits, and an unchunked payload beside
-// others are each refused. A finding on a pair another chunk owns is set aside;
-// findings of different chunks that share a key are one finding, the first
-// chunk's copy kept, and the merged findings are numbered in chunk order.
+// others are each refused. A finding on a pair another chunk owns is set aside,
+// so findings of different chunks that share a key are one finding, the owning
+// chunk's copy: a key names one pair, one pair has one owning chunk, and one
+// payload never repeats a key. The merged findings are numbered in chunk order.
 func mergeConsistencyReviews(reviews []consistencyReview) (consistencyReview, error) {
 	if len(reviews) == 1 && reviews[0].Chunk == nil {
 		return reviews[0], nil
@@ -1085,7 +1086,6 @@ func mergeConsistencyReviews(reviews []consistencyReview) (consistencyReview, er
 	}
 	h := sha256.New()
 	h.Write([]byte("abcd/intent-consistency-chunks/v1\n"))
-	seenKey := map[string]bool{}
 	seenVerifier := map[verdictVerifier]bool{}
 	for i := 1; i <= first.Count; i++ {
 		rv := byIndex[i]
@@ -1100,10 +1100,6 @@ func mergeConsistencyReviews(reviews []consistencyReview) (consistencyReview, er
 				out.SetAside++
 				continue
 			}
-			if seenKey[f.Key] {
-				continue
-			}
-			seenKey[f.Key] = true
 			f.Number = len(out.Findings) + 1
 			out.Findings = append(out.Findings, f)
 		}

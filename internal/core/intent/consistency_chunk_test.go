@@ -402,7 +402,8 @@ func TestConsistencyIngestRefusesAnIncompleteChunkSet(t *testing.T) {
 }
 
 // TestConsistencyIngestMergesCrossChunkFindingsByKey: a contradiction found in
-// two chunks is one finding, the first chunk's copy kept; the merged findings
+// two chunks is one finding, the owning chunk's copy kept (chunk 1 here, which
+// owns the first group's own pairs); the merged findings
 // are numbered in chunk order; the same set ingested again, in any order, is a
 // noop naming the report.
 func TestConsistencyIngestMergesCrossChunkFindingsByKey(t *testing.T) {
@@ -452,7 +453,7 @@ func TestConsistencyIngestMergesCrossChunkFindingsByKey(t *testing.T) {
 		t.Fatalf("rows = %+v (filed %d); want the shared finding once and the other once", res.Rows, len(f.calls))
 	}
 	if res.Rows[0].Number != 1 || res.Rows[1].Number != 2 || res.Rows[0].Summary != "seen in chunk 1" || res.Rows[0].Key == res.Rows[1].Key {
-		t.Fatalf("rows = %+v; want the first chunk's copy as finding 1 and the other as 2", res.Rows)
+		t.Fatalf("rows = %+v; want the owning chunk's (chunk 1's) copy as finding 1 and the other as 2", res.Rows)
 	}
 	report, _ := os.ReadFile(filepath.Join(root, res.ReportPath))
 	if strings.Count(string(report), res.Rows[0].Key) != 2 { // its table row and its detail line

@@ -230,8 +230,8 @@ unreviewed}` and lists every chunk's request and corpus path.
 **The ingest** takes `--findings-json` once per chunk and refuses, writing
 nothing, unless it holds exactly one valid payload for every chunk of one emit.
 That refusal is what makes "the report covers every chunk" checkable. Findings
-from different chunks that share a key are one finding, and the first chunk's
-copy is kept. The report's header states the overflow (corpus bytes, limit,
+from different chunks that share a key are one finding, and the owning chunk's
+copy is kept (see "every pair has one owner chunk" below). The report's header states the overflow (corpus bytes, limit,
 groups, chunks, unreviewed documents) and lists every chunk's receipt.
 
 **On a provider route**, the front door sends the chunks one after another
@@ -549,8 +549,10 @@ narrowest reading that meets the criteria. Each is open to review.
   - in a scoped run, the scope's own pairs by chunk 1.
 
   A chunk's prompt names the sets whose pairs it does not report. The ingest
-  sets aside a finding from a chunk that does not own its pair, before
-  merging by key, and the report and the result count it (`set_aside`). The
+  sets aside a finding from a chunk that does not own its pair, and the
+  report and the result count it (`set_aside`). A key names one pair, so
+  findings sharing a key keep the owning chunk's copy, and no separate merge
+  by key is needed (from review). The
   rubric is unchanged.
 - **Step 3, the provider route.** The `route` member is the first chunk's
   dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
