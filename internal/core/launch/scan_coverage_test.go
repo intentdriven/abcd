@@ -2,6 +2,7 @@ package launch
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -303,5 +304,82 @@ func TestRepoAddedSkipExtensionRefusesAndExclusionProceeds(t *testing.T) {
 				t.Errorf("a declared exclusion must not make the scan refuse: %v", r)
 			}
 		})
+	}
+}
+
+// iss-2610120929469571, launch side: an exclusion fragment that matches no
+// payload file is a warning naming the fragment on the dry-run and the ship
+// report, a refusal under strict_warnings, and a fragment that matches raises
+// neither.
+func TestUnmatchedExclusionWarns(t *testing.T) {
+	cases := []struct {
+		name, fragment, payload string
+		warns, strict           bool
+	}{
+		{"a typo", "generatd/", `{"includes": ["commands"]}`, true, false},
+		{"a typo under strict_warnings", "generatd/", `{"includes": ["commands"], "strict_warnings": true}`, true, true},
+		{"a match", "generated/", `{"includes": ["commands"], "strict_warnings": true}`, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
+			writeFile(t, root, ".abcd/config/launch-payload.json", tc.payload)
+			writeFile(t, root, "commands/a.md", "clean content\n")
+			writeFile(t, root, "commands/generated/b.md", "clean generated content\n")
+			writeFile(t, root, ".abcd/config/pii.json",
+				`{"exclude_path_fragments": [{"fragment": "`+tc.fragment+`", "reason": "rebuilt by the release"}]}`)
+			writeLockstepTree(t, root, "", "", "")
+			quoted := `"` + tc.fragment + `"`
+			names := func(lines []string) bool {
+				for _, l := range lines {
+					if strings.Contains(l, quoted) && strings.Contains(l, "matched no payload file") {
+						return true
+					}
+				}
+				return false
+			}
+			report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+			if err != nil {
+				t.Fatalf("dry-run preflight must succeed: %v", err)
+			}
+			if got := names(report.Warnings); got != tc.warns {
+				t.Fatalf("dry-run warning naming %s = %v, want %v: %v", quoted, got, tc.warns, report.Warnings)
+			}
+			if got := names(report.WouldRefuseOn); got != tc.strict {
+				t.Fatalf("dry-run refusal naming %s = %v, want %v: %v", quoted, got, tc.strict, report.WouldRefuseOn)
+			}
+			ship, _ := Ship(ShipRequest{RepoRoot: root, Version: "1.2.3", AllowDirty: true, ExistingTags: []Semver{}})
+			if got := names(ship.Warnings); got != tc.warns {
+				t.Fatalf("ship warning naming %s = %v, want %v: %v", quoted, got, tc.warns, ship.Warnings)
+			}
+			if got := names(ship.BlockReasons); got != tc.strict {
+				t.Fatalf("ship refusal naming %s = %v, want %v: %v", quoted, got, tc.strict, ship.BlockReasons)
+			}
+		})
+	}
+}
+
+// The cut's precheck carries the same warning, and refuses on it under
+// strict_warnings before anything is written.
+func TestPrecheckWarnsOnUnmatchedExclusion(t *testing.T) {
+	for _, strict := range []bool{false, true} {
+		root := renderFixture(t)
+		if strict {
+			writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "README.md"], "strict_warnings": true}`)
+		}
+		writeFile(t, root, ".abcd/config/pii.json",
+			`{"exclude_path_fragments": [{"fragment": "generatd/", "reason": "rebuilt by the release"}]}`)
+		pre, err := PrecheckPayload(root, filepath.Join(t.TempDir(), "payload"), PrecheckOptions{Dirty: DirtySkip})
+		var warned, refused bool
+		for _, w := range pre.Warnings {
+			warned = warned || strings.Contains(w, `"generatd/"`)
+		}
+		for _, r := range pre.Refusals {
+			refused = refused || strings.Contains(r, `"generatd/"`)
+		}
+		if !warned || refused != strict || (err != nil) != strict || (strict && !errors.Is(err, ErrPayloadScanRefused)) {
+			t.Fatalf("strict=%v: warned %v, refused %v, err %v; want a warning, and a scan refusal only when strict: %v", strict, warned, refused, err, pre.Refusals)
+		}
 	}
 }

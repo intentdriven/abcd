@@ -16,11 +16,13 @@ package loop
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // SyncDirName is the lane's directory a sync's brief and receipt live in.
@@ -91,11 +93,27 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
 	} else {
+		// The merge starts from a clean worktree, so the only change a merge
+		// stopped at its deadline can leave is the loop's own, and undoing
+		// it (undoStalledSync) never resets away a change the loop did not
+		// make.
+		if dirty, err := pickGit(lane.Worktree, "status", "--porcelain", "-z", "--untracked-files=all"); err != nil {
+			return Outcome{}, false, fmt.Errorf("reading the lane's worktree: %w", err)
+		} else if dirty != "" {
+			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
+				"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
-		if err := syncMerge(lane.Worktree, msg, merged); err != nil {
+		if err := syncMerge(lane.Worktree, msg, merged); errors.Is(err, errCommitStalled) {
+			return Outcome{}, false, undoStalledSync(*lane, def, err)
+		} else if err != nil {
 			conflicted, _ := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
-			if _, aerr := pickGit(lane.Worktree, "merge", "--abort"); aerr != nil {
-				return Outcome{}, false, fmt.Errorf("aborting the sync's merge in the lane's worktree: %w", aerr)
+			// A merge the repository refused before it began (its
+			// merge.verifySignatures, say) left none to abort.
+			if _, err := pickGit(lane.Worktree, "rev-parse", "-q", "--verify", "MERGE_HEAD"); err == nil {
+				if _, aerr := pickGit(lane.Worktree, "merge", "--abort"); aerr != nil {
+					return Outcome{}, false, fmt.Errorf("aborting the sync's merge in the lane's worktree: %w", aerr)
+				}
 			}
 			paths := strings.FieldsFunc(conflicted, func(r rune) bool { return r == 0 })
 			if len(paths) == 0 {
@@ -107,8 +125,7 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				return Outcome{}, false, err
 			}
 			lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-			return Outcome{Goto: StageValidate, Note: fmt.Sprintf("the sync of %s with %s at %s conflicted in %s (%s landed first); the merge is aborted with the branch unchanged, and a fresh implementer resolves it from %s",
-				lane.ID, def, shortSHA(merged), strings.Join(paths, ", "), strings.Join(siblings, ", "), s.Brief)}, true, nil
+			return Outcome{Goto: StageValidate, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
 		}
 		if tip, err = branchTip(c, *lane); err != nil {
 			return Outcome{}, false, err
@@ -118,25 +135,54 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	lane.HeadSHA = tip
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
 	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s after %s landed: merge commit %s; a fresh round judges it, and counts no fix round",
-		lane.ID, def, shortSHA(merged), strings.Join(siblings, ", "), shortSHA(tip))}, true, nil
+		lane.ID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(siblings), ", "), shortSHA(tip))}, true, nil
 }
 
-// syncMerge merges merged into the lane's worktree with a merge commit, with
-// git's built-in merge on every path: each merge driver the repository
-// configures, whether an attribute or merge.default selects it, is replaced
-// by the built-in text merge (gitutil.MergeDriverOverrides), so the merge
-// starts no merge driver the repository names and its result is git's own
-// (iss-2610090821510097). The content filters the repository configures are
-// not replaced: they run as they would on the person's own `git merge` (on the
-// files the merge writes, and when merge.renormalize is on), and are left as
-// the repository set them (abcd-fixes-what-it-adds). A driver name the
-// override cannot carry refuses the merge before it starts.
-func syncMerge(dir, msg, merged string) error {
-	drivers, err := gitutil.MergeDriverOverrides(dir)
-	if err != nil {
-		return fmt.Errorf("switching the lane's merge drivers to git's built-in merge: %w", err)
+// conflictNote is the record's line for a conflicting sync. The paths are
+// git's, named by the repository's files, the siblings the state's and the
+// default branch the remote's: each is masked where the line is composed, so
+// no caller of the outcome is handed one raw (the state masks the record only
+// when it is written).
+func conflictNote(laneID, def, merged string, paths, siblings []string, brief string) string {
+	return fmt.Sprintf("the sync of %s with %s at %s conflicted in %s (%s landed first); the merge is aborted with the branch unchanged, and a fresh implementer resolves it from %s",
+		laneID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(paths), ", "),
+		strings.Join(termsafe.SanitizeAll(siblings), ", "), brief)
+}
+
+// undoStalledSync undoes a sync's merge stopped at its deadline (a
+// pre-merge-commit hook or a signing prompt nobody answered). Git stopped
+// there has written the merged result to the lane's index and files and
+// recorded no merge to abort, so every later step would be refused over it
+// (iss-2610111729399920). While the lane's HEAD is still the judged head, the
+// attempt is the loop's own (the merge began from a clean worktree), and the
+// worktree is reset to that head (resetLaneTree), as a restart resets it; the
+// refusal names what was undone. A HEAD that moved is left as it is: the next
+// step finds the merge commit, or refuses the branch.
+func undoStalledSync(lane Lane, def string, stalled error) error {
+	reason := "git could not merge " + def + " into " + lane.Branch + ": " + fsutil.RedactHome(stalled.Error())
+	remedy := "answer the repository's signing prompt, or settle the hook that waits, then run `abcd implement step` again"
+	head, err := pickGit(lane.Worktree, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	if head = strings.TrimSpace(head); err != nil || head != lane.HeadSHA {
+		return refuse(string(StageLand), "", lane.ID, reason+"; the lane's HEAD is no longer the judged head "+shortSHA(lane.HeadSHA)+", so nothing was undone",
+			"settle what git reports in the lane's worktree, then run `abcd implement step` again")
 	}
-	_, err = pickGit(dir, append(drivers, "merge", "--no-ff", "--no-edit", "-m", msg, merged)...)
+	if err := resetLaneTree(lane.Worktree, lane.HeadSHA); err != nil {
+		return refuse(string(StageLand), "", lane.ID, reason+"; undoing the stopped merge failed too: "+fsutil.RedactHome(err.Error()),
+			"reset the lane's worktree to its judged head "+lane.HeadSHA+" (`git reset --hard`), then run `abcd implement step` again")
+	}
+	return refuse(string(StageLand), "", lane.ID,
+		reason+"; the loop's merge attempt is undone: the merged result git had staged is reset away, and the lane's worktree is clean at its judged head "+shortSHA(lane.HeadSHA),
+		remedy)
+}
+
+// syncMerge merges merged into the lane's worktree with a merge commit, as the
+// person's own `git merge` makes it (commitGit): the repository's merge
+// drivers, hooks, commit signing and signature check run
+// (iss-2610111729399920), and its content filters run on the files the merge
+// writes and when merge.renormalize is on, left as the repository set them
+// (abcd-fixes-what-it-adds).
+func syncMerge(dir, msg, merged string) error {
+	_, err := commitGit(dir, "merge", "--no-ff", "--no-edit", "-m", msg, merged)
 	return err
 }
 
@@ -153,24 +199,35 @@ func writeSyncBrief(c Context, lane Lane, n int, def string, s *Sync) error {
 	}
 	inLane := strings.TrimPrefix(dir, laneDir+"/")
 	s.Brief, s.Receipt = dir+"/"+BriefFileName, dir+"/"+ReceiptFileName
+	// The paths are git's, named by the repository's files, and the branch,
+	// worktree and siblings the state's: each is masked where the brief is
+	// composed, so a file name with a line break cannot add a line to it
+	// (the state masks them only when it is written). The default branch is
+	// the remote's (refs/remotes/origin/HEAD, whose name git's ref grammar lets
+	// carry a bidi rune, a tag letter or a C1 control) and the checkout root is
+	// the machine's, so both are masked too. The root's home is kept: the
+	// implementer writes its report and receipt at these paths.
+	branch, worktree := termsafe.Sanitize(lane.Branch), termsafe.Sanitize(lane.Worktree)
+	def = termsafe.Sanitize(def)
+	at := func(rel string) string { return termsafe.Sanitize(abs(c.RepoRoot, rel)) }
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	p("# Sync brief: %s of %s\n\n", lane.ID, c.State.RunID)
-	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(s.Siblings, ", "), def, def, s.Merged)
-	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", lane.Branch)
+	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(termsafe.SanitizeAll(s.Siblings), ", "), def, def, s.Merged)
+	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", branch)
 	p("The conflicting paths:\n\n")
 	for _, path := range s.Paths {
-		p("- `%s`\n", path)
+		p("- `%s`\n", termsafe.Sanitize(path))
 	}
-	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", lane.Worktree, s.Merged, lane.Branch, s.Merged)
+	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", worktree, s.Merged, branch, s.Merged)
 	p("rebase), resolve each conflict keeping both lanes' intent, and commit the merge. The merged sha must be an\n")
 	p("ancestor of your head; a fresh round of validators judges it.\n\n")
-	p("Your brief as the lane's implementer: `%s`\n\n", abs(c.RepoRoot, lane.Brief))
+	p("Your brief as the lane's implementer: `%s`\n\n", at(lane.Brief))
 	p("## What you hand back\n\n")
-	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+ReportFileName), inLane, ReportFileName)
-	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+DoDFileName), inLane, DoDFileName)
-	p("- the receipt, at `%s`: the lane receipt's fields — `schema_version` %d, `run_id` %q, `lane` %q,\n", abs(c.RepoRoot, s.Receipt), ReceiptSchemaVersion, c.State.RunID, lane.ID)
-	p("  `branch` %q, `commits` (the merge commit and any you made), `definition_of_done`, `report`, and an optional `model`.\n", lane.Branch)
+	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", at(dir+"/"+ReportFileName), inLane, ReportFileName)
+	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", at(dir+"/"+DoDFileName), inLane, DoDFileName)
+	p("- the receipt, at `%s`: the lane receipt's fields — `schema_version` %d, `run_id` %q, `lane` %q,\n", at(s.Receipt), ReceiptSchemaVersion, c.State.RunID, lane.ID)
+	p("  `branch` %q, `commits` (the merge commit and any you made), `definition_of_done`, `report`, and an optional `model`.\n", branch)
 	return writeRoundFile(c.RepoRoot, s.Brief, b.Bytes())
 }
 
