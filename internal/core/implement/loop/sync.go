@@ -21,6 +21,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // SyncDirName is the lane's directory a sync's brief and receipt live in.
@@ -153,16 +154,21 @@ func writeSyncBrief(c Context, lane Lane, n int, def string, s *Sync) error {
 	}
 	inLane := strings.TrimPrefix(dir, laneDir+"/")
 	s.Brief, s.Receipt = dir+"/"+BriefFileName, dir+"/"+ReceiptFileName
+	// The paths are git's, named by the repository's files, and the branch,
+	// worktree and siblings the state's: each is masked where the brief is
+	// composed, so a file name with a line break cannot add a line to it
+	// (the state masks them only when it is written).
+	branch, worktree := termsafe.Sanitize(lane.Branch), termsafe.Sanitize(lane.Worktree)
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	p("# Sync brief: %s of %s\n\n", lane.ID, c.State.RunID)
-	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(s.Siblings, ", "), def, def, s.Merged)
-	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", lane.Branch)
+	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(termsafe.SanitizeAll(s.Siblings), ", "), def, def, s.Merged)
+	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", branch)
 	p("The conflicting paths:\n\n")
 	for _, path := range s.Paths {
-		p("- `%s`\n", path)
+		p("- `%s`\n", termsafe.Sanitize(path))
 	}
-	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", lane.Worktree, s.Merged, lane.Branch, s.Merged)
+	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", worktree, s.Merged, branch, s.Merged)
 	p("rebase), resolve each conflict keeping both lanes' intent, and commit the merge. The merged sha must be an\n")
 	p("ancestor of your head; a fresh round of validators judges it.\n\n")
 	p("Your brief as the lane's implementer: `%s`\n\n", abs(c.RepoRoot, lane.Brief))
@@ -170,7 +176,7 @@ func writeSyncBrief(c Context, lane Lane, n int, def string, s *Sync) error {
 	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+ReportFileName), inLane, ReportFileName)
 	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+DoDFileName), inLane, DoDFileName)
 	p("- the receipt, at `%s`: the lane receipt's fields — `schema_version` %d, `run_id` %q, `lane` %q,\n", abs(c.RepoRoot, s.Receipt), ReceiptSchemaVersion, c.State.RunID, lane.ID)
-	p("  `branch` %q, `commits` (the merge commit and any you made), `definition_of_done`, `report`, and an optional `model`.\n", lane.Branch)
+	p("  `branch` %q, `commits` (the merge commit and any you made), `definition_of_done`, `report`, and an optional `model`.\n", branch)
 	return writeRoundFile(c.RepoRoot, s.Brief, b.Bytes())
 }
 
