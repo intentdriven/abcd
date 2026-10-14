@@ -129,9 +129,10 @@ type ReceiptCheck struct {
 	DeriveError string `json:"derive_error,omitempty"`
 	// Problems is every refusal the gate would raise, one per gate.
 	Problems []ReceiptProblem `json:"problems"`
-	// Uncommitted lists working-tree changes under the receipts directory. The
-	// release job reads the committed tree, so a receipt that exists only here
-	// would pass locally and be missing there: any such change refuses.
+	// Uncommitted lists working-tree changes under the receipts directory and
+	// the issue ledger. The release job reads the committed tree, so a receipt,
+	// or the capture a deferred finding names, that exists only here would pass
+	// locally and be missing there: any such change refuses.
 	Uncommitted []string `json:"uncommitted,omitempty"`
 	// Pass is the verdict: exactly when the release job's receipt gate admits
 	// the same repository state.
@@ -185,7 +186,8 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 	check.Commit = commit
 
 	armed := ArmReceiptGate(cfg, commit, gate.Gates)
-	findings, err := checkReceiptGate(root, armed.Rules["receipt_gate"])
+	rc := armed.Rules["receipt_gate"]
+	findings, err := checkReceiptGate(root, rc)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
@@ -201,12 +203,15 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 	// (iss-2610090821548169). A filter git still insists on fails the check.
 	// --ignore-submodules=dirty keeps the status out of a checked-out
 	// submodule, whose own config the overrides cannot name
-	// (iss-2610091935327982).
+	// (iss-2610091935327982). The issue ledger is read as well as the reviews:
+	// a deferred finding's record is judged from the tree, so an uncommitted
+	// capture is as invisible to the release job as an uncommitted receipt.
 	filters, err := gitutil.FilterOverrides(root)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
-	status, err := gitutil.Run(root, append(filters, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty", "--", reviewsSubdir)...)
+	status, err := gitutil.Run(root, append(filters, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty",
+		"--", reviewsSubdir, filepath.ToSlash(issuesDirOf(rc)))...)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}

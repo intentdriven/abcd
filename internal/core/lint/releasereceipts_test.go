@@ -232,6 +232,33 @@ func TestCheckReleaseReceiptsRefusesAnArmedGateWithNoRecordLintConfig(t *testing
 	}
 }
 
+// A deferred finding's record is read from the tree the release job checks
+// out, so a capture that exists only in the working tree passes the gate here
+// and refuses there: the local check refuses on it, naming the file.
+func TestCheckReleaseReceiptsRefusesAnUncommittedCapture(t *testing.T) {
+	r, roll := releaseFixture(t)
+	dir := ".abcd/work/reviews/" + roll + "/"
+	r.Write(dir+"docs-currency-reviewer.json", promote("docs-currency-reviewer", roll))
+	r.Write(dir+"iss35-brief-surface-crosscheck.json",
+		promoteWith("iss35-brief-surface-crosscheck", roll, `[{"disposition":"deferred","record":"iss-5"}]`))
+	r.Commit("receipts")
+	rel, body := openIssue("iss-5")
+	r.Write(rel, body)
+
+	check, err := lint.CheckReleaseReceipts(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.Pass || len(check.Problems) != 0 || len(check.Uncommitted) != 1 || !strings.Contains(check.Uncommitted[0], rel) {
+		t.Fatalf("an uncommitted capture must refuse as uncommitted, naming %s, got %+v", rel, check)
+	}
+
+	r.Commit("capture the deferred finding")
+	if check, err = lint.CheckReleaseReceipts(r.Root()); err != nil || !check.Pass {
+		t.Fatalf("a committed capture must pass, got %+v, %v", check, err)
+	}
+}
+
 // The local check runs the release's arming, so the closed disposition
 // vocabulary reaches `abcd launch receipts` exactly as it reaches the release
 // job: a record shared by two gates' deferred findings is refused here too.
