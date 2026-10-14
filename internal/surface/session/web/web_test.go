@@ -677,3 +677,27 @@ func TestIssueBodyEndsWithTheSessionMarker(t *testing.T) {
 		t.Error("an issue's title does not start with Brief:")
 	}
 }
+
+func TestEveryApprovedGuestChangeGetsItsOwnPair(t *testing.T) {
+	js := pageScript(t)
+	// Approvals are told apart by the approval, not by who made them: two
+	// approvals by one guest and one approver are two pairs.
+	for fn, want := range map[string]string{
+		"makePassage":     "approved.set(approvalKey(a), { key: approvalKey(a), guest, approver });",
+		"openPullRequest": "pairs.set(a.key, { guest, approver: a.approver });",
+	} {
+		body := functionBody(t, js, fn)
+		if strings.Contains(body, `guest + "\u0000" + approver`) || strings.Contains(body, `guest + "\u0000" + a.approver`) {
+			t.Errorf("%s merges approvals by guest and approver", fn)
+		}
+		if !strings.Contains(body, want) {
+			t.Errorf("%s does not key approvals by the approval: want %s", fn, want)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "approvalKey"), `typeof a.id === "string" && a.id ? a.id : a`) {
+		t.Error("approvalKey does not name an approval by its own id")
+	}
+	if !strings.Contains(functionBody(t, js, "composeTrailers"), "for (const p of pairs) lines.push(") {
+		t.Error("composeTrailers does not write one pair per approval")
+	}
+}

@@ -1098,6 +1098,12 @@ function overlaps(clock, len, from, n) {
   return clock < from + n && from < clock + len;
 }
 
+// approvalKey tells approvals apart: each approved guest change by its own
+// id, so two changes by the same guest and approver stay two.
+function approvalKey(a) {
+  return typeof a.id === "string" && a.id ? a.id : a;
+}
+
 // approvalOf names the approval a changed run belongs to, if any.
 function approvalOf(path, op, list) {
   for (const a of list) {
@@ -1137,7 +1143,7 @@ function makePassage(path, ops, offsets, i, j, approvalList) {
     if (a) {
       const approver = loginOf(a.client) || (typeof a.approver === "string" ? a.approver : "");
       const guest = trailerText(a.guest);
-      approved.set(guest + "\u0000" + approver, { guest, approver });
+      approved.set(approvalKey(a), { key: approvalKey(a), guest, approver });
       continue;
     }
     const who = op.kind === "add" ? [op.client] : deletersOf(op);
@@ -1431,7 +1437,8 @@ async function openPullRequest(only) {
         if (!NAME_RE.test(a.approver)) continue;
         credited.set(a.approver.toLowerCase(), a.approver);
         const guest = trailerText(a.guest);
-        pairs.set(guest + "\u0000" + a.approver.toLowerCase(), { guest, approver: a.approver });
+        // One pair per approval, though it spans several passages.
+        pairs.set(a.key, { guest, approver: a.approver });
       }
     }
     const members = [...credited.values()].sort((a, b) => a.localeCompare(b));
