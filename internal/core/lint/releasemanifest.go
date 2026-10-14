@@ -36,7 +36,7 @@ import (
 func missingManifestRefusal(repoRoot string, root *os.Root) string {
 	const head = "receipt_gate finds no release-gate manifest " + releaseGateManifestPath
 	const tail = "; a release after one that carried the manifest is in the manifest era, and without it the gate would fall back to the pre-manifest rules (iss-130), so the release gate fails closed"
-	tags, err := releaseTags(repoRoot)
+	tags, err := listReleaseTags(repoRoot)
 	if err != nil {
 		return head + " and cannot read the release tags that show whether an earlier release carried it (" + bareCause(err) + ")" + tail
 	}
@@ -71,13 +71,20 @@ func missingManifestRefusal(repoRoot string, root *os.Root) string {
 // version is already tagged at the commit gated, and every newer release tag
 // descends from that commit. A version tagged at another commit is never
 // released again. "" admits; a repository whose releases never carried the
-// manifest keeps its own versioning; a tree outside git is left to the
+// manifest keeps its own versioning; tags that cannot be listed inside a
+// checkout fail closed, and a tree outside git is left to the
 // missing-manifest refusal, which fails closed on it.
 func backdatedReleaseRefusal(repoRoot string, root *os.Root, manifestPresent bool) string {
 	const tail = ", so the release gate fails closed"
-	tags, err := releaseTags(repoRoot)
+	tags, err := listReleaseTags(repoRoot)
 	if err != nil {
-		return ""
+		// Outside a checkout nothing resolves, and the missing-manifest
+		// refusal fails closed on its own; inside one, a listing that fails
+		// is not an absence of releases.
+		if _, herr := gitutil.Run(repoRoot, "rev-parse", "--verify", "HEAD^{commit}"); herr != nil {
+			return ""
+		}
+		return "receipt_gate cannot read the release tags to judge the release's version against the earlier releases (" + bareCause(err) + ")" + tail
 	}
 	inEra := manifestPresent
 	for _, tag := range tags {
@@ -141,6 +148,10 @@ type releaseTag struct {
 	version launch.Semver
 	commit  string
 }
+
+// listReleaseTags is releaseTags, the one reader the era refusals use; a test
+// replaces it to fail the listing inside a checkout.
+var listReleaseTags = releaseTags
 
 // releaseTags lists the repository's releases, newest first, in one
 // for-each-ref: every tag named v plus a plain X.Y.Z version (a pre-release or

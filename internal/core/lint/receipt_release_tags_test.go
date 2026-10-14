@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,4 +166,20 @@ func TestReleaseGateRefusesABackdatedRelease(t *testing.T) {
 			t.Fatalf("a repository that never had the manifest keeps its own versioning: %+v", fs)
 		}
 	})
+}
+
+// Inside a checkout, a release-tag listing that fails is not an absence of
+// releases: the backdated-version check fails closed on it, as the
+// missing-manifest refusal does. Outside a checkout, where nothing resolves,
+// it is left to the missing-manifest refusal.
+func TestReleaseGateFailsClosedWhenTheTagsCannotBeListed(t *testing.T) {
+	saved := listReleaseTags
+	t.Cleanup(func() { listReleaseTags = saved })
+	listReleaseTags = func(string) ([]releaseTag, error) { return nil, errors.New("for-each-ref failed") }
+
+	x := newTagRepo(t)
+	x.commit("0.15.0", "2")
+	if fs := x.run(); !findingWith(fs, reviewsSubdir, "receipt_gate", "cannot read the release tags") {
+		t.Fatalf("a checkout whose tags cannot be listed must fail closed: %+v", fs)
+	}
 }
