@@ -553,3 +553,32 @@ func TestIntentConsistencyMaxChunksCountsOnlyChunksToSend(t *testing.T) {
 		t.Fatalf("the provider was called %d times; want %d", p.calls.Load(), n-1)
 	}
 }
+
+// TestIntentConsistencyProviderWarningNamesTheVerbRun: on a provider route the
+// pass is ingested inside `abcd intent consistency`, so its unreviewed warning
+// names that verb, the one the person ran, not the ingest sub-verb.
+func TestIntentConsistencyProviderWarningNamesTheVerbRun(t *testing.T) {
+	srcRoot := repoRootFromTest(t)
+	repo := consistencyChunkCLIRepo(t)
+	t.Setenv("ABCD_PLUGIN_ROOT", srcRoot)
+	big := ".abcd/development/intents/planned/itd-40-oversize.md"
+	writeRepoFile(t, repo, big, "---\nid: itd-40\nslug: oversize\nkind: standalone\nspec_id: spc-40\n---\n\n# Oversize\n\n## Press Release\n\n"+
+		strings.Repeat("filler words ", 40000/13)+"\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCommit(t, repo, "commit", "-q", "-m", "oversize intent")
+	receiptRe := regexp.MustCompile(`- receipt_id: (rcp-[0-9a-f]{12})`)
+	p := newChatFake(t, "local-model", func(body string) string {
+		m := receiptRe.FindStringSubmatch(body)
+		rel := ".abcd/.work.local/reviews/" + m[1]
+		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
+	})
+	pointMachine(t, os.Getenv("HOME"), p.srv.URL, false, "", "intent-auditor")
+	_, stderr, err := runCLISplit(t, "intent", "consistency", "--max-chunks", "100")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	if !regexp.MustCompile(`(?m)^abcd intent consistency: warning: 1 document is too large for any chunk, so no chunk reviewed it: `+
+		regexp.QuoteMeta(big)).MatchString(stderr) || strings.Contains(stderr, "abcd intent consistency ingest:") {
+		t.Fatalf("stderr does not warn under the verb run:\n%s", stderr)
+	}
+}

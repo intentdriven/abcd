@@ -111,7 +111,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 					for i, d := range ds {
 						payloads[i] = d.payload
 					}
-					return ingestConsistency(cmd, repoRoot, payloads, func(v any) any { return withDispatchReceipts(v, ds) },
+					return ingestConsistency(cmd, "abcd intent consistency", repoRoot, payloads, func(v any) any { return withDispatchReceipts(v, ds) },
 						func(w io.Writer) {
 							for _, d := range ds {
 								renderDispatchLine(w, d)
@@ -179,7 +179,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				}
 				payloads = append(payloads, payload)
 			}
-			return ingestConsistency(cmd, repoRoot, payloads, func(v any) any { return withReceipt(v, route, payloads[0]) },
+			return ingestConsistency(cmd, "abcd intent consistency ingest", repoRoot, payloads, func(v any) any { return withReceipt(v, route, payloads[0]) },
 				func(w io.Writer) { renderReceiptLine(w, route, payloads[0]) }, *asJSON)
 		},
 	}
@@ -401,9 +401,10 @@ func warnUnreviewed(w io.Writer, verb, reviews string, ov *intent.ConsistencyOve
 
 // ingestConsistency validates a consistency pass's findings, files them, and
 // renders the result with receipt joined to it and receiptLine closing its
-// text, for the ingest verb and for a pass a provider ran. payloads is one
+// text, for the ingest verb and for a pass a provider ran. verb is the verb the
+// person ran, which heads every refusal and warning. payloads is one
 // findings payload, or one per chunk of an overflowing emit.
-func ingestConsistency(cmd *cobra.Command, repoRoot string, payloads [][]byte, receipt func(any) any, receiptLine func(io.Writer), asJSON bool) error {
+func ingestConsistency(cmd *cobra.Command, verb, repoRoot string, payloads [][]byte, receipt func(any) any, receiptLine func(io.Writer), asJSON bool) error {
 	// The filing-time match (itd-2609212137116617) on every record the
 	// pass files, configured as the capture verb's is and never a
 	// refusal: a refused configuration files unmatched and says why.
@@ -416,9 +417,9 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payloads [][]byte, r
 		res, err = capture.IngestConsistencyChunks(repoRoot, payloads, "", mc)
 	}
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
+		return &exitError{Code: 2, Msg: verb + ": " + fsutil.RedactHome(err.Error())}
 	}
-	warnUnreviewed(cmd.ErrOrStderr(), "abcd intent consistency ingest", "reviewed", res.Overflow)
+	warnUnreviewed(cmd.ErrOrStderr(), verb, "reviewed", res.Overflow)
 	// The set is in the ledger (or was already): the answers kept for its
 	// chunks have done their work, and a later run asks the model again.
 	if len(res.Chunks) > 0 {
@@ -427,8 +428,8 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payloads [][]byte, r
 			rcps[i] = ch.ReceiptID
 		}
 		if err := intent.ForgetConsistencyAnswers(repoRoot, rcps); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent consistency ingest: warning: the answers kept for this set were not all removed, "+
-				"so a later provider run on the same model may reuse them: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: the answers kept for this set were not all removed, "+
+				"so a later provider run on the same model may reuse them: %s\n", verb, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		}
 	}
 	for i := range res.Rows {
