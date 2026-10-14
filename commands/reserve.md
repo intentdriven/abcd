@@ -56,8 +56,14 @@ something else. Never retry in a loop.
 reservation's footprint also holds, whoever holds it and for whatever record,
 is refused, naming that path, the other record, its holder and until when. Two
 paths are shared when they are equal or one is a directory holding the other.
-A renewal is checked the same way, so a reservation is never widened onto
-another. Take other work, or reserve with a footprint that does not overlap.
+Running the command again to renew is checked the same way, since it names
+its footprint anew, so a reservation is never widened onto another; a build's
+or a drain's own renewal keeps its footprint and is not checked. Take other
+work, or reserve with a footprint that does not overlap. The cap below and this
+overlap are judged on the reservations fetched just before the push, and each
+reservation is its own branch, so two people reserving at the same moment can
+both pass them: they are best-effort under a race. Two reservations of the
+same record cannot both land; the second push is refused.
 
 **Exit 3 also covers your own other copy.** When the same person holds the
 record from another computer or another checkout, the refusal says "you are

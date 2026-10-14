@@ -769,6 +769,17 @@ These are the facilitator's design calls; none changes a criterion.
     printing runes only, with no C1 control, bidi mark or zero-width rune:
     the writer refuses another, and the reader reads a tip carrying one as
     unreadable, which neither the cap nor the overlap counts.
+  - A renew-only act (the loop's renewal and its fence) is not checked for
+    overlap: it keeps the tip's own footprint and cannot widen it, and the
+    overlap is not compared-and-swapped, so two people racing can each pass
+    it with overlapping footprints; were renewals checked, both would then
+    fail, and both land fences refuse, until one lapsed. A reserve naming its
+    footprint, a renewal by the verb among them, is still checked, so a
+    footprint is never widened onto another.
+  - The cap and the overlap are best-effort under a race: each is judged on
+    the view fetched just before the push, and each reservation is its own
+    ref, so two pushes for two records cannot see each other. A collision on
+    one record is atomic: the plain push is the compare-and-swap.
 - **What step 8 settled** (renewal and the land fence, 2026-10-14):
   - The run records its reservation in its state, `reserved_at` (the state's
     schema version 11; version 10 is read as a run holding none). A run whose
@@ -782,7 +793,10 @@ These are the facilitator's design calls; none changes a criterion.
     unreadable, released, another person's, another copy's), so a run's
     renewal never reserves a released record again, which keeps `build
     --release` a release (C36), and never takes one over. It keeps the tip's
-    footprint, is never counted by the cap and is still checked for overlap.
+    footprint and is never counted by the cap. It was first also checked for
+    overlap; the review of 2026-10-14 dropped that (below): it cannot widen
+    the footprint, and an overlap a race let in would stop both renewals and
+    both fences until one lapsed.
   - The step's renewal renews one's own lapsed reservation too, since half its
     lease has passed. The fence requires a live one (`Request.Live`) and
     refuses a lapsed one; a step meets that only when its own renewal, which

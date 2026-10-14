@@ -15,8 +15,14 @@ const MaxLive = 10
 // (the back-off), and a reservation that would take its holder past MaxLive
 // (the cap, checked first, since taking other work does not lift it). A
 // renewal, and a take-over of one's own other copy, add no reservation, so the
-// cap never refuses them; both still re-check their footprint, so a
-// reservation is never widened past another.
+// cap never refuses them. A reserve naming its footprint re-checks it, so a
+// reservation is never widened past another; a renew-only act, which keeps
+// the tip's footprint, is not checked for overlap.
+//
+// Both are judged on the view just fetched, not compared-and-swapped: each
+// reservation is its own ref, so two people racing can each pass the cap or
+// the overlap against a view without the other's. They are best-effort under
+// a race; only a collision on one record is atomic (the plain push).
 func crowding(p *prepared, j judged, res Result) error {
 	snap, err := view(p.root, p.now, p.derivedGap == "")
 	if err != nil {
@@ -38,6 +44,13 @@ func crowding(p *prepared, j judged, res Result) error {
 		if len(mine) >= MaxLive {
 			return capRefusal(mine)
 		}
+	}
+	// A renew-only act keeps the tip's own footprint, so it widens nothing,
+	// and is not judged for overlap: an overlap a race let in would
+	// otherwise stop both reservations renewing, and both lanes landing,
+	// until one lapsed.
+	if p.req.Renew {
+		return nil
 	}
 	for _, r := range others {
 		for _, want := range res.Footprint {

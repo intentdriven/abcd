@@ -101,3 +101,29 @@ func TestARenewalRenewsOnlyThisCopysOwnReservation(t *testing.T) {
 		t.Fatal("a renewal over a tombstone reserved the record again")
 	}
 }
+
+// TestARenewOnlyActIsNeverRefusedByAnOverlap: a renew-only act keeps the tip's
+// own footprint, so it cannot widen it, and it is not judged for overlap. Two
+// reservations with overlapping footprints, which a race between two people
+// can let in (each reservation is its own ref, so the overlap is not
+// compare-and-swapped), each renew; otherwise neither lane could renew or
+// land until one lapsed.
+func TestARenewOnlyActIsNeverRefusedByAnOverlap(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-1", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	// Q's overlapping reservation, as the race lets it in.
+	w.pushHostile("iss-2", "abcd reservation: iss-2\n\nAbcd-Reservation: iss-2\nAbcd-Holder: quinn\n"+
+		"Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Footprint: a.go\n"+
+		"Abcd-Claimed-At: 2026-10-03T14:00:00Z\nAbcd-Expires-At: 2026-10-03T16:00:00Z\n", t0)
+	w.set(t0.Add(time.Hour))
+	if res, err := p.do(Request{Record: "iss-1", Renew: true}); err != nil || res.Act != ActRenewed {
+		t.Fatalf("P's renew-only act over an overlap the race let in = %+v, %v; want it renewed", res, err)
+	}
+	// A re-reserve naming a footprint is still checked: it could widen.
+	if _, err := p.reserve("iss-1", "a.go"); !errors.Is(err, ErrBackOff) {
+		t.Fatalf("a re-reserve naming its footprint is checked for overlap: %v", err)
+	}
+}

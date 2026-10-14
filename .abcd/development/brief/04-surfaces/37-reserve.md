@@ -67,8 +67,14 @@ across every record, is refused naming the ten; a renewal, and a take-over of
 the same person's other copy, add none and are never refused by the cap. A
 footprint path that another live reservation's footprint shares, equal or one
 a directory holding the other, is refused, naming the deeper of the two paths,
-the other record, its holder and its expiry; a renewal is checked the same
-way, so a footprint is never widened onto another reservation.
+the other record, its holder and its expiry; a renewal the verb makes names
+its footprint and is checked the same way, so a footprint is never widened onto
+another reservation, while the implement loop's renewal, which keeps the tip's
+footprint, is not checked. The cap and the overlap are judged on the view just
+fetched and are not compared-and-swapped, since each reservation is its own
+branch: two people reserving at once can both pass them, so both are
+best-effort under a race. A collision on one record is atomic, the plain push
+being the compare-and-swap.
 
 ## Exits
 
