@@ -280,3 +280,27 @@ func TestCheckReleaseReceiptsRefusesASharedDeferral(t *testing.T) {
 		t.Fatalf("a record shared across two gates must refuse, got %+v", check)
 	}
 }
+
+// A release branch that points the committed config's issues_dir at a shadow
+// ledger and commits hand-made records there does not pass: the release's
+// arming reads the canonical ledger, which holds no such record.
+func TestCheckReleaseReceiptsIgnoresAShadowLedger(t *testing.T) {
+	r, roll := releaseFixture(t)
+	r.Write(".abcd/record-lint.json", `{"rules":{"receipt_gate":{"enabled":false,"severity":"blocker",`+
+		`"receipts_dir":".abcd/work/reviews","issues_dir":".abcd/work/shadow","required_gates":[]}}}`)
+	dir := ".abcd/work/reviews/" + roll + "/"
+	r.Write(dir+"docs-currency-reviewer.json", promote("docs-currency-reviewer", roll))
+	r.Write(dir+"iss35-brief-surface-crosscheck.json",
+		promoteWith("iss35-brief-surface-crosscheck", roll, `[{"disposition":"deferred","record":"iss-5"}]`))
+	_, body := openIssue("iss-5")
+	r.Write(".abcd/work/shadow/open/iss-5-a-slug.md", body)
+	r.Commit("receipts and a shadow capture")
+
+	check, err := lint.CheckReleaseReceipts(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.Pass || len(check.Problems) != 1 || !strings.Contains(check.Problems[0].Message, "no issue record in .abcd/work/issues") {
+		t.Fatalf("a shadow ledger must not satisfy the gate, got %+v", check)
+	}
+}

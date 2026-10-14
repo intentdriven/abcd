@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // The closed disposition vocabulary (the deferred-finding discipline): from
@@ -273,4 +275,22 @@ func TestReleaseDispositionsRefuseAnUnreadableSchemaVersion(t *testing.T) {
 			t.Fatalf("a manifest naming schemaVersion twice must fail closed: %+v", fs)
 		}
 	})
+}
+
+// The ledger a deferred record is read from is the canonical one, pinned by
+// the release's arming: a committer-editable issues_dir pointing elsewhere is
+// ignored, so records hand-made under a shadow ledger never satisfy the gate
+// while the real ledger, its rules and the capture verbs never see them.
+func TestReleaseDispositionsReadTheCanonicalLedgerOnly(t *testing.T) {
+	f := newDispFixture(t, "2")
+	in := Config{Rules: map[string]RuleConfig{"receipt_gate": {IssuesDir: filepath.Join(".abcd", "work", "shadow")}}}
+	f.cfg = ArmReceiptGate(in, dispSha, []string{dispGateA, dispGateB}).Rules["receipt_gate"]
+	if f.cfg.IssuesDir != recordid.IssuesRelDir {
+		t.Errorf("the release's arming must pin the ledger to %s, got %q", recordid.IssuesRelDir, f.cfg.IssuesDir)
+	}
+	writeFile(t, f.root, filepath.Join(".abcd", "work", "shadow", "open", "iss-5-a-slug.md"), validIssue("iss-5", "a-slug"))
+	f.put(dispGateA, `[{"disposition":"deferred","record":"iss-5"}]`)
+	if fs := f.run(); !refusal(fs, "failing[0]", "iss-5", "no issue record in "+recordid.IssuesRelDir) {
+		t.Fatalf("a record in a shadow ledger must not satisfy the gate: %+v", fs)
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -379,6 +380,11 @@ func ArmReceiptGate(cfg Config, commit string, requiredGates []string) Config {
 	// clears the gates (fail-closed at check time) rather than inheriting the
 	// committer-editable config.
 	rc.RequiredGates = requiredGates
+	// The ledger a deferred finding's record is read from is the canonical
+	// one, pinned like Severity: an issues_dir from the committer-editable
+	// config could point the gate at a shadow ledger of hand-made records that
+	// the ledger rules, the capture verbs and the release cut never read.
+	rc.IssuesDir = recordid.IssuesRelDir
 	rc.release = true
 	rules["receipt_gate"] = rc
 	cfg.Rules = rules
