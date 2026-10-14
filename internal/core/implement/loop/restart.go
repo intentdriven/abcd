@@ -175,13 +175,20 @@ func restartWorktree(repoRoot, runID string, lane Lane) (LaneWorktree, error) {
 
 // snapshot captures everything uncommitted in worktree, against head, through
 // a scratch index in tmp: the binary patch and the paths it changes. The
-// worktree's own index is never written.
+// worktree's own index is never written. The working tree is staged as the
+// person's own git stages it (pickGitIndex): through the clean filters and
+// ignore files their global config names, so a file a filter smudged and the
+// agent never touched is not uncommitted work, and a file their global ignore
+// names is neither saved aside nor, by the clean that follows, deleted
+// (iss-2610111729375108). The patch itself is read from the index alone,
+// isolated.
 func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 	index := filepath.Join(tmp, "index")
-	for _, args := range [][]string{{"read-tree", head}, {"add", "-A"}} {
-		if _, err := gitutil.RunWithIndex(worktree, index, 4096, args...); err != nil {
-			return nil, nil, err
-		}
+	if _, err := gitutil.RunWithIndex(worktree, index, 4096, "read-tree", head); err != nil {
+		return nil, nil, err
+	}
+	if _, err := pickGitIndex(worktree, index, "add", "-A"); err != nil {
+		return nil, nil, err
 	}
 	patch, err := gitutil.RunWithIndex(worktree, index, maxAsidePatchBytes,
 		"diff", "--cached", "--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", head, "--")
@@ -425,13 +432,20 @@ func saveAside(repoRoot string, root *os.Root, runID, laneID string, aw Await, p
 		return aside, nil
 	}
 
-	// Saved and proved: only now is the lane's own worktree reset.
-	for _, args := range [][]string{{"reset", "--hard", "--quiet", head}, {"clean", "-f", "-d", "--quiet", "--"}} {
-		if _, err := gitutil.Run(p.lw.Path, args...); err != nil {
-			return RestartAside{}, refuse(stageRestart, "", laneID,
-				"the uncommitted work is saved aside at "+dir+", but git could not reset the lane's worktree: "+fsutil.RedactHome(err.Error()),
-				"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again")
-		}
+	// Saved and proved: only now is the lane's own worktree reset and
+	// cleaned, as the person's own git resets and cleans it. The reset
+	// (resetLaneTree) runs the repository's reference-transaction and
+	// post-index-change hooks, bounded, and writes the files their global
+	// filters smudge; the clean (pickGit) runs no hook, and keeps what their
+	// global ignore names, which the snapshot did not save.
+	err = resetLaneTree(p.lw.Path, head)
+	if err == nil {
+		_, err = pickGit(p.lw.Path, "clean", "-f", "-d", "--quiet", "--")
+	}
+	if err != nil {
+		return RestartAside{}, refuse(stageRestart, "", laneID,
+			"the uncommitted work is saved aside at "+dir+", but git could not reset the lane's worktree: "+fsutil.RedactHome(err.Error()),
+			"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again")
 	}
 	return aside, nil
 }

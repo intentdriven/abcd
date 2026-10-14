@@ -242,10 +242,12 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the\n" +
 			"falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and\n" +
 			"commits it there as the lane branch's first commit, record-only, before the brief; the\n" +
-			"receipt verifier does not count that commit as the implementer's. That commit runs no hook\n" +
-			"and is unsigned, even where your git configuration signs every commit. It does run the\n" +
-			"repository's content filters: staging the entry passes it through its clean filter, as\n" +
-			"Git LFS needs. The checkout you run this\n" +
+			"receipt verifier does not count that commit as the implementer's. That commit is made as\n" +
+			"your own git makes one: the repository's hooks run, and a hook that refuses it refuses the\n" +
+			"stage; it is signed where your git configuration signs every commit; and staging the entry\n" +
+			"passes it through the repository's clean filter, as Git LFS needs. A commit still waiting\n" +
+			"after ten minutes on a signing prompt or a hook is stopped and refuses the stage, naming\n" +
+			"the deadline. The checkout you run this\n" +
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
 			"One pick by default, and nothing picks again once it is delivered. --max <n> (above 1) or\n" +
@@ -759,16 +761,24 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"time; a lane whose sibling landed\n" +
 			"since its base is synced first (the default branch merged in with a merge commit, never a\n" +
 			"rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;\n" +
-			"a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where\n" +
-			"your git configuration signs every commit, and the merge does not verify the signature of the\n" +
-			"commit it merges in. The merge is git's built-in merge on every path, whatever merge driver\n" +
-			"the repository configures or merge.default names, so a driver's program never runs. The\n" +
-			"merge does run the repository's content filters: each file it writes passes through its\n" +
-			"smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs\n" +
-			"the repository's own code.\n\n" +
+			"a sync counts no fix round. The sync's merge is made as your own `git merge` makes one, in\n" +
+			"the lane's worktree: the repository's hooks run, its merge commit is signed where your git\n" +
+			"configuration signs every commit, the signature of the commit it merges in is verified where\n" +
+			"merge.verifySignatures says so, the merge driver the repository configures or merge.default\n" +
+			"names merges each path it covers, and each file it writes passes through the repository's\n" +
+			"smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses\n" +
+			"the step, naming what git reported. A merge still waiting after ten minutes on a signing\n" +
+			"prompt or a hook (a passphrase dialog nobody answers) is stopped and refuses the step,\n" +
+			"so an unattended run is never held by it; the merged result git had staged is reset away,\n" +
+			"leaving the lane's worktree clean at its judged head, and the refusal says so. A sync\n" +
+			"starts only from a clean worktree, so that reset never touches a change the loop did not\n" +
+			"make.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, " + abcdhome.Display("worktrees/<root-sha>/<run-id>-<lane-id>") + ", on a branch build/<run-id>-<lane-id>\n" +
-			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
+			"cut from the default branch, as your own `git worktree add` makes one (the repository's\n" +
+			"post-checkout hook runs, as Git LFS needs); its checkout's time scales with the tree, so it\n" +
+			"is bounded at sixty minutes rather than the ten of a commit or a merge, and one stopped\n" +
+			"there refuses the stage naming the checkout and the bound; brief renders the lane's brief from that base (the intent,\n" +
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
 			"implement hands the lane to a fresh implementer and awaits\n" +
@@ -798,7 +808,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
 			"(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is\n" +
-			"proved to apply to that commit, the lane's worktree is reset and cleaned, the run record\n" +
+			"proved to apply to that commit, the lane's worktree is reset and cleaned as your own git\n" +
+			"resets and cleans it (the repository's hooks run on the reset), the run record\n" +
 			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
 			"the aside. An await a rate limit kept, because what its agent left could not be saved\n" +
 			"aside, is marked in the run state, and --restart re-tells it the same way once that is\n" +

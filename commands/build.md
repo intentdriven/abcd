@@ -124,7 +124,10 @@ and the falsifier (fix rounds past the pace rule's count, or an unachievable
 hand-back). A lane handed back after its fix rounds records the pick as
 falsified in the run record, and the entry is left as written. The lane's `worktree` stage appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
-record-only commit made before the brief. The receipt verifier does not count
+record-only commit made before the brief, as your own git makes a commit: the
+repository's hooks run (one that refuses it refuses the stage), and it is
+signed where your git configuration signs every commit; one still waiting after ten
+minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
 rebase or an amend. No existing entry changes, the checkout you run in is not written but
@@ -337,8 +340,12 @@ A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
-   `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
-   beside the checkout. In a run `build next` started, the first lane's
+   `build/<run-id>-<lane-id>` cut from the default branch, as your own
+   `git worktree add` makes one: the repository's post-checkout hook runs
+   (the one `git lfs install` installs). The checkout's time scales with the
+   tree (a Git LFS download), so it is bounded at sixty minutes, not the ten
+   minutes a commit or a merge in the lane is bounded at; a checkout stopped
+   there refuses the stage, naming the checkout and the bound. Nothing is made beside the checkout. In a run `build next` started, the first lane's
    worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the
