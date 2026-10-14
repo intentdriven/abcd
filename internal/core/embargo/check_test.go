@@ -464,27 +464,31 @@ func TestCheckFileInputs(t *testing.T) {
 // TestCheckFoldsConfusablesAndLineWraps: an id or title spelled with
 // fullwidth letters, a dash other than the hyphen-minus, an invisible
 // character inside it, or a hyphenated token broken at a line end is the same
-// id or title, and is refused.
+// id or title, and is refused. The snippet repeats it in no spelling: folded
+// as the check folds, it holds no folded needle.
 func TestCheckFoldsConfusablesAndLineWraps(t *testing.T) {
 	cf := newCheckFixture(t)
 	for name, tc := range map[string]struct {
-		body string
-		kind string
+		body   string
+		kind   string
+		needle string
 	}{
-		"wrapped id":         {"fixes GHSA-xxxx-xxxx-\nxxxx today\n", KindAdvisoryID},
-		"wrapped id, indent": {"fixes GHSA-xxxx-\n    xxxx-xxxx today\n", KindAdvisoryID},
-		"wrapped cve":        {"tracked as CVE-2026-\n0000\n", KindReservedCVE},
-		"fullwidth id":       {"fixes ＧＨＳＡ－ｘｘｘｘ－ｘｘｘｘ－ｘｘｘｘ\n", KindAdvisoryID},
-		"unicode hyphens":    {"fixes GHSA‐xxxx‑xxxx–xxxx\n", KindAdvisoryID},
-		"minus sign":         {"fixes GHSA−xxxx−xxxx−xxxx\n", KindAdvisoryID},
-		"zero-width inside":  {"fixes GHSA-xx​xx-xxxx-xx­xx\n", KindAdvisoryID},
-		"fullwidth cve":      {"tracked as ＣＶＥ-２０２６-００００\n", KindReservedCVE},
-		"fullwidth title":    {"about the ｓample overflow in the example parser\n", KindAdvisoryTitle},
+		"wrapped id":         {"fixes GHSA-xxxx-xxxx-\nxxxx today\n", KindAdvisoryID, ghsaOpen},
+		"wrapped id, indent": {"fixes GHSA-xxxx-\n    xxxx-xxxx today\n", KindAdvisoryID, ghsaOpen},
+		"wrapped cve":        {"tracked as CVE-2026-\n0000\n", KindReservedCVE, cveOpen},
+		"fullwidth id":       {"fixes ＧＨＳＡ－ｘｘｘｘ－ｘｘｘｘ－ｘｘｘｘ\n", KindAdvisoryID, ghsaOpen},
+		"unicode hyphens":    {"fixes GHSA‐xxxx‑xxxx–xxxx\n", KindAdvisoryID, ghsaOpen},
+		"minus sign":         {"fixes GHSA−xxxx−xxxx−xxxx\n", KindAdvisoryID, ghsaOpen},
+		"zero-width inside":  {"fixes GHSA-xx\u200bxx-xxxx-xx\u00adxx\n", KindAdvisoryID, ghsaOpen},
+		"fullwidth cve":      {"tracked as ＣＶＥ-２０２６-００００\n", KindReservedCVE, cveOpen},
+		"fullwidth title":    {"about the ｓample overflow in the example parser\n", KindAdvisoryTitle, titleOpen},
 	} {
 		t.Run(name, func(t *testing.T) {
 			res := cf.text(t, tc.body)
 			wantKinds(t, res, tc.kind)
-			if strings.Contains(strings.ToLower(res.Findings[0].Snippet), "xxxx") {
+			snippet, _ := normalise(res.Findings[0].Snippet)
+			needle, _ := normalise(tc.needle)
+			if strings.Contains(snippet, strings.TrimSpace(needle)) {
 				t.Fatalf("the snippet repeats the match: %q", res.Findings[0].Snippet)
 			}
 		})
