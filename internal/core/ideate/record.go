@@ -32,10 +32,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/homeignore"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -80,6 +83,19 @@ func (e *ExistsError) Error() string {
 		" — refusing to overwrite it; a re-run of the same idea keeps the first record, and a different run earns its own slug"
 }
 
+// VisibilityError is the refusal for a verdict with no answer to "is this idea
+// private or public?" (iss-2610090740139804). It is typed because it is an
+// OPERAND fault: the fix is to ask the person and re-run with the answer, never
+// to re-compose the verdict, and never to pick a store on their behalf.
+type VisibilityError struct {
+	Got Visibility
+}
+
+func (e *VisibilityError) Error() string {
+	return "the verdict's store is not answered (" + termsafe.DescribeRefused(string(e.Got)) + ") — nothing was written; " +
+		"ask the person whether the idea is private or public, and record it with that answer"
+}
+
 // MissingDecisionsError is the refusal for a repository with no decision log. The
 // pointer is not decoration: the log is where a session looks for what was already
 // decided, and a verdict record nothing points at is a record nobody finds.
@@ -102,13 +118,23 @@ func (e *MissingDecisionsError) Error() string {
 // rather than accepted: if appending the pointer fails after the record landed,
 // the record is removed again, so a run never leaves half a decision behind.
 //
-// Both artefacts it writes are COMMITTED, so both go through the store-before-commit
-// redactor (redact.go): the verdict's free text is redacted field by field on the
-// way into the validated document, the rendered record and its decision-log
-// pointer are re-scanned before either is written, and a scanner that cannot be
-// trusted refuses the run rather than recording under it.
-func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
+// store carries the person's answer, private or public, and the root commit
+// both stores are keyed on (iss-2610090740139804); it is checked beside the
+// slug, before the payload is decoded, so a run without the answer writes
+// nothing. A private verdict goes to recordPrivate and never touches the
+// repository.
+//
+// A public verdict's artefacts are COMMITTED, so both go through the
+// store-before-commit redactor (redact.go): the verdict's free text is redacted
+// field by field on the way into the validated document, the rendered record and
+// its decision-log pointer are re-scanned before either is written, and a scanner
+// that cannot be trusted refuses the run rather than recording under it. A
+// private verdict takes the same gate.
+func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Result, error) {
 	if err := validateSlug(slug); err != nil {
+		return Result{}, err
+	}
+	if err := validateStore(store); err != nil {
 		return Result{}, err
 	}
 	p, err := decodePayload(repoRoot, raw)
@@ -129,6 +155,10 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 		return Result{}, err
 	}
 	v.slug = slug
+	name := recordDate(at) + "-ideate-" + slug + ".md"
+	if store.Visibility == VisibilityPrivate {
+		return recordPrivate(v, red, store, name, at)
+	}
 
 	// ONE os.Root at the repository root, used for every path this verb touches.
 	// It is the containment boundary: os.Root resolves every component, ancestors
@@ -159,9 +189,11 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 		return Result{}, fmt.Errorf("reading %s: %w", DecisionsRelDir, err)
 	}
 	decisionsAbs := filepath.Join(repoRoot, filepath.FromSlash(DecisionsRelDir))
-	name := recordDate(at) + "-ideate-" + slug + ".md"
-	rel := path.Join(ResearchRelDir, name)
+	dir := path.Join(ResearchRelDir, store.RootSHA)
+	rel := path.Join(dir, name)
 	res := v.result(slug, rel)
+	res.Visibility = VisibilityPublic
+	res.DecisionPath = DecisionsRelDir
 
 	// BOTH committed artefacts are composed and re-scanned here, before either is
 	// written: the record body, and the one dated line that will be appended to the
@@ -195,8 +227,8 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 		// host legs have already been paid for, and with the verdict unrecoverable
 		// when it arrived on stdin. Through the Root, a component symlinked out of
 		// the tree still refuses.
-		if err := root.MkdirAll(ResearchRelDir, 0o755); err != nil {
-			return fmt.Errorf("preparing %s: %w", ResearchRelDir, err)
+		if err := root.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("preparing %s: %w", dir, err)
 		}
 		// The EXCLUSIVE create is the no-overwrite guarantee, and it is one syscall
 		// rather than a check followed by a write, so it holds even against a writer
@@ -222,6 +254,86 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 		return Result{}, err
 	}
 	return res, nil
+}
+
+// recordPrivate writes a private verdict into the person's home store,
+// ~/.abcd.noindex/ideas/<root-sha>/, and nothing else: no decision-log pointer,
+// because the log is committed and the pointer would publish the idea's slug.
+//
+// The folder is created and opened through the home-scope walk every writer
+// into abcd's home uses (fsutil.EnsureHomeScope), so a level symlinked out of
+// the home is refused rather than written through, and each level it creates is
+// owner-only. The record is created exclusively, owner-only, so a re-run keeps
+// the first record exactly as the public store does.
+//
+// The record still goes through the redactor, stage two included, although it
+// is never committed: a credential in a private note is still a credential on
+// disk, and one redaction path for both stores means the private record a
+// person later publishes by hand was already scanned.
+func recordPrivate(v verdictDoc, red *recordRedactor, store Store, name string, at time.Time) (Result, error) {
+	rel := path.Join(PrivateRel, store.RootSHA)
+	shown := abcdhome.Display("ideas", store.RootSHA, name)
+	res := v.result(v.slug, shown)
+	res.Visibility = VisibilityPrivate
+	body := render(v, at)
+	if err := red.verify(body); err != nil {
+		return Result{}, err
+	}
+	dir, err := fsutil.EnsureHomeScope(store.Home, rel, abcdhome.DirMode)
+	if err != nil {
+		return Result{}, fmt.Errorf("preparing %s: %w", abcdhome.Display("ideas", store.RootSHA), err)
+	}
+	defer dir.Close()
+	// The ignore file is laid here, before the verdict, rather than left to the
+	// front door: that lay is skipped after a failure and silent under --json, and
+	// the account's own home is let through validateStore only because abcd's
+	// home ignores itself there. A home it cannot be laid in takes no verdict.
+	if _, err := homeignore.Lay(store.Home); err != nil {
+		return Result{}, fmt.Errorf("%s could not be laid, so a git repository in the home folder could stage a private verdict — nothing was written: %w",
+			abcdhome.Display(homeignore.IgnoreName), err)
+	}
+	if err := fsutil.CreateExclusiveIn(dir, name, []byte(body), abcdhome.FileMode); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return Result{}, &ExistsError{Path: shown}
+		}
+		return Result{}, err
+	}
+	return res, nil
+}
+
+// validateStore is the store's operand check, run beside the slug's and before
+// the payload is decoded: the answer must be given, the key must be a git
+// object name before it reaches a path, and a private verdict's home must be
+// one a commit cannot carry.
+func validateStore(store Store) error {
+	if store.Visibility != VisibilityPrivate && store.Visibility != VisibilityPublic {
+		return &VisibilityError{Got: store.Visibility}
+	}
+	if !gitutil.IsFullSHA(store.RootSHA) {
+		return fmt.Errorf("the store key %s is not a repository root commit — nothing was written; "+
+			"a verdict is filed under the root commit of the repository it is about, so a repository with no commit has no store",
+			termsafe.DescribeRefused(store.RootSHA))
+	}
+	if store.Visibility == VisibilityPublic {
+		return nil
+	}
+	if store.Home == "" || !filepath.IsAbs(store.Home) {
+		return errors.New("no absolute home directory is resolved (HOME is unset or relative), so a private verdict has no " +
+			abcdhome.Display("ideas") + " to go to — nothing was written")
+	}
+	// The one rule for whether a home may hold abcd's machine-scoped records
+	// (gitutil.HomeInsideWorkingTree): a home inside a git working tree that is
+	// not the account's own is one a commit could carry, and a private verdict
+	// written there is published by the next `git add -A`. The account's own
+	// home is let through even when it is a dotfiles repository, because abcd's
+	// home ignores itself there (internal/core/homeignore,
+	// itd-2610140858048004); a person who deleted that ignore file chose to
+	// let their repository track it.
+	if gitutil.HomeInsideWorkingTree(store.Home) != "" {
+		return errors.New("the home directory lies inside a git working tree, where a commit could carry a private verdict — nothing was written; " +
+			"run abcd with your own HOME")
+	}
+	return nil
 }
 
 // validateSlug is the lexical containment layer. It runs FIRST, before the payload
@@ -550,7 +662,6 @@ func (v verdictDoc) result(slug, rel string) Result {
 		Verdict:              v.verdict,
 		Graduates:            v.verdict == VerdictSurvives,
 		Path:                 rel,
-		DecisionPath:         DecisionsRelDir,
 		GrillHits:            len(v.hits),
 		CitedRecords:         v.cited,
 		KillAttempts:         len(v.kills),

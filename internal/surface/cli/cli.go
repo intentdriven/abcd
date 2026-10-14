@@ -6613,6 +6613,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// before any verb reads or writes in it (homestop.go, narrowHome).
 	narrowHome()
 
+	// abcd's home ignores itself (itd-2610140858048004): laid before the
+	// command for a home that already exists, and after it for a home the
+	// command has just created. A failed lay is said once and never fails the
+	// command (homestop.go). The status line is the one command it skips: it
+	// writes nothing at all, by the product thinker's ruling of 2026-10-05
+	// (iss-2610050556383525), and every other command lays the file soon enough.
+	if !isStatusline(args) {
+		quiet := jsonRequestedIn(args) || isHookCall(args)
+		if layHomeIgnore(stderr, quiet) {
+			defer layHomeIgnore(stderr, quiet)
+		}
+	}
 	err := root.Execute()
 	if err == nil {
 		return 0

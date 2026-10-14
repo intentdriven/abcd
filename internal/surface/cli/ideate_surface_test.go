@@ -3,11 +3,16 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
+
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // ideateRepo lays out the minimum an `ideate record` run needs, so the surface
@@ -22,6 +27,7 @@ func ideateRepo(t *testing.T) string {
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	gitInitAt(t, root)
+	gitCommitAt(t, root, "root")
 	root = realPath(t, root)
 	write := func(rel, body string) {
 		abs := filepath.Join(root, filepath.FromSlash(rel))
@@ -83,7 +89,7 @@ func TestIdeateRecordWiredFromTheCLI(t *testing.T) {
 	repo := ideateRepo(t)
 	t.Chdir(repo)
 
-	out := runCLI(t, "ideate", "record", "the-ideate-gate", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")), "--json")
+	out := runCLI(t, "ideate", "record", "the-ideate-gate", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")), "--json")
 	var res ideate.Result
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, out)
@@ -94,7 +100,7 @@ func TestIdeateRecordWiredFromTheCLI(t *testing.T) {
 	// The literal directory, not ideate.ResearchRelDir: a check written against
 	// the constant follows the constant wherever it moves, so it can never notice
 	// the record landing outside the home research/README.md gives a dated note.
-	const wantDir = ".abcd/development/research/notes/"
+	wantDir := ".abcd/development/research/ideas/" + gitutil.RootCommit(repo) + "/"
 	if !strings.HasPrefix(res.Path, wantDir) || !strings.HasSuffix(res.Path, "-ideate-the-ideate-gate.md") {
 		t.Errorf("path = %q; want a dated ideate record under %s", res.Path, wantDir)
 	}
@@ -106,7 +112,7 @@ func TestIdeateRecordWiredFromTheCLI(t *testing.T) {
 	}
 
 	// The text render is what a human sees; it must name the verdict and the file.
-	text := string(runCLI(t, "ideate", "record", "a-second-idea", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))))
+	text := string(runCLI(t, "ideate", "record", "a-second-idea", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))))
 	if !strings.Contains(text, "survives") || !strings.Contains(text, "a-second-idea") {
 		t.Errorf("text render is missing the verdict or the slug:\n%s", text)
 	}
@@ -126,17 +132,17 @@ func TestIdeateRecordRefusalsExitTwo(t *testing.T) {
 	}{
 		{
 			"unresolvable-citation",
-			[]string{"ideate", "record", "the-ideate-gate", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-9999"))},
+			[]string{"ideate", "record", "the-ideate-gate", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-9999"))},
 			"itd-9999",
 		},
 		{
 			"traversal-slug",
-			[]string{"ideate", "record", "../../../etc/passwd", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))},
+			[]string{"ideate", "record", "../../../etc/passwd", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))},
 			"slug",
 		},
 		{
 			"verdict-json-required",
-			[]string{"ideate", "record", "the-ideate-gate"},
+			[]string{"ideate", "record", "the-ideate-gate", "--public"},
 			"--verdict-json",
 		},
 	}
@@ -169,7 +175,7 @@ func TestIdeateRecordReadsStdin(t *testing.T) {
 	repo := ideateRepo(t)
 	t.Chdir(repo)
 	out := runCLIStdin(t, ideateVerdictJSON("itd-104"),
-		"ideate", "record", "from-stdin", "--verdict-json", "-", "--json")
+		"ideate", "record", "from-stdin", "--public", "--verdict-json", "-", "--json")
 	if !strings.Contains(string(out), "from-stdin") {
 		t.Errorf("stdin payload was not recorded:\n%s", out)
 	}
@@ -227,5 +233,147 @@ func TestIdeateRenderSaysWhatEachVerdictLeavesNext(t *testing.T) {
 	}
 	if strings.Contains(reframed, "does not graduate;") {
 		t.Errorf("the reframed next line reads as the killed one: %q", reframed)
+	}
+}
+
+// TestIdeateRecordRefusesWithoutTheAnswer pins iss-2610090740139804's front
+// door: the verb writes nothing until the person's answer arrives as exactly
+// one of --private or --public, and names both flags when it refuses.
+func TestIdeateRecordRefusesWithoutTheAnswer(t *testing.T) {
+	repo := ideateRepo(t)
+	t.Chdir(repo)
+	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
+
+	for name, args := range map[string][]string{
+		"neither": {"ideate", "record", "an-unanswered-idea", "--verdict-json", payload},
+		"both":    {"ideate", "record", "an-unanswered-idea", "--private", "--public", "--verdict-json", payload},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, err := runCLIErr(t, args...)
+			if err == nil {
+				t.Fatalf("the run succeeded; want a refusal\n%s", out)
+			}
+			if code := exitCodeOf(err); code != 2 {
+				t.Errorf("exit code = %d, want 2", code)
+			}
+			for _, want := range []string{"--private", "--public"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("diagnostic %q does not name %s", err.Error(), want)
+				}
+			}
+		})
+	}
+	entries, err := os.ReadDir(filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir)))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("a refused run wrote %s", e.Name())
+	}
+	if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "ideas")); !os.IsNotExist(err) {
+		t.Errorf("a refused run laid the private store: %v", err)
+	}
+}
+
+// TestIdeateRecordPrivateFromTheCLI is the private store's wiring proof: the
+// verdict lands owner-only under $HOME/.abcd.noindex/ideas/<root-sha>/, the
+// result names it home-relative, and the checkout is left exactly as it was.
+func TestIdeateRecordPrivateFromTheCLI(t *testing.T) {
+	repo := ideateRepo(t)
+	t.Chdir(repo)
+	logBefore, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(ideate.DecisionsRelDir)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := runCLI(t, "ideate", "record", "a-private-idea", "--private",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")), "--json")
+	var res ideate.Result
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatalf("decode result: %v\n%s", err, out)
+	}
+	sha := gitutil.RootCommit(repo)
+	wantPrefix := abcdhome.Display("ideas", sha) + "/"
+	if res.Visibility != ideate.VisibilityPrivate || !strings.HasPrefix(res.Path, wantPrefix) || res.DecisionPath != "" {
+		t.Errorf("result = visibility %q path %q decision %q; want private under %s with no pointer",
+			res.Visibility, res.Path, res.DecisionPath, wantPrefix)
+	}
+	onDisk := abcdhome.Path(os.Getenv("HOME"), "ideas", sha, filepath.Base(res.Path))
+	if fi, err := os.Stat(onDisk); err != nil {
+		t.Errorf("the private record is not on disk: %v", err)
+	} else if fi.Mode().Perm() != 0o600 {
+		t.Errorf("private record mode = %o, want 600", fi.Mode().Perm())
+	}
+	logAfter, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(ideate.DecisionsRelDir)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(logAfter) != string(logBefore) {
+		t.Errorf("a private verdict changed the committed decision log:\n%s", logAfter)
+	}
+	entries, err := os.ReadDir(filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir)))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("a private verdict wrote %s into the checkout", e.Name())
+	}
+
+	text := string(runCLI(t, "ideate", "record", "a-second-private-idea", "--private",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))))
+	if !strings.Contains(text, "private") || strings.Contains(text, os.Getenv("HOME")) {
+		t.Errorf("the text render must say private and never echo the absolute home:\n%s", text)
+	}
+}
+
+// TestIdeateRecordRefusesAShallowCheckout proves neither store is keyed on a
+// shallow clone's graft: there `rev-list --max-parents=0 HEAD` names the graft
+// commit, not the repository's root, so a verdict would land in a folder no
+// full clone of the same repository ever reads. The run refuses, writing
+// nothing in either store.
+func TestIdeateRecordRefusesAShallowCheckout(t *testing.T) {
+	src := ideateRepo(t)
+	for _, args := range [][]string{
+		{"add", "-A"},
+		{"-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", src}, args...)...)
+		cmd.Env = gittest.Env(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	dst := filepath.Join(t.TempDir(), "shallow")
+	clone := exec.Command("git", "clone", "--quiet", "--depth", "1", "file://"+src, dst)
+	clone.Env = gittest.Env(t)
+	if out, err := clone.CombinedOutput(); err != nil {
+		t.Fatalf("shallow clone: %v (%s)", err, out)
+	}
+	t.Chdir(dst)
+	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
+	for _, answer := range []string{"--public", "--private"} {
+		t.Run(answer, func(t *testing.T) {
+			out, err := runCLIErr(t, "ideate", "record", "a-shallow-idea", answer, "--verdict-json", payload)
+			if err == nil {
+				t.Fatalf("the run succeeded in a shallow clone\n%s", out)
+			}
+			if code := exitCodeOf(err); code != 2 {
+				t.Errorf("exit code = %d, want 2", code)
+			}
+			if !strings.Contains(err.Error(), "shallow") {
+				t.Errorf("diagnostic %q does not say the checkout is shallow", err.Error())
+			}
+			// The remedy is named once, in the person's terms: no second copy of it
+			// and no aside about how CI checks out.
+			if n := strings.Count(err.Error(), "git fetch --unshallow"); n != 1 || strings.Contains(err.Error(), "CI") {
+				t.Errorf("diagnostic %q names the remedy %d times or speaks of CI", err.Error(), n)
+			}
+		})
+	}
+	if _, err := os.Stat(filepath.Join(dst, filepath.FromSlash(ideate.ResearchRelDir))); !os.IsNotExist(err) {
+		t.Errorf("a refused run laid the public store: %v", err)
+	}
+	if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "ideas")); !os.IsNotExist(err) {
+		t.Errorf("a refused run laid the private store: %v", err)
 	}
 }

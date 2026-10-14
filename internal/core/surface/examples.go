@@ -55,7 +55,7 @@ var examples = map[string]string{
 	"abcd history reconstruct": "abcd history reconstruct 0123abcd-session",
 	"abcd history show":        "abcd history show 0123abcd-session",
 
-	"abcd ideate record": "abcd ideate record widen-the-public-api --verdict-json verdict.json",
+	"abcd ideate record": "abcd ideate record widen-the-public-api --public --verdict-json verdict.json",
 
 	"abcd implement check":         "abcd implement check lane --session s-example",
 	"abcd implement claim":         "abcd implement claim iss-2609010000000001 --session s-example --lane cli",
