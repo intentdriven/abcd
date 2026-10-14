@@ -1240,7 +1240,11 @@ says so on stderr. Each answer the provider returned is kept as it arrives, at
 `.abcd/.work.local/reviews/<chunk receipt>.findings.json`, and the fallback
 names those files: give them to the ingest for their chunks beside the ones
 the host runs, or run again on the provider route, which sends only the chunks
-whose kept answer is missing or no longer validates. Each chunk is a request
+whose kept answer is missing, no longer validates, or came from another
+connection or model than the route now names. Once a set is ingested, by
+either path, its kept answers are removed, so a later run asks the model
+again. To make the next run ask again before then, delete the kept files
+(`<chunk receipt>.findings.json` and `<chunk receipt>.route.json`). Each chunk is a request
 paid for on its own, so a plan of more than `--max-chunks` (default 8) is
 refused there at exit 2, with nothing written or sent, naming its count and
 bytes; run again with `--max-chunks <count>` to send them. A harness emit is

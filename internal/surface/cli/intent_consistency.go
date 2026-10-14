@@ -212,21 +212,16 @@ func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, rep
 		return []*dispatched{d}, fell, nil
 	}
 	ds := make([]*dispatched, len(res.Chunks))
-	kept := intent.NewKeptConsistencyAnswers(repoRoot)
+	kept := newKeptChunks(rf, route, repoRoot)
 	reused, sendBytes := 0, 0
 	for i, ch := range res.Chunks {
-		payload, rcpt, ok, err := kept.Get(ch.ReceiptID)
-		if ok {
-			var rr oracle.ReceiptRoute
-			if err = json.Unmarshal(rcpt, &rr); err == nil {
-				ds[i] = &dispatched{payload: payload, receipt: rr}
-				reused++
-				continue
-			}
-		}
-		if err != nil {
+		if d, why := kept.reuse(ch.ReceiptID); d != nil {
+			ds[i] = d
+			reused++
+			continue
+		} else if why != "" {
 			fmt.Fprintf(stderr, "%s: the answer kept for chunk %d of %d is not reused, so the chunk is sent again: %s\n",
-				verb, ch.Index, len(res.Chunks), termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+				verb, ch.Index, len(res.Chunks), why)
 		}
 		sendBytes += ch.Bytes
 	}
@@ -271,6 +266,75 @@ func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, rep
 		ds[i] = d
 	}
 	return ds, route, nil
+}
+
+// keptChunks judges, once per chunk, whether the answer an earlier run kept
+// for it is reused on this route: only when it still validates and the call
+// that produced it went to the connection and the model the route sends to
+// now. An answer from another provider or model is the answer to another
+// question, so its chunk is sent again.
+type keptChunks struct {
+	kept   *intent.KeptConsistencyAnswers
+	conn   string
+	target oracle.Target
+	judged map[string]keptJudgement
+}
+
+type keptJudgement struct {
+	d   *dispatched
+	why string // why a kept answer is not reused; "" when none is kept
+}
+
+func newKeptChunks(rf *routeFlag, route *oracle.Route, repoRoot string) *keptChunks {
+	k := &keptChunks{kept: intent.NewKeptConsistencyAnswers(repoRoot), conn: route.ConnectionUsed, judged: map[string]keptJudgement{}}
+	if rf.api != nil {
+		if t, err := rf.api.Admitted(*route); err == nil {
+			k.target = t
+		}
+	}
+	return k
+}
+
+// reuse is the kept answer for chunk receipt rcp as a dispatch, or nil with
+// the reason it is not reused ("" when nothing is kept).
+func (k *keptChunks) reuse(rcp string) (*dispatched, string) {
+	j, ok := k.judged[rcp]
+	if !ok {
+		j = k.judge(rcp)
+		k.judged[rcp] = j
+	}
+	return j.d, j.why
+}
+
+func (k *keptChunks) judge(rcp string) keptJudgement {
+	payload, raw, ok, err := k.kept.Get(rcp)
+	if err != nil {
+		return keptJudgement{why: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	}
+	if !ok {
+		return keptJudgement{}
+	}
+	var rr oracle.ReceiptRoute
+	if err := json.Unmarshal(raw, &rr); err != nil {
+		return keptJudgement{why: "the record of the call that produced it is not readable"}
+	}
+	asked := ""
+	if rr.ProviderCall != nil {
+		asked = rr.ProviderCall.ModelAsked
+	}
+	if k.target.Model == "" || rr.ProviderCall == nil || rr.ConnectionUsed != k.conn ||
+		rr.ProviderCall.Provider != k.target.Provider || asked != k.target.Model {
+		return keptJudgement{why: termsafe.Sanitize(fmt.Sprintf("it was answered through %s by %s, and the route now sends to %s with %s",
+			orUnknown(rr.ConnectionUsed), orUnknown(asked), k.conn, orUnknown(k.target.Model)))}
+	}
+	return keptJudgement{d: &dispatched{payload: payload, receipt: rr}}
+}
+
+func orUnknown(s string) string {
+	if s == "" {
+		return "an unrecorded one"
+	}
+	return s
 }
 
 // withDispatchReceipts joins the first send's receipt as the verb's route, as
@@ -344,6 +408,18 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payloads [][]byte, r
 		return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
 	}
 	warnUnreviewed(cmd.ErrOrStderr(), "abcd intent consistency ingest", "reviewed", res.Overflow)
+	// The set is in the ledger (or was already): the answers kept for its
+	// chunks have done their work, and a later run asks the model again.
+	if len(res.Chunks) > 0 {
+		rcps := make([]string, len(res.Chunks))
+		for i, ch := range res.Chunks {
+			rcps[i] = ch.ReceiptID
+		}
+		if err := intent.ForgetConsistencyAnswers(repoRoot, rcps); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent consistency ingest: warning: the answers kept for this set were not all removed, "+
+				"so a later provider run on the same model may reuse them: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		}
+	}
 	for i := range res.Rows {
 		if res.Rows[i].Match == nil && res.Rows[i].State == intent.ConsistencyStateFiled {
 			res.Rows[i].Match = matchRefused

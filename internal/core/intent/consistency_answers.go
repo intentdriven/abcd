@@ -96,3 +96,21 @@ func (k *KeptConsistencyAnswers) Get(rcp string) (payload, route []byte, ok bool
 	}
 	return payload, route, true, nil
 }
+
+// ForgetConsistencyAnswers removes the answers, and their routes, kept for the
+// chunk receipts rcps: a set once ingested has used them, and a later run asks
+// the model again. A receipt with nothing kept is no error.
+func ForgetConsistencyAnswers(repoRoot string, rcps []string) error {
+	var errs []error
+	for _, rcp := range rcps {
+		if !rcpIDRe.MatchString(rcp) {
+			continue
+		}
+		for _, rel := range []string{ConsistencyAnswerPath(rcp), consistencyAnswerRoutePath(rcp)} {
+			if err := os.Remove(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}

@@ -604,6 +604,14 @@ narrowest reading that meets the criteria. Each is open to review.
   `--findings-json`, and the next provider run sends only the chunks without
   a kept answer that validates against its request and the corpus as they
   stand, reporting each reused chunk's route from the call that answered it.
+  A kept answer is reused only when that call went to the connection and the
+  model the route now names, and a set's kept answers are removed once the
+  set is ingested, by the provider route or a host ingest (from the second
+  review): without both, a rerun on another provider reused every earlier
+  answer and sent nothing, so whether a rerun asked the model again depended
+  on the corpus's size. No `--fresh` flag: a kept answer now lives only
+  between a fallback and the next run on the same provider and model, which
+  is the case reuse is for, and deleting the kept files forces a re-ask.
 
 ## Open point
 

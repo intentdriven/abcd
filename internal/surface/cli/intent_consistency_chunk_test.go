@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
 
@@ -434,5 +435,79 @@ func TestIntentConsistencyWarnsOfUnreviewedDocuments(t *testing.T) {
 	if !regexp.MustCompile(`(?m)^abcd intent consistency ingest: warning: 1 document is too large for any chunk, so no chunk reviewed it: ` +
 		regexp.QuoteMeta(big)).MatchString(stderr) {
 		t.Fatalf("ingest stderr does not warn of %s:\n%s", big, stderr)
+	}
+}
+
+// keptAnswers lists the chunk answers kept under the local tier.
+func keptAnswers(t *testing.T, repo string) []string {
+	t.Helper()
+	got, err := filepath.Glob(filepath.Join(repo, ".abcd/.work.local/reviews/*.findings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// TestIntentConsistencyKeptAnswersExpireAndMatchTheRoute (round 3 of the PR
+// #974 review): a kept chunk answer is reused only when the call that produced
+// it went to the connection and model the route now names, and once the whole
+// set is ingested, by the provider route or by a host ingest, its kept answers
+// are removed, so a later run asks the model again whatever the corpus's size.
+func TestIntentConsistencyKeptAnswersExpireAndMatchTheRoute(t *testing.T) {
+	srcRoot := repoRootFromTest(t)
+	repo := consistencyChunkCLIRepo(t)
+	t.Setenv("ABCD_PLUGIN_ROOT", srcRoot)
+	var em consistencyChunkEmitted
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "--json"), &em); err != nil {
+		t.Fatal(err)
+	}
+	// Chunk 1 answered earlier by another model on the same connection.
+	other := `{"agent":"intent-auditor","connection_used":"openrouter","provider_call":{"provider":"openrouter","model_asked":"other/model-2","model_reported":"other/model-2"}}`
+	if _, err := intent.KeepConsistencyAnswer(repo, em.Chunks[0].ReceiptID,
+		chunkFindingsJSON(t, repo, em.Chunks[0].ReceiptID, em.Chunks[0].RequestPath, em.Chunks[0].CorpusPath), []byte(other)); err != nil {
+		t.Fatal(err)
+	}
+	receiptRe := regexp.MustCompile(`- receipt_id: (rcp-[0-9a-f]{12})`)
+	p := newChatFake(t, "local-model", func(body string) string {
+		m := receiptRe.FindStringSubmatch(body)
+		rel := ".abcd/.work.local/reviews/" + m[1]
+		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
+	})
+	pointMachine(t, os.Getenv("HOME"), p.srv.URL, false, "", "intent-auditor")
+	_, stderr, err := runCLISplit(t, "intent", "consistency", "--json")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	if int(p.calls.Load()) != len(em.Chunks) {
+		t.Fatalf("the provider was called %d times for %d chunks; an answer from another model must not be reused", p.calls.Load(), len(em.Chunks))
+	}
+	if !strings.Contains(stderr, "other/model-2") {
+		t.Fatalf("stderr does not say why chunk 1's kept answer was not reused:\n%s", stderr)
+	}
+	if got := keptAnswers(t, repo); len(got) != 0 {
+		t.Fatalf("the ingested set left kept answers behind: %v", got)
+	}
+
+	// A host ingest of a set removes its kept answers too.
+	if err := os.WriteFile(filepath.Join(repo, ".abcd/config.json"), []byte(`{"consistency": {"max_request_bytes": 65537}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var em2 consistencyChunkEmitted
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "--route", "intent-auditor=host-decides", "--json"), &em2); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"intent", "consistency", "ingest", "--route", "intent-auditor=host-decides"}
+	for _, ch := range em2.Chunks {
+		path, err := intent.KeepConsistencyAnswer(repo, ch.ReceiptID, chunkFindingsJSON(t, repo, ch.ReceiptID, ch.RequestPath, ch.CorpusPath), []byte(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, "--findings-json", filepath.Join(repo, path))
+	}
+	if _, stderr, err := runCLISplit(t, args...); err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	if got := keptAnswers(t, repo); len(got) != 0 {
+		t.Fatalf("the host ingest left kept answers behind: %v", got)
 	}
 }
