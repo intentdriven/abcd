@@ -85,9 +85,10 @@ Exit codes:
 
 - Write the four sections, then set `status: accepted` in the same change that
   states the decision in force.
-- Add the row to the index table in the store README — the index is a hand
-  maintained enumeration, and a decision missing from it is a decision a reader
-  does not find.
+- Bring the index table in the store README up to date — a decision missing
+  from it is a decision a reader does not find. Where the table sits between
+  `<!-- index: ... -->` markers it is generated: rerun the generator the README
+  names rather than editing the rows. Otherwise add the row by hand.
 - Link it both ways: a supersession declares `supersedes` on the successor and
   `superseded_by` on the predecessor, and the record gate refuses a one-way pair.
 

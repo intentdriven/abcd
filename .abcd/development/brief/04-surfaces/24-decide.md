@@ -102,8 +102,12 @@ author can say otherwise. The author sets `accepted` in the change that states
 the decision in force.
 
 It does not maintain the store README's index table, and it does not link the
-record to anything: a supersession is a declared pair the `record_schema` gate
-checks in both directions, and declaring one is an act of judgement.
+record to anything. In this repository that table is a generated region,
+rewritten from the records by the generator the store README names, so a new
+record or a changed status is picked up by rerunning it rather than by a hand
+edit. Linking stays by hand: a supersession is a declared pair the
+`record_schema` gate checks in both directions, and declaring one is an act of
+judgement.
 
 ## Where this sits
 
