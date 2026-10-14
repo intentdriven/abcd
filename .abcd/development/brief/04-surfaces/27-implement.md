@@ -268,8 +268,12 @@ lower pid) or running its command, under any account; a waiter beneath a waiter
 running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
 the process table, which shows every account's processes, judged from each
 candidate's arguments with the waiter's own ancestry excluded, and never from a
-file another account could write (iss-2610140638074587), so no account can hold
-another's gate shut. A look that finds the machine clear does not open the
+file another account could write (iss-2610140638074587): no account writes
+anything another account's gate reads. A waiter queued ahead still delays the
+ones behind it, under any account, until it opens or reaches its own timeout,
+even when only its own account's stricter wait limit keeps it shut; there is no
+channel by which it could tell them so without a shared writable file. A waiter
+running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the

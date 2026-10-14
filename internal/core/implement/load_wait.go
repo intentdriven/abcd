@@ -32,7 +32,13 @@ import (
 //
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes, and nothing in it is a file another account
-// can write, so no account can hold another's gate shut. A look that finds the
+// can write: no account writes anything another account's gate reads. A
+// waiter queued ahead still delays the ones behind it, under any account, until
+// it opens or reaches its own timeout, even when only its own account's
+// stricter wait-load keeps it shut: it cannot yield its place, because the
+// others cannot see why it is shut, and telling them would need the shared
+// writable file this design rules out. A waiter running its command holds every
+// later gate for the command's length, by design. A look that finds the
 // machine free does not open the gate: the waiter waits a random 15 to 60
 // seconds and checks everything again, and opens only if that re-check also
 // finds it free, so two starters released by one quiet minute do not start

@@ -371,9 +371,16 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		`pgrep -f "go test -race"`,
 		"matched its own shell",
 		"one waiter at a time",
+		// What is true across accounts: nothing another account's gate reads is
+		// writable, and a waiter ahead still delays you.
+		"no account writes anything another account's gate reads",
+		"still delays yours",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)
 		}
+	}
+	if strings.Contains(all, "no account can hold another's gate shut") {
+		t.Error("the LOAD rules claim no account can hold another's gate shut; a waiter ahead can, until its timeout")
 	}
 }

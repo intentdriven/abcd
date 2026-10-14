@@ -608,8 +608,12 @@ is running, and no other waiter is ahead of it in the queue (a lower pid) or
 running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded, and never from
-a file another account could write, so no account can hold another's gate
-shut. A preflight whose own waiter is queued takes that waiter's place in the
+a file another account could write: no account writes anything another
+account's gate reads. A waiter queued ahead of yours still delays yours, under
+any account, until it opens or reaches its own `--timeout` (it may be shut by
+its own account's stricter `wait-load`, which you cannot see), and a waiter
+running its command holds every later gate for the command's length, by
+design. A preflight whose own waiter is queued takes that waiter's place in the
 queue, and a waiter beneath a waiter running its command (the preflight's own
 gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
 every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and

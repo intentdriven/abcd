@@ -78,7 +78,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"live, no other `make preflight` is running and no other waiter is ahead of it in\n" +
 			"the queue (a lower pid) or running its command, under any account: all of it is\n" +
 			"read from the process table, which shows every account's processes, and nothing\n" +
-			"from a file another account could write. A preflight whose own waiter is queued\n" +
+			"from a file another account could write: no account writes anything another\n" +
+			"account's gate reads. A waiter ahead of yours still delays yours until it opens\n" +
+			"or reaches its own --timeout, whatever account it runs under and whatever its\n" +
+			"own account's wait limit is. A preflight whose own waiter is queued\n" +
 			"takes that waiter's place in the queue, and a waiter beneath a waiter running its\n" +
 			"command (`--wait -- make preflight`) takes that ancestor's place, ahead of every\n" +
 			"queued waiter. Once it finds all of that clear it waits\n" +
