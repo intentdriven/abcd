@@ -932,10 +932,14 @@ func TestConsistencyRowsCarryTheFindingKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{`"key":"` + want + `"`, `"state":"filed"`, `"linked":false`} {
+	for _, field := range []string{`"finding_ref":"` + want + `"`, `"state":"filed"`, `"linked":false`} {
 		if !strings.Contains(string(js), field) {
 			t.Errorf("row JSON lacks %s: %s", field, js)
 		}
+	}
+	// The --json rows are as likely to be committed as the report is.
+	if m := secretShapedKey.FindString(string(js)); m != "" {
+		t.Errorf("the row JSON carries %q, which a default gitleaks flags as generic-api-key: %s", m, js)
 	}
 }
 

@@ -101,7 +101,9 @@ The package sits under `internal/core/record` beside `match` because both
 `validateConsistencyFindings` replaces its local
 `f.Class + "\x00" + k0 + "\x00" + k1` with the derived key, so the duplicate
 check and the row key are one computation. `ConsistencyFinding` gains
-`Key string` (`json:"key"`).
+`Key string` (`json:"finding_ref"`: a `"key": "cfk-…"` member is flagged by a
+default gitleaks as the record field was, so the JSON row spells it as the
+record does).
 
 **`ConsistencyRow`** gains `State` (`filed` | `linked` | `addressed`) and
 `AddressedBy` (the record's id and its folder). `Linked` stays, so `--json`

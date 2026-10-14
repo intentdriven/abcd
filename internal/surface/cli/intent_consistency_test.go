@@ -174,7 +174,7 @@ func TestIntentConsistencyIngestNamesTheFindingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	type row struct {
-		Key     string `json:"key"`
+		Key     string `json:"finding_ref"`
 		State   string `json:"state"`
 		IssueID string `json:"issue_id"`
 	}

@@ -788,7 +788,7 @@ type ConsistencyEnd struct {
 // (itd-2609291923559186, G1).
 type ConsistencyFinding struct {
 	Number      int               `json:"number"`
-	Key         string            `json:"key"`
+	Key         string            `json:"finding_ref"`
 	Class       string            `json:"class"`
 	Severity    string            `json:"severity"`
 	Summary     string            `json:"summary"`

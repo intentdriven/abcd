@@ -1264,7 +1264,8 @@ finding and the id, wherever the repository's record-lint gates prose
 citations in the issue ledger: every finding is checked before the first is
 filed, so re-word the prose to describe the record and ingest again.
 
-Every finding carries a stable `key`, `cfk-` and sixteen hex digits, derived
+Every finding carries a stable key (`finding_ref` in each `--json` row), `cfk-`
+and sixteen hex digits, derived
 from its class, its two ends' paths (with an intent's bucket, an issue's status
 folder and a spec's `open`/`closed` folder dropped, so a record moving between
 them keeps the key) and their quotes with whitespace collapsed: the same
