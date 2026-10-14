@@ -544,6 +544,23 @@ person's, in a plain terminal (spc-2610031309233367).
 abcd never moves the folder itself, and a managed project's block keeps naming
 the old paths until setup runs in that project again.
 
+**`~/.abcd.noindex` ignores itself, once (itd-2610140858048004, adr-2610140859394097).**
+A home folder that is a git repository would stage everything the user scope
+holds. So the CLI front door, before every command and again after it (the status
+line excepted, which writes nothing at all), makes sure an existing `~/.abcd.noindex` carries `.gitignore` holding `*`, owner-only,
+with a marker `gitignore-laid` beside it (`internal/core/homeignore`). It never
+creates the folder, never overwrites a file, never writes through a link, and
+reads or runs nothing of any repository. While the marker stands it writes
+nothing, so a deleted `.gitignore` is the person's deliberate opt-in and stays
+deleted. A symlinked `~/.abcd.noindex` reads as absent and is never laid. A
+failed lay says so once per command on stderr (never under `--json` or in a
+hook call, where a machine reads stderr) and never fails the command; the
+old home's stop lays nothing. The lay is the front door's, not any verb's, so
+a verb whose sentence says it writes nothing may still be the command that
+lays the file in a home that lacks it. **Invariant:** the credential store's abcd home
+stays refused inside any git working tree, the account's own included, whatever
+`.gitignore` says.
+
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
 `local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
