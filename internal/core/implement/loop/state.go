@@ -143,7 +143,20 @@ const lockFileName = ".lock"
 // refused. Releases that write version 9 decode strictly, so a version-10 file
 // reaches them as a version they do not know rather than as a field they do
 // not name.
-const SchemaVersion = 10
+//
+// Version 11 added an await's `answered` (itd-6): the reviewer route and the
+// SHA-256 of the answer its step placed at the await's return path, under the
+// run's lock, so the receipt records the review as the route's when the
+// return its verifier reads is that answer. Version 10 is its strict subset,
+// read as a run no route placed an answer for and written back at version 11;
+// a file of version 10 or lower carrying `answered` is not one its version
+// wrote, and is refused. Releases that write version 10 decode strictly, so a
+// version-11 file reaches them as a version they do not know.
+const SchemaVersion = 11
+
+// schemaVersionUnanswered is the version before an await's `answered`: read,
+// never written.
+const schemaVersionUnanswered = 10
 
 // schemaVersionUnkept is the version before an await's `kept`: read, never
 // written.
@@ -528,6 +541,19 @@ type Await struct {
 	// but what it left could not be saved aside (ratelimit.go). A restart
 	// re-tells an await so marked; "" for every other await.
 	Kept string `json:"kept,omitempty"`
+	// Answered is the reviewer route's answer its step placed at Receipt
+	// (itd-6), recorded under the run's lock as it placed it; nil for every
+	// other await, the host's included.
+	Answered *RouteAnswer `json:"answered,omitempty"`
+}
+
+// RouteAnswer is the answer a reviewer route placed at an await's return path:
+// the route, and the SHA-256 (hex) of the bytes it placed. The receipt records
+// the review as the route's only when the return its verifier reads has that
+// digest.
+type RouteAnswer struct {
+	Route  string `json:"route"`
+	SHA256 string `json:"sha256"`
 }
 
 // Entry is one line of the run record.
@@ -631,12 +657,25 @@ func (s State) validated() bool {
 }
 
 // kept reports the first await, in a state, that carries `kept`, which only
-// version 10 writes, or "".
+// version 10 and later write, or "".
 func (s State) kept() string {
 	for _, l := range s.Lanes {
 		for _, a := range l.Awaits {
 			if a.Kept != "" {
 				return "`kept` on " + l.ID + "'s " + a.Role
+			}
+		}
+	}
+	return ""
+}
+
+// answered reports the first await, in a state, that carries `answered`,
+// which only version 11 writes, or "".
+func (s State) answered() string {
+	for _, l := range s.Lanes {
+		for _, a := range l.Awaits {
+			if a.Answered != nil {
+				return "`answered` on " + l.ID + "'s " + a.Role
 			}
 		}
 	}
@@ -777,7 +816,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnkept && st.kept() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnkept:
+	case st.SchemaVersion <= schemaVersionUnanswered && st.answered() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnanswered:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

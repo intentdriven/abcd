@@ -59,7 +59,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -572,6 +571,13 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its return ends with one `### Verdict` section, then hand it back")
 		}
 		v.Verdict, v.Pass = word.word, word.pass
+		// The route's answer, as its step placed and recorded it, is the
+		// route's review: judged on the bytes this verifier read, once.
+		if a := c.Await.Answered; a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw) {
+			if _, reviewer := reviewerVerdicts[v.Role]; reviewer {
+				v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
+			}
+		}
 		return nil
 	}
 	return refuse("receipt", "", lane.ID, "no validator of round "+fmt.Sprint(cur.Round)+" awaits "+receiptRel,
@@ -926,7 +932,8 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 		}
 		return res, contend(refusal.Stage, refusal.Check, res.Lane, refusal.Reason,
 			fmt.Sprintf("the %s route's answer is kept aside at %s and recorded nowhere; the review still awaits its return at %s: "+
-				"copy the answer there, if nothing stands there yet, and hand it back with `abcd implement receipt %s`",
+				"copy the answer there, if nothing stands there yet, and hand it back with `abcd implement receipt %s`, "+
+				"which records the review as the host's, since the busy lock kept the answer from being recorded as the route's",
 				rr.Name, aside, aw.Receipt, aw.Receipt))
 	}
 	if err != nil {
@@ -948,7 +955,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 			// The review is still open and nothing verified the return: it is
 			// taken back off the path, where the host's agent could otherwise
 			// hand it back as its own.
-			if rerr := takeBack(repoRoot, aw.Receipt, ret); rerr != nil {
+			if rerr := removeRoundFile(repoRoot, aw.Receipt); rerr != nil {
 				return res, errors.Join(err, rerr)
 			}
 			return res, err
@@ -956,15 +963,15 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 		if refusal.Contention {
 			// Another invocation held the run's lock past the retries: the
 			// verifier never read the return, which stands where it was placed
-			// for a hand-back, and the note placed beside it records that
-			// hand-back as the route's.
+			// for a hand-back, and the answer recorded on its await records
+			// that hand-back as the route's.
 			return res, contend(refusal.Stage, refusal.Check, res.Lane, refusal.Reason,
 				fmt.Sprintf("the %s route's return stands at %s; hand it back with `abcd implement receipt %s`", rr.Name, aw.Receipt, aw.Receipt))
 		}
 		// The verifier refused what the route returned: the return is taken
 		// back off the path, so the host's agent writes there afresh, and the
 		// review falls back like any other the route did not return.
-		if rerr := takeBack(repoRoot, aw.Receipt, ret); rerr != nil {
+		if rerr := removeRoundFile(repoRoot, aw.Receipt); rerr != nil {
 			return res, rerr
 		}
 		return fallBack(repoRoot, runID, res, aw, rr, &reviewFailure{runner.ReasonInvalid, err.Error()}, o)
@@ -1006,10 +1013,11 @@ func fallBack(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute,
 // placeReturn writes the route's return at the review's return path, under the
 // run's lock, only while the review still awaits it and nothing stands there:
 // a concurrent step can re-tell an open review to the host, and a return the
-// host's agent wrote, handed back or not, is never overwritten. The route's
-// answer note (answerNoteRel) is written first, so a return the step's own
-// receipt cannot verify is still the route's when it is handed back. It
-// reports whether it wrote the return.
+// host's agent wrote, handed back or not, is never overwritten. The answer's
+// route and digest are recorded on the await in the same locked write
+// (Await.Answered), so a return the step's own receipt cannot verify is still
+// the route's when it is handed back as placed. It reports whether it wrote
+// the return.
 func placeReturn(repoRoot, runID, rel, route string, ret string) (bool, error) {
 	if err := fsutil.EnsureRealDirAll(repoRoot, filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel))), dirPerm); err != nil {
 		return false, fmt.Errorf("creating the review's directory: %w", err)
@@ -1021,7 +1029,8 @@ func placeReturn(repoRoot, runID, rel, route string, ret string) (bool, error) {
 			if err != nil {
 				return err
 			}
-			if i, _ := st.findAwait(repoRoot, rel); i < 0 {
+			i, k := st.findAwait(repoRoot, rel)
+			if i < 0 {
 				return nil
 			}
 			f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
@@ -1031,18 +1040,18 @@ func placeReturn(repoRoot, runID, rel, route string, ret string) (bool, error) {
 			if err != nil {
 				return fmt.Errorf("writing %s: %w", rel, err)
 			}
-			note := answerNoteRel(rel, ret)
-			werr := fsutil.WriteFileAtomicInRoot(root, note, []byte(route+"\n"), filePerm)
-			if werr == nil {
-				_, werr = f.WriteString(ret)
-			}
+			_, werr := f.WriteString(ret)
 			if cerr := f.Close(); werr == nil {
 				werr = cerr
 			}
 			if werr != nil {
 				_ = root.Remove(rel)
-				_ = root.Remove(note)
 				return fmt.Errorf("writing %s: %w", rel, werr)
+			}
+			st.Lanes[i].Awaits[k].Answered = &RouteAnswer{Route: route, SHA256: answerDigest([]byte(ret))}
+			if err := writeState(root, st); err != nil {
+				_ = root.Remove(rel)
+				return err
 			}
 			placed = true
 			return nil
@@ -1051,65 +1060,27 @@ func placeReturn(repoRoot, runID, rel, route string, ret string) (bool, error) {
 	return placed, err
 }
 
-// answerNoteRel is the note a route's answer leaves beside the review's return
-// rel: a file named by the answer's SHA-256 that holds the route's name. A
-// return handed back with `abcd implement receipt` whose bytes have a note is
-// that route's answer, byte for byte, and is recorded as the route's; a return
-// the host's agent wrote, or rewrote, has none. Named by its digest, no note
-// ever stands for another answer, so writing one never takes another's away.
-func answerNoteRel(rel, answer string) string {
-	sum := sha256.Sum256([]byte(answer))
-	return filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel))) + "/answer-" + hex.EncodeToString(sum[:]) + ".route"
+// answerDigest is the SHA-256 of a route's answer, in hex, as an await's
+// Answered records it.
+func answerDigest(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
-// maxAnswerNoteBytes bounds the read of an answer note, which holds a route's
-// name.
-const maxAnswerNoteBytes = 64
-
-// answeredBy is the route whose answer the return at rel is, as the answer
-// note beside it names it (answerNoteRel), read through root; nil when no
-// note names the rp route, so the receipt is the host's.
-func answeredBy(root *os.Root, rel string) *runner.RouteRecord {
-	ret, err := readBounded(root, rel, maxReturnBytes)
-	if err != nil {
+// validatorRoute is the route the verifier recorded on the current round's
+// validator whose return is ret, or nil.
+func validatorRoute(lane Lane, ret string) *runner.RouteRecord {
+	n := len(lane.Validation)
+	if n == 0 {
 		return nil
 	}
-	note := answerNoteRel(rel, string(ret))
-	if fi, err := root.Lstat(note); err != nil || !fi.Mode().IsRegular() {
-		return nil
+	for _, v := range lane.Validation[n-1].Validators {
+		if v.Return == ret && v.Route != nil {
+			r := *v.Route
+			return &r
+		}
 	}
-	name, err := readBounded(root, note, maxAnswerNoteBytes)
-	if err != nil || strings.TrimSpace(string(name)) != oracle.ReviewRP {
-		return nil
-	}
-	return &runner.RouteRecord{Asked: oracle.ReviewRP, Ran: oracle.ReviewRP}
-}
-
-// readBounded reads the file at rel through root, refusing one larger than
-// limit.
-func readBounded(root *os.Root, rel string, limit int64) ([]byte, error) {
-	f, err := root.Open(rel)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(b)) > limit {
-		return nil, fmt.Errorf("%s is larger than %d bytes", rel, limit)
-	}
-	return b, nil
-}
-
-// takeBack takes the route's placed return ret off the review's return path
-// rel, with the answer note placed beside it.
-func takeBack(repoRoot, rel, ret string) error {
-	if err := removeRoundFile(repoRoot, rel); err != nil {
-		return err
-	}
-	return removeRoundFile(repoRoot, answerNoteRel(rel, ret))
+	return nil
 }
 
 // removeRoundFile removes one file of a round, if it is there.
@@ -1147,14 +1118,11 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 	return res, nil
 }
 
-// keepAside writes the route's answer beside the review's return, with its
-// answer note (answerNoteRel), so the answer copied to the return path and
-// handed back is the route's, and reports the path it wrote.
+// keepAside writes the route's answer beside the review's return and reports
+// the path it wrote. Nothing records the answer as the route's: no file beside
+// a return says who wrote it, and only placeReturn's locked write does.
 func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, error) {
 	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/" + rr.Name + "-return.md"
-	if err := writeRoundFile(repoRoot, answerNoteRel(aw.Receipt, ret), []byte(rr.Name+"\n")); err != nil {
-		return "", err
-	}
 	if err := writeRoundFile(repoRoot, aside, []byte(ret)); err != nil {
 		return "", err
 	}

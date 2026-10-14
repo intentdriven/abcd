@@ -116,15 +116,25 @@ choice, recorded for review; none changes a criterion.
   both `rp`). A concurrent step can re-tell the open review to the host while
   the route works; a return the host's agent wrote first stands, and the
   route's answer is kept aside beside it (`rp-return.md`) and recorded
-  nowhere. The route's answer also leaves a note beside the return, named by
-  the answer's SHA-256 and naming the route (`answer-<sha256>.route`), so a
-  return the step's own receipt could not verify, because another invocation
-  held the run's lock, and that the person hands back with `abcd implement
-  receipt` is recorded as the route's when it is that answer byte for byte; a
-  return the host's agent wrote, or rewrote, has no note and is the host's
-  (refined on review 2026-10-14). An answer the loop could not place, because
-  another invocation held the run's lock past the retries, is kept aside the
-  same way, with its note, and the contention refusal names where it is
+  nowhere. The loop places the answer and records it on the review's await in
+  the run's state, in one write under the run's lock: the route and the
+  answer's SHA-256 (`answered`, state schema version 11). A return the step's
+  own receipt could not verify, because another invocation held the run's
+  lock, and that the person hands back with `abcd implement receipt` is
+  recorded as the route's when the bytes the receipt's verifier reads, in its
+  one read, have that digest; a return the host's agent wrote, or rewrote, is
+  the host's. Only a ruthless or security reviewer's await is read this way. No
+  file beside a return says who wrote it: the review's directory is the one
+  the host's agent writes to, so a note there (the first reading of this
+  refinement, an `answer-<sha256>.route` file) let that agent claim its own
+  return as the route's with one file write, and is withdrawn. The run's
+  state file is within that agent's reach too, so this opens no privilege the
+  agent lacked; it moves the attribution into the lock-held state, where every
+  other attribution the run records lives (refined on review 2026-10-14). An
+  answer the loop could not place, because another invocation held the run's
+  lock past the retries, is kept aside the same way, and the contention
+  refusal names where it is; with the lock busy nothing records it as the
+  route's, so copied to the return path and handed back it is the host's
   (refined on review 2026-10-14).
 - 2026-10-12 (agent's choice, for review): **Which reviews take the route, and
   where.** The ruthless and the security reviewer, when the step hands them to
@@ -133,8 +143,9 @@ choice, recorded for review; none changes a criterion.
   runner. `implement step` reaches the route after the stage hands the review
   out, outside the run's lock, as it starts a runner; the loop's change is
   confined to the validator stage's file (`validate.go`), but for the
-  receipt's reading of the route's answer note (`loop.go`, refined on review
-  2026-10-14).
+  receipt's stamping of the route the verifier recognised (`loop.go`), the
+  await's `answered` and its schema version (`state.go`), and its masking
+  (`state_mask.go`) (refined on review 2026-10-14).
 - 2026-10-12 (agent's choice, for review): **Bounds.** Ten seconds for the
   connection and the session's set-up, thirty minutes for the review call,
   8 MiB for an answer; the address is never proxied, a redirect is never
@@ -146,7 +157,8 @@ choice, recorded for review; none changes a criterion.
   in the state's `fallbacks` and a `fallback` line in the record (the role,
   `asked: rp`, the reason, abcd's own detail, `ran: host`), which `implement
   status` and `implement record` count per route and per role. No state field
-  is added, so the run-state schema is unchanged. The host is handed the same
+  is added for a fallback, so it leaves the run-state schema as it was (the
+  route's placed answer is version 11's `answered`, above). The host is handed the same
   brief and return path the step named, and no return is written for the
   route, so nothing stands where the host's agent writes.
 - 2026-10-12 (agent's choice, for review): **Every review the route does not

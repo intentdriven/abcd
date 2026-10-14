@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -590,9 +591,6 @@ func TestAReceiptThatErrsTakesThePlacedReturnBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
 		t.Fatal("the placed return is taken back off the path")
 	}
-	if notes, _ := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(aw.Receipt))), "answer-*.route")); len(notes) != 0 {
-		t.Fatalf("the answer note is taken back with it: %v", notes)
-	}
 }
 
 // TestTheReviewRouteIsNoneUnlessRPIsSelected is criterion 3's weight-bearing
@@ -704,7 +702,9 @@ func TestAHandBackAfterABusyLockRecordsTheRoute(t *testing.T) {
 // could not be placed. The answer is not dropped: it is kept aside in the
 // review's directory, the contention refusal names where, nothing is
 // recorded for it, and the review still awaits its return. Placed at the
-// return path as the remedy says and handed back, it is the route's.
+// return path as the remedy says and handed back, it is the host's: the busy
+// lock kept the answer from being recorded on the await, and no file beside
+// a return says who wrote it.
 func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
 	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
@@ -717,7 +717,8 @@ func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
 	placeRouteReturn = prev
 	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/rp-return.md"
 	r, ok := AsRefusal(err)
-	if !ok || !r.Contention || !strings.Contains(r.Remedy, aside) || !strings.Contains(r.Remedy, "abcd implement receipt "+aw.Receipt) {
+	if !ok || !r.Contention || !strings.Contains(r.Remedy, aside) || !strings.Contains(r.Remedy, "abcd implement receipt "+aw.Receipt) ||
+		!strings.Contains(r.Remedy, "records the review as the host's") {
 		t.Fatalf("a busy lock at the placement is refused as contention, naming the answer kept aside: %v", err)
 	}
 	b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aside)))
@@ -738,30 +739,56 @@ func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
 		t.Fatalf("the answer placed as the remedy says hands back: %v", err)
 	}
 	st, _ = ReadState(repo.Root(), id)
-	if v := st.Lanes[0].Validation[0].Validators[0]; v.Route == nil || *v.Route != (runner.RouteRecord{Asked: "rp", Ran: "rp"}) {
-		t.Fatalf("the answer kept aside, handed back, is the route's: %+v", v)
+	if v := st.Lanes[0].Validation[0].Validators[0]; v.Verdict != "SHIP" || v.Route != nil {
+		t.Fatalf("the answer kept aside, handed back, is the host's: %+v", v)
 	}
 }
 
-// forgeRouteAnswer stands, beside the receipt aw names, what a route's
-// answer would leave to name rp as the author of the bytes there: what an
+// forgeRouteAnswer records on the await aw, in the run's state, the answer
+// a route's step would record for the bytes standing at its receipt: what an
 // agent with the run's files in reach could write itself.
-func forgeRouteAnswer(t *testing.T, root, _ string, aw Await) {
+func forgeRouteAnswer(t *testing.T, root, runID string, aw Await) {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(aw.Receipt)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256(b)
-	note := filepath.Join(root, filepath.FromSlash(filepath.ToSlash(filepath.Dir(aw.Receipt))), "answer-"+hex.EncodeToString(sum[:])+".route")
-	if err := os.WriteFile(note, []byte("rp\n"), 0o600); err != nil {
+	editState(t, root, runID, func(doc map[string]any) {
+		for _, l := range doc["lanes"].([]any) {
+			for _, a := range l.(map[string]any)["awaits"].([]any) {
+				if a.(map[string]any)["receipt"] == aw.Receipt {
+					a.(map[string]any)["answered"] = map[string]any{"route": "rp", "sha256": answerDigest(b)}
+				}
+			}
+		}
+	})
+}
+
+// editState rewrites the run's state file through edit, as a JSON document.
+func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(StateRelPath(runID)))
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	edit(doc)
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
 // TestOnlyAReviewersReturnIsReadAsTheRoutes: the reviewer route answers the
 // ruthless and the security reviewer only, so an implementer's receipt is
-// never read as the route's, whatever stands beside it.
+// never read as the route's, whatever its await records.
 func TestOnlyAReviewersReturnIsReadAsTheRoutes(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -786,5 +813,120 @@ func TestOnlyAReviewersReturnIsReadAsTheRoutes(t *testing.T) {
 		if r.Route != nil || got.Route != nil {
 			t.Fatalf("the implementer's receipt is the host's: %+v %+v", r.Route, got.Route)
 		}
+	}
+}
+
+// TestAForgedAnswerFileBesideAReturnLeavesItTheHosts: no file beside a
+// review's return says who wrote it. The host's agent writes its return and,
+// beside it, a file naming rp for its bytes, and hands it back: the review is
+// the host's, since only the answer the route's own step placed, recorded on
+// the await in the run's state under its lock, is the route's.
+func TestAForgedAnswerFileBesideAReturnLeavesItTheHosts(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	ret := reviewerReturn("SHIP")
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(ret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(ret))
+	forged := filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(aw.Receipt))), "answer-"+hex.EncodeToString(sum[:])+".route")
+	if err := os.WriteFile(forged, []byte("rp\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := ReadState(repo.Root(), id)
+	if v := st.Lanes[0].Validation[0].Validators[0]; v.Verdict != "SHIP" || v.Route != nil || got.Route != nil {
+		t.Fatalf("the host's review stays the host's, whatever stands beside it: %+v %+v", v, got.Route)
+	}
+}
+
+// TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind: an await's
+// `answered` is state version 11's. Version 10 is its strict subset and reads
+// as the current version; a file of version 10 or lower carrying it is
+// refused naming the version and the key. Once the hand-back verifies the
+// review, its await, and the answer recorded on it, are gone, and nothing but
+// the return and the request stands in the review's directory.
+func TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	prev := reviewReceipt
+	reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+		return StepResult{}, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+	reviewReceipt = prev
+	if r, ok := AsRefusal(err); !ok || !r.Contention {
+		t.Fatalf("a busy lock is refused as contention: %v", err)
+	}
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := st.Lanes[0].awaiting()
+	if a == nil || a.Answered == nil || *a.Answered != (RouteAnswer{Route: "rp", SHA256: answerDigest([]byte(reviewerReturn("SHIP")))}) {
+		t.Fatalf("the placed answer is recorded on its await: %+v", a)
+	}
+	statePath := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
+	current, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	as := func(version int) {
+		if err := os.WriteFile(statePath, current, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		editState(t, repo.Root(), id, func(doc map[string]any) { doc["schema_version"] = version })
+	}
+	for _, version := range []int{schemaVersionUnanswered, schemaVersionUnkept} {
+		as(version)
+		_, err := ReadState(repo.Root(), id)
+		r := mustRefusal(t, err)
+		if !strings.Contains(r.Reason, fmt.Sprintf("schema version %d", version)) || !strings.Contains(r.Reason, "`answered`") {
+			t.Errorf("version %d carrying `answered` is refused naming the version and the key: %+v", version, r)
+		}
+	}
+	if err := os.WriteFile(statePath, current, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editState(t, repo.Root(), id, func(doc map[string]any) {
+		doc["schema_version"] = schemaVersionUnanswered
+		for _, l := range doc["lanes"].([]any) {
+			for _, a := range l.(map[string]any)["awaits"].([]any) {
+				delete(a.(map[string]any), "answered")
+			}
+		}
+	})
+	if st, err := ReadState(repo.Root(), id); err != nil || st.SchemaVersion != SchemaVersion {
+		t.Fatalf("a version-10 file without `answered` reads as the current version: %v %v", st.SchemaVersion, err)
+	}
+	if err := os.WriteFile(statePath, current, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(written), `"answered"`) {
+		t.Fatalf("the verified review's await takes its answer with it:\n%s", written)
+	}
+	entries, err := os.ReadDir(filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(aw.Receipt)))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if !reflect.DeepEqual(names, []string{"brief.md", "request.md", "return.md"}) {
+		t.Fatalf("nothing but the brief, the request and the return stands in the review's directory: %v", names)
 	}
 }
