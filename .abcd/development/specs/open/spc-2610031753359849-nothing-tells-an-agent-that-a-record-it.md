@@ -807,6 +807,11 @@ These are the facilitator's design calls; none changes a criterion.
     it; that limit stands and is stated on the implement page. A pull request
     left open for a person to merge with no required approval takes the
     queue-timeout lease and then those renewals.
+  - A renewal keeps the tip's own term, `min(max(lease.Default, effective
+    expiry − Abcd-Claimed-At), lease.Max)`, never the default alone: a
+    renewal at half a day-long fence lease would otherwise cut the hold to
+    two hours, and a pull request waiting overnight would be lost two hours
+    after this account's drain stopped (the last review, 2026-10-14).
   - Clock skew is bounded by the take-over margin and documented, not
     corrected. The expiry is the holder's clock judged by the reader's; the
     committer date is written by the same clock, so it bounds nothing. A

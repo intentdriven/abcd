@@ -141,3 +141,38 @@ func TestAStepWhileAnImplementerWorksRenewsTheReservation(t *testing.T) {
 		t.Fatalf("the step renews while the implementer works: before %+v, after %+v", before, after)
 	}
 }
+
+// codeOwnerRuleset gates the default branch behind a code owner's review and
+// a merge queue.
+const codeOwnerRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
+	`"enforcement":"active","name":"main review","rules":[{"type":"deletion"},` +
+	`{"parameters":{"required_approving_review_count":0,"require_code_owner_review":true},"type":"pull_request"},` +
+	`{"parameters":{"merge_method":"MERGE","grouping_strategy":"ALLGREEN","check_response_timeout_minutes":90},"type":"merge_queue"}],"target":"branch"}` + "\n"
+
+// TestARenewalKeepsTheDayTheFenceGave: a drain move past half a day-long
+// fence lease renews with the tip's own term, never the default, so a pull
+// request waiting overnight on a code owner stays held a day from the renewal.
+func TestARenewalKeepsTheDayTheFenceGave(t *testing.T) {
+	f := drainLandFixtureWith(t, codeOwnerRuleset)
+	f.repo.Write(".github/CODEOWNERS", "* @octo\n")
+	f.repo.Commit("the code owners")
+	f.repo.Git("push", "-q", "origin", "main")
+	f.repo.Git("fetch", "-q", "origin")
+	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	f.armIssueLane(t)
+	ref := claim.RefPrefix + secondIssue
+	fenced := originReservation(t, f.bare, ref)
+	if fenced.expires.Sub(fenced.claimed) != 24*time.Hour {
+		t.Fatalf("the fence renews for a day behind a code owner: %+v", fenced)
+	}
+	at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+	drainAt(t, f.repo.Root(), Options{Now: func() time.Time { return at }})
+	tip := originReservation(t, f.bare, ref)
+	if tip.parent != fenced.commit || tip.claimed.Before(at) || tip.expires.Sub(tip.claimed) != 24*time.Hour {
+		t.Fatalf("the drain's renewal keeps the day: fenced %+v, renewed %+v (%s)", fenced, tip, tip.expires.Sub(tip.claimed))
+	}
+}

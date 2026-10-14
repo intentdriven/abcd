@@ -62,7 +62,7 @@ func claimOptions(now time.Time) claim.Options {
 // renewReservation renews the run's reservation before a stage, when the view
 // (as last fetched) shows the run's own, from this copy and not released,
 // half through its lease since its Abcd-Claimed-At: it fetches and pushes a
-// renewal with the default lease, and logs reservation_renewed in the run
+// renewal that keeps the tip's own term (renewalTerm), and logs reservation_renewed in the run
 // record. Under half its lease nothing is pushed. A renewal that fails is
 // logged and its note returned for the step's answer; the stage still runs,
 // since the land fence is where a lost reservation stops the run.
@@ -86,7 +86,7 @@ func renewReservation(repoRoot string, st *State, now time.Time) string {
 	if half := own.ClaimedAt.Add(own.EffectiveExpiry.Sub(own.ClaimedAt) / 2); now.Before(half) {
 		return ""
 	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: st.Key, Renew: true, Lease: lease.Default}, claimOptions(now))
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
@@ -94,6 +94,13 @@ func renewReservation(repoRoot string, st *State, now time.Time) string {
 		Note: fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))})
 	st.UpdatedAt = now
 	return ""
+}
+
+// renewalTerm is the lease a renewal pushes: the tip's own term, never
+// shorter than the default nor longer than a day, so a renewal never cuts the
+// day a fence gave a pull request waiting on a person.
+func renewalTerm(own claim.Reservation) time.Duration {
+	return min(max(lease.Default, own.EffectiveExpiry.Sub(own.ClaimedAt)), lease.Max)
 }
 
 // renewFailed logs a failed renewal in the run record and returns its note.

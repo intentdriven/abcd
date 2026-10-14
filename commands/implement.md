@@ -505,7 +505,9 @@ A run that holds a reservation on the shared remote (its state's
 `reserved_at`; `abcd peers` lists it) keeps it for the copy the run lives in.
 Before a step performs a stage, it reads the reservation as last fetched and,
 once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
-a renewal with the default two-hour lease, logged in the run record as
+a renewal that keeps the reservation's own term (at least the default two
+hours, at most a day, so a day-long fence is never cut short), logged in the
+run record as
 `reservation_renewed`; under half, it pushes nothing. A renewal that fails is
 logged as `reservation_renew_failed` and named in the step's answer, and the
 stage still runs: the land fence is where a lost reservation stops the run. A

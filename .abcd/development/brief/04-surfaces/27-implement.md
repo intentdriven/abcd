@@ -332,7 +332,8 @@ scan gap on the record, as the history verb reports it for a capture.
 A run that holds a reservation on the shared remote (itd-2609091034175565;
 the state's `reserved_at`) holds it for the copy the run lives in. The step
 verb renews it before a stage once half its lease has passed, as last fetched,
-with the default lease, and logs `reservation_renewed` in the run record; under
+keeping its own term (at least the default lease, at most a day), and logs
+`reservation_renewed` in the run record; under
 half it pushes nothing, and a renewal that fails is logged and named while the
 stage still runs. A renewal renews only this person's own reservation from
 this copy, never reserving a released record again or taking one over. Before
