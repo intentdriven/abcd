@@ -38,14 +38,9 @@ sessions live in that process's memory alone, so there is no state to report.
 
 Starting the relay opens a network listener, so do it only when the user asks
 to host a session from this computer. It runs in the foreground until stopped
-with Ctrl-C, and every session it holds ends with it, so the user runs it in a
-Terminal of their own rather than in this session:
-
-```bash
-abcd session serve
-```
-
-It listens on this computer alone (`127.0.0.1:8787`) and prints one line
+with Ctrl-C, and every session it holds ends with it, so never start it from
+this session: tell the user to run `abcd session serve` in a Terminal of their
+own. It listens on this computer alone (`127.0.0.1:8787`) and prints one line
 saying where, with the `tailscale serve --bg <port>` command that puts it on
 the user's tailnet at an https address; relay that line as printed. A
 non-loopback `--listen` is a second, explicit choice, meant for the team's
