@@ -343,10 +343,11 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 	if len(imports) != 1 || imports[0][1] != "./vendor/collab.js" {
 		t.Errorf("session.js imports %v, want ./vendor/collab.js alone", imports)
 	}
-	// The only addresses it names are GitHub's API and sign-in page.
+	// The only addresses it names are GitHub's API, its sign-in page and its
+	// site, where a pre-filled issue opens.
 	urls := regexp.MustCompile(`(?i)\b(?:https?|wss?)://[^\s"'`+"`"+`)]*`).FindAllString(js, -1)
 	for _, u := range urls {
-		if u != "https://api.github.com" && u != "https://github.com/login/oauth/authorize" && u != "https://" {
+		if u != "https://api.github.com" && u != "https://github.com/login/oauth/authorize" && u != "https://github.com" && u != "https://" {
 			t.Errorf("session.js names %q", u)
 		}
 	}
@@ -416,6 +417,107 @@ func functionBody(t *testing.T, js, name string) string {
 		t.Fatalf("function %s does not end", name)
 	}
 	return rest[:end+2]
+}
+
+func TestIssueLinksAreMeasuredAgainstOneNamedLimit(t *testing.T) {
+	js := pageScript(t)
+	m := regexp.MustCompile(`(?m)((?://.*\n)+)const ISSUE_URL_LIMIT = (\d+);`).FindStringSubmatch(js)
+	if m == nil {
+		t.Fatal("session.js has no ISSUE_URL_LIMIT constant with a comment above it")
+	}
+	var limit int
+	if _, err := fmt.Sscan(m[2], &limit); err != nil || limit > 8000 || limit < 4000 {
+		t.Errorf("ISSUE_URL_LIMIT = %s, want a margin under GitHub's roughly 8 KB", m[2])
+	}
+	if !strings.Contains(m[1], "2026-10-14-github-roles-admission-and-issue-links.md") {
+		t.Errorf("the limit's comment does not cite the research note:\n%s", m[1])
+	}
+	// The link is built with encodeURIComponent and measured in bytes, whole.
+	link := functionBody(t, js, "issueLink")
+	for _, want := range []string{`"/issues/new?title=" + encodeURIComponent(`, `"&body=" + encodeURIComponent(`, "utf8Length(url) <= ISSUE_URL_LIMIT"} {
+		if !strings.Contains(link, want) {
+			t.Errorf("issueLink does not carry %q", want)
+		}
+	}
+	// No labels in the link: GitHub answers 404 to a visitor who may not set them.
+	for _, bad := range []string{"labels=", "&labels", `"labels"`, "labels:"} {
+		if strings.Contains(js, bad) {
+			t.Errorf("session.js carries %q", bad)
+		}
+	}
+	// The issue body names the file, the base commit, both versions and the credit.
+	body := functionBody(t, js, "issueBody")
+	for _, want := range []string{"p.path", `meta.get("base_sha")`, "fenced(p.before)", "fenced(p.after)", "creditLines(p)"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("issueBody does not carry %s", want)
+		}
+	}
+	credit := functionBody(t, js, "creditLines")
+	if !strings.Contains(credit, `"Suggested by " + a.guest + " (guest), approved by @" + a.approver`) {
+		t.Error("creditLines does not credit a guest's change to its approver")
+	}
+}
+
+func TestPullRequestCommitCreditsEveryone(t *testing.T) {
+	js := pageScript(t)
+	trailers := functionBody(t, js, "composeTrailers")
+	for _, want := range []string{
+		`"Co-authored-by: " + noreply(`,
+		`lines.push("Suggested-by: " + p.guest + " (guest)", "Approved-by: " + noreply(`,
+		"!== submitter.toLowerCase()",
+	} {
+		if !strings.Contains(trailers, want) {
+			t.Errorf("composeTrailers does not carry %q", want)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "noreply"), `"+" + login + "@users.noreply.github.com>"`) {
+		t.Error("noreply does not use GitHub's id+login noreply address")
+	}
+	pr := functionBody(t, js, "openPullRequest")
+	for _, want := range []string{
+		`"/git/refs"`, `ref: "refs/heads/" + branch, sha: baseSha`,
+		`"/graphql"`, "createCommitOnBranch", "expectedHeadOid: baseSha", "repositoryNameWithOwner",
+		`"/pulls"`, "head: branch, base: target",
+		`"/users/" + encodeURIComponent(`,
+		"headline: COMMIT_HEADLINE",
+	} {
+		if !strings.Contains(pr, want) {
+			t.Errorf("openPullRequest does not carry %q", want)
+		}
+	}
+	if !strings.Contains(js, `const COMMIT_HEADLINE = "Edit the brief in a live session";`) {
+		t.Error("the commit headline is not the spec's")
+	}
+	if !regexp.MustCompile(`"abcdesign/" \+ `).MatchString(functionBody(t, js, "branchName")) {
+		t.Error("branchName does not name an abcdesign/ branch")
+	}
+}
+
+func TestFileContentsAreUTF8Base64(t *testing.T) {
+	js := pageScript(t)
+	enc := functionBody(t, js, "utf8Base64")
+	if !strings.Contains(enc, "new TextEncoder().encode(text)") || !strings.Contains(enc, "btoa(binary)") {
+		t.Errorf("utf8Base64 does not encode UTF-8 bytes:\n%s", enc)
+	}
+	if !strings.Contains(functionBody(t, js, "openPullRequest"), "contents: utf8Base64(") {
+		t.Error("the commit's file contents do not go through utf8Base64")
+	}
+	// btoa sees a binary string built from bytes, never text.
+	calls := regexp.MustCompile(`btoa\(([^)]*)\)`).FindAllStringSubmatch(js, -1)
+	if len(calls) == 0 {
+		t.Fatal("no btoa call found; the check is not looking")
+	}
+	for _, c := range calls {
+		if c[1] != "binary" && c[1] != "s" {
+			t.Errorf("btoa(%s): btoa is applied only to a binary string built from bytes", c[1])
+		}
+	}
+	for _, fn := range []string{"b64url", "utf8Base64"} {
+		body := functionBody(t, js, fn)
+		if !strings.Contains(body, "String.fromCharCode(") {
+			t.Errorf("%s does not build its binary string from bytes", fn)
+		}
+	}
 }
 
 func TestSuggestionsLiveInTheDocument(t *testing.T) {

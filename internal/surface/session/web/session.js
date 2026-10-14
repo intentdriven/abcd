@@ -1,13 +1,16 @@
-// The brief session page (itd-2610091016262335, spc-2610141709430146 step 3).
+// The brief session page (itd-2610091016262335, spc-2610141709430146 steps 3
+// and 4).
 //
 // A team member hosts a live session on the team's own relay; everyone else
 // joins by the QR code or the six-character code. Team members edit the brief
 // directly and their edits are credited to them; a guest proposes a
-// replacement for a passage, which a team member applies or declines.
+// replacement for a passage, which a team member applies or declines. The
+// session goes back to GitHub as one pre-filled issue per changed passage, or
+// as one pull request made with the submitter's own token.
 //
 // What this page talks to, and nothing else: the relay the person names (its
 // WebSocket, /config and /auth/token), https://api.github.com with the
-// person's own token, and github.com for sign-in. The GitHub token is held in
+// person's own token, and github.com for sign-in and pre-filled issues. The GitHub token is held in
 // this module's memory only; it is never stored, put in a URL or logged.
 // Every piece of text from the brief, the relay or another participant is
 // rendered with textContent.
@@ -91,14 +94,48 @@ const WORDS = Object.freeze({
   noMembers: "No team member is connected to receive it.",
   mySuggestionsHeading: "Your suggestions",
   submit: "Send to GitHub",
-  submitComingNext: "Sending the session to GitHub is coming in the next step.",
+  sendHeading: "Send to GitHub",
+  sendIntroPR: "The session goes back as one pull request, with every credited team member named on its commit.",
+  sendIntroIssues: "Each changed passage goes back as its own issue. GitHub opens the issue for you to check before you submit it.",
+  sendNothing: "Nothing has changed since the session began.",
+  sendRefresh: "Refresh",
+  sendClose: "Close",
+  sendAsIssue: "Send as issue",
+  tooLongForIssue: "Too long for an issue, send as a pull request",
+  sendAsPR: "Send as a pull request",
+  openPR: "Open the pull request",
+  prNeedsSignIn: "Only a team member signed in with GitHub can open the pull request.",
+  linesAt: "lines",
+  lineAt: "line",
+  creditUnknown: "A participant the session could not credit",
+  prWorking: "Opening the pull request…",
+  prOpened: "Pull request opened:",
+  passageMoved: "That passage has changed since the panel showed it. Check it again, then send.",
+  prNoBase: "This session does not know which commit it started from, so it cannot open a pull request.",
+  ghUnreachable: "GitHub could not be reached. Check your connection and try again.",
+  ghSignIn: "GitHub did not accept your sign-in. Sign in again, then send.",
+  ghScope: "GitHub refused: your sign-in may not create branches, commits or pull requests in this repository. Sign in again with access to its contents and pull requests.",
+  ghNotFound: "GitHub could not find the repository, the branch or a team member, or your sign-in cannot see them.",
+  ghStale: "The new branch moved on GitHub before the commit was made. Try again.",
+  ghRefTaken: "GitHub would not create the session's branch; one by that name may already exist. Try again.",
+  ghPRRefused: "The commit is on the branch, but GitHub would not open the pull request. Open it on GitHub from branch",
+  ghOther: "GitHub did not complete the request. Try again in a moment.",
 });
 
 // ---------------------------------------------------------------------------
 // Fixed values.
 // ---------------------------------------------------------------------------
 const GITHUB_API = "https://api.github.com";
+const GITHUB_WEB = "https://github.com";
 const GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize";
+// GitHub answers 414 to a pre-filled issue link over its server limit and does
+// not document the number; the GitHub CLI stops at 8,192 bytes. The link is
+// measured as GitHub receives it, encoded, in bytes, against this margin
+// (research note 2026-10-14-github-roles-admission-and-issue-links.md).
+const ISSUE_URL_LIMIT = 7600;
+const COMMIT_HEADLINE = "Edit the brief in a live session";
+// Passages closer than this many unchanged lines are one passage.
+const PASSAGE_JOIN_LINES = 1;
 const BRIEF_DIR = [".abcd", "development", "brief"];
 const BRIEF_PREFIX = BRIEF_DIR.join("/") + "/";
 const SIGN_IN_SCOPE = "repo";
@@ -223,6 +260,9 @@ const approvals = doc.getArray("approvals");
 // so a member who joins later sees it too; suggestions_done holds its answer.
 const suggestions = doc.getMap("suggestions");
 const suggestionsDone = doc.getMap("suggestions_done");
+// Yjs records who inserted each piece of text but not who deleted it: each
+// member's page records its own deletions here, under its Yjs client id.
+const deletions = new Y.PermanentUserData(doc, doc.getMap("deletions"));
 const awareness = new Awareness(doc);
 
 // ---------------------------------------------------------------------------
@@ -437,6 +477,7 @@ function becomeMember() {
   const was = session.role;
   session.role = "member";
   sendJSON({ type: "register", client: doc.clientID });
+  trackDeletions();
   const queued = outbox;
   outbox = [];
   for (const frame of queued) {
@@ -774,6 +815,7 @@ async function hostBrief() {
   const brief = await loadBrief();
   setStatus(WORDS.sendingBrief, false);
   seed(brief, ui.mode ? ui.mode.value : "pr");
+  trackDeletions();
   await drained();
   session.seeding = false;
   session.synced = true;
@@ -900,17 +942,26 @@ function applySuggestion(id) {
   if (!s || !validSuggestion(s.body) || session.role !== "member" || suggestionsDone.has(id)) return;
   const place = locate(s.body);
   if (!place) { toast(WORDS.cannotApply); return; }
-  doc.transact(() => {
+  const replacement = s.body.replacement;
+  doc.transact((tr) => {
     const before = place.ytext.toString().slice(place.from, place.to);
     place.ytext.delete(place.from, place.to - place.from);
-    place.ytext.insert(place.from, s.body.replacement);
+    // The ids of the text the approval removed and inserted, so the credit
+    // can tell an approved change from the approver's own typing.
+    const del = [];
+    tr.deleteSet.clients.forEach((items, client) => { for (const d of items) del.push([client, d.clock, d.len]); });
+    const clock = Y.getState(doc.store, doc.clientID);
+    place.ytext.insert(place.from, replacement);
     approvals.push([{
       id,
       path: s.body.path,
       guest: typeof s.from === "string" ? s.from : "Guest",
       approver: session.login,
+      client: doc.clientID,
+      ins: replacement ? [doc.clientID, clock, replacement.length] : null,
+      del,
       before,
-      after: s.body.replacement,
+      after: replacement,
       at: new Date().toISOString(),
     }]);
     suggestionsDone.set(id, "applied");
@@ -927,12 +978,523 @@ suggestions.observe(() => renderSide());
 suggestionsDone.observe(() => renderSide());
 
 // ---------------------------------------------------------------------------
-// Step 4's hook: sending the session back to GitHub. meta.mode, the
-// approvals array, the base snapshot and session.credits are what it reads.
+// Credit: what changed since the session began, and who changed it.
+//
+// The base is the snapshot the host took right after seeding. Y.Text's
+// toDelta(now, base) marks each piece of text added or removed since then,
+// with the Yjs item it belongs to; the item's client id names who inserted
+// it, and the members' recorded deletions name who removed it. The relay's
+// roster maps each member's client ids to their GitHub login.
+// ---------------------------------------------------------------------------
+let deletionsTracked = false;
+function trackDeletions() {
+  if (deletionsTracked) return;
+  deletionsTracked = true;
+  deletions.setUserMapping(doc, doc.clientID, String(doc.clientID), { filter: (tr) => touchesBrief(tr) });
+}
+function touchesBrief(tr) {
+  const texts = new Set(files.values());
+  for (const type of tr.changed.keys()) if (texts.has(type)) return true;
+  return false;
+}
+
+let baseCache = { raw: null, snap: null };
+function baseSnapshot() {
+  const raw = meta.get("base_snapshot");
+  if (!(raw instanceof Uint8Array)) return null;
+  if (baseCache.raw !== raw) {
+    try { baseCache = { raw, snap: Y.decodeSnapshot(raw) }; } catch { return null; }
+  }
+  return baseCache.snap;
+}
+
+function loginOf(client) {
+  const login = session.credits[String(client)];
+  return typeof login === "string" && NAME_RE.test(login) ? login : "";
+}
+
+// changesOf lists a file's text as runs: "same" since the base, "add" or
+// "del", each changed run one Yjs item with its client and clock.
+function changesOf(ytext, base) {
+  const delta = ytext.toDelta(Y.snapshot(doc), base, (type, id) => ({ type, client: id.client, clock: id.clock }));
+  const ops = [];
+  for (const op of delta) {
+    if (typeof op.insert !== "string") continue;
+    const ch = op.attributes && op.attributes.ychange;
+    if (!ch) ops.push({ kind: "same", text: op.insert });
+    else ops.push({ kind: ch.type === "added" ? "add" : "del", text: op.insert, client: ch.client, clock: ch.clock });
+  }
+  return ops;
+}
+
+function newlines(s) {
+  let n = 0;
+  for (let i = s.indexOf("\n"); i !== -1; i = s.indexOf("\n", i + 1)) n++;
+  return n;
+}
+
+function overlaps(clock, len, from, n) {
+  return clock < from + n && from < clock + len;
+}
+
+// approvalOf names the approval a changed run belongs to, if any.
+function approvalOf(path, op, list) {
+  for (const a of list) {
+    if (!a || a.path !== path) continue;
+    if (op.kind === "add" && Array.isArray(a.ins) && a.ins[0] === op.client && overlaps(op.clock, op.text.length, a.ins[1], a.ins[2])) return a;
+    if (op.kind === "del" && Array.isArray(a.del) && a.del.some((d) => Array.isArray(d) && d[0] === op.client && overlaps(op.clock, op.text.length, d[1], d[2]))) return a;
+  }
+  return null;
+}
+
+// deletersOf names the members whose pages recorded deleting a removed run.
+function deletersOf(op) {
+  const out = [];
+  for (const [client, ds] of deletions.dss) {
+    const ranges = ds.clients.get(op.client) || [];
+    if (ranges.some((r) => overlaps(op.clock, op.text.length, r.clock, r.len))) out.push(client);
+  }
+  return out;
+}
+
+// makePassage turns the changed runs ops[i..j] into a passage: whole lines
+// before and after, where they sit in the base, and who to credit.
+function makePassage(path, ops, offsets, i, j, approvalList) {
+  const prev = i > 0 ? ops[i - 1].text : "";
+  const left = prev.slice(prev.lastIndexOf("\n") + 1);
+  let before = left;
+  let after = left;
+  const authors = new Set();
+  const approved = new Map();
+  let unknown = false;
+  for (let k = i; k <= j; k++) {
+    const op = ops[k];
+    if (op.kind !== "del") after += op.text;
+    if (op.kind !== "add") before += op.text;
+    if (op.kind === "same") continue;
+    const a = approvalOf(path, op, approvalList);
+    if (a) {
+      const approver = loginOf(a.client) || (typeof a.approver === "string" ? a.approver : "");
+      const guest = trailerText(a.guest);
+      approved.set(guest + "\u0000" + approver, { guest, approver });
+      continue;
+    }
+    const who = op.kind === "add" ? [op.client] : deletersOf(op);
+    let named = false;
+    for (const c of who) {
+      const login = loginOf(c);
+      if (login) { authors.add(login); named = true; }
+    }
+    if (!named) unknown = true;
+  }
+  const lineEnded = (s) => s === "" || s.endsWith("\n");
+  if (j + 1 < ops.length && !(lineEnded(before) && lineEnded(after))) {
+    const next = ops[j + 1].text;
+    const cut = next.indexOf("\n");
+    const right = cut < 0 ? next : next.slice(0, cut);
+    before += right;
+    after += right;
+  }
+  const baseStart = offsets[i].base - left.length;
+  return {
+    path,
+    baseStart,
+    baseEnd: baseStart + before.length,
+    before,
+    after,
+    authors: [...authors].sort(),
+    approvals: [...approved.values()],
+    unknown,
+  };
+}
+
+// analyse reads every file's changes since the base, as passages.
+function analyse() {
+  const base = baseSnapshot();
+  const out = [];
+  if (!base) return out;
+  const approvalList = approvals.toArray();
+  for (const path of [...files.keys()].sort()) {
+    const ytext = files.get(path);
+    if (!(ytext instanceof Y.Text)) continue;
+    const ops = changesOf(ytext, base);
+    if (!ops.some((op) => op.kind !== "same")) continue;
+    const offsets = [];
+    let b = 0;
+    let c = 0;
+    for (const op of ops) {
+      offsets.push({ base: b, cur: c });
+      if (op.kind !== "add") b += op.text.length;
+      if (op.kind !== "del") c += op.text.length;
+    }
+    const baseText = ops.filter((op) => op.kind !== "add").map((op) => op.text).join("");
+    const passages = [];
+    let i = 0;
+    while (i < ops.length) {
+      if (ops[i].kind === "same") { i++; continue; }
+      let j = i;
+      let k = i + 1;
+      for (;;) {
+        while (k < ops.length && ops[k].kind !== "same") { j = k; k++; }
+        // ops[k] is unchanged text; one more changed run after it, within
+        // PASSAGE_JOIN_LINES unchanged lines, joins this passage.
+        if (k + 1 < ops.length && newlines(ops[k].text) <= PASSAGE_JOIN_LINES + 1) { j = k + 1; k += 2; continue; }
+        break;
+      }
+      const p = makePassage(path, ops, offsets, i, j, approvalList);
+      p.lineFrom = 1 + newlines(baseText.slice(0, p.baseStart));
+      p.lineTo = p.lineFrom + Math.max(0, newlines(p.before.replace(/\n$/, "")));
+      passages.push(p);
+      i = j + 1;
+    }
+    const current = ops.filter((op) => op.kind !== "del").map((op) => op.text).join("");
+    if (current !== baseText) out.push({ path, base: baseText, current, passages });
+  }
+  return out;
+}
+
+function relPath(path) {
+  return path.startsWith(BRIEF_PREFIX) ? path.slice(BRIEF_PREFIX.length) : path;
+}
+function linesLabel(p) {
+  return p.lineTo > p.lineFrom ? WORDS.linesAt + " " + p.lineFrom + "–" + p.lineTo : WORDS.lineAt + " " + p.lineFrom;
+}
+
+// creditLines says who a passage is credited to, one line each.
+function creditLines(p) {
+  const lines = [];
+  if (p.authors.length) lines.push("Written by " + p.authors.map((l) => "@" + l).join(", "));
+  for (const a of p.approvals) lines.push("Suggested by " + a.guest + " (guest), approved by @" + a.approver);
+  if (p.unknown && lines.length === 0) lines.push(WORDS.creditUnknown);
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+// The issues route: one pre-filled GitHub issue link per passage.
+// ---------------------------------------------------------------------------
+// fenced wraps text in a code fence longer than any run of backticks in it.
+function fenced(text) {
+  let longest = 0;
+  for (const m of text.matchAll(/`+/g)) longest = Math.max(longest, m[0].length);
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return fence + "markdown\n" + text + (text === "" || text.endsWith("\n") ? "" : "\n") + fence;
+}
+
+function issueTitle(p) {
+  return "Brief: " + relPath(p.path) + ", " + linesLabel(p);
+}
+
+function issueBody(p) {
+  return [
+    "A change to the brief, proposed in a live session.",
+    "",
+    "- File: `" + p.path + "`",
+    "- Base commit: " + meta.get("base_sha"),
+    "- At the base commit: " + linesLabel(p),
+    "",
+    "Before:",
+    "",
+    fenced(p.before),
+    "",
+    "After:",
+    "",
+    fenced(p.after),
+    "",
+    ...creditLines(p),
+  ].join("\n");
+}
+
+// issueLink builds the passage's pre-filled issue link and says whether it
+// fits: measured whole, as GitHub receives it, after encoding, in bytes.
+function issueLink(p) {
+  const url = GITHUB_WEB + "/" + encodeURIComponent(route.owner) + "/" + encodeURIComponent(route.repo) +
+    "/issues/new?title=" + encodeURIComponent(issueTitle(p)) + "&body=" + encodeURIComponent(issueBody(p));
+  return { url, fits: utf8Length(url) <= ISSUE_URL_LIMIT };
+}
+
+// ---------------------------------------------------------------------------
+// The pull request route: a branch at the base commit, one commit made as the
+// submitter, crediting everyone else, and the pull request.
+// ---------------------------------------------------------------------------
+// utf8Base64 encodes text as GitHub's API wants file contents: the UTF-8
+// bytes, in base64.
+function utf8Base64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+function branchName() {
+  const d = new Date();
+  const two = (n) => String(n).padStart(2, "0");
+  let tail = "";
+  for (const b of crypto.getRandomValues(new Uint8Array(6))) tail += (b % 36).toString(36);
+  return "abcdesign/" + d.getUTCFullYear() + two(d.getUTCMonth() + 1) + two(d.getUTCDate()) + "-" + tail;
+}
+
+// trailerText makes a guest's display name safe for one trailer line.
+function trailerText(s) {
+  const t = String(s || "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  return t || "Guest";
+}
+
+function noreply(login, ids) {
+  return login + " <" + ids.get(login.toLowerCase()) + "+" + login + "@users.noreply.github.com>";
+}
+
+// composeTrailers credits everyone but the submitter, who is the commit's
+// author: a co-author line per credited member, and for each approved guest
+// change the guest's line with its approver's line directly beneath.
+function composeTrailers(submitter, members, pairs, ids) {
+  const lines = [];
+  for (const login of members) {
+    if (login.toLowerCase() !== submitter.toLowerCase()) lines.push("Co-authored-by: " + noreply(login, ids));
+  }
+  for (const p of pairs) lines.push("Suggested-by: " + p.guest + " (guest)", "Approved-by: " + noreply(p.approver, ids));
+  return lines;
+}
+
+// applyPassages puts some of a file's passages onto its base text.
+function applyPassages(base, list) {
+  let text = base;
+  for (const p of [...list].sort((a, b) => b.baseStart - a.baseStart)) {
+    text = text.slice(0, p.baseStart) + p.after + text.slice(p.baseEnd);
+  }
+  return text;
+}
+
+async function ghSend(method, path, body) {
+  let res;
+  try {
+    res = await fetch(GITHUB_API + path, {
+      method,
+      headers: { Accept: "application/vnd.github+json", "Content-Type": "application/json", Authorization: "Bearer " + githubToken },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+    });
+  } catch {
+    return { status: 0, json: null };
+  }
+  const json = await res.json().catch(() => null);
+  return { status: res.status, json };
+}
+
+// GitHubTrouble is a failed step, already in words the person can act on.
+class GitHubTrouble extends Error {}
+
+function trouble(step, status, errors) {
+  const types = Array.isArray(errors) ? errors.map((e) => (e && typeof e.type === "string" ? e.type : "")) : [];
+  if (status === 0) return new GitHubTrouble(WORDS.ghUnreachable);
+  if (status === 401) return new GitHubTrouble(WORDS.ghSignIn);
+  if (status === 403 || types.includes("FORBIDDEN") || types.includes("INSUFFICIENT_SCOPES")) return new GitHubTrouble(WORDS.ghScope);
+  if (status === 404 || types.includes("NOT_FOUND")) return new GitHubTrouble(WORDS.ghNotFound);
+  if (step === "commit" && (status === 422 || types.includes("STALE_DATA"))) return new GitHubTrouble(WORDS.ghStale);
+  if (step === "ref" && status === 422) return new GitHubTrouble(WORDS.ghRefTaken);
+  return new GitHubTrouble(WORDS.ghOther);
+}
+
+function prBody(list, members, pairs, changed) {
+  const people = new Set(members.map((l) => "@" + l));
+  for (const p of pairs) people.add(p.guest + " (guest)");
+  for (const r of session.roster) {
+    if (r.role === "member" && typeof r.login === "string" && NAME_RE.test(r.login)) people.add("@" + r.login);
+    else if (r.role !== "member" && typeof r.name === "string" && r.name) people.add(trailerText(r.name) + " (guest)");
+  }
+  const out = [
+    "Edits to the brief made together in a live session, from base commit " + meta.get("base_sha") + ".",
+    "",
+    "Participants: " + [...people].join(", "),
+    "",
+    "Changed passages:",
+  ];
+  for (const p of list) out.push("- `" + relPath(p.path) + "`, " + linesLabel(p) + ": " + creditLines(p).join("; "));
+  if (pairs.length) {
+    out.push("", "Approved guest suggestions:");
+    for (const p of pairs) out.push("- " + p.guest + " (guest), approved by @" + p.approver);
+  }
+  out.push("", "Changed files:", ...changed.map((f) => "- `" + f + "`"));
+  return out.join("\n");
+}
+
+let sending = false;
+// openPullRequest sends the session as one pull request: every passage, or
+// (one too long for an issue) the single passage shown, read afresh so what
+// is sent is what the panel shows.
+async function openPullRequest(only) {
+  if (sending) return;
+  const analysis = analyse();
+  const all = analysis.flatMap((f) => f.passages);
+  const list = only ? all.filter((p) => p.path === only.path && p.before === only.before && p.after === only.after) : all;
+  if (list.length === 0) {
+    showSendResult(only ? WORDS.passageMoved : WORDS.sendNothing, true);
+    renderSend();
+    return;
+  }
+  if (!githubToken || session.role !== "member" || !session.login) { showSendResult(WORDS.prNeedsSignIn, true); return; }
+  const baseSha = meta.get("base_sha");
+  const target = meta.get("branch");
+  if (!SHA_RE.test(baseSha || "") || typeof target !== "string" || !target) { showSendResult(WORDS.prNoBase, true); return; }
+  sending = true;
+  renderSend();
+  showSendResult(WORDS.prWorking, false);
+  let branch = "";
+  let refMade = false;
+  try {
+    // The files: each changed file with these passages put on its base text.
+    const additions = [];
+    const changed = [];
+    for (const f of analysis) {
+      const mine = list.filter((p) => p.path === f.path);
+      if (mine.length === 0) continue;
+      const text = mine.length === f.passages.length ? f.current : applyPassages(f.base, mine);
+      if (text === f.base) continue;
+      additions.push({ path: f.path, contents: utf8Base64(text) });
+      changed.push(f.path);
+    }
+    if (additions.length === 0) { showSendResult(WORDS.sendNothing, true); return; }
+
+    // Who to credit, and their GitHub ids for the noreply addresses.
+    const credited = new Map();
+    const pairs = new Map();
+    for (const p of list) {
+      for (const l of p.authors) credited.set(l.toLowerCase(), l);
+      for (const a of p.approvals) {
+        if (!NAME_RE.test(a.approver)) continue;
+        credited.set(a.approver.toLowerCase(), a.approver);
+        const guest = trailerText(a.guest);
+        pairs.set(guest + "\u0000" + a.approver.toLowerCase(), { guest, approver: a.approver });
+      }
+    }
+    const members = [...credited.values()].sort((a, b) => a.localeCompare(b));
+    const ids = new Map();
+    for (const login of members) {
+      if (login.toLowerCase() === session.login.toLowerCase() && ![...pairs.values()].some((p) => p.approver.toLowerCase() === login.toLowerCase())) continue;
+      const r = await ghSend("GET", "/users/" + encodeURIComponent(login));
+      if (r.status !== 200 || !r.json || !Number.isSafeInteger(r.json.id)) throw trouble("users", r.status);
+      ids.set(login.toLowerCase(), r.json.id);
+    }
+    const trailers = composeTrailers(session.login, members, [...pairs.values()], ids);
+
+    // 1. The branch, at the commit the session started from.
+    branch = branchName();
+    const ref = await ghSend("POST", repoPath() + "/git/refs", { ref: "refs/heads/" + branch, sha: baseSha });
+    if (ref.status !== 201) throw trouble("ref", ref.status);
+    refMade = true;
+
+    // 2. One commit on it, made as the submitter.
+    const message = { headline: COMMIT_HEADLINE, body: "Changed files:\n" + changed.map((f) => "- " + f).join("\n") + (trailers.length ? "\n\n" + trailers.join("\n") : "") };
+    const commit = await ghSend("POST", "/graphql", {
+      query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }",
+      variables: {
+        input: {
+          branch: { repositoryNameWithOwner: route.slug, branchName: branch },
+          message,
+          expectedHeadOid: baseSha,
+          fileChanges: { additions },
+        },
+      },
+    });
+    const made = commit.json && commit.json.data && commit.json.data.createCommitOnBranch && commit.json.data.createCommitOnBranch.commit;
+    if (commit.status !== 200 || !made || (commit.json.errors && commit.json.errors.length)) {
+      throw trouble("commit", commit.status === 200 && !made ? 422 : commit.status, commit.json && commit.json.errors);
+    }
+
+    // 3. The pull request into the branch the session read.
+    const pr = await ghSend("POST", repoPath() + "/pulls", {
+      title: COMMIT_HEADLINE, head: branch, base: target, body: prBody(list, members, [...pairs.values()], changed),
+    });
+    if (pr.status !== 201 || !pr.json || typeof pr.json.html_url !== "string") {
+      refMade = false; // the commit is worth keeping: the person can open the pull request by hand
+      throw new GitHubTrouble(WORDS.ghPRRefused + " " + branch + ".");
+    }
+    refMade = false;
+    showSendResult(WORDS.prOpened, false, pr.json.html_url);
+  } catch (err) {
+    if (refMade) {
+      // The branch holds nothing yet: take it away again.
+      await ghSend("DELETE", repoPath() + "/git/refs/heads/" + branch.split("/").map(encodeURIComponent).join("/"));
+    }
+    showSendResult(err instanceof GitHubTrouble ? err.message : WORDS.ghOther, true);
+  } finally {
+    sending = false;
+    renderSend();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The "Send to GitHub" panel: the passages, their credit and the route's
+// actions. It reads meta.mode, the approvals, the base snapshot and the
+// roster's credits.
 // ---------------------------------------------------------------------------
 function submitSession() {
-  toast(WORDS.submitComingNext);
+  ui.send.hidden = !ui.send.hidden;
+  if (!ui.send.hidden) {
+    showSendResult("", false);
+    renderSend();
+  }
 }
+
+function showSendResult(text, bad, href) {
+  clear(ui.sendResult);
+  ui.sendResult.className = bad ? "state bad" : "state";
+  if (text) ui.sendResult.append(text);
+  if (href) {
+    let ok = false;
+    try { ok = new URL(href).origin === new URL(GITHUB_WEB).origin; } catch { ok = false; }
+    ui.sendResult.append(" ", ok ? el("a", { href, target: "_blank", rel: "noopener noreferrer", text: href }) : href);
+  }
+}
+
+let sendTimer = 0;
+doc.on("update", () => {
+  if (!ui.send || ui.send.hidden) return;
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(() => renderSend(), 600);
+});
+
+function renderSend() {
+  if (!ui.send || ui.send.hidden) return;
+  if (session.role !== "member" || session.over) { ui.send.hidden = true; return; }
+  const mode = meta.get("mode") === "issues" ? "issues" : "pr";
+  const analysis = analyse();
+  const all = analysis.flatMap((f) => f.passages);
+  ui.sendIntro.textContent = mode === "issues" ? WORDS.sendIntroIssues : WORDS.sendIntroPR;
+  clear(ui.sendList);
+  clear(ui.sendActions);
+  if (all.length === 0) {
+    ui.sendList.append(el("li", { class: "state", text: WORDS.sendNothing }));
+  }
+  for (const p of all) {
+    const actions = el("div", { class: "row" });
+    if (mode === "issues") {
+      const link = issueLink(p);
+      if (link.fits) {
+        actions.append(el("a", { class: "button", href: link.url, target: "_blank", rel: "noopener noreferrer", text: WORDS.sendAsIssue }));
+      } else {
+        actions.append(el("span", { class: "state", text: WORDS.tooLongForIssue }),
+          el("button", { type: "button", disabled: sending, text: WORDS.sendAsPR, onclick: () => openPullRequest(p) }));
+      }
+    }
+    ui.sendList.append(el("li", { class: "passage" },
+      el("div", { class: "from", text: relPath(p.path) + " · " + linesLabel(p) }),
+      el("div", { class: "credit", text: creditLines(p).join("\n") }),
+      el("del", { text: p.before }),
+      el("ins", { text: p.after }),
+      actions.childElementCount ? actions : null));
+  }
+  if (mode === "pr") {
+    ui.sendActions.append(el("button", {
+      type: "button", class: "primary", disabled: sending || all.length === 0 || !githubToken,
+      text: WORDS.openPR, onclick: () => openPullRequest(null),
+    }));
+    if (!githubToken) ui.sendActions.append(el("span", { class: "state", text: WORDS.prNeedsSignIn }));
+  }
+  ui.sendActions.append(
+    el("button", { type: "button", text: WORDS.sendRefresh, onclick: () => renderSend() }),
+    el("button", { type: "button", text: WORDS.sendClose, onclick: () => { ui.send.hidden = true; } }));
+}
+
 
 // ---------------------------------------------------------------------------
 // The editor.
@@ -1054,8 +1616,14 @@ function build() {
   ui.guestbar = el("div", { class: "guestbar", hidden: true },
     el("p", { class: "state", text: WORDS.guestHint }), el("div", { class: "row" }, ui.suggestButton), ui.suggestForm);
   ui.side = el("aside", { class: "side" });
+  ui.sendIntro = el("p", { class: "state" });
+  ui.sendList = el("ul");
+  ui.sendActions = el("div", { class: "row" });
+  ui.sendResult = el("p", { class: "state", role: "status", "aria-live": "polite" });
+  ui.send = el("section", { class: "send", hidden: true, "aria-label": WORDS.sendHeading },
+    el("h2", { text: WORDS.sendHeading }), ui.sendIntro, ui.sendList, ui.sendActions, ui.sendResult);
   ui.work = el("div", { class: "work", hidden: true },
-    ui.files, el("section", { class: "center" }, ui.filetitle, ui.editor, ui.guestbar), ui.side);
+    ui.files, el("section", { class: "center" }, ui.send, ui.filetitle, ui.editor, ui.guestbar), ui.side);
 
   app.append(bar, ui.start, ui.work, ui.toast);
   return true;
@@ -1233,6 +1801,7 @@ async function copyLink(url) {
 }
 
 function renderAll() {
+  if (session.over && ui.send) ui.send.hidden = true;
   renderTop();
   renderStart();
   renderSide();

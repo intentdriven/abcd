@@ -102,6 +102,20 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
 .suggestion del { background: rgba(220, 38, 38, .12); }
 .suggestion ins { background: rgba(22, 163, 74, .12); }
 .state { font-size: .8rem; color: var(--muted); }
+.state.bad { color: var(--warn); }
+
+/* Sending the session to GitHub. */
+.send { border-bottom: 1px solid var(--line); padding: .8rem 1rem; background: var(--panel); max-height: 60vh; overflow: auto; }
+.send h2 { font-size: 1rem; margin: 0 0 .3rem; }
+.send ul { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .6rem; }
+.passage { border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem; font-size: .9rem; }
+.passage .from { font-size: .8rem; color: var(--muted); word-break: break-all; }
+.passage .credit { font-size: .85rem; white-space: pre-line; margin: .2rem 0; }
+.passage del, .passage ins { display: block; white-space: pre-wrap; text-decoration: none; padding: .2rem .3rem; border-radius: 4px; margin: .2rem 0; max-height: 12rem; overflow: auto; }
+.passage del { background: rgba(220, 38, 38, .12); }
+.passage ins { background: rgba(22, 163, 74, .12); }
+a.button { text-decoration: none; display: inline-block; }
+.send .state a { word-break: break-all; }
 
 .toast {
   position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
