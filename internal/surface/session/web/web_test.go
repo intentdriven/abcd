@@ -770,8 +770,8 @@ func TestAwarenessIsCleanedBeforeItIsApplied(t *testing.T) {
 	if n := strings.Count(js, "applyAwarenessUpdate("); n != 1 {
 		t.Errorf("applyAwarenessUpdate is called %d times, want once", n)
 	}
-	if !strings.Contains(functionBody(t, js, "receive"), "applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY)") {
-		t.Error("receive applies a remote awareness update without cleaning it first")
+	if !strings.Contains(functionBody(t, js, "admitAwareness"), "applyAwarenessUpdate(awareness, cleanAwarenessUpdate(") {
+		t.Error("admitAwareness applies a remote awareness update without cleaning it first")
 	}
 	clean := functionBody(t, js, "cleanAwarenessUpdate")
 	for _, want := range []string{"readVarUint(", "writeVarUint(", "JSON.parse(", "cleanAwarenessState(", "JSON.stringify("} {
@@ -780,7 +780,7 @@ func TestAwarenessIsCleanedBeforeItIsApplied(t *testing.T) {
 		}
 	}
 	state := functionBody(t, js, "cleanAwarenessState")
-	for _, want := range []string{"HEX_COLOUR_RE.test(u.color)", "HEX_COLOUR_RE.test(u.colorLight)", "cleanName(u.name)"} {
+	for _, want := range []string{"HEX_COLOUR_RE.test(u.color)", "HEX_COLOUR_RE.test(u.colorLight)", "name: label"} {
 		if !strings.Contains(state, want) {
 			t.Errorf("cleanAwarenessState does not carry %s:\n%s", want, state)
 		}
@@ -1024,6 +1024,43 @@ func TestSessionSettingsAreTheHostsAlone(t *testing.T) {
 	}
 	if !strings.Contains(js, "  metaVoid: ") {
 		t.Error("the page has no words for a void write to the settings")
+	}
+}
+
+// The relay sends each awareness message on as tag 3 with its sender's
+// participant number, so the page keeps an awareness state only when the
+// roster ties its client id to that sender, and labels the cursor from the
+// roster, never from the name the message claims.
+func TestAwarenessIsTiedToItsSender(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, "const TAG_ATTRIBUTED_AWARENESS = 3;") {
+		t.Fatal("session.js does not know the relay's attributed awareness (tag 3)")
+	}
+	recv := functionBody(t, js, "receive")
+	if !strings.Contains(recv, "bytes[0] === TAG_ATTRIBUTED_AWARENESS") || !strings.Contains(recv, "admitAwareness(") {
+		t.Error("receive does not judge attributed awareness by its sender")
+	}
+	if strings.Contains(recv, "bytes[0] === TAG_AWARENESS") {
+		t.Error("receive still applies awareness that names no sender")
+	}
+	admit := functionBody(t, js, "admitAwareness")
+	for _, want := range []string{"rosterSeen", "awarenessTied(", "cursorLabel("} {
+		if !strings.Contains(admit, want) {
+			t.Errorf("admitAwareness does not carry %s:\n%s", want, admit)
+		}
+	}
+	tied := functionBody(t, js, "awarenessTied")
+	for _, want := range []string{"creditedTo(client) === sender.login", "guestAwareness.get(num)", "guestAwareness.set(num, client)", `creditedTo(client) !== ""`} {
+		if !strings.Contains(tied, want) {
+			t.Errorf("awarenessTied does not carry %s:\n%s", want, tied)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "onRoster"), "guestAwareness.delete(") {
+		t.Error("a guest's tie is not released when the guest leaves the roster")
+	}
+	label := functionBody(t, js, "cursorLabel")
+	if !strings.Contains(label, "sender.login") || !strings.Contains(label, "cleanName(sender.name)") || !strings.Contains(label, "WORDS.guestCursor") {
+		t.Errorf("cursorLabel does not label from the roster:\n%s", label)
 	}
 }
 

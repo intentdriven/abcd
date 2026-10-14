@@ -141,6 +141,7 @@ const WORDS = Object.freeze({
   setAside: "Edits that build on a refused edit can never be applied, so this page set them aside to stay in step.",
   metaVoid: "A change to the session's settings was ignored, because only the host sets them and the base, the branch and the repository are set once. It came from",
   someone: "a participant the session could not credit",
+  guestCursor: "guest",
   notesHeading: "Warnings",
   pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
 });
@@ -168,6 +169,9 @@ const TAG_AWARENESS = 1;
 // participant number as four big-endian bytes, then the update's bytes as the
 // member sent them. The roster's authors map names each number's login.
 const TAG_ATTRIBUTED = 2;
+// And every awareness message as tag 3, the same way: the tag, the sender's
+// participant number, then the message's bytes as the participant sent them.
+const TAG_ATTRIBUTED_AWARENESS = 3;
 // A relay message is at most 256 KiB; the seed is sent in updates of at most
 // SEED_BUDGET bytes of text, and a longer file in pieces of SEED_PIECE UTF-16
 // units (three bytes each at most).
@@ -535,7 +539,12 @@ function receive(data) {
         noteUnattributed(body);
         Y.applyUpdate(doc, body, FROM_RELAY);
         settlePending();
-      } else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY);
+      } else if (bytes[0] === TAG_ATTRIBUTED_AWARENESS) {
+        if (bytes.length < 5) return;
+        admitAwareness(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(1), bytes.subarray(5));
+      }
+      // An awareness message that names no sender (tag 1) is not applied: the
+      // relay sends every one on as tag 3.
     } catch {
       // A frame that does not decode is dropped; the relay forwards only
       // what a participant's page sent.
@@ -726,6 +735,10 @@ function onRoster(msg) {
   const named = session.roster.find((p) => p.host === true && p.role === "member" && typeof p.login === "string" && NAME_RE.test(p.login));
   if (typeof msg.host === "string" && NAME_RE.test(msg.host)) session.hostLogin = msg.host;
   else if (named) session.hostLogin = named.login;
+  // A guest's awareness client id is tied to them while they are here.
+  for (const num of [...guestAwareness.keys()]) {
+    if (!session.roster.some((p) => p.id === "p" + num)) guestAwareness.delete(num);
+  }
   rosterSeen = true;
   for (const h of held.splice(0)) admitUpdate(h.num, h.update);
   watchMeta();
@@ -847,6 +860,48 @@ awareness.on("update", ({ added, updated, removed }, origin) => {
   sendBinary(TAG_AWARENESS, encodeAwarenessUpdate(awareness, [doc.clientID]));
 });
 
+// admitAwareness applies an awareness message the relay attributed to
+// participant num, only when every client id in it is tied to that
+// participant, with each cursor labelled from the roster: a page can claim
+// any client id and any name in awareness, so neither is believed. Until a
+// roster on this connection names the sender, the message is dropped; the
+// others share their cursors again when the roster shows a newcomer.
+function admitAwareness(num, body) {
+  if (!rosterSeen) return;
+  const sender = session.roster.find((p) => p.id === "p" + num);
+  if (!sender) return;
+  const label = cursorLabel(sender);
+  applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body, (client) => (awarenessTied(sender, num, client) ? label : null)), FROM_RELAY);
+}
+
+// guestAwareness ties each guest's participant number to the one awareness
+// client id its first awareness message named. A guest's page registers no
+// client id, so this is the only tie; it holds while the guest is in the
+// roster, and a later message naming another client id is refused.
+const guestAwareness = new Map();
+
+// awarenessTied says whether participant num, the roster's sender, may speak
+// for awareness client id client: a member for a client id the roster
+// credits to their login, a guest for the client id tied to them, or, on
+// their first message, one nobody is credited with or tied to.
+function awarenessTied(sender, num, client) {
+  if (client === doc.clientID) return false;
+  if (sender.role === "member") return typeof sender.login === "string" && sender.login !== "" && creditedTo(client) === sender.login;
+  if (creditedTo(client) !== "") return false;
+  const tied = guestAwareness.get(num);
+  if (tied !== undefined) return tied === client;
+  for (const other of guestAwareness.values()) if (other === client) return false;
+  guestAwareness.set(num, client);
+  return true;
+}
+
+// cursorLabel is the name a participant's cursor carries, from the roster: a
+// member's login, or a guest's name as the relay stamped it, marked a guest.
+function cursorLabel(sender) {
+  if (sender.role === "member" && typeof sender.login === "string" && sender.login) return cleanName(sender.login);
+  return cleanName(sender.name) + " (" + WORDS.guestCursor + ")";
+}
+
 // A remote awareness update is decoded, cleaned and encoded again before it
 // is applied, so the editor never renders what another page chose for a
 // colour or a name (security review F7). The encoding is y-protocols': a
@@ -870,7 +925,10 @@ function writeVarUint(out, num) {
   }
   out.push(num);
 }
-function cleanAwarenessUpdate(bytes) {
+// cleanAwarenessUpdate is bytes cleaned, each state carrying the label
+// labelFor gives its client id; labelFor's null, for a client id the sender
+// may not speak for, drops the whole message.
+function cleanAwarenessUpdate(bytes, labelFor) {
   const at = { i: 0 };
   const out = [];
   const count = readVarUint(bytes, at);
@@ -882,7 +940,9 @@ function cleanAwarenessUpdate(bytes) {
     if (at.i + len > bytes.length) throw new Error("awareness");
     const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(at.i, at.i + len));
     at.i += len;
-    const clean = new TextEncoder().encode(JSON.stringify(cleanAwarenessState(client, JSON.parse(json))));
+    const label = labelFor(client);
+    if (label === null) throw new Error("awareness");
+    const clean = new TextEncoder().encode(JSON.stringify(cleanAwarenessState(client, JSON.parse(json), label)));
     writeVarUint(out, client);
     writeVarUint(out, clock);
     writeVarUint(out, clean.length);
@@ -892,11 +952,12 @@ function cleanAwarenessUpdate(bytes) {
 }
 // cleanAwarenessState keeps what the editor reads, a user and a cursor: the
 // colours only when each is a six-digit hex colour (otherwise the palette's,
-// or the editor's own derived light colour), and the name cleaned.
-function cleanAwarenessState(client, state) {
+// or the editor's own derived light colour), and the name the roster gives
+// the sender, whatever name the state claims.
+function cleanAwarenessState(client, state, label) {
   if (state === null || typeof state !== "object" || Array.isArray(state)) return null;
   const u = state.user !== null && typeof state.user === "object" ? state.user : {};
-  const user = { name: cleanName(u.name), color: HEX_COLOUR_RE.test(u.color) ? u.color : COLOURS[client % COLOURS.length] };
+  const user = { name: label, color: HEX_COLOUR_RE.test(u.color) ? u.color : COLOURS[client % COLOURS.length] };
   if (HEX_COLOUR_RE.test(u.colorLight)) user.colorLight = u.colorLight;
   const c = state.cursor !== null && typeof state.cursor === "object" ? state.cursor : {};
   const anchor = cleanPosition(c.anchor);
