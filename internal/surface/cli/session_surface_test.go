@@ -526,3 +526,36 @@ func TestSessionServeOnLoopbackServesTheOriginRepository(t *testing.T) {
 		t.Fatalf("start = %+v, want acme/brief", s)
 	}
 }
+
+// TestSessionBlueprintWritesTheRelayOrigin: --relay-origin adds relays.json,
+// and a malformed one is refused with nothing written.
+func TestSessionBlueprintWritesTheRelayOrigin(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapSessionRelease(t)
+	_, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1", "--relay-origin", "http://relay.example.org")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "--relay-origin") {
+		t.Fatalf("an http relay origin: %v, want exit 2", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd")); err == nil {
+		t.Fatal("a refusal wrote .abcd/")
+	}
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.14.1", "--relay-origin", "https://relay.example.org"))
+	if !strings.Contains(out, ".abcd/relay/relays.json") {
+		t.Errorf("output does not name relays.json:\n%s", out)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "relays.json"))
+	if err != nil || !strings.Contains(string(data), `"https://relay.example.org"`) {
+		t.Fatalf("relays.json: %v\n%s", err, data)
+	}
+}
+
+// TestSessionServeReadsTheAppType: serve reads the sign-in app's type from
+// its environment and refuses one it does not know.
+func TestSessionServeReadsTheAppType(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	t.Setenv("ABCD_SESSION_GITHUB_APP_TYPE", "personal-token")
+	_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "127.0.0.1:0")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_GITHUB_APP_TYPE") {
+		t.Fatalf("an unknown app type: %v, want exit 2 naming the variable", err)
+	}
+}

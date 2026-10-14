@@ -179,6 +179,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--relay-origin` | string |
 | `--release` | string |
 
 ### `abcd session page`

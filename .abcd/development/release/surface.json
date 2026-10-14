@@ -3320,6 +3320,13 @@
       "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file or no GitHub origin.",
       "flags": [
         {
+          "name": "relay-origin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "release",
           "shorthand": "",
           "type": "string",

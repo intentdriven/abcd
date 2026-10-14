@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -22,6 +24,16 @@ import (
 // ReposEnv is the environment variable `abcd session serve` reads the
 // repositories it serves from, as a comma list; the blueprint sets it.
 const ReposEnv = "ABCD_SESSION_REPOS"
+
+// AppTypeEnv is the environment variable `abcd session serve` reads the
+// sign-in app's kind from: github-app (the default) or oauth-app. The
+// blueprint sets it to github-app.
+const AppTypeEnv = "ABCD_SESSION_GITHUB_APP_TYPE"
+
+// RelaysFile is the blueprint file naming the relays this repository trusts,
+// written only when the verb is given the relay's origin. The session page
+// reads it from the repository as its trust anchor for relays.
+const RelaysFile = "relays.json"
 
 // BlueprintDir is where the blueprint is written, relative to the checkout.
 const BlueprintDir = ".abcd/relay"
@@ -66,6 +78,9 @@ type BlueprintRequest struct {
 	// Repos are the repositories the relay serves sessions for, each
 	// owner/name: the checkout's own, as the verb reads it from its origin.
 	Repos []string
+	// RelayOrigin is the deployed relay's https origin; given, relays.json
+	// names it, and absent, no relays.json is written.
+	RelayOrigin string
 }
 
 // The states a blueprint file can be left in.
@@ -106,8 +121,13 @@ func (r *BlueprintRefusal) Error() string {
 var blueprintFiles = []string{"Dockerfile", "render.yaml"}
 
 // headerRe reads a blueprint file's first line: the release it pins and the
-// digest of everything after that line, as written.
-var headerRe = regexp.MustCompile(`^# abcd session blueprint (\S+) sha256:([0-9a-f]{64})$`)
+// digest of everything after that line, as written. jsonHeaderRe is the same
+// stamp in relays.json, which holds no comment: the second line, after the
+// opening brace, a key the page ignores, over everything after it.
+var (
+	headerRe     = regexp.MustCompile(`^# abcd session blueprint (\S+) sha256:([0-9a-f]{64})$`)
+	jsonHeaderRe = regexp.MustCompile(`^  "abcd_session_blueprint": "(\S+) sha256:([0-9a-f]{64})",$`)
+)
 
 // stamp prefixes body with the header line that lets a later run tell an
 // untouched file from an edited one.
@@ -116,18 +136,55 @@ func stamp(release string, body []byte) []byte {
 	return append([]byte(fmt.Sprintf("# abcd session blueprint %s sha256:%s\n", release, hex.EncodeToString(sum[:]))), body...)
 }
 
+// stampJSON is stamp for relays.json: body is the object's members after
+// the opening brace, and the stamp is the first of them.
+func stampJSON(release string, body []byte) []byte {
+	sum := sha256.Sum256(body)
+	return append([]byte(fmt.Sprintf("{\n  \"abcd_session_blueprint\": \"%s sha256:%s\",\n", release, hex.EncodeToString(sum[:]))), body...)
+}
+
 // untouched reports whether data is a blueprint file exactly as abcd wrote it.
 func untouched(data []byte) bool {
 	line, body, ok := bytes.Cut(data, []byte("\n"))
 	if !ok {
 		return false
 	}
-	m := headerRe.FindSubmatch(line)
+	re := headerRe
+	if string(line) == "{" {
+		if line, body, ok = bytes.Cut(body, []byte("\n")); !ok {
+			return false
+		}
+		re = jsonHeaderRe
+	}
+	m := re.FindSubmatch(line)
 	if m == nil {
 		return false
 	}
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:]) == string(m[2])
+}
+
+// relayHostRe is a relay origin's host: DNS labels of letters, digits and
+// inner hyphens, with an optional port.
+var relayHostRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::[0-9]{1,5})?$`)
+
+// NormalizeRelayOrigin reads a relay's address as an exact https origin,
+// lower-cased: https://host[:port] with nothing after it but an optional
+// slash. Anything else is refused, since the page trusts the relay it names.
+func NormalizeRelayOrigin(s string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Opaque != "" ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" ||
+		!relayHostRe.MatchString(strings.ToLower(u.Host)) {
+		return "", fmt.Errorf("%q is not an https origin: give https://host[:port], with no path", s)
+	}
+	return "https://" + strings.ToLower(u.Host), nil
+}
+
+// renderRelays renders relays.json, naming origin as the one relay.
+func renderRelays(release, origin string) []byte {
+	quoted, _ := json.Marshal(origin)
+	return stampJSON(release, []byte("  \"relays\": [\n    "+string(quoted)+"\n  ]\n}\n"))
 }
 
 // RenderBlueprint renders the two files for release, pinned to digest, the
@@ -173,6 +230,10 @@ services:
         sync: false
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
         sync: false
+      # The sign-in app's kind: github-app, a GitHub App whose user tokens
+      # hold only what the app and the person may both do, or oauth-app.
+      - key: ` + AppTypeEnv + `
+        value: "github-app"
       # The repositories this relay serves sessions for, read from the
       # checkout's origin when this file was written: a comma list of
       # owner/name, or of owners for all of an owner's repositories. It is
@@ -207,6 +268,14 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 			return res, fmt.Errorf("%q is not an owner/name repository", r)
 		}
 	}
+	relayOrigin := ""
+	if req.RelayOrigin != "" {
+		o, err := NormalizeRelayOrigin(req.RelayOrigin)
+		if err != nil {
+			return res, err
+		}
+		relayOrigin = o
+	}
 	if req.Fetch == nil {
 		return res, errors.New("no way to read the release's checksums")
 	}
@@ -228,6 +297,11 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 	}
 	res.Digest = digest
 	files := RenderBlueprint(req.Release, digest, req.Repos)
+	names := append([]string(nil), blueprintFiles...)
+	if relayOrigin != "" {
+		files[RelaysFile] = renderRelays(req.Release, relayOrigin)
+		names = append(names, RelaysFile)
+	}
 
 	if !fsutil.IsRealDir(req.Root) {
 		return res, fmt.Errorf("%s is not a directory", req.Root)
@@ -245,7 +319,7 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 			return res, err
 		}
 		defer root.Close()
-		for _, name := range blueprintFiles {
+		for _, name := range names {
 			rel := BlueprintDir + "/" + name
 			have, err := fsutil.ReadGuardedInRoot(root, rel, maxBlueprintRead)
 			switch {
@@ -273,7 +347,7 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 		return res, err
 	}
 	defer root.Close()
-	for _, name := range blueprintFiles {
+	for _, name := range names {
 		rel := BlueprintDir + "/" + name
 		state := states[name]
 		if state == "" {

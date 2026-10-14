@@ -40,6 +40,18 @@ import (
 // otherwise; loopback origins are allowed too, for a page run locally.
 const DefaultOrigin = "https://abcdesign.app"
 
+// The kinds of GitHub sign-in app a team registers. A GitHub App's user
+// access token holds only the permissions both the app and the person have,
+// on the repositories the app is installed on, and its authorization takes no
+// scope: "GitHub Apps do not request scopes during authorization to decide
+// which resources the resulting token can access"
+// (https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app).
+// An OAuth app's token is scoped by the page's request instead.
+const (
+	AppTypeGitHubApp = "github-app"
+	AppTypeOAuthApp  = "oauth-app"
+)
+
 // The GitHub endpoints the relay talks to unless a test names others.
 const (
 	DefaultGitHubAPI = "https://api.github.com"
@@ -93,6 +105,8 @@ type Config struct {
 	// ClientSecret is that app's secret, read from the environment by the
 	// caller. It never leaves the relay but in the exchange with GitHub.
 	ClientSecret string
+	// AppType is the sign-in app's kind, AppTypeGitHubApp unless set.
+	AppType string
 	// GitHubAPI and GitHubWeb default to GitHub's own.
 	GitHubAPI string
 	GitHubWeb string
@@ -132,6 +146,13 @@ func New(cfg Config) (*Server, error) {
 	}
 	if !cfg.LoopbackOnly && len(cfg.Repos) == 0 && len(cfg.Owners) == 0 {
 		return nil, ErrNoRepositories
+	}
+	switch cfg.AppType {
+	case "":
+		cfg.AppType = AppTypeGitHubApp
+	case AppTypeGitHubApp, AppTypeOAuthApp:
+	default:
+		return nil, fmt.Errorf("%q is not a sign-in app type: give %s or %s", cfg.AppType, AppTypeGitHubApp, AppTypeOAuthApp)
 	}
 	origins := map[string]bool{DefaultOrigin: true}
 	for _, o := range cfg.Origins {
@@ -536,8 +557,10 @@ func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// serveConfig names the sign-in app's public client id, and whether sign-in
-// is set up at all. It never names the secret.
+// serveConfig names the sign-in app's public client id and kind, and whether
+// sign-in is set up at all. It never names the secret. The authorize URL is
+// bare: it carries no scope, which a GitHub App does not use, and the page
+// adds the request's own parameters (a scope only for an OAuth app).
 func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 	s.cors(w, r)
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -548,6 +571,7 @@ func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 		"client_id":     s.cfg.ClientID,
 		"sign_in":       s.cfg.ClientID != "" && s.cfg.ClientSecret != "",
 		"authorize_url": s.cfg.GitHubWeb + "/login/oauth/authorize",
+		"app_type":      s.cfg.AppType,
 	})
 }
 

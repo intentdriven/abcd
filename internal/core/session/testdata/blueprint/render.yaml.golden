@@ -1,4 +1,4 @@
-# abcd session blueprint v0.14.1 sha256:10b87beb6b3dbbac80ffe7da9e277f445125dd782499bc3e7fe05f71f2f88eb1
+# abcd session blueprint v0.14.1 sha256:2326fad37a733129d0782b080411eec0a3467c0759ff5d272bcc1a0253418620
 # The team's own brief session relay: one free web service built from the
 # Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
 # repository and set the Blueprint path to .abcd/relay/render.yaml. One deploy
@@ -22,6 +22,10 @@ services:
         sync: false
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
         sync: false
+      # The sign-in app's kind: github-app, a GitHub App whose user tokens
+      # hold only what the app and the person may both do, or oauth-app.
+      - key: ABCD_SESSION_GITHUB_APP_TYPE
+        value: "github-app"
       # The repositories this relay serves sessions for, read from the
       # checkout's origin when this file was written: a comma list of
       # owner/name, or of owners for all of an owner's repositories. It is

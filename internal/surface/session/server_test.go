@@ -717,3 +717,34 @@ func TestVerifyAgainstAnUnservedRepositoryIsRefused(t *testing.T) {
 		t.Fatalf("host: %v, want repo-not-served", e)
 	}
 }
+
+// TestConfigNamesTheSignInAppType: /config says whether the sign-in app is
+// a GitHub App (the default) or an OAuth app, and its authorize URL carries
+// no scope, which a GitHub App does not use; an unknown type is refused.
+func TestConfigNamesTheSignInAppType(t *testing.T) {
+	get := func(f *fixture) map[string]any {
+		resp, err := http.Get(f.http.URL + "/config")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	m := get(newFixture(t, nil))
+	if m["app_type"] != "github-app" {
+		t.Fatalf("default app_type = %v, want github-app", m["app_type"])
+	}
+	if u, _ := m["authorize_url"].(string); strings.Contains(u, "scope") || strings.Contains(u, "?") {
+		t.Fatalf("authorize_url = %q, want no scope", u)
+	}
+	if m := get(newFixture(t, func(c *Config) { c.AppType = "oauth-app" })); m["app_type"] != "oauth-app" {
+		t.Fatalf("app_type = %v, want oauth-app", m["app_type"])
+	}
+	if _, err := New(Config{LoopbackOnly: true, AppType: "token"}); err == nil {
+		t.Fatal("an unknown app type was accepted")
+	}
+}

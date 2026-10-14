@@ -1,0 +1,6 @@
+{
+  "abcd_session_blueprint": "v0.14.1 sha256:45ec4cd2970f601f4559f27d98591f8a2d8305aaf968515d698b774e6ff086c2",
+  "relays": [
+    "https://relay.example.org"
+  ]
+}

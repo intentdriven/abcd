@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"os"
@@ -238,6 +239,83 @@ func TestBlueprintRefusesWithoutARepositoryToServe(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(root, ".abcd")); err == nil {
 			t.Errorf("repos %q: a refusal wrote .abcd/", repos)
+		}
+	}
+}
+
+// TestBlueprintNamesTheAppTypeAndTheRelayOrigin: render.yaml sets the
+// sign-in app type to a GitHub App; with a relay origin, relays.json names
+// it as the repository's trusted relay, stamped like the other files, and
+// without one no relays.json is written.
+func TestBlueprintNamesTheAppTypeAndTheRelayOrigin(t *testing.T) {
+	files := RenderBlueprint("v0.14.1", testDigest, testRepos)
+	if !strings.Contains(string(files["render.yaml"]), "- key: ABCD_SESSION_GITHUB_APP_TYPE\n        value: \"github-app\"") {
+		t.Errorf("render.yaml does not set the app type:\n%s", files["render.yaml"])
+	}
+
+	root := t.TempDir()
+	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Files) != 2 {
+		t.Fatalf("without a relay origin: %+v", res.Files)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".abcd", "relay", "relays.json")); err == nil {
+		t.Fatal("relays.json was written without a relay origin")
+	}
+
+	res, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://Relay.Example.org/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Files) != 3 || res.Files[2].Path != ".abcd/relay/relays.json" || res.Files[2].State != "written" {
+		t.Fatalf("with a relay origin: %+v", res.Files)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".abcd", "relay", "relays.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "relays.json.golden", data)
+	var got struct {
+		Relays []string `json:"relays"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil || len(got.Relays) != 1 || got.Relays[0] != "https://relay.example.org" {
+		t.Fatalf("relays.json = %v %s", err, data)
+	}
+
+	// Untouched, it is replaced; edited, it is refused and nothing written.
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.2", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://other.example.org"}); err != nil {
+		t.Fatalf("replacing an untouched relays.json: %v", err)
+	}
+	path := filepath.Join(root, ".abcd", "relay", "relays.json")
+	if err := os.WriteFile(path, []byte(`{"relays": ["https://evil.example"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var ref *BlueprintRefusal
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.2", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://relay.example.org"}); !errors.As(err, &ref) {
+		t.Fatalf("an edited relays.json: %v, want a refusal", err)
+	}
+}
+
+func TestRelayOriginsAreReadStrictly(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://relay.example.org":         "https://relay.example.org",
+		"https://Relay.Example.org/":        "https://relay.example.org",
+		"https://relay.example.org:8443":    "https://relay.example.org:8443",
+		"https://abcd-session.onrender.com": "https://abcd-session.onrender.com",
+	} {
+		if got, err := NormalizeRelayOrigin(in); err != nil || got != want {
+			t.Errorf("%q = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{
+		"", "http://relay.example.org", "relay.example.org", "https://relay.example.org/path",
+		"https://user@relay.example.org", "https://relay.example.org?x=1", "https://*.example.org",
+		"https://relay.example.org#f", "https://re\"lay.example.org", "wss://relay.example.org",
+	} {
+		if _, err := NormalizeRelayOrigin(in); err == nil {
+			t.Errorf("%q accepted", in)
 		}
 	}
 }

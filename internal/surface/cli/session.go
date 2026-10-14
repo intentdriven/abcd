@@ -24,6 +24,7 @@ import (
 const (
 	sessionSecretEnv   = "ABCD_SESSION_GITHUB_CLIENT_SECRET"
 	sessionClientIDEnv = "ABCD_SESSION_GITHUB_CLIENT_ID"
+	sessionAppTypeEnv  = coresession.AppTypeEnv
 )
 
 // sessionReposEnv names the repositories the relay serves, besides --repo and
@@ -153,7 +154,8 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"the sign-in app's public client id at /config and a health check at /healthz. It\n" +
 			"admits a browser only from https://abcdesign.app or a loopback page, or, when\n" +
 			"--origin is given, from exactly the origins it names.\n" +
-			"The team's GitHub sign-in app secret is read from " + sessionSecretEnv + "\n" +
+			"The team's GitHub sign-in app secret is read from " + sessionSecretEnv + ", its\n" +
+			"kind from " + sessionAppTypeEnv + " (github-app, the default, or oauth-app)\n" +
 			"and its client id from --client-id or " + sessionClientIDEnv + "; without\n" +
 			"them, sign-in is not offered and a team member pastes a personal access token.\n\n" +
 			"Exit 2 on a refusal, with nothing started.",
@@ -173,6 +175,13 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			if clientID == "" {
 				clientID = strings.TrimSpace(os.Getenv(sessionClientIDEnv))
 			}
+			appType := strings.TrimSpace(os.Getenv(sessionAppTypeEnv))
+			if appType == "" {
+				appType = session.AppTypeGitHubApp
+			}
+			if appType != session.AppTypeGitHubApp && appType != session.AppTypeOAuthApp {
+				return &exitError{Code: 2, Msg: prefix + sessionAppTypeEnv + " is " + strconv.Quote(appType) + "; give " + session.AppTypeGitHubApp + " or " + session.AppTypeOAuthApp + " (nothing started)"}
+			}
 			secret := os.Getenv(sessionSecretEnv)
 			// On loopback alone, the relay is the host's own machine behind
 			// Tailscale Serve, and a visitor is counted by the tailnet address
@@ -185,6 +194,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				Owners:       allowOwners,
 				ClientID:     clientID,
 				ClientSecret: secret,
+				AppType:      appType,
 			})
 			secret = ""
 			_ = secret
@@ -251,7 +261,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 }
 
 func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
-	var release string
+	var release, relayOrigin string
 	c := &cobra.Command{
 		Use: "blueprint",
 		Long: "Write the team's own relay deployment into this checkout: .abcd/relay/render.yaml,\n" +
@@ -262,6 +272,9 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			"named on stderr) and pinned in the Dockerfile. The relay serves sessions for this\n" +
 			"checkout's origin repository on github.com, named in render.yaml as\n" +
 			sessionReposEnv + ", a plain value; it refuses a checkout without one.\n\n" +
+			"--relay-origin names the deployed relay's https origin, once Render has given it\n" +
+			"one; the verb then also writes .abcd/relay/relays.json, naming it as the relay\n" +
+			"this repository trusts, which the session page reads from the repository.\n\n" +
 			"--release names the release to pin; it defaults to this abcd's own version when\n" +
 			"that is a release. A file left exactly as abcd wrote it is replaced; one that was\n" +
 			"edited, or that abcd did not write, is never overwritten, and nothing is written.\n\n" +
@@ -277,6 +290,11 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			}
 			if !coresession.ValidReleaseTag(release) {
 				return &exitError{Code: 2, Msg: prefix + strconv.Quote(release) + " is not a release tag; name one as vMAJOR.MINOR.PATCH (nothing written)"}
+			}
+			if relayOrigin != "" {
+				if _, err := coresession.NormalizeRelayOrigin(relayOrigin); err != nil {
+					return &exitError{Code: 2, Msg: prefix + "--relay-origin " + err.Error() + " (nothing written)"}
+				}
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -298,7 +316,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 				return fmt.Errorf("%s%w", prefix, err)
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "%sreading release %s's checksums.txt from %s\n", prefix, termsafe.Sanitize(release), sessionReleaseOrigin)
-			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch, Repos: []string{served}})
+			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch, Repos: []string{served}, RelayOrigin: relayOrigin})
 			if err != nil {
 				var ref *coresession.BlueprintRefusal
 				if errors.As(err, &ref) || res.Digest == "" {
@@ -318,6 +336,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
+	c.Flags().StringVar(&relayOrigin, "relay-origin", "", "the deployed relay's https origin, as https://host[:port]; given, .abcd/relay/relays.json names it as the relay this repository trusts")
 	c.Flags().StringVar(&release, "release", "", "the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)")
 	return c
 }
