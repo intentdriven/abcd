@@ -595,8 +595,15 @@ narrowest reading that meets the criteria. Each is open to review.
     chunk its `bytes`.
 - **Step 3, the provider route.** The `route` member is the first chunk's
   dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
-  back to the harness, every chunk is left to the host. Answers already
-  received are not ingested.
+  back to the harness, every chunk is left to the host, and answers already
+  received are not ingested, because the report covers every chunk or none.
+  They are not lost (from review): each chunk's answer is kept under the
+  local tier as it arrives, at `<chunk receipt>.findings.json` with the
+  call's receipt beside it at `<chunk receipt>.route.json`. The fallback
+  names the kept files, which a host ingest takes as those chunks'
+  `--findings-json`, and the next provider run sends only the chunks without
+  a kept answer that validates against its request and the corpus as they
+  stand, reporting each reused chunk's route from the call that answered it.
 
 ## Open point
 

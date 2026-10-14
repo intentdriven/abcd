@@ -1236,10 +1236,15 @@ overflows):
 On a provider route, the emit states the chunk count and their bytes on
 stderr, then sends the chunks one after another and ingests them together; if
 any send falls back to the harness, every chunk is left to the host, and it
-says so on stderr. Each chunk is a request paid for on its own, so a plan of
-more than `--max-chunks` (default 8) is refused there at exit 2, with nothing
-written or sent, naming its count and bytes; run again with `--max-chunks
-<count>` to send them. A harness emit is not capped by it.
+says so on stderr. Each answer the provider returned is kept as it arrives, at
+`.abcd/.work.local/reviews/<chunk receipt>.findings.json`, and the fallback
+names those files: give them to the ingest for their chunks beside the ones
+the host runs, or run again on the provider route, which sends only the chunks
+whose kept answer is missing or no longer validates. Each chunk is a request
+paid for on its own, so a plan of more than `--max-chunks` (default 8) is
+refused there at exit 2, with nothing written or sent, naming its count and
+bytes; run again with `--max-chunks <count>` to send them. A harness emit is
+not capped by it.
 
 The ingest validates before it writes anything. It refuses, with nothing
 written: a receipt no request here was issued for, a corpus that moved since the

@@ -233,7 +233,9 @@ func TestIntentConsistencyChunksOnAKeylessProvider(t *testing.T) {
 
 // TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost: a provider
 // unreachable from chunk 2 on leaves every chunk to the host, and chunk 1's
-// answer is not ingested.
+// answer is not ingested; it is kept under the local tier, named on stderr,
+// and both a host ingest and the next provider run reuse it (S3 of the PR
+// #974 review), so no answer already paid for is asked for again.
 func TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost(t *testing.T) {
 	srcRoot := repoRootFromTest(t)
 	repo := consistencyChunkCLIRepo(t)
@@ -266,6 +268,76 @@ func TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".abcd/work/reviews")); err == nil {
 		t.Fatal("a report was written")
+	}
+
+	// Chunk 1's answer is kept, under its receipt, as the payload it was.
+	kept := ".abcd/.work.local/reviews/" + em.Chunks[0].ReceiptID + ".findings.json"
+	keptBody, err := os.ReadFile(filepath.Join(repo, kept))
+	if err != nil {
+		t.Fatalf("chunk 1's answer is not kept at %s: %v", kept, err)
+	}
+	if want := chunkFindingsJSON(t, repo, em.Chunks[0].ReceiptID, em.Chunks[0].RequestPath, em.Chunks[0].CorpusPath); string(keptBody) != string(want) {
+		t.Fatalf("the kept answer is not the provider's payload:\n%s", keptBody)
+	}
+	if !strings.Contains(stderr, kept) {
+		t.Fatalf("stderr does not name the kept answer %s:\n%s", kept, stderr)
+	}
+
+	// The next provider run sends only the chunks not yet answered.
+	q := newChatFake(t, "local-model", func(body string) string {
+		m := receiptRe.FindStringSubmatch(body)
+		rel := ".abcd/.work.local/reviews/" + m[1]
+		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
+	})
+	pointMachine(t, os.Getenv("HOME"), q.srv.URL, false, "", "intent-auditor")
+	stdout, stderr, err = runCLISplit(t, "intent", "consistency", "--json")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	var res struct {
+		Status string   `json:"status"`
+		Filed  []string `json:"filed"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil || res.Status != "ingested" {
+		t.Fatalf("resumed run = %+v, %v\n%s", res, err, stdout)
+	}
+	if int(q.calls.Load()) != len(em.Chunks)-1 {
+		t.Fatalf("the resumed run called the provider %d times for %d chunks, 1 already answered", q.calls.Load(), len(em.Chunks))
+	}
+	var routes []oracle.ReceiptRoute
+	member(t, []byte(stdout), "chunk_routes", &routes)
+	if len(routes) != len(em.Chunks) || routes[0].ProviderCall == nil {
+		t.Fatalf("chunk_routes = %+v; want every chunk's, chunk 1's from the run that answered it", routes)
+	}
+	if !strings.Contains(stderr, "1 answered on an earlier run") {
+		t.Fatalf("stderr does not say a kept answer was reused:\n%s", stderr)
+	}
+}
+
+// TestIntentConsistencyHostIngestTakesAKeptAnswer: a kept chunk answer is the
+// payload as the provider returned it, so a host ingest takes it as one of the
+// set's --findings-json files.
+func TestIntentConsistencyHostIngestTakesAKeptAnswer(t *testing.T) {
+	repo := consistencyChunkCLIRepo(t)
+	var em consistencyChunkEmitted
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "--json"), &em); err != nil {
+		t.Fatal(err)
+	}
+	kept := filepath.Join(repo, ".abcd/.work.local/reviews/"+em.Chunks[0].ReceiptID+".findings.json")
+	if err := os.WriteFile(kept, chunkFindingsJSON(t, repo, em.Chunks[0].ReceiptID, em.Chunks[0].RequestPath, em.Chunks[0].CorpusPath), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"intent", "consistency", "ingest", "--findings-json", kept}
+	dir := t.TempDir()
+	for _, ch := range em.Chunks[1:] {
+		p := filepath.Join(dir, fmt.Sprintf("chunk-%d.json", ch.Index))
+		if err := os.WriteFile(p, chunkFindingsJSON(t, repo, ch.ReceiptID, ch.RequestPath, ch.CorpusPath), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, "--findings-json", p)
+	}
+	if out := string(runCLI(t, args...)); !strings.Contains(out, "— ingested") {
+		t.Fatalf("ingest with a kept answer:\n%s", out)
 	}
 }
 

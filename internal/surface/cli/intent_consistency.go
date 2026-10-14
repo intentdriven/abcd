@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -190,11 +191,19 @@ const defaultConsistencySendChunks = 8
 // the one request of a corpus that fits, or every chunk of one that overflows,
 // one after another. It returns one dispatch per request, or nil when the host
 // runs the pass: the route is on the harness, or a send fell back to it, in
-// which case every chunk is left to the host (an answer already received is
-// not ingested, because the report covers every chunk or none) and the
-// returned route is the harness.
+// which case every chunk is left to the host and the returned route is the
+// harness.
+//
+// Each chunk's answer is kept under the local tier as it arrives
+// (intent.KeepConsistencyAnswer), and a chunk whose answer an earlier run kept
+// is not sent again, so a fallback part-way through a chunk set loses no
+// answer already paid for: the host ingest takes the kept files beside the
+// chunks it runs, and the next provider run sends only the chunks not yet
+// answered. An answer is ingested only with the whole set, because the report
+// covers every chunk or none.
 func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, repoRoot string, res intent.ConsistencyEmitResult) ([]*dispatched, *oracle.Route, error) {
 	const verb = "abcd intent consistency"
+	stderr := cmd.ErrOrStderr()
 	if res.Overflow == nil {
 		d, fell, err := rf.sendRequest(cmd, verb, route, auditAgent, repoRoot, res.RequestPath, res.CorpusPath)
 		if err != nil || d == nil {
@@ -202,20 +211,64 @@ func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, rep
 		}
 		return []*dispatched{d}, fell, nil
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "%s: sending %d chunks, %d bytes of requests and corpus files in all, one after another to %s\n",
-		verb, len(res.Chunks), res.ChunkBytes, termsafe.Sanitize(route.ConnectionUsed))
-	ds := make([]*dispatched, 0, len(res.Chunks))
-	for _, ch := range res.Chunks {
+	ds := make([]*dispatched, len(res.Chunks))
+	kept := intent.NewKeptConsistencyAnswers(repoRoot)
+	reused, sendBytes := 0, 0
+	for i, ch := range res.Chunks {
+		payload, rcpt, ok, err := kept.Get(ch.ReceiptID)
+		if ok {
+			var rr oracle.ReceiptRoute
+			if err = json.Unmarshal(rcpt, &rr); err == nil {
+				ds[i] = &dispatched{payload: payload, receipt: rr}
+				reused++
+				continue
+			}
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: the answer kept for chunk %d of %d is not reused, so the chunk is sent again: %s\n",
+				verb, ch.Index, len(res.Chunks), termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		}
+		sendBytes += ch.Bytes
+	}
+	fmt.Fprintf(stderr, "%s: sending %d chunks, %d bytes of requests and corpus files in all, one after another to %s",
+		verb, len(res.Chunks)-reused, sendBytes, termsafe.Sanitize(route.ConnectionUsed))
+	if reused > 0 {
+		fmt.Fprintf(stderr, " (%d answered on an earlier run, whose kept answers are reused)", reused)
+	}
+	fmt.Fprintln(stderr)
+	for i, ch := range res.Chunks {
+		if ds[i] != nil {
+			continue
+		}
 		d, fell, err := rf.sendRequest(cmd, verb, route, auditAgent, repoRoot, ch.RequestPath, ch.CorpusPath)
 		if err != nil {
 			return nil, fell, err
 		}
 		if d == nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "%s: chunk %d of %d was not sent, so all %d chunks are left to the host: "+
-				"run each chunk's request and ingest every chunk's findings together\n", verb, ch.Index, len(res.Chunks), len(res.Chunks))
+			var answered []string
+			for j, a := range ds {
+				if a != nil {
+					answered = append(answered, intent.ConsistencyAnswerPath(res.Chunks[j].ReceiptID))
+				}
+			}
+			fmt.Fprintf(stderr, "%s: chunk %d of %d was not sent, so all %d chunks are left to the host: "+
+				"run each chunk's request and ingest every chunk's findings together", verb, ch.Index, len(res.Chunks), len(res.Chunks))
+			if len(answered) > 0 {
+				fmt.Fprintf(stderr, "; %d chunk(s) are answered already, kept at %s: give those files to the ingest for their chunks, "+
+					"or run again to send only the chunks not yet answered", len(answered), strings.Join(answered, ", "))
+			}
+			fmt.Fprintln(stderr)
 			return nil, fell, nil
 		}
-		ds = append(ds, d)
+		rcpt, err := json.Marshal(d.receipt)
+		if err == nil {
+			_, err = intent.KeepConsistencyAnswer(repoRoot, ch.ReceiptID, d.payload, rcpt)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: warning: chunk %d of %d's answer was not kept, so a later fallback would ask for it again: %s\n",
+				verb, ch.Index, len(res.Chunks), termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		}
+		ds[i] = d
 	}
 	return ds, route, nil
 }

@@ -872,3 +872,40 @@ func TestConsistencyIngestReadsTheCorpusOncePerSet(t *testing.T) {
 			len(payloads), cache.assembles, cache.plans, cache.treeReads)
 	}
 }
+
+// TestKeptConsistencyAnswersReuseOnlyAValidAnswer: a chunk's kept answer is
+// returned only when it validates against its request and the corpus as they
+// stand; none kept is no answer and no error, and one that does not validate,
+// or whose corpus moved, is refused with the reason, so the chunk is sent again.
+func TestKeptConsistencyAnswersReuseOnlyAValidAnswer(t *testing.T) {
+	r, _ := chunkRepo(t, 5, 1000, nil)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch0, ch1 := em.Chunks[0], em.Chunks[1]
+	if _, _, ok, err := NewKeptConsistencyAnswers(root).Get(ch0.ReceiptID); ok || err != nil {
+		t.Fatalf("nothing kept: ok %t, err %v; want no answer and no error", ok, err)
+	}
+	good := chunkPayload(t, root, ch0)
+	if rel, err := KeepConsistencyAnswer(root, ch0.ReceiptID, good, []byte(`{"agent":"intent-auditor"}`)); err != nil || rel != ConsistencyAnswerPath(ch0.ReceiptID) {
+		t.Fatalf("keep = %q, %v", rel, err)
+	}
+	payload, route, ok, err := NewKeptConsistencyAnswers(root).Get(ch0.ReceiptID)
+	if !ok || err != nil || string(payload) != string(good) || string(route) != `{"agent":"intent-auditor"}` {
+		t.Fatalf("a valid kept answer: ok %t, err %v", ok, err)
+	}
+	// Chunk 0's answer kept under chunk 1's receipt answers the wrong chunk.
+	if _, err := KeepConsistencyAnswer(root, ch1.ReceiptID, good, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err := NewKeptConsistencyAnswers(root).Get(ch1.ReceiptID); ok || err == nil {
+		t.Fatalf("another chunk's answer: ok %t, err %v; want it refused", ok, err)
+	}
+	// A corpus edited since makes the kept answer judge text no longer there.
+	r.Write(cxChunkPath(1), "---\nid: itd-21\nslug: doc-1\nkind: standalone\nspec_id: spc-21\n---\n\n# Doc 1\n\n## Press Release\n\nRewritten.\n")
+	if _, _, ok, err := NewKeptConsistencyAnswers(root).Get(ch0.ReceiptID); ok || err == nil || !strings.Contains(err.Error(), "moved") {
+		t.Fatalf("after the corpus moved: ok %t, err %v; want it refused as moved", ok, err)
+	}
+}
