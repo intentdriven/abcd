@@ -348,3 +348,38 @@ func TestSessionPageWritesThePageAndRefusesAForeignDirectory(t *testing.T) {
 		t.Fatalf("no --out: %v, want exit 2", err)
 	}
 }
+
+func TestSessionPageWritesUnderABasePath(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "page")
+	var res struct {
+		BasePath string `json:"base_path"`
+	}
+	if err := json.Unmarshal(runCLI(t, "session", "page", "--out", out, "--base-path", "abcdesign", "--json"), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.BasePath != "/abcdesign/" {
+		t.Fatalf("base_path = %q, want /abcdesign/", res.BasePath)
+	}
+	html, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), `src="/abcdesign/session.js"`) {
+		t.Fatalf("index.html does not load /abcdesign/session.js:\n%s", html)
+	}
+	text := string(runCLI(t, "session", "page", "--out", out, "--base-path", "/abcdesign/"))
+	if !strings.Contains(text, "/abcdesign/<owner>/<repo>/brief/") {
+		t.Errorf("the next step does not name the page under its base path:\n%s", text)
+	}
+	if text := string(runCLI(t, "session", "page", "--out", out)); !strings.Contains(text, "opens at /<owner>/<repo>/brief/") {
+		t.Errorf("the default next step changed:\n%s", text)
+	}
+	fresh := filepath.Join(t.TempDir(), "page")
+	_, err = runCLIStdinErr(t, "", "session", "page", "--out", fresh, "--base-path", "../up")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "plain path segments") {
+		t.Fatalf("a bad --base-path: %v, want exit 2", err)
+	}
+	if _, err := os.Stat(fresh); !os.IsNotExist(err) {
+		t.Fatal("a refused --base-path created the directory")
+	}
+}

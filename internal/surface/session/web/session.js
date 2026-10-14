@@ -1878,7 +1878,16 @@ function renderAll() {
 // ---------------------------------------------------------------------------
 // Start.
 // ---------------------------------------------------------------------------
+// addSlash sends /<owner>/<repo>/brief on to /<owner>/<repo>/brief/, the
+// address the page's links and the invite are made from.
+function addSlash() {
+  if (!/\/[^/]+\/[^/]+\/brief$/.test(location.pathname)) return false;
+  location.replace(location.pathname + "/" + location.search + location.hash);
+  return true;
+}
+
 async function main() {
+  if (addSlash()) return;
   if (!build()) return;
   const frag = new URLSearchParams(location.hash.slice(1));
   session.relay = relayOrigin(frag.get("relay")) || relayOrigin(recall(KEY_RELAY));

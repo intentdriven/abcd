@@ -187,6 +187,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--base-path` | string |
 | `--out` | string |
 
 ### `abcd session serve`

@@ -96,7 +96,7 @@ service's Environment. `--json` returns `release`, `asset`, `sha256`,
 ## Page
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" session page --out <dir>
+"${CLAUDE_PLUGIN_ROOT}/abcd" session page --out <dir> [--base-path <path>]
 ```
 
 It writes the session page into `<dir>`: `index.html` and an identical
@@ -104,18 +104,22 @@ It writes the session page into `<dir>`: `index.html` and an identical
 `vendor/LICENSES.txt`, the vendored editor bundle and its licences. The files
 are embedded in the binary and read nothing from the checkout. A static host
 whose 404 fallback serves `404.html`, such as GitHub Pages, is how
-`/<owner>/<repo>/brief/` reaches the page; the page loads its own files from
-three levels up, so it also works under a base path. The page connects only to
-the relay the person names, to `api.github.com` with the person's own token,
-and to `github.com` for sign-in. The directory is the one the user names;
+`/<owner>/<repo>/brief/` reaches the page. The page loads its own files from
+the site's root, or from under `--base-path` when the site is served below one
+(a project's GitHub Pages address, `owner.github.io/<repo>/`), so it then opens
+at `<base-path>/<owner>/<repo>/brief/`; the base path is plain path segments,
+and an address without the trailing slash is sent on to it. The page connects
+only to the relay the person names, to `api.github.com` with the person's own
+token, and to `github.com` for sign-in. The directory is the one the user names;
 never publish or deploy it for them.
 
 It writes those six files and nothing else, and removes nothing. `<dir>` may be
 absent, empty, or a directory an earlier run wrote, whose files are replaced.
-It refuses (exit 2, nothing written) a missing `--out`, a symlink or a file,
-and a directory holding anything else or holding the page's names without the
-`index.html` it wrote. Relay the files it wrote and the next step it prints.
-`--json` returns `out`, `files`, `bytes` and `replaced`.
+It refuses (exit 2, nothing written) a missing `--out`, a `--base-path` that is
+not plain path segments, a symlink or a file, and a directory holding anything
+else or holding the page's names without the `index.html` it wrote. Relay the
+files it wrote and the next step it prints.
+`--json` returns `out`, `files`, `bytes`, `base_path` and `replaced`.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

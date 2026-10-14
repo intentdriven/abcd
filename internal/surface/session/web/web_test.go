@@ -48,7 +48,7 @@ func listTree(t *testing.T, dir string) []string {
 
 func TestPageWritesExactlyItsFilesAsEmbedded(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "page")
-	res, err := Write(out)
+	res, err := Write(out, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestPageWritesExactlyItsFilesAsEmbedded(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 	var total int64
-	for _, f := range Files() {
+	for _, f := range Files("/") {
 		got, err := os.ReadFile(filepath.Join(out, filepath.FromSlash(f.Path)))
 		if err != nil {
 			t.Fatal(err)
@@ -88,7 +88,7 @@ func TestPageWritesExactlyItsFilesAsEmbedded(t *testing.T) {
 	}
 
 	// A second run replaces its own copy, and still writes nothing else.
-	res, err = Write(out)
+	res, err = Write(out, "")
 	if err != nil || !res.Replaced {
 		t.Fatalf("rewrite: %+v, %v", res, err)
 	}
@@ -99,7 +99,7 @@ func TestPageWritesExactlyItsFilesAsEmbedded(t *testing.T) {
 
 func Test404IsTheIndex(t *testing.T) {
 	byPath := map[string][]byte{}
-	for _, f := range Files() {
+	for _, f := range Files("/") {
 		byPath[f.Path] = f.Data
 	}
 	if !bytes.Equal(byPath["404.html"], byPath["index.html"]) || len(byPath["index.html"]) == 0 {
@@ -111,7 +111,7 @@ func Test404IsTheIndex(t *testing.T) {
 func refused(t *testing.T, out string) {
 	t.Helper()
 	before := listTree(t, out)
-	_, err := Write(out)
+	_, err := Write(out, "")
 	var ref *Refusal
 	if !errors.As(err, &ref) {
 		t.Fatalf("Write(%s) = %v, want a refusal", out, err)
@@ -131,7 +131,7 @@ func TestPageRefusesADirectoryItDidNotWrite(t *testing.T) {
 	})
 	t.Run("a foreign file beside an earlier copy", func(t *testing.T) {
 		out := t.TempDir()
-		if _, err := Write(out); err != nil {
+		if _, err := Write(out, ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(out, "vendor", "extra.js"), []byte("x"), 0o644); err != nil {
@@ -155,7 +155,7 @@ func TestPageRefusesADirectoryItDidNotWrite(t *testing.T) {
 	})
 	t.Run("a symlink inside", func(t *testing.T) {
 		out := t.TempDir()
-		if _, err := Write(out); err != nil {
+		if _, err := Write(out, ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.RemoveAll(filepath.Join(out, "vendor")); err != nil {
@@ -172,19 +172,19 @@ func TestPageRefusesADirectoryItDidNotWrite(t *testing.T) {
 		if err := os.Symlink(t.TempDir(), link); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Write(link); !errors.As(err, new(*Refusal)) {
+		if _, err := Write(link, ""); !errors.As(err, new(*Refusal)) {
 			t.Fatalf("symlink --out: %v", err)
 		}
 		file := filepath.Join(dir, "file")
 		if err := os.WriteFile(file, nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Write(file); !errors.As(err, new(*Refusal)) {
+		if _, err := Write(file, ""); !errors.As(err, new(*Refusal)) {
 			t.Fatalf("file --out: %v", err)
 		}
 	})
 	t.Run("no --out", func(t *testing.T) {
-		if _, err := Write(""); !errors.As(err, new(*Refusal)) {
+		if _, err := Write("", ""); !errors.As(err, new(*Refusal)) {
 			t.Fatalf("empty --out: %v", err)
 		}
 	})
@@ -284,17 +284,18 @@ func TestPageHTMLLoadsOnlyItsOwnFiles(t *testing.T) {
 		`<meta http-equiv="Content-Security-Policy" content="` + cspWant + `">`,
 		`<meta name="referrer" content="no-referrer">`,
 		Generator,
-		`<script type="module" src="../../../session.js"></script>`,
-		`<link rel="stylesheet" href="../../../session.css">`,
+		`<script type="module" src="/session.js"></script>`,
+		`<link rel="stylesheet" href="/session.css">`,
 	} {
 		if strings.Count(s, want) != 1 {
 			t.Errorf("index.html does not carry %s exactly once", want)
 		}
 	}
-	// Every src and href: the page's own files, named relative to the
-	// /<owner>/<repo>/brief/ depth so a base path works, or an empty icon.
+	// Every src and href: the page's own files, named from the site's root
+	// so /<owner>/<repo>/brief loads them with or without its trailing
+	// slash, or an empty icon.
 	allowed := map[string]bool{
-		"../../../session.js": true, "../../../session.css": true, "../../../vendor/collab.js": true, "data:,": true,
+		"/session.js": true, "/session.css": true, "/vendor/collab.js": true, "data:,": true,
 	}
 	refs := regexp.MustCompile(`(?i)\b(?:src|href)\s*=\s*"([^"]*)"`).FindAllStringSubmatch(s, -1)
 	if len(refs) != 4 {
@@ -577,5 +578,89 @@ func TestPageRejoinsWithItsTokenBeforeTheCode(t *testing.T) {
 	}
 	if !strings.Contains(functionBody(t, js, "endSession"), "forgetRejoin()") {
 		t.Error("an ended session's rejoin token is kept")
+	}
+}
+
+func TestPageRedirectsTheBriefPathToItsSlash(t *testing.T) {
+	js := pageScript(t)
+	fn := functionBody(t, js, "addSlash")
+	for _, want := range []string{`/\/[^/]+\/[^/]+\/brief$/.test(location.pathname)`, `location.replace(location.pathname + "/" + location.search + location.hash)`} {
+		if !strings.Contains(fn, want) {
+			t.Errorf("addSlash does not carry %q:\n%s", want, fn)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "main"), "if (addSlash()) return;") {
+		t.Error("main does not redirect /<owner>/<repo>/brief to its slash first")
+	}
+}
+
+func TestPageUnderABasePath(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"", "/"}, {"/", "/"}, {"abcdesign", "/abcdesign/"}, {"/abcdesign", "/abcdesign/"},
+		{"abcdesign/", "/abcdesign/"}, {"/a/b.c_d~e-f/", "/a/b.c_d~e-f/"},
+	} {
+		if got, err := NormaliseBasePath(c.in); err != nil || got != c.want {
+			t.Errorf("NormaliseBasePath(%q) = %q, %v; want %q", c.in, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"..", "/a/../b", "a//b", "a b", "https://x.example", "a?b", "a#b", "a%20b", `a"b`, "a<b", "./a", "//"} {
+		if got, err := NormaliseBasePath(bad); err == nil {
+			t.Errorf("NormaliseBasePath(%q) = %q, want a refusal", bad, got)
+		}
+	}
+
+	byPath := func(files []File) map[string]string {
+		m := map[string]string{}
+		for _, f := range files {
+			m[f.Path] = string(f.Data)
+		}
+		return m
+	}
+	root := byPath(Files("/"))
+	pref := byPath(Files("/abcdesign/"))
+	// The default output names the assets from the root; the prefixed one
+	// from under the base path, and nothing else changes.
+	for _, want := range []string{`src="/session.js"`, `href="/session.css"`, `href="/vendor/collab.js"`} {
+		if !strings.Contains(root["index.html"], want) {
+			t.Errorf("the default index.html does not carry %s", want)
+		}
+		pw := strings.Replace(want, `"/`, `"/abcdesign/`, 1)
+		if !strings.Contains(pref["index.html"], pw) {
+			t.Errorf("the prefixed index.html does not carry %s", pw)
+		}
+	}
+	if strings.Contains(pref["index.html"], `="/session`) || strings.Contains(pref["index.html"], `="/vendor`) {
+		t.Error("the prefixed index.html still names an asset from the root")
+	}
+	if pref["404.html"] != pref["index.html"] {
+		t.Error("the prefixed 404.html is not its index.html")
+	}
+	if strings.Replace(strings.Replace(strings.Replace(pref["index.html"], "/abcdesign/session.js", "/session.js", 1), "/abcdesign/session.css", "/session.css", 1), "/abcdesign/vendor/collab.js", "/vendor/collab.js", 1) != root["index.html"] {
+		t.Error("the prefixed index.html differs from the default beyond its asset paths")
+	}
+	for path, data := range root {
+		if path != "index.html" && path != "404.html" && pref[path] != data {
+			t.Errorf("%s differs under a base path", path)
+		}
+	}
+
+	out := filepath.Join(t.TempDir(), "page")
+	if _, err := Write(out, "abcdesign"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil || string(got) != pref["index.html"] {
+		t.Fatalf("Write under a base path wrote %q, %v", got, err)
+	}
+	// An earlier copy written under another base path is still the page's own.
+	if res, err := Write(out, ""); err != nil || !res.Replaced {
+		t.Fatalf("rewrite at the root: %+v, %v", res, err)
+	}
+	fresh := filepath.Join(t.TempDir(), "page")
+	if _, err := Write(fresh, "../up"); !errors.As(err, new(*Refusal)) {
+		t.Fatalf("Write with a bad base path = %v, want a refusal", err)
+	}
+	if _, err := os.Stat(fresh); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("a refused base path still created the directory")
 	}
 }

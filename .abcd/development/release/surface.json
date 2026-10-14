@@ -3334,6 +3334,13 @@
       "sentence": "Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.",
       "flags": [
         {
+          "name": "base-path",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "out",
           "shorthand": "",
           "type": "string",

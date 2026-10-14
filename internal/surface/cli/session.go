@@ -224,7 +224,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 }
 
 func newSessionPageCommand(asJSON *bool) *cobra.Command {
-	var out string
+	var out, basePath string
 	c := &cobra.Command{
 		Use: "page",
 		Long: "Write the brief session's page into --out: index.html and an identical 404.html,\n" +
@@ -234,6 +234,10 @@ func newSessionPageCommand(asJSON *bool) *cobra.Command {
 			"/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the\n" +
 			"person names, to api.github.com with their own token, and to github.com for\n" +
 			"sign-in. It reads nothing from this checkout.\n\n" +
+			"--base-path names the path the site is served under, such as a project's\n" +
+			"GitHub Pages address owner.github.io/<repo>/: the page then loads its files from\n" +
+			"under it and opens at <base-path>/<owner>/<repo>/brief/. It is plain path\n" +
+			"segments, and the root by default.\n\n" +
 			"It writes those six files and nothing else, and removes nothing. --out may be\n" +
 			"absent, empty, or a directory an earlier run wrote, whose files are replaced; a\n" +
 			"directory holding anything else, a symlink or a file is refused.\n\n" +
@@ -241,7 +245,7 @@ func newSessionPageCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd session page: "
-			res, err := web.Write(out)
+			res, err := web.Write(out, basePath)
 			if err != nil {
 				var ref *web.Refusal
 				if errors.As(err, &ref) {
@@ -258,10 +262,11 @@ func newSessionPageCommand(asJSON *bool) *cobra.Command {
 				for _, f := range res.Files {
 					fmt.Fprintf(w, "  %s\n", f)
 				}
-				fmt.Fprintln(w, "  next: serve the directory from a static host; the page opens at /<owner>/<repo>/brief/")
+				fmt.Fprintf(w, "  next: serve the directory from a static host; the page opens at %s<owner>/<repo>/brief/\n", res.BasePath)
 			})
 		},
 	}
 	c.Flags().StringVar(&out, "out", "", "the directory to write the page into: absent, empty, or one an earlier run wrote")
+	c.Flags().StringVar(&basePath, "base-path", "/", "the path the site is served under, as plain path segments")
 	return c
 }

@@ -111,6 +111,10 @@ on a static host of your choice.
    and stylesheet, and the editor bundle under `vendor/`. It refuses a
    directory that holds anything else.
 
+   If the site is served below a path rather than at the root of its domain,
+   such as a project's GitHub Pages address `owner.github.io/<repo>/`, name
+   that path with `--base-path <repo>`, and the page opens below it.
+
 2. Publish that directory on any static host, such as GitHub Pages. The host
    must answer an unknown path with `404.html`: that is how
    `/<owner>/<repo>/brief/` reaches the page.

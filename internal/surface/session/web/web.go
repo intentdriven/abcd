@@ -8,8 +8,10 @@
 // The HTML is written twice, as index.html and as 404.html, byte for byte the
 // same: a static host such as GitHub Pages serves 404.html for a path it has
 // no file for, which is how /<owner>/<repo>/brief/ reaches the page. Every
-// asset the HTML loads is named relative to that depth (../../../), so the
-// page works under a base path too.
+// asset the HTML loads is named from the site's root (/session.js), or from
+// under the base path the page is written for (/abcdesign/session.js), so
+// /<owner>/<repo>/brief loads them with or without its trailing slash; the
+// page then adds the slash.
 package web
 
 import (
@@ -20,7 +22,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -48,8 +52,14 @@ var sources = []struct{ path, asset string }{
 	{"vendor/LICENSES.txt", "vendor/LICENSES.txt"},
 }
 
-// Files is every file the page is made of, in the order they are written.
-func Files() []File {
+// rooted is every root-absolute asset reference the embedded HTML makes,
+// each of which a base path moves.
+var rooted = []string{`src="/session.js"`, `href="/session.css"`, `href="/vendor/collab.js"`}
+
+// Files is every file the page is made of, in the order they are written,
+// for a site served under base, a path NormaliseBasePath returned ("/" is the
+// root, whose files are the embedded assets byte for byte).
+func Files(base string) []File {
 	out := make([]File, 0, len(sources))
 	for _, s := range sources {
 		data, err := assets.ReadFile(s.asset)
@@ -58,9 +68,42 @@ func Files() []File {
 			// build that cannot happen.
 			panic(err)
 		}
+		if s.asset == "index.html" && base != "/" {
+			for _, ref := range rooted {
+				// Each reference is in the embedded HTML once; the tests pin
+				// it, so a miss is a build that cannot happen.
+				if bytes.Count(data, []byte(ref)) != 1 {
+					panic("index.html does not carry " + ref + " once")
+				}
+				data = bytes.Replace(data, []byte(ref), []byte(strings.Replace(ref, `"/`, `"`+base, 1)), 1)
+			}
+		}
 		out = append(out, File{Path: s.path, Data: data})
 	}
 	return out
+}
+
+// segmentRe is one plain path segment: the URL's unreserved characters, so a
+// base path is never escaped, never interpreted and never leaves an attribute.
+var segmentRe = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+
+// NormaliseBasePath is the base path s names, with one leading and one
+// trailing slash: "" and "/" are the root, "abcdesign" is "/abcdesign/". It
+// refuses anything but plain path segments: no scheme or host, no empty, "."
+// or ".." segment, and no character a URL would have to escape. Its twin is
+// the site builder's NormaliseBasePath (internal/core/site/basepath.go, on
+// the hosted-sites branch); the two take and refuse the same paths.
+func NormaliseBasePath(s string) (string, error) {
+	if s == "" || s == "/" {
+		return "/", nil
+	}
+	trimmed := strings.TrimSuffix(strings.TrimPrefix(s, "/"), "/")
+	for _, seg := range strings.Split(trimmed, "/") {
+		if seg == "." || seg == ".." || !segmentRe.MatchString(seg) {
+			return "", &Refusal{Reason: fmt.Sprintf("the base path %q is not plain path segments (letters, digits and . _ ~ -, separated by single slashes)", s)}
+		}
+	}
+	return "/" + trimmed + "/", nil
 }
 
 // Result is what Write did.
@@ -68,6 +111,8 @@ type Result struct {
 	Out   string   `json:"out"`
 	Files []string `json:"files"`
 	Bytes int64    `json:"bytes"`
+	// BasePath is the path the site is served under, "/" at the root.
+	BasePath string `json:"base_path"`
 	// Replaced is true when the directory held an earlier copy of the page.
 	Replaced bool `json:"replaced"`
 }
@@ -77,13 +122,18 @@ type Refusal struct{ Reason string }
 
 func (r *Refusal) Error() string { return r.Reason }
 
-// Write writes the page's files into out and nothing else. out may be absent
-// or empty; a directory holding anything but the page's own files, or holding
-// them without the page's own index.html, is refused untouched. Nothing is
-// ever removed: an earlier copy of the page is overwritten file by file.
-func Write(out string) (Result, error) {
+// Write writes the page's files, for a site served under basePath, into out
+// and nothing else. out may be absent or empty; a directory holding anything
+// but the page's own files, or holding them without the page's own
+// index.html, is refused untouched. Nothing is ever removed: an earlier copy
+// of the page is overwritten file by file.
+func Write(out, basePath string) (Result, error) {
 	if out == "" {
 		return Result{}, &Refusal{Reason: "name the directory to write the page into with --out"}
+	}
+	base, err := NormaliseBasePath(basePath)
+	if err != nil {
+		return Result{}, err
 	}
 	abs, err := filepath.Abs(out)
 	if err != nil {
@@ -109,8 +159,8 @@ func Write(out string) (Result, error) {
 	if _, err := inspectRoot(root, abs); err != nil {
 		return Result{}, err
 	}
-	res := Result{Out: abs, Replaced: replaced}
-	for _, f := range Files() {
+	res := Result{Out: abs, BasePath: base, Replaced: replaced}
+	for _, f := range Files(base) {
 		if err := fsutil.WriteFileAtomicInRoot(root, f.Path, f.Data, 0o644); err != nil {
 			return res, err
 		}

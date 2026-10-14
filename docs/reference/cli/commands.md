@@ -3767,6 +3767,11 @@ from any static host, such as GitHub Pages, whose 404.html fallback is how
 person names, to api.github.com with their own token, and to github.com for
 sign-in. It reads nothing from this checkout.
 
+--base-path names the path the site is served under, such as a project's
+GitHub Pages address owner.github.io/<repo>/: the page then loads its files from
+under it and opens at <base-path>/<owner>/<repo>/brief/. It is plain path
+segments, and the root by default.
+
 It writes those six files and nothing else, and removes nothing. --out may be
 absent, empty, or a directory an earlier run wrote, whose files are replaced; a
 directory holding anything else, a symlink or a file is refused.
@@ -3776,7 +3781,8 @@ Exit 2 on a refusal, with nothing written.
 **Flags:**
 
 ```
-      --out string   the directory to write the page into: absent, empty, or one an earlier run wrote
+      --base-path string   the path the site is served under, as plain path segments (default "/")
+      --out string         the directory to write the page into: absent, empty, or one an earlier run wrote
 ```
 
 #### `abcd session serve`
