@@ -37,3 +37,33 @@ func TestASyncBriefMasksTheTextGitAndTheStateHandIt(t *testing.T) {
 		t.Errorf("each path is listed on its own line, masked:\n%s", brief)
 	}
 }
+
+// TestASyncBriefMasksTheDefaultBranchAndTheCheckoutRoot: the default branch
+// is the remote's (refs/remotes/origin/HEAD, whose name git's ref grammar
+// lets carry a bidi rune, a tag letter or a C1 control) and the checkout root
+// is the machine's; both reach the fresh implementer's brief masked.
+func TestASyncBriefMasksTheDefaultBranchAndTheCheckoutRoot(t *testing.T) {
+	const runes = "‮\U000E0041\u009b"
+	root := filepath.Join(t.TempDir(), "co"+runes)
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const runID = "run-2610140000000002"
+	c := Context{RepoRoot: root, State: State{RunID: runID}}
+	lane := Lane{ID: "lane-1", Branch: "build/" + runID + "-lane-1", Worktree: "/wt", Brief: runRel(runID) + "/lane-1/brief.md"}
+	s := Sync{Siblings: []string{"lane-2"}, Merged: strings.Repeat("b", 40), Paths: []string{"a.md"}}
+	if err := writeSyncBrief(c, lane, 1, "main"+runes, &s); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(s.Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	brief := string(b)
+	if strings.ContainsAny(brief, runes) {
+		t.Errorf("a raw rune from the default branch or the checkout root reaches the brief:\n%s", brief)
+	}
+	if !strings.Contains(brief, "landed on main??? since") || !strings.Contains(brief, "co???") {
+		t.Errorf("the default branch and the root are kept, masked:\n%s", brief)
+	}
+}
