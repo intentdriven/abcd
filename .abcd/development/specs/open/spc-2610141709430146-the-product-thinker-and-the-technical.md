@@ -88,6 +88,7 @@ The hosting of abcdesign.app is recorded in the plan but not made in this change
 3. The page: `abcd session page --out` emits the static page and the vendored, provenance-pinned editor bundle; joining by QR or code, live editing, presence, guest suggestions and approvals, and credit
    - packages: internal/surface/session/web, internal/surface/cli
    - tests: internal/surface/session
+   - landed: f835b6f38
 4. Back to GitHub: issue links under the measured length limit, and one pull request with co-author, Suggested-by and Approved-by lines
    - packages: internal/surface/session/web
    - tests: internal/surface/session
