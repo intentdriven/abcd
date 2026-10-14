@@ -46,3 +46,19 @@ func TestGuardHookLeavesForgeTextAloneWhereTheRepositoryDidNotOptIn(t *testing.T
 		t.Errorf("exit %d stdout %q stderr %q, want a silent allow in a repository that did not opt in", code, stdout, stderr)
 	}
 }
+
+// TestGuardHookRefusesForgeTextInThisRepository: abcd's own repository opts
+// in (.abcd/config.json), so a session here that hands the forge a tool footer
+// is refused before the command runs.
+func TestGuardHookRefusesForgeTextInThisRepository(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", forgeHookCommand(), root), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.Contains(reason, "forge-text-outbound") {
+		t.Errorf("reason = %q, want the forge-text block", reason)
+	}
+}
