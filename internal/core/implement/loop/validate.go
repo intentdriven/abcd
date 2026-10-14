@@ -1172,6 +1172,10 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 	return res, nil
 }
 
+// linkAside hard-links a kept-aside answer's temporary file to its name; a
+// variable so a test can stand in for a filesystem with no hard links.
+var linkAside = func(root *os.Root, oldname, newname string) error { return root.Link(oldname, newname) }
+
 // maxAsides bounds the answers kept aside beside one review's return.
 const maxAsides = 99
 
@@ -1215,20 +1219,64 @@ func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, 
 		return "", fmt.Errorf("writing %s: %w", tmp, werr)
 	}
 	for n := 1; n <= maxAsides; n++ {
-		aside := dir + "/" + rr.Name + "-return.md"
-		if n > 1 {
-			aside = fmt.Sprintf("%s/%s-return-%d.md", dir, rr.Name, n)
+		aside := asideName(dir, rr.Name, n)
+		err := linkAside(root, tmp, aside)
+		if errors.Is(err, fs.ErrExist) {
+			continue
 		}
-		err := root.Link(tmp, aside)
+		if err != nil {
+			// No hard link can be made here (FAT, exFAT, some network and
+			// FUSE mounts): the answer is written to its name directly, so it
+			// is kept aside rather than dropped, at the cost of a name that
+			// could hold part of it if the process died mid-write.
+			return createAside(root, dir, rr.Name, ret, n)
+		}
+		return aside, nil
+	}
+	return "", tooManyAsides(aw.Receipt)
+}
+
+// asideName is the nth name an answer kept aside beside a review's return in
+// dir takes.
+func asideName(dir, route string, n int) string {
+	if n > 1 {
+		return fmt.Sprintf("%s/%s-return-%d.md", dir, route, n)
+	}
+	return dir + "/" + route + "-return.md"
+}
+
+// createAside is keepAside where no hard link can be made: the answer is
+// created exclusively at the first free name from the nth on and written
+// there, so it still never replaces an answer kept aside.
+func createAside(root *os.Root, dir, route, ret string, from int) (string, error) {
+	for n := from; n <= maxAsides; n++ {
+		aside := asideName(dir, route, n)
+		f, err := root.OpenFile(aside, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
 		if errors.Is(err, fs.ErrExist) {
 			continue
 		}
 		if err != nil {
 			return "", fmt.Errorf("writing %s: %w", aside, err)
 		}
+		_, werr := f.WriteString(ret)
+		if werr == nil {
+			werr = f.Sync()
+		}
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			_ = root.Remove(aside)
+			return "", fmt.Errorf("writing %s: %w", aside, werr)
+		}
 		return aside, nil
 	}
-	return "", fmt.Errorf("%d answers are already kept aside beside %s; move them off before the route answers again", maxAsides, aw.Receipt)
+	return "", tooManyAsides(dir + "/")
+}
+
+// tooManyAsides refuses an answer when maxAsides are kept aside already.
+func tooManyAsides(beside string) error {
+	return fmt.Errorf("%d answers are already kept aside beside %s; move them off before the route answers again", maxAsides, beside)
 }
 
 // lockRetries bounds the retries of a write the route's result needs when

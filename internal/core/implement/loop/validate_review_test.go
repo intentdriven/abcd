@@ -1147,3 +1147,33 @@ func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
 		})
 	}
 }
+
+// TestAnAnswerIsKeptAsideWhereNoHardLinkCanBeMade: on a filesystem with no
+// hard links (FAT, exFAT, some network and FUSE mounts) the answer is still
+// kept aside, written to its numbered name directly, never dropped.
+func TestAnAnswerIsKeptAsideWhereNoHardLinkCanBeMade(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))
+	prevLink, prevPlace := linkAside, placeRouteReturn
+	linkAside = func(*os.Root, string, string) error {
+		return &os.LinkError{Op: "link", Err: errors.New("operation not supported")}
+	}
+	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	t.Cleanup(func() { linkAside, placeRouteReturn = prevLink, prevPlace })
+	for i, want := range []string{dir + "/rp-return.md", dir + "/rp-return-2.md"} {
+		_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+		if r, ok := AsRefusal(err); !ok || !r.Contention || !strings.Contains(r.Remedy, want+" ") {
+			t.Fatalf("step %d keeps its answer aside at %s with no hard link: %v", i+1, want, err)
+		}
+		if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(want))); err != nil || string(b) != reviewerReturn("SHIP") {
+			t.Fatalf("step %d's answer stands at %s: %q %v", i+1, want, b, err)
+		}
+	}
+	if tmps, _ := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(dir), ".rp-return-*.tmp")); len(tmps) != 0 {
+		t.Fatalf("no temporary file is left: %v", tmps)
+	}
+}

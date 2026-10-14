@@ -121,7 +121,9 @@ choice, recorded for review; none changes a criterion.
   on), and what the step reports names the file it wrote. It is written whole
   to a temporary file beside it and then linked to its name, so a name the
   step reports never holds part of an answer, even when the process dies
-  mid-write (refined on review 2026-10-14). The loop places the answer and records it on the review's await in
+  mid-write; on a filesystem with no hard links (FAT, exFAT, some network and
+  FUSE mounts) it is created and written at its name directly instead, so it
+  is still kept aside rather than dropped (refined on review 2026-10-14). The loop places the answer and records it on the review's await in
   the run's state, in one write under the run's lock: the route and the
   answer's SHA-256 (`answered`, state schema version 11). A return the step's
   own receipt could not verify, because another invocation held the run's
