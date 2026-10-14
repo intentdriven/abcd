@@ -12,6 +12,12 @@
 // for the idle limit (adr-2610032150581128, as amended 2026-10-14: no project
 // content at rest).
 //
+// Each participant is given a rejoin token when they host or join: a dropped
+// connection comes back as the same participant by presenting it, without the
+// join code, so a code the host has since rotated does not shut them out. The
+// relay keeps only the token's SHA-256 digest, and the token dies with its
+// session.
+//
 // The edit updates and awareness messages are Yjs's, carried as opaque bytes
 // behind a one-byte tag; the relay never parses them, nor the brief they
 // carry. A GitHub token presented to verify is handed to the Verifier and not
@@ -21,7 +27,11 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -100,6 +110,11 @@ type Limits struct {
 	// HostWindow.
 	MaxHostsPerAddr int
 	HostWindow      time.Duration
+	// MaxRejoinTokens caps the rejoin tokens one session keeps; past it, the
+	// token of the participant who left longest ago is forgotten first. It is
+	// never below MaxParticipants, so a connected participant's token is never
+	// the one forgotten.
+	MaxRejoinTokens int
 }
 
 // DefaultLimits are the relay's limits unless a caller sets others. Sixteen
@@ -125,6 +140,7 @@ func DefaultLimits() Limits {
 		SuggestBurst:       5,
 		MaxHostsPerAddr:    3,
 		HostWindow:         10 * time.Minute,
+		MaxRejoinTokens:    128,
 	}
 }
 
@@ -145,6 +161,7 @@ type Stats struct {
 	Participants int
 	LogBytes     int
 	Credits      int
+	RejoinTokens int
 }
 
 // The two roles.
@@ -162,6 +179,7 @@ type Relay struct {
 	now      func() time.Time
 	rand     io.Reader
 	rooms    map[string]*room // by join code
+	seats    map[string]*seat // by the digest of their rejoin token
 	failed   *addrWindow
 	hosted   *addrWindow
 	nextConn int
@@ -189,6 +207,10 @@ func New(o Options) *Relay {
 	fill(&l.SuggestPerSecond, d.SuggestPerSecond)
 	fill(&l.SuggestBurst, d.SuggestBurst)
 	fill(&l.MaxHostsPerAddr, d.MaxHostsPerAddr)
+	fill(&l.MaxRejoinTokens, d.MaxRejoinTokens)
+	if l.MaxRejoinTokens < l.MaxParticipants {
+		l.MaxRejoinTokens = l.MaxParticipants
+	}
 	if l.IdleAfter <= 0 {
 		l.IdleAfter = d.IdleAfter
 	}
@@ -198,7 +220,7 @@ func New(o Options) *Relay {
 	if l.HostWindow <= 0 {
 		l.HostWindow = d.HostWindow
 	}
-	r := &Relay{limits: l, verifier: o.Verifier, now: o.Now, rand: o.Rand, rooms: map[string]*room{}}
+	r := &Relay{limits: l, verifier: o.Verifier, now: o.Now, rand: o.Rand, rooms: map[string]*room{}, seats: map[string]*seat{}}
 	if r.now == nil {
 		r.now = time.Now
 	}
@@ -225,6 +247,39 @@ type room struct {
 	credits    map[uint32]string // Yjs client id -> member login
 	emptySince time.Time
 	suggests   int
+	seats      []*seat // every rejoin token issued, oldest first
+}
+
+// seat is one participant as a rejoin token restores them: who they were when
+// their connection last held it. The token itself is not kept, only its
+// digest.
+type seat struct {
+	key      string
+	room     *room
+	conn     *Conn // the connection holding it now, if any
+	id       string
+	role     string
+	name     string
+	login    string
+	memberOf string
+}
+
+// save records c's participant on its seat.
+func (s *seat) save(c *Conn) {
+	s.id, s.role, s.name, s.login, s.memberOf = c.id, c.role, c.name, c.login, c.memberOf
+}
+
+// rejoinBytes is a rejoin token's length before encoding: 128 random bits.
+const rejoinBytes = 16
+
+// maxRejoinInput caps what a presented rejoin token may be before it is
+// hashed: a token is 22 characters.
+const maxRejoinInput = 64
+
+// rejoinKey is the digest a token is filed under.
+func rejoinKey(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // Conn is one connection's state. Its methods are called by one goroutine per
@@ -241,6 +296,7 @@ type Conn struct {
 	memberOf string // the repository key the verified login may push to
 	verifies int
 	left     bool
+	seat     *seat // the participant a rejoin token restores
 	// awareness and suggests are the connection's token buckets.
 	awareness bucket
 	suggests  bucket
@@ -304,6 +360,8 @@ func (c *Conn) Receive(ctx context.Context, f Frame) {
 		c.host(m.Repo)
 	case "join":
 		c.join(m.Code, m.Name)
+	case "rejoin":
+		c.rejoin(m.Token)
 	case "suggest":
 		c.suggest(m.Body)
 	case "register":
@@ -333,6 +391,10 @@ func (c *Conn) leave() {
 	c.left = true
 	rm := c.room
 	c.room = nil
+	if s := c.seat; s != nil && s.conn == c {
+		s.save(c)
+		s.conn = nil
+	}
 	if rm == nil {
 		return
 	}
@@ -533,12 +595,18 @@ func (c *Conn) host(repo string) {
 		c.fail("busy", "no join code could be drawn")
 		return
 	}
+	token, err := r.newRejoinToken()
+	if err != nil {
+		c.fail("busy", "no rejoin token could be drawn")
+		return
+	}
 	r.hosted.note(c.addr, r.now())
 	rm := &room{repo: repo, repoKey: strings.ToLower(repo), code: code, hostLogin: c.login, credits: map[uint32]string{}}
 	r.rooms[code] = rm
 	c.room, c.role, c.name = rm, roleMember, c.login
 	rm.conns = append(rm.conns, c)
-	c.sendJSON(map[string]any{"type": "hosted", "id": c.id, "code": code, "repo": repo})
+	r.giveSeat(c, token)
+	c.sendJSON(map[string]any{"type": "hosted", "id": c.id, "code": code, "repo": repo, "rejoin": token})
 	c.sendJSON(map[string]string{"type": "synced"})
 	r.broadcastRoster(rm)
 }
@@ -570,6 +638,11 @@ func (c *Conn) join(code, name string) {
 		c.fail("full", "this session has as many participants as it may")
 		return
 	}
+	token, err := r.newRejoinToken()
+	if err != nil {
+		c.fail("busy", "no rejoin token could be drawn")
+		return
+	}
 	c.room = rm
 	if c.login != "" && c.memberOf == rm.repoKey {
 		c.role, c.name = roleMember, c.login
@@ -577,12 +650,108 @@ func (c *Conn) join(code, name string) {
 		c.role, c.name = roleGuest, CleanName(name)
 	}
 	rm.conns = append(rm.conns, c)
-	c.sendJSON(map[string]any{"type": "joined", "id": c.id, "role": c.role, "name": c.name, "repo": rm.repo, "host": c.isHost()})
+	r.giveSeat(c, token)
+	c.admitted(token)
+}
+
+// admitted tells c, newly in its room, who it is there, replays the room's
+// log to it and announces it.
+func (c *Conn) admitted(token string) {
+	rm := c.room
+	c.sendJSON(map[string]any{"type": "joined", "id": c.id, "role": c.role, "name": c.name, "repo": rm.repo, "host": c.isHost(), "rejoin": token})
 	for _, u := range rm.log {
 		c.send(Frame{Binary: true, Data: u})
 	}
 	c.sendJSON(map[string]string{"type": "synced"})
-	r.broadcastRoster(rm)
+	c.r.broadcastRoster(rm)
+}
+
+// rejoin restores the participant a rejoin token was issued to: the same id,
+// role, name and verified login, in the same session, whatever its code is
+// now. A connection still holding the token is closed in favour of this one,
+// since a device whose network dropped may not have been noticed yet. A token
+// no live session holds counts as a wrong code does.
+func (c *Conn) rejoin(token string) {
+	r := c.r
+	if c.room != nil {
+		c.fail("already-in-session", "this connection is in a session already")
+		return
+	}
+	now := r.now()
+	if r.failed.blocked(c.addr, now) {
+		c.fail("too-many-tries", "too many wrong codes from this address; try again later")
+		c.leave()
+		c.peer.Close(true, "too many wrong codes")
+		return
+	}
+	var s *seat
+	if token != "" && len(token) <= maxRejoinInput {
+		s = r.seats[rejoinKey(token)]
+	}
+	if s == nil {
+		c.fail("bad-rejoin", "no session holds that rejoin token")
+		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
+			c.leave()
+			c.peer.Close(true, "too many wrong codes")
+		}
+		return
+	}
+	rm := s.room
+	if old := s.conn; old != nil && old != c {
+		old.fail("rejoined-elsewhere", "this participant rejoined on another connection")
+		old.leave()
+		old.peer.Close(true, "rejoined on another connection")
+	}
+	if len(rm.conns) >= r.limits.MaxParticipants {
+		c.fail("full", "this session has as many participants as it may")
+		return
+	}
+	c.room, c.seat, s.conn = rm, s, c
+	c.id, c.role, c.name, c.login, c.memberOf = s.id, s.role, s.name, s.login, s.memberOf
+	rm.conns = append(rm.conns, c)
+	c.admitted(token)
+	if c.isHost() {
+		c.sendJSON(map[string]string{"type": "code", "code": rm.code})
+	}
+}
+
+// newRejoinToken draws a rejoin token no seat holds: 128 bits from r.rand,
+// base64url without padding. Called under the lock.
+func (r *Relay) newRejoinToken() (string, error) {
+	buf := make([]byte, rejoinBytes)
+	for attempt := 0; attempt < 4; attempt++ {
+		if _, err := io.ReadFull(r.rand, buf); err != nil {
+			return "", err
+		}
+		token := base64.RawURLEncoding.EncodeToString(buf)
+		if _, taken := r.seats[rejoinKey(token)]; !taken {
+			return token, nil
+		}
+	}
+	return "", errors.New("no free rejoin token")
+}
+
+// giveSeat files c, newly in its room, under token. Past the session's bound, the
+// seat of the participant who left longest ago is forgotten; New keeps the
+// bound at or above the participant cap, so there always is one.
+func (r *Relay) giveSeat(c *Conn, token string) {
+	rm := c.room
+	s := &seat{key: rejoinKey(token), room: rm, conn: c}
+	s.save(c)
+	c.seat = s
+	r.seats[s.key] = s
+	rm.seats = append(rm.seats, s)
+	for len(rm.seats) > r.limits.MaxRejoinTokens {
+		i := 0
+		for i < len(rm.seats) && rm.seats[i].conn != nil {
+			i++
+		}
+		if i == len(rm.seats) {
+			return
+		}
+		delete(r.seats, rm.seats[i].key)
+		rm.seats = append(rm.seats[:i], rm.seats[i+1:]...)
+	}
 }
 
 // isHost reports whether c may rotate and close: a member signed in as the
@@ -701,7 +870,13 @@ func (r *Relay) purge(rm *room) {
 	if r.rooms[rm.code] == rm {
 		delete(r.rooms, rm.code)
 	}
-	rm.log, rm.logBytes, rm.credits = nil, 0, nil
+	for _, s := range rm.seats {
+		delete(r.seats, s.key)
+		if s.conn != nil {
+			s.conn.seat = nil
+		}
+	}
+	rm.log, rm.logBytes, rm.credits, rm.seats = nil, 0, nil, nil
 }
 
 // rosterEntry is one participant as the roster shows them.
@@ -763,6 +938,7 @@ func (r *Relay) Stats() Stats {
 		s.LogBytes += rm.logBytes
 		s.Credits += len(rm.credits)
 	}
+	s.RejoinTokens = len(r.seats)
 	return s
 }
 
@@ -774,6 +950,9 @@ func (r *Relay) debugState() string {
 	var b strings.Builder
 	for code, rm := range r.rooms {
 		fmt.Fprintf(&b, "%s %s %s %v\n", code, rm.repo, rm.hostLogin, rm.credits)
+		for _, s := range rm.seats {
+			fmt.Fprintf(&b, "seat %s %s %s %s %s\n", s.key, s.id, s.role, s.name, s.login)
+		}
 		for _, o := range rm.conns {
 			fmt.Fprintf(&b, "%+v\n", *o)
 		}

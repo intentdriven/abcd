@@ -127,10 +127,15 @@ on a static host of your choice.
 - A participant who signs in, and whom GitHub reports as able to push to the
   repository, joins as a team member and edits directly.
 
-Twenty wrong join codes from one address within ten minutes stop that address
-from joining until the ten minutes pass. On your own machine, behind Tailscale
-Serve, the address is each visitor's own tailnet address, so one teammate's
-mistyped codes never lock out the rest.
+Someone whose connection drops, or who reloads the page, comes back as the
+same participant without the code, even after the host has chosen a new one:
+the relay gives each participant's page a rejoin token, which stops working
+when the session ends.
+
+Twenty wrong join codes or rejoin tokens from one address within ten minutes
+stop that address from joining until the ten minutes pass. On your own machine,
+behind Tailscale Serve, the address is each visitor's own tailnet address, so
+one teammate's mistyped codes never lock out the rest.
 
 The relay also bounds how fast anyone can send. One address opens at most three
 sessions in ten minutes. On one connection, cursor and selection updates are

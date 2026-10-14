@@ -802,3 +802,197 @@ func TestHostingIsRateLimitedPerAddress(t *testing.T) {
 		t.Fatal("the limit outlived its window")
 	}
 }
+
+// rejoinToken returns the rejoin token a hosted or joined answer carried.
+func rejoinToken(t *testing.T, p *fakePeer, typ string) string {
+	t.Helper()
+	m := p.last(t, typ)
+	if m == nil {
+		t.Fatalf("no %s answer; got %v", typ, p.texts(t))
+	}
+	tok, _ := m["rejoin"].(string)
+	// 128 random bits, base64url without padding.
+	if len(tok) != 22 || strings.Trim(tok, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") != "" {
+		t.Fatalf("%s carried rejoin token %q, want 22 base64url characters", typ, tok)
+	}
+	return tok
+}
+
+func (h *harness) rejoin(t *testing.T, token, addr string) (*Conn, *fakePeer) {
+	t.Helper()
+	p := &fakePeer{}
+	c := h.r.Connect(p, addr)
+	send(t, c, msg{"type": "rejoin", "token": token})
+	return c, p
+}
+
+func TestRejoinAfterARotationKeepsTheParticipant(t *testing.T) {
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	hostTok := rejoinToken(t, hp, "hosted")
+	host.Receive(context.Background(), update(1, 2))
+	guest, gp := h.join(t, code, "Gus", "198.51.100.7")
+	guestTok := rejoinToken(t, gp, "joined")
+	guestID := gp.last(t, "joined")["id"]
+	member, mp := h.join(t, code, "", "198.51.100.8")
+	send(t, member, msg{"type": "verify", "token": "tok-bea"})
+	memberTok := rejoinToken(t, mp, "joined")
+	if hostTok == guestTok || guestTok == memberTok {
+		t.Fatal("two participants were given the same rejoin token")
+	}
+
+	send(t, host, msg{"type": "rotate"})
+	if next := hp.last(t, "code"); next == nil || next["code"] == code {
+		t.Fatal("the code did not rotate")
+	}
+	guest.Leave()
+	member.Leave()
+	host.Leave()
+
+	// The guest comes back with the token alone: same id, role and name, the
+	// log replayed, and no code needed.
+	_, gp2 := h.rejoin(t, guestTok, "198.51.100.9")
+	j := gp2.last(t, "joined")
+	if j == nil || j["role"] != "guest" || j["name"] != "Gus" || j["id"] != guestID || j["host"] == true {
+		t.Fatalf("guest rejoined = %v, want guest Gus as %v", j, guestID)
+	}
+	if got := gp2.binaries(); len(got) != 1 || !bytes.Equal(got[0], []byte{TagUpdate, 1, 2}) {
+		t.Fatalf("the rejoined guest was replayed %v", got)
+	}
+	if gp2.last(t, "synced") == nil {
+		t.Fatal("the rejoined guest was not told it is synced")
+	}
+
+	// The member comes back a member, with the login GitHub verified.
+	m2, mp2 := h.rejoin(t, memberTok, "198.51.100.10")
+	if j := mp2.last(t, "joined"); j == nil || j["role"] != "member" || j["name"] != "bea" || j["host"] == true {
+		t.Fatalf("member rejoined = %v, want member bea", j)
+	}
+	m2.Receive(context.Background(), update(3))
+	if e := mp2.last(t, "error"); e != nil {
+		t.Fatalf("the rejoined member cannot edit: %v", e)
+	}
+
+	// The host comes back the host, and is told the current code.
+	h2, hp2 := h.rejoin(t, hostTok, "192.0.2.1")
+	if j := hp2.last(t, "joined"); j == nil || j["role"] != "member" || j["host"] != true {
+		t.Fatalf("host rejoined = %v, want the host", j)
+	}
+	if c := hp2.last(t, "code"); c == nil || c["code"] == code {
+		t.Fatalf("the rejoined host was not told the current code: %v", c)
+	}
+	send(t, h2, msg{"type": "rotate"})
+	if e := hp2.last(t, "error"); e != nil {
+		t.Fatalf("the rejoined host cannot rotate: %v", e)
+	}
+	roster := hp2.last(t, "roster")["participants"].([]any)
+	if len(roster) != 3 {
+		t.Fatalf("roster = %v, want the three back", roster)
+	}
+}
+
+func TestRejoinTakesOverAConnectionStillOpen(t *testing.T) {
+	h := newHarness(t, nil)
+	_, _, code := h.host(t, "tok-ada")
+	_, gp := h.join(t, code, "Gus", "198.51.100.7")
+	tok := rejoinToken(t, gp, "joined")
+	_, gp2 := h.rejoin(t, tok, "198.51.100.7")
+	if gp2.last(t, "joined") == nil {
+		t.Fatalf("rejoin over an open connection: %v", gp2.texts(t))
+	}
+	if !gp.closed || !gp.policy {
+		t.Fatal("the connection the token was taken from was left open")
+	}
+	roster := gp2.last(t, "roster")["participants"].([]any)
+	if len(roster) != 2 {
+		t.Fatalf("roster = %v, want the host and one Gus", roster)
+	}
+}
+
+func TestForgedRejoinTokensAreRefusedAndLimited(t *testing.T) {
+	h := newHarness(t, func(l *Limits) { l.MaxFailedJoins = 3 })
+	_, _, code := h.host(t, "tok-ada")
+	_, gp := h.join(t, code, "Gus", "198.51.100.7")
+	real := rejoinToken(t, gp, "joined")
+
+	var last *fakePeer
+	for i, forged := range []string{"AAAAAAAAAAAAAAAAAAAAAA", real[:21] + "x", strings.Repeat("y", 5000)} {
+		_, last = h.rejoin(t, forged, "203.0.113.5")
+		if e := last.last(t, "error"); e == nil || e["code"] != "bad-rejoin" || last.last(t, "joined") != nil {
+			t.Fatalf("forged token %d: error = %v, want bad-rejoin", i, e)
+		}
+	}
+	if !last.closed || !last.policy {
+		t.Fatal("the third failed rejoin did not close the connection")
+	}
+	// Past the limit even the real token is refused from that address, as a
+	// right code is after too many wrong ones.
+	if _, p := h.rejoin(t, real, "203.0.113.5"); p.last(t, "error")["code"] != "too-many-tries" || !p.closed {
+		t.Fatal("failed rejoins are not limited like wrong codes")
+	}
+	// Wrong codes and forged tokens share one count.
+	h.join(t, "ZZZZZZ", "Mal", "203.0.113.6")
+	h.join(t, "ZZZZZZ", "Mal", "203.0.113.6")
+	if _, p := h.rejoin(t, "AAAAAAAAAAAAAAAAAAAAAA", "203.0.113.6"); !p.closed {
+		t.Fatal("wrong codes and forged tokens are counted apart")
+	}
+	if s := h.r.Stats(); s.RejoinTokens != 2 {
+		t.Fatalf("stats = %+v, want the two real tokens", s)
+	}
+}
+
+func TestRejoinTokenDiesWithItsSession(t *testing.T) {
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	hostTok := rejoinToken(t, hp, "hosted")
+	_, gp := h.join(t, code, "Gus", "198.51.100.7")
+	tok := rejoinToken(t, gp, "joined")
+	send(t, host, msg{"type": "close"})
+	if s := h.r.Stats(); s != (Stats{}) {
+		t.Fatalf("after the host closed, the relay still holds %+v", s)
+	}
+	for _, tk := range []string{tok, hostTok} {
+		if _, p := h.rejoin(t, tk, "198.51.100.7"); p.last(t, "error")["code"] != "bad-rejoin" {
+			t.Fatal("a closed session's rejoin token still works")
+		}
+	}
+
+	// And with a session purged for idleness.
+	host2, hp2, _ := h.host(t, "tok-bea")
+	tok2 := rejoinToken(t, hp2, "hosted")
+	host2.Leave()
+	h.clock.advance(DefaultLimits().IdleAfter + time.Second)
+	h.r.Sweep()
+	if _, p := h.rejoin(t, tok2, "192.0.2.1"); p.last(t, "error")["code"] != "bad-rejoin" {
+		t.Fatal("a purged session's rejoin token still works")
+	}
+	if s := h.r.Stats(); s.RejoinTokens != 0 {
+		t.Fatalf("stats = %+v, want no token held", s)
+	}
+}
+
+func TestRejoinTokensAreBoundedPerSession(t *testing.T) {
+	h := newHarness(t, func(l *Limits) { l.MaxParticipants = 2; l.MaxRejoinTokens = 3 })
+	_, _, code := h.host(t, "tok-ada")
+	var toks []string
+	for i := 0; i < 4; i++ {
+		g, p := h.join(t, code, "G", "198.51.100.7")
+		toks = append(toks, rejoinToken(t, p, "joined"))
+		g.Leave()
+	}
+	if s := h.r.Stats(); s.RejoinTokens != 3 {
+		t.Fatalf("stats = %+v, want 3 tokens held", s)
+	}
+	// The oldest disconnected participant's token went first; the host's,
+	// still connected, stays.
+	if _, p := h.rejoin(t, toks[0], "198.51.100.7"); p.last(t, "error")["code"] != "bad-rejoin" {
+		t.Fatal("the oldest token outlived the bound")
+	}
+	if _, p := h.rejoin(t, toks[3], "198.51.100.7"); p.last(t, "joined") == nil {
+		t.Fatal("the newest token was dropped")
+	}
+	// A token is never echoed into the relay's state, only its digest.
+	if strings.Contains(h.r.debugState(), toks[3]) {
+		t.Fatal("the relay holds a rejoin token in the clear")
+	}
+}

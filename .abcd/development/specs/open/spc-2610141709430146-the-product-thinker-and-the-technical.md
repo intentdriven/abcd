@@ -30,6 +30,7 @@ The relay never parses the brief and never writes to disk.
 - `host`: a team member opens a session for owner/repo. The relay answers with a six-character join code from rascals' 31-symbol alphabet. The code works while the host keeps it open, and the host can rotate it.
 - `join`: anyone presents the code. Failed joins are rate-limited per address. The forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback alone, as Tailscale Serve forwards it: one tailnet address, on a connection from loopback.
 - `verify`: a participant presents a GitHub token. The relay asks GitHub for the login, and for the repository's `permissions.push`. A participant with write access or above becomes a team member, and the relay drops the token straight after the check.
+- `rejoin`: a participant whose connection dropped presents the rejoin token the relay gave them with `hosted` or `joined`: 128 random bits, held in memory with the participant as a digest. It restores the same participant (role, name and verified login) without the code, so rotating the code shuts nobody out; closing or purging the session voids it. Failed rejoins count with failed joins. The page keeps the token in memory and in the tab's session storage, so a reload rejoins too.
 
 The relay replays the session's update log to every newcomer. It then:
 - forwards Yjs updates only from team members. A guest's binary updates are refused, which is how guests stay read-only on the text.

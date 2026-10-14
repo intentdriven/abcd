@@ -10,8 +10,11 @@
 //
 // What this page talks to, and nothing else: the relay the person names (its
 // WebSocket, /config and /auth/token), https://api.github.com with the
-// person's own token, and github.com for sign-in and pre-filled issues. The GitHub token is held in
-// this module's memory only; it is never stored, put in a URL or logged.
+// person's own token, and github.com for sign-in and pre-filled issues. The
+// GitHub token is held in this module's memory only; it is never stored, put
+// in a URL or logged. The relay's rejoin token, which brings this participant
+// back to the session after a dropped connection or a reload, is not a GitHub
+// token: it is kept in memory and in this tab's session storage.
 // Every piece of text from the brief, the relay or another participant is
 // rendered with textContent.
 import {
@@ -154,6 +157,9 @@ const FROM_SEED = Symbol("seed");
 const KEY_RELAY = "abcd.session.relay";
 const KEY_NAME = "abcd.session.name";
 const KEY_SIGN_IN = "abcd.session.sign-in";
+const KEY_REJOIN = "abcd.session.rejoin";
+// A relay's rejoin token: 128 random bits, base64url without padding.
+const REJOIN_RE = /^[A-Za-z0-9_-]{22}$/;
 const COLOURS = ["#2f6fdb", "#c2410c", "#15803d", "#9333ea", "#b91c1c", "#0e7490", "#a16207", "#be185d"];
 
 // ---------------------------------------------------------------------------
@@ -182,6 +188,35 @@ function takeSignIn() {
 // The GitHub token: module memory only.
 // ---------------------------------------------------------------------------
 let githubToken = "";
+
+// ---------------------------------------------------------------------------
+// The rejoin token: the relay gives one to each participant, and presenting
+// it brings the same participant back without the join code, which the host
+// may have changed since. It is kept in memory, and in this tab's session
+// storage with the relay and repository it belongs to, so a reload rejoins.
+// ---------------------------------------------------------------------------
+let rejoinToken = "";
+function keepRejoin(token) {
+  if (typeof token !== "string" || !REJOIN_RE.test(token)) return;
+  rejoinToken = token;
+  try { sessionStorage.setItem(KEY_REJOIN, JSON.stringify({ relay: session.relay, repo: route.slug, token })); } catch { /* storage unavailable */ }
+}
+function forgetRejoin() {
+  rejoinToken = "";
+  try { sessionStorage.removeItem(KEY_REJOIN); } catch { /* storage unavailable */ }
+}
+// takeRejoin reads a token kept by this tab before a reload, for this
+// repository: it sets the relay it belongs to and reports whether there is one.
+function takeRejoin() {
+  let kept = null;
+  try { kept = JSON.parse(sessionStorage.getItem(KEY_REJOIN) || "null"); } catch { kept = null; }
+  if (!kept || kept.repo !== route.slug || typeof kept.token !== "string" || !REJOIN_RE.test(kept.token)) return false;
+  const relay = relayOrigin(kept.relay);
+  if (!relay || (session.relay && relay !== session.relay)) return false;
+  session.relay = relay;
+  rejoinToken = kept.token;
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Small DOM helpers. Text always goes in through textContent.
@@ -279,6 +314,7 @@ const session = {
   host: false,
   myId: "",
   inRoom: false,      // joined or hosted on the current socket
+  rejoining: false,   // a rejoin token was presented on the current socket
   everJoined: false,  // reconnect only once a session was reached
   seeding: false,
   synced: false,
@@ -328,6 +364,11 @@ function openSocket() {
 }
 
 function afterOpen() {
+  if (rejoinToken) {
+    session.rejoining = true;
+    sendJSON({ type: "rejoin", token: rejoinToken });
+    return;
+  }
   if (githubToken) {
     session.verifying = true;
     sendJSON({ type: "verify", token: githubToken, repo: route.slug });
@@ -351,6 +392,7 @@ function socketClosed(ev) {
   ws = null;
   session.inRoom = false;
   session.verifying = false;
+  session.rejoining = false;
   renderTop();
   if (session.over) return;
   if (ev.code === 1008) {
@@ -372,6 +414,7 @@ function socketClosed(ev) {
 function endSession(text) {
   session.over = true;
   session.inRoom = false;
+  forgetRejoin();
   clearTimeout(retryTimer);
   if (ws) {
     const sock = ws;
@@ -433,6 +476,7 @@ function onVerified(msg) {
 }
 
 function onHosted(msg) {
+  keepRejoin(msg.rejoin);
   session.code = normalizeCode(msg.code);
   session.myId = String(msg.id || "");
   session.host = true;
@@ -453,6 +497,9 @@ function onHosted(msg) {
 }
 
 function onJoined(msg) {
+  keepRejoin(msg.rejoin);
+  const rejoined = session.rejoining;
+  session.rejoining = false;
   session.myId = String(msg.id || "");
   session.role = msg.role === "member" ? "member" : "guest";
   session.host = msg.host === true;
@@ -461,6 +508,9 @@ function onJoined(msg) {
   session.everJoined = true;
   retries = 0;
   setStatus(session.synced ? WORDS.connected : WORDS.syncing, false);
+  // Back by the rejoin token after signing in on this page: the relay has not
+  // seen this sign-in yet.
+  if (rejoined && githubToken && !session.login && session.role !== "member") sendJSON({ type: "verify", token: githubToken });
   renderAll();
 }
 
@@ -514,6 +564,15 @@ function onCode(msg) {
 function onError(msg) {
   const code = typeof msg.code === "string" ? msg.code : "";
   const text = typeof msg.message === "string" ? msg.message : code;
+  if (session.rejoining && code === "bad-rejoin") {
+    // The session no longer knows this token: sign in and join by the code
+    // instead, on the same connection.
+    session.rejoining = false;
+    forgetRejoin();
+    afterOpen();
+    return;
+  }
+  if (code === "rejoined-elsewhere" || code === "too-many-tries") forgetRejoin();
   if (session.verifying) {
     session.verifying = false;
     githubToken = "";
@@ -666,6 +725,8 @@ async function finishSignIn() {
     toast(WORDS.signInFailed);
     return true;
   }
+  // Signed in from inside a session: back in as the same participant.
+  takeRejoin();
   connectSignedIn();
   return true;
 }
@@ -1829,7 +1890,10 @@ async function main() {
   if (frag.get("relay") && session.relay) ui.relayCard.hidden = true;
   setStatus("", false);
   renderAll();
-  await finishSignIn();
+  if (!(await finishSignIn())) {
+    // A reload of a page that was in a session: back in by its rejoin token.
+    if (takeRejoin()) openSocket();
+  }
   ui.relay.value = session.relay;
   ui.code.value = session.code;
   renderAll();

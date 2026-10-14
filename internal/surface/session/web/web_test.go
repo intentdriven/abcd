@@ -362,8 +362,13 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 			t.Errorf("remember(%s): only the relay address and the display name are remembered", m[1])
 		}
 	}
-	if n := strings.Count(js, "sessionStorage.setItem("); n != 1 || !strings.Contains(js, "const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };") {
-		t.Errorf("sessionStorage holds something besides the sign-in's state and verifier (%d writes)", n)
+	// Session storage holds the sign-in's state and verifier across GitHub's
+	// redirect, and the rejoin token across a reload, and nothing else.
+	if n := strings.Count(js, "sessionStorage.setItem("); n != 2 || !strings.Contains(js, "const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };") {
+		t.Errorf("sessionStorage holds something besides the sign-in's state and verifier and the rejoin token (%d writes)", n)
+	}
+	if !strings.Contains(functionBody(t, js, "keepRejoin"), "sessionStorage.setItem(KEY_REJOIN, JSON.stringify({ relay: session.relay, repo: route.slug, token }))") {
+		t.Error("keepRejoin stores something besides the relay, the repository and the rejoin token")
 	}
 	// The token lives in one variable and goes only into verify and the
 	// Authorization header: never into storage, a URL, the page or a log.
@@ -534,5 +539,43 @@ func TestSuggestionsLiveInTheDocument(t *testing.T) {
 	}
 	if !strings.Contains(functionBody(t, js, "renderSide"), "suggestions.values()") {
 		t.Error("the members' panel does not read the suggestions from the document")
+	}
+}
+
+func TestPageRejoinsWithItsTokenBeforeTheCode(t *testing.T) {
+	js := pageScript(t)
+	// The token comes with hosted and joined, and is kept in memory and in
+	// session storage, never in local storage.
+	for _, fn := range []string{"onHosted", "onJoined"} {
+		if !strings.Contains(functionBody(t, js, fn), "keepRejoin(msg.rejoin)") {
+			t.Errorf("%s does not keep the rejoin token", fn)
+		}
+	}
+	if strings.Contains(js, "remember(KEY_REJOIN") || strings.Contains(js, "localStorage.setItem(KEY_REJOIN") {
+		t.Error("the rejoin token reaches local storage")
+	}
+	if !strings.Contains(js, `const REJOIN_RE = /^[A-Za-z0-9_-]{22}$/;`) {
+		t.Error("the page does not check a rejoin token's shape")
+	}
+	// A reconnect presents the token first, before any sign-in or code.
+	open := functionBody(t, js, "afterOpen")
+	at := strings.Index(open, `sendJSON({ type: "rejoin", token: rejoinToken });`)
+	if at < 0 || at > strings.Index(open, `type: "verify"`) {
+		t.Errorf("afterOpen does not rejoin before it verifies or joins:\n%s", open)
+	}
+	// A refused token is dropped and the page falls back to the code.
+	if !strings.Contains(functionBody(t, js, "onError"), `code === "bad-rejoin"`) {
+		t.Error("onError does not fall back from a refused rejoin token")
+	}
+	// A reload with a kept token for this relay and repository rejoins.
+	if !strings.Contains(functionBody(t, js, "main"), "if (takeRejoin()) openSocket();") {
+		t.Error("a reloaded page does not rejoin with its kept token")
+	}
+	// So does a page coming back from GitHub's sign-in.
+	if !strings.Contains(functionBody(t, js, "finishSignIn"), "takeRejoin();\n  connectSignedIn();") {
+		t.Error("a page back from sign-in does not rejoin with its kept token")
+	}
+	if !strings.Contains(functionBody(t, js, "endSession"), "forgetRejoin()") {
+		t.Error("an ended session's rejoin token is kept")
 	}
 }
