@@ -35,7 +35,7 @@ const linearWorkBar = 6.0
 // entries of iss-2609282105242542, and about 24.7 once the retired spelling of
 // the ledger flip took an entry of its own beside the library one
 // (spc-2610100613109045, step 5), about 27.6 with the two stop-by-holder
-// entries of ruling AS, and about 28.4 once kill-port took one
+// entries of ruling AS, and about 28.6 once kill-port took one
 // (iss-2610112232319827). The bar sits at 30, which keeps that shape under it
 // with room for a few more entries and stays far below the hundred a dropped
 // bound costs.
