@@ -64,7 +64,9 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-69d8a2a7ab69 -->
+Fidelity review OWED (receipt rcp-69d8a2a7ab69).
+<!-- abcd-review-end receipt=rcp-69d8a2a7ab69 -->
 
 ## Grounds
 
