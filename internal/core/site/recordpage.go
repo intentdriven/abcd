@@ -327,7 +327,7 @@ func (e *explorer) linkRow(id, rel string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(`<li><a class="id" href="/` + escapeAttr(RecordRoute(target)) + `">` + escapeText(id) + `</a>`)
+	b.WriteString(`<li><a class="id" href="` + escapeAttr(e.c.at("/"+RecordRoute(target))) + `">` + escapeText(id) + `</a>`)
 	b.WriteString(`<span>` + escapeText(shortTitle(target)) + `</span>`)
 	if rel != "" {
 		b.WriteString(`<span class="rel">` + escapeText(rel) + `</span>`)

@@ -189,6 +189,11 @@ one who has. It writes nothing except that render, and reaches no network.
   needs a browser and runs in CI.
 - `figure-labels` — every text label in a lifted diagram is a phrase on the page
   it illustrates, where the manifest asks for it.
+- `base-path` — every root-absolute link a page carries sits under the path
+  the site is served below, given with `--base-path` (`/widgets/` for a site
+  served at `owner.github.io/widgets/`); the stylesheet the `mobile` gate reads
+  is resolved against the same path. At the default, `/`, every root-absolute
+  link is inside the site and the gate has nothing to find.
 
 Report the gates that passed, then every finding under the gate that raised it,
 each with the file and the `data-src` span a reader's next edit goes to. Exit is

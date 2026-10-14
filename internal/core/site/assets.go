@@ -376,10 +376,12 @@ type assetPipe struct {
 	root *os.Root
 	// copies maps a repo-relative source to its output-relative destination.
 	copies map[string]string
+	// base is the build's base path, which every picture's src sits under.
+	base string
 }
 
-func newAssetPipe(repoRoot string, root *os.Root) *assetPipe {
-	return &assetPipe{repoRoot: repoRoot, root: root, copies: map[string]string{}}
+func newAssetPipe(repoRoot string, root *os.Root, base string) *assetPipe {
+	return &assetPipe{repoRoot: repoRoot, root: root, copies: map[string]string{}, base: base}
 }
 
 // Copies lists the rasters to copy, sorted, as (source, destination) pairs.
@@ -460,7 +462,7 @@ func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) 
 	// `/record/adr/adr-1/`. An output-relative src resolves only at the root and
 	// 404s everywhere else — a picture missing on hundreds of pages and present
 	// on the one page anybody previews.
-	return `<img src="/` + escapeAttr(dst) + `" alt="` + escapeAttr(alt) + `"` + size + ` loading="lazy">`, nil
+	return `<img src="` + escapeAttr(sitePath(a.base, "/"+dst)) + `" alt="` + escapeAttr(alt) + `"` + size + ` loading="lazy">`, nil
 }
 
 // pngSize reads a PNG's pixel dimensions out of its IHDR chunk, so the page can

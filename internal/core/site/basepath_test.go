@@ -1,0 +1,197 @@
+package site
+
+// The base path (itd-2610091010348892): a site served below the root of its
+// host — a project's GitHub Pages address, owner.github.io/<repo>/ — links
+// every page, stylesheet, script, picture and record route under that path,
+// and the gate resolves what it reads against the same prefixed root.
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+func TestNormaliseBasePath(t *testing.T) {
+	for in, want := range map[string]string{
+		"":              "/",
+		"/":             "/",
+		"widgets":       "/widgets/",
+		"/widgets":      "/widgets/",
+		"widgets/":      "/widgets/",
+		"/widgets/":     "/widgets/",
+		"/a/b.c_d~e-f/": "/a/b.c_d~e-f/",
+	} {
+		got, err := NormaliseBasePath(in)
+		if err != nil || got != want {
+			t.Errorf("NormaliseBasePath(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{
+		"..", "/../x/", "/a/../b/", "/./", "//", "/a//b/", "https://example.com/", "//example.com/",
+		"/a b/", "/a?b/", "/a#b/", "/%2e%2e/", `/a"b/`, "/a<b/", "/a\\b/", "/é/",
+	} {
+		if got, err := NormaliseBasePath(in); err == nil {
+			t.Errorf("NormaliseBasePath(%q) = %q, want a refusal", in, got)
+		}
+	}
+}
+
+// rootAbsoluteRe finds every root-absolute URL an attribute carries: an href,
+// a src, and the graph's data address.
+var rootAbsoluteRe = regexp.MustCompile(`(?:href|src|data-graph)="(/[^"]*)"`)
+
+// siteFiles reads every file a build wrote, keyed output-relative, the marker
+// aside.
+func siteFiles(t *testing.T, out string) map[string][]byte {
+	t.Helper()
+	files := map[string][]byte{}
+	err := filepath.WalkDir(out, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(out, p)
+		data, err := os.ReadFile(p)
+		files[filepath.ToSlash(rel)] = data
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func buildFixtureAt(t *testing.T, f *fixture, base string) (string, map[string][]byte) {
+	t.Helper()
+	out := t.TempDir()
+	if _, err := Build(Request{RepoRoot: f.Root(), OutDir: out, Stamp: fixtureStamp, BasePath: base}); err != nil {
+		t.Fatalf("build at %q: %v", base, err)
+	}
+	return out, siteFiles(t, out)
+}
+
+func TestABasePathPrefixesEveryRootAbsoluteURL(t *testing.T) {
+	f := newFixture(t)
+	_, files := buildFixtureAt(t, f, "/widgets/")
+	seen := 0
+	for rel, data := range files {
+		if !strings.HasSuffix(rel, ".html") {
+			continue
+		}
+		for _, m := range rootAbsoluteRe.FindAllSubmatch(data, -1) {
+			u := string(m[1])
+			if strings.HasPrefix(u, "//") {
+				continue
+			}
+			seen++
+			if !strings.HasPrefix(u, "/widgets/") {
+				t.Errorf("%s links %q, outside the base path /widgets/", rel, u)
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("the build carries no root-absolute URL at all, so the test proves nothing")
+	}
+	for _, want := range []string{`href="/widgets/site.css"`, `src="/widgets/site.js"`, `href="/widgets/record/"`, `data-graph="/widgets/record.json"`} {
+		found := false
+		for _, data := range files {
+			if bytes.Contains(data, []byte(want)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("no page carries %s", want)
+		}
+	}
+}
+
+// The default output does not move: a build that names no base path and one
+// that names "/" write the same files byte for byte (the golden files pin
+// those bytes against the render before the base path existed), and a build
+// below a base path differs from the default only by that prefix.
+func TestTheDefaultBasePathChangesNoByte(t *testing.T) {
+	f := newFixture(t)
+	_, def := buildFixtureAt(t, f, "")
+	_, root := buildFixtureAt(t, f, "/")
+	_, widgets := buildFixtureAt(t, f, "/widgets/")
+	if len(def) != len(root) || len(def) != len(widgets) {
+		t.Fatalf("file counts differ: default %d, root %d, widgets %d", len(def), len(root), len(widgets))
+	}
+	for rel, want := range def {
+		if !bytes.Equal(root[rel], want) {
+			t.Errorf("%s: a build at / differs from the default build", rel)
+		}
+		got := widgets[rel]
+		for _, attr := range []string{"href", "src", "data-graph"} {
+			got = bytes.ReplaceAll(got, []byte(attr+`="/widgets/`), []byte(attr+`="/`))
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s: a build at /widgets/ differs from the default by more than the prefix", rel)
+		}
+	}
+}
+
+func TestTheGateResolvesAgainstTheBasePath(t *testing.T) {
+	f := newFixture(t)
+	out, _ := buildFixtureAt(t, f, "/widgets/")
+
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, BasePath: "/widgets/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fd := range res.Findings {
+		if fd.Check == CheckBasePath || (fd.Check == CheckMobile && strings.Contains(fd.Detail, "links the stylesheet")) {
+			t.Errorf("a build at its own base path was refused: %+v", fd)
+		}
+	}
+
+	// The same output judged as if served at the root links stylesheets the
+	// output does not carry at those paths.
+	res, err = Check(CheckRequest{RepoRoot: f.Root(), OutDir: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(res, CheckMobile, "widgets/site.css") {
+		t.Errorf("a prefixed build checked at the root resolved its stylesheet anyway: %+v", res.Findings)
+	}
+
+	// A root-absolute link that lacks the prefix leaves the site.
+	page := filepath.Join(out, "index.html")
+	raw, err := os.ReadFile(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = bytes.Replace(raw, []byte(`href="/widgets/record/"`), []byte(`href="/record/"`), 1)
+	if err := os.WriteFile(page, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err = Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, BasePath: "/widgets/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(res, CheckBasePath, "/record/") {
+		t.Errorf("an unprefixed link was not refused: %+v", res.Findings)
+	}
+}
+
+func TestTheGateRefusesAnUnusableBasePath(t *testing.T) {
+	f := newFixture(t)
+	if _, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: t.TempDir(), BasePath: "/../x/"}); err == nil {
+		t.Fatal("the gate accepted a base path that climbs out of the site")
+	}
+	if _, err := Build(Request{RepoRoot: f.Root(), OutDir: t.TempDir(), BasePath: "/a b/"}); err == nil {
+		t.Fatal("the build accepted a base path that is not plain path segments")
+	}
+}
+
+func hasFinding(res CheckResult, check, detail string) bool {
+	for _, fd := range res.Findings {
+		if fd.Check == check && strings.Contains(fd.Detail, detail) {
+			return true
+		}
+	}
+	return false
+}

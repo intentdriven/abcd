@@ -167,8 +167,8 @@ func TestCheckPassesAWellFormedRender(t *testing.T) {
 		t.Errorf("pages = %d, composed = %d; the record rendering should be read for the mobile gate",
 			len(res.Pages), len(res.Composed))
 	}
-	if len(res.Checks) != 7 {
-		t.Errorf("checks run = %v, want seven", res.Checks)
+	if len(res.Checks) != 8 {
+		t.Errorf("checks run = %v, want eight", res.Checks)
 	}
 }
 

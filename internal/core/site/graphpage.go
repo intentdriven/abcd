@@ -23,7 +23,7 @@ func (e *explorer) graphPage() (string, error) {
 	g := ui.Graph
 	var b strings.Builder
 
-	b.WriteString(`<div class="bwrap" data-graph="/record.json"`)
+	b.WriteString(`<div class="bwrap" data-graph="` + escapeAttr(e.c.at("/record.json")) + `"`)
 	b.WriteString(` data-linked="` + escapeAttr(g.Linked) + `"`)
 	b.WriteString(` data-nolinks="` + escapeAttr(g.NoLinks) + `"`)
 	b.WriteString(` data-mentions="` + escapeAttr(ui.Record.Mentions) + `"`)
@@ -254,7 +254,7 @@ func containsStr(xs []string, x string) bool {
 // twinLink renders one relation in the list twin: the relation's word, and the
 // record it names as a link that focuses it in the chart.
 func (e *explorer) twinLink(word, id string) string {
-	return escapeText(word) + ` <a href="/` + escapeAttr(routeGraph) + `?focus=` + escapeAttr(id) + `">` +
+	return escapeText(word) + ` <a href="` + escapeAttr(e.c.at("/"+routeGraph)) + `?focus=` + escapeAttr(id) + `">` +
 		escapeText(id) + `</a>`
 }
 
@@ -275,7 +275,7 @@ func (e *explorer) listTwin() string {
 	var b strings.Builder
 	b.WriteString(`<ul class="nodelist">`)
 	for _, n := range nodes {
-		b.WriteString(`<li><a class="id" href="/` + escapeAttr(RecordRoute(n)) + `">` + escapeText(n.ID) + `</a>`)
+		b.WriteString(`<li><a class="id" href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` + escapeText(n.ID) + `</a>`)
 		b.WriteString(`<span>` + escapeText(shortTitle(n)) + `</span>`)
 		b.WriteString(`<span class="d">` + escapeText(n.Date) + `</span>`)
 		// Each link is a LINK. The twin is the keyboard path through the chart,

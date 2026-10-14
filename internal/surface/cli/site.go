@@ -47,7 +47,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	siteCmd.Flags().StringVar(&statusOut, "out", site.DefaultOutDir, "output directory to report on")
 
 	var buildOut string
-	var version, commit, stampDate string
+	var version, commit, stampDate, buildBase string
 	var preview bool
 	buildCmd := &cobra.Command{
 		Use:  "build",
@@ -63,7 +63,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 				Stamp:    site.BuildStamp{Version: version, Commit: commit, GeneratedAt: stampDate, Preview: preview},
 				// The Status page's Now / Next / Later block reads the
 				// build's state file through the loop, as the bare board does.
-				Lanes: loop.StatusLanes,
+				Lanes:    loop.StatusLanes,
+				BasePath: buildBase,
 			})
 			if err != nil {
 				// A failure after the build completed ui.json still says what
@@ -85,6 +86,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	buildCmd.Flags().StringVar(&commit, "commit", "", "commit for the footer and the build stamp (default: git HEAD)")
 	buildCmd.Flags().StringVar(&stampDate, "date", "", "date for the build stamp (default: the newest release's date)")
 	buildCmd.Flags().BoolVar(&preview, "preview", false, "stamp the build as unreleased at this commit, for a preview deployment of an untagged tree")
+	buildCmd.Flags().StringVar(&buildBase, "base-path", "/", basePathUsage)
 	buildCmd.MarkFlagsMutuallyExclusive("preview", "version")
 	siteCmd.AddCommand(buildCmd)
 
@@ -92,6 +94,9 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	return siteCmd
 }
+
+// basePathUsage describes --base-path on the two verbs that take it.
+const basePathUsage = "path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it"
 
 // siteRootAndOut resolves what a site verb reads and where it writes. The site
 // is a fact about the repository, not about the directory the operator stands
@@ -117,7 +122,7 @@ func siteRootAndOut(cmd *cobra.Command, out string) (string, string, error) {
 // over a built output directory, rendering it first when it holds no
 // index.html. It exits 1 when any gate fails, so a release job can stop on it.
 func newLintSiteCommand(asJSON *bool) *cobra.Command {
-	var checkOut string
+	var checkOut, checkBase string
 	checkCmd := &cobra.Command{
 		Use:  "site",
 		Args: cobra.NoArgs,
@@ -126,7 +131,7 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes})
+			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes, BasePath: checkBase})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}
@@ -142,6 +147,7 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	checkCmd.Flags().StringVar(&checkOut, "out", site.DefaultOutDir, "built output directory to check (rendered first if absent)")
+	checkCmd.Flags().StringVar(&checkBase, "base-path", "/", basePathUsage)
 
 	return checkCmd
 }

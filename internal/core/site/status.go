@@ -51,7 +51,7 @@ func (e *explorer) statusRows(rows []statusblock.Row) string {
 	for _, r := range rows {
 		id := escapeText(r.ID)
 		if route := e.routeOf(r.ID); route != "" {
-			id = `<a href="/` + escapeAttr(route) + `">` + id + `</a>`
+			id = `<a href="` + escapeAttr(e.c.at("/"+route)) + `">` + id + `</a>`
 		}
 		b.WriteString(`<li><span class="id">` + id + `</span><span>` + escapeText(r.Title) + `</span>`)
 		if tag := e.statusTag(r); tag != "" {

@@ -3059,6 +3059,13 @@
       "sentence": "Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.",
       "flags": [
         {
+          "name": "base-path",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "out",
           "shorthand": "",
           "type": "string",
@@ -3327,6 +3334,13 @@
       "hidden": false,
       "sentence": "Render the website into the output directory: Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.",
       "flags": [
+        {
+          "name": "base-path",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "commit",
           "shorthand": "",

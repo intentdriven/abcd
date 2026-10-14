@@ -205,7 +205,7 @@ func TestOneLinkPerEntryPerPage(t *testing.T) {
 			Term:  glossary.Term{Name: "phase", Aliases: []string{"roadmap phase"}},
 			Route: "record/glossary/core/phase/",
 		},
-	})
+	}, "/")
 	got := l.link("<p>A spec is a specification, and an implementation spec too. "+
 		"A roadmap phase is a phase.</p>", "")
 	want := `<p>A <a class="gterm" href="/record/glossary/core/spec/">spec</a> is a ` +

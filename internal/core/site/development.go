@@ -162,7 +162,7 @@ func (e *explorer) developmentStorePanel(nodes []ExportNode) string {
 		// being the same length. What was cut is said at the foot of the list
 		// instead, where a reader is already looking at the rows it cut, in the
 		// same shape the health page states its own remainder.
-		deck := developmentDeck(shown)
+		deck := developmentDeck(shown, e.c.base)
 		if rest := len(group) - len(shown); rest > 0 {
 			deck += `<p class="small muted listrest"><b class="tnum">` + strconv.Itoa(rest) +
 				`</b> ` + escapeText(e.c.ui.More) + `</p>`
@@ -205,11 +205,11 @@ func sortDevelopmentNodes(nodes []ExportNode) {
 // browses; a store here holds hundreds, and a card grid of them is a wall to
 // scan rather than a list to read down. The id leads and the title follows, so
 // the column of ids reads as an index.
-func developmentDeck(nodes []ExportNode) string {
+func developmentDeck(nodes []ExportNode, base string) string {
 	var b strings.Builder
 	b.WriteString(`<ul class="list reclist">`)
 	for _, n := range nodes {
-		b.WriteString(`<li><span class="id"><a href="/` + escapeAttr(RecordRoute(n)) + `">` +
+		b.WriteString(`<li><span class="id"><a href="` + escapeAttr(sitePath(base, "/"+RecordRoute(n))) + `">` +
 			escapeText(n.ID) + `</a>`)
 		if n.Date != "" {
 			b.WriteString(`<span class="d">` + escapeText(n.Date) + `</span>`)

@@ -131,7 +131,7 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 	for _, en := range entries {
 		e.glossaryByPath[en.Path] = en
 	}
-	e.terms = newTermLinker(entries)
+	e.terms = newTermLinker(entries, c.base)
 	for _, n := range export.Nodes {
 		e.byID[n.ID] = n
 		e.byPath[n.Path] = n
@@ -315,7 +315,7 @@ func (e *explorer) subnav(active string) string {
 		if t.route == active {
 			cls, cur = ` class="on"`, ` aria-current="page"`
 		}
-		b.WriteString(`<a href="/` + t.route + `"` + cls + cur + `>` + escapeText(t.label) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(e.c.at("/"+t.route)) + `"` + cls + cur + `>` + escapeText(t.label) + `</a>`)
 	}
 	b.WriteString(`</div></nav>`)
 	return b.String()
@@ -524,11 +524,11 @@ func (e *explorer) tileHref(typ string) string {
 	switch typ {
 	case "principle":
 		if e.hasFoundations() {
-			return "/" + routeFoundations + "#principle"
+			return e.c.at("/" + routeFoundations + "#principle")
 		}
 	case "adr", "intent", "spec", "issue":
 		if e.hasDevelopment() {
-			return "/" + routeDevelopment + "#" + typ
+			return e.c.at("/" + routeDevelopment + "#" + typ)
 		}
 	}
 	return ""
@@ -603,7 +603,7 @@ func (e *explorer) latestDecisions() string {
 	var b strings.Builder
 	b.WriteString(`<ul class="list">`)
 	for _, n := range adrs {
-		b.WriteString(`<li><span class="id"><a href="/` + escapeAttr(RecordRoute(n)) + `">` + escapeText(n.ID) +
+		b.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` + escapeText(n.ID) +
 			`</a><span class="d">` + escapeText(n.Date) + `</span></span>` +
 			`<span>` + escapeText(shortTitle(n)) + `</span></li>`)
 	}
@@ -621,8 +621,8 @@ func (e *explorer) health() string {
 	// Two lines per finding: the fact, then its explanation — a flowing line
 	// wrapped mid-phrase in the narrow panel.
 	for _, u := range h.Unresolved {
-		b.WriteString(`<div class="hitem"><span class="hfact"><span class="w">!</span> <a href="/` +
-			escapeAttr(e.routeOf(u.From)) + `">` + escapeText(u.From) + `</a> → <b class="stub">` +
+		b.WriteString(`<div class="hitem"><span class="hfact"><span class="w">!</span> <a href="` +
+			escapeAttr(e.c.at("/"+e.routeOf(u.From))) + `">` + escapeText(u.From) + `</a> → <b class="stub">` +
 			escapeText(u.To) + `</b></span><span class="hwhy">` +
 			escapeText(relationWord(u.Rel)) + ` ` + escapeText(ui.Record.NotInTree) + `</span></div>`)
 	}
@@ -710,7 +710,7 @@ func (e *explorer) foundationsPage() (string, error) {
 		var cards strings.Builder
 		cards.WriteString(`<div class="fcards">`)
 		for _, n := range nodes {
-			cards.WriteString(`<a class="fcard" href="/` + escapeAttr(RecordRoute(n)) + `">` +
+			cards.WriteString(`<a class="fcard" href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` +
 				`<span class="t">` + escapeText(shortTitle(n)) + `</span>` +
 				`<span class="id">` + escapeText(n.ID) + `</span></a>`)
 		}
@@ -903,7 +903,7 @@ func (e *explorer) href(fromPath, target string) string {
 	rel := path.Clean(path.Join(path.Dir(fromPath), file))
 	if strings.HasSuffix(file, ".md") {
 		if n, ok := e.byPath[rel]; ok {
-			out := "/" + RecordRoute(n)
+			out := e.c.at("/" + RecordRoute(n))
 			if frag != "" {
 				out += "#" + frag
 			}
@@ -914,13 +914,13 @@ func (e *explorer) href(fromPath, target string) string {
 		// which is the one place a reader who followed a term link did not mean
 		// to end up.
 		if en, ok := e.glossaryByPath[rel]; ok {
-			out := "/" + en.Route
+			out := e.c.at("/" + en.Route)
 			if frag != "" {
 				out += "#" + frag
 			}
 			return out
 		}
-		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository, e.c.rendersDocs())
+		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository, e.c.rendersDocs(), e.c.base)
 	}
 	// A relative target that is NOT markdown — a directory, a script, a
 	// configuration file. `siteHref` leaves those exactly as the record wrote

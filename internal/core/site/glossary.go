@@ -115,7 +115,7 @@ func (e *explorer) glossaryIndexPage() (string, error) {
 		var l strings.Builder
 		l.WriteString(`<ul class="list reclist">`)
 		for _, en := range entries {
-			l.WriteString(`<li><span class="id"><a href="/` + escapeAttr(en.Route) + `">` +
+			l.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+en.Route)) + `">` +
 				escapeText(en.Term.Name) + `</a>`)
 			if en.Term.Status != "" {
 				l.WriteString(`<span class="d">` + escapeText(en.Term.Status) + `</span>`)
@@ -204,14 +204,16 @@ type termLinker struct {
 	// lengths are the distinct spelling lengths in bytes, longest first, so
 	// "roadmap phase" is matched before the "phase" inside it.
 	lengths []int
+	// base is the build's base path, which every term link sits under.
+	base string
 }
 
 // newTermLinker indexes the entries. A spelling two entries claim goes to the
 // first in the scan's own order, which is the directory's order: silently
 // preferring one is better than linking a word to two places, and the glossary's
 // own GL002 rule is what stops two terms claiming one word in the first place.
-func newTermLinker(entries []glossaryEntry) *termLinker {
-	l := &termLinker{byName: map[string]string{}}
+func newTermLinker(entries []glossaryEntry, base string) *termLinker {
+	l := &termLinker{byName: map[string]string{}, base: base}
 	seen := map[int]bool{}
 	add := func(name, route string) {
 		name = strings.TrimSpace(name)
@@ -402,8 +404,8 @@ func (l *termLinker) linkRun(b *strings.Builder, run string, linked map[string]b
 		if n := l.matchAt(run, i, linked, skipRoute); n > 0 {
 			match := run[i : i+n]
 			route := l.byName[asciiLower(match)]
-			b.WriteString(`<a class="` + gtermClass + `" href="/` +
-				escapeAttr(route) + `">` + match + `</a>`)
+			b.WriteString(`<a class="` + gtermClass + `" href="` +
+				escapeAttr(sitePath(l.base, "/"+route)) + `">` + match + `</a>`)
 			linked[route] = true
 			i += n
 			prevWord = true

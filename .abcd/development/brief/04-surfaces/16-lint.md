@@ -221,6 +221,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--base-path` | string |
 | `--out` | string |
 
 <!-- surface-appendix:end -->

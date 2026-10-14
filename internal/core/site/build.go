@@ -293,6 +293,10 @@ type Request struct {
 	// file is refused there by name and completed by `site build` or
 	// `site setup` alone.
 	LeaveUI bool
+	// BasePath is the path the site is served below on its host ("/widgets/"
+	// for a project's GitHub Pages address); empty is the root. Every
+	// root-absolute URL the build writes is placed under it (basepath.go).
+	BasePath string
 }
 
 // Result describes what a build wrote.
@@ -364,6 +368,10 @@ type labelsAdded struct {
 func build(req Request, written *labelsAdded) (Result, error) {
 	repoRoot := req.RepoRoot
 	outDir, err := resolveOutDir(repoRoot, req.OutDir)
+	if err != nil {
+		return Result{}, err
+	}
+	base, err := NormaliseBasePath(req.BasePath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -486,8 +494,8 @@ func build(req Request, written *labelsAdded) (Result, error) {
 
 	c := &composer{
 		repoRoot: repoRoot, root: srcRoot, manifest: manifest, ui: ui, repo: repo,
-		assets: newAssetPipe(repoRoot, srcRoot), graph: graph, history: hist, stamp: stamp,
-		beta: isPreOne(version), version: version, releaseDate: releaseDate,
+		assets: newAssetPipe(repoRoot, srcRoot, base), graph: graph, history: hist, stamp: stamp,
+		beta: isPreOne(version), version: version, releaseDate: releaseDate, base: base,
 	}
 	html, err := c.ComposeLanding()
 	if err != nil {

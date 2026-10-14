@@ -310,6 +310,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--base-path` | string |
 | `--commit` | string |
 | `--date` | string |
 | `--out` | string |

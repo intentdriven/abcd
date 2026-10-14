@@ -151,12 +151,13 @@ const (
 	CheckBaseline     = "baseline"
 	CheckMobile       = "mobile"
 	CheckFigureLabels = "figure-labels"
+	CheckBasePath     = "base-path"
 )
 
 // CheckNames is every check this verb runs, in the order it runs them.
 var CheckNames = []string{
 	CheckProvenance, CheckHero, CheckBannedTokens, CheckSnippets,
-	CheckBaseline, CheckMobile, CheckFigureLabels,
+	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath,
 }
 
 // maxOutputPageBytes bounds one emitted page read.
@@ -190,6 +191,10 @@ type CheckRequest struct {
 	// Lanes is the state-file reader a build the check makes hands the Status
 	// page, as Request.Lanes; nil reads as an absent state file.
 	Lanes statusblock.LaneReader
+	// BasePath is the path the output is served below, as Request.BasePath:
+	// a root-absolute URL resolves against it, and one outside it is a
+	// finding. Empty is the root.
+	BasePath string
 }
 
 // CheckFinding is one failure. Every finding names the check that raised it and
@@ -226,7 +231,7 @@ type CheckResult struct {
 // OK reports whether the run found nothing that fails it.
 func (r CheckResult) OK() bool { return len(r.Findings) == 0 }
 
-// checker carries everything the seven checks read, gathered once.
+// checker carries everything the eight checks read, gathered once.
 type checker struct {
 	repoRoot string
 	// root is repoRoot as an os.Root containment scope, shared by every read of a
@@ -250,6 +255,8 @@ type checker struct {
 	sources map[string]*sourceFile
 	// styles are the parsed stylesheets the pages link, keyed by output path.
 	styles map[string]*styleSheet
+	// base is the path the output is served below (basepath.go).
+	base string
 
 	res *CheckResult
 }
@@ -274,6 +281,10 @@ func Check(req CheckRequest) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{}, err
 	}
+	base, err := NormaliseBasePath(req.BasePath)
+	if err != nil {
+		return CheckResult{}, err
+	}
 
 	// Every collection is non-nil from the start: the JSON envelope is a machine
 	// surface, and a reader that has to tell `null` from `[]` is a reader that
@@ -284,7 +295,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 		Findings: []CheckFinding{}, Notes: []CheckFinding{},
 	}
 	if ok, _ := fsutil.Exists(filepath.Join(outDir, "index.html")); !ok {
-		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes, LeaveUI: true}); err != nil {
+		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes, LeaveUI: true, BasePath: base}); err != nil {
 			return CheckResult{}, err
 		}
 		res.Built = true
@@ -328,7 +339,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	c := &checker{
 		repoRoot: repoRoot, root: srcRoot, outDir: outDir, manifest: manifest, ui: ui, repo: repo,
 		tokens: tokens, pages: map[string]*htmlNode{}, sources: map[string]*sourceFile{},
-		styles: map[string]*styleSheet{}, res: &res,
+		styles: map[string]*styleSheet{}, res: &res, base: base,
 	}
 	c.identity, c.hasBlock = readIdentity(repoRoot, manifest)
 
@@ -344,6 +355,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	}
 	c.checkMobile()
 	c.checkFigureLabels()
+	c.checkBasePath()
 
 	sortFindings(res.Findings)
 	sortFindings(res.Notes)
@@ -1485,10 +1497,16 @@ func (c *checker) stylesheetsFor(page string, doc *htmlNode) []*styleSheet {
 		// stylesheet is linked that way precisely because the pages that link it
 		// sit at every depth the site has, so resolving it per-page would look
 		// for one stylesheet in as many places as there are routes and find it
-		// in none of them.
+		// in none of them. The served root is the base path: a site served at
+		// /widgets/ keeps its stylesheet at /widgets/site.css, and an href
+		// outside the base names a file the site does not serve.
 		rel := ""
 		if strings.HasPrefix(href, "/") {
-			rel = path.Clean(strings.TrimPrefix(href, "/"))
+			if !strings.HasPrefix(href, c.base) {
+				c.fail(CheckMobile, page, "", "links the stylesheet %s, which is outside the base path %s the site is served below", quote(href), c.base)
+				continue
+			}
+			rel = path.Clean(strings.TrimPrefix(href, c.base))
 		} else {
 			rel = path.Clean(path.Join(path.Dir(page), href))
 		}
@@ -1705,4 +1723,30 @@ func figureLabels(fig *htmlNode) []string {
 		out = append(out, label)
 	}
 	return out
+}
+
+// basePathAttrs are the attributes a page carries a site URL in: links and
+// form targets, every embedded resource, and the graph's data address.
+var basePathAttrs = []string{"href", "src", "action", "data-graph"}
+
+// checkBasePath asserts every root-absolute URL a page carries sits under the
+// base path the site is served below. A site at owner.github.io/<repo>/ that
+// links /record/ sends the reader to owner.github.io/record/, which is not
+// this site at all. At the root base every root-absolute URL is inside it.
+func (c *checker) checkBasePath() {
+	if c.base == "/" {
+		return
+	}
+	for _, page := range c.res.Pages {
+		for _, n := range findElements(c.pages[page], func(*htmlNode) bool { return true }) {
+			for _, attr := range basePathAttrs {
+				u := n.Attr(attr)
+				if !strings.HasPrefix(u, "/") || strings.HasPrefix(u, "//") || strings.HasPrefix(u, c.base) {
+					continue
+				}
+				c.fail(CheckBasePath, page, n.Attr("data-src"), "<%s %s=%s> links outside the base path %s the site is served below",
+					n.Name, attr, quote(u), c.base)
+			}
+		}
+	}
 }

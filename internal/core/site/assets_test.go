@@ -41,7 +41,7 @@ func TestAssetsRefuseAnythingOutsideTheAssetRoot(t *testing.T) {
 		"docs/assets/img/ok.svg":          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>`,
 		"docs/explanation/notes.md":       "prose\n",
 	})
-	pipe := newAssetPipe(root, mustOpenRoot(t, root))
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 	at := Source{Path: "docs/explanation/page.md", Line: 3}
 
 	for _, src := range []string{
@@ -122,7 +122,7 @@ func TestAssetsRefuseExecutableSVG(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": c.svg})
-			pipe := newAssetPipe(root, mustOpenRoot(t, root))
+			pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 			out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", at)
 			if err == nil {
 				t.Fatalf("inlined an executable SVG into the page:\n%s", out)
@@ -179,7 +179,7 @@ func TestAssetsRefuseStyledSVG(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": c.svg})
-			pipe := newAssetPipe(root, mustOpenRoot(t, root))
+			pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 			out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", at)
 			if err == nil {
 				t.Fatalf("inlined a styled SVG into the page:\n%s", out)
@@ -208,7 +208,7 @@ func TestAssetsAcceptDrawings(t *testing.T) {
 <text x="1" y="9" font-family="sans-serif" font-size="2">hi<tspan dy="1">there</tspan></text>
 <use xlink:href="#c"/></g></svg>`
 	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
-	pipe := newAssetPipe(root, mustOpenRoot(t, root))
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", Source{Path: "p.md", Line: 1})
 	if err != nil {
 		t.Fatalf("a drawing was refused: %v", err)
@@ -243,7 +243,7 @@ func TestAssetsStripOnlyTheRootDrawingSize(t *testing.T) {
 <image href="data:image/webp;base64,AAAA" x="10" y="10" width="42" height="42" clip-path="url(#cp)" preserveAspectRatio="xMidYMid slice"/>
 <use href="#sy" x="60" y="60" width="12" height="12"/></svg>`
 	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
-	pipe := newAssetPipe(root, mustOpenRoot(t, root))
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", Source{Path: "p.md", Line: 1})
 	if err != nil {
 		t.Fatalf("a drawing was refused: %v", err)
@@ -284,7 +284,7 @@ func TestAssetsStripOnlyTheRootDrawingSize(t *testing.T) {
 func TestAssetsStripTouchesTheRootTagAlone(t *testing.T) {
 	svg := `keep width="1" me<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4" height="4"><rect width="2" height="2"/></svg>`
 	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
-	pipe := newAssetPipe(root, mustOpenRoot(t, root))
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", Source{Path: "p.md", Line: 1})
 	if err != nil {
 		t.Fatalf("a drawing was refused: %v", err)
@@ -313,7 +313,7 @@ func TestAssetsStripTouchesTheRootTagAlone(t *testing.T) {
 func TestCommittedSVGAssetsAreDrawings(t *testing.T) {
 	repoRoot := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repoRoot, "docs", "assets", "img")
-	pipe := newAssetPipe(repoRoot, mustOpenRoot(t, repoRoot))
+	pipe := newAssetPipe(repoRoot, mustOpenRoot(t, repoRoot), "/")
 	at := Source{Path: "docs/explanation/page.md", Line: 1}
 	var found int
 	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {

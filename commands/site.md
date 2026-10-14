@@ -77,6 +77,14 @@ and the baseline is per-repo site configuration on the same opt-in footing as
 `.abcd/site.json` itself — the record data proper stays record-format, git and
 `CHANGELOG.md`.
 
+A site served below the root of its host takes `--base-path`: a project's
+GitHub Pages address is `owner.github.io/<repo>/`, so its build passes
+`--base-path /<repo>/` and every root-absolute link the build writes (the
+stylesheet, the scripts, the pictures, the navigation and every record route)
+is placed under that path. Give `abcd lint site` the same `--base-path`, so it
+resolves what it reads against the same root. The default, `/`, writes exactly
+the links a site served at the root of its domain needs.
+
 Four flags exist so a build can pin what the footer says rather than reading it
 from the working tree: `--version`, `--commit`, `--date` and `--preview` (stamp
 the build as unreleased at this commit, for a preview deployment of an untagged

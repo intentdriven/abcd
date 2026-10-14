@@ -410,9 +410,9 @@ func (e *explorer) mark(n ExportNode, p tlPoint, r float64, colour string) strin
 	// A mark opens the record in the graph; with the graph switched off it
 	// opens the record's own page instead, so it never points at a page the
 	// site does not have.
-	href := "/" + escapeAttr(routeGraph) + "?focus=" + escapeAttr(n.ID)
+	href := escapeAttr(e.c.at("/" + routeGraph + "?focus=" + n.ID))
 	if !e.pages.graph {
-		href = "/" + escapeAttr(RecordRoute(n))
+		href = escapeAttr(e.c.at("/" + RecordRoute(n)))
 	}
 	return `<a class="tlmark" href="` + href + `">` +
 		`<title>` + escapeText(n.ID+" · "+n.Date+" · "+n.Lifecycle) + `&#10;` + escapeText(shortTitle(n)) + `</title>` +
@@ -553,8 +553,8 @@ func (e *explorer) supersessionList(pos map[string]tlPoint) string {
 		if !ok {
 			continue
 		}
-		rows.WriteString(`<li><span class="id"><a href="/` + escapeAttr(e.routeOf(ed.From)) + `">` +
-			escapeText(ed.From) + `</a> → <a href="/` + escapeAttr(RecordRoute(target)) + `">` +
+		rows.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+e.routeOf(ed.From))) + `">` +
+			escapeText(ed.From) + `</a> → <a href="` + escapeAttr(e.c.at("/"+RecordRoute(target))) + `">` +
 			escapeText(ed.To) + `</a></span><span class="small">` + escapeText(shortTitle(target)) + `</span></li>`)
 		n++
 	}
@@ -566,7 +566,7 @@ func (e *explorer) supersessionList(pos map[string]tlPoint) string {
 	}
 	sortEdgesByTarget(stubs, func(ed ExportEdge) string { return ed.From })
 	for _, u := range stubs {
-		rows.WriteString(`<li><span class="id"><a href="/` + escapeAttr(e.routeOf(u.From)) + `">` +
+		rows.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+e.routeOf(u.From))) + `">` +
 			escapeText(u.From) + `</a> → <b class="stub">` + escapeText(u.To) + `</b></span>` +
 			`<span class="small muted">` + escapeText(e.c.ui.Record.NotInTree) + `</span></li>`)
 		n++

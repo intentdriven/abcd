@@ -300,7 +300,7 @@ func TestRenderRefusesOutOfSubset(t *testing.T) {
 // enforceable at render time rather than at review time.
 func TestRenderRefusesRemoteImage(t *testing.T) {
 	dir := t.TempDir()
-	pipe := newAssetPipe(dir, mustOpenRoot(t, dir))
+	pipe := newAssetPipe(dir, mustOpenRoot(t, dir), "/")
 	r := testRenderer()
 	r.Image = func(src, alt string, at Source) (string, error) { return pipe.render("docs", src, alt, at) }
 	_, err := r.RenderBlocks("docs/page.md", Blocks("![alt](https://example.invalid/x.png)", 1))
@@ -478,18 +478,18 @@ func TestSiteHref(t *testing.T) {
 			forge + "/blob/HEAD/.abcd/development/decisions/adrs/0047-x.md#decision"},
 	}
 	for _, c := range cases {
-		if got := siteHref(c.dir, c.in, forge, true); got != c.want {
+		if got := siteHref(c.dir, c.in, forge, true, "/"); got != c.want {
 			t.Errorf("siteHref(%q, %q) = %q, want %q", c.dir, c.in, got, c.want)
 		}
 	}
 	// With no forge URL there is nothing to point at, and the record's own text
 	// is left exactly as written.
-	if got := siteHref("docs/explanation", "../../CONTRIBUTING.md", "", true); got != "../../CONTRIBUTING.md" {
+	if got := siteHref("docs/explanation", "../../CONTRIBUTING.md", "", true, "/"); got != "../../CONTRIBUTING.md" {
 		t.Errorf("siteHref with no forge = %q, want the href unchanged", got)
 	}
 	// A site with no docs tree has no docs route to send a docs page to, so
 	// it goes to the forge's view like any other file.
-	if got := siteHref("docs/explanation", "roles.md#x", forge, false); got != forge+"/blob/HEAD/docs/explanation/roles.md#x" {
+	if got := siteHref("docs/explanation", "roles.md#x", forge, false, "/"); got != forge+"/blob/HEAD/docs/explanation/roles.md#x" {
 		t.Errorf("siteHref with no docs tree = %q, want the forge's view of the page", got)
 	}
 }

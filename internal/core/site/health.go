@@ -153,8 +153,8 @@ func (e *explorer) healthUnresolved() string {
 	var b strings.Builder
 	b.WriteString(`<div class="health">`)
 	for _, ed := range found {
-		b.WriteString(`<div class="hitem"><span class="hfact"><span class="w">!</span> <a href="/` +
-			escapeAttr(e.routeOf(ed.From)) + `">` + escapeText(ed.From) + `</a> → <b class="stub">` +
+		b.WriteString(`<div class="hitem"><span class="hfact"><span class="w">!</span> <a href="` +
+			escapeAttr(e.c.at("/"+e.routeOf(ed.From))) + `">` + escapeText(ed.From) + `</a> → <b class="stub">` +
 			escapeText(ed.To) + `</b></span><span class="hwhy">` +
 			escapeText(relationWord(ed.Rel)) + ` ` + escapeText(ui.Record.NotInTree) + `</span></div>`)
 	}
@@ -202,7 +202,7 @@ func (e *explorer) healthIsolated() string {
 	var b strings.Builder
 	b.WriteString(`<ul class="list">`)
 	for _, n := range shown {
-		b.WriteString(`<li><span class="id"><a href="/` + escapeAttr(RecordRoute(n)) + `">` +
+		b.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` +
 			escapeText(n.ID) + `</a></span><span>` + escapeText(shortTitle(n)) + `</span></li>`)
 	}
 	b.WriteString(`</ul>`)

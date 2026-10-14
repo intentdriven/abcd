@@ -3295,7 +3295,8 @@ Gate the built website, rendering it first when absent: Writes only inside the o
 **Flags:**
 
 ```
-      --out string   built output directory to check (rendered first if absent) (default "site")
+      --base-path string   path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
+      --out string         built output directory to check (rendered first if absent) (default "site")
 ```
 
 ### `abcd mode`
@@ -3733,11 +3734,12 @@ Render the website into the output directory: Writes there, plus a missing label
 **Flags:**
 
 ```
-      --commit string    commit for the footer and the build stamp (default: git HEAD)
-      --date string      date for the build stamp (default: the newest release's date)
-      --out string       directory to render into (default "site")
-      --preview          stamp the build as unreleased at this commit, for a preview deployment of an untagged tree
-      --version string   version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
+      --base-path string   path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
+      --commit string      commit for the footer and the build stamp (default: git HEAD)
+      --date string        date for the build stamp (default: the newest release's date)
+      --out string         directory to render into (default "site")
+      --preview            stamp the build as unreleased at this commit, for a preview deployment of an untagged tree
+      --version string     version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
 ```
 
 #### `abcd site setup`
