@@ -181,9 +181,19 @@ provider, and these things differ:
   adds `.github/workflows/site.yml`; nothing else in the repository changes. A
   no, or an unanswered run, writes nothing and changes nothing remote, and the
   status is `declined`.
+- **An existing Pages site.** Setup reads the repository's Pages site before it
+  asks or writes. One the repository already publishes, built by a workflow, is
+  named by its address and build type in the switch question (or in a question
+  of its own when the composition already holds the switch), and in the host
+  outcome; `--yes` answers it. A site published from a branch, one already
+  served at a custom domain when `--domain` names another or none (the refusal
+  names the `--domain` to pass), and one GitHub serves below another path than
+  the workflow builds for are refused before anything is written.
 - **Public repositories only.** Setup reads whether the repository is public
   from the forge first, and refuses a private one (or one whose visibility it
-  cannot read) in one line, before it asks or writes anything.
+  cannot read) in one line, before it asks or writes anything. The workflow
+  checks again at each release, so a repository made private later publishes
+  nothing.
 - **No secret and no credential.** The deploy job runs in the `github-pages`
   environment with the run's own short-lived token (`contents: read`,
   `pages: write`, `id-token: write`) and nothing else; there is no host
@@ -195,8 +205,9 @@ provider, and these things differ:
   `--base-path /<repo>/`, the path GitHub serves it below (the root for a custom
   domain or an `<owner>.github.io` repository).
 - **Switching it off.** Set `"publish"` to `false` in the composition's
-  `hosting` block. The workflow reads the switch at each released commit, so the
-  next release publishes nothing. A later `abcd site setup` touches nothing
+  `hosting` block. The workflow reads the switch both at the released commit and
+  at the head of the default branch, so the next release publishes nothing, and
+  neither does a later push or dispatch that renders an older tag. A later `abcd site setup` touches nothing
   remote and offers to remove the workflow it added, `removed` on a yes; a
   workflow edited by hand is `kept`. Pages already published stay up until they
   are unpublished in the repository's settings.
