@@ -129,10 +129,13 @@ type ReceiptCheck struct {
 	DeriveError string `json:"derive_error,omitempty"`
 	// Problems is every refusal the gate would raise, one per gate.
 	Problems []ReceiptProblem `json:"problems"`
-	// Uncommitted lists working-tree changes under the receipts directory and
-	// the issue ledger. The release job reads the committed tree, so a receipt,
-	// or the capture a deferred finding names, that exists only here would pass
-	// locally and be missing there: any such change refuses.
+	// Uncommitted lists working-tree changes to the inputs of the verdict: the
+	// receipts directory, the ledger files of each record a deferred finding
+	// names, the record-lint config, the release-gate manifest, CHANGELOG.md
+	// and the release workflow. The release job reads the committed tree, so an
+	// input that differs here would pass locally and refuse there, or the other
+	// way round: any such change refuses. A ledger change no deferred finding
+	// names is no input, so a peer's concurrent capture is left alone.
 	Uncommitted []string `json:"uncommitted,omitempty"`
 	// Pass is the verdict: exactly when the release job's receipt gate admits
 	// the same repository state.
@@ -187,6 +190,8 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 
 	armed := ArmReceiptGate(cfg, commit, gate.Gates)
 	rc := armed.Rules["receipt_gate"]
+	deferred := map[string]bool{}
+	rc.onDeferred = func(id string) { deferred[id] = true }
 	findings, err := checkReceiptGate(root, rc)
 	if err != nil {
 		return ReceiptCheck{}, err
@@ -203,26 +208,64 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 	// (iss-2610090821548169). A filter git still insists on fails the check.
 	// --ignore-submodules=dirty keeps the status out of a checked-out
 	// submodule, whose own config the overrides cannot name
-	// (iss-2610091935327982). The issue ledger is read as well as the reviews:
-	// a deferred finding's record is judged from the tree, so an uncommitted
-	// capture is as invisible to the release job as an uncommitted receipt.
+	// (iss-2610091935327982). The status reads every input of the verdict
+	// (ReceiptCheck.Uncommitted) and, in the issue ledger, keeps only the
+	// files a deferred finding's record id names: a deferred record is judged
+	// from the tree, so an uncommitted capture is as invisible to the release
+	// job as an uncommitted receipt, while another session's capture of an
+	// unrelated finding is neither the cutter's to commit nor read by the gate.
 	filters, err := gitutil.FilterOverrides(root)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
-	status, err := gitutil.Run(root, append(filters, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty",
-		"--", reviewsSubdir, filepath.ToSlash(issuesDirOf(rc)))...)
+	issuesDir := filepath.ToSlash(issuesDirOf(rc))
+	args := append(filters, "-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty",
+		"--", reviewsSubdir, recordLintConfigPath, releaseGateManifestPath, "CHANGELOG.md", ReleaseWorkflowPath, issuesDir)
+	status, err := gitutil.Run(root, args...)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
 	for _, line := range strings.Split(status, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
+		if line = strings.TrimSpace(line); line != "" && verdictInput(line, issuesDir, deferred) {
 			check.Uncommitted = append(check.Uncommitted, line)
 		}
 	}
 
 	check.Pass = check.Derived && len(check.Problems) == 0 && len(check.Uncommitted) == 0
 	return check, nil
+}
+
+// verdictInput reports whether a git status line concerns an input of the
+// receipt gate's verdict. Every path the status was asked about is one, except
+// in the issue ledger, where only a file whose name carries a deferred
+// finding's record id is: any other record is no input to the verdict.
+func verdictInput(line, issuesDir string, deferred map[string]bool) bool {
+	paths := statusPaths(line)
+	inLedger := false
+	for _, p := range paths {
+		if !strings.HasPrefix(p, issuesDir+"/") {
+			return true
+		}
+		inLedger = true
+		base := filepath.Base(p)
+		if issueFileRe.MatchString(base) && deferred[canonRecordID(issueIDRe.FindString(base))] {
+			return true
+		}
+	}
+	return !inLedger
+}
+
+// statusPaths returns the paths a `git status --porcelain` line names: one,
+// or a rename's two. The line may have lost its leading space to trimming, so
+// the status code is the first field rather than the first two bytes.
+func statusPaths(line string) []string {
+	_, rest, _ := strings.Cut(strings.TrimLeft(line, " "), " ")
+	rest = strings.TrimLeft(rest, " ")
+	var out []string
+	for _, p := range strings.Split(rest, " -> ") {
+		out = append(out, strings.Trim(p, `"`))
+	}
+	return out
 }
 
 // gateOfReceiptPath names the gate a finding's receipt path belongs to:

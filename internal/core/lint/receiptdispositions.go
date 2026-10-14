@@ -100,12 +100,15 @@ type deferralCheck struct {
 	files     map[string][]issueFile
 	verdicts  map[string]string
 	sites     map[string][]deferralSite
+	// onDeferred is RuleConfig.onDeferred: told each well-shaped record id.
+	onDeferred func(id string)
 }
 
-func newDeferralCheck(repoRoot string, root *os.Root, issuesDir string) *deferralCheck {
+func newDeferralCheck(repoRoot string, root *os.Root, issuesDir string, onDeferred func(id string)) *deferralCheck {
 	return &deferralCheck{
 		repoRoot: repoRoot, root: root, issuesDir: issuesDir,
 		verdicts: map[string]string{}, sites: map[string][]deferralSite{},
+		onDeferred: onDeferred,
 	}
 }
 
@@ -130,6 +133,9 @@ func (d *deferralCheck) judge(gate, rel string, i int, f ReceiptFinding) string 
 		return "record " + strconv.Quote(f.Record) + " is not an issue id: a deferred finding names its record as iss-<digits>, with no leading zero"
 	}
 	d.sites[f.Record] = append(d.sites[f.Record], deferralSite{gate: gate, rel: rel, index: i})
+	if d.onDeferred != nil {
+		d.onDeferred(f.Record)
+	}
 	if msg := d.record(f.Record); msg != "" {
 		return "names record " + f.Record + ", " + msg
 	}

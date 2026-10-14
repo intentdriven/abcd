@@ -111,6 +111,11 @@ type RuleConfig struct {
 	// the refusal of a release after v0.4.0 whose tree carries no manifest
 	// (iss-130).
 	release bool
+	// onDeferred, when set, is handed the record id of each deferred finding
+	// the release gate reads with a well-shaped record. It is how
+	// CheckReleaseReceipts learns which ledger files are inputs to the verdict;
+	// no config file can set it.
+	onDeferred func(id string)
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
 	// Exempt is a glob allowlist of repo-relative paths (filepath.Match, so `*`

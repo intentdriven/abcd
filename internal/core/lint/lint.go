@@ -1320,7 +1320,7 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// deferrals collects every deferred finding of every receipt that survives
 	// the checks before it, across all required gates, so one record named by
 	// two findings is refused however the findings are split between gates.
-	deferrals := newDeferralCheck(repoRoot, root, issuesDirOf(cfg))
+	deferrals := newDeferralCheck(repoRoot, root, issuesDirOf(cfg), cfg.onDeferred)
 	for _, gate := range cfg.RequiredGates {
 		if !receiptGateRe.MatchString(gate) {
 			add(dir, "receipt_gate required gate name '"+gate+"' is not a safe path component; the release gate fails closed")

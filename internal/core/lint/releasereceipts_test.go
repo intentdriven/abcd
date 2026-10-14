@@ -304,3 +304,91 @@ func TestCheckReleaseReceiptsIgnoresAShadowLedger(t *testing.T) {
 		t.Fatalf("a shadow ledger must not satisfy the gate, got %+v", check)
 	}
 }
+
+// committedDeferral is a release branch whose receipts defer one finding to
+// iss-5, with the capture committed after them: a state the gate admits.
+func committedDeferral(t *testing.T) *gittest.Repo {
+	t.Helper()
+	r, roll := releaseFixture(t)
+	dir := ".abcd/work/reviews/" + roll + "/"
+	r.Write(dir+"docs-currency-reviewer.json", promote("docs-currency-reviewer", roll))
+	r.Write(dir+"iss35-brief-surface-crosscheck.json",
+		promoteWith("iss35-brief-surface-crosscheck", roll, `[{"disposition":"deferred","record":"iss-5"}]`))
+	r.Commit("receipts")
+	rel, body := openIssue("iss-5")
+	r.Write(rel, body)
+	r.Commit("capture")
+	if check, err := lint.CheckReleaseReceipts(r.Root()); err != nil || !check.Pass {
+		t.Fatalf("fixture: a committed deferral must pass, got %+v, %v", check, err)
+	}
+	return r
+}
+
+// A peer session capturing concurrently leaves an untracked record the cutter
+// may not commit or stash, and the release job never reads: it is not an input
+// to the verdict, so it does not refuse.
+func TestCheckReleaseReceiptsIgnoresAPeersUnrelatedCapture(t *testing.T) {
+	r := committedDeferral(t)
+	rel, body := openIssue("iss-9")
+	r.Write(rel, body)
+	r.Write(".abcd/work/issues/open/iss-50-a-slug.md", strings.Replace(body, "iss-9", "iss-50", 1))
+	check, err := lint.CheckReleaseReceipts(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.Pass || len(check.Uncommitted) != 0 {
+		t.Fatalf("a peer's unrelated capture must not refuse, got %+v", check)
+	}
+}
+
+// Every input the verdict reads is held to the committed tree: the receipts,
+// each record a deferred finding names, the record-lint config the gate is
+// armed from, the release-gate manifest, the CHANGELOG the release version is
+// read from, and the release workflow the required gates are read from.
+func TestCheckReleaseReceiptsRefusesAnUncommittedVerdictInput(t *testing.T) {
+	cases := map[string]func(r *gittest.Repo) string{
+		"named record edited": func(r *gittest.Repo) string {
+			rel, body := openIssue("iss-5")
+			r.Write(rel, body+"more\n")
+			return rel
+		},
+		"a second file for the named id": func(r *gittest.Repo) string {
+			_, body := openIssue("iss-5")
+			r.Write(".abcd/work/issues/resolved/iss-5-b-slug.md", body)
+			return ".abcd/work/issues/resolved/iss-5-b-slug.md"
+		},
+		"record-lint config": func(r *gittest.Repo) string {
+			r.Write(".abcd/record-lint.json", minimalRecordLintConfig+"\n")
+			return ".abcd/record-lint.json"
+		},
+		"release-gate manifest": func(r *gittest.Repo) string {
+			r.Write(".abcd/development/release-gate/manifest.json", fixtureManifest+"\n")
+			return ".abcd/development/release-gate/manifest.json"
+		},
+		"CHANGELOG": func(r *gittest.Repo) string {
+			r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\nmore\n")
+			return "CHANGELOG.md"
+		},
+		"release workflow": func(r *gittest.Repo) string {
+			r.Write(lint.ReleaseWorkflowPath, armedWorkflow+"\n")
+			return lint.ReleaseWorkflowPath
+		},
+	}
+	for name, edit := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := committedDeferral(t)
+			path := edit(r)
+			check, err := lint.CheckReleaseReceipts(r.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			named := false
+			for _, u := range check.Uncommitted {
+				named = named || strings.Contains(u, path)
+			}
+			if check.Pass || !named {
+				t.Fatalf("an uncommitted %s must refuse, naming %s, got %+v", name, path, check)
+			}
+		})
+	}
+}
