@@ -391,3 +391,46 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 		t.Error("session.js has no submitSession hook")
 	}
 }
+
+// pageScript is session.js as the binary embeds it.
+func pageScript(t *testing.T) string {
+	t.Helper()
+	raw, err := assets.ReadFile("session.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// functionBody returns the source of the named top-level function, from its
+// declaration to the closing brace at the start of a line.
+func functionBody(t *testing.T, js, name string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^(?:async )?function ` + regexp.QuoteMeta(name) + `\(`).FindStringIndex(js)
+	if m == nil {
+		t.Fatalf("session.js has no function %s", name)
+	}
+	rest := js[m[0]:]
+	end := strings.Index(rest, "\n}\n")
+	if end < 0 {
+		t.Fatalf("function %s does not end", name)
+	}
+	return rest[:end+2]
+}
+
+func TestSuggestionsLiveInTheDocument(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, `const suggestions = doc.getMap("suggestions");`) {
+		t.Fatal("suggestions are not a map in the shared document")
+	}
+	on := functionBody(t, js, "onSuggest")
+	if !strings.Contains(on, "!suggestions.has(id)") || !strings.Contains(on, "suggestions.set(id, ") {
+		t.Errorf("onSuggest does not record a suggestion in the document once:\n%s", on)
+	}
+	if strings.Contains(js, "incoming") {
+		t.Error("session.js still keeps suggestions in page memory (incoming)")
+	}
+	if !strings.Contains(functionBody(t, js, "renderSide"), "suggestions.values()") {
+		t.Error("the members' panel does not read the suggestions from the document")
+	}
+}

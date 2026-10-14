@@ -219,6 +219,9 @@ const doc = new Y.Doc({ gc: false });
 const files = doc.getMap("files");
 const meta = doc.getMap("meta");
 const approvals = doc.getArray("approvals");
+// A guest's suggestion, recorded by the first team member whose page saw it,
+// so a member who joins later sees it too; suggestions_done holds its answer.
+const suggestions = doc.getMap("suggestions");
 const suggestionsDone = doc.getMap("suggestions_done");
 const awareness = new Awareness(doc);
 
@@ -245,7 +248,6 @@ const session = {
   roster: [],
   credits: {},        // Yjs client id -> login, from the relay's roster
 };
-const incoming = new Map();   // suggestion id -> {id, from, body}, members only
 const mine = [];              // a guest's own suggestions
 const awaitingAck = [];       // suggestions sent, waiting for "suggested"
 let ws = null;
@@ -833,11 +835,22 @@ function validSuggestion(b) {
     typeof (b.quote.prefix ?? "") === "string" && typeof (b.quote.suffix ?? "") === "string";
 }
 
+// storedSuggestion keeps the fields a suggestion is made of, and nothing else.
+function storedSuggestion(id, from, b) {
+  const quote = { exact: b.quote.exact, prefix: b.quote.prefix || "", suffix: b.quote.suffix || "" };
+  return { id, from, body: { path: b.path, anchor: b.anchor ?? null, head: b.head ?? null, quote, replacement: b.replacement } };
+}
+
 function onSuggest(msg) {
   if (session.role !== "member") return;
   const id = String(msg.id || "");
   if (!id || !validSuggestion(msg.body)) return;
-  incoming.set(id, { id, from: typeof msg.from === "string" ? msg.from : "Guest", body: msg.body });
+  const from = typeof msg.from === "string" && msg.from ? msg.from : "Guest";
+  // Every member's page sees the suggestion; the first to record it wins, and
+  // the others find it there already.
+  if (!suggestions.has(id) && !suggestionsDone.has(id)) {
+    doc.transact(() => { suggestions.set(id, storedSuggestion(id, from, msg.body)); });
+  }
   renderSide();
 }
 
@@ -883,8 +896,8 @@ function locate(body) {
 }
 
 function applySuggestion(id) {
-  const s = incoming.get(id);
-  if (!s || session.role !== "member" || suggestionsDone.has(id)) return;
+  const s = suggestions.get(id);
+  if (!s || !validSuggestion(s.body) || session.role !== "member" || suggestionsDone.has(id)) return;
   const place = locate(s.body);
   if (!place) { toast(WORDS.cannotApply); return; }
   doc.transact(() => {
@@ -894,7 +907,7 @@ function applySuggestion(id) {
     approvals.push([{
       id,
       path: s.body.path,
-      guest: s.from,
+      guest: typeof s.from === "string" ? s.from : "Guest",
       approver: session.login,
       before,
       after: s.body.replacement,
@@ -902,20 +915,16 @@ function applySuggestion(id) {
     }]);
     suggestionsDone.set(id, "applied");
   });
-  incoming.delete(id);
   renderSide();
 }
 
 function declineSuggestion(id) {
   if (session.role !== "member") return;
   if (!suggestionsDone.has(id)) doc.transact(() => { suggestionsDone.set(id, "declined"); });
-  incoming.delete(id);
   renderSide();
 }
-suggestionsDone.observe(() => {
-  for (const id of suggestionsDone.keys()) incoming.delete(id);
-  renderSide();
-});
+suggestions.observe(() => renderSide());
+suggestionsDone.observe(() => renderSide());
 
 // ---------------------------------------------------------------------------
 // Step 4's hook: sending the session back to GitHub. meta.mode, the
@@ -1192,8 +1201,8 @@ function renderSide() {
 
   if (session.role === "member" && session.synced) {
     const items = el("ul");
-    for (const s of incoming.values()) {
-      if (suggestionsDone.has(s.id)) continue;
+    for (const s of suggestions.values()) {
+      if (!s || typeof s.id !== "string" || suggestionsDone.has(s.id) || !validSuggestion(s.body)) continue;
       items.append(el("li", { class: "suggestion" },
         el("div", { class: "from", text: WORDS.suggestedBy + " " + s.from + " · " + s.body.path.replace(BRIEF_PREFIX, "") }),
         el("del", { text: s.body.quote.exact }),
