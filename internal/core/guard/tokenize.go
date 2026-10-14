@@ -69,8 +69,14 @@ type segment struct {
 	// reading reaches is lost.
 	literal map[int]wordLiteral
 	// fromFixedOutput records a segment fixedOutputSegment built: another
-	// reading of the segment carrying the output, not another command.
+	// reading of the segment carrying the output, not another command. A
+	// reading carriedReadings built, with the values the text assigned in its
+	// words, is another reading in the same way and carries it too.
 	fromFixedOutput bool
+	// valuesPlaced records a reading carriedReadings built. Tier 2 does not
+	// speculate on it: the command's own reading was speculated on, and a
+	// value in place only spells out more text for a guess to fire on.
+	valuesPlaced bool
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word
@@ -98,6 +104,11 @@ type segment struct {
 	// in. It rides on an empty segment of its own, as substitutionUnread
 	// does, and namesIFS reads it.
 	namesIFSInText bool
+	// assignsInText is the names a `${NAME:=w}` or `${NAME=w}` anywhere in
+	// the text a tokenize call read can assign (expansionAssigns), riding on
+	// an empty segment of its own as namesIFSInText does; namesAssigned
+	// reads it.
+	assignsInText []string
 	// ifsSplit records, per token index, a spelled word whose fields rest on
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
@@ -146,6 +157,29 @@ type segment struct {
 	// reaches the command from outside its own line.
 	stdinIn []feed
 	argsIn  []feed
+	// carries records commands whose output reaches this command by a way
+	// no word's substitution and no pipe names: a value the text assigned
+	// from their output that its words hold, or a file the text wrote with
+	// their output that it reads (carried.go). A run that names this command
+	// reads them as its own (segmentHits), so `echo "$p" | xargs kill` after
+	// `p=$(pgrep make)` hands kill what pgrep printed, and so does `xargs
+	// kill < p` after `pgrep make > p`. nil when nothing does.
+	carries []feed
+	// processSearch records a grep, or a matching awk, that filters a ps
+	// listing: a search by name, which an entry that names pgrep as a
+	// source reads as one (fileCarries, segmentHits).
+	processSearch bool
+	// runsFetched records a shell, `source` or direct run of a file an
+	// earlier command of the same text wrote from a network fetch: the
+	// stream a pipe from the fetch would be, behind a file name
+	// (fileCarries, iss-2610120916248850).
+	runsFetched bool
+	// fetched is the names fetches wrote by the end of this command, its
+	// own call's earlier commands and what its carrier was handed included,
+	// and fetchedIn what the command whose string this is was handed: a
+	// string a shell runs after a fetch runs the fetched file as the line
+	// around it would (fileCarries). nil where no fetch came before.
+	fetched, fetchedIn *fetchedSet
 	// home and at name the segment in the tokenize call that emitted it,
 	// list.segs[at]; home is nil for a segment built anywhere else. They are
 	// what a command's own string is filed under (segList.payloads).
@@ -198,6 +232,9 @@ type pathWord struct {
 	text  string
 	tilde bool
 	ok    bool
+	// base is, for a word the line does not fix, its last path component
+	// where that is literal text (`"$T/n.sh"` is n.sh), else "".
+	base string
 }
 
 // redirectWord reads a redirection's raw target the way the shell reads it:
@@ -248,6 +285,27 @@ func redirectWord(raw string) pathWord {
 	}
 	w.text = b.String()
 	return w
+}
+
+// literalBase is the last path component of a raw word whose earlier part
+// the line does not fix, where that component is literal text after quote
+// removal: `"$T/n.sh"`, `$T/'n.sh'` and `"$T"/n.sh` are n.sh. A component
+// holding an expansion, a glob, a backslash or anything else the shell
+// reads specially, or a word with no slash, gives "".
+func literalBase(raw string) string {
+	i := strings.LastIndexByte(raw, '/')
+	if i < 0 {
+		return ""
+	}
+	rest := raw[i+1:]
+	if strings.ContainsAny(rest, "$`\\*?[]{}()<>|&;~ \t\n") {
+		return ""
+	}
+	rest = strings.NewReplacer(`"`, "", "'", "").Replace(rest)
+	if rest == "" || rest == "." || rest == ".." {
+		return ""
+	}
+	return rest
 }
 
 // feed is a run of segments one tokenize call emitted, list.segs[lo:hi]: the
@@ -638,7 +696,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if raw == "" {
 			return
 		}
-		curRedirs = append(curRedirs, redirect{fd: fd, op: op, target: redirectWord(raw)})
+		w := redirectWord(raw)
+		if !w.ok {
+			w.base = literalBase(raw)
+		}
+		curRedirs = append(curRedirs, redirect{fd: fd, op: op, target: w})
 	}
 	// feedFrom records, for the word being built, that it holds the output of
 	// the commands emitted since start: a substitution's own command and every
@@ -1774,7 +1836,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if strings.HasSuffix(w, "+=") {
 					w, arrayAppend = w[:len(w)-2]+"=", true
 				}
-				if isAssignment(w) && strings.IndexByte(w, '=') == len(w)-1 {
+				if strings.HasSuffix(w, "=") && isName(w[:len(w)-1]) {
 					arrayName = w[:len(w)-1]
 				}
 			}
@@ -1969,7 +2031,38 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// depth 0, so it is read once, there.
 		segs = append(segs, segment{chain: chain, namesIFSInText: true})
 	}
+	if depth == 0 {
+		if names := expansionAssigns(line); len(names) > 0 {
+			segs = append(segs, segment{chain: chain, assignsInText: names})
+		}
+	}
 	return segs, nil
+}
+
+// expansionAssigns is every name a `${NAME:=w}` or `${NAME=w}` in text
+// assigns, wherever it stands, a quoted one included: reaching past what
+// the shell assigns only keeps a word read as any file the line wrote.
+func expansionAssigns(text string) []string {
+	var out []string
+	for i := 0; i+2 < len(text); i++ {
+		if text[i] != '$' || text[i+1] != '{' {
+			continue
+		}
+		j := i + 2
+		for j < len(text) && (text[j] == '_' || text[j] >= 'a' && text[j] <= 'z' || text[j] >= 'A' && text[j] <= 'Z' ||
+			j > i+2 && text[j] >= '0' && text[j] <= '9') {
+			j++
+		}
+		if j == i+2 || j >= len(text) {
+			continue
+		}
+		if text[j] == '=' || text[j] == ':' && j+1 < len(text) && text[j+1] == '=' {
+			if name := text[i+2 : j]; !containsString(out, name) {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // unwordedIFS reports whether line holds the name IFS more times than the

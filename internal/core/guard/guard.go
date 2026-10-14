@@ -622,6 +622,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 			break
 		}
 	}
+	// So does one that runs a script the same text downloaded to a file
+	// (fileCarries).
+	for _, s := range segs {
+		if s.runsFetched {
+			signals = append(signals, fetchedScriptSignal())
+			break
+		}
+	}
 
 	ids := make([]string, 0, len(r.Entries))
 	for id := range r.Entries {

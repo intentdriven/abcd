@@ -50,6 +50,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -789,7 +790,28 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
-	return st, nil
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches `implement record --json`, a start's payload or a
+	// resume's refusal; the refusal does not echo it (iss-2610121206163414).
+	if st.Pace != nil && !st.Pace.written() {
+		return State{}, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
+			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// A lane's stored hand-back carries only text the loop writes, so none
+	// reaches a --json stream raw; the refusal does not echo it
+	// (iss-2610121516559163).
+	if !st.handBacksWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	if !st.receiptsWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a receipt's model or resolution the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// The repository and tool text it stores is shown masked, never refused,
+	// so a run abcd wrote stays readable (iss-2610121542240257).
+	return st.masked(), nil
 }
 
 // stateStepNamed is a state file of versions 1 to 3, which named the lane's
@@ -931,8 +953,11 @@ func serialCarries(st State, version int) error {
 // writeState is the state file's one writer: a whole-file atomic replacement
 // inside the checkout's os.Root, so a reader sees the old state or the new one,
 // never half of either. The caller holds the lock.
+//
+// The repository and tool text the state carries is stored masked
+// (State.masked, iss-2610121542240257).
 func writeState(root *os.Root, st State) error {
-	data, err := json.MarshalIndent(st, "", "  ")
+	data, err := json.MarshalIndent(st.masked(), "", "  ")
 	if err != nil {
 		return err
 	}

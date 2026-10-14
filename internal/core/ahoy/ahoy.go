@@ -180,7 +180,25 @@ type InstallOptions struct {
 	// install (--install-tool), which is that answer given in advance. Every
 	// other category is still asked, or pre-answered, as before.
 	ApproveDependency bool
+	// VerifyProvenance verifies a release artefact's SLSA build provenance by
+	// its sha256, for the release tag the cache attestation names (the
+	// provenance must name the commit that tag resolves to), returning the
+	// verified signer identity. Promoting the
+	// plugin's cached release binary to the PATH copy runs it before anything
+	// is written, and any failure refuses (iss-2610120617515834): the cache
+	// was checked against checksums.txt from the same release page as the
+	// binary, which whoever can change that page can change too. The front
+	// door supplies abcd update's own in-process check
+	// (update.ReleaseProvenance), one primitive for both verbs; this package
+	// cannot import it, because update imports ahoy. Nil refuses every
+	// promotion: there is no unverified path.
+	VerifyProvenance ProvenanceCheck
 }
+
+// ProvenanceCheck verifies a release artefact's build provenance by its
+// sha256 digest, as the build of release tag, and returns the verified signer
+// identity.
+type ProvenanceCheck func(tag string, digest []byte) (signer string, err error)
 
 // InstallResult is the outcome of Install.
 type InstallResult struct {
@@ -223,6 +241,12 @@ type InstallResult struct {
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
+	// unverifiedCheck is the hand check for the owned copy whose provenance
+	// failed, which the summary gives under UnverifiedCopyGapID.
+	unverifiedCheck string
+	// unverifiedWhy names why that copy was not verified when a fact other
+	// than the check says so (its release is older than the mark).
+	unverifiedWhy string
 	// readmeAwaitsConfig is set when the run reports the README question
 	// skipped and ends with no .abcd/config.json to keep its answer in, so the
 	// summary names the starter files first (iss-2610120505551170).

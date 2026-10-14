@@ -465,12 +465,28 @@ leave the user's shell profile alone.
 
 The entry install writes is the abcd-owned copy of the verified release binary,
 taken from the persistent plugin data directory a session's hooks provision.
+Before writing it, install verifies that binary's signed build provenance with
+the same in-process check `abcd update` makes, bound to the commit of the
+release the cache attestation names; when the check fails or cannot
+reach GitHub's attestations API or the Sigstore TUF repository, install writes
+no entry and its note names what failed and how to check the release by hand
+with `gh attestation verify`. Relay that note verbatim.
 When no verified copy is there, install writes no entry at all rather than a
 symlink into the plugin root, which stops working at the next plugin update, and
 its note names the command to run first: the install one-liner in the README,
 which downloads the release binary, verifies it against that release's own
 checksums and records it, after which a re-run of `ahoy install` adopts it.
-Relay that note verbatim. A `symlink.legacy` gap is a symlink into the plugin
+Relay that note verbatim. Every install run checks the abcd-owned copy
+already on `PATH` with the same provenance check, read-only, on the copy's own
+bytes, even when nothing else is left to do and even when it holds the cached
+release's bytes (the bootstrap refreshes it from the cache on the checksum
+alone when `gh` cannot verify). It is bound to the release the cache
+attestation names when the copy holds the cache's bytes, and otherwise to the
+release its build metadata names (read, never run). A copy naming a release older than `~/.abcd.noindex/release-mark`, the newest release this machine has installed or verified, fails that check. A copy that fails, or that cannot be checked, is not
+adopted and is left as it is: the run ends `partial`, never `clean` or
+`already_up_to_date`, with a `symlink.unverified` item in `remaining` whose
+summary gives the `gh attestation verify` command for that file. Relay that
+note verbatim too. A `symlink.legacy` gap is a symlink into the plugin
 root that an earlier release wrote: it works until the next plugin update, and
 its fix hint says whether install replaces it now or which command comes first.
 A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an

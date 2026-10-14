@@ -22,6 +22,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // SyncDirName is the lane's directory a sync's brief and receipt live in.
@@ -124,8 +125,7 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				return Outcome{}, false, err
 			}
 			lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-			return Outcome{Goto: StageValidate, Note: fmt.Sprintf("the sync of %s with %s at %s conflicted in %s (%s landed first); the merge is aborted with the branch unchanged, and a fresh implementer resolves it from %s",
-				lane.ID, def, shortSHA(merged), strings.Join(paths, ", "), strings.Join(siblings, ", "), s.Brief)}, true, nil
+			return Outcome{Goto: StageValidate, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
 		}
 		if tip, err = branchTip(c, *lane); err != nil {
 			return Outcome{}, false, err
@@ -135,7 +135,18 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	lane.HeadSHA = tip
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
 	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s after %s landed: merge commit %s; a fresh round judges it, and counts no fix round",
-		lane.ID, def, shortSHA(merged), strings.Join(siblings, ", "), shortSHA(tip))}, true, nil
+		lane.ID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(siblings), ", "), shortSHA(tip))}, true, nil
+}
+
+// conflictNote is the record's line for a conflicting sync. The paths are
+// git's, named by the repository's files, the siblings the state's and the
+// default branch the remote's: each is masked where the line is composed, so
+// no caller of the outcome is handed one raw (the state masks the record only
+// when it is written).
+func conflictNote(laneID, def, merged string, paths, siblings []string, brief string) string {
+	return fmt.Sprintf("the sync of %s with %s at %s conflicted in %s (%s landed first); the merge is aborted with the branch unchanged, and a fresh implementer resolves it from %s",
+		laneID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(paths), ", "),
+		strings.Join(termsafe.SanitizeAll(siblings), ", "), brief)
 }
 
 // undoStalledSync undoes a sync's merge stopped at its deadline (a
@@ -188,24 +199,35 @@ func writeSyncBrief(c Context, lane Lane, n int, def string, s *Sync) error {
 	}
 	inLane := strings.TrimPrefix(dir, laneDir+"/")
 	s.Brief, s.Receipt = dir+"/"+BriefFileName, dir+"/"+ReceiptFileName
+	// The paths are git's, named by the repository's files, and the branch,
+	// worktree and siblings the state's: each is masked where the brief is
+	// composed, so a file name with a line break cannot add a line to it
+	// (the state masks them only when it is written). The default branch is
+	// the remote's (refs/remotes/origin/HEAD, whose name git's ref grammar lets
+	// carry a bidi rune, a tag letter or a C1 control) and the checkout root is
+	// the machine's, so both are masked too. The root's home is kept: the
+	// implementer writes its report and receipt at these paths.
+	branch, worktree := termsafe.Sanitize(lane.Branch), termsafe.Sanitize(lane.Worktree)
+	def = termsafe.Sanitize(def)
+	at := func(rel string) string { return termsafe.Sanitize(abs(c.RepoRoot, rel)) }
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	p("# Sync brief: %s of %s\n\n", lane.ID, c.State.RunID)
-	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(s.Siblings, ", "), def, def, s.Merged)
-	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", lane.Branch)
+	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(termsafe.SanitizeAll(s.Siblings), ", "), def, def, s.Merged)
+	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", branch)
 	p("The conflicting paths:\n\n")
 	for _, path := range s.Paths {
-		p("- `%s`\n", path)
+		p("- `%s`\n", termsafe.Sanitize(path))
 	}
-	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", lane.Worktree, s.Merged, lane.Branch, s.Merged)
+	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", worktree, s.Merged, branch, s.Merged)
 	p("rebase), resolve each conflict keeping both lanes' intent, and commit the merge. The merged sha must be an\n")
 	p("ancestor of your head; a fresh round of validators judges it.\n\n")
-	p("Your brief as the lane's implementer: `%s`\n\n", abs(c.RepoRoot, lane.Brief))
+	p("Your brief as the lane's implementer: `%s`\n\n", at(lane.Brief))
 	p("## What you hand back\n\n")
-	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+ReportFileName), inLane, ReportFileName)
-	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+DoDFileName), inLane, DoDFileName)
-	p("- the receipt, at `%s`: the lane receipt's fields — `schema_version` %d, `run_id` %q, `lane` %q,\n", abs(c.RepoRoot, s.Receipt), ReceiptSchemaVersion, c.State.RunID, lane.ID)
-	p("  `branch` %q, `commits` (the merge commit and any you made), `definition_of_done`, `report`, and an optional `model`.\n", lane.Branch)
+	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", at(dir+"/"+ReportFileName), inLane, ReportFileName)
+	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", at(dir+"/"+DoDFileName), inLane, DoDFileName)
+	p("- the receipt, at `%s`: the lane receipt's fields — `schema_version` %d, `run_id` %q, `lane` %q,\n", at(s.Receipt), ReceiptSchemaVersion, c.State.RunID, lane.ID)
+	p("  `branch` %q, `commits` (the merge commit and any you made), `definition_of_done`, `report`, and an optional `model`.\n", branch)
 	return writeRoundFile(c.RepoRoot, s.Brief, b.Bytes())
 }
 

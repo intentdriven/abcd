@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/homeignore"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // homestop.go — the stop while the old home stands (itd-2610030720038073
@@ -37,6 +39,23 @@ import (
 // relative HOME is no stop: the refusals for that shape stand where they are.
 func homeStop() *abcdhome.Stop {
 	return abcdhome.Check(os.Getenv("HOME"))
+}
+
+// narrowHome takes the group and other bits off abcd's home, the one folder
+// HOME names, when this account owns it and it is a real directory, so a home
+// an earlier abcd or a hand-run mkdir made at the umask (0755) is readable only
+// by its account from the next command on. Narrowing the home closes every
+// folder below it, so nothing below is walked or re-moded. A symlinked home,
+// one another account owns, an absent one and an empty or relative HOME are
+// left as they are (fsutil.NarrowToOwner). It is silent: a home it cannot
+// narrow is judged by the readers and writers that use it, as before, and no
+// command, hook or status line fails or speaks because of it.
+func narrowHome() {
+	home := os.Getenv("HOME")
+	if home == "" || !filepath.IsAbs(home) {
+		return
+	}
+	_, _ = fsutil.NarrowToOwner(abcdhome.Path(home))
 }
 
 // renderHomeStop answers args with the stop in the form of the command they

@@ -10,6 +10,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // eligible.go — the drain's field-only eligibility rule (itd-82 decisions 4, 6
@@ -103,7 +104,9 @@ type DrainVerdict struct {
 // both. `capture defer` writes a deferral only onto a major or
 // critical record, but a hand-written one on a lighter record is read alike.
 func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdict {
-	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Title: issueTitleLine(iss.Body, iss.Slug), Severity: iss.Severity, Category: iss.Category}
+	// The title is the record's own first line, so it is masked: it reaches
+	// `drain --json` (iss-2610121542258778).
+	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Title: termsafe.Sanitize(issueTitleLine(iss.Body, iss.Slug)), Severity: iss.Severity, Category: iss.Category}
 	decide := func(o DrainOutcome, rule DrainRule, reason string) DrainVerdict {
 		v.Outcome, v.Rule, v.Reason = o, rule, reason
 		return v
@@ -127,13 +130,18 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 		return decide(DrainHandBack, RuleWaitsOnRuling,
 			"the remedy opens \"Waits on\": the fix waits on a person's ruling, so it is a person's until the ruling is given and the remedy rewritten")
 	case anchor.unknown && iss.deferredAfter != "":
+		// The tag is the record's own text, unjudged here, so it is masked: the
+		// reason reaches `drain --json` and a judgement's stored note
+		// (iss-2610121516552317).
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %s, anchor unknown: this checkout holds no release tag (a shallow clone fetches none), so whether the deferral is live cannot be read and it is a person's; `git fetch --tags` and drain again",
-			iss.deferredAfter))
+			termsafe.Sanitize(iss.deferredAfter)))
 	case iss.deferredAfter != "" && !deferredOK:
+		// Masked before it is quoted, as above: %q escapes only the runes Go
+		// deems unprintable, and termsafe masks some Go prints (U+034F).
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %q, which is not a release tag (want vMAJOR.MINOR.PATCH): whether the deferral is live cannot be read, so it is a person's; `abcd capture defer` writes one the drain reads",
-			iss.deferredAfter))
+			termsafe.Sanitize(iss.deferredAfter)))
 	case deferredOK && launch.CoreGreater(deferred, anchor.local):
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %s, anchor stale: this checkout's newest release tag is %s and it lacks %s (a checkout not fetched since the last cut), so whether the deferral is live cannot be read and it is a person's; `git fetch --tags` and drain again",
@@ -270,8 +278,11 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 		if id == "" {
 			continue
 		}
+		// The reader's refusal can quote the record's own text unquoted (a
+		// schema_version's value), so it is masked where the reason is built
+		// (iss-2610121516552317). The path is the reader's well-formed name.
 		rest = append(rest, DrainVerdict{ID: id, Path: sk.Path, Outcome: DrainUnreadable, Rule: RuleUnreadable,
-			Reason: fmt.Sprintf("the reader refuses the record at its %s stage: %s", sk.Layer, sk.Error)})
+			Reason: fmt.Sprintf("the reader refuses the record at its %s stage: %s", sk.Layer, termsafe.Sanitize(sk.Error))})
 	}
 	orderEligible(eligible, rule)
 	sort.SliceStable(rest, func(i, j int) bool { return issNumber(rest[i].ID) < issNumber(rest[j].ID) })
