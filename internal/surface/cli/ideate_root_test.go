@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The store an `ideate record` run writes into is the CHECKOUT's research store,
@@ -33,6 +34,7 @@ func ideateStoreFixture(t *testing.T) (repo, sub string) {
 	t.Setenv("HOME", t.TempDir())
 	repo = t.TempDir()
 	gitInitAt(t, repo)
+	gitCommitAt(t, repo, "root")
 	repo = realPath(t, repo)
 	seedIdeateStore(t, repo)
 	sub = filepath.Join(repo, "internal", "core")
@@ -59,7 +61,7 @@ func seedIdeateStore(t *testing.T, root string) {
 // the dated research note, and the decision log that must now point at it.
 func recordedVerdict(t *testing.T, repo, slug string) (note string) {
 	t.Helper()
-	dir := filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir))
+	dir := filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir), gitutil.RootCommit(repo))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("the checkout's research store holds no verdict: %v", err)
@@ -83,7 +85,7 @@ func TestIdeateRecordFromSubdirectoryWritesIntoTheCheckoutStore(t *testing.T) {
 	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "ideate", "record", "filed-from-a-package-directory", "--verdict-json", payload)
+	out, err := runCLIErr(t, "ideate", "record", "filed-from-a-package-directory", "--public", "--verdict-json", payload)
 	if err != nil {
 		t.Fatalf("`abcd ideate record` from a package directory: %v\n%s", err, out)
 	}
@@ -118,7 +120,7 @@ func TestIdeateRecordOutsideAnyRepositoryRefuses(t *testing.T) {
 	seedIdeateStore(t, plain)
 	t.Chdir(plain)
 
-	out, err := runCLIErr(t, "ideate", "record", "outside-any-repository", "--verdict-json", payload)
+	out, err := runCLIErr(t, "ideate", "record", "outside-any-repository", "--public", "--verdict-json", payload)
 	if err == nil {
 		t.Fatalf("`abcd ideate record` outside a repository succeeded; it must refuse:\n%s", out)
 	}
@@ -148,7 +150,7 @@ func TestIdeateRecordRefusesARepoShapedTreeGitWillNotAnswerFor(t *testing.T) {
 	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
 	t.Chdir(planted)
 
-	out, err := runCLIErr(t, "ideate", "record", "beneath-a-planted-marker", "--verdict-json", payload)
+	out, err := runCLIErr(t, "ideate", "record", "beneath-a-planted-marker", "--public", "--verdict-json", payload)
 	if err == nil {
 		t.Fatalf("a repo-shaped tree git will not answer for was accepted as a root:\n%s", out)
 	}
@@ -165,7 +167,7 @@ func TestIdeateRecordRefusesARepoShapedTreeGitWillNotAnswerFor(t *testing.T) {
 func TestIdeateRecordFromTheCheckoutRootIsUnchanged(t *testing.T) {
 	repo, _ := ideateStoreFixture(t)
 
-	out, err := runCLIErr(t, "ideate", "record", "filed-from-the-root", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
+	out, err := runCLIErr(t, "ideate", "record", "filed-from-the-root", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
 	if err != nil {
 		t.Fatalf("`abcd ideate record` at the checkout root: %v\n%s", err, out)
 	}
@@ -195,7 +197,7 @@ func TestIdeateRecordReportsAStrayResearchStoreBelowTheCheckoutRoot(t *testing.T
 	}
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "ideate", "record", "filed-beside-a-stray-store", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
+	out, err := runCLIErr(t, "ideate", "record", "filed-beside-a-stray-store", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
 	if err != nil {
 		t.Fatalf("ideate record: %v\n%s", err, out)
 	}

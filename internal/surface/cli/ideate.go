@@ -21,6 +21,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ideate"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -43,8 +44,9 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 	}
 
 	var verdictJSON string
+	var private, public bool
 	recordCmd := &cobra.Command{
-		Use: "record <idea-slug> --verdict-json <file|->",
+		Use: "record <idea-slug> --private|--public --verdict-json <file|->",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return &exitError{Code: 2, Msg: "ideate record: <idea-slug> is required"}
@@ -53,6 +55,10 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := ideateStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			store, err := ideateStore(repoRoot, private, public)
 			if err != nil {
 				return err
 			}
@@ -71,7 +77,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 			// The clock is read HERE, at the front door, and passed in: the date lands
 			// in a durable filename and a durable log line, so the core takes it as an
 			// argument a test can pin rather than reading it from under a writer.
-			res, err := ideate.Record(repoRoot, args[0], raw, time.Now())
+			res, err := ideate.Record(repoRoot, args[0], store, raw, time.Now())
 			if err != nil {
 				return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
 			}
@@ -80,6 +86,10 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
+	recordCmd.Flags().BoolVar(&private, "private", false,
+		"the idea is private: record the verdict in "+abcdhome.Display("ideas")+"/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)")
+	recordCmd.Flags().BoolVar(&public, "public", false,
+		"the idea is public: commit the verdict under "+ideate.ResearchRelDir+"/<root-sha>/ with its decision-log line (exclusive with --private)")
 	recordCmd.Flags().StringVar(&verdictJSON, "verdict-json", "",
 		"path to the host-composed verdict JSON (or - for stdin)")
 
@@ -127,6 +137,50 @@ func ideateStoreRoot(cmd *cobra.Command) (string, error) {
 	return root, nil
 }
 
+// ideateStore turns the person's answer into the store the verdict is written
+// to (iss-2610090740139804). The answer is required and has no default: the
+// host asks "is this idea private or public?" before it records, and the flag
+// carries the answer, so neither flag, or both, refuses before anything is read
+// or written. The store is keyed on the repository's root commit, so a
+// repository with no commit yet is refused here, naming why; HOME is resolved
+// only for a private verdict, and the core judges it.
+func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
+	var vis ideate.Visibility
+	switch {
+	case private && public:
+		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: --private and --public are exclusive; " +
+			"pass the one answer the person gave (nothing written)"}
+	case private:
+		vis = ideate.VisibilityPrivate
+	case public:
+		vis = ideate.VisibilityPublic
+	default:
+		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: one of --private or --public is required; " +
+			"ask the person whether the idea is private or public, then record it with that answer (nothing written)"}
+	}
+	// A shallow clone's `rev-list --max-parents=0 HEAD` names its graft, not the
+	// repository's root, so a verdict keyed on it would land in a folder no full
+	// clone of the same repository ever reads. The probe is fail-closed: a git
+	// that cannot say whether the checkout is shallow refuses too.
+	if err := gitutil.RequireFullHistory(repoRoot); err != nil {
+		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this checkout is shallow or its history could not be read (" +
+			scrubPaths(err) + "), and a verdict is filed under the repository's root commit, which a shallow clone does not hold; " +
+			"fetch the full history (git fetch --unshallow), then record (nothing written)"}
+	}
+	sha := gitutil.RootCommit(repoRoot)
+	if sha == "" {
+		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this repository has no commit yet, " +
+			"and a verdict is filed under the repository's root commit; commit once, then record (nothing written)"}
+	}
+	store := ideate.Store{Visibility: vis, RootSHA: sha}
+	if vis == ideate.VisibilityPrivate {
+		// The error is not checked here: an unresolved home reaches the core as
+		// "", and the core's refusal names it in the same words for every caller.
+		store.Home, _ = os.UserHomeDir()
+	}
+	return store, nil
+}
+
 // readIdeatePayload reads the untrusted verdict document behind the same trust
 // guards every other host-delegated ingest uses: a file must be regular,
 // non-symlink, and under the cap the core enforces; "-" reads stdin bounded to the
@@ -145,8 +199,13 @@ func readIdeatePayload(cmd *cobra.Command, spec string) ([]byte, error) {
 func renderIdeateResult(res ideate.Result) string {
 	out := fmt.Sprintf("ideate verdict recorded — %s\n", res.Slug)
 	out += fmt.Sprintf("  verdict:   %s\n", res.Verdict)
+	out += fmt.Sprintf("  stored:    %s\n", res.Visibility)
 	out += fmt.Sprintf("  record:    %s\n", res.Path)
-	out += fmt.Sprintf("  pointer:   %s\n", res.DecisionPath)
+	if res.DecisionPath == "" {
+		out += "  pointer:   none — a private verdict writes no decision-log line\n"
+	} else {
+		out += fmt.Sprintf("  pointer:   %s\n", res.DecisionPath)
+	}
 	out += fmt.Sprintf("  claims:    %d (verified %d · falsified %d · unverifiable %d)\n",
 		res.Claims.Total(), res.Claims.Verified, res.Claims.Falsified, res.Claims.Unverifiable)
 	if len(res.CitedRecords) == 0 {
