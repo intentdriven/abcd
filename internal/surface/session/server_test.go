@@ -563,3 +563,93 @@ func TestReplayLongerThanTheSendQueue(t *testing.T) {
 		}
 	}
 }
+
+// dialStatus tries the WebSocket upgrade and returns the HTTP status of a
+// refusal, or 0 when the upgrade succeeded.
+func (f *fixture) dialStatus(t *testing.T) int {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, resp, err := websocket.Dial(ctx, f.wsURL, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {origin}}})
+	if err == nil {
+		t.Cleanup(func() { _ = ws.CloseNow() })
+		return 0
+	}
+	if resp == nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return resp.StatusCode
+}
+
+// TestConnectionCapsRefuseTheUpgrade: past the relay-wide cap or the
+// per-address cap, the upgrade is refused with 503, and the connections
+// already held carry on.
+func TestConnectionCapsRefuseTheUpgrade(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		mod  func(*Config)
+	}{
+		{"relay-wide", func(c *Config) { c.Limits.MaxConnections = 2 }},
+		{"per address", func(c *Config) { c.Limits.MaxConnsPerAddr = 2 }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t, c.mod)
+			host, code := f.hostSession(t)
+			guest := f.dial(t, origin)
+			if got := f.dialStatus(t); got != http.StatusServiceUnavailable {
+				t.Fatalf("a third connection: status %d, want 503", got)
+			}
+			guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})
+			guest.until("joined")
+			host.sendJSON(map[string]string{"type": "rotate"})
+			host.until("code")
+			if s := f.srv.Relay().Stats(); s.Connections != 2 {
+				t.Fatalf("connections = %d, want the two held", s.Connections)
+			}
+		})
+	}
+}
+
+// TestAConnectionThatJoinsNothingIsClosed: a connection that has not hosted,
+// joined or rejoined within the grace period is closed normally; one that
+// has stays open past it.
+func TestAConnectionThatJoinsNothingIsClosed(t *testing.T) {
+	f := newFixture(t, func(c *Config) { c.Limits.AdmitWithin = 200 * time.Millisecond })
+	host, _ := f.hostSession(t)
+	idle := f.dial(t, origin)
+	if e, _ := idle.until("error"); e["code"] != "join-timeout" {
+		t.Fatalf("idle connection: %v, want join-timeout", e)
+	}
+	if _, _, err := idle.next(); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Fatalf("idle connection ended with %v, want a normal closure", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	host.sendJSON(map[string]string{"type": "rotate"})
+	host.until("code")
+}
+
+// TestTheSendQueueGrowsOnEnteringASession: a connection outside a session
+// may have few frames waiting; one inside, many.
+func TestTheSendQueueGrowsOnEnteringASession(t *testing.T) {
+	p := newPeer(func() {}, preRoomQueue)
+	for i := 0; i < preRoomQueue; i++ {
+		if !p.Send(core.Frame{Data: []byte("{}")}) {
+			t.Fatalf("frame %d refused below the pre-session bound", i)
+		}
+	}
+	if p.Send(core.Frame{Data: []byte("{}")}) {
+		t.Fatalf("frame %d accepted past the pre-session bound", preRoomQueue)
+	}
+	p.Entered()
+	for i := preRoomQueue; i < sendQueue; i++ {
+		if !p.Send(core.Frame{Data: []byte("{}")}) {
+			t.Fatalf("frame %d refused below the session bound", i)
+		}
+	}
+	if p.Send(core.Frame{Data: []byte("{}")}) {
+		t.Fatalf("frame %d accepted past the session bound", sendQueue)
+	}
+	if preRoomQueue > 64 {
+		t.Fatalf("preRoomQueue = %d, want it small", preRoomQueue)
+	}
+}

@@ -71,6 +71,9 @@ type Peer interface {
 	// changed once logged, so the transport may hold them while it writes.
 	// False means the connection cannot take it, as for Send.
 	SendLog(entries [][]byte) bool
+	// Entered tells the transport the connection is in a session now, so it
+	// may let more frames wait for it than for one that is not.
+	Entered()
 	// Close ends the connection; policy marks a refusal (WebSocket 1008)
 	// rather than a normal end. It must not call back into the relay.
 	Close(policy bool, reason string)
@@ -122,6 +125,14 @@ type Limits struct {
 	// never below MaxParticipants, so a connected participant's token is never
 	// the one forgotten.
 	MaxRejoinTokens int
+	// MaxConnections caps the connections the relay holds at once, in a
+	// session or not, and MaxConnsPerAddr those from one address, keyed as
+	// the failed-join limit keys it (AddressKey).
+	MaxConnections  int
+	MaxConnsPerAddr int
+	// AdmitWithin is how long a connection may stay open without hosting,
+	// joining or rejoining; the transport calls Conn.Expire when it ends.
+	AdmitWithin time.Duration
 }
 
 // DefaultLimits are the relay's limits unless a caller sets others. Sixteen
@@ -148,6 +159,9 @@ func DefaultLimits() Limits {
 		MaxHostsPerAddr:    3,
 		HostWindow:         10 * time.Minute,
 		MaxRejoinTokens:    128,
+		MaxConnections:     256,
+		MaxConnsPerAddr:    16,
+		AdmitWithin:        30 * time.Second,
 	}
 }
 
@@ -163,6 +177,7 @@ type Options struct {
 // Stats is what the relay holds, in counts: after a session is purged, none of
 // it counts towards any of these.
 type Stats struct {
+	Connections  int
 	Sessions     int
 	Codes        int
 	Participants int
@@ -190,6 +205,8 @@ type Relay struct {
 	failed   *addrWindow
 	hosted   *addrWindow
 	nextConn int
+	open     int            // connections held, in a session or not
+	openBy   map[string]int // connections held, by address key
 }
 
 // New builds a relay.
@@ -215,6 +232,8 @@ func New(o Options) *Relay {
 	fill(&l.SuggestBurst, d.SuggestBurst)
 	fill(&l.MaxHostsPerAddr, d.MaxHostsPerAddr)
 	fill(&l.MaxRejoinTokens, d.MaxRejoinTokens)
+	fill(&l.MaxConnections, d.MaxConnections)
+	fill(&l.MaxConnsPerAddr, d.MaxConnsPerAddr)
 	if l.MaxRejoinTokens < l.MaxParticipants {
 		l.MaxRejoinTokens = l.MaxParticipants
 	}
@@ -227,7 +246,10 @@ func New(o Options) *Relay {
 	if l.HostWindow <= 0 {
 		l.HostWindow = d.HostWindow
 	}
-	r := &Relay{limits: l, verifier: o.Verifier, now: o.Now, rand: o.Rand, rooms: map[string]*room{}, seats: map[string]*seat{}}
+	if l.AdmitWithin <= 0 {
+		l.AdmitWithin = d.AdmitWithin
+	}
+	r := &Relay{limits: l, verifier: o.Verifier, now: o.Now, rand: o.Rand, rooms: map[string]*room{}, seats: map[string]*seat{}, openBy: map[string]int{}}
 	if r.now == nil {
 		r.now = time.Now
 	}
@@ -303,19 +325,68 @@ type Conn struct {
 	memberOf string // the repository key the verified login may push to
 	verifies int
 	left     bool
+	entered  bool  // it has hosted, joined or rejoined
 	seat     *seat // the participant a rejoin token restores
 	// awareness and suggests are the connection's token buckets.
 	awareness bucket
 	suggests  bucket
 }
 
+// ErrTooManyConnections is Connect's refusal: the relay, or the address,
+// holds as many connections as it may.
+var ErrTooManyConnections = errors.New("the relay holds as many connections as it may")
+
 // Connect admits a new connection from addr (the client's address as the
-// transport judged it).
-func (r *Relay) Connect(p Peer, addr string) *Conn {
+// transport judged it), or refuses it, touching nothing else, when the relay
+// or that address holds as many connections as it may. The connection holds
+// its place until it leaves.
+func (r *Relay) Connect(p Peer, addr string) (*Conn, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	key := AddressKey(addr)
+	if r.open >= r.limits.MaxConnections || r.openBy[key] >= r.limits.MaxConnsPerAddr {
+		return nil, ErrTooManyConnections
+	}
+	r.open++
+	r.openBy[key]++
 	r.nextConn++
-	return &Conn{r: r, id: "p" + strconv.Itoa(r.nextConn), peer: p, addr: AddressKey(addr)}
+	return &Conn{r: r, id: "p" + strconv.Itoa(r.nextConn), peer: p, addr: key}, nil
+}
+
+// markLeft ends c's hold on the relay, once: it is out of every count.
+func (c *Conn) markLeft() {
+	if c.left {
+		return
+	}
+	c.left = true
+	r := c.r
+	r.open--
+	if r.openBy[c.addr]--; r.openBy[c.addr] <= 0 {
+		delete(r.openBy, c.addr)
+	}
+}
+
+// enter marks c as in a session and tells its transport so.
+func (c *Conn) enter() {
+	if !c.entered {
+		c.entered = true
+		c.peer.Entered()
+	}
+}
+
+// Expire closes c if it has not hosted, joined or rejoined. The transport
+// calls it once Limits.AdmitWithin after Connect, so a connection that never
+// enters a session does not hold its place. The close is a normal one, not a
+// refusal: a page that waited may open another.
+func (c *Conn) Expire() {
+	c.r.mu.Lock()
+	defer c.r.mu.Unlock()
+	if c.left || c.entered {
+		return
+	}
+	c.fail("join-timeout", "host, join or rejoin a session soon after connecting")
+	c.leave()
+	c.peer.Close(false, "no session joined in time")
 }
 
 // inbound is every field a control message may carry.
@@ -395,7 +466,7 @@ func (c *Conn) leave() {
 	if c.left {
 		return
 	}
-	c.left = true
+	c.markLeft()
 	rm := c.room
 	c.room = nil
 	if s := c.seat; s != nil && s.conn == c {
@@ -613,6 +684,7 @@ func (c *Conn) host(repo string) {
 	c.room, c.role, c.name = rm, roleMember, c.login
 	rm.conns = append(rm.conns, c)
 	r.giveSeat(c, token)
+	c.enter()
 	c.sendJSON(map[string]any{"type": "hosted", "id": c.id, "code": code, "repo": repo, "rejoin": token})
 	c.sendJSON(map[string]string{"type": "synced"})
 	r.broadcastRoster(rm)
@@ -665,6 +737,7 @@ func (c *Conn) join(code, name string) {
 // log to it and announces it.
 func (c *Conn) admitted(token string) {
 	rm := c.room
+	c.enter()
 	c.sendJSON(map[string]any{"type": "joined", "id": c.id, "role": c.role, "name": c.name, "repo": rm.repo, "host": c.isHost(), "rejoin": token})
 	// The replay is one queued item, not one per entry: a log longer than the
 	// send queue would otherwise drop every newcomer. The slice is capped at
@@ -870,7 +943,8 @@ func (c *Conn) closeRoom() {
 		o.sendJSON(map[string]string{"type": "closed", "reason": "host"})
 	}
 	for _, o := range conns {
-		o.left, o.room = true, nil
+		o.room = nil
+		o.markLeft()
 		o.peer.Close(false, "session closed")
 	}
 	rm.conns = nil
@@ -951,6 +1025,7 @@ func (r *Relay) Stats() Stats {
 		s.Credits += len(rm.credits)
 	}
 	s.RejoinTokens = len(r.seats)
+	s.Connections = r.open
 	return s
 }
 

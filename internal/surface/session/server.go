@@ -51,10 +51,12 @@ const (
 	maxAuthBody   = 8 << 10
 	githubTimeout = 15 * time.Second
 	writeTimeout  = 10 * time.Second
-	// sendQueue is how many items one connection may have waiting, a log
-	// replay counting as one; a connection that falls further behind is
-	// dropped.
-	sendQueue = 1024
+	// sendQueue is how many items one connection in a session may have
+	// waiting, a log replay counting as one; a connection that falls further
+	// behind is dropped. preRoomQueue is the bound before it enters a
+	// session, when nothing but answers to its own messages is sent to it.
+	sendQueue    = 1024
+	preRoomQueue = 64
 	// SweepInterval is how often the relay looks for idle sessions.
 	SweepInterval = time.Minute
 	// pingEvery and pingWait keep a WebSocket honest: a connection that does
@@ -280,25 +282,34 @@ func tailnetForwarded(r *http.Request) (string, bool) {
 }
 
 // serveSession upgrades to the session's WebSocket and runs one connection.
+// Past the relay's connection caps the upgrade is refused with 503, before
+// anything is allocated for it and without touching another connection.
 func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	if !s.originAllowed(r.Header.Get("Origin")) {
 		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
+	// The request's context ends when the server shuts down (Run's
+	// BaseContext), which ends every session connection with it.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	p := newPeer(cancel, preRoomQueue)
+	conn, err := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
+	if err != nil {
+		http.Error(w, "the relay is busy; try again later", http.StatusServiceUnavailable)
 		return
 	}
 	// The origin was judged above against the relay's own allowlist, which
 	// the library's same-host rule would widen.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
+		conn.Leave()
 		return
 	}
 	ws.SetReadLimit(int64(s.relay.Limits().MaxMessageBytes))
-	// The request's context ends when the server shuts down (Run's
-	// BaseContext), which ends every session connection with it.
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	p := newPeer(cancel, sendQueue)
 	p.ws = ws
-	conn := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
+	expire := time.AfterFunc(s.relay.Limits().AdmitWithin, conn.Expire)
+	defer expire.Stop()
 	done := make(chan struct{})
 	go func() { p.writeLoop(ctx); close(done) }()
 	go p.pingLoop(ctx)
@@ -372,6 +383,13 @@ func (p *peer) SendLog(entries [][]byte) bool {
 		return true
 	}
 	return p.push(outFrame{log: entries})
+}
+
+// Entered lets a connection that is in a session have the full queue.
+func (p *peer) Entered() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.limit = sendQueue
 }
 
 func (p *peer) Close(policy bool, reason string) {

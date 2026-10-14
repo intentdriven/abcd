@@ -21,6 +21,9 @@ type fakePeer struct {
 	reason string
 	full   bool
 	logs   int // log replays queued, each one item
+	// entered counts the times the relay said the connection entered a
+	// session.
+	entered int
 }
 
 func (p *fakePeer) Send(f Frame) bool {
@@ -44,6 +47,12 @@ func (p *fakePeer) SendLog(entries [][]byte) bool {
 		p.frames = append(p.frames, Frame{Binary: true, Data: append([]byte(nil), e...)})
 	}
 	return true
+}
+
+func (p *fakePeer) Entered() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.entered++
 }
 
 func (p *fakePeer) Close(policy bool, reason string) {
@@ -148,6 +157,9 @@ type harness struct {
 func newHarness(t *testing.T, mod func(*Limits)) *harness {
 	t.Helper()
 	l := DefaultLimits()
+	// The tests' fake connections never end on their own, so the connection
+	// caps are lifted unless a test sets them.
+	l.MaxConnections, l.MaxConnsPerAddr = 1<<20, 1<<20
 	if mod != nil {
 		mod(&l)
 	}
@@ -161,6 +173,16 @@ func newHarness(t *testing.T, mod func(*Limits)) *harness {
 		},
 	}
 	return &harness{r: New(Options{Limits: l, Verifier: ver, Now: clock.Now}), clock: clock, ver: ver}
+}
+
+// connect admits a connection, failing the test if the relay refuses it.
+func (h *harness) connect(t *testing.T, p *fakePeer, addr string) *Conn {
+	t.Helper()
+	c, err := h.r.Connect(p, addr)
+	if err != nil {
+		t.Fatalf("connect from %s: %v", addr, err)
+	}
+	return c
 }
 
 func send(t *testing.T, c *Conn, v any) {
@@ -179,7 +201,7 @@ type msg map[string]any
 func (h *harness) host(t *testing.T, token string) (*Conn, *fakePeer, string) {
 	t.Helper()
 	p := &fakePeer{}
-	c := h.r.Connect(p, "192.0.2.1")
+	c := h.connect(t, p, "192.0.2.1")
 	send(t, c, msg{"type": "verify", "token": token, "repo": "acme/brief"})
 	send(t, c, msg{"type": "host", "repo": "acme/brief"})
 	hosted := p.last(t, "hosted")
@@ -192,7 +214,7 @@ func (h *harness) host(t *testing.T, token string) (*Conn, *fakePeer, string) {
 func (h *harness) join(t *testing.T, code, name, addr string) (*Conn, *fakePeer) {
 	t.Helper()
 	p := &fakePeer{}
-	c := h.r.Connect(p, addr)
+	c := h.connect(t, p, addr)
 	send(t, c, msg{"type": "join", "code": code, "name": name})
 	return c, p
 }
@@ -234,7 +256,7 @@ func TestHostingNeedsAVerifiedMember(t *testing.T) {
 		{"verified without push", "tok-cy", "not-a-member"},
 	} {
 		p := &fakePeer{}
-		conn := h.r.Connect(p, "192.0.2.1")
+		conn := h.connect(t, p, "192.0.2.1")
 		if c.token != "" {
 			send(t, conn, msg{"type": "verify", "token": c.token, "repo": "acme/brief"})
 		}
@@ -505,7 +527,7 @@ func TestSizeLimits(t *testing.T) {
 
 	// One session per relay: a second host is refused.
 	p := &fakePeer{}
-	c := h.r.Connect(p, "192.0.2.2")
+	c := h.connect(t, p, "192.0.2.2")
 	send(t, c, msg{"type": "verify", "token": "tok-bea", "repo": "acme/brief"})
 	send(t, c, msg{"type": "host", "repo": "acme/brief"})
 	if e := p.last(t, "error"); e == nil || e["code"] != "too-many-sessions" {
@@ -583,7 +605,7 @@ func TestHostRejoiningByLoginKeepsTheHostRole(t *testing.T) {
 	host, _, code := h.host(t, "tok-ada")
 	host.Leave()
 	p := &fakePeer{}
-	c := h.r.Connect(p, "192.0.2.1")
+	c := h.connect(t, p, "192.0.2.1")
 	send(t, c, msg{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
 	send(t, c, msg{"type": "join", "code": code})
 	if j := p.last(t, "joined"); j == nil || j["role"] != "member" || j["host"] != true {
@@ -624,7 +646,7 @@ func TestRegisterCreditsAClientToAMember(t *testing.T) {
 func TestMalformedMessagesAreRefused(t *testing.T) {
 	h := newHarness(t, nil)
 	p := &fakePeer{}
-	c := h.r.Connect(p, "192.0.2.1")
+	c := h.connect(t, p, "192.0.2.1")
 	for _, raw := range []string{`not json`, `{"type":"dance"}`, `[]`} {
 		c.Receive(context.Background(), Frame{Data: []byte(raw)})
 	}
@@ -683,7 +705,7 @@ func TestAddressKeyCountsATailnetAddressAlone(t *testing.T) {
 func (h *harness) hostFrom(t *testing.T, addr string) *fakePeer {
 	t.Helper()
 	p := &fakePeer{}
-	c := h.r.Connect(p, addr)
+	c := h.connect(t, p, addr)
 	send(t, c, msg{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
 	send(t, c, msg{"type": "host", "repo": "acme/brief"})
 	return p
@@ -791,7 +813,7 @@ func TestHostingIsRateLimitedPerAddress(t *testing.T) {
 	}
 	// A refused host does not count towards the limit.
 	p := &fakePeer{}
-	c := h.r.Connect(p, "203.0.113.5")
+	c := h.connect(t, p, "203.0.113.5")
 	send(t, c, msg{"type": "host", "repo": "acme/brief"})
 	if e := p.last(t, "error"); e == nil || e["code"] != "not-verified" {
 		t.Fatalf("unverified host: %v", e)
@@ -835,7 +857,7 @@ func rejoinToken(t *testing.T, p *fakePeer, typ string) string {
 func (h *harness) rejoin(t *testing.T, token, addr string) (*Conn, *fakePeer) {
 	t.Helper()
 	p := &fakePeer{}
-	c := h.r.Connect(p, addr)
+	c := h.connect(t, p, addr)
 	send(t, c, msg{"type": "rejoin", "token": token})
 	return c, p
 }
@@ -1030,5 +1052,82 @@ func TestReplayIsOneQueuedItem(t *testing.T) {
 	}
 	if gp.last(t, "synced") == nil || gp.closed {
 		t.Fatalf("the newcomer was not synced, or was closed")
+	}
+}
+
+func TestDefaultConnectionLimits(t *testing.T) {
+	l := DefaultLimits()
+	if l.MaxConnections != 256 || l.MaxConnsPerAddr != 16 || l.AdmitWithin != 30*time.Second {
+		t.Fatalf("defaults = %d connections, %d per address, %v to enter; want 256, 16, 30s", l.MaxConnections, l.MaxConnsPerAddr, l.AdmitWithin)
+	}
+}
+
+// TestConnectionsAreCappedRelayWideAndPerAddress: past either cap a new
+// connection is refused and nothing else is touched; a connection that ends
+// gives its place back.
+func TestConnectionsAreCappedRelayWideAndPerAddress(t *testing.T) {
+	h := newHarness(t, func(l *Limits) { l.MaxConnections, l.MaxConnsPerAddr = 4, 2 })
+	a1 := h.connect(t, &fakePeer{}, "203.0.113.5")
+	h.connect(t, &fakePeer{}, "203.0.113.5")
+	if _, err := h.r.Connect(&fakePeer{}, "203.0.113.5"); !errors.Is(err, ErrTooManyConnections) {
+		t.Fatalf("a third connection from one address: %v, want ErrTooManyConnections", err)
+	}
+	h.connect(t, &fakePeer{}, "2001:db8:1:1::1")
+	h.connect(t, &fakePeer{}, "2001:db8:1:2::1")
+	if _, err := h.r.Connect(&fakePeer{}, "198.51.100.7"); !errors.Is(err, ErrTooManyConnections) {
+		t.Fatalf("a fifth connection on the relay: %v, want ErrTooManyConnections", err)
+	}
+	if s := h.r.Stats(); s.Connections != 4 {
+		t.Fatalf("connections = %d, want 4", s.Connections)
+	}
+	a1.Leave()
+	a1.Leave()
+	h.connect(t, &fakePeer{}, "198.51.100.7")
+	if s := h.r.Stats(); s.Connections != 4 {
+		t.Fatalf("connections = %d after one left and one came, want 4", s.Connections)
+	}
+}
+
+// TestClosingASessionGivesItsConnectionsBack: the host's close ends every
+// connection in the session, and each one's place is free again.
+func TestClosingASessionGivesItsConnectionsBack(t *testing.T) {
+	h := newHarness(t, nil)
+	host, _, code := h.host(t, "tok-ada")
+	h.join(t, code, "Gus", "198.51.100.7")
+	send(t, host, msg{"type": "close"})
+	if s := h.r.Stats(); s != (Stats{}) {
+		t.Fatalf("after the close the relay holds %+v", s)
+	}
+}
+
+// TestAConnectionThatEntersNoSessionExpires: a connection that has not
+// hosted, joined or rejoined when the transport's grace period ends is closed
+// (not as a refusal: the page may simply open another), and one that has is
+// left alone.
+func TestAConnectionThatEntersNoSessionExpires(t *testing.T) {
+	h := newHarness(t, nil)
+	idle := &fakePeer{}
+	c := h.connect(t, idle, "198.51.100.7")
+	send(t, c, msg{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	c.Expire()
+	if !idle.closed || idle.policy {
+		t.Fatalf("an idle connection: closed=%v policy=%v, want a normal close", idle.closed, idle.policy)
+	}
+	if e := idle.last(t, "error"); e == nil || e["code"] != "join-timeout" {
+		t.Fatalf("error = %v, want join-timeout", e)
+	}
+	if s := h.r.Stats(); s.Connections != 0 {
+		t.Fatalf("connections = %d after the expiry, want 0", s.Connections)
+	}
+
+	host, hp, code := h.host(t, "tok-ada")
+	guest, gp := h.join(t, code, "Gus", "198.51.100.8")
+	host.Expire()
+	guest.Expire()
+	if hp.closed || gp.closed {
+		t.Fatal("a connection in a session expired")
+	}
+	if hp.entered != 1 || gp.entered != 1 {
+		t.Fatalf("entered = %d and %d, want each told once", hp.entered, gp.entered)
 	}
 }
