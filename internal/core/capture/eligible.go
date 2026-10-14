@@ -137,9 +137,11 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 			"deferred past %s, anchor unknown: this checkout holds no release tag (a shallow clone fetches none), so whether the deferral is live cannot be read and it is a person's; `git fetch --tags` and drain again",
 			termsafe.Sanitize(iss.deferredAfter)))
 	case iss.deferredAfter != "" && !deferredOK:
+		// Masked before it is quoted, as above: %q escapes only the runes Go
+		// deems unprintable, and termsafe masks some Go prints (U+034F).
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %q, which is not a release tag (want vMAJOR.MINOR.PATCH): whether the deferral is live cannot be read, so it is a person's; `abcd capture defer` writes one the drain reads",
-			iss.deferredAfter))
+			termsafe.Sanitize(iss.deferredAfter)))
 	case deferredOK && launch.CoreGreater(deferred, anchor.local):
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %s, anchor stale: this checkout's newest release tag is %s and it lacks %s (a checkout not fetched since the last cut), so whether the deferral is live cannot be read and it is a person's; `git fetch --tags` and drain again",

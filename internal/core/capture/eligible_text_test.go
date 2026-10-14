@@ -41,3 +41,26 @@ func TestADrainPlanCarriesNoRawRuneFromTheLedger(t *testing.T) {
 		t.Errorf("the unreadable record keeps its disposition, naming the refusal: %+v", v)
 	}
 }
+
+// TestADeferralThatIsNotATagReachesTheReasonMasked: a hand-written
+// deferred_after that is not a release tag is quoted in the hand-back reason,
+// and %q escapes only the runes Go deems unprintable, so U+034F, which
+// termsafe masks and Go prints, reached `drain --json` raw. It is masked
+// before it is quoted, and the record keeps its disposition.
+func TestADeferralThatIsNotATagReachesTheReasonMasked(t *testing.T) {
+	src := gittest.NewRepo(t)
+	src.Commit("root")
+	src.Git("tag", "v0.1.0")
+	repo := src.Root()
+	writeRuleRecord(t, repo, loosenedFields)
+	f := drainFixture{t: t, repo: repo, ir: filepath.Join(repo, LedgerRelPath)}
+	f.file("iss-4", SeverityMajor, "bug", "rewrite the printer")
+	setDeferral(t, f.ir, "iss-4", "next͏‮")
+	v := verdictOf(t, f.plan(), "iss-4")
+	if v.Outcome != DrainHandBack || v.Rule != RuleDeferred || !strings.Contains(v.Reason, "not a release tag") {
+		t.Fatalf("the deferral is handed back as not a tag: %+v", v)
+	}
+	if strings.ContainsAny(v.Reason, "͏‮") || !strings.Contains(v.Reason, `"next??"`) {
+		t.Errorf("the deferral is named, masked: %q", v.Reason)
+	}
+}
