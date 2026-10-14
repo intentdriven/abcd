@@ -1537,8 +1537,7 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			// case-insensitive filesystem (macOS's default) `SUDO`/`ENV`/`NICE`
 			// resolve to and run the real binary (gh-315).
 			w := strings.ToLower(path.Base(tok))
-			runner, isRunner := runnerAt(w, tokens, st.pos)
-			a := arrival{idx: st.pos, noglob: st.noglob, wrapper: wrappers[w] || isRunner}
+			a := arrival{idx: st.pos, noglob: st.noglob, wrapper: wrappers[w]}
 			if !found[a] {
 				if isUnknown(tok) && !a.wrapper {
 					if unknownSites == maxUnknownSites {
@@ -1551,8 +1550,6 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				out = append(out, a)
 			}
 			switch {
-			case isRunner:
-				push(state{pos: st.pos + 2, mode: walkOptions, wrapper: runner, noglob: st.noglob})
 			case wrappers[w]:
 				push(state{pos: st.pos + 1, mode: walkOptions, wrapper: w, noglob: st.noglob || w == "noglob"})
 			case isUnknown(tok):
@@ -1695,12 +1692,6 @@ func commandSites(s segment) []arrival {
 func commandNamed(s segment, a arrival, name string) bool {
 	tok := s.tokens[a.idx]
 	if nameCouldBe(tok, name) {
-		return true
-	}
-	// A package runner's operand names its program with a version after it
-	// (`npx kill-port@latest`); no program is called by such a name, so the
-	// word is read as the program it names as well.
-	if pn := packageName(tok); pn != tok && nameCouldBe(pn, name) {
 		return true
 	}
 	return !a.noglob && s.globAt(a.idx) && globMatches(strings.ToLower(path.Base(tok)), strings.ToLower(name))

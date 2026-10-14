@@ -475,9 +475,4 @@ var wrappersWithoutProbes = []string{
 	// A bash builtin, not a program: `builtin <name>` runs the shell builtin of
 	// that name, takes no options, and there is no binary to probe.
 	"builtin",
-	// A Node package runner, not a util-linux shim: npx fetches a package
-	// from the network to run it, so probing it would run whatever it
-	// fetched. Its value flags come from npm's documented exec grammar
-	// (iss-2610112232319827).
-	"npx",
 }
