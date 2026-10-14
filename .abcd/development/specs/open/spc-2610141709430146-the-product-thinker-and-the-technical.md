@@ -17,7 +17,7 @@ A team opens its brief at abcdesign.app/<owner>/<repo>/brief/ during a call and 
 - a health check at `/healthz`
 
 The relay reaches the team by one of two routes:
-- **The host's own machine.** The host exposes the relay with `tailscale serve`, which reaches teammates on the tailnet, or `tailscale funnel`, which reaches people outside it. Both give the browser the https address it needs.
+- **The host's own machine.** The host exposes the relay with `tailscale serve`, which reaches teammates on the tailnet and gives the browser the https address it needs. Funnel is never used, because it would put the person's computer on the internet. A guest outside the tailnet joins through the team's relay instead (adr-2610032150581128, amendment of 2026-10-14).
 - **The team's own relay.** `abcd session blueprint` writes a Render Blueprint and a Dockerfile under `.abcd/relay/`. The Dockerfile fetches the released abcd binary for linux/amd64 and checks it against the release's checksum before running the same verb. One deploy serves all of the team's sessions.
 
 The relay holds:
