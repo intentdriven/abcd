@@ -303,3 +303,72 @@ func TestForgeTextWorkIsLinear(t *testing.T) {
 		assertWorkGrowthOn(t, reg, build, 1<<7, "each posting command is read once, and the texts judged are bounded")
 	})
 }
+
+// forgeBlockedScript is a script the guard blocks (git-push-force), spelled in
+// pieces so no tool reading this file's source mistakes it for a command.
+func forgeBlockedScript() string { return "git push " + "--force origin main\n" }
+
+// TestForgeTextBodyFilesNeverSpendTheScriptBudget: body files are read on a
+// budget of their own. Drawn from the scripts' one (16 files, 1 MiB), sixteen
+// posting commands' body files before a script the guard would block turned
+// that block into a script-unread warn.
+func TestForgeTextBodyFilesNeverSpendTheScriptBudget(t *testing.T) {
+	cases := []struct {
+		name  string
+		n     int
+		bytes int
+	}{
+		{"sixteen body files", maxScriptFiles, len("Summary\n")},
+		{"four 256 KiB body files", 4, maxScriptBytes},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, reg := forgeRepo(t, forgeOptedIn)
+			var line strings.Builder
+			for i := 0; i < tc.n; i++ {
+				name := "body" + string(rune('a'+i)) + ".md"
+				body := strings.Repeat("a", tc.bytes-1) + "\n"
+				if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				line.WriteString("gh pr comment 1 -F " + name + "; ")
+			}
+			if err := os.WriteFile(filepath.Join(root, "s.sh"), []byte(forgeBlockedScript()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if d := forgeCheck(t, reg, "bash s.sh"); d.Verdict != VerdictBlock || d.EntryID != scriptHazardEntryID {
+				t.Fatalf("the script alone = %q via %q, want the block via %q", d.Verdict, d.EntryID, scriptHazardEntryID)
+			}
+			line.WriteString("bash s.sh")
+			d := forgeCheck(t, reg, line.String())
+			if d.Verdict != VerdictBlock || d.EntryID != scriptHazardEntryID {
+				t.Fatalf("after %d body files the script = %q via %q (matches %v), want the block via %q",
+					tc.n, d.Verdict, d.EntryID, d.Matches, scriptHazardEntryID)
+			}
+			if contains(d.Matches, forgeUnreadEntryID) {
+				t.Errorf("the body files themselves went unread: matches %v", d.Matches)
+			}
+		})
+	}
+}
+
+// TestForgeTextBodyFilesHaveABoundOfTheirOwn: past maxForgeReadBytes of body
+// files the next one warns unread rather than being read without bound.
+func TestForgeTextBodyFilesHaveABoundOfTheirOwn(t *testing.T) {
+	root, reg := forgeRepo(t, forgeOptedIn)
+	var line strings.Builder
+	// Four files of the most the guard reads of one fill the 1 MiB budget; the
+	// fifth is past it.
+	n := 5
+	for i := 0; i < n; i++ {
+		name := "big" + string(rune('a'+i)) + ".md"
+		if err := os.WriteFile(filepath.Join(root, name), []byte(strings.Repeat("a", maxScriptBytes-1)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		line.WriteString("gh pr comment 1 -F " + name + "; ")
+	}
+	d := forgeCheck(t, reg, line.String())
+	if d.Verdict != VerdictWarn || !contains(d.Matches, forgeUnreadEntryID) {
+		t.Fatalf("%d body files of %d KiB = %q via %q (matches %v), want warn via %q", n, maxScriptBytes>>10, d.Verdict, d.EntryID, d.Matches, forgeUnreadEntryID)
+	}
+}

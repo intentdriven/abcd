@@ -59,6 +59,14 @@ const (
 	// than three texts, and no everyday line holds more than a few commands.
 	maxForgeTexts = 16
 
+	// maxForgeReadBytes is the body files' own read budget for one check.
+	// It is never the scripts' budget (maxScriptFiles, maxScriptReadBytes):
+	// the forge check runs first, so drawing on that one let a line's body
+	// files spend what a script it then runs needed, and a script the guard
+	// would block was only warned about. The file count is bounded by
+	// maxForgeTexts already.
+	maxForgeReadBytes = 1 << 20
+
 	// maxForgeConfigBytes caps the config.json the opt-in is read from, the cap
 	// the registry load uses for .abcd/guard.json.
 	maxForgeConfigBytes = maxGuardFileBytes
@@ -266,7 +274,7 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 			out = append(out, sig)
 		}
 	}
-	judged := 0
+	judged, readBytes := 0, 0
 	for _, p := range posts {
 		for _, v := range p.values {
 			if judged >= maxForgeTexts {
@@ -280,7 +288,7 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 			}
 			judged++
 			if v.flag == forgeBodyFile {
-				r.forgeFile(rc, segs, recs, p, v, add)
+				r.forgeFile(rc, segs, recs, p, v, &readBytes, add)
 				continue
 			}
 			r.forgeJudge(p.command, v.flag, v.text, add)
@@ -293,7 +301,10 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 // input, which the guard does not read, and a path the line does not fix is
 // not seen, as a body held in a variable is not; every other way the file goes
 // unread warns.
-func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p forgePost, v forgeValue, add func(payloadSignal)) {
+//
+// readBytes is the bytes this check has read for body files so far, on their
+// own budget (maxForgeReadBytes), never the scripts'.
+func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p forgePost, v forgeValue, readBytes *int, add func(payloadSignal)) {
 	if v.text == "-" || !v.fixed || strings.TrimSpace(v.text) == "" {
 		return
 	}
@@ -347,10 +358,14 @@ func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p for
 			}
 			continue
 		}
-		fr, ok := rc.take(real)
+		if *readBytes >= maxForgeReadBytes {
+			add(forgeUnreadSignal(p.command, fmt.Sprintf("is past the %d KiB of body files one check reads", maxForgeReadBytes>>10)))
+			continue
+		}
+		fr := rc.files.read(real)
+		*readBytes += len(fr.data)
+		tally(len(fr.data))
 		switch {
-		case !ok:
-			add(forgeUnreadSignal(p.command, "is past the files and bytes one check reads"))
 		case fr.err != nil:
 			add(forgeUnreadSignal(p.command, "cannot be read as a regular file (a pipe, a directory, or a file this account may not read)"))
 		case fr.tooBig:
