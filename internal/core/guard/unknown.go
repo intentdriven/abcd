@@ -1555,6 +1555,9 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			// a repository's own entry naming npx, npm, pnpm or yarn matched it
 			// before the runners were read as wrappers, and must still. So the
 			// word arrives a second time, as no wrapper.
+			// It is not counted against maxUnknownSites: its last component is a
+			// fixed runner name, so it cannot stand for every program, and it adds
+			// at most one arrival per word.
 			if isRunner || packageRunners[w] {
 				if b := (arrival{idx: st.pos, noglob: st.noglob}); !found[b] {
 					found[b] = true

@@ -59,6 +59,7 @@ func TestARepoEntryNamingARunnerStillFires(t *testing.T) {
 	root := writeOverride(t, `{"schema_version":1,"entries":{
 		"no-npx":{"tier":"blocker","pattern":{"command":"npx"},"why":"this repository pins its tools","successor":"run the pinned script"},
 		"no-npm-exec":{"tier":"blocker","pattern":{"command":"npm","subcommand":"exec"},"why":"this repository pins its tools","successor":"run the pinned script"},
+		"no-npm-x":{"tier":"blocker","pattern":{"command":"npm","subcommand":"x"},"why":"this repository pins its tools","successor":"run the pinned script"},
 		"no-pnpm":{"tier":"blocker","pattern":{"command":"pnpm"},"why":"this repository uses npm","successor":"use npm"},
 		"no-yarn-dlx":{"tier":"blocker","pattern":{"command":"yarn","subcommand":"dlx"},"why":"this repository pins its tools","successor":"run the pinned script"}}}`)
 	r, err := Load(root)
@@ -68,6 +69,9 @@ func TestARepoEntryNamingARunnerStillFires(t *testing.T) {
 	for _, tc := range []struct{ cmd, entry string }{
 		{`npx some-pkg`, "no-npx"},
 		{`npx --yes some-pkg@1 --flag`, "no-npx"},
+		{`sudo npx some-pkg`, "no-npx"},
+		{`/usr/bin/npx some-pkg`, "no-npx"},
+		{`npm x some-pkg`, "no-npm-x"},
 		{`npm exec some-pkg`, "no-npm-exec"},
 		{`pnpm dlx some-pkg`, "no-pnpm"},
 		{`yarn dlx some-pkg`, "no-yarn-dlx"},
