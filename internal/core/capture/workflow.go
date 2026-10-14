@@ -835,6 +835,7 @@ func List(req ListRequest) (ListResult, error) {
 	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
 		markUncommitted(set, issues)
 	}
+	maskShownText(issues)
 	// A --json collection is an empty list, never bare null: a consumer that
 	// iterates the rows (the capture.md contract) errors on null.
 	if issues == nil {
@@ -917,7 +918,41 @@ func Status(req StatusRequest) (StatusResult, error) {
 		res.UncommittedCount = markUncommitted(set, every)
 		markUncommitted(set, res.RecentOpen)
 	}
+	maskShownText(res.RecentOpen)
 	return res, nil
+}
+
+// maskShownText masks, in place, every string a record stores that a list or
+// status payload carries: the body with termsafe.SanitizeBlock, keeping its
+// lines, and each frontmatter string and list item with termsafe.Sanitize.
+// capture encodes the hidden runes of a body it writes, but a hand-edited or
+// repository-shipped record carries whatever it was given, and these payloads
+// reach `capture list --json` and `capture status --json`
+// (iss-2610121653499543). The mask is the payload's, applied once the scan's
+// own work (the blocked_by projection, the uncommitted marks) is done, and
+// never the record's: resolve, defer, promote and every other rewrite read the
+// record themselves and round-trip its stored text. The path is not masked: a
+// record the scan reads has a name the filename grammar holds to [a-z0-9-].
+func maskShownText(issues []Issue) {
+	for i := range issues {
+		iss := &issues[i]
+		for _, s := range []*string{&iss.ID, &iss.Slug, &iss.FoundDuring, &iss.FoundAt, &iss.LapsedAt,
+			&iss.Remedy, &iss.Resolution, &iss.WontfixReason} {
+			*s = termsafe.Sanitize(*s)
+		}
+		iss.Severity = Severity(termsafe.Sanitize(string(iss.Severity)))
+		iss.Category = Category(termsafe.Sanitize(string(iss.Category)))
+		iss.Source = Source(termsafe.Sanitize(string(iss.Source)))
+		for _, l := range []*[]string{&iss.RelatedIntents, &iss.RelatedSpecs, &iss.RelatedIssues, &iss.BlockedBy,
+			&iss.Duplicates, &iss.Refines, &iss.Grounds, &iss.BlockedByOpen} {
+			*l = termsafe.SanitizeAll(*l)
+		}
+		if rb := iss.ResolvedBy; rb != nil {
+			iss.ResolvedBy = &ResolvedBy{Intent: termsafe.Sanitize(rb.Intent), Spec: termsafe.Sanitize(rb.Spec),
+				Commit: termsafe.Sanitize(rb.Commit)}
+		}
+		iss.Body = termsafe.SanitizeBlock(iss.Body)
+	}
 }
 
 // severityRank orders severities for the derived-priority view: higher rank
