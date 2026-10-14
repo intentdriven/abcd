@@ -268,3 +268,14 @@ func TestRepositoryHalf(t *testing.T) {
 		t.Fatalf("the deploy step runs a shell; it should only call the pinned action:\n%s", step)
 	}
 }
+
+// TestTheProfileIsTheSecretHoldingSiteEnvironment: the deploy job runs in the
+// `site` environment that holds the two secrets, reads the repository only,
+// deploys every release and serves the site at the root of its address.
+func TestTheProfileIsTheSecretHoldingSiteEnvironment(t *testing.T) {
+	p := Adapter{}.Profile(hosting.Site{Name: "example-site"})
+	if p.Environment != "site" || len(p.Permissions) != 1 || p.Permissions[0] != "contents: read" ||
+		p.Switched || p.PublicOnly || p.BasePath != "/" {
+		t.Fatalf("profile = %+v", p)
+	}
+}

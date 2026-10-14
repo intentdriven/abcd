@@ -4,9 +4,10 @@
 // the core consumes the interface, never a vendor, and a provider is one
 // implementation of it.
 //
-// One provider ships (cloudflare, the host abcd's own site uses). A second is a
-// new implementation of Adapter and one line in the core's provider list, never
-// a change to the verb.
+// Two providers ship: cloudflare, the host abcd's own site uses, and
+// github-pages, a project's own GitHub Pages, built by its release workflow
+// (itd-2610091010348892). Another is a new implementation of Adapter and one
+// line in the core's provider list, never a change to the verb.
 //
 // The seam has two halves because a provider touches the site twice:
 //
@@ -20,6 +21,9 @@
 //
 // The credential is handed to Connect and lives only inside the returned
 // Provider. No method returns it, no error carries it, and nothing writes it.
+// A provider that names no credential (CredentialName is empty) acts through
+// the forge as the person who invoked the verb, the way the forge stage does,
+// and Connect is handed nothing.
 package hosting
 
 import "context"
@@ -30,6 +34,30 @@ import "context"
 type Site struct {
 	Name   string
 	Domain string
+	// Repo is the forge repository the site is built from, as owner/name,
+	// when the caller knows it. A provider that hosts the site on the forge
+	// itself acts on it; the others ignore it.
+	Repo string
+}
+
+// Profile is what the verb and the workflow it writes need to know about a
+// provider beyond its deploy step.
+type Profile struct {
+	// Environment is the forge environment the deploy job runs in.
+	Environment string
+	// Permissions are the deploy job's token permissions, one `scope: level`
+	// each, in the order the workflow lists them.
+	Permissions []string
+	// Switched: the provider publishes only while the composition's
+	// hosting.publish switch is on. Setup asks for the switch, and the
+	// workflow publishes nothing while it is off.
+	Switched bool
+	// PublicOnly: the provider serves public repositories only, so setup
+	// refuses a private one before it writes anything.
+	PublicOnly bool
+	// BasePath is the path the site is served below on the host, with a
+	// leading and a trailing slash; "/" is the root.
+	BasePath string
 }
 
 // State is what the host holds for a site, read without writing anything.
@@ -72,8 +100,11 @@ type Adapter interface {
 	// the secrets named by Secrets and nothing else.
 	DeployStep() string
 	// HostConfig is the committed configuration file the deploy step reads,
-	// repo-relative, and its bytes for s.
+	// repo-relative, and its bytes for s; an empty path when the provider
+	// reads none.
 	HostConfig(s Site) (rel string, data []byte)
+	// Profile is the provider's facts for s.
+	Profile(s Site) Profile
 	// Connect returns a Provider acting with token. The token stays inside it.
 	Connect(token string) Provider
 }

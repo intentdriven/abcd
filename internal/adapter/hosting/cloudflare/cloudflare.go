@@ -1,4 +1,4 @@
-// Package cloudflare is the one hosting provider abcd ships
+// Package cloudflare is the hosting provider abcd's own site deploys through
 // (itd-2609061543533170): an assets-only Cloudflare Worker, the host abcd's own
 // site is served from.
 //
@@ -94,6 +94,13 @@ func (Adapter) CredentialName() string { return CredentialName }
 
 // Secrets are the deploy environment's secret names.
 func (Adapter) Secrets() []string { return []string{SecretToken, SecretAccount} }
+
+// Profile: the deploy job runs in the `site` environment holding the two
+// secrets, reads the repository only, and deploys every release to a Worker
+// served at the root of its address.
+func (Adapter) Profile(hosting.Site) hosting.Profile {
+	return hosting.Profile{Environment: "site", Permissions: []string{"contents: read"}, BasePath: "/"}
+}
 
 // DeployStep runs `wrangler deploy` through the pinned action. `deploy` also
 // asserts the routes wrangler.jsonc declares, so a lost domain attachment is
