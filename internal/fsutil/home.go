@@ -4,9 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -104,10 +108,12 @@ func HomeScopeLink(home, rel string) error {
 // never put there (iss-2609290656480443). ReadHomeDeclaration returns it
 // wrapped in a *HomeScopeExposedError, so errors.Is finds it.
 //
-// A directory its group can write is deliberately not refused here: under a
-// user-private-group umask of 002, a ~/.abcd.noindex made by hand is 0775 and its
-// group is the caller alone, and refusing it is an open question on that
-// record rather than a decision this read takes.
+// A directory its group can write is refused too, unless that group's sole
+// member is the directory's owner (ownersPrivateGroup): under a
+// user-private-group umask of 002, a ~/.abcd.noindex made by hand is 0775 and
+// its group is the caller alone, so nobody else can write it. That is the
+// product thinker's ruling of 2026-10-11 on iss-2609290703091174, and the
+// shape Debian's OpenSSH admits for the same umask.
 var ErrHomeScopeExposed = errors.New("fsutil: a directory of this home-scoped path can be changed by another account")
 
 // HomeScopeExposedError names the exposed directory in tilde form. Its message
@@ -119,13 +125,24 @@ type HomeScopeExposedError struct {
 	Perm os.FileMode
 	// Foreign is true when the refusal is the owner, not the mode.
 	Foreign bool
+	// Group is true when the directory's group write bit is part of the
+	// refusal: its group holds an account other than its owner, or its
+	// members could not be read.
+	Group bool
 }
 
 func (e *HomeScopeExposedError) Error() string {
 	if e.Foreign {
 		return e.Dir + " is owned by another account, or its owner could not be read, so nothing in it is necessarily yours; abcd reads no declaration there"
 	}
-	return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod o-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	switch {
+	case e.Perm&0o002 != 0 && e.Group:
+		return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod go-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	case e.Perm&0o002 != 0:
+		return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod o-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	default:
+		return fmt.Sprintf("%s can be written by its group (mode %04o), which holds an account other than its owner or whose members could not be read, so nothing in it is necessarily yours; `chmod g-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+	}
 }
 
 func (e *HomeScopeExposedError) Unwrap() error { return ErrHomeScopeExposed }
@@ -150,17 +167,221 @@ func swapHomeScopeDirOwnerForTest(fn func(os.FileInfo) (uint32, bool)) (restore 
 // vetDeclarationDir is ReadHomeDeclaration's judgement of one directory level
 // below home, made on the FileInfo of the descriptor that was opened and
 // confirmed to be the level vetted, so it judges the directory the read goes
-// through and not a name: refused when every account can write it or when it
-// is owned by an account that is neither this uid nor root (root can replace
-// anything anywhere, so refusing it would protect nothing).
+// through and not a name: refused when every account can write it, when its
+// group can and that group is not its owner's alone (ownersPrivateGroup), or
+// when it is owned by an account that is neither this uid nor root (root can
+// replace anything anywhere, so refusing it would protect nothing).
 func vetDeclarationDir(st os.FileInfo, shown string) error {
-	if perm := st.Mode().Perm(); perm&0o002 != 0 {
-		return &HomeScopeExposedError{Dir: shown, Perm: perm}
+	perm := st.Mode().Perm()
+	uid, owned := homeScopeDirOwner(st)
+	group := perm&0o020 != 0 && !(owned && ownersPrivateGroup(st, uid))
+	if perm&0o002 != 0 || group {
+		return &HomeScopeExposedError{Dir: shown, Perm: perm, Group: group}
 	}
-	if uid, ok := homeScopeDirOwner(st); !ok || (uid != uint32(os.Getuid()) && uid != 0) {
-		return &HomeScopeExposedError{Dir: shown, Perm: st.Mode().Perm(), Foreign: true}
+	if !owned || (uid != uint32(os.Getuid()) && uid != 0) {
+		return &HomeScopeExposedError{Dir: shown, Perm: perm, Foreign: true}
 	}
 	return nil
+}
+
+// ownersPrivateGroup reports whether the group of the directory fi describes
+// has exactly one member, its owner uid: then the group write bit lets nobody
+// else write it. A group whose members cannot be read is not.
+func ownersPrivateGroup(fi os.FileInfo, owner uint32) bool {
+	sys, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	members, ok := groupMembers(sys.Gid)
+	return ok && len(members) == 1 && members[0] == owner
+}
+
+// groupMembers is every account in the group gid, as uids, and whether they
+// could be read. It is a var because a test cannot make a group; production
+// never reassigns it.
+var groupMembers = accountFileGroupMembers
+
+func swapGroupMembersForTest(fn func(uint32) ([]uint32, bool)) (restore func()) {
+	prev := groupMembers
+	groupMembers = fn
+	return func() { groupMembers = prev }
+}
+
+// accountFileGroupMembers reads gid's members from /etc/passwd and
+// /etc/group (groupMembersFrom), where the name service switch reads those
+// files alone. On darwin they do not hold the machine's accounts (directory
+// services do), so the members are unread there, and a group-writable
+// directory is refused.
+func accountFileGroupMembers(gid uint32) ([]uint32, bool) {
+	if runtime.GOOS == "darwin" {
+		return nil, false
+	}
+	return groupMembersFrom(systemAccountSources, gid)
+}
+
+// accountSources are the files groupMembersFrom reads: the name service
+// switch's configuration, the first of nsswitch that exists (glibc's own, then
+// the vendor copy a distribution that ships one under /usr/etc falls back
+// to), and the account files.
+type accountSources struct {
+	nsswitch      []string
+	passwd, group string
+}
+
+// systemAccountSources are the machine's. A var so a test can point
+// groupMembersFrom elsewhere; production never reassigns it.
+var systemAccountSources = accountSources{
+	nsswitch: []string{"/etc/nsswitch.conf", "/usr/etc/nsswitch.conf"},
+	passwd:   "/etc/passwd",
+	group:    "/etc/group",
+}
+
+// groupMembersFrom is gid's members from src's account files
+// (membersFromAccountFiles), read only when the name service switch takes
+// accounts and groups from local sources alone (switchReadsLocalSources). A
+// switch that names a directory service (sss, ldap, winbind, nis) takes
+// accounts and group members from where the files do not show, with no `+`
+// line in either file to say so, so then the members are unread and a
+// group-writable directory is refused. No switch configuration at all is
+// glibc's built-in default, which reads the files (compat, whose `+` lines
+// membersFromAccountFiles already refuses); one that exists and cannot be
+// read is unread.
+func groupMembersFrom(src accountSources, gid uint32) ([]uint32, bool) {
+	for _, p := range src.nsswitch {
+		conf, err := os.ReadFile(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil || !switchReadsLocalSources(conf) {
+			return nil, false
+		}
+		break
+	}
+	passwd, err := os.ReadFile(src.passwd)
+	if err != nil {
+		return nil, false
+	}
+	group, err := os.ReadFile(src.group)
+	if err != nil {
+		return nil, false
+	}
+	return membersFromAccountFiles(passwd, group, gid)
+}
+
+// switchReadsLocalSources reports whether an nsswitch.conf takes the databases
+// that decide who is in a group (passwd, group, and initgroups, which sets a
+// login's supplementary groups) from local sources alone: every source their
+// lines name is `files`, `compat` or `systemd`. A database the file does not
+// name takes glibc's default, which is the files. An action (`[NOTFOUND=return]`,
+// `[SUCCESS=merge]`) only orders or merges the sources its line names, so it
+// adds none; one whose bracket is left open is not read as local.
+//
+// systemd counts as local. The accounts it adds (systemd-homed, userdb
+// records, dynamic users) are this machine's, and one it puts in the owner's
+// private group already writes, without abcd, every file the owner's umask
+// leaves group-writable (shell startup files, ~/.gitconfig), so admitting a
+// group-writable home under it gives that account no reach it lacked. A
+// directory service (sss, ldap, winbind, nis) is another matter: its members
+// cannot be known from this machine at all, so it, and any source not named
+// here, makes the members unread and a group-writable home is refused, naming
+// the repair (`chmod g-w`).
+func switchReadsLocalSources(conf []byte) bool {
+	for _, line := range strings.Split(string(conf), "\n") {
+		line, _, _ = strings.Cut(line, "#")
+		db, services, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(db)) {
+		case "passwd", "group", "initgroups":
+		default:
+			continue
+		}
+		rest := services
+		for {
+			before, after, bracket := strings.Cut(rest, "[")
+			for _, svc := range strings.Fields(before) {
+				if svc != "files" && svc != "compat" && svc != "systemd" {
+					return false
+				}
+			}
+			if !bracket {
+				break
+			}
+			_, tail, closed := strings.Cut(after, "]")
+			if !closed {
+				return false
+			}
+			rest = tail
+		}
+	}
+	return true
+}
+
+// membersFromAccountFiles is gid's members from the account files' contents,
+// counted as Debian's OpenSSH counts them: every account whose primary group
+// gid is, and every account the group's line lists, each as its uid, sorted
+// and once. A group the group file does not hold, or a listed name no
+// account in the password file carries, is unread (false): an account the
+// files do not show could be a member. So is any group when either file
+// carries an NSS compat line (`+` or `-` first: `+::::::`, `+@netgroup`,
+// `-name`), which pulls accounts or members in from NIS or LDAP that the files
+// do not show, or edits them (iss-2609290703091174).
+func membersFromAccountFiles(passwd, group []byte, gid uint32) ([]uint32, bool) {
+	if defersToNetwork(passwd) || defersToNetwork(group) {
+		return nil, false
+	}
+	want := strconv.FormatUint(uint64(gid), 10)
+	uids := map[string]uint32{}
+	var members []uint32
+	for _, line := range strings.Split(string(passwd), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) < 4 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		uid, err := strconv.ParseUint(f[2], 10, 32)
+		if err != nil {
+			continue
+		}
+		uids[f[0]] = uint32(uid)
+		if f[3] == want {
+			members = append(members, uint32(uid))
+		}
+	}
+	found := false
+	for _, line := range strings.Split(string(group), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) < 4 || strings.HasPrefix(line, "#") || f[2] != want {
+			continue
+		}
+		found = true
+		for _, name := range strings.Split(f[3], ",") {
+			if name = strings.TrimSpace(name); name == "" {
+				continue
+			}
+			uid, ok := uids[name]
+			if !ok {
+				return nil, false
+			}
+			members = append(members, uid)
+		}
+	}
+	if !found {
+		return nil, false
+	}
+	slices.Sort(members)
+	return slices.Compact(members), true
+}
+
+// defersToNetwork reports whether an account file carries an NSS compat line,
+// one whose first character is `+` or `-`.
+func defersToNetwork(file []byte) bool {
+	for _, line := range strings.Split(string(file), "\n") {
+		if line = strings.TrimSpace(line); strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrHomeScopeSwapped is the refusal for a directory of a home-scoped path that
@@ -343,8 +564,9 @@ func swappedLevel(parent *os.Root, part, full, shown string, err error) error {
 // stands there now and DeclarationUnreadable otherwise.
 //
 // Each directory level below home is judged too, on the descriptor opened for
-// it: one every account can write, or one owned by an account that is neither
-// this uid nor root, is DeclarationDirectoryExposed with a
+// it: one every account can write, one its group can write when that group is
+// not its owner's alone, or one owned by an account that is neither this uid
+// nor root, is DeclarationDirectoryExposed with a
 // *HomeScopeExposedError naming it, because whoever can change the directory
 // can put a file of the caller's own shape in it under the declaration's name
 // (iss-2609290656480443). The check follows the absence check, so an exposed

@@ -352,10 +352,12 @@ the run's state. The reason is one `pursued:` grounds entry opening `picked by r
 on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
 falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
-receipt verifier does not count that commit as the implementer's. That commit runs no hook
-and is unsigned, even where your git configuration signs every commit. It does run the
-repository's content filters: staging the entry passes it through its clean filter, as
-Git LFS needs. The checkout you run this
+receipt verifier does not count that commit as the implementer's. That commit is made as
+your own git makes one: the repository's hooks run, and a hook that refuses it refuses the
+stage; it is signed where your git configuration signs every commit; and staging the entry
+passes it through the repository's clean filter, as Git LFS needs. A commit still waiting
+after ten minutes on a signing prompt or a hook is stopped and refuses the stage, naming
+the deadline. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
@@ -2202,17 +2204,25 @@ under blocked:; any other refused stage is the call's answer. Landing is one lan
 time; a lane whose sibling landed
 since its base is synced first (the default branch merged in with a merge commit, never a
 rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
-a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where
-your git configuration signs every commit, and the merge does not verify the signature of the
-commit it merges in. The merge is git's built-in merge on every path, whatever merge driver
-the repository configures or merge.default names, so a driver's program never runs. The
-merge does run the repository's content filters: each file it writes passes through its
-smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs
-the repository's own code.
+a sync counts no fix round. The sync's merge is made as your own `git merge` makes one, in
+the lane's worktree: the repository's hooks run, its merge commit is signed where your git
+configuration signs every commit, the signature of the commit it merges in is verified where
+merge.verifySignatures says so, the merge driver the repository configures or merge.default
+names merges each path it covers, and each file it writes passes through the repository's
+smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses
+the step, naming what git reported. A merge still waiting after ten minutes on a signing
+prompt or a hook (a passphrase dialog nobody answers) is stopped and refuses the step,
+so an unattended run is never held by it; the merged result git had staged is reset away,
+leaving the lane's worktree clean at its judged head, and the refusal says so. A sync
+starts only from a clean worktree, so that reset never touches a change the loop did not
+make.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
-cut from the default branch; brief renders the lane's brief from that base (the intent,
+cut from the default branch, as your own `git worktree add` makes one (the repository's
+post-checkout hook runs, as Git LFS needs); its checkout's time scales with the tree, so it
+is bounded at sixty minutes rather than the ten of a commit or a merge, and one stopped
+there refuses the stage naming the checkout and the bound; brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
@@ -2242,7 +2252,8 @@ for a lane that is not held or while any lane still has work.
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
 (aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
-proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
+proved to apply to that commit, the lane's worktree is reset and cleaned as your own git
+resets and cleans it (the repository's hooks run on the reset), the run record
 names the aside for review, and the implementer await is re-told; the brief never names
 the aside. An await a rate limit kept, because what its agent left could not be saved
 aside, is marked in the run state, and --restart re-tells it the same way once that is

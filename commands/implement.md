@@ -324,7 +324,11 @@ and not to commit, but to stop and end its hand-back with one
 was left uncommitted (staged, unstaged or untracked) is saved aside under the
 lane's directory, `aside/<UTC stamp>/` with `changes.patch`, `aside.json` and any
 partial receipt, once the patch is proved to apply to that commit; the lane's
-worktree is reset and cleaned; the run record names the aside for review; and
+worktree is reset and cleaned as your own git resets and cleans it (the
+repository's hooks run on the reset, which, since its time scales with the
+tree as a checkout's does, is bounded at sixty minutes, a reset stopped there
+refusing the restart naming the reset); the run record
+names the aside for review; and
 the implementer await is re-told. The brief never names the aside, so no agent
 builds on it. When a rate limit stops an agent and what it left cannot be saved
 aside, its await is kept and marked in the run state, and the run record says
@@ -339,7 +343,10 @@ limit kept, and for a worktree that is not the one the loop derives.
 
 The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
-`build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
+`build/<run-id>-<lane-id>` cut from the default branch; its checkout runs the
+repository's post-checkout hook and, since its time scales with the tree, is
+bounded at sixty minutes rather than a commit's ten, a checkout stopped there
+refusing the stage naming the checkout and the bound), `brief` (the lane's
 brief, rendered from that base into
 `.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`, naming the spec step the
 lane builds and each step before it with what landed it), `implement` (awaits an
@@ -410,7 +417,14 @@ while a sibling's landing is under way, the lower spec step landing first.
 Before a lane's landing begins, a sibling of the run that landed since its base
 is merged in (a **sync**): the default branch is merged into the lane's branch
 with a merge commit in its worktree, never a rebase, and a fresh round judges
-the merge head. A merge that conflicts is aborted with the branch unchanged, and
+the merge head. The merge is made as the person's own `git merge` makes it: the
+repository's hooks, merge drivers, commit signing and merge.verifySignatures
+apply, and a merge the repository refuses before it begins refuses the step,
+naming what git reported; one still waiting after ten minutes on a signing
+prompt or a hook is stopped and refuses the step, the merged result git had
+staged reset away so the lane's worktree is clean at its judged head (a sync
+starts only from a clean worktree, so that reset touches no change the loop
+did not make). A merge that conflicts is aborted with the branch unchanged, and
 a fresh implementer is handed a sync brief naming each conflicting path and the
 sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
 A sync counts no fix round. The closing lane, which reaches its landing with no

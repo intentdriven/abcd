@@ -33,13 +33,18 @@ import (
 // Every isolated command (Run and its siblings) carries them, and a caller that
 // must build its own git command (one that keeps global config, say) prepends
 // them rather than copying the list. The pins come before -C and the
-// subcommand: after the subcommand, `-c` is that subcommand's option.
+// subcommand: after the subcommand, `-c` is that subcommand's option. A commit
+// abcd makes in a working tree it made for the work leaves core.hooksPath,
+// commit.gpgsign and merge.verifySignatures to the repository
+// (WorkingTreeCommitCommand): those are how the repository commits and merges.
 //
 // They do not blank content filters or diff and merge drivers, because those
 // are keyed on a name the repository chooses; FilterOverrides covers filters
-// for a command that must not run one, MergeDriverOverrides makes every merge
-// driver git's built-in merge, and a diff passes --no-ext-diff and
-// --no-textconv.
+// for a read that must not run one, MergeDriverOverrides makes every merge
+// driver git's built-in merge for a read-only merge (the conflict probe's
+// merge-tree), and a diff passes --no-ext-diff and --no-textconv. A merge abcd
+// makes in a lane runs the repository's merge drivers, as the person's own
+// merge does.
 func ExecPins() []string {
 	return []string{
 		"-c", "core.hooksPath=/dev/null",
@@ -113,9 +118,12 @@ func BuiltinMergeDriver() string {
 // MergeDriverOverrides returns the `git -c` overrides that make every merge
 // driver the repository at root configures git's built-in text merge —
 // `merge.<name>.driver` set to BuiltinMergeDriver for each name — and pin
-// merge.default to the built-in text driver, so a merge abcd composes never
-// starts a program the repository names, whichever driver an attribute or
-// merge.default selects (iss-2610090821510097). A driver cannot be blanked as
+// merge.default to the built-in text driver, so a read-only merge abcd
+// computes (the conflict probe's merge-tree, a prediction of the forge's
+// merge) never starts a program the repository names, whichever driver an
+// attribute or merge.default selects (iss-2610090821510097). A merge made in a
+// lane's worktree does not take them: it runs the repository's own drivers
+// (WorkingTreeCommitCommand, iss-2610111729399920). A driver cannot be blanked as
 // a filter is: git fails to start an empty driver command and reports every
 // path both sides changed as a conflict. The overrides go before the
 // subcommand.
