@@ -844,3 +844,31 @@ func TestConsistencyEmitCapsChunksForASend(t *testing.T) {
 		t.Fatalf("chunk_bytes %d, refusal bytes %d; want the %d bytes the chunk files hold", em.ChunkBytes, capErr.Bytes, total)
 	}
 }
+
+// TestConsistencyIngestReadsTheCorpusOncePerSet (R5 of the PR #974 review): an
+// ingest of a chunk set assembles the corpus, plans the chunks and reads the
+// tree against the pinned commit once, shared by every payload, not once per
+// payload.
+func TestConsistencyIngestReadsTheCorpusOncePerSet(t *testing.T) {
+	r, _ := chunkRepo(t, 7, 1000, nil)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payloads [][]byte
+	for _, ch := range em.Chunks {
+		payloads = append(payloads, chunkPayload(t, root, ch))
+	}
+	reviews, cache, err := validateConsistencySet(root, payloads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reviews) != len(em.Chunks) {
+		t.Fatalf("%d reviews for %d chunks", len(reviews), len(em.Chunks))
+	}
+	if cache.assembles != 1 || cache.plans != 1 || cache.treeReads != 1 {
+		t.Fatalf("over %d payloads: %d assemblies, %d plans, %d tree reads; want one of each",
+			len(payloads), cache.assembles, cache.plans, cache.treeReads)
+	}
+}

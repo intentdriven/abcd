@@ -973,16 +973,9 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	}
 	// Every payload is validated whole before the set is judged, and the set
 	// before anything is written.
-	reviews := make([]consistencyReview, 0, len(payloads))
-	for i, raw := range payloads {
-		rv, err := validateConsistency(req.RepoRoot, raw)
-		if err != nil {
-			if len(payloads) > 1 {
-				return ConsistencyIngestResult{}, fmt.Errorf("payload %d of %d: %w", i+1, len(payloads), err)
-			}
-			return ConsistencyIngestResult{}, err
-		}
-		reviews = append(reviews, rv)
+	reviews, _, err := validateConsistencySet(req.RepoRoot, payloads)
+	if err != nil {
+		return ConsistencyIngestResult{}, err
 	}
 	rv, err := mergeConsistencyReviews(reviews)
 	if err != nil {
@@ -1195,10 +1188,116 @@ func requestChunk(reqData []byte, requestRel string) (*consistencyChunkInfo, err
 	return &consistencyChunkInfo{Index: i, Count: n, EmitReceipt: string(em[1]), LimitBytes: limit}, nil
 }
 
+// consistencyIngestCache is what one ingest reads once and shares across its
+// payloads: the corpus by scope, its unchunked size, the chunk plan by scope
+// and limit, and the tree's dirty reading by scope and commit. The counters say
+// how often each was computed.
+type consistencyIngestCache struct {
+	corpora   map[string]consistencyCorpus
+	wholes    map[string]int
+	planned   map[string]consistencyPlan
+	dirty     map[string][]string
+	commits   map[string]error
+	assembles int
+	plans     int
+	treeReads int
+}
+
+func newConsistencyIngestCache() *consistencyIngestCache {
+	return &consistencyIngestCache{corpora: map[string]consistencyCorpus{}, wholes: map[string]int{},
+		planned: map[string]consistencyPlan{}, dirty: map[string][]string{}, commits: map[string]error{}}
+}
+
+// corpus assembles scope's corpus once per ingest.
+func (k *consistencyIngestCache) corpus(repoRoot, scope string) (consistencyCorpus, error) {
+	if c, ok := k.corpora[scope]; ok {
+		return c, nil
+	}
+	k.assembles++
+	c, err := assembleConsistency(repoRoot, scope)
+	if err != nil {
+		return consistencyCorpus{}, err
+	}
+	k.corpora[scope] = c
+	return c, nil
+}
+
+// whole is the unchunked corpus file's size for c, rendered once per scope.
+func (k *consistencyIngestCache) whole(c consistencyCorpus, emitRcp string) int {
+	key := c.Scope + "\x00" + emitRcp
+	if n, ok := k.wholes[key]; ok {
+		return n
+	}
+	n := len(consistencyCorpusText(c, emitRcp))
+	k.wholes[key] = n
+	return n
+}
+
+// plan is c's chunk plan under limit, planned once per scope and limit. A
+// refusal is not kept: it refuses the whole ingest.
+func (k *consistencyIngestCache) plan(c consistencyCorpus, emitRcp string, whole, limit int) (consistencyPlan, error) {
+	key := c.Scope + "\x00" + emitRcp + "\x00" + strconv.Itoa(limit)
+	if p, ok := k.planned[key]; ok {
+		return p, nil
+	}
+	k.plans++
+	p, err := planConsistencyChunks(c, emitRcp, whole, limit)
+	if err != nil {
+		return consistencyPlan{}, err
+	}
+	k.planned[key] = p
+	return p, nil
+}
+
+// dirtyPaths is the tree's dirty reading of c against commit, read once per
+// scope and commit; callers union into a copy, never into the kept slice.
+func (k *consistencyIngestCache) dirtyPaths(repoRoot string, c consistencyCorpus, commit string) ([]string, error) {
+	key := c.Scope + "\x00" + commit
+	if d, ok := k.dirty[key]; ok {
+		return d, nil
+	}
+	k.treeReads++
+	d, err := dirtyCorpusPaths(repoRoot, c, commit)
+	if err != nil {
+		return nil, err
+	}
+	k.dirty[key] = d
+	return d, nil
+}
+
+// commit checks once per ingest that commit names a commit here.
+func (k *consistencyIngestCache) commit(repoRoot, commit string) error {
+	if err, ok := k.commits[commit]; ok {
+		return err
+	}
+	_, err := gitutil.Run(repoRoot, "cat-file", "-e", commit+"^{commit}")
+	k.commits[commit] = err
+	return err
+}
+
+// validateConsistencySet validates every payload of one ingest, whole, in
+// order, through one cache, and names the payload a refusal is about when
+// there are several.
+func validateConsistencySet(repoRoot string, payloads [][]byte) ([]consistencyReview, *consistencyIngestCache, error) {
+	cache := newConsistencyIngestCache()
+	reviews := make([]consistencyReview, 0, len(payloads))
+	for i, raw := range payloads {
+		rv, err := validateConsistency(repoRoot, raw, cache)
+		if err != nil {
+			if len(payloads) > 1 {
+				return nil, cache, fmt.Errorf("payload %d of %d: %w", i+1, len(payloads), err)
+			}
+			return nil, cache, err
+		}
+		reviews = append(reviews, rv)
+	}
+	return reviews, cache, nil
+}
+
 // validateConsistency parses and fully validates a findings payload. Every
 // failure is a refusal with nothing written: there is no parked marker in a
 // committed record to quarantine against, so a bad payload has no home.
-func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error) {
+func validateConsistency(repoRoot string, raw []byte, cache *consistencyIngestCache) (consistencyReview, error) {
 	var lenient struct {
 		Type      string `json:"_type"`
 		ReceiptID string `json:"receipt_id"`
@@ -1232,7 +1331,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	if !gitutil.IsFullSHA(commit) {
 		return consistencyReview{}, fmt.Errorf("intent: request %s names review_of_commit %q, which is not a full sha", requestRel, commit)
 	}
-	if _, err := gitutil.Run(repoRoot, "cat-file", "-e", commit+"^{commit}"); err != nil {
+	if err := cache.commit(repoRoot, commit); err != nil {
 		return consistencyReview{}, fmt.Errorf("intent: request %s names review_of_commit %s, which is no commit here", requestRel, commit)
 	}
 	dm := requestDirtyRe.FindSubmatch(reqData)
@@ -1257,7 +1356,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 		emitRcp = chunk.EmitReceipt
 	}
 
-	c, err := assembleConsistency(repoRoot, scope)
+	c, err := cache.corpus(repoRoot, scope)
 	if err != nil {
 		return consistencyReview{}, err
 	}
@@ -1271,12 +1370,12 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	view := c
 	var reviewChunk *consistencyReviewChunk
 	if chunk != nil {
-		whole := len(consistencyCorpusText(c, emitRcp))
+		whole := cache.whole(c, emitRcp)
 		if whole <= chunk.LimitBytes {
 			return consistencyReview{}, fmt.Errorf("intent: request %s names chunk %d of %d, but the corpus is %d bytes, within its limit of %d; "+
 				"re-emit with `abcd intent consistency%s` and run the pass again", requestRel, chunk.Index, chunk.Count, whole, chunk.LimitBytes, scopeArg(scope))
 		}
-		plan, err := planConsistencyChunks(c, emitRcp, whole, chunk.LimitBytes)
+		plan, err := cache.plan(c, emitRcp, whole, chunk.LimitBytes)
 		if err != nil {
 			return consistencyReview{}, err
 		}
@@ -1292,7 +1391,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	// pinned commit and keep the union, so the report is marked with at least
 	// what the tree shows now — marked, never unmarked, and not refused on a
 	// disagreement (itd-28's dirty-tree policy is to mark, not block).
-	now, err := dirtyCorpusPaths(repoRoot, c, commit)
+	now, err := cache.dirtyPaths(repoRoot, c, commit)
 	if err != nil {
 		return consistencyReview{}, err
 	}
