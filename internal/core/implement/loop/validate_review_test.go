@@ -1177,3 +1177,58 @@ func TestAnAnswerIsKeptAsideWhereNoHardLinkCanBeMade(t *testing.T) {
 		t.Fatalf("no temporary file is left: %v", tmps)
 	}
 }
+
+// TestATakeBackThatCannotReadSaysTheReturnStands: a take-back that cannot
+// read the placed return, or the run's state it checks the return against,
+// never reads that as "not the route's": it is refused naming the return
+// path and that the return still stands, and the answer recorded on the
+// await stays with it.
+func TestATakeBackThatCannotReadSaysTheReturnStands(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	for _, name := range []string{"return unreadable", "state unreadable"} {
+		t.Run(name, func(t *testing.T) {
+			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+			path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
+			statePath := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
+			var saved []byte
+			prev := reviewReceipt
+			reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+				if name == "return unreadable" {
+					if err := os.Chmod(path, 0); err != nil {
+						t.Error(err)
+					}
+				} else {
+					saved, _ = os.ReadFile(statePath)
+					if err := os.WriteFile(statePath, []byte("{"), 0o600); err != nil {
+						t.Error(err)
+					}
+				}
+				return StepResult{}, errors.New("the state could not be written")
+			}
+			t.Cleanup(func() { reviewReceipt = prev; _ = os.Chmod(path, 0o600) })
+			_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+			if err == nil || !strings.Contains(err.Error(), aw.Receipt) || !strings.Contains(err.Error(), "still stands") {
+				t.Fatalf("the take-back is refused naming the return and that it still stands: %v", err)
+			}
+			if saved != nil {
+				if err := os.WriteFile(statePath, saved, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Chmod(path, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if b, err := os.ReadFile(path); err != nil || string(b) != reviewerReturn("SHIP") {
+				t.Fatalf("the return stands: %q %v", b, err)
+			}
+			st, _ := ReadState(repo.Root(), id)
+			if a := st.Lanes[0].awaiting(); a == nil || a.Answered == nil {
+				t.Fatalf("the answer recorded on the await stays with the return: %+v", a)
+			}
+		})
+	}
+}

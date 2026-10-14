@@ -1112,12 +1112,14 @@ func takeBack(repoRoot, runID, rel string) error {
 // removePlaced removes the return at rel only while it is the answer the
 // route's step placed there: its bytes have the digest recorded on its await.
 // The await is read without the run's lock, which a stale read can only make
-// keep a file; a return the host's agent wrote over the placement, and one
-// that cannot be read as a return, is never removed.
+// keep a file; a return the host's agent wrote over the placement, and a
+// path holding no regular file within the answer's bound, is never removed. A
+// return or a state it cannot read is refused naming the return as still
+// standing, and the answer recorded on its await stays with it.
 func removePlaced(repoRoot, runID, rel string) error {
 	st, err := ReadState(repoRoot, runID)
 	if err != nil {
-		return err
+		return fmt.Errorf("the route's return still stands at %s: the run's state it is checked against cannot be read: %s", rel, err.Error())
 	}
 	i, k := st.findAwait(repoRoot, rel)
 	if i < 0 || st.Lanes[i].Awaits[k].Answered == nil {
@@ -1125,11 +1127,18 @@ func removePlaced(repoRoot, runID, rel string) error {
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return fmt.Errorf("opening the checkout: %w", err)
+		return fmt.Errorf("the route's return still stands at %s: opening the checkout: %w", rel, err)
 	}
 	defer root.Close()
 	b, err := fsutil.ReadGuardedInRoot(root, rel, maxReturnBytes)
-	if err != nil || answerDigest(b) != st.Lanes[i].Awaits[k].Answered.SHA256 {
+	switch {
+	case errors.Is(err, fs.ErrNotExist), errors.Is(err, fsutil.ErrNotRegular), errors.Is(err, fsutil.ErrTooBig):
+		// Nothing there, or nothing the route placed: an answer is a regular
+		// file of at most maxReturnBytes.
+		return nil
+	case err != nil:
+		return fmt.Errorf("the route's return still stands at %s: it cannot be read to take it back: %w", rel, err)
+	case answerDigest(b) != st.Lanes[i].Awaits[k].Answered.SHA256:
 		return nil
 	}
 	if err := root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
