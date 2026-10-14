@@ -143,6 +143,20 @@ what it did in `next`:
   issue. When the remedy does not let you tell, answer `yes` and say what you
   could not tell. Do not open the lane, edit the record or fix anything while
   judging.
+- **It reserves the issue.** In a checkout with a remote named `origin`, the
+  drain reserves each issue on it as the issue's lane starts, as `abcd reserve`
+  does, with the path the issue's `found_at` names (a `:line` locator dropped)
+  as the footprint, so every other person and computer sees it is taken. An
+  issue whose `found_at` names no repository-relative path cannot be reserved:
+  it is handed back before any judgement is asked over it, `from:
+  "reservation"`, with the reason `<iss-N> has no found_at path to reserve it
+  with; handed back`, and the drain moves to the next issue. An issue another
+  person holds is passed over (`passed`, check `reservation`, naming the
+  holder), and a reservation refused for a reason of this checkout's own (no
+  GitHub username, `origin` not answering) refuses the move, nothing opened.
+  The lane's run then renews the reservation, fences its landing on it and
+  tombstones it once it lands (`commands/implement.md`). Without `origin` there
+  is nowhere to reserve, and nothing is.
 - **It opens a lane.** The next eligible issue in the order, once judged `no`
   over its remedy as it stands, gets the implement
   loop's issue-keyed run (the run `abcd build <iss-N>` starts): `start` names
@@ -220,8 +234,8 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
 `handed-back` or `done`, and `pr`); `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
-`hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement` or
-`field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
+`hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
+`reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
 `wrote`); `judging` is the host judgement the drain awaits (`issue`,
 `remedy_sha256`, `request`, `answer`, `requested_at`), `null` when it awaits
 none; `judged` is the answer this move took and `judgements` every one the

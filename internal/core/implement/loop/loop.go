@@ -57,6 +57,11 @@ type Options struct {
 	// Quota asks the named runner for its remaining quota, under ctx's
 	// deadline; nil asks Runners.
 	Quota func(ctx context.Context, name string) (runner.Quota, bool, error)
+
+	// reserve is the footprint a new run reserves its key with on origin
+	// after its checks pass and before it is created (reservation.go); nil
+	// reserves nothing. The drain sets it from the issue's found_at.
+	reserve []string
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -341,6 +346,24 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		chk.OK = false
 		return StartResult{}, chk.refusal()
 	}
+	// The run's reservation on the shared remote (reservation.go), once the
+	// record may start and before the run exists: another's hold refuses the
+	// start, and a run that is then not created releases it.
+	var reservedAt *time.Time
+	reservedNote, fresh := "", false
+	if o.reserve != nil {
+		if reservedAt, reservedNote, fresh, err = reserveKey(repoRoot, chk.Key, o.reserve, o.now()); err != nil {
+			return StartResult{}, err
+		}
+	}
+	// keep is set once a run in this checkout holds the reservation: the one
+	// created here, or a racing start's run resumed below.
+	keep := false
+	defer func() {
+		if fresh && !keep {
+			releaseKey(repoRoot, chk.Key, o.now())
+		}
+	}()
 	if err := fsutil.EnsureRealDirAll(repoRoot, RunRelDir, dirPerm); err != nil {
 		return StartResult{}, fmt.Errorf("creating %s: %w", RunRelDir, err)
 	}
@@ -354,6 +377,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		// while the checks ran: it is resumed, not duplicated.
 		if st, ok := liveRun(runs, chk.Key); ok {
 			res = startResult(st, nil, true)
+			keep = true
 			if pick != nil {
 				return pickedLive(res)
 			}
@@ -394,6 +418,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			// The run's first window opens at its start.
 			WindowStartedAt: &now,
 			Pace:            &pace,
+			ReservedAt:      reservedAt,
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
@@ -401,6 +426,9 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
+		if reservedNote != "" {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: reservedNote})
+		}
 		if pick != nil {
 			rp := *pick
 			rp.Lane = st.Lanes[0].ID
@@ -420,6 +448,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
+		keep = true
 		return nil
 	})
 	return res, err

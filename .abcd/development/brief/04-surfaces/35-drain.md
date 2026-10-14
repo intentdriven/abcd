@@ -168,7 +168,18 @@ and written nowhere, decision 8), then does the first of these that applies:
    already answered no over the remedy as it stands. With that no, it starts
    the implement loop for the issue and names the run. An issue the loop's own
    checks refuse (a peer holds it) is passed over, named with the check. When
-   none is left, the drain ends and says so.
+   none is left, the drain ends and says so. In a checkout with a remote named
+   `origin`, the issue is first reserved there as its lane starts, with the
+   path its `found_at` names as the footprint (itd-2609091034175565, C37): an
+   issue whose `found_at` names no repository-relative path is handed back
+   before any judgement over it, `from` `reservation`, with the reason
+   "`<iss-N>` has no found_at path to reserve it with; handed back", and the
+   drain moves on; one another person holds is passed over with the check
+   `reservation`, naming the holder; and a reservation refused for this
+   checkout's own reason (no GitHub username, `origin` not answering) refuses
+   the move. The run records the reservation, which its steps renew, fence
+   and tombstone ([`27-implement.md`](27-implement.md)). Without `origin`
+   nothing is reserved.
 
 The host's answer is taken first of all, before the window clock and the
 lane's routing: an invocation given the answer's path validates it and records

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -17,10 +18,13 @@ import (
 
 // drainLandFixture is drainRepo on a local bare remote with a merge-queue
 // ruleset mirror and the stub forge client first on PATH, so a drain's lane
-// can land.
+// can land. A drain in a checkout with a remote named origin reserves each
+// issue with its found_at path (C37), so every issue names AGENTS.md and the
+// checkout is P's, a GitHub no-reply identity.
 func drainLandFixture(t *testing.T) *landFixture {
 	t.Helper()
-	repo := drainRepo(t)
+	repo := drainRepoAt(t, "AGENTS.md")
+	asPat(t, repo)
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
 		t.Setenv(k, "Pat Example")
 	}
@@ -151,6 +155,14 @@ func TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove(t *testing.T) {
 	}
 	if !st.Complete() || st.Lanes[0].Landing.Merged == "" {
 		t.Fatalf("the run's lane is done, its landing naming the merge: %+v", st.Lanes[0])
+	}
+	// The drain reserved the issue as its lane started, and finishing the
+	// merged lane tombstones the reservation (spc-2610031753359849 C37, C45).
+	if st.ReservedAt == nil {
+		t.Fatal("the drain's run holds the issue's reservation")
+	}
+	if tomb := originReservation(t, f.bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+		t.Fatalf("finishing the merged lane tombstones its reservation: %+v", tomb)
 	}
 	if st.NextEligibleAt == nil || !st.NextEligibleAt.Equal(until) {
 		t.Fatalf("finishing the lane leaves the run's pause as it was: %v", st.NextEligibleAt)

@@ -720,7 +720,7 @@ These are the facilitator's design calls; none changes a criterion.
     from the table; a row without a shape check, or naming one with no arm,
     exempts nothing, and a prefix the table does not name needs a receipt.
     The next row expected is cloud sessions' work-in-progress branches,
-    ruled by adr-2610120937435856, which spc-2610120941441282 adds.
+    ruled by adr-2610120937435856, which spc-2610120941441282 adds. <!-- record-lint: forward-looking -->
 - **What step 10 settled** (the cap and the overlap, 2026-10-12):
   - Both are judged after the push table has chosen the act and before the
     commit is written, on the view the act just fetched, read by the same
@@ -814,6 +814,35 @@ These are the facilitator's design calls; none changes a criterion.
     is finished on the default branch. `claim.PushError` and
     `claim.FetchError` tell a failure reaching origin from a refusal judged
     on the tip.
+- **What step 14 settled** (the drain's reservation per issue, 2026-10-14):
+  - The drain reserves only in a checkout with a remote named `origin`; with
+    none there is nowhere to reserve, the lane opens as before, nothing is
+    handed back for want of a `found_at`, and the run records no
+    reservation, as `abcd <record-id>` shows no line there.
+  - The footprint is the path `found_at` names as the capture verb reads a
+    path from it (`capture.FoundAtPath`): a `:line` locator dropped, then
+    cleaned and held to `fsutil.ValidRelPath`. A `found_at` that is empty, a
+    conceptual location in words, or not a repository-relative path is the
+    hand-back.
+  - The `found_at` hand-back is made before the host judgement is asked over
+    the issue, so no judgement is spent on an issue that cannot be reserved.
+    It is a flag routed home to the issue's record (`from` `reservation`,
+    kind `no-found-at`), kept in the drain's hand-backs so the same drain
+    does not meet it again.
+  - The reservation is taken inside the run's start, after its checks and the
+    budget check pass and before the run is created (an unexported start
+    option carries the footprint, the seam step 13 fills from the spec), and
+    the run's record names it (stage `reservation`). A start that then does
+    not create its run releases a reservation it made fresh (reserved or
+    taken over), never one this copy already held and renewed, nor one a
+    racing start's run in this checkout now holds.
+  - Another's hold (live, lapsed under the margin, unreadable within its
+    hold, an overlapping footprint, a lost race) passes over the issue with
+    the check `reservation`; every other refusal (no username, no local tier,
+    `origin` not answering) refuses the drain's move, since it would refuse
+    every issue alike.
+  - A lane handed back leaves its reservation to lapse with its lease rather
+    than releasing it; the spec names no release there.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

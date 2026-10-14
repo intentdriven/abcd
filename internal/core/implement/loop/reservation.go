@@ -16,17 +16,29 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The run record's stages for the run's reservation.
 const (
 	StageReservationRenewed     = "reservation_renewed"
 	StageReservationRenewFailed = "reservation_renew_failed"
+)
+
+// StageReservation is the refusal stage, and the run record's stage, of a
+// run's start that reserves its key; CheckReservation is the check a drain
+// names when it passes over an issue another holds.
+const (
+	StageReservation = "reservation"
+	CheckReservation = "reservation"
 )
 
 // fenceMargin is how far past the merge queue's check timeout the land fence
@@ -215,4 +227,65 @@ func isPushFailure(err error) bool {
 	var fe *claim.FetchError
 	var pe *claim.PushError
 	return errors.As(err, &fe) || errors.As(err, &pe)
+}
+
+// reserveKey reserves a new run's key on origin for this copy with footprint,
+// after the run's checks pass and before it is created, and returns the run
+// record's line for it. A checkout with no remote named origin has nowhere to
+// reserve, and reserves nothing (nil, ""). Another's hold is the back-off,
+// contention at the reservation check; any other refusal stops the start.
+// fresh is true when the act made the reservation (a reserve or a take-over)
+// rather than renewing one this copy already held, so only a fresh one is
+// released when the run is not created.
+func reserveKey(repoRoot, key string, footprint []string, now time.Time) (at *time.Time, note string, fresh bool, err error) {
+	ok, err := claim.HasOrigin(repoRoot)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if !ok {
+		return nil, "", false, nil
+	}
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Footprint: footprint}, claimOptions(now))
+	if err != nil {
+		if errors.Is(err, claim.ErrBackOff) {
+			return nil, "", false, contend(StageReservation, CheckReservation, "", err.Error(),
+				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
+		}
+		return nil, "", false, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
+	}
+	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",
+		claim.ActTakenOver: "took over the reservation on"}[res.Act]
+	note = fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
+		stamp(res.ExpiresAt), strings.Join(res.Footprint, ", "))
+	t := now
+	return &t, note, res.Act != claim.ActRenewed, nil
+}
+
+// releaseKey releases a reservation a start took and then could not create
+// its run for, best effort: a failure leaves it to lapse with its lease.
+func releaseKey(repoRoot, key string, now time.Time) {
+	_, _ = claim.Reserve(repoRoot, claim.Request{Record: key, Release: true}, claimOptions(now))
+}
+
+// issueFootprint is the footprint a drain reserves an issue with: the
+// repository-relative path its found_at names, a locator suffix dropped; ok
+// is false when found_at names none.
+func issueFootprint(iss capture.Issue) ([]string, bool) {
+	p, ok := capture.FoundAtPath(iss.FoundAt)
+	if !ok {
+		return nil, false
+	}
+	p = path.Clean(p)
+	if !fsutil.ValidRelPath(p) {
+		return nil, false
+	}
+	return []string{p}, true
+}
+
+// noFoundAtHandBack is the drain's hand-back of an issue it cannot reserve:
+// its found_at names no path. It is a flag, routed home to the record.
+func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
+	return DrainRoute{Issue: issue, From: DrainFromReservation, Kind: "no-found-at", Route: RouteHome,
+		Home:   "the issue's record: give it a found_at naming the file the fix changes, which the drain reserves it with",
+		Reason: issue + " has no found_at path to reserve it with; handed back", Wrote: "nothing: a flag in this summary", At: &now}
 }
