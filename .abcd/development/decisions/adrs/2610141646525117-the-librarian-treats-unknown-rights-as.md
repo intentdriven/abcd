@@ -40,6 +40,12 @@ reader rating, and a museum page that is all rights reserved.
 - **A private source is read alone.** No search or fetch service receives any of
   a private source's text, headings or claims; its claims stay unchecked unless
   the person supplies a public source for them.
+  This holds even when the private file is a copy of a public page: the public
+  original is not fetched.
+- **Terms that forbid copying are honoured.** When a source's own terms forbid
+  copying or downloading, only its quotes and a fingerprint of its text are
+  kept. Translations of quoted text are kept in the private pack even where the
+  publisher reserves translation.
 - **Named ratings only.** A rating enters a reading pack only with a named
   source: a score with a known scale, or a named critic's verdict without a
   scale, labelled unscored. Reader and anonymous ratings, and ratings known only
@@ -52,7 +58,7 @@ named source.
 
 The test lab of 2026-10-14 (lab-261014165333-8d28f83) led to the per-part
 rights, the reading-alone rule, the name stripping and the unscored-verdict
-label, each ruled by the product thinker the same evening: one test run sent a
+label, and the second round (lab-261014193413-981af0b) to the terms rule and the reading-alone rule for copies of public pages, each ruled by the product thinker the same evening: one test run sent a
 private page's headings to a web tool, two saved pages held other people's
 names, and the strict ratings rule left two 1980s games with no reception at
 all.

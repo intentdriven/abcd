@@ -64,8 +64,13 @@ local files, or none):
    subject are reused, never fetched twice.
 3. **Fetch and file privately.** New sources are filed in the corpus as
    confidential by default. People's names in a saved page that are not the
-   source (the saver's own name, commenters' names) are stripped before filing.
-   A private copy of a public document records its public address as its twin.
+   source (the saver's own name, commenters' names, e-mail addresses and
+   handles in its metadata) are stripped before filing. When a source's own
+   terms forbid copying (a manual's "no part may be copied to any electronic
+   medium"; a site's ban on downloading), only the quotes and a fingerprint of
+   the text are kept, and a quote is re-checked by reading the source again. A
+   private copy of a public document records the public address it names,
+   without fetching it.
 4. **Read properly.** The model reads each document, scans included, and finds
    the part that matters (one review on page 52 of a 116-page magazine; one
    advertisement on one page of an issue). Where a text layer is garbled (an
@@ -73,7 +78,8 @@ local files, or none):
    The text it read, in reading order, is stored with the pack, and the pack
    says what was not read (pages past the reading budget, images it could not
    open). A source in another language is quoted in its own words with a
-   translation beside it. A catalogue or list page is shown as a list and the
+   translation beside it, kept in the private pack even where the publisher
+   reserves translation. A catalogue or list page is shown as a list and the
    person picks the items to read; auto mode picks the most relevant few and
    records why.
 5. **Search around, by lens.** Nine broad lenses apply to every subject, each
@@ -119,14 +125,25 @@ local files, or none):
      "verified as quoted", never "verified as true"
    - paper and report: who funded or published it, and which numbers are its own
    - guideline page: whose platform it serves, and its date
+   - encyclopedia article: what it cites, and whether the citation holds
+   - transcript: who transcribed it, and from what recording
+   - archive record or index page: what it catalogues, and who uploaded it
+   A scale stated elsewhere in the same document (a magazine's key to its
+   stars) counts as known.
 7. **Drill down.** A finding is specific when its content names something: a
-   name, a date or a number. A quote alone does not make a finding specific. A
+   named person, organisation, product or place the finding is about, a date or
+   a number. A quote alone, or the name of whoever said it, does not make a
+   finding specific. Ideas and principles are proposals, not facts, and are not
+   held to this test. A
    finding that is not specific is searched again on exactly that gap,
    automatically and up to a capped number of rounds; the person can also ask
    for a deeper search on any lens. What a drill-down turns up is linked to the
    finding it came from. What stays vague after the cap is listed as an open
    question, never padded. Two specific findings that disagree (three named
-   sales figures for one machine) are kept side by side as disputed.
+   sales figures for one machine), or a source that contradicts itself, are
+   kept side by side as disputed. A specific claim whose cited source does not
+   say it is marked unsupported. A drill-down may be settled inside the same
+   source (another page) as well as by a search.
 8. **Hand back a reading pack:** ideas, principles, claims and references, each
    with its source, its locator (document page, printed page, column or
    section), its quote and the quote's provenance (seen at the source, or
@@ -135,6 +152,16 @@ local files, or none):
    usefulness to the refined subject, with that criterion stated. The glossary
    of lens 8 is kept apart from the open questions, and a pack names the other
    packs it connects to (two games from the same studio).
+
+**Quotes and the stored text.** A quote is checked against the text stored for
+its source after one declared normalisation: whitespace collapsed; typographic
+quote marks and apostrophes folded to plain ones; a hyphen at a line end tried
+both kept and joined; markup removed only from a markup source (a web page),
+never from plain or scanned text. A quote is faithful to the page; where the
+stored text is a scan's OCR and differs, the correction is marked in the stored
+text and the quote names it. Pages found while searching that the pack quotes
+are kept the same way as the source, under the same terms rule. A person whose
+name changed is named by their current name, with the credited name quoted.
 
 Rights are recorded per part, not per source: a page's text, its images, its
 comments and the artefacts it links to can each carry their own terms, and so
@@ -156,9 +183,10 @@ turns every vague finding into a specific one or an open question. The broad
 lenses work across subjects because the librarian records its reading of each
 lens for the subject, which the person can see and correct.
 
-The test lab of 2026-10-14 (lab-261014165333-8d28f83: 14 sources of nine
-kinds, from a scanned 1986 game manual to private research reports) shaped
-this text: its findings are why specificity is judged by content, why the
+The test labs of 2026-10-14 (lab-261014165333-8d28f83: 14 sources of nine
+kinds, from a scanned 1986 game manual to private research reports; and its
+second round, lab-261014193413-981af0b, on five of the hardest) shaped this
+text: its findings are why specificity is judged by content, why the
 stored text is what the model read, why every form has a check, and why
 rights are per part.
 
@@ -176,10 +204,22 @@ rights are per part.
   owner-only; nothing the librarian writes is committed. The privacy promise
   covers what abcd writes; the host's own stores (its session transcripts, its
   fetch caches) hold whatever the model read, and the command page says so.
-- Lens 9 reads the repository the librarian runs in, read-only.
+- Lens 9 reads the repository the librarian runs in, read-only, and says "no
+  fit" when the subject is not that project (writing a game, from inside abcd).
 - One person on one machine; sharing a pack is out of scope.
 
 ## Acceptance Criteria
+
+- **Given** a source whose terms forbid copying, **when** it is filed, **then**
+  only its quotes and a fingerprint of its text are stored.
+- **Given** a scanned source whose OCR differs from the page, **when** an item
+  quotes the page, **then** the correction is marked in the stored text and the
+  quote is accepted.
+- **Given** a quote with typographic quote marks, or a word hyphenated at a
+  line end, **when** the pack is recorded, **then** the quote check accepts it
+  under the declared normalisation.
+- **Given** a specific claim whose cited source does not say it, **when** the
+  pack is written, **then** the claim is marked unsupported.
 
 - **Given** a subject and a web address, **when** the librarian runs, **then** the
   source is filed in the sources corpus as confidential with its rights recorded
