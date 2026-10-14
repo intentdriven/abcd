@@ -318,6 +318,12 @@ func (k *keptChunks) reuse(rcp string) (*dispatched, string) {
 }
 
 func (k *keptChunks) judge(rcp string) keptJudgement {
+	// With no target the route names (no provider configuration, or one
+	// Admitted refuses, which refuses the send itself), there is nothing to
+	// match a kept answer against: it is not judged, and no reason is given.
+	if k.target.Model == "" {
+		return keptJudgement{}
+	}
 	payload, raw, ok, err := k.kept.Get(rcp)
 	if err != nil {
 		return keptJudgement{why: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
@@ -333,7 +339,7 @@ func (k *keptChunks) judge(rcp string) keptJudgement {
 	if rr.ProviderCall != nil {
 		asked = rr.ProviderCall.ModelAsked
 	}
-	if k.target.Model == "" || rr.ProviderCall == nil || rr.ConnectionUsed != k.conn ||
+	if rr.ProviderCall == nil || rr.ConnectionUsed != k.conn ||
 		rr.ProviderCall.Provider != k.target.Provider || asked != k.target.Model {
 		return keptJudgement{why: termsafe.Sanitize(fmt.Sprintf("it was answered through %s by %s, and the route now sends to %s with %s",
 			orUnknown(rr.ConnectionUsed), orUnknown(asked), k.conn, orUnknown(k.target.Model)))}
