@@ -74,7 +74,8 @@ output names the copy it replaced. It never moves another person's.
 **Exit 2 when the user holds ten.** One person may hold at most ten live
 reservations, counted across every record by username. A reservation past that
 is refused, naming the ten; a renewal, and a take-over of the user's own other
-copy, are never refused by the cap. Release one first, if the user agrees.
+copy, of a reservation still live are never refused by the cap, while renewing
+one that has lapsed counts as a new one. Release one first, if the user agrees.
 
 **Exit 2 is every other refusal**: an id that is not an issue or intent, no
 footprint, a path that is not repository-relative, a lease out of bounds, a

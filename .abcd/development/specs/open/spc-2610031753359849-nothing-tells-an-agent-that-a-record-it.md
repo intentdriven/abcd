@@ -729,9 +729,12 @@ These are the facilitator's design calls; none changes a criterion.
     leaves it out. The cap is checked first: taking other work does not lift
     it.
   - The cap counts the holder's live reservations on every other record. An
-    act over a tip this person already holds, readable and unreleased (a
-    renewal, or a take-over of their own other copy, lapsed or not), adds
-    none and is never refused by it. A holder past ten, which only a race
+    act over a tip this person already holds, readable, unreleased and live
+    (a renewal, or a take-over of their own other copy), adds none and is
+    never refused by it. Reviving one's own lapsed tip adds one, since the
+    cap does not count it while it is lapsed: ten live and a revived one
+    would otherwise make eleven (the review of 2026-10-14; this line first
+    said "lapsed or not"). A holder past ten, which only a race
     between two of their copies can make, is told "past the 10 one person
     may hold" rather than the table's "the most one person may hold".
   - The overlap counts every other live reservation, the holder's own on

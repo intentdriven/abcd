@@ -64,7 +64,8 @@ output says the check was skipped.
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username
 across every record, is refused naming the ten; a renewal, and a take-over of
-the same person's other copy, add none and are never refused by the cap. A
+the same person's other copy, of a reservation still live add none and are
+never refused by the cap, while reviving a lapsed one adds one. A
 footprint path that another live reservation's footprint shares, equal or one
 a directory holding the other, is refused, naming the deeper of the two paths,
 the other record, its holder and its expiry; a renewal the verb makes names

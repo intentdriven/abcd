@@ -175,3 +175,32 @@ func TestNeitherReleasedNorExpiredReservationsOverlap(t *testing.T) {
 		t.Fatalf("a footprint over an expired and a released reservation: %v", err)
 	}
 }
+
+// TestRevivingOnesOwnLapsedReservationCountsAgainstTheCap: the cap counts live
+// reservations, so one's own lapsed reservation is not among them; renewing
+// it, by the verb or a renew-only act, adds a live one, and at ten live it is
+// refused rather than making eleven.
+func TestRevivingOnesOwnLapsedReservationCountsAgainstTheCap(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "iss-11", Footprint: []string{"f11.go"}, Lease: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(2 * time.Minute))
+	reserveTen(t, p)
+	tip := w.remoteTip("iss-11")
+	for _, c := range []struct {
+		name string
+		req  Request
+	}{
+		{"the verb's renewal", Request{Record: "iss-11", Footprint: []string{"f11.go"}}},
+		{"a renew-only act", Request{Record: "iss-11", Renew: true}},
+	} {
+		if _, err := p.do(c.req); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "you hold 10 live reservations") {
+			t.Fatalf("%s of a lapsed reservation at ten live = %v; want the cap", c.name, err)
+		}
+	}
+	if got := w.remoteTip("iss-11"); got != tip {
+		t.Fatalf("a refused revival moved the branch to %s", got)
+	}
+}

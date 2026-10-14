@@ -67,9 +67,10 @@ func crowding(p *prepared, j judged, res Result) error {
 
 // addsOne reports whether an act on the judged tip adds a live reservation to
 // its holder's count: everything but a renewal or a take-over of a tip this
-// person already holds, readable and unreleased.
+// person already holds, readable, unreleased and live. One's own lapsed tip is
+// not among the live ones the cap counts, so reviving it adds one.
 func addsOne(j judged) bool {
-	return !j.present || j.released() || j.Unreadable != "" || !j.mine
+	return !j.present || j.released() || j.Unreadable != "" || !j.mine || !j.verdict.Live
 }
 
 // capRefusal names the cap and the holder's live reservations, as the view
