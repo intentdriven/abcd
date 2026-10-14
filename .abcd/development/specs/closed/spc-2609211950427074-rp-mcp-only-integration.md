@@ -144,8 +144,12 @@ choice, recorded for review; none changes a criterion.
   handed back later are the host's. Taking a placed return back needs no
   lock, so a busy lock never leaves the route's answer standing where the
   host's agent writes, and it removes only the bytes the await records as the
-  route's: a return the host's agent wrote over the placement stays (refined
-  on review 2026-10-14). An
+  route's: a return the host's agent wrote over the placement stays. The
+  check and the removal are not one act, since the removal takes no lock: in
+  the narrow window between them, a concurrent receipt that verifies the
+  placed return keeps its recorded verdict but loses the file it read, and a
+  write by the host's agent over the placement is removed with it (refined on
+  review 2026-10-14). An
   answer the loop could not place, because another invocation held the run's
   lock past the retries, is kept aside the same way, and the contention
   refusal names where it is; with the lock busy nothing records it as the

@@ -1115,12 +1115,16 @@ func takeBack(repoRoot, runID, rel string) error {
 
 // removePlaced removes the return at rel only while it is the answer the
 // route's step placed there: its bytes have the digest recorded on its await.
-// It reports whether it removed it.
-// The await is read without the run's lock, which a stale read can only make
-// keep a file; a return the host's agent wrote over the placement, and a
-// path holding no regular file within the answer's bound, is never removed. A
-// return or a state it cannot read is refused naming the return as still
-// standing, and the answer recorded on its await stays with it.
+// It reports whether it removed it. A return the host's agent wrote over the
+// placement, and a path holding no regular file within the answer's bound, is
+// kept; a return or a state it cannot read is refused naming the return as
+// still standing, and the answer recorded on its await stays with it.
+//
+// The await and the return are read without the run's lock, so the check and
+// the removal are not one act. Two things in the narrow window between them
+// can lose a file: a concurrent receipt that verifies the placed return there
+// (its verdict is recorded, but the file it read is then removed), and a write
+// by the host's agent over the placement (removed as the answer it replaced).
 func removePlaced(repoRoot, runID, rel string) (bool, error) {
 	st, err := ReadState(repoRoot, runID)
 	if err != nil {
