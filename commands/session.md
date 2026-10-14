@@ -136,10 +136,29 @@ the site's root, or from under `--base-path` when the site is served below one
 (a project's GitHub Pages address, `owner.github.io/<repo>/`), so it then opens
 at `<base-path>/<owner>/<repo>/brief/`; the base path is plain path segments,
 and an address without the trailing slash is sent on to it. The page connects
-only to the relay the person names and to `api.github.com` with the person's
-own token, and it sends the person to `github.com` for sign-in and to open the
-pre-filled issues a session sends. The directory is the one the user names;
-never publish or deploy it for them.
+only to the relay the person names and to `api.github.com`, and it sends the
+person to `github.com` for sign-in and to open the pre-filled issues a session
+sends. The directory is the one the user names; never publish or deploy it for
+them.
+
+A link can name any relay, so the page trusts the repository, not the link.
+Before any sign-in or token reaches a relay, it reads the repository's
+committed `.abcd/relay/relays.json`, `{"relays": ["https://<relay>"]}`, from
+`api.github.com` on the default branch: without a token for a public
+repository, and with the person's token, before anything else, once there is
+one. A relay the file does not name gets no token, no sign-in and no
+connection. Where the file cannot be read (a private repository before
+sign-in, or no file), the page shows the relay's address and the person must
+confirm it ("Only continue if your team runs this relay") before any sign-in
+or token reaches it; the browser remembers the confirmation for that
+repository. So the team commits `relays.json` naming each relay's https
+origin: the one `blueprint --relay-origin` writes, and, for a host serving
+from their own machine, that machine's tailnet address. When a user asks how
+to set up sign-in, recommend a GitHub App over an OAuth app, with the
+repository permissions Contents read and write, Pull requests read and write,
+and Metadata read, and only those: its sign-in carries no scope and reaches
+only the repositories it is installed on, while an OAuth app's `repo` scope
+reaches every repository the person can.
 
 It writes those six files and nothing else, and removes nothing. `<dir>` may be
 absent, empty, or a directory an earlier run wrote, whose files are replaced.

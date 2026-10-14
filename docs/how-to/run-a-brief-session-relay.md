@@ -105,11 +105,12 @@ keeps neither the token nor anything else once it has the answer.
 
 1. On GitHub, register a new GitHub App under the team's organisation or your
    account. Set its callback URL to the address the session page is served
-   from, `https://abcdesign.app/`. Give it the repository permissions the
-   page uses: read and write on contents and on pull requests. Install it on
+   from, `https://abcdesign.app/`. Give it exactly the repository
+   permissions the page uses, and no others: **Contents** read and write,
+   **Pull requests** read and write, and **Metadata** read. Install it on
    the repositories your sessions are for. A GitHub App's sign-in holds only
    what both the app and the person may do, on the repositories it is
-   installed on.
+   installed on, which is why it is recommended over an OAuth app.
 2. Note the app's client id, and generate a client secret.
 3. Give both to the relay through its environment:
    - `ABCD_SESSION_GITHUB_CLIENT_ID`: the client id, which is public.
@@ -119,7 +120,34 @@ keeps neither the token nor anything else once it has the answer.
 
 A team that already has an OAuth app may use it instead: set
 `ABCD_SESSION_GITHUB_APP_TYPE` to `oauth-app` as well. The default, and what
-the blueprint sets, is `github-app`.
+the blueprint sets, is `github-app`. An OAuth app's sign-in asks for access to
+every repository the person can reach, and the session page says so beside
+its sign-in button.
+
+## Name your relay in the repository
+
+A link to the session page can name any relay, so the page does not take the
+link's word for it. Before any sign-in or token goes to a relay, the page reads
+`.abcd/relay/relays.json` from the repository's default branch:
+
+```json
+{"relays": ["https://<your service>.onrender.com"]}
+```
+
+Commit this file naming the https address of each relay your team runs: the
+one `abcd session blueprint --relay-origin` writes for the Render route, and,
+if a host serves from their own machine, that machine's tailnet address as
+Tailscale Serve prints it. Each entry is an origin alone, with no path.
+
+- For a public repository the page reads the file without signing in. A relay
+  the file does not name gets no sign-in and no token, and the page does not
+  connect to it.
+- For a private repository, or one without the file, the page cannot check
+  the relay before sign-in. It shows the relay's address and asks the person
+  to confirm it: "Only continue if your team runs this relay". The browser
+  remembers the answer for that repository. Once the person has signed in, the
+  page reads the file with their sign-in first; if the file names other
+  relays, it refuses this one and forgets the confirmation.
 
 Keeping the relay and its secret safe is the team's responsibility.
 
