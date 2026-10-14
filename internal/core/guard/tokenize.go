@@ -125,6 +125,13 @@ type segment struct {
 	// it again (leadSpelling in varpath.go, spellPayload). nil when no word
 	// does.
 	leadFrom map[int]leadSource
+	// litTilde records, per token index, the offsets in the word of each
+	// `~` that reached it quoted or escaped (`'~'`, `"~"`, `\~`, `$'~'`):
+	// text, which no tilde expansion reads, so `'~/n.sh'` names a directory
+	// called `~` and never the home (homeTilde). nil when no word holds one,
+	// which is nearly every segment; a segment built anywhere else carries
+	// none, and reads every leading `~` as the home, as before.
+	litTilde map[int][]int
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built
@@ -572,6 +579,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it as segment.leadFrom.
 		leads    map[int]bool
 		leadFrom map[int]leadSource
+		// tildes rides with the segment (segment.litTilde).
+		tildes map[int][]int
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -919,6 +928,23 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		markIFSSplit(sites)
 		markVarLead(w.b, sites)
 	}
+	// recordTildes files, under the index the word is about to take, the
+	// offsets of each `~` in it whose mask says it was not read unquoted.
+	recordTildes := func(word, mask []byte) {
+		var at []int
+		for k, c := range word {
+			if c == '~' && k < len(mask) && mask[k]&wordStruct == 0 {
+				at = append(at, k)
+			}
+		}
+		if len(at) == 0 {
+			return
+		}
+		if tildes == nil {
+			tildes = map[int][]int{}
+		}
+		tildes[len(toks)] = at
+	}
 	flushToken := func() {
 		if !hasCur {
 			return
@@ -949,6 +975,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					recordVar(false)
 					word := unknownFromOpenExpansion(string(w.b))
 					recordBraceSpelling(word, w)
+					if word == string(w.b) {
+						recordTildes(w.b, w.m)
+					}
 					toks = append(toks, word)
 					globs = append(globs, w.globbed())
 				}
@@ -984,6 +1013,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 			}
 		}
+		if tok == string(cur) {
+			recordTildes(cur, curMask)
+		}
 		toks = append(toks, tok)
 		globs = append(globs, curGlob)
 		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
@@ -1002,7 +1034,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, litTilde: tildes, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1017,6 +1049,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			splits = nil
 			leads = nil
 			leadFrom = nil
+			tildes = nil
 			feeds = nil
 			braceGroup = false
 			pipeNext = false
@@ -1163,7 +1196,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
 			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
-			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom,
+			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom, tildes: tildes,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
@@ -1173,7 +1206,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
-		spells, curVarAt, splits, leads, leadFrom = nil, nil, nil, nil, nil
+		spells, curVarAt, splits, leads, leadFrom, tildes = nil, nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -1245,7 +1278,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom
+		spells, curVarAt, splits, leads, leadFrom, tildes = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.tildes
 		curRedirs, andNext = e.redirs, e.andNext
 		resumeDocs(e)
 		if !f.bare {
@@ -1270,7 +1303,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom
+		spells, curVarAt, splits, leads, leadFrom, tildes = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.tildes
 		curRedirs, andNext = e.redirs, e.andNext
 		feedFrom(e.segStart)
 		if e.procSub {
@@ -2555,6 +2588,7 @@ type enclosing struct {
 	splits     map[int]bool
 	leads      map[int]bool
 	leadFrom   map[int]leadSource
+	tildes     map[int][]int
 	cur        []byte
 	curMask    []byte
 	hasCur     bool
@@ -3456,3 +3490,22 @@ func oddTrailingBackslashes(text string) bool {
 	}
 	return n%2 == 1
 }
+
+// tildeAt reports whether byte off of token i is a `~` the shell reads for
+// tilde expansion: one written unquoted (segment.litTilde).
+func (s segment) tildeAt(i, off int) bool {
+	if i < 0 || i >= len(s.tokens) || off < 0 || off >= len(s.tokens[i]) || s.tokens[i][off] != '~' {
+		return false
+	}
+	for _, k := range s.litTilde[i] {
+		if k == off {
+			return false
+		}
+	}
+	return true
+}
+
+// homeTilde reports whether token i opens with tilde expansion — `~`, `~/…`
+// or `~user` written unquoted — rather than with a quoted or escaped `~`,
+// which names a directory called `~`.
+func (s segment) homeTilde(i int) bool { return s.tildeAt(i, 0) }

@@ -44,7 +44,7 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 func writeAt(rc *readCtx, st *shellState, word string, tilde bool) writeTarget {
 	p, ok := st.resolve(rc, word, tilde)
 	w := writeTarget{path: p, ok: ok}
-	if !ok && !tilde && st.relativeUnknown(word) {
+	if !ok && st.relativeUnknown(word, tilde) {
 		w.rel, w.base = true, filepath.Base(word)
 		w.name, w.gen = cwdName(word), st.dirGen
 	}
@@ -111,7 +111,7 @@ func (w writerArgs) at(i int) writeTarget {
 		}
 		return writeTarget{}
 	}
-	return writeAt(w.rc, w.st, tok, strings.HasPrefix(tok, "~"))
+	return writeAt(w.rc, w.st, tok, w.s.homeTilde(i))
 }
 
 // valueAt is the path that token i carries after its first skip bytes.
@@ -121,7 +121,7 @@ func (w writerArgs) valueAt(i, skip int) writeTarget {
 		return writeTarget{}
 	}
 	v := tok[skip:]
-	return writeAt(w.rc, w.st, v, strings.HasPrefix(v, "~"))
+	return writeAt(w.rc, w.st, v, w.s.tildeAt(i, skip))
 }
 
 // tokenBase is the last path component of a token the line does not fix,
