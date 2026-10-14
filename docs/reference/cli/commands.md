@@ -3764,8 +3764,9 @@ session.js, session.css, and the vendored editor bundle with its licences under
 vendor/. The files are plain and static, embedded in this binary; serve them
 from any static host, such as GitHub Pages, whose 404.html fallback is how
 /<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the
-person names, to api.github.com with their own token, and to github.com for
-sign-in. It reads nothing from this checkout.
+person names and to api.github.com with their own token, and it sends the
+person to github.com for sign-in and to open the pre-filled issues a session
+sends. It reads nothing from this checkout.
 
 --base-path names the path the site is served under, such as a project's
 GitHub Pages address owner.github.io/<repo>/: the page then loads its files from

@@ -383,3 +383,14 @@ func TestSessionPageWritesUnderABasePath(t *testing.T) {
 		t.Fatal("a refused --base-path created the directory")
 	}
 }
+
+func TestSessionPageHelpSaysWhatGitHubIsReachedFor(t *testing.T) {
+	text := string(runCLI(t, "session", "page", "--help"))
+	flat := strings.Join(strings.Fields(text), " ")
+	if !strings.Contains(flat, "to github.com for sign-in and to open the pre-filled issues a session sends") {
+		t.Errorf("the help does not say the page opens pre-filled issues on github.com:\n%s", text)
+	}
+	if !strings.Contains(flat, "--base-path") {
+		t.Errorf("the help does not name --base-path:\n%s", text)
+	}
+}

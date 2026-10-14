@@ -109,8 +109,9 @@ the site's root, or from under `--base-path` when the site is served below one
 (a project's GitHub Pages address, `owner.github.io/<repo>/`), so it then opens
 at `<base-path>/<owner>/<repo>/brief/`; the base path is plain path segments,
 and an address without the trailing slash is sent on to it. The page connects
-only to the relay the person names, to `api.github.com` with the person's own
-token, and to `github.com` for sign-in. The directory is the one the user names;
+only to the relay the person names and to `api.github.com` with the person's
+own token, and it sends the person to `github.com` for sign-in and to open the
+pre-filled issues a session sends. The directory is the one the user names;
 never publish or deploy it for them.
 
 It writes those six files and nothing else, and removes nothing. `<dir>` may be

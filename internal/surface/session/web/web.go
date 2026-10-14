@@ -2,8 +2,9 @@
 // spc-2610141709430146 step 3): the static files `abcd session page` writes,
 // embedded in the binary. The page is plain HTML, one ES module and one
 // stylesheet, plus the vendored, provenance-pinned editor bundle
-// (adr-2610141949110653). It connects only to the relay the person names, to
-// api.github.com with the person's own token, and to github.com for sign-in.
+// (adr-2610141949110653). It connects only to the relay the person names and
+// to api.github.com with the person's own token, and it sends the person to
+// github.com for sign-in and to open the pre-filled issues a session sends.
 //
 // The HTML is written twice, as index.html and as 404.html, byte for byte the
 // same: a static host such as GitHub Pages serves 404.html for a path it has

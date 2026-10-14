@@ -232,8 +232,9 @@ func newSessionPageCommand(asJSON *bool) *cobra.Command {
 			"vendor/. The files are plain and static, embedded in this binary; serve them\n" +
 			"from any static host, such as GitHub Pages, whose 404.html fallback is how\n" +
 			"/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the\n" +
-			"person names, to api.github.com with their own token, and to github.com for\n" +
-			"sign-in. It reads nothing from this checkout.\n\n" +
+			"person names and to api.github.com with their own token, and it sends the\n" +
+			"person to github.com for sign-in and to open the pre-filled issues a session\n" +
+			"sends. It reads nothing from this checkout.\n\n" +
 			"--base-path names the path the site is served under, such as a project's\n" +
 			"GitHub Pages address owner.github.io/<repo>/: the page then loads its files from\n" +
 			"under it and opens at <base-path>/<owner>/<repo>/brief/. It is plain path\n" +
