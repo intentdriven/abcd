@@ -341,8 +341,12 @@ arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it
 holds it is renewed with `max(the default lease, the queue's
 check_response_timeout_minutes + 15 minutes)`, clamped to a day, read from the
-ruleset mirror at the lane's base. A run holding no reservation is neither
-renewed nor fenced.
+ruleset mirror at the lane's base. Once the run's last lane has landed, the
+step pushes a tombstone over the reservation while it is still this person's
+from this copy, leaves another's as it stands and names the holder, and a
+tombstone that fails is named without undoing the landing; the lane branch
+removal touches only the lane's `build/` branch. A run holding no reservation
+is neither renewed, fenced nor tombstoned.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's

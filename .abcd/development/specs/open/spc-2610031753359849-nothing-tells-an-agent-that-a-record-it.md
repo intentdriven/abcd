@@ -798,6 +798,22 @@ These are the facilitator's design calls; none changes a criterion.
   - The queue's timeout is the longest `check_response_timeout_minutes` a
     merge-queue rule on the default branch states in the mirror at the
     lane's base; the mirror here states 90, not 45.
+- **What step 9 settled** (the tidy-up after the merge, 2026-10-14):
+  - Only the landing of the lane that completes the run, with no step
+    pending and every other lane done, tombstones the run's reservation: an
+    intent's earlier lanes land while their siblings still need it.
+  - The tidy-up is the landing's last step itself, after the worktree and
+    the lane branch are removed, so the drain's finishing of merged lanes
+    tombstones too, and a killed step that repeats it finds the tombstone and
+    says it was already released.
+  - Its outcome is a clause of the landing's record note: the tombstone
+    pushed, the reservation already released, left as it stands with its
+    holder named (another person, or your copy on another computer), left
+    with the refusal named (absent or unreadable), or a fetch or push that
+    failed, which says the reservation counts as released while the record
+    is finished on the default branch. `claim.PushError` and
+    `claim.FetchError` tell a failure reaching origin from a refusal judged
+    on the tip.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

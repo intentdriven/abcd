@@ -477,7 +477,13 @@ over each of the run's lanes' own diff.
    not computed yet, keeps it waiting. A pull request closed without merging,
    or merged in a way that rewrote the head, is refused and nothing is cleaned
    up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
-   never merges on its own.
+   never merges on its own. Once the lane that completes the run (no step
+   pending, every other lane done) has landed, a run holding a reservation
+   pushes a tombstone over it while it is still this person's from this copy;
+   another person's or another copy's is left as it stands and named in the
+   landing's note, and a tombstone origin refuses is named there and never
+   undoes the landing. The branch removal touches only the lane's
+   `build/<run>-<lane>`, never the reservation branch.
 
 A conflicting pull request is refused naming what this checkout can say about
 it: the files a merge of `origin/<default>` and the pushed head conflicts in

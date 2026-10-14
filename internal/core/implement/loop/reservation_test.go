@@ -421,3 +421,149 @@ func TestAVersion10StateCarryingAReservationIsRefused(t *testing.T) {
 		t.Fatalf("a version-10 file carrying a reservation must be refused: %v", err)
 	}
 }
+
+// armReserved takes the fixture's lane to an armed merge with the run holding
+// P's reservation, renewed by the fence, and returns the lane.
+func (f *landFixture) armReserved(t *testing.T) Lane {
+	t.Helper()
+	f.toArm(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	if l.Landing == nil || !l.Landing.Armed {
+		t.Fatalf("the merge is armed: %+v", l.Landing)
+	}
+	return l
+}
+
+// onlyLane is the run's one lane, done or not.
+func onlyLane(t *testing.T, f *landFixture) Lane {
+	t.Helper()
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil || len(st.Lanes) != 1 {
+		t.Fatalf("the run has one lane: %+v %v", st.Lanes, err)
+	}
+	return st.Lanes[0]
+}
+
+// landNote is the run record's note for the landing's last step.
+func landNote(t *testing.T, f *landFixture) string {
+	t.Helper()
+	return recordNote(t, f.repo, f.runID, string(StageLand))
+}
+
+// TestALandedLaneTombstonesItsOwnReservation is C45: once the ancestor check
+// proves the lane that completes the run landed, the step pushes a tombstone
+// over the run's reservation, still this person's from this copy, and says so.
+func TestALandedLaneTombstonesItsOwnReservation(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.armReserved(t)
+	held := originReservation(t, f.bare, reservedRef)
+	f.merged(t, l.Landing.Pushed)
+	f.step(t)
+	if l := onlyLane(t, f); l.Stage != StageDone {
+		t.Fatalf("the lane is done: %s", l.Stage)
+	}
+	tomb := originReservation(t, f.bare, reservedRef)
+	if !tomb.released || tomb.parent != held.commit || tomb.holder != "octo" {
+		t.Fatalf("a tombstone child of the held reservation: held %+v, tip %+v", held, tomb)
+	}
+	if note := landNote(t, f); !strings.Contains(note, "released the reservation on itd-10") {
+		t.Fatalf("the landing says it released the reservation: %q", note)
+	}
+}
+
+// TestLaneBranchRemovalLeavesTheReservationBranch is C51: the landing deletes
+// only the lane's branch under build/; the reservation branch stays on origin
+// and in this checkout's remote-tracking refs, and no local branch is made
+// under the reservation prefix.
+func TestLaneBranchRemovalLeavesTheReservationBranch(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.armReserved(t)
+	f.merged(t, l.Landing.Pushed)
+	f.step(t)
+	if got := f.repo.Git("for-each-ref", "refs/heads/"+l.Branch); got != "" {
+		t.Fatalf("the lane's branch is removed: %s", got)
+	}
+	if got := originReservation(t, f.bare, reservedRef); got.commit == "" {
+		t.Fatal("the reservation branch is gone from origin")
+	}
+	if got := f.repo.Git("for-each-ref", "--format=%(refname)", claim.TrackingPrefix); !strings.Contains(got, claim.TrackingPrefix+"itd-10") {
+		t.Fatalf("the reservation's remote-tracking ref is gone: %q", got)
+	}
+	if got := f.repo.Git("for-each-ref", "refs/heads/abcd-reserved/"); got != "" {
+		t.Fatalf("a local branch under the reservation prefix: %s", got)
+	}
+}
+
+// TestALandedLaneLeavesAnotherPersonsReservation is C46: when the reservation
+// is another person's by the time the lane lands, the step leaves the branch
+// as it stands and names the holder.
+func TestALandedLaneLeavesAnotherPersonsReservation(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.armReserved(t)
+	// Q's clock reads past P's renewed lease and the margin: Q takes it over.
+	q := otherCopy(t, f.bare, quinnEmail)
+	later := time.Now().UTC().Truncate(time.Second).Add(2*time.Hour + 10*time.Minute)
+	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, clockAt(later)); err != nil || res.Act != claim.ActTakenOver {
+		t.Fatalf("Q takes the reservation over: %+v %v", res, err)
+	}
+	qTip := originReservation(t, f.bare, reservedRef)
+	f.merged(t, l.Landing.Pushed)
+	f.step(t)
+	if l := onlyLane(t, f); l.Stage != StageDone {
+		t.Fatalf("the lane is done: %s", l.Stage)
+	}
+	if got := originReservation(t, f.bare, reservedRef); got.commit != qTip.commit {
+		t.Fatalf("Q's reservation is left as it stands: %+v", got)
+	}
+	if note := landNote(t, f); !strings.Contains(note, "left the reservation on itd-10") || !strings.Contains(note, "quinn") {
+		t.Fatalf("the landing names the holder it left the reservation with: %q", note)
+	}
+}
+
+// TestAFailedTombstonePushDoesNotUndoTheLanding: origin refusing the
+// tombstone is named in the landing's note, and the lane is done all the same.
+func TestAFailedTombstonePushDoesNotUndoTheLanding(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.armReserved(t)
+	held := originReservation(t, f.bare, reservedRef)
+	f.merged(t, l.Landing.Pushed)
+	hook := "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/heads/abcd-reserved/*) echo 'reservations are closed here' >&2; exit 1;; esac; done\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(f.bare, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	if l := onlyLane(t, f); l.Stage != StageDone || l.Landing == nil || l.Landing.Merged == "" {
+		t.Fatalf("the landing stands: %+v", l)
+	}
+	if got := originReservation(t, f.bare, reservedRef); got.commit != held.commit {
+		t.Fatalf("a refused tombstone moved the reservation: %+v", got)
+	}
+	if note := landNote(t, f); !strings.Contains(note, "could not push the tombstone over the reservation on itd-10") || !strings.Contains(note, "reservations are closed here") {
+		t.Fatalf("the landing names the failed tombstone: %q", note)
+	}
+}
+
+// TestOnlyTheLaneThatCompletesTheRunTombstones: a lane that lands while a
+// sibling is still open or a step is pending leaves the run's reservation
+// holding for them.
+func TestOnlyTheLaneThatCompletesTheRunTombstones(t *testing.T) {
+	done := Lane{ID: "lane-1", Stage: StageDone}
+	landing := Lane{ID: "lane-2", Stage: StageLand}
+	open := Lane{ID: "lane-3", Stage: StageImplement}
+	for _, tc := range []struct {
+		name string
+		st   State
+		want bool
+	}{
+		{"last lane", State{Lanes: []Lane{done, landing}}, true},
+		{"a sibling open", State{Lanes: []Lane{done, landing, open}}, false},
+		{"a step pending", State{Lanes: []Lane{landing}, Pending: []PendingStep{{Number: 3}}}, false},
+	} {
+		if got := completesRun(tc.st, "lane-2"); got != tc.want {
+			t.Errorf("%s: completesRun = %v; want %v", tc.name, got, tc.want)
+		}
+	}
+}

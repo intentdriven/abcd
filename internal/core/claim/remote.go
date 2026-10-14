@@ -161,7 +161,7 @@ func pushArgs(sha, id string) []string {
 // names its holder with the back-off; otherwise the push failure is reported
 // as itself.
 func lostRace(p *prepared, tree string, before judged, perr error) error {
-	pushFailed := refuse("origin refused the reservation push: %s; %s", redacted(perr), noReservation)
+	pushFailed := &PushError{Reason: redacted(perr)}
 	gap, err := fetch(p.root, p.now)
 	if err != nil {
 		return pushFailed
@@ -487,6 +487,18 @@ func (e *FetchError) Error() string {
 	return fmt.Sprintf("could not read the reservations from %s: %s; %s", Remote, e.Reason, noReservation)
 }
 func (e *FetchError) Is(target error) bool { return target == ErrRefused }
+
+// PushError is a reservation push origin refused, for a reason other than a
+// tip the act cannot take: Reason is git's own rejection, home-redacted. It is
+// an ErrRefused refusal: no reservation was made.
+type PushError struct {
+	Reason string
+}
+
+func (e *PushError) Error() string {
+	return fmt.Sprintf("%s refused the reservation push: %s; %s", Remote, e.Reason, noReservation)
+}
+func (e *PushError) Is(target error) bool { return target == ErrRefused }
 
 // HasOrigin reports whether the checkout at root has a remote named origin,
 // the one reservations live on, reading only its configuration.

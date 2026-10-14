@@ -1070,8 +1070,14 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 	ld.Merged = merged
-	return Outcome{Note: fmt.Sprintf("pull request #%s landed: %s is on %s/%s at %s; removed the lane's worktree and branch %s",
-		n, shortSHA(ld.Pushed), Remote, def, shortSHA(merged), lane.Branch)}, nil
+	note := fmt.Sprintf("pull request #%s landed: %s is on %s/%s at %s; removed the lane's worktree and branch %s",
+		n, shortSHA(ld.Pushed), Remote, def, shortSHA(merged), lane.Branch)
+	// The run's reservation is tidied once its last lane has landed
+	// (reservation.go); the lane branch removal above touches only build/.
+	if tidy := tidyReservation(c, *lane); tidy != "" {
+		note += "; " + tidy
+	}
+	return Outcome{Note: note}, nil
 }
 
 // fetchDefault fetches the default branch def from the remote into its

@@ -27,7 +27,6 @@ import (
 const (
 	StageReservationRenewed     = "reservation_renewed"
 	StageReservationRenewFailed = "reservation_renew_failed"
-	StageReservationReleased    = "reservation_released"
 )
 
 // fenceMargin is how far past the merge queue's check timeout the land fence
@@ -161,4 +160,59 @@ func landFence(c Context, lane Lane, checkTimeout time.Duration) (time.Time, err
 	}
 	return time.Time{}, refuse(stage, "", lane.ID, "the reservation on "+id+" could not be renewed at the land fence: "+err.Error(),
 		"settle what it names, then "+again)
+}
+
+// completesRun reports whether the lane laneID, landing, is the run's last:
+// no step pending and every other lane done. Only that lane's landing ends
+// the run's hold on its key; an earlier lane leaves the reservation holding
+// for its siblings.
+func completesRun(st State, laneID string) bool {
+	if len(st.Pending) > 0 {
+		return false
+	}
+	for _, l := range st.Lanes {
+		if l.ID != laneID && l.Stage != StageDone {
+			return false
+		}
+	}
+	return true
+}
+
+// tidyReservation is the tidy-up after the merge: once the ancestor check has
+// proved the run's last lane landed, the reservation has already stopped
+// counting (the record is finished on the default branch), and a tombstone is
+// pushed over it while it is still this person's from this copy. Another
+// person's or another copy's is left as it stands and named. It returns the
+// landing note's clause, "" for a run that holds no reservation or a lane that
+// does not complete the run; a failure is named there and never undoes the
+// landing.
+func tidyReservation(c Context, lane Lane) string {
+	id := c.State.Key
+	if c.State.ReservedAt == nil || !completesRun(c.State, lane.ID) {
+		return ""
+	}
+	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Release: true}, claimOptions(c.Now))
+	var nh *claim.NotHeld
+	switch {
+	case err == nil && res.Act == claim.ActAlreadyReleased:
+		return "the reservation on " + id + " was already released"
+	case err == nil:
+		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"
+	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
+		return "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"
+	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
+		return "left the reservation on " + id + " as it stands: your copy on another computer holds it"
+	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
+		return "left the reservation on " + id + " as it stands: " + err.Error()
+	}
+	return "could not push the tombstone over the reservation on " + id + ": " + err.Error() +
+		"; the landing stands, and the reservation counts as released while " + id + " is finished on the default branch"
+}
+
+// isPushFailure reports whether err is a reservation act that failed reaching
+// origin, a fetch or a push, rather than a refusal judged on the tip.
+func isPushFailure(err error) bool {
+	var fe *claim.FetchError
+	var pe *claim.PushError
+	return errors.As(err, &fe) || errors.As(err, &pe)
 }
