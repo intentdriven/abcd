@@ -369,3 +369,19 @@ func TestSiteSetupTextSaysWhyAWorkflowWasKept(t *testing.T) {
 	}
 }
 
+// TestSiteSetupTakesReplaceExisting: --yes answers the forge and host changes
+// but never the takeover of a live site; --replace-existing is the one way to
+// answer that in advance.
+func TestSiteSetupTakesReplaceExisting(t *testing.T) {
+	cmd := newSiteSetupCommand(new(bool))
+	f := cmd.Flags().Lookup("replace-existing")
+	if f == nil || f.Value.Type() != "bool" {
+		t.Fatal("site setup has no --replace-existing switch")
+	}
+	if !strings.Contains(f.Usage, "already") {
+		t.Errorf("--replace-existing usage does not say it publishes over a site already there: %q", f.Usage)
+	}
+	if yes := cmd.Flags().Lookup("yes").Usage; !strings.Contains(yes, "--replace-existing") {
+		t.Errorf("--yes usage does not say it leaves the takeover to --replace-existing: %q", yes)
+	}
+}

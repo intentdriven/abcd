@@ -445,9 +445,9 @@ func TestAnExistingPagesSiteIsNamedBeforeItIsPublishedOver(t *testing.T) {
 			t.Fatalf("host = %+v, want the outcome naming %q", res.Host, existing)
 		}
 	})
-	// A composition that already holds the switch is asked no switch
-	// question, so the takeover is asked on its own before anything is
-	// written.
+	// A composition that already holds the switch but has no workflow is
+	// asked the switch again before the workflow is added, and that question
+	// names the site it would publish over.
 	t.Run("composition already switched on", func(t *testing.T) {
 		h := newPagesHarness(t)
 		h.run(t)
@@ -460,7 +460,7 @@ func TestAnExistingPagesSiteIsNamedBeforeItIsPublishedOver(t *testing.T) {
 		writes := len(pagesWrites(h))
 		res := h.run(t)
 		if len(h.ask.questions) != 1 || !strings.Contains(h.ask.questions[0], existing) {
-			t.Fatalf("questions = %q, want the takeover naming %q", h.ask.questions, existing)
+			t.Fatalf("questions = %q, want the switch naming %q", h.ask.questions, existing)
 		}
 		if res.Status != StatusDeclined || len(pagesWrites(h)) != writes {
 			t.Fatalf("a declined takeover = %q, wrote %v", res.Status, pagesWrites(h)[writes:])

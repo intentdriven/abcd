@@ -282,10 +282,12 @@ func publishedWord(on bool) string {
 // writes the repository half, and — each only once confirmed (adr-44) — the
 // forge's deployment environments and, with a hosting credential on this
 // machine, the host. An unanswered run declines both remote writes, so a script
-// that pipes nothing changes nothing remote; --yes says yes in advance.
+// that pipes nothing changes nothing remote; --yes says yes in advance, except
+// to publishing over a site the host already serves, which only a person at a
+// terminal or --replace-existing answers.
 func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	var name, domain, provider string
-	var confirm, yes bool
+	var confirm, yes, replaceExisting bool
 	cmd := &cobra.Command{
 		Use:  "setup",
 		Args: cobra.NoArgs,
@@ -307,6 +309,7 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := site.Setup(site.SetupRequest{
 				RepoRoot: cwd, Name: name, Domain: domain, Provider: provider, Confirm: confirm, Asker: asker,
+				Unattended: yes, ReplaceExisting: replaceExisting,
 				ConfirmTool: confirmTool, Context: cmd.Context(),
 			})
 			if err != nil {
@@ -332,7 +335,10 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&provider, "provider", "", "hosting provider when the composition names none: "+strings.Join(site.Providers(), " or ")+
 		" (default "+site.DefaultProvider+"); github-pages asks whether to switch the project site on")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
-	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh, "+
+		"nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them")
+	cmd.Flags().BoolVar(&replaceExisting, "replace-existing", false, "publish over a site the host already serves for this repository without asking; "+
+		"with --yes and no --replace-existing, setup refuses when such a site exists")
 	return cmd
 }
 

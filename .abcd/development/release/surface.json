@@ -3412,6 +3412,13 @@
           "hidden": false
         },
         {
+          "name": "replace-existing",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "yes",
           "shorthand": "",
           "type": "bool",

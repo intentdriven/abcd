@@ -327,6 +327,7 @@ Sub-verbs: none.
 | `--domain` | string |
 | `--name` | string |
 | `--provider` | string |
+| `--replace-existing` | bool |
 | `--yes` | bool |
 
 <!-- surface-appendix:end -->

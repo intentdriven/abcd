@@ -142,6 +142,13 @@ type SetupRequest struct {
 	Confirm bool
 	// Asker confirms each remote write; nil declines them all.
 	Asker Asker
+	// Unattended says the Asker answers for no one (--yes). It is never put
+	// the takeover of a site the host already serves: an unattended run that
+	// meets one refuses, naming it, unless ReplaceExisting answered it.
+	Unattended bool
+	// ReplaceExisting answers the takeover in advance (--replace-existing):
+	// setup publishes over a site the host already serves without asking.
+	ReplaceExisting bool
 	// Forge is the repository's forge; nil resolves GitHub through gh.
 	Forge Forge
 	// ConfirmTool answers the offer to install a missing gh when Forge is nil
@@ -281,6 +288,8 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	// A provider that acts through the forge is read before anything is asked
 	// or written, so a host it would refuse is refused before the repository
 	// half is written for an address the site would not be served from.
+	_, wferr := os.Lstat(filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath)))
+	noWorkflow := os.IsNotExist(wferr)
 	takeover := ""
 	if adapter.CredentialName() == "" && forge != nil && s.Repo != "" {
 		st, err := readForgeHost(ctx, adapter, s)
@@ -290,26 +299,37 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		// A site the host already serves, in a repository setup has not
 		// added its workflow to, is someone's: it is published over only
 		// after a question naming it.
-		if st.Existing != "" {
-			if _, serr := os.Lstat(filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath))); os.IsNotExist(serr) {
-				takeover = st.Existing
-			}
-		}
-	}
-	if takeover != "" && !(prof.Switched && manifestBytes != nil) {
-		if req.Asker == nil || !req.Asker.Confirm(takeoverQuestion(adapter, takeover)) {
-			return declinedBeforeWriting(res, "the existing "+adapter.Name()+" site at "+takeover+" was not published over",
-				"re-run `abcd site setup` and answer yes, to publish over the existing site"), nil
+		if st.Existing != "" && noWorkflow {
+			takeover = st.Existing
 		}
 	}
 	// The switch (the PT's 2026-10-14 ruling, "ask at setup"): a new
 	// composition naming a provider that publishes only while switched on is
-	// written only on a yes, and then with the switch on.
-	if prof.Switched && manifestBytes != nil {
-		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover)) {
+	// written only on a yes, and then with the switch on. A composition that
+	// already holds the switch but has no workflow yet (its hosting block
+	// added by hand, as setup's own refusal names it) is asked too: the
+	// workflow is what publishes, and it is added only on a yes.
+	askSwitch := prof.Switched && (manifestBytes != nil || noWorkflow)
+	// The takeover is a person's answer and never a scripted one: --yes does
+	// not give it (ReplaceExisting does), and a run that only --yes answers
+	// refuses before anything is asked or written.
+	if takeover != "" && !req.ReplaceExisting {
+		if req.Unattended {
+			return SetupResult{}, fmt.Errorf("site setup: this repository already publishes a %s site, at %s, and --yes does not answer "+
+				"whether to publish over it; re-run at a terminal to be asked, or pass --replace-existing to replace it", adapter.Name(), takeover)
+		}
+		if !askSwitch && (req.Asker == nil || !req.Asker.Confirm(takeoverQuestion(adapter, takeover))) {
+			return declinedBeforeWriting(res, "the existing "+adapter.Name()+" site at "+takeover+" was not published over",
+				"re-run `abcd site setup` and answer yes, or pass --replace-existing, to publish over the existing site"), nil
+		}
+	}
+	if askSwitch {
+		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover, manifestBytes == nil)) {
 			return declinedBeforeWriting(res, "the project site was not switched on",
 				"re-run `abcd site setup --provider "+adapter.Name()+"` and answer yes, to switch the project site on"), nil
 		}
+	}
+	if prof.Switched && manifestBytes != nil {
 		on := true
 		manifest.Hosting.Publish, hostingBlock.Publish = &on, &on
 		raw, merr := json.MarshalIndent(manifest, "", "  ")
@@ -528,8 +548,15 @@ func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 				// rewrite it; the domain has to live in it for the next run to
 				// route the same one.
 				blk, _ := json.Marshal(h)
-				return Manifest{}, nil, fmt.Errorf("site setup: %s exists and declares no hosting block; add `\"hosting\": %s` to it rather than passing --name, --domain or --provider",
+				// The block carries the switch on, as setup would write it,
+				// and the next run still asks whether to switch the project
+				// site on before it adds the workflow that publishes.
+				msg := fmt.Sprintf("site setup: %s exists and declares no hosting block; add `\"hosting\": %s` to it rather than passing --name, --domain or --provider",
 					ManifestRelPath, blk)
+				if h.Publish != nil {
+					msg += ", then re-run `abcd site setup`, which asks whether to switch the project site on before it adds the workflow"
+				}
+				return Manifest{}, nil, errors.New(msg)
 			}
 			m.Hosting = h
 		} else if req.Provider != "" && req.Provider != m.Hosting.Provider {
@@ -986,13 +1013,20 @@ func firstLine(s string) string {
 // switchQuestion is the switch, asked once, before anything is written. A
 // site the host already serves (takeover, its address and build type) is
 // named in it, since a yes publishes over that site.
-func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover string) string {
+//
+// recorded says the composition already holds the switch, written by hand, so
+// a yes leaves it as it is and adds what publishes.
+func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover string, recorded bool) string {
 	where := adapter.Name()
 	if prof.Address != "" {
 		where = prof.Address + " (" + adapter.Name() + ")"
 	}
+	yes := "Yes records the switch in " + ManifestRelPath + ", writes"
+	if recorded {
+		yes = ManifestRelPath + " already holds the switch; yes leaves it as it is, writes"
+	}
 	q := "Switch on the project site? At each release this repository's own workflow builds its about page and development record " +
-		"and publishes them at " + where + ". Yes records the switch in " + ManifestRelPath + ", writes the site's inputs under site-src/ " +
+		"and publishes them at " + where + ". " + yes + " the site's inputs under site-src/ " +
 		"and adds " + SiteWorkflowRelPath + "; nothing else in the repository changes"
 	if takeover != "" {
 		q += ". This repository already publishes a site there, at " + takeover + ", and yes replaces it at the next release"
