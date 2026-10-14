@@ -30,6 +30,8 @@ var (
 	loadArgsReader = machineload.ReadArgs
 	loadNow        = time.Now
 	loadSleep      = time.Sleep
+	// loadJitter is the waiter's settle jitter; nil is the core's random one.
+	loadJitter func() time.Duration
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -70,26 +72,36 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"value out of range, is reported loudly and every default is used.\n\n" +
 			"With --wait it waits for capacity instead of warning, and it is the one waiter\n" +
 			"concurrent sessions gate a preflight or a race run with, in place of a hand-written\n" +
-			"loop. It blocks until the one-minute load average is below the wait limit\n" +
-			"(`wait-load <load>` in the same file; by default twice the online core count) and\n" +
-			"no other `go test -race` run is live. Twice, because a busy multi-session machine\n" +
-			"already idles near one core-count of load, so a limit of the cores never opens;\n" +
-			"one waiter at a time is kept by the race-run condition and the hold below, not\n" +
-			"by the load number; and one race run adds about a core-count, so admitting below\n" +
-			"twice the cores bounds the peak near three times them, under the extreme limit.\n" +
-			"A race run is a process executing go whose go command is `test` with -race, read\n" +
-			"from its arguments, never from a pattern over a command line, and the waiter's own\n" +
-			"process and ancestors are never one: a hand-written `pgrep -f \"go test -race\"`\n" +
-			"matched its own shell and never opened.\n" +
+			"loop; `make preflight` runs its test stages through it. It blocks until the\n" +
+			"one-minute load average is below the wait limit (`wait-load <load>` in the same\n" +
+			"file; by default twice the online core count), no other `go test -race` run is\n" +
+			"live, no other `make preflight` is running and no other waiter is ahead of it in\n" +
+			"the queue (a lower pid) or running its command, under any account: all of it is\n" +
+			"read from the process table, which shows every account's processes, and nothing\n" +
+			"from a file another account could write. A preflight whose own waiter is queued\n" +
+			"takes that waiter's place in the queue. Once it finds all of that clear it waits\n" +
+			"a random " + implement.WaitJitterMin.String() + " to " + implement.WaitJitterMax.String() + " and checks everything again, and opens only if the\n" +
+			"re-check is clear too, so two starters in one quiet minute do not start together.\n" +
+			"The load limit is twice the cores because a busy multi-session machine already\n" +
+			"idles near one core-count of load, so a limit of the cores never opens; one\n" +
+			"waiter at a time is kept by the process table and the hold below, not by the\n" +
+			"load number; and one race run adds about a core-count, so admitting below twice\n" +
+			"the cores bounds the peak near three times them, under the extreme limit.\n" +
+			"A race run is a process executing go whose go command is `test` with -race, a\n" +
+			"preflight a make whose goals name preflight, and a waiter an abcd running\n" +
+			"`implement load --wait`, each read from its arguments, never from a pattern over a\n" +
+			"command line, and the waiter's own process and ancestors are never one: a\n" +
+			"hand-written `pgrep -f \"go test -race\"` matched its own shell and never opened.\n" +
 			"It reads the machine every " + implement.WaitPollInterval.String() + ", prints one line when it starts waiting and\n" +
-			"nothing more until it opens, and gives up after --timeout (" + implement.WaitDefaultTimeout.String() + " by default),\n" +
-			"exiting 1 and naming what it was still waiting on. --json reports what it waited\n" +
-			"on and for how long.\n\n" +
-			"One waiter opens at a time. The one that opens takes a machine-wide hold,\n" +
-			"`" + abcdhome.Display(implement.WaitHoldFileName) + "`, and every other waiter stays shut while it is in force.\n" +
+			"one when it first finds the machine free, and nothing more until it opens, and\n" +
+			"gives up after --timeout (" + implement.WaitDefaultTimeout.String() + " by default), exiting 1 and naming what it\n" +
+			"was still waiting on. --json reports what it waited on and for how long.\n\n" +
+			"Within one account the waiter that opens also takes a hold,\n" +
+			"`" + abcdhome.Display(implement.WaitHoldFileName) + "`, and every other waiter of that account stays shut while\n" +
+			"it is in force; a hold taken by the waiter's own ancestor does not shut it.\n" +
 			"Without a command the hold lasts " + implement.WaitSettle.String() + ", long enough for the load average to show\n" +
-			"the work admitted. With a command after `--` (`abcd implement load --wait -- make\n" +
-			"preflight`) the waiter runs it once the gate opens and exits with its exit code,\n" +
+			"the work admitted. With a command after `--` (`abcd implement load --wait -- go\n" +
+			"test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,\n" +
 			"or with 128+N, as a shell does, when signal N killed it;\n" +
 			"the hold lasts until the command has started its own race run, the command exits,\n" +
 			"or " + strconv.Itoa(int(implement.WaitCommandCap.Minutes())) + " minutes pass, and a hold whose waiter has died, or whose pid now\n" +
@@ -149,10 +161,14 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, command
 	out := cmd.OutOrStdout()
 	req := implement.WaitRequest{
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
-		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0,
+		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Jitter: loadJitter,
 	}
 	if !asJSON {
 		req.OnWait = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
+		req.OnSettle = func(j time.Duration) {
+			fmt.Fprintf(out, "load gate: the machine looks free; checking everything again in %s before opening, so two starters in one quiet minute do not start together\n",
+				j.Round(time.Second))
+		}
 	}
 	res, err := implement.WaitLoad(req)
 	if err != nil {
@@ -239,7 +255,7 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 	case implement.WaitTimedOut:
 		fmt.Fprintf(w, "load gate still shut after %s: %s\n", waited, waitConditions(res))
 	case implement.WaitOpen:
-		hold := ""
+		hold := "the hold its own caller took stands"
 		if h := res.Hold; h != nil {
 			if h.Form == implement.HoldCommand {
 				hold = fmt.Sprintf("held until the command starts its own race run or exits, at most %s", h.Until.Sub(h.Opened).Round(time.Second))
@@ -247,7 +263,7 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 				hold = fmt.Sprintf("held for %s", h.Until.Sub(h.Opened).Round(time.Second))
 			}
 		}
-		fmt.Fprintf(w, "load gate open after %s: load %.1f is below %s (%s), and no other go test -race run is live; %s, so one waiter starts at a time\n",
+		fmt.Fprintf(w, "load gate open after %s: load %.1f is below %s (%s), and no other go test -race run, make preflight or waiter ahead is live; %s, so one waiter starts at a time\n",
 			waited, res.Load, num(res.WaitLoad), waitLimitText(res), hold)
 	}
 	if res.Malformed != "" {
@@ -272,6 +288,11 @@ func waitConditions(res implement.WaitResult) string {
 				what = fmt.Sprintf("%d go test -race runs are live (pids ", len(pids))
 			}
 			parts = append(parts, what+strings.Join(pids, ", ")+")")
+		case implement.WaitOnPreflight:
+			parts = append(parts, pidsText(res.Preflights, "another make preflight is running", "make preflights are running"))
+		case implement.WaitOnWaiter:
+			parts = append(parts, pidsText(res.Waiters, "another waiter is ahead in the queue or running its command",
+				"waiters are ahead in the queue or running their commands"))
 		case implement.WaitOnLock:
 			if h := res.Holder; h != nil {
 				parts = append(parts, fmt.Sprintf("another waiter holds the gate (pid %d, until %s at the latest)", h.PID, h.Until.Local().Format("15:04:05")))
@@ -287,6 +308,18 @@ func waitConditions(res implement.WaitResult) string {
 		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+// pidsText names pids after one or, for several, a count and many.
+func pidsText(pids []int, one, many string) string {
+	list := make([]string, len(pids))
+	for i, p := range pids {
+		list[i] = strconv.Itoa(p)
+	}
+	if len(pids) > 1 {
+		return fmt.Sprintf("%d %s (pids %s)", len(pids), many, strings.Join(list, ", "))
+	}
+	return one + " (pid " + strings.Join(list, ", ") + ")"
 }
 
 // waitLimitText says where the wait limit came from.

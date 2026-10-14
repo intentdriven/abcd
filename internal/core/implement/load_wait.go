@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"runtime"
 	"slices"
@@ -20,16 +21,29 @@ import (
 
 // The waiter (`abcd implement load --wait`, iss-2610111826193257) is the one
 // wait-for-capacity primitive concurrent sessions use instead of writing their
-// own. It blocks until the one-minute load average is strictly below the
-// machine's wait limit (wait-load in ~/.abcd.noindex/load-limits, twice the
-// online core count by default) and no other `go test -race` run is live, judged by
-// each go process's argv with the waiter's own process and ancestors excluded
-// (machineload.RaceRuns). It never signals anything.
+// own, and `make preflight` runs its test stages through it. It blocks until
+// the one-minute load average is strictly below the machine's wait limit
+// (wait-load in ~/.abcd.noindex/load-limits, twice the online core count by
+// default), no other `go test -race` run is live, no other `make preflight` is
+// running and no waiter is queued ahead of it or running its command, every one
+// judged from the process table and each candidate's argv, under any account,
+// with the waiter's own process and ancestors excluded (machineload.RaceRuns,
+// machineload.QueueAhead). It never signals anything.
+//
+// The process table is the cross-account half (iss-2610140638074587): it
+// shows every account's processes, and nothing in it is a file another account
+// can write, so no account can hold another's gate shut. A look that finds the
+// machine free does not open the gate: the waiter waits a random 15 to 60
+// seconds and checks everything again, and opens only if that re-check also
+// finds it free, so two starters released by one quiet minute do not start
+// together (iss-2610102020442624).
 //
 // A falling load opens every waiter watching it at once, which on 2026-10-11
-// put four race runs on a 16-core machine together. So the waiter that opens
-// takes a machine-wide hold, a record under ~/.abcd.noindex/ written under a
-// flock, and every other waiter stays shut while the hold is in force:
+// put four race runs on a 16-core machine together. So within one account the
+// waiter that opens also takes a hold, a record under ~/.abcd.noindex/ written
+// under a flock, and every other waiter of that account stays shut while the
+// hold is in force (a hold whose holder is the waiter's own ancestor, as when
+// `--wait -- make preflight` runs a preflight that gates itself, is not):
 //
 //   - the plain form (`--wait` alone) holds for WaitSettle after opening, long
 //     enough for the one-minute load average to show the work it admitted. Its
@@ -64,6 +78,11 @@ const (
 	WaitOnLock = "lock"
 	// WaitOnUnreadable: the load or the process table could not be read.
 	WaitOnUnreadable = "unreadable"
+	// WaitOnPreflight: another make preflight, of any account, is running.
+	WaitOnPreflight = "preflight"
+	// WaitOnWaiter: another waiter, of any account, is queued ahead of this one
+	// or running the command it gates.
+	WaitOnWaiter = "waiter"
 )
 
 // The two hold forms.
@@ -88,7 +107,16 @@ var (
 	// loaded machine takes longer than that to reach its race step, so the hold
 	// lapsed while its holder was alive and a second preflight was admitted.
 	WaitCommandCap = 60 * time.Minute
+	// WaitJitterMin and WaitJitterMax bound the random wait between a look
+	// that finds the machine free and the re-check that opens the gate.
+	WaitJitterMin = 15 * time.Second
+	WaitJitterMax = 60 * time.Second
 )
+
+// waitJitter is a random wait from WaitJitterMin to WaitJitterMax.
+func waitJitter() time.Duration {
+	return WaitJitterMin + rand.N(WaitJitterMax-WaitJitterMin+1)
+}
 
 // WaitHoldFileName is the hold record under ~/.abcd.noindex/.
 const WaitHoldFileName = "load-wait.json"
@@ -133,6 +161,13 @@ type WaitRequest struct {
 	Command bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
+	// OnSettle is called once, at the first look that finds the machine free,
+	// with the jitter the waiter waits before it checks again.
+	OnSettle func(time.Duration)
+	// Jitter is the wait between a look that finds the machine free and the
+	// re-check that opens the gate; nil is a random WaitJitterMin to
+	// WaitJitterMax.
+	Jitter func() time.Duration
 }
 
 // WaitHolder is a hold: the record under ~/.abcd.noindex/ and what the report
@@ -171,6 +206,12 @@ type WaitResult struct {
 	// Hold is the hold this wait took, when it opened.
 	Hold   *WaitHolder `json:"hold,omitempty"`
 	Reason string      `json:"reason,omitempty"`
+	// Preflights and Waiters are what the process table held ahead of the
+	// waiter at the last look: make preflights running and waiters queued
+	// ahead or running their command, by pid (machineload.QueueAhead). They
+	// name the pids in the text report; the JSON report carries the condition.
+	Preflights []int `json:"-"`
+	Waiters    []int `json:"-"`
 }
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
@@ -202,6 +243,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	if pollEvery <= 0 {
 		pollEvery = WaitPollInterval
 	}
+	jitter := req.Jitter
+	if jitter == nil {
+		jitter = waitJitter
+	}
 	res := WaitResult{WaitedOn: []string{}, RaceRuns: []int{}}
 	if reason, ci := cienv.Runner(getenv); ci {
 		res.Status = WaitSkipped
@@ -224,12 +269,30 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 
 	start := now()
 	deadline := start.Add(req.Timeout)
-	announced := false
+	announced, settled := false, false
 	for {
 		res.Polls++
-		shut, done, err := waitLook(req, root, home, &res, now)
+		shut, done, err := waitLook(req, root, home, &res, now, false)
 		if err != nil {
 			return res, err
+		}
+		if !done && len(shut) == 0 {
+			// Free: wait the jitter, then check everything again, and open only
+			// if the machine is still free. The jitter never runs past the
+			// deadline; with no time left the re-check is immediate.
+			j := min(jitter(), max(deadline.Sub(now()), 0))
+			if !settled {
+				settled = true
+				if req.OnSettle != nil {
+					req.OnSettle(j)
+				}
+			}
+			sleep(j)
+			res.Polls++
+			shut, done, err = waitLook(req, root, home, &res, now, true)
+			if err != nil {
+				return res, err
+			}
 		}
 		res.WaitedS = now().Sub(start).Seconds()
 		if done {
@@ -261,8 +324,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 
 // waitLook is one look at the machine and the hold. It reports the conditions
 // that hold the gate shut, or done when the wait is over (opened, or a platform
-// it cannot judge).
-func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time) ([]string, bool, error) {
+// it cannot judge). Only a look with take set opens the gate and takes the
+// hold; one without it that finds nothing shut reports no condition and not
+// done, and the caller re-checks after the jitter.
+func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take bool) ([]string, bool, error) {
 	snap, readErr := req.Read()
 	if errors.Is(readErr, machineload.ErrUnsupported) {
 		res.Status = WaitUnchecked
@@ -272,6 +337,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	t := now()
 	var shut []string
 	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
+	res.Preflights, res.Waiters = nil, nil
 	if readErr != nil {
 		res.Reason = termsafe.Sanitize(readErr.Error())
 	}
@@ -290,23 +356,34 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	}
 	procsOK := snap.HasProcs
 	var runs []int
+	var ahead machineload.Ahead
 	if procsOK {
-		args, err := req.ReadArgs(machineload.RaceCandidates(snap, req.Self))
+		args, err := req.ReadArgs(machineload.GateCandidates(snap, req.Self))
 		if err != nil {
 			procsOK = false
 			res.Reason = termsafe.Sanitize(err.Error())
 		} else {
 			runs = machineload.RaceRuns(snap, req.Self, args)
+			ahead = machineload.QueueAhead(snap, req.Self, args)
 		}
 	}
-	switch {
-	case !procsOK:
+	if !procsOK {
 		if !slices.Contains(shut, WaitOnUnreadable) {
 			shut = append(shut, WaitOnUnreadable)
 		}
-	case len(runs) > 0:
-		shut = append(shut, WaitOnRaceRun)
-		res.RaceRuns = runs
+	} else {
+		if len(runs) > 0 {
+			shut = append(shut, WaitOnRaceRun)
+			res.RaceRuns = runs
+		}
+		if len(ahead.Preflights) > 0 {
+			shut = append(shut, WaitOnPreflight)
+			res.Preflights = ahead.Preflights
+		}
+		if len(ahead.Waiters) > 0 {
+			shut = append(shut, WaitOnWaiter)
+			res.Waiters = ahead.Waiters
+		}
 	}
 
 	// The hold is judged at every look, under the flock, so a command hold whose
@@ -314,6 +391,12 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	// two waiters opened by one load drop cannot both take it.
 	err := fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
 		if h, ok := readHoldIn(root); ok {
+			// A hold taken by this waiter's own ancestor (`--wait -- make
+			// preflight`, whose preflight gates itself) admitted the work this
+			// waiter is part of: it neither shuts this waiter nor is replaced.
+			if procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID) {
+				return nil
+			}
 			if holdInForce(h, snap, procsOK, runs, t) {
 				res.Holder = &h
 				shut = append(shut, WaitOnLock)
@@ -323,7 +406,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				return err
 			}
 		}
-		if len(shut) > 0 {
+		if len(shut) > 0 || !take {
 			return nil
 		}
 		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle}
@@ -355,7 +438,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	case err != nil:
 		return nil, false, fmt.Errorf("the hold %s could not be judged or written: %w", abcdhome.Display(WaitHoldFileName), err)
 	}
-	if len(shut) > 0 {
+	if len(shut) > 0 || !take {
 		return shut, false, nil
 	}
 	res.Status = WaitOpen
@@ -447,4 +530,27 @@ func ReleaseWaitHold(home string, h WaitHolder) error {
 		}
 		return nil
 	})
+}
+
+// PreflightParallelism is the -p `make preflight` gives its test and race
+// stages (cmd/test-parallelism prints it), derived from the online cores and
+// the one-minute load as they are when the stage starts
+// (machineload.GoTestParallelism). On a CI runner the machine is not read and
+// go's own default, GOMAXPROCS, stands, as it does when the machine cannot be
+// read.
+func PreflightParallelism(getenv func(string) string, read func() (machineload.Snapshot, error)) int {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	if read == nil {
+		read = machineload.Read
+	}
+	if _, ci := cienv.Runner(getenv); ci {
+		return runtime.GOMAXPROCS(0)
+	}
+	snap, err := read()
+	if !snap.HasLoad || (err != nil && errors.Is(err, machineload.ErrUnsupported)) {
+		return runtime.GOMAXPROCS(0)
+	}
+	return machineload.GoTestParallelism(snap)
 }

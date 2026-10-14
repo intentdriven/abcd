@@ -1800,27 +1800,37 @@ value out of range, is reported loudly and every default is used.
 
 With --wait it waits for capacity instead of warning, and it is the one waiter
 concurrent sessions gate a preflight or a race run with, in place of a hand-written
-loop. It blocks until the one-minute load average is below the wait limit
-(`wait-load <load>` in the same file; by default twice the online core count) and
-no other `go test -race` run is live. Twice, because a busy multi-session machine
-already idles near one core-count of load, so a limit of the cores never opens;
-one waiter at a time is kept by the race-run condition and the hold below, not
-by the load number; and one race run adds about a core-count, so admitting below
-twice the cores bounds the peak near three times them, under the extreme limit.
-A race run is a process executing go whose go command is `test` with -race, read
-from its arguments, never from a pattern over a command line, and the waiter's own
-process and ancestors are never one: a hand-written `pgrep -f "go test -race"`
-matched its own shell and never opened.
+loop; `make preflight` runs its test stages through it. It blocks until the
+one-minute load average is below the wait limit (`wait-load <load>` in the same
+file; by default twice the online core count), no other `go test -race` run is
+live, no other `make preflight` is running and no other waiter is ahead of it in
+the queue (a lower pid) or running its command, under any account: all of it is
+read from the process table, which shows every account's processes, and nothing
+from a file another account could write. A preflight whose own waiter is queued
+takes that waiter's place in the queue. Once it finds all of that clear it waits
+a random 15s to 1m0s and checks everything again, and opens only if the
+re-check is clear too, so two starters in one quiet minute do not start together.
+The load limit is twice the cores because a busy multi-session machine already
+idles near one core-count of load, so a limit of the cores never opens; one
+waiter at a time is kept by the process table and the hold below, not by the
+load number; and one race run adds about a core-count, so admitting below twice
+the cores bounds the peak near three times them, under the extreme limit.
+A race run is a process executing go whose go command is `test` with -race, a
+preflight a make whose goals name preflight, and a waiter an abcd running
+`implement load --wait`, each read from its arguments, never from a pattern over a
+command line, and the waiter's own process and ancestors are never one: a
+hand-written `pgrep -f "go test -race"` matched its own shell and never opened.
 It reads the machine every 15s, prints one line when it starts waiting and
-nothing more until it opens, and gives up after --timeout (30m0s by default),
-exiting 1 and naming what it was still waiting on. --json reports what it waited
-on and for how long.
+one when it first finds the machine free, and nothing more until it opens, and
+gives up after --timeout (30m0s by default), exiting 1 and naming what it
+was still waiting on. --json reports what it waited on and for how long.
 
-One waiter opens at a time. The one that opens takes a machine-wide hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter stays shut while it is in force.
+Within one account the waiter that opens also takes a hold,
+`~/.abcd.noindex/load-wait.json`, and every other waiter of that account stays shut while
+it is in force; a hold taken by the waiter's own ancestor does not shut it.
 Without a command the hold lasts 2m0s, long enough for the load average to show
-the work admitted. With a command after `--` (`abcd implement load --wait -- make
-preflight`) the waiter runs it once the gate opens and exits with its exit code,
+the work admitted. With a command after `--` (`abcd implement load --wait -- go
+test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,
 or with 128+N, as a shell does, when signal N killed it;
 the hold lasts until the command has started its own race run, the command exits,
 or 60 minutes pass, and a hold whose waiter has died, or whose pid now
