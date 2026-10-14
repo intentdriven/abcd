@@ -858,9 +858,17 @@ func relativiseLedgerPaths(repoRoot string, issues []Issue, skipped []SkipRecord
 	for i := range issues {
 		issues[i].Path = fsutil.RepoRel(repoRoot, issues[i].Path)
 	}
+	// A skip's path is a file name the ledger holds, which only claims to be a
+	// record, and the reader's refusal quotes it and the record's own values;
+	// both reach every capture surface's --json skipped list, so they are
+	// masked (iss-2610121542258778), and only after the root is stripped: a
+	// root holding a rune the mask replaces (a zero-width joiner, a tab) no
+	// longer matches once masked, and the absolute path would ride the
+	// payload. The id a skip claims is read from the masked name exactly as
+	// from the raw one, since a masked rune is never a digit.
 	for i := range skipped {
-		skipped[i].Path = fsutil.RepoRel(repoRoot, skipped[i].Path)
-		skipped[i].Error = strings.ReplaceAll(skipped[i].Error, prefix, "")
+		skipped[i].Path = termsafe.Sanitize(fsutil.RepoRel(repoRoot, skipped[i].Path))
+		skipped[i].Error = termsafe.Sanitize(strings.ReplaceAll(skipped[i].Error, prefix, ""))
 	}
 }
 
@@ -1091,14 +1099,11 @@ func scanStatusDir(issuesRoot string, sub State) ([]Issue, []SkipRecord, error) 
 			continue
 		}
 		if refusal != nil {
-			// The path is a file name the ledger holds, which only claims to be a
-			// record, and the reader's refusal quotes it and the record's own
-			// values; both reach every capture surface's --json skipped list,
-			// so they are masked where the skip is composed
-			// (iss-2610121542258778). The id a skip claims is read from the
-			// masked name exactly as from the raw one: a masked rune is never
-			// a digit.
-			skipped = append(skipped, SkipRecord{Path: termsafe.Sanitize(path), Layer: refusal.Layer, Error: termsafe.Sanitize(refusal.Err.Error())})
+			// The path and the reader's refusal are kept raw here and masked by
+			// relativiseLedgerPaths once the checkout's root is stripped from
+			// them: a mask applied first changes a root holding a rune the mask
+			// replaces, and the strip then misses it.
+			skipped = append(skipped, SkipRecord{Path: path, Layer: refusal.Layer, Error: refusal.Err.Error()})
 			continue
 		}
 		issues = append(issues, issueFromFrontmatter(fm, sub, path, body))
