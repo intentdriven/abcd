@@ -229,7 +229,8 @@ run's `reserved_at`, the reservation each step of the run renews at half its
 lease, fences before the landing arms a merge, and tombstones once the run's
 last lane has landed. Version 10 is its strict subset, read as a run that holds
 no reservation; a file of version 10 or lower carrying `reserved_at` is
-refused. Version 10
+refused. A change that adds another field after it takes version 12, with its
+own migration from 11. Version 10
 added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
 kept the await when it could not save the gone agent's return aside, which a
 restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate

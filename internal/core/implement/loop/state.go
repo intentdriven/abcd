@@ -151,12 +151,10 @@ const lockFileName = ".lock"
 // back at version 11; a file of version 10 or lower carrying `reserved_at` is
 // not one its version wrote, and is refused.
 //
-// The number is provisional: pull request #976 claims version 11 for another
-// field and is expected to reach main first. When this branch next merges
-// main, the reservation moves to version 12 with an explicit migration (a
-// version-11 file in #976's shape read as a run holding no reservation, and
-// one of version 11 or lower carrying `reserved_at` refused), and the brief's
-// state paragraph in 34-build.md moves with it.
+// Pull request #976 also claims version 11, for its own field. This branch
+// is to reach main first and keeps 11; #976 then moves to version 12 with its
+// own explicit migration, reading a version-11 file (this one) as a run that
+// carries none of its field.
 const SchemaVersion = 11
 
 // schemaVersionUnreserved is the version before the run's reservation: read,
