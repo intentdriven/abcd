@@ -674,7 +674,7 @@ func TestAConnectionThatJoinsNothingIsClosed(t *testing.T) {
 // TestTheSendQueueGrowsOnEnteringASession: a connection outside a session
 // may have few frames waiting; one inside, many.
 func TestTheSendQueueGrowsOnEnteringASession(t *testing.T) {
-	p := newPeer(func() {}, preRoomQueue)
+	p := newPeer(func() {}, preRoomQueue, 1<<30)
 	for i := 0; i < preRoomQueue; i++ {
 		if !p.Send(core.Frame{Data: []byte("{}")}) {
 			t.Fatalf("frame %d refused below the pre-session bound", i)
@@ -683,8 +683,11 @@ func TestTheSendQueueGrowsOnEnteringASession(t *testing.T) {
 	if p.Send(core.Frame{Data: []byte("{}")}) {
 		t.Fatalf("frame %d accepted past the pre-session bound", preRoomQueue)
 	}
+	// An overflow drops the queue and ends the connection, so the session's
+	// bound is counted on a peer of its own.
+	p = newPeer(func() {}, preRoomQueue, 1<<30)
 	p.Entered()
-	for i := preRoomQueue; i < sendQueue; i++ {
+	for i := 0; i < sendQueue; i++ {
 		if !p.Send(core.Frame{Data: []byte("{}")}) {
 			t.Fatalf("frame %d refused below the session bound", i)
 		}
@@ -744,10 +747,11 @@ func TestVerifyAgainstAnUnservedRepositoryIsRefused(t *testing.T) {
 	}
 }
 
-// TestConfigNamesTheSignInAppType: /config says whether the sign-in app is
-// a GitHub App (the default) or an OAuth app, and its authorize URL carries
-// no scope, which a GitHub App does not use; an unknown type is refused.
-func TestConfigNamesTheSignInAppType(t *testing.T) {
+// TestConfigNamesAGitHubAppOnly: sign-in goes through a GitHub App alone, so
+// /config reports github-app whenever a client id is set, its authorize URL
+// carries no scope, and without a client id it names no app type at all
+// (security review 2, item 3).
+func TestConfigNamesAGitHubAppOnly(t *testing.T) {
 	get := func(f *fixture) map[string]any {
 		resp, err := http.Get(f.http.URL + "/config")
 		if err != nil {
@@ -761,18 +765,125 @@ func TestConfigNamesTheSignInAppType(t *testing.T) {
 		return m
 	}
 	m := get(newFixture(t, nil))
-	if m["app_type"] != "github-app" {
-		t.Fatalf("default app_type = %v, want github-app", m["app_type"])
+	if m["app_type"] != "github-app" || m["sign_in"] != true {
+		t.Fatalf("/config = %v, want a GitHub App's sign-in", m)
 	}
 	if u, _ := m["authorize_url"].(string); strings.Contains(u, "scope") || strings.Contains(u, "?") {
 		t.Fatalf("authorize_url = %q, want no scope", u)
 	}
-	if m := get(newFixture(t, func(c *Config) { c.AppType = "oauth-app" })); m["app_type"] != "oauth-app" {
-		t.Fatalf("app_type = %v, want oauth-app", m["app_type"])
+	m = get(newFixture(t, func(c *Config) { c.ClientID, c.ClientSecret = "", "" }))
+	if _, named := m["app_type"]; named || m["sign_in"] != false {
+		t.Fatalf("/config without a client id = %v, want no app type and no sign-in", m)
 	}
-	if _, err := New(Config{LoopbackOnly: true, AppType: "token"}); err == nil {
-		t.Fatal("an unknown app type was accepted")
+}
+
+// TestAuthTokenIsLimitedPerAddress: the sign-in exchange is counted per
+// address, as wrong codes are; past ten in ten minutes it is refused with 429
+// before GitHub is asked (security review 2, item 10).
+func TestAuthTokenIsLimitedPerAddress(t *testing.T) {
+	f := newFixture(t, nil)
+	url := f.http.URL + "/auth/token"
+	body := `{"code":"good-code","code_verifier":"` + verifier + `"}`
+	for i := 0; i < 10; i++ {
+		if resp, got := post(t, url, origin, body); resp.StatusCode != http.StatusOK {
+			t.Fatalf("exchange %d: %d %s", i+1, resp.StatusCode, got)
+		}
 	}
+	resp, got := post(t, url, origin, body)
+	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(got, "rate-limited") || strings.Contains(got, "gho_") {
+		t.Fatalf("the eleventh exchange: %d %s, want 429 rate-limited", resp.StatusCode, got)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("the refusal does not say when to try again")
+	}
+	f.github.mu.Lock()
+	n := len(f.github.exchanges)
+	f.github.mu.Unlock()
+	if n != 10 {
+		t.Fatalf("GitHub was asked %d times, want 10", n)
+	}
+}
+
+// TestTheSendQueueIsBoundedInBytes: a connection's queue holds at most its
+// byte cap as well as its count of items. Past it the frame is refused, and
+// the queue is dropped at once and the connection ended, so a peer that
+// stops reading holds nothing more. A log replay is not charged: its entries
+// are the session's own (security review 2, item 1).
+func TestTheSendQueueIsBoundedInBytes(t *testing.T) {
+	ended := false
+	p := newPeer(func() { ended = true }, sendQueue, 1000)
+	p.Entered()
+	if !p.Send(core.Frame{Data: make([]byte, 600)}) {
+		t.Fatal("a frame inside the byte cap was refused")
+	}
+	if !p.SendLog([][]byte{make([]byte, 5000)}) {
+		t.Fatal("a log replay was charged its entries' bytes")
+	}
+	if p.Send(core.Frame{Data: make([]byte, 401)}) {
+		t.Fatal("a frame past the byte cap was queued")
+	}
+	if !ended || p.queuedBytes() != 0 {
+		t.Fatalf("past the cap: ended=%v, %d bytes still queued", ended, p.queuedBytes())
+	}
+}
+
+// TestANonReadingPeerStaysBounded reproduces the review's proof of concept:
+// a guest sends awareness frames as fast as it can to a host whose page reads
+// nothing. Before the fix, 256 KiB frames and one such host held 292 MiB in
+// eight seconds. Now a frame over 8 KiB is refused outright, and with the
+// frame and rate limits lifted to let the flood through, the host's queue
+// never holds more than its byte cap and the host is dropped.
+func TestANonReadingPeerStaysBounded(t *testing.T) {
+	big := append([]byte{core.TagAwareness}, make([]byte, 256<<10-1)...)
+	t.Run("refused at its size", func(t *testing.T) {
+		f := newFixture(t, nil)
+		_, code := f.hostSession(t)
+		guest := f.dial(t, origin)
+		guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Mal"})
+		guest.until("synced")
+		guest.sendBinary(big)
+		if e, _ := guest.until("error"); e["code"] != "too-big" {
+			t.Fatalf("a 256 KiB awareness frame: %v, want too-big", e)
+		}
+		if q := f.srv.queuedBytes(); q > 64<<10 {
+			t.Fatalf("%d bytes queued after a refused frame", q)
+		}
+	})
+	t.Run("the queue's byte cap", func(t *testing.T) {
+		f := newFixture(t, func(c *Config) {
+			c.Limits.MaxAwarenessBytes = 256 << 10
+			c.Limits.AwarenessPerSecond, c.Limits.AwarenessBurst = 1<<20, 1<<20
+			c.Limits.AwarenessBytesPerSecond, c.Limits.AwarenessBytesBurst = 1<<30, 1<<30
+		})
+		_, code := f.hostSession(t) // the host reads nothing from here on
+		guest := f.dial(t, origin)
+		guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Mal"})
+		guest.until("synced")
+		limit := f.srv.Relay().Limits().MaxQueuedBytes
+		if limit != 8<<20 {
+			t.Fatalf("MaxQueuedBytes = %d, want 8 MiB", limit)
+		}
+		peak := 0
+		dropped := func() bool { return f.srv.Relay().Stats().Participants == 1 }
+		for i := 0; i < 400 && !dropped(); i++ { // up to 100 MiB
+			guest.sendBinary(big)
+			if q := f.srv.queuedBytes(); q > peak {
+				peak = q
+			}
+		}
+		for deadline := time.Now().Add(5 * time.Second); !dropped() && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if peak > limit {
+			t.Fatalf("the relay queued %d bytes for one peer, over its cap of %d", peak, limit)
+		}
+		if !dropped() {
+			t.Fatalf("the host that reads nothing is still in the session (peak %d bytes)", peak)
+		}
+		if q := f.srv.queuedBytes(); q > 64<<10 {
+			t.Fatalf("%d bytes still queued after the host was dropped", q)
+		}
+	})
 }
 
 // TestClientAddressBehindRendersProxy: Render's proxy appends the address

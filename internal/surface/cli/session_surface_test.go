@@ -549,13 +549,104 @@ func TestSessionBlueprintWritesTheRelayOrigin(t *testing.T) {
 	}
 }
 
-// TestSessionServeReadsTheAppType: serve reads the sign-in app's type from
-// its environment and refuses one it does not know.
-func TestSessionServeReadsTheAppType(t *testing.T) {
+// TestSessionServeSignsInThroughAGitHubAppOnly: the relay no longer takes an
+// OAuth app; a deployment still naming one is refused rather than started
+// with a sign-in it cannot honour, and the old variable set to github-app is
+// harmless (security review 2, item 3).
+func TestSessionServeSignsInThroughAGitHubAppOnly(t *testing.T) {
 	t.Setenv("ABCD_SESSION_REPOS", "")
-	t.Setenv("ABCD_SESSION_GITHUB_APP_TYPE", "personal-token")
+	for _, v := range []string{"oauth-app", "personal-token"} {
+		t.Setenv("ABCD_SESSION_GITHUB_APP_TYPE", v)
+		_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "127.0.0.1:0")
+		if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_GITHUB_APP_TYPE") || !strings.Contains(err.Error(), "GitHub App") {
+			t.Fatalf("ABCD_SESSION_GITHUB_APP_TYPE=%s: %v, want exit 2 naming the variable and a GitHub App", v, err)
+		}
+	}
+	t.Setenv("ABCD_SESSION_GITHUB_APP_TYPE", "github-app")
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "test-secret-value-never-printed")
+	out, _ := startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid", "--json")
+	var started struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	resp, err := http.Get(started.URL + "/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var cfg map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil || cfg["app_type"] != "github-app" {
+		t.Fatalf("/config = %v, %v; want github-app", cfg, err)
+	}
+}
+
+// TestSessionServeReadsItsOriginsFromTheEnvironment: with no --origin, serve
+// admits exactly the origins ABCD_SESSION_ORIGINS names, which the blueprint
+// sets on the team's relay; --origin, given, wins; a malformed entry is
+// refused (security review 2, item 4).
+func TestSessionServeReadsItsOriginsFromTheEnvironment(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	allowed := func(base, o string) bool {
+		req, _ := http.NewRequest(http.MethodGet, base+"/config", nil)
+		req.Header.Set("Origin", o)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.Header.Get("Access-Control-Allow-Origin") == o
+	}
+	urlOf := func(out *syncBuffer) string {
+		var started struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+			t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+		}
+		return started.URL
+	}
+	t.Setenv("ABCD_SESSION_ORIGINS", "https://pages.example.org, https://other.example.org")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--json")
+	base := urlOf(out)
+	for o, want := range map[string]bool{
+		"https://pages.example.org": true, "https://other.example.org": true, "https://abcdesign.app": false, "http://localhost:8000": false,
+	} {
+		if got := allowed(base, o); got != want {
+			t.Errorf("origin %s admitted=%v, want %v", o, got, want)
+		}
+	}
+	_ = stop()
+	out, stop = startServe(t, "--listen", "127.0.0.1:0", "--json", "--origin", "https://flag.example.org")
+	base = urlOf(out)
+	if !allowed(base, "https://flag.example.org") || allowed(base, "https://pages.example.org") {
+		t.Error("--origin did not replace ABCD_SESSION_ORIGINS")
+	}
+	_ = stop()
+	t.Setenv("ABCD_SESSION_ORIGINS", "https://pages.example.org/path")
 	_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "127.0.0.1:0")
-	if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_GITHUB_APP_TYPE") {
-		t.Fatalf("an unknown app type: %v, want exit 2 naming the variable", err)
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_ORIGINS") {
+		t.Fatalf("a malformed ABCD_SESSION_ORIGINS: %v, want exit 2 naming it", err)
+	}
+}
+
+// TestSessionBlueprintNamesThePageOrigins: --origin names the page origins
+// render.yaml admits, https://abcdesign.app by default.
+func TestSessionBlueprintNamesThePageOrigins(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapSessionRelease(t)
+	runCLI(t, "session", "blueprint", "--release", "v0.14.1")
+	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
+	if err != nil || !strings.Contains(string(data), "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
+		t.Fatalf("render.yaml: %v\n%s", err, data)
+	}
+	runCLI(t, "session", "blueprint", "--release", "v0.14.1", "--origin", "https://pages.example.org", "--origin", "https://abcdesign.app")
+	data, _ = os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
+	if !strings.Contains(string(data), "value: \"https://pages.example.org,https://abcdesign.app\"") {
+		t.Fatalf("render.yaml does not name the given origins:\n%s", data)
+	}
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1", "--origin", "http://pages.example.org"); exitCode(err) != 2 {
+		t.Fatalf("an http page origin: %v, want exit 2", err)
 	}
 }

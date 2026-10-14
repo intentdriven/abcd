@@ -179,6 +179,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--origin` | stringArray |
 | `--relay-origin` | string |
 | `--release` | string |
 

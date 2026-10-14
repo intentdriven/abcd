@@ -25,10 +25,14 @@ import (
 // repositories it serves from, as a comma list; the blueprint sets it.
 const ReposEnv = "ABCD_SESSION_REPOS"
 
-// AppTypeEnv is the environment variable `abcd session serve` reads the
-// sign-in app's kind from: github-app (the default) or oauth-app. The
-// blueprint sets it to github-app.
-const AppTypeEnv = "ABCD_SESSION_GITHUB_APP_TYPE"
+// OriginsEnv is the environment variable `abcd session serve` reads the page
+// origins it admits from, as a comma list, when no --origin is given; the
+// blueprint sets it, to DefaultPageOrigin unless told others.
+const OriginsEnv = "ABCD_SESSION_ORIGINS"
+
+// DefaultPageOrigin is the session page's own origin, the one the blueprint's
+// relay admits unless it is told others.
+const DefaultPageOrigin = "https://abcdesign.app"
 
 // RelaysFile is the blueprint file naming the relays this repository trusts,
 // written only when the verb is given the relay's origin. The session page
@@ -81,6 +85,9 @@ type BlueprintRequest struct {
 	// RelayOrigin is the deployed relay's https origin; given, relays.json
 	// names it, and absent, no relays.json is written.
 	RelayOrigin string
+	// Origins are the page origins the relay admits, each an https origin;
+	// none is DefaultPageOrigin.
+	Origins []string
 }
 
 // The states a blueprint file can be left in.
@@ -103,6 +110,7 @@ type BlueprintResult struct {
 	Digest  string          `json:"sha256"`
 	Source  string          `json:"checksums_url"`
 	Repos   []string        `json:"repos"`
+	Origins []string        `json:"origins"`
 	Files   []BlueprintFile `json:"files"`
 }
 
@@ -187,11 +195,32 @@ func renderRelays(release, origin string) []byte {
 	return stampJSON(release, []byte("  \"relays\": [\n    "+string(quoted)+"\n  ]\n}\n"))
 }
 
+// pageOrigins is the page origins a blueprint names: those given, each
+// normalized, or DefaultPageOrigin.
+func pageOrigins(given []string) ([]string, error) {
+	if len(given) == 0 {
+		return []string{DefaultPageOrigin}, nil
+	}
+	out := make([]string, 0, len(given))
+	for _, o := range given {
+		n, err := NormalizeRelayOrigin(o)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
 // RenderBlueprint renders the two files for release, pinned to digest, the
-// SHA-256 of release's abcd-linux-amd64, serving repos (each owner/name, so
-// nothing in them needs escaping inside the quoted list). It reads and
-// writes nothing.
-func RenderBlueprint(release, digest string, repos []string) map[string][]byte {
+// SHA-256 of release's abcd-linux-amd64, serving repos (each owner/name) and
+// admitting pages from origins (each an https origin, as NormalizeRelayOrigin
+// reads it; none is DefaultPageOrigin), so nothing in either needs escaping
+// inside the quoted list. It reads and writes nothing.
+func RenderBlueprint(release, digest string, repos, origins []string) map[string][]byte {
+	if len(origins) == 0 {
+		origins = []string{DefaultPageOrigin}
+	}
 	docker := `# The team's own relay for abcd's live brief sessions. It downloads the
 # released abcd binary for linux/amd64, checks it against the checksum that
 # release published (pinned below when this file was written), and runs the
@@ -223,17 +252,18 @@ services:
     healthCheckPath: /healthz
     autoDeploy: false
     envVars:
-      # The team's own GitHub sign-in app. Set both in Render's dashboard
-      # (the service's Environment), never in git. The secret stays on the
-      # relay; the client id is public.
+      # The team's own GitHub App, the only kind of sign-in app the relay
+      # takes. Set both in Render's dashboard (the service's Environment),
+      # never in git. The secret stays on the relay; the client id is public.
       - key: ABCD_SESSION_GITHUB_CLIENT_ID
         sync: false
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
         sync: false
-      # The sign-in app's kind: github-app, a GitHub App whose user tokens
-      # hold only what the app and the person may both do, or oauth-app.
-      - key: ` + AppTypeEnv + `
-        value: "github-app"
+      # The origins of the session pages this relay admits, as a comma
+      # list of https origins: abcdesign.app unless the blueprint was told
+      # others. It is not a secret.
+      - key: ` + OriginsEnv + `
+        value: "` + strings.Join(origins, ",") + `"
       # The repositories this relay serves sessions for, read from the
       # checkout's origin when this file was written: a comma list of
       # owner/name, or of owners for all of an owner's repositories. It is
@@ -268,6 +298,11 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 			return res, fmt.Errorf("%q is not an owner/name repository", r)
 		}
 	}
+	origins, err := pageOrigins(req.Origins)
+	if err != nil {
+		return res, err
+	}
+	res.Origins = origins
 	relayOrigin := ""
 	if req.RelayOrigin != "" {
 		o, err := NormalizeRelayOrigin(req.RelayOrigin)
@@ -296,7 +331,7 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 		return res, fmt.Errorf("%s's checksums.txt names no %s", req.Release, relayAsset)
 	}
 	res.Digest = digest
-	files := RenderBlueprint(req.Release, digest, req.Repos)
+	files := RenderBlueprint(req.Release, digest, req.Repos, origins)
 	names := append([]string(nil), blueprintFiles...)
 	if relayOrigin != "" {
 		files[RelaysFile] = renderRelays(req.Release, relayOrigin)

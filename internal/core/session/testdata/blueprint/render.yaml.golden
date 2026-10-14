@@ -1,4 +1,4 @@
-# abcd session blueprint v0.14.1 sha256:2326fad37a733129d0782b080411eec0a3467c0759ff5d272bcc1a0253418620
+# abcd session blueprint v0.14.1 sha256:c8860c05a3fa375791e84746d809e8af831a50eea480f1ed3c08b9ef11b7612e
 # The team's own brief session relay: one free web service built from the
 # Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
 # repository and set the Blueprint path to .abcd/relay/render.yaml. One deploy
@@ -15,17 +15,18 @@ services:
     healthCheckPath: /healthz
     autoDeploy: false
     envVars:
-      # The team's own GitHub sign-in app. Set both in Render's dashboard
-      # (the service's Environment), never in git. The secret stays on the
-      # relay; the client id is public.
+      # The team's own GitHub App, the only kind of sign-in app the relay
+      # takes. Set both in Render's dashboard (the service's Environment),
+      # never in git. The secret stays on the relay; the client id is public.
       - key: ABCD_SESSION_GITHUB_CLIENT_ID
         sync: false
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
         sync: false
-      # The sign-in app's kind: github-app, a GitHub App whose user tokens
-      # hold only what the app and the person may both do, or oauth-app.
-      - key: ABCD_SESSION_GITHUB_APP_TYPE
-        value: "github-app"
+      # The origins of the session pages this relay admits, as a comma
+      # list of https origins: abcdesign.app unless the blueprint was told
+      # others. It is not a secret.
+      - key: ABCD_SESSION_ORIGINS
+        value: "https://abcdesign.app"
       # The repositories this relay serves sessions for, read from the
       # checkout's origin when this file was written: a comma list of
       # owner/name, or of owners for all of an owner's repositories. It is

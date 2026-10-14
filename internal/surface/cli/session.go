@@ -19,13 +19,37 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The environment variables the relay reads the team's GitHub sign-in app
-// from. The secret is read by name and never printed; the client id is public.
+// The environment variables the relay reads the team's GitHub App from. The
+// secret is read by name and never printed; the client id is public.
 const (
 	sessionSecretEnv   = "ABCD_SESSION_GITHUB_CLIENT_SECRET"
 	sessionClientIDEnv = "ABCD_SESSION_GITHUB_CLIENT_ID"
-	sessionAppTypeEnv  = coresession.AppTypeEnv
 )
+
+// sessionLegacyAppTypeEnv once chose between a GitHub App and an OAuth app.
+// The relay now signs in through a GitHub App alone, so the variable may be
+// unset or say github-app; anything else is a deployment still set up for an
+// OAuth app, refused rather than started with a sign-in it cannot honour.
+const sessionLegacyAppTypeEnv = "ABCD_SESSION_GITHUB_APP_TYPE"
+
+// sessionOriginsEnv names the page origins serve admits when no --origin is
+// given: a comma list. The blueprint writes it.
+const sessionOriginsEnv = coresession.OriginsEnv
+
+// sessionOrigins is the page origins serve admits: every --origin, or else
+// each entry of ABCD_SESSION_ORIGINS, and the name of where they came from.
+func sessionOrigins(flags []string, env string) ([]string, string) {
+	if len(flags) > 0 {
+		return flags, "--origin"
+	}
+	var out []string
+	for _, e := range strings.Split(env, ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, e)
+		}
+	}
+	return out, sessionOriginsEnv
+}
 
 // sessionReposEnv names the repositories the relay serves, besides --repo and
 // --owner: a comma list whose owner/name entries are repositories and whose
@@ -151,13 +175,15 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"beyond this computer it refuses to start without one; on loopback it serves this\n" +
 			"checkout's origin repository, or any repository outside a GitHub checkout.\n\n" +
 			"It serves the session WebSocket at /session, the sign-in exchange at /auth/token,\n" +
-			"the sign-in app's public client id at /config and a health check at /healthz. It\n" +
+			"the GitHub App's public client id at /config and a health check at /healthz. It\n" +
 			"admits a browser only from https://abcdesign.app or a loopback page, or, when\n" +
-			"--origin is given, from exactly the origins it names.\n" +
-			"The team's GitHub sign-in app secret is read from " + sessionSecretEnv + ", its\n" +
-			"kind from " + sessionAppTypeEnv + " (github-app, the default, or oauth-app)\n" +
-			"and its client id from --client-id or " + sessionClientIDEnv + "; without\n" +
-			"them, sign-in is not offered and a team member pastes a personal access token.\n\n" +
+			"--origin is given, from exactly the origins it names, and otherwise, when\n" +
+			sessionOriginsEnv + " is set, from exactly the origins that comma list names.\n" +
+			"Sign-in goes through the team's GitHub App only: its secret is read from\n" +
+			sessionSecretEnv + " and its client id from --client-id or\n" +
+			sessionClientIDEnv + "; without them, sign-in is not offered and a team member\n" +
+			"pastes a personal access token. " + sessionLegacyAppTypeEnv + " set to\n" +
+			"anything but github-app is refused: the relay takes no OAuth app.\n\n" +
 			"Exit 2 on a refusal, with nothing started.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -175,31 +201,28 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			if clientID == "" {
 				clientID = strings.TrimSpace(os.Getenv(sessionClientIDEnv))
 			}
-			appType := strings.TrimSpace(os.Getenv(sessionAppTypeEnv))
-			if appType == "" {
-				appType = session.AppTypeGitHubApp
+			if v := strings.TrimSpace(os.Getenv(sessionLegacyAppTypeEnv)); v != "" && v != session.AppTypeGitHubApp {
+				return &exitError{Code: 2, Msg: prefix + sessionLegacyAppTypeEnv + " is " + strconv.Quote(v) +
+					"; the relay signs in through a GitHub App only: register one with Contents and Pull requests read and write and Metadata read, and unset the variable (nothing started)"}
 			}
-			if appType != session.AppTypeGitHubApp && appType != session.AppTypeOAuthApp {
-				return &exitError{Code: 2, Msg: prefix + sessionAppTypeEnv + " is " + strconv.Quote(appType) + "; give " + session.AppTypeGitHubApp + " or " + session.AppTypeOAuthApp + " (nothing started)"}
-			}
+			admit, admitFrom := sessionOrigins(origins, os.Getenv(sessionOriginsEnv))
 			secret := os.Getenv(sessionSecretEnv)
 			// On loopback alone, the relay is the host's own machine behind
 			// Tailscale Serve, and a visitor is counted by the tailnet address
 			// Serve forwards.
 			srv, err := session.New(session.Config{
-				Origins:      origins,
+				Origins:      admit,
 				BehindProxy:  behindProxy,
 				LoopbackOnly: loopback,
 				Repos:        allowRepos,
 				Owners:       allowOwners,
 				ClientID:     clientID,
 				ClientSecret: secret,
-				AppType:      appType,
 			})
 			secret = ""
 			_ = secret
 			if err != nil {
-				return &exitError{Code: 2, Msg: prefix + "--origin " + err.Error() + " (nothing started)"}
+				return &exitError{Code: 2, Msg: prefix + admitFrom + " " + err.Error() + " (nothing started)"}
 			}
 			ln, err := session.Listen(addr)
 			if err != nil {
@@ -253,7 +276,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	}
 	c.Flags().StringVar(&listen, "listen", session.DefaultListen, "the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer")
 	c.Flags().BoolVar(&behindProxy, "behind-proxy", false, "trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy")
-	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port] (repeatable); given, it replaces the default of https://abcdesign.app and loopback pages")
+	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port] (repeatable; also "+sessionOriginsEnv+"); given, it replaces the default of https://abcdesign.app and loopback pages")
 	c.Flags().StringArrayVar(&repos, "repo", nil, "a repository to serve sessions for, as owner/name (repeatable; also "+sessionReposEnv+")")
 	c.Flags().StringArrayVar(&owners, "owner", nil, "a GitHub user or organisation whose every repository to serve sessions for (repeatable)")
 	c.Flags().StringVar(&clientID, "client-id", "", "the team's GitHub sign-in app's public client id (default: "+sessionClientIDEnv+")")
@@ -262,6 +285,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 
 func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 	var release, relayOrigin string
+	var pageOrigins []string
 	c := &cobra.Command{
 		Use: "blueprint",
 		Long: "Write the team's own relay deployment into this checkout: .abcd/relay/render.yaml,\n" +
@@ -272,6 +296,8 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			"named on stderr) and pinned in the Dockerfile. The relay serves sessions for this\n" +
 			"checkout's origin repository on github.com, named in render.yaml as\n" +
 			sessionReposEnv + ", a plain value; it refuses a checkout without one.\n\n" +
+			"render.yaml also names, in " + sessionOriginsEnv + ", the page origins the relay\n" +
+			"admits: each --origin, an https origin, or " + coresession.DefaultPageOrigin + " by default.\n\n" +
 			"--relay-origin names the deployed relay's https origin, once Render has given it\n" +
 			"one; the verb then also writes .abcd/relay/relays.json, naming it as the relay\n" +
 			"this repository trusts, which the session page reads from the repository.\n\n" +
@@ -296,6 +322,11 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: prefix + "--relay-origin " + err.Error() + " (nothing written)"}
 				}
 			}
+			for _, o := range pageOrigins {
+				if _, err := coresession.NormalizeRelayOrigin(o); err != nil {
+					return &exitError{Code: 2, Msg: prefix + "--origin " + err.Error() + " (nothing written)"}
+				}
+			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
@@ -316,7 +347,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 				return fmt.Errorf("%s%w", prefix, err)
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "%sreading release %s's checksums.txt from %s\n", prefix, termsafe.Sanitize(release), sessionReleaseOrigin)
-			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch, Repos: []string{served}, RelayOrigin: relayOrigin})
+			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch, Repos: []string{served}, RelayOrigin: relayOrigin, Origins: pageOrigins})
 			if err != nil {
 				var ref *coresession.BlueprintRefusal
 				if errors.As(err, &ref) || res.Digest == "" {
@@ -330,12 +361,14 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  pinned: abcd %s, %s sha256 %s\n", termsafe.Sanitize(res.Release), res.Asset, res.Digest)
 				fmt.Fprintf(w, "  serves: %s (%s in render.yaml)\n", termsafe.Sanitize(strings.Join(res.Repos, ", ")), sessionReposEnv)
+				fmt.Fprintf(w, "  admits pages from: %s (%s in render.yaml)\n", termsafe.Sanitize(strings.Join(res.Origins, ", ")), sessionOriginsEnv)
 				fmt.Fprintf(w, "  from: %s\n", termsafe.Sanitize(res.Source))
 				fmt.Fprintln(w, "  next: commit both files; on Render choose New, then Blueprint, pick this repository and set the Blueprint path to .abcd/relay/render.yaml;")
-				fmt.Fprintf(w, "        then set %s and %s in the service's Environment\n", sessionClientIDEnv, sessionSecretEnv)
+				fmt.Fprintf(w, "        then set your GitHub App's %s and %s in the service's Environment\n", sessionClientIDEnv, sessionSecretEnv)
 			})
 		},
 	}
+	c.Flags().StringArrayVar(&pageOrigins, "origin", nil, "a session page origin the relay admits, as https://host[:port] (repeatable; default "+coresession.DefaultPageOrigin+")")
 	c.Flags().StringVar(&relayOrigin, "relay-origin", "", "the deployed relay's https origin, as https://host[:port]; given, .abcd/relay/relays.json names it as the relay this repository trusts")
 	c.Flags().StringVar(&release, "release", "", "the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)")
 	return c

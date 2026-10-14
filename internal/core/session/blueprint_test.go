@@ -95,7 +95,7 @@ func TestBlueprintMatchesItsGoldens(t *testing.T) {
 }
 
 func TestBlueprintPinsTheReleaseAndItsChecksum(t *testing.T) {
-	files := RenderBlueprint("v0.14.1", testDigest, testRepos)
+	files := RenderBlueprint("v0.14.1", testDigest, testRepos, nil)
 	docker := string(files["Dockerfile"])
 	for _, want := range []string{
 		"https://github.com/intentdriven/abcd/releases/download/v0.14.1/abcd-linux-amd64",
@@ -243,14 +243,27 @@ func TestBlueprintRefusesWithoutARepositoryToServe(t *testing.T) {
 	}
 }
 
-// TestBlueprintNamesTheAppTypeAndTheRelayOrigin: render.yaml sets the
-// sign-in app type to a GitHub App; with a relay origin, relays.json names
-// it as the repository's trusted relay, stamped like the other files, and
-// without one no relays.json is written.
-func TestBlueprintNamesTheAppTypeAndTheRelayOrigin(t *testing.T) {
-	files := RenderBlueprint("v0.14.1", testDigest, testRepos)
-	if !strings.Contains(string(files["render.yaml"]), "- key: ABCD_SESSION_GITHUB_APP_TYPE\n        value: \"github-app\"") {
-		t.Errorf("render.yaml does not set the app type:\n%s", files["render.yaml"])
+// TestBlueprintNamesThePageOriginsAndTheRelayOrigin: render.yaml names the
+// page origins the relay admits, https://abcdesign.app unless others are
+// given, and no sign-in app type, since the relay signs in through a GitHub
+// App alone; with a relay origin, relays.json names it as the repository's
+// trusted relay, stamped like the other files, and without one no
+// relays.json is written.
+func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
+	files := RenderBlueprint("v0.14.1", testDigest, testRepos, nil)
+	yaml := string(files["render.yaml"])
+	if !strings.Contains(yaml, "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
+		t.Errorf("render.yaml does not name the page origin:\n%s", yaml)
+	}
+	if strings.Contains(yaml, "APP_TYPE") || strings.Contains(yaml, "oauth") {
+		t.Errorf("render.yaml still names a sign-in app type:\n%s", yaml)
+	}
+	files = RenderBlueprint("v0.14.1", testDigest, testRepos, []string{"https://pages.example.org", "https://abcdesign.app"})
+	if !strings.Contains(string(files["render.yaml"]), "value: \"https://pages.example.org,https://abcdesign.app\"") {
+		t.Errorf("render.yaml does not name the given origins:\n%s", files["render.yaml"])
+	}
+	if _, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos, Origins: []string{"http://pages.example.org"}}); err == nil {
+		t.Error("an http page origin was written into the blueprint")
 	}
 
 	root := t.TempDir()

@@ -3743,6 +3743,9 @@ named on stderr) and pinned in the Dockerfile. The relay serves sessions for thi
 checkout's origin repository on github.com, named in render.yaml as
 ABCD_SESSION_REPOS, a plain value; it refuses a checkout without one.
 
+render.yaml also names, in ABCD_SESSION_ORIGINS, the page origins the relay
+admits: each --origin, an https origin, or https://abcdesign.app by default.
+
 --relay-origin names the deployed relay's https origin, once Render has given it
 one; the verb then also writes .abcd/relay/relays.json, naming it as the relay
 this repository trusts, which the session page reads from the repository.
@@ -3756,6 +3759,7 @@ Exit 2 on a refusal, with nothing written.
 **Flags:**
 
 ```
+      --origin stringArray    a session page origin the relay admits, as https://host[:port] (repeatable; default https://abcdesign.app)
       --relay-origin string   the deployed relay's https origin, as https://host[:port]; given, .abcd/relay/relays.json names it as the relay this repository trusts
       --release string        the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
 ```
@@ -3814,13 +3818,15 @@ beyond this computer it refuses to start without one; on loopback it serves this
 checkout's origin repository, or any repository outside a GitHub checkout.
 
 It serves the session WebSocket at /session, the sign-in exchange at /auth/token,
-the sign-in app's public client id at /config and a health check at /healthz. It
+the GitHub App's public client id at /config and a health check at /healthz. It
 admits a browser only from https://abcdesign.app or a loopback page, or, when
---origin is given, from exactly the origins it names.
-The team's GitHub sign-in app secret is read from ABCD_SESSION_GITHUB_CLIENT_SECRET, its
-kind from ABCD_SESSION_GITHUB_APP_TYPE (github-app, the default, or oauth-app)
-and its client id from --client-id or ABCD_SESSION_GITHUB_CLIENT_ID; without
-them, sign-in is not offered and a team member pastes a personal access token.
+--origin is given, from exactly the origins it names, and otherwise, when
+ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
+Sign-in goes through the team's GitHub App only: its secret is read from
+ABCD_SESSION_GITHUB_CLIENT_SECRET and its client id from --client-id or
+ABCD_SESSION_GITHUB_CLIENT_ID; without them, sign-in is not offered and a team member
+pastes a personal access token. ABCD_SESSION_GITHUB_APP_TYPE set to
+anything but github-app is refused: the relay takes no OAuth app.
 
 Exit 2 on a refusal, with nothing started.
 
@@ -3830,7 +3836,7 @@ Exit 2 on a refusal, with nothing started.
       --behind-proxy         trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy
       --client-id string     the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
       --listen string        the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
-      --origin stringArray   a page origin to admit, as scheme://host[:port] (repeatable); given, it replaces the default of https://abcdesign.app and loopback pages
+      --origin stringArray   a page origin to admit, as scheme://host[:port] (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
       --owner stringArray    a GitHub user or organisation whose every repository to serve sessions for (repeatable)
       --repo stringArray     a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```

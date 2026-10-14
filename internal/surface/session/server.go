@@ -8,7 +8,7 @@
 //     PKCE verifier, and the relay adds the sign-in app's secret and asks
 //     GitHub for the token (the token-mediating backend of the IETF's
 //     browser-based-apps guidance);
-//   - /config, the sign-in app's public client id;
+//   - /config, the sign-in app's public client id: always a GitHub App's;
 //   - /healthz, for the host's health check.
 //
 // It is abcd's second listener, admitted by adr-2610032150581128's amendment
@@ -28,6 +28,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,17 +41,17 @@ import (
 // locally, it is the default allowlist, which Config.Origins replaces.
 const DefaultOrigin = "https://abcdesign.app"
 
-// The kinds of GitHub sign-in app a team registers. A GitHub App's user
-// access token holds only the permissions both the app and the person have,
-// on the repositories the app is installed on, and its authorization takes no
-// scope: "GitHub Apps do not request scopes during authorization to decide
-// which resources the resulting token can access"
+// AppTypeGitHubApp is the one kind of GitHub sign-in app the relay takes. A
+// GitHub App's user access token holds only the permissions both the app and
+// the person have, on the repositories the app is installed on, and its
+// authorization takes no scope: "GitHub Apps do not request scopes during
+// authorization to decide which resources the resulting token can access"
 // (https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app).
-// An OAuth app's token is scoped by the page's request instead.
-const (
-	AppTypeGitHubApp = "github-app"
-	AppTypeOAuthApp  = "oauth-app"
-)
+// An OAuth app's repo scope reaches every repository the person can, so a
+// relay named by a stranger's repository could collect a token for all of
+// them; GitHub recommends Apps over OAuth apps for the same reason
+// (https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps).
+const AppTypeGitHubApp = "github-app"
 
 // The GitHub endpoints the relay talks to unless a test names others.
 const (
@@ -104,10 +105,9 @@ type Config struct {
 	// ClientID is the team's GitHub sign-in app's public id.
 	ClientID string
 	// ClientSecret is that app's secret, read from the environment by the
-	// caller. It never leaves the relay but in the exchange with GitHub.
+	// caller. It never leaves the relay but in the exchange with GitHub. The
+	// app is a GitHub App: the relay takes no other kind.
 	ClientSecret string
-	// AppType is the sign-in app's kind, AppTypeGitHubApp unless set.
-	AppType string
 	// GitHubAPI and GitHubWeb default to GitHub's own.
 	GitHubAPI string
 	GitHubWeb string
@@ -124,6 +124,9 @@ type Server struct {
 	origins map[string]bool // the given origins; nil admits the default list
 	relay   *core.Relay
 	client  *http.Client
+	// peers is every live connection's queue, for queuedBytes.
+	mu    sync.Mutex
+	peers map[*peer]struct{}
 }
 
 // ErrNoRepositories is New's refusal of a relay beyond loopback that names
@@ -147,13 +150,6 @@ func New(cfg Config) (*Server, error) {
 	}
 	if !cfg.LoopbackOnly && len(cfg.Repos) == 0 && len(cfg.Owners) == 0 {
 		return nil, ErrNoRepositories
-	}
-	switch cfg.AppType {
-	case "":
-		cfg.AppType = AppTypeGitHubApp
-	case AppTypeGitHubApp, AppTypeOAuthApp:
-	default:
-		return nil, fmt.Errorf("%q is not a sign-in app type: give %s or %s", cfg.AppType, AppTypeGitHubApp, AppTypeOAuthApp)
 	}
 	var origins map[string]bool
 	for _, o := range cfg.Origins {
@@ -183,7 +179,7 @@ func New(cfg Config) (*Server, error) {
 	if c.Timeout == 0 {
 		c.Timeout = githubTimeout
 	}
-	s := &Server{cfg: cfg, origins: origins, client: &c}
+	s := &Server{cfg: cfg, origins: origins, client: &c, peers: map[*peer]struct{}{}}
 	s.relay = core.New(core.Options{
 		Limits:   cfg.Limits,
 		Verifier: GitHub{API: cfg.GitHubAPI, Client: &c},
@@ -356,12 +352,20 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	// BaseContext), which ends every session connection with it.
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	p := newPeer(cancel, preRoomQueue)
+	p := newPeer(cancel, preRoomQueue, s.relay.Limits().MaxQueuedBytes)
 	conn, err := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
 	if err != nil {
 		http.Error(w, "the relay is busy; try again later", http.StatusServiceUnavailable)
 		return
 	}
+	s.mu.Lock()
+	s.peers[p] = struct{}{}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.peers, p)
+		s.mu.Unlock()
+	}()
 	// The origin was judged above against the relay's own allowlist, which
 	// the library's same-host rule would widen.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
@@ -390,38 +394,70 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // outFrame is one queued item: a frame, a session's log replay, or the close
-// that ends the queue.
+// that ends the queue. size is what it is charged against the byte cap.
 type outFrame struct {
 	frame  core.Frame
 	log    [][]byte
 	close  bool
 	status websocket.StatusCode
 	reason string
+	size   int
 }
 
 // peer is the relay's handle on one WebSocket: a queue its writer drains in
 // order, so a close the relay asks for follows every item queued before it.
-// The queue holds at most limit items; a log replay is one item however long
-// the log, written frame by frame as the connection takes them.
+// The queue holds at most limit items and maxBytes bytes of frames; a log
+// replay is one item however long the log, written frame by frame as the
+// connection takes them, and is charged no bytes: its entries are the
+// session's own, held whether or not they wait here.
 type peer struct {
-	ws     *websocket.Conn
-	cancel context.CancelFunc
-	wake   chan struct{} // holds one token while items wait
-	mu     sync.Mutex
-	queue  []outFrame
-	limit  int
-	closed bool
+	ws       *websocket.Conn
+	cancel   context.CancelFunc
+	wake     chan struct{} // holds one token while items wait
+	mu       sync.Mutex
+	queue    []outFrame
+	limit    int
+	bytes    int // the frames' bytes waiting
+	maxBytes int
+	closed   bool
 }
 
-func newPeer(cancel context.CancelFunc, limit int) *peer {
-	return &peer{cancel: cancel, wake: make(chan struct{}, 1), limit: limit}
+func newPeer(cancel context.CancelFunc, limit, maxBytes int) *peer {
+	return &peer{cancel: cancel, wake: make(chan struct{}, 1), limit: limit, maxBytes: maxBytes}
 }
 
-// push queues one item under the lock, or reports that the queue is full.
+// queuedBytes is what the peer's queue holds now, in bytes.
+func (p *peer) queuedBytes() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.bytes
+}
+
+// queuedBytes is what every live connection's queue holds together.
+func (s *Server) queuedBytes() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for p := range s.peers {
+		n += p.queuedBytes()
+	}
+	return n
+}
+
+// push queues one item under the lock, or reports that the queue is full:
+// past its items or its bytes. A full queue is dropped at once and the
+// connection ended, so a peer that stopped reading holds nothing more while
+// the relay lets it go.
 func (p *peer) push(f outFrame) bool {
-	if len(p.queue) >= p.limit {
+	if len(p.queue) >= p.limit || p.bytes+f.size > p.maxBytes {
+		for i := range p.queue {
+			p.queue[i] = outFrame{}
+		}
+		p.queue, p.bytes = nil, 0
+		p.cancel()
 		return false
 	}
+	p.bytes += f.size
 	p.queue = append(p.queue, f)
 	select {
 	case p.wake <- struct{}{}:
@@ -436,7 +472,7 @@ func (p *peer) Send(f core.Frame) bool {
 	if p.closed {
 		return true
 	}
-	return p.push(outFrame{frame: f})
+	return p.push(outFrame{frame: f, size: len(f.Data)})
 }
 
 func (p *peer) SendLog(entries [][]byte) bool {
@@ -466,9 +502,7 @@ func (p *peer) Close(policy bool, reason string) {
 	if policy {
 		status = websocket.StatusPolicyViolation
 	}
-	if !p.push(outFrame{close: true, status: status, reason: reason}) {
-		p.cancel()
-	}
+	p.push(outFrame{close: true, status: status, reason: reason})
 }
 
 // next takes the oldest queued item, waiting for one until ctx ends.
@@ -479,6 +513,7 @@ func (p *peer) next(ctx context.Context) (outFrame, bool) {
 			f := p.queue[0]
 			p.queue[0] = outFrame{}
 			p.queue = p.queue[1:]
+			p.bytes -= f.size
 			p.mu.Unlock()
 			return f, true
 		}
@@ -572,22 +607,26 @@ func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// serveConfig names the sign-in app's public client id and kind, and whether
-// sign-in is set up at all. It never names the secret. The authorize URL is
-// bare: it carries no scope, which a GitHub App does not use, and the page
-// adds the request's own parameters (a scope only for an OAuth app).
+// serveConfig names the sign-in app's public client id, and whether sign-in
+// is set up at all; with a client id, its kind is always a GitHub App's,
+// since the relay takes no other. It never names the secret. The authorize
+// URL is bare: it carries no scope, which a GitHub App does not use, and the
+// page adds the request's own parameters.
 func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 	s.cors(w, r)
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	cfg := map[string]any{
 		"client_id":     s.cfg.ClientID,
 		"sign_in":       s.cfg.ClientID != "" && s.cfg.ClientSecret != "",
 		"authorize_url": s.cfg.GitHubWeb + "/login/oauth/authorize",
-		"app_type":      s.cfg.AppType,
-	})
+	}
+	if s.cfg.ClientID != "" {
+		cfg["app_type"] = AppTypeGitHubApp
+	}
+	writeJSON(w, http.StatusOK, cfg)
 }
 
 // pkceVerifierRe is RFC 7636's code_verifier: 43 to 128 unreserved characters.
@@ -624,6 +663,14 @@ func (s *Server) serveToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.cfg.ClientID == "" || s.cfg.ClientSecret == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sign-in-not-configured"})
+		return
+	}
+	// Each address may try the exchange a few times in a window, counted as
+	// wrong join codes are, so the relay cannot be used to hammer GitHub
+	// with codes; a refused try asks nothing of GitHub.
+	if !s.relay.AllowExchange(clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly)) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(s.relay.Limits().ExchangeWindow/time.Second)))
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate-limited"})
 		return
 	}
 	var req struct {
