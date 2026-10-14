@@ -1556,7 +1556,7 @@ List the ended transcripts not yet redacted into the store: Writes only a missin
 
 ### `abcd ideate`
 
-Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.
+Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.
 
 **Usage:** `abcd ideate`
 
@@ -1569,20 +1569,22 @@ verb requires it, and skipping it is never warned about.
 
 #### `abcd ideate record`
 
-Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.
+Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.
 
-**Usage:** `abcd ideate record <idea-slug> --verdict-json <file|-> [flags]`
+**Usage:** `abcd ideate record <idea-slug> --private|--public --verdict-json <file|-> [flags]`
 
 **Flags:**
 
 ```
+      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)
+      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ with its decision-log line (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
 **Example:**
 
 ```
-abcd ideate record widen-the-public-api --verdict-json verdict.json
+abcd ideate record widen-the-public-api --public --verdict-json verdict.json
 ```
 
 ### `abcd identity`
