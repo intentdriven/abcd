@@ -1077,6 +1077,9 @@ func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(dir+"/rp-return.md"))); string(b) != answers[0] {
 		t.Fatalf("the first answer kept aside stands: %q", b)
 	}
+	if tmps, _ := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(dir), ".rp-return-*.tmp")); len(tmps) != 0 {
+		t.Fatalf("no temporary file an answer was written through is left: %v", tmps)
+	}
 }
 
 // TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt: a placed

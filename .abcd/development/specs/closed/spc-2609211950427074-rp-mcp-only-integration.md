@@ -118,8 +118,10 @@ choice, recorded for review; none changes a criterion.
   route's answer is kept aside beside it (`rp-return.md`) and recorded
   nowhere. An answer kept aside is created, never replaced: one kept there
   already sends the next to the next numbered name (`rp-return-2.md`, and
-  on), and what the step reports names the file it wrote (refined on review
-  2026-10-14). The loop places the answer and records it on the review's await in
+  on), and what the step reports names the file it wrote. It is written whole
+  to a temporary file beside it and then linked to its name, so a name the
+  step reports never holds part of an answer, even when the process dies
+  mid-write (refined on review 2026-10-14). The loop places the answer and records it on the review's await in
   the run's state, in one write under the run's lock: the route and the
   answer's SHA-256 (`answered`, state schema version 11). A return the step's
   own receipt could not verify, because another invocation held the run's

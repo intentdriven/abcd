@@ -55,6 +55,7 @@ package loop
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -1177,9 +1178,12 @@ const maxAsides = 99
 // keepAside writes the route's answer beside the review's return and reports
 // the path it wrote: <route>-return.md, or the next numbered name
 // (<route>-return-2.md, ...) when an earlier answer is kept there, so an
-// answer kept aside is never replaced. Nothing records the answer as the
-// route's: no file beside a return says who wrote it, and only placeReturn's
-// locked write does.
+// answer kept aside is never replaced. The answer is written whole to a
+// temporary file in the same directory first and then hard-linked to its name,
+// which fails when the name exists, so a name a refusal reports never holds a
+// part of an answer, even if the process dies mid-write. Nothing records the
+// answer as the route's: no file beside a return says who wrote it, and only
+// placeReturn's locked write does.
 func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, error) {
 	dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))
 	if err := fsutil.EnsureRealDirAll(repoRoot, dir, dirPerm); err != nil {
@@ -1190,25 +1194,37 @@ func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, 
 		return "", fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
+	var nonce [8]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", fmt.Errorf("naming the answer's temporary file: %w", err)
+	}
+	tmp := dir + "/." + rr.Name + "-return-" + hex.EncodeToString(nonce[:]) + ".tmp"
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
+	if err != nil {
+		return "", fmt.Errorf("writing %s: %w", tmp, err)
+	}
+	defer func() { _ = root.Remove(tmp) }()
+	_, werr := f.WriteString(ret)
+	if werr == nil {
+		werr = f.Sync()
+	}
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return "", fmt.Errorf("writing %s: %w", tmp, werr)
+	}
 	for n := 1; n <= maxAsides; n++ {
 		aside := dir + "/" + rr.Name + "-return.md"
 		if n > 1 {
 			aside = fmt.Sprintf("%s/%s-return-%d.md", dir, rr.Name, n)
 		}
-		f, err := root.OpenFile(aside, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
+		err := root.Link(tmp, aside)
 		if errors.Is(err, fs.ErrExist) {
 			continue
 		}
 		if err != nil {
 			return "", fmt.Errorf("writing %s: %w", aside, err)
-		}
-		_, werr := f.WriteString(ret)
-		if cerr := f.Close(); werr == nil {
-			werr = cerr
-		}
-		if werr != nil {
-			_ = root.Remove(aside)
-			return "", fmt.Errorf("writing %s: %w", aside, werr)
 		}
 		return aside, nil
 	}
