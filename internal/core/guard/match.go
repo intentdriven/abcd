@@ -79,6 +79,11 @@ var wrappers = map[string]bool{
 	"npx": true,
 }
 
+// packageRunners names the one-word package runners among the wrappers. The
+// walk steps them as wrappers, and arrives at the word itself as a command as
+// well, so an entry naming the runner still matches it (walkToCommand).
+var packageRunners = map[string]bool{"npx": true}
+
 // runnerSubcommands names the package managers whose subcommand makes them a
 // runner as npx is, and the wrapper each subcommand is read as: `npm exec`
 // (and its alias `npm x`), `pnpm dlx`, `yarn dlx`. A subcommand the line does

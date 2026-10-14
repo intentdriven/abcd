@@ -1550,6 +1550,17 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				found[a] = true
 				out = append(out, a)
 			}
+			// A package runner is read as a wrapper so the program behind it is
+			// judged, but the runner word is also a command in its own right:
+			// a repository's own entry naming npx, npm, pnpm or yarn matched it
+			// before the runners were read as wrappers, and must still. So the
+			// word arrives a second time, as no wrapper.
+			if isRunner || packageRunners[w] {
+				if b := (arrival{idx: st.pos, noglob: st.noglob}); !found[b] {
+					found[b] = true
+					out = append(out, b)
+				}
+			}
 			switch {
 			case isRunner:
 				push(state{pos: st.pos + 2, mode: walkOptions, wrapper: runner, noglob: st.noglob})

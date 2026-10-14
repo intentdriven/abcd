@@ -48,3 +48,46 @@ func TestKillPortIsStoppingByHolder(t *testing.T) {
 		{`abcd capture "npx kill-port 3000 stopped a peer's server"`, VerdictAllow, ""},
 	})
 }
+
+// TestARepoEntryNamingARunnerStillFires — reading npx, `npm exec`, `pnpm dlx`
+// and `yarn dlx` as wrappers must not take the runner word itself away from a
+// repository's own entries. Before the runners were read as wrappers a
+// committed .abcd/guard.json entry whose command is npx (or npm, pnpm or yarn)
+// blocked `npx some-pkg`; it must still, or the read changes how that
+// repository's guard works.
+func TestARepoEntryNamingARunnerStillFires(t *testing.T) {
+	root := writeOverride(t, `{"schema_version":1,"entries":{
+		"no-npx":{"tier":"blocker","pattern":{"command":"npx"},"why":"this repository pins its tools","successor":"run the pinned script"},
+		"no-npm-exec":{"tier":"blocker","pattern":{"command":"npm","subcommand":"exec"},"why":"this repository pins its tools","successor":"run the pinned script"},
+		"no-pnpm":{"tier":"blocker","pattern":{"command":"pnpm"},"why":"this repository uses npm","successor":"use npm"},
+		"no-yarn-dlx":{"tier":"blocker","pattern":{"command":"yarn","subcommand":"dlx"},"why":"this repository pins its tools","successor":"run the pinned script"}}}`)
+	r, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ cmd, entry string }{
+		{`npx some-pkg`, "no-npx"},
+		{`npx --yes some-pkg@1 --flag`, "no-npx"},
+		{`npm exec some-pkg`, "no-npm-exec"},
+		{`pnpm dlx some-pkg`, "no-pnpm"},
+		{`yarn dlx some-pkg`, "no-yarn-dlx"},
+	} {
+		t.Run(tc.cmd, func(t *testing.T) {
+			d, err := r.Check(tc.cmd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Verdict != VerdictBlock || d.EntryID != tc.entry {
+				t.Errorf("Check(%q) = %q via %q, want %q via %q", tc.cmd, d.Verdict, d.EntryID, VerdictBlock, tc.entry)
+			}
+		})
+	}
+	// The bundled reading behind the runner still holds beside it.
+	d, err := r.Check(`npx kill-port 3000`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Verdict != VerdictBlock {
+		t.Errorf("Check(npx kill-port 3000) = %q, want %q", d.Verdict, VerdictBlock)
+	}
+}
