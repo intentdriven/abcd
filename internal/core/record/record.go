@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // IDRe is the family gate: the only positional shapes the root command routes
@@ -149,16 +150,22 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if iss.ID != id {
 			continue
 		}
+		// capture.List returns the record's text as stored (its in-process
+		// callers compare it), so the description masks every record string
+		// it carries itself: both the text answer and `--json` print it, and
+		// encoding/json leaves a bidi override or a tag rune raw
+		// (iss-2610121653499543). PromotedInto below reads the raw issue.
+		shown := capture.ListResult{Issues: []capture.Issue{iss}}.Shown().Issues[0]
 		d := Description{
 			ID:     id,
 			Family: "issue",
-			Title:  firstLine(iss.Body, iss.Slug),
+			Title:  firstLine(shown.Body, shown.Slug),
 			Status: string(iss.Status),
-			Path:   iss.Path,
+			Path:   termsafe.Sanitize(iss.Path),
 			Links:  map[string]string{},
 		}
-		if len(iss.RelatedIntents) > 0 {
-			d.Links["related_intents"] = strings.Join(iss.RelatedIntents, ", ")
+		if len(shown.RelatedIntents) > 0 {
+			d.Links["related_intents"] = strings.Join(shown.RelatedIntents, ", ")
 		}
 		// Promoted is the two-sided join (itd-4 AC3), not the list: an issue may
 		// name an intent it was only related to.
@@ -166,7 +173,7 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if err != nil {
 			return Description{}, err
 		}
-		if rb := iss.ResolvedBy; rb != nil {
+		if rb := shown.ResolvedBy; rb != nil {
 			if rb.Intent != "" {
 				d.Links["resolved_by.intent"] = rb.Intent
 			}
@@ -483,7 +490,11 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		d.NextMoves = []string{"none — closed; the linked intent is " + sp.Intent}
 		return d, nil
 	}
-	ready, err := intent.Ready(repoRoot, sp.Intent)
+	// The verdict `abcd intent ready` reports, open questions included, as the
+	// intent page reads it: plain Ready sent an intent with an unanswered
+	// question to "implement" while the verb and the build refused it
+	// (iss-2610112214150230).
+	ready, err := intent.ReadyWithQuestions(repoRoot, sp.Intent)
 	if err != nil {
 		// A one-sided link is the intent store's defect, not a dispatch fault:
 		// report the spec and point at the intent rather than failing the render.
@@ -548,7 +559,9 @@ func describeBundleSpec(repoRoot string, store spec.Store, sp spec.Spec, members
 	}
 	var unread, notReady []string
 	for _, m := range live {
-		ready, err := intent.Ready(repoRoot, m)
+		// Each member by the verdict `abcd intent ready` reports, open questions
+		// included, as describeSpec reads its one intent (iss-2610112214150230).
+		ready, err := intent.ReadyWithQuestions(repoRoot, m)
 		switch {
 		case err != nil:
 			unread = append(unread, "the linked intent "+m+" could not be read: "+err.Error())

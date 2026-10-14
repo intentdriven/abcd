@@ -2405,3 +2405,14 @@ Verdict: FILE-AS-IS, confirmed ("File as proposed"). The product thinker's rough
 | other facilitator responsibilities follow the same pattern | plumbing | the brief, once itd-97 is planned (adr-2609151528057260: every gate declares both modes) |
 
 Verdict: refine, not file. The proposal entered as a new intent; the record grill found itd-97 and the three-roles ADR already holding the switch, and the product thinker confirmed "Add to the draft". A tension surfaced and is carried as an open question: itd-97 keeps irreversible actions with the product thinker in both modes, which would bar an auto facilitator from merging unless a revertable merge is not one.
+
+## 2026-10-14: abcd's home ignores itself (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd lays `~/.abcd.noindex/.gitignore` holding `*` once, and never again after the person deletes it | capability | intent itd-2610140858048004 (planned, spc-2610140858477542) |
+| credentials never sit in a git working tree, ignore file or not; the laid file's removal is respected | trust rule | adr-2610140859394097, with its brief invariant |
+| the lay runs at the front door, before and after every command, recorded by a marker | plumbing | the brief (05-internals/03-configuration) |
+| a private ideate verdict is allowed in the account's own git-tracked home once it ignores itself | refines iss-2610090740139804 | the same branch |
+
+Verdict: SPLIT, confirmed ("Confirm SPLIT"). The routing survived as proposed. The proposal entered from a security review finding on private ideate verdicts in a dotfiles home; the product thinker widened it from ideate alone to the whole of abcd's home, chose a self-ignoring home over refusing every write ("that may break things"), and kept credentials refused regardless.

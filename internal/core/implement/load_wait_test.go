@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -61,7 +62,14 @@ func raceRun(pid, parent int) machineload.Proc {
 type poll struct {
 	load  float64
 	procs []machineload.Proc
+	// args are the arguments of procs, by pid; a go process absent from it is
+	// a race run.
+	args map[int][]string
 }
+
+// testJitter is the fixed settle-jitter every fixture's waiter waits once it
+// sees the machine free, before it checks everything again.
+const testJitter = 20 * time.Second
 
 // waitReq builds a request for the waiter at pid against polls (the last one
 // repeats), under home, on clock.
@@ -69,6 +77,7 @@ func waitReq(home string, pid int, clock *fakeClock, polls ...poll) WaitRequest 
 	var mu sync.Mutex
 	i := 0
 	args := waiterArgs(pid)
+	var last poll
 	return WaitRequest{
 		Getenv: noEnv,
 		Read: func() (machineload.Snapshot, error) {
@@ -76,6 +85,7 @@ func waitReq(home string, pid int, clock *fakeClock, polls ...poll) WaitRequest 
 			defer mu.Unlock()
 			p := polls[min(i, len(polls)-1)]
 			i++
+			last = p
 			// Every process ages with the clock, as a real one does, so a
 			// holder's start time read at a later look is still its own.
 			aged := clock.Now().Sub(waitT0)
@@ -86,9 +96,15 @@ func waitReq(home string, pid int, clock *fakeClock, polls ...poll) WaitRequest 
 			return machineload.Snapshot{Load1: p.load, Load5: p.load, Load15: p.load, HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}, nil
 		},
 		ReadArgs: func(pids []int) (map[int][]string, error) {
+			mu.Lock()
+			defer mu.Unlock()
 			out := map[int][]string{}
 			for _, p := range pids {
 				if a, ok := args[p]; ok {
+					out[p] = a
+					continue
+				}
+				if a, ok := last.args[p]; ok {
 					out[p] = a
 					continue
 				}
@@ -103,6 +119,7 @@ func waitReq(home string, pid int, clock *fakeClock, polls ...poll) WaitRequest 
 		Sleep:   clock.Sleep,
 		Timeout: 5 * time.Minute,
 		Poll:    15 * time.Second,
+		Jitter:  func() time.Duration { return testJitter },
 	}
 }
 
@@ -145,7 +162,7 @@ func TestWaitDoesNotCountItsOwnCommandLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != WaitOpen || res.Polls != 1 || len(res.WaitedOn) != 0 || len(res.RaceRuns) != 0 {
+	if res.Status != WaitOpen || res.Polls != 2 || len(res.WaitedOn) != 0 || len(res.RaceRuns) != 0 {
 		t.Fatalf("the waiter counted itself: %+v", res)
 	}
 }
@@ -160,8 +177,8 @@ func TestWaitRaceRunHoldsTheGateUntilItExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != WaitOpen || res.Polls != 3 || res.WaitedS != 30 {
-		t.Fatalf("result = %+v, want open on the third poll after 30s", res)
+	if res.Status != WaitOpen || res.Polls != 4 || res.WaitedS != 50 {
+		t.Fatalf("result = %+v, want free on the third poll after 30s, and open on the fourth after the 20s jitter", res)
 	}
 	if !reflect.DeepEqual(res.WaitedOn, []string{WaitOnRaceRun}) {
 		t.Fatalf("waited on %v, want [%s]", res.WaitedOn, WaitOnRaceRun)
@@ -291,8 +308,8 @@ func TestWaitReclaimsADeadHoldersLock(t *testing.T) {
 		Until: waitT0.Add(WaitCommandCap), Form: HoldCommand})
 	clock := &fakeClock{now: waitT0}
 	res, err := WaitLoad(waitReq(home, 60000, clock, poll{load: 3}))
-	if err != nil || res.Status != WaitOpen || res.Polls != 1 {
-		t.Fatalf("result %+v, err %v, want the dead holder's lock reclaimed on the first poll", res, err)
+	if err != nil || res.Status != WaitOpen || res.Polls != 2 {
+		t.Fatalf("result %+v, err %v, want the dead holder's lock reclaimed on the first poll and the gate open on the re-check", res, err)
 	}
 	if h := readHold(t, home); h == nil || h.PID != 60000 {
 		t.Fatalf("hold after reclaiming = %+v, want the waiter's", h)
@@ -367,7 +384,7 @@ func TestWaitCommandHoldEndsWhenItsRaceRunStarts(t *testing.T) {
 	res, err := WaitLoad(waitReq(home, 60000, clock,
 		poll{load: 3, procs: []machineload.Proc{holder, makeProc, raceRun(779, 778)}},
 		poll{load: 3, procs: []machineload.Proc{holder, makeProc}}))
-	if err != nil || res.Status != WaitOpen || res.Polls != 2 {
+	if err != nil || res.Status != WaitOpen || res.Polls != 3 {
 		t.Fatalf("result %+v, err %v, want open once the holder's own race run has come and gone", res, err)
 	}
 }
@@ -381,8 +398,8 @@ func TestWaitSettleHoldOutlivesItsHolder(t *testing.T) {
 		Until: waitT0.Add(90 * time.Second), Form: HoldSettle})
 	clock := &fakeClock{now: waitT0}
 	res, err := WaitLoad(waitReq(home, 60000, clock, poll{load: 3}))
-	if err != nil || res.Status != WaitOpen || res.WaitedS != 90 || !reflect.DeepEqual(res.WaitedOn, []string{WaitOnLock}) {
-		t.Fatalf("result %+v, err %v, want open once the settle hold lapses at 90s", res, err)
+	if err != nil || res.Status != WaitOpen || res.WaitedS != 110 || !reflect.DeepEqual(res.WaitedOn, []string{WaitOnLock}) {
+		t.Fatalf("result %+v, err %v, want free once the settle hold lapses at 90s, and open after the 20s jitter", res, err)
 	}
 }
 
@@ -453,5 +470,194 @@ func TestWaitSkipsOnCI(t *testing.T) {
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the CI skip created %s", abcdhome.Display())
+	}
+}
+
+// otherAccountsPreflight is another account's `make preflight` at pid, running
+// its unit pass, with the arguments the process table shows for it.
+func otherAccountsPreflight(pid int) ([]machineload.Proc, map[int][]string) {
+	return []machineload.Proc{
+			{PID: pid, PPID: 1, PGID: pid, UID: 502, Age: 4 * time.Minute, Name: "make"},
+			{PID: pid + 1, PPID: pid, PGID: pid, UID: 502, Age: time.Minute, Name: "go"},
+		}, map[int][]string{
+			pid:     {"preflight"},
+			pid + 1: {"test", "./..."},
+		}
+}
+
+// TestWaitSeesAnotherAccountsPreflight is the cross-account gap
+// (iss-2610140638074587): another account's make preflight writes no hold this
+// account can read, and the process table shows it all the same, so the gate
+// stays shut until it exits.
+func TestWaitSeesAnotherAccountsPreflight(t *testing.T) {
+	home := t.TempDir()
+	procs, args := otherAccountsPreflight(80000)
+	busy := poll{load: 3, procs: procs, args: args}
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 60000, clock, busy, busy, poll{load: 3})
+	var announced []WaitResult
+	req.OnWait = func(r WaitResult) { announced = append(announced, r) }
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitOpen || !reflect.DeepEqual(res.WaitedOn, []string{WaitOnPreflight}) || res.WaitedS != 50 {
+		t.Fatalf("result = %+v, want shut on [preflight] for 30s, then open after the jitter", res)
+	}
+	if len(announced) != 1 || !reflect.DeepEqual(announced[0].Preflights, []int{80000}) {
+		t.Fatalf("announcements = %+v, want one naming the other account's preflight 80000", announced)
+	}
+}
+
+// TestWaitRechecksAfterTheJitter: a waiter that sees the machine free waits
+// the jitter and checks everything again before it opens, so a second starter
+// that appears inside the window shuts it, and it takes no hold until a
+// re-check finds the machine still free.
+func TestWaitRechecksAfterTheJitter(t *testing.T) {
+	home := t.TempDir()
+	procs, args := otherAccountsPreflight(80000)
+	starter := poll{load: 3, procs: procs, args: args}
+	clock := &fakeClock{now: waitT0}
+	// Free; the second starter inside the window; free; free.
+	req := waitReq(home, 60000, clock, poll{load: 3}, starter, poll{load: 3})
+	var jitters int
+	req.Jitter = func() time.Duration { jitters++; return testJitter }
+	var heldAtRecheck *WaitHolder
+	inner := req.Read
+	reads := 0
+	req.Read = func() (machineload.Snapshot, error) {
+		reads++
+		// Before the first re-check, and before the look after it.
+		if reads == 2 || reads == 3 {
+			if h := readHold(t, home); h != nil {
+				heldAtRecheck = h
+			}
+		}
+		return inner()
+	}
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if heldAtRecheck != nil {
+		t.Fatalf("a hold was taken before the re-check found the machine still free: %+v", heldAtRecheck)
+	}
+	if res.Status != WaitOpen || res.Polls != 4 || jitters != 2 || !reflect.DeepEqual(res.WaitedOn, []string{WaitOnPreflight}) {
+		t.Fatalf("result = %+v after %d jitters, want shut by the starter at the first re-check, then a second jitter and open on the fourth look", res, jitters)
+	}
+	// 0s free, 20s re-check shut, 35s free, 55s open.
+	if res.WaitedS != 55 {
+		t.Fatalf("waited %vs, want 55", res.WaitedS)
+	}
+	if h := readHold(t, home); h == nil || h.PID != 60000 {
+		t.Fatalf("hold = %+v, want the waiter's own once it opened", h)
+	}
+}
+
+// TestWaitJitterIsFifteenToSixtySeconds: the default jitter falls between 15
+// and 60 seconds.
+func TestWaitJitterIsFifteenToSixtySeconds(t *testing.T) {
+	seen := map[bool]bool{}
+	for range 2000 {
+		j := waitJitter()
+		if j < WaitJitterMin || j > WaitJitterMax {
+			t.Fatalf("jitter %s is outside [%s, %s]", j, WaitJitterMin, WaitJitterMax)
+		}
+		seen[j < (WaitJitterMin+WaitJitterMax)/2] = true
+	}
+	if !seen[true] || !seen[false] {
+		t.Fatal("the jitter does not spread over its range")
+	}
+}
+
+// TestWaitQueuesBehindAnEarlierWaiter: another account's waiter with the
+// lower pid is ahead in the queue the process table orders, so this waiter
+// stays shut while it is there.
+func TestWaitQueuesBehindAnEarlierWaiter(t *testing.T) {
+	early := []machineload.Proc{
+		{PID: 50000, PPID: 1, PGID: 50000, UID: 502, Age: time.Minute, Name: "go"},
+		{PID: 50001, PPID: 50000, PGID: 50000, UID: 502, Age: time.Minute, Name: "abcd"},
+	}
+	args := map[int][]string{
+		50000: {"run", "./cmd/abcd", "implement", "load", "--wait"},
+		50001: {"implement", "load", "--wait"},
+	}
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: early, args: args})
+	req.Timeout = time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnWaiter}) || !reflect.DeepEqual(res.Waiters, []int{50001}) {
+		t.Fatalf("result = %+v, want a timeout still on [waiter] naming 50001", res)
+	}
+}
+
+// TestWaitIgnoresItsAncestorsHold: `abcd implement load --wait -- make
+// preflight` runs a preflight whose own gate is a waiter beneath the first; the
+// first's command hold is its ancestor's, so the inner waiter is not shut by it
+// and leaves it in place.
+func TestWaitIgnoresItsAncestorsHold(t *testing.T) {
+	home := t.TempDir()
+	// The waiter's chain is zsh 59998, go 59999, abcd 60000; the outer waiter
+	// is the go run's parent's parent here: re-parent the chain under it.
+	outer := machineload.Proc{PID: 59000, PPID: 1, PGID: 59000, UID: 501, Age: 10 * time.Minute, Name: "abcd"}
+	started := waitT0.Add(-10 * time.Minute)
+	hold := WaitHolder{PID: 59000, StartUnix: started.Unix(), Opened: started.Add(time.Second),
+		Until: started.Add(WaitCommandCap), Form: HoldCommand}
+	writeHold(t, home, hold)
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 60000, clock, poll{load: 3, procs: []machineload.Proc{outer}})
+	inner := req.Read
+	req.Read = func() (machineload.Snapshot, error) {
+		snap, err := inner()
+		for i := range snap.Procs {
+			if snap.Procs[i].PID == 59998 {
+				snap.Procs[i].PPID = 59000
+			}
+		}
+		return snap, err
+	}
+	req.Timeout = time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitOpen || len(res.WaitedOn) != 0 {
+		t.Fatalf("result = %+v, want open at once: the hold in force is the waiter's own ancestor's", res)
+	}
+	if h := readHold(t, home); h == nil || *h != hold {
+		t.Fatalf("hold = %+v, want the ancestor's left in place", h)
+	}
+}
+
+// TestPreflightParallelism: make preflight's go test -p is derived from the
+// machine, and on a CI runner the machine is not read and go's default stands.
+func TestPreflightParallelism(t *testing.T) {
+	read := func() (machineload.Snapshot, error) {
+		return machineload.Snapshot{Load1: 28, HasLoad: true, Cores: 16}, nil
+	}
+	if got := PreflightParallelism(noEnv, read); got != 4 {
+		t.Fatalf("-p at load 28 on 16 cores = %d, want 4", got)
+	}
+	ci := func(k string) string {
+		if k == "CI" {
+			return "true"
+		}
+		return ""
+	}
+	called := false
+	got := PreflightParallelism(ci, func() (machineload.Snapshot, error) {
+		called = true
+		return read()
+	})
+	if called || got != runtime.GOMAXPROCS(0) {
+		t.Fatalf("on CI: -p %d (read %v), want go's default %d without reading the machine", got, called, runtime.GOMAXPROCS(0))
+	}
+	if got := PreflightParallelism(noEnv, func() (machineload.Snapshot, error) {
+		return machineload.Snapshot{}, machineload.ErrUnsupported
+	}); got != runtime.GOMAXPROCS(0) {
+		t.Fatalf("on an unread machine: -p %d, want go's default %d", got, runtime.GOMAXPROCS(0))
 	}
 }

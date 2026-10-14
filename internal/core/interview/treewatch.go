@@ -58,10 +58,12 @@ package interview
 //
 // git's own directory and common directory are placed by the run's first
 // reading, taken before any role ran, and every later reading reads those
-// same directories. Before it runs git, a later reading reads the two files
-// that place them, a linked worktree's .git file and the git directory's
-// commondir: one changed since is named as a change, and neither git nor the
-// reading follows where it leads. It then sizes the files git reads whole on
+// same directories. Before it runs git, a later reading reads the files that
+// place them, a linked worktree's .git file and the git directory's
+// commondir, and those that place each submodule's git directory, its
+// commondir under modules/ and its gitlink's .git pointer (placingFiles): one
+// changed since is named as a change, and neither git nor the reading follows
+// where it leads. It then sizes the files git reads whole on
 // every command (HEAD, the configuration, the packed refs, info/exclude), in
 // those directories and in each submodule's git directory, against
 // maxHashedBytes, which also bounds what the reading hashes of the paths git
@@ -218,8 +220,8 @@ type treeReader struct {
 }
 
 // gitPin is where a run's first reading found git's own directory and
-// common directory, and the state of each file that places them: a linked
-// worktree's .git file and the git directory's commondir. Every later reading
+// common directory, and the state of each file that places them or a
+// submodule's git directory (placingFiles). Every later reading
 // of the run reads those same directories, and before it runs git it reads
 // those files: one changed since is named, as a change, without git or the
 // reading following where it leads. So a role writing a commondir, or a .git
@@ -337,12 +339,47 @@ func (r *treeReader) placeGitDirs() error {
 				moved = append(moved, key)
 			}
 		}
+		// A submodule's git directory made since was not pinned: its
+		// commondir is held to the state it had then, absent.
+		mods, err := moduleGitDirs(r.pin.common)
+		if err != nil {
+			return err
+		}
+		for _, m := range mods {
+			p := filepath.Join(r.pin.common, filepath.FromSlash(m), "commondir")
+			key := r.keyOf(filepath.Dir(p), filepath.Base(p))
+			if _, pinned := r.pin.pointers[key]; !pinned && pointerState(p) != "absent" {
+				moved = append(moved, key)
+			}
+		}
 		if len(moved) > 0 {
+			slices.Sort(moved)
 			return &redirectedError{Paths: moved}
 		}
 		r.gitDir, r.common = r.pin.gitDir, r.pin.common
 		if err := r.sizeGitReads(); err != nil {
 			return err
+		}
+		// A gitlink added to the index since was not pinned: its .git
+		// pointer is held to the state it had then, absent, or git status
+		// would place the submodule's git directory where the pointer leads.
+		// What git reads whole is sized above and the files placing git's
+		// own directory read unchanged, so listing the index reads the one
+		// the pin placed (iss-2610050504094430).
+		links, err := gitutil.Gitlinks(r.repo)
+		if err != nil {
+			return err
+		}
+		for _, l := range links {
+			p := filepath.Join(r.pin.top, filepath.FromSlash(l), ".git")
+			key := r.keyOf(filepath.Dir(p), filepath.Base(p))
+			if _, pinned := r.pin.pointers[key]; !pinned && pointerState(p) != "absent" {
+				moved = append(moved, key)
+			}
+		}
+		if len(moved) > 0 {
+			slices.Sort(moved)
+			return &redirectedError{Paths: moved}
 		}
 	}
 	gitDir, common, top, err := r.namedGitDirs()
@@ -353,7 +390,11 @@ func (r *treeReader) placeGitDirs() error {
 	case r.pin == nil:
 	case r.pin.gitDir == "":
 		r.pin.gitDir, r.pin.common, r.pin.top, r.pin.pointers = gitDir, common, top, map[string]string{}
-		for _, p := range []string{filepath.Join(r.repo, ".git"), filepath.Join(gitDir, "commondir")} {
+		placing, err := placingFiles(r.repo, gitDir, common, top)
+		if err != nil {
+			return err
+		}
+		for _, p := range placing {
 			st := pointerState(p)
 			if strings.HasPrefix(st, "past ") {
 				return fmt.Errorf("%s holds more than %d KiB, more than the one path it names; restore it and run the interview again", r.keyOf(filepath.Dir(p), filepath.Base(p)), maxPointerBytes>>10)
@@ -373,6 +414,32 @@ func (r *treeReader) placeGitDirs() error {
 		return nil
 	}
 	return r.sizeGitReads()
+}
+
+// placingFiles are the files that place a git directory git reads on every
+// reading: the checkout's .git and its git directory's commondir, each
+// submodule git directory's commondir under the common directory's modules/,
+// and each gitlink's .git pointer in the working tree, which git status reads
+// to place the submodule's git directory as it checks the submodule's HEAD.
+// A submodule's own gitlinks are not listed: git status does not run inside
+// a submodule (gitutil.Status's --ignore-submodules=dirty).
+func placingFiles(repo, gitDir, common, top string) ([]string, error) {
+	out := []string{filepath.Join(repo, ".git"), filepath.Join(gitDir, "commondir")}
+	mods, err := moduleGitDirs(common)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range mods {
+		out = append(out, filepath.Join(common, filepath.FromSlash(m), "commondir"))
+	}
+	links, err := gitutil.Gitlinks(repo)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range links {
+		out = append(out, filepath.Join(top, filepath.FromSlash(l), ".git"))
+	}
+	return out, nil
 }
 
 // gitDirReadsWhole and commonReadsWhole are the files git reads whole on

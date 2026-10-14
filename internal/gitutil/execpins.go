@@ -33,13 +33,18 @@ import (
 // Every isolated command (Run and its siblings) carries them, and a caller that
 // must build its own git command (one that keeps global config, say) prepends
 // them rather than copying the list. The pins come before -C and the
-// subcommand: after the subcommand, `-c` is that subcommand's option.
+// subcommand: after the subcommand, `-c` is that subcommand's option. A commit
+// abcd makes in a working tree it made for the work leaves core.hooksPath,
+// commit.gpgsign and merge.verifySignatures to the repository
+// (WorkingTreeCommitCommand): those are how the repository commits and merges.
 //
 // They do not blank content filters or diff and merge drivers, because those
 // are keyed on a name the repository chooses; FilterOverrides covers filters
-// for a command that must not run one, MergeDriverOverrides makes every merge
-// driver git's built-in merge, and a diff passes --no-ext-diff and
-// --no-textconv.
+// for a read that must not run one, MergeDriverOverrides makes every merge
+// driver git's built-in merge for a read-only merge (the conflict probe's
+// merge-tree), and a diff passes --no-ext-diff and --no-textconv. A merge abcd
+// makes in a lane runs the repository's merge drivers, as the person's own
+// merge does.
 func ExecPins() []string {
 	return []string{
 		"-c", "core.hooksPath=/dev/null",
@@ -113,9 +118,12 @@ func BuiltinMergeDriver() string {
 // MergeDriverOverrides returns the `git -c` overrides that make every merge
 // driver the repository at root configures git's built-in text merge —
 // `merge.<name>.driver` set to BuiltinMergeDriver for each name — and pin
-// merge.default to the built-in text driver, so a merge abcd composes never
-// starts a program the repository names, whichever driver an attribute or
-// merge.default selects (iss-2610090821510097). A driver cannot be blanked as
+// merge.default to the built-in text driver, so a read-only merge abcd
+// computes (the conflict probe's merge-tree, a prediction of the forge's
+// merge) never starts a program the repository names, whichever driver an
+// attribute or merge.default selects (iss-2610090821510097). A merge made in a
+// lane's worktree does not take them: it runs the repository's own drivers
+// (WorkingTreeCommitCommand, iss-2610111729399920). A driver cannot be blanked as
 // a filter is: git fails to start an empty driver command and reports every
 // path both sides changed as a conflict. The overrides go before the
 // subcommand.
@@ -143,23 +151,13 @@ func MergeDriverOverrides(root string) ([]string, error) {
 // or a line break) is refused: overriding a different key would leave the
 // configured program live.
 func configNames(root, section string) ([]string, error) {
-	cmd := isolatedGit(root, "config", "--null", "--name-only", "--get-regexp", `^`+section+`\.`)
-	e := &capWriter{remaining: 4096}
-	w := &capWriter{remaining: 1 << 20}
-	cmd.Stdout, cmd.Stderr = w, e
-	if err := cmd.Run(); err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(w.buf) == 0 {
-			return nil, nil // no key in the section at all
-		}
-		return nil, fmt.Errorf("reading the repository's %s config: %w (stderr: %q)", section, err, strings.TrimSpace(string(e.buf)))
-	}
-	if w.overflowed {
-		return nil, fmt.Errorf("reading the repository's %s config: the key list exceeded its cap", section)
+	buf, err := getRegexp(root, section, `^`+section+`\.`, "--name-only")
+	if err != nil {
+		return nil, err
 	}
 	seen := map[string]bool{}
 	var out []string
-	for _, key := range strings.Split(string(w.buf), "\x00") {
+	for _, key := range strings.Split(string(buf), "\x00") {
 		if key == "" {
 			continue
 		}
@@ -178,6 +176,76 @@ func configNames(root, section string) ([]string, error) {
 		}
 		seen[name] = true
 		out = append(out, name)
+	}
+	return out, nil
+}
+
+// ErrConfigCap is a config read whose key list exceeded its cap: git read the
+// configuration, but not all of it reached abcd.
+var ErrConfigCap = errors.New("the key list exceeded its cap")
+
+// getRegexp is the one reader behind configNames and RepoConfig: `git config
+// --null --get-regexp pattern` through the isolated command, so the
+// repository's config and its includes are read and global and system config
+// are not, with any extra flags before --get-regexp. No key matching is an
+// empty answer, not an error; what names the read in an error.
+func getRegexp(root, what, pattern string, extra ...string) ([]byte, error) {
+	args := append(append([]string{"config", "--null"}, extra...), "--get-regexp", pattern)
+	cmd := isolatedGit(root, args...)
+	e := &capWriter{remaining: 4096}
+	w := &capWriter{remaining: 1 << 20}
+	cmd.Stdout, cmd.Stderr = w, e
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 && len(w.buf) == 0 {
+			return nil, nil // no key matches at all
+		}
+		return nil, fmt.Errorf("reading the repository's %s config: %w (stderr: %q)", what, err, strings.TrimSpace(string(e.buf)))
+	}
+	if w.overflowed {
+		return nil, fmt.Errorf("reading the repository's %s config: %w", what, ErrConfigCap)
+	}
+	return w.buf, nil
+}
+
+// ConfigEntry is one configuration entry a repository sets: the scope git
+// read it from ("local" for the repository's config and the files it
+// includes, "worktree" for the working tree's own), its canonical key (section
+// and variable lower-cased, a subsection as written) and its value. A key
+// written with no value (a bare boolean) has an empty value and NoValue set.
+type ConfigEntry struct {
+	Scope   string
+	Key     string
+	Value   string
+	NoValue bool
+}
+
+// RepoConfig lists, in the order git reads them, the entries the repository at
+// root sets whose canonical key matches pattern (an extended regular
+// expression, as `git config --get-regexp` takes one). Config is read as
+// configNames reads it: the repository's config and its includes, global and
+// system neutralised. The `-c` pins every isolated command carries are abcd's
+// own, not the repository's, and are left out, as is anything else git reads
+// from outside the repository's own files. Nothing matching is an empty list.
+//
+// A value is the repository's to keep: a credential helper's may carry a
+// secret, so a caller that stores or prints anything about an entry keeps to
+// its key.
+func RepoConfig(root, pattern string) ([]ConfigEntry, error) {
+	buf, err := getRegexp(root, "watched", pattern, "--show-scope")
+	if err != nil {
+		return nil, err
+	}
+	// --show-scope with --null: "<scope>\0<key>[\n<value>]\0" per entry.
+	fields := strings.Split(string(buf), "\x00")
+	var out []ConfigEntry
+	for i := 0; i+1 < len(fields); i += 2 {
+		scope, kv := fields[i], fields[i+1]
+		if scope != "local" && scope != "worktree" {
+			continue
+		}
+		key, value, hasValue := strings.Cut(kv, "\n")
+		out = append(out, ConfigEntry{Scope: scope, Key: key, Value: value, NoValue: !hasValue})
 	}
 	return out, nil
 }

@@ -119,9 +119,10 @@ type RecordSet struct {
 	// Added are records present at HEAD and absent at the anchor — the cut.
 	Added []Record
 	// Removed are records present at the anchor and absent at HEAD. A record
-	// leaves a terminal folder when it is superseded or re-slugged; either way
+	// leaves a terminal folder when it is superseded or withdrawn; either way
 	// it is a user-visible change that must surface as a Removed/Changed line
-	// rather than silently vanish from the release.
+	// rather than silently vanish from the release. A re-slug inside its own
+	// folder is not a removal: membership is keyed on the id.
 	Removed []Record
 }
 
@@ -196,10 +197,10 @@ func (s RecordSet) Unlabelled() []Record { return unlabelled(s.All()) }
 //
 // Removed records are deliberately excluded. Their blob is read from the anchor
 // tag's immutable tree, so one that predates the impact back-fill can never be
-// labelled: at HEAD the file is either gone (supersession) or already carries a
-// valid impact under its new name (re-slug). Refusing over it would name a
-// remedy the operator cannot perform and would block every release until the
-// move was reverted. Such a record still travels in Removed, so the release
+// labelled: at HEAD the file is gone (a supersession; a re-slug inside its own
+// folder is no removal, since membership is keyed on the id). Refusing over it
+// would name a remedy the operator cannot perform and would block every release
+// until the move was reverted. Such a record still travels in Removed, so the release
 // still reports it rather than dropping it silently.
 func (s RecordSet) UnlabelledAdded() []Record { return unlabelled(s.Added) }
 
@@ -254,7 +255,7 @@ func maxImpactOf(records []Record) Impact {
 }
 
 // ShippedSince computes the release cut between baseRef (the anchor tag) and
-// HEAD, as the set-difference of the record files in the terminal folders.
+// HEAD, as the set-difference of the record ids in the terminal folders.
 //
 // Both sides are read out of git, never out of the working tree: a removed
 // record exists only in the anchor's tree, and reading the added side from git
@@ -271,20 +272,30 @@ func maxImpactOf(records []Record) Impact {
 func ShippedSince(root string, baseRef string) (RecordSet, error) {
 	set := RecordSet{BaseRef: baseRef}
 
-	basePaths, err := recordPathsAt(root, baseRef)
+	baseRecords, err := recordsByIDAt(root, baseRef)
 	if err != nil {
 		return RecordSet{}, err
 	}
-	headPaths, err := recordPathsAt(root, "HEAD")
+	headRecords, err := recordsByIDAt(root, "HEAD")
 	if err != nil {
 		return RecordSet{}, err
 	}
 
+	// Membership is keyed on the record ID within its terminal folder, never on
+	// the path (iss-2610121215586434). A record re-slugged inside its own folder
+	// neither entered nor left it, and comparing paths read the 40-character
+	// slug-cap rename as 1724 removals and as many re-additions. A record that
+	// moves between folders still reads as leaving one and entering the other,
+	// because the folder is part of the key.
+	//
 	// ADDED only. A record that names the release which carried it is not part of
 	// this cut: folder membership says it arrived since the anchor, the record says
 	// the work shipped earlier, and the record is the more specific claim.
-	for p := range headPaths {
-		if _, atBase := basePaths[p]; !atBase {
+	for key, paths := range headRecords {
+		if _, atBase := baseRecords[key]; atBase {
+			continue
+		}
+		for _, p := range paths {
 			if rec := newRecord(root, "HEAD", baseRef, p); rec.ShippedIn == "" {
 				set.Added = append(set.Added, rec)
 			}
@@ -297,8 +308,11 @@ func ShippedSince(root string, baseRef string) (RecordSet, error) {
 	// arithmetic and, alone in a window, emptied the cut and refused the release —
 	// while ingest.go states plainly that letting a removal go uncited "would be
 	// the same omission as dropping an addition".
-	for p := range basePaths {
-		if _, atHead := headPaths[p]; !atHead {
+	for key, paths := range baseRecords {
+		if _, atHead := headRecords[key]; atHead {
+			continue
+		}
+		for _, p := range paths {
 			set.Removed = append(set.Removed, newRecord(root, baseRef, baseRef, p))
 		}
 	}
@@ -338,11 +352,37 @@ func uncommittedRecords(root string) ([]string, error) {
 	return records, nil
 }
 
-// recordPathsAt lists the record files present in the terminal folders at ref,
-// keyed by repo-relative path. Non-record files (READMEs, notes) are dropped by
-// the shared walk, so every later stage sees records only.
-func recordPathsAt(root string, ref string) (map[string]struct{}, error) {
-	return recordPathsIn(root, ref, recordPaths...)
+// recordKey identifies one record's membership of one terminal folder: the
+// folder from recordPaths it lives under (at any depth) and its id. A slug is
+// not part of it, so a re-slug keeps the key; a move between folders does not.
+type recordKey struct {
+	dir string
+	id  string
+}
+
+// recordsByIDAt lists the record files present in the terminal folders at ref,
+// grouped by recordKey. Non-record files (READMEs, notes) are dropped by the
+// shared walk, so every later stage sees records only. A key normally holds one
+// path; two files carrying one id in one folder are both kept, so neither
+// vanishes from the cut (the id-uniqueness lint is what refuses them).
+func recordsByIDAt(root string, ref string) (map[recordKey][]string, error) {
+	paths, err := recordPathsIn(root, ref, recordPaths...)
+	if err != nil {
+		return nil, err
+	}
+	out := map[recordKey][]string{}
+	for p := range paths {
+		key := recordKey{id: recordID(p)}
+		for _, dir := range recordPaths {
+			// A prefix, not a parent: ls-tree -r counts a record at any depth.
+			if strings.HasPrefix(p, dir+"/") {
+				key.dir = dir
+				break
+			}
+		}
+		out[key] = append(out[key], p)
+	}
+	return out, nil
 }
 
 // maxRecordBytes caps the guarded blob read, in the same order as

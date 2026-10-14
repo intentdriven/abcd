@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -70,10 +71,10 @@ func AcceptedValues(vals []string) string {
 // uniqueItems:true.
 var uniqueItemsFields = []string{"related_intents", "related_specs", "related_issues", "synthesis_clusters", "blocked_by", "duplicates", "refines"}
 
-// ValidateStrict validates a frontmatter map against the issue schema. It
+// validateStrict validates a frontmatter map against the issue schema. It
 // special-cases schema_version first (mirrors _validate_strict) and rejects
 // unknown keys (additionalProperties:false).
-func ValidateStrict(fm map[string]any) error {
+func validateStrict(fm map[string]any) error {
 	sv, ok := fm["schema_version"]
 	if !ok {
 		return fmt.Errorf("%w: missing required property 'schema_version'", ErrMissingRequiredField)
@@ -160,12 +161,18 @@ func ValidateStrict(fm map[string]any) error {
 	}
 
 	// Optional scalar strings.
-	for _, opt := range []string{"found_at", "lapsed_at", "details", "remedy", "suggested_fix", "wontfix_reason", "resolution"} {
+	for _, opt := range []string{"found_at", "lapsed_at", "details", "remedy", "suggested_fix", "wontfix_reason", "resolution", "finding_ref"} {
 		if v, present := fm[opt]; present {
 			if _, isStr := v.(string); !isStr {
 				return fmt.Errorf("%w: %q must be a string", ErrMalformedFrontmatter, opt)
 			}
 		}
+	}
+	// finding_ref, when present, is a finding key's one shape: capture writes
+	// no other, and record_schema reports any other, so the writer, this reader
+	// and the committed-ledger gate agree (itd-2609291923559186 G1).
+	if v, present := fm["finding_ref"]; present && !findingkey.Valid(v.(string)) {
+		return fmt.Errorf("%w: finding_ref %q is not a finding key (cfk- and sixteen lowercase hex digits)", ErrMalformedFrontmatter, v)
 	}
 	// lapsed_at is optional for every category, lapse included, and an RFC 3339
 	// instant whenever it is present. spc-60 made it REQUIRED on a lapse; that
@@ -236,9 +243,9 @@ func ValidateStrict(fm map[string]any) error {
 	return nil
 }
 
-// ValidateInvariants enforces folder<->field invariants and filename<->id
+// validateInvariants enforces folder<->field invariants and filename<->id
 // match, mirroring _issue_lib._validate_invariants. Assumes ValidateStrict ran.
-func ValidateInvariants(fm map[string]any, status, path string) error {
+func validateInvariants(fm map[string]any, status, path string) error {
 	id, _ := fm["id"].(string)
 	if !IssIDRe.MatchString(id) {
 		return fmt.Errorf("%w: id %q does not match ^iss-[0-9]+$", ErrInvariantViolation, id)

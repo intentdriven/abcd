@@ -262,22 +262,54 @@ func steppedBeforeCommand(tok string) bool {
 	return isAssignment(tok) || reserved[tok] || vanishable(tok)
 }
 
-// isAssignment reports whether a token is a NAME=VALUE environment prefix,
-// which precedes the command rather than being one.
+// isAssignment reports whether a token is an assignment word, which in
+// assignment position precedes the command rather than being one: NAME=VALUE,
+// and the forms bash and zsh read the same way (splitAssignment).
 func isAssignment(tok string) bool {
-	eq := strings.IndexByte(tok, '=')
-	if eq <= 0 {
-		return false
+	_, _, _, _, ok := splitAssignment(tok)
+	return ok
+}
+
+// splitAssignment splits an assignment word as bash and zsh read one: its
+// variable's name, the index of the `=` its value follows, and whether it
+// appends (NAME+=VALUE) or names an element (NAME[SUB]=VALUE,
+// NAME[SUB]+=VALUE). Both shells take each form before a command as an
+// assignment and run the command after it — bash 5 reports a subscripted
+// one as not a valid identifier and still runs the command
+// (iss-2610121214249290) — so every reading that asks whether a word is an
+// assignment asks this one rule. ok is false for any other word.
+func splitAssignment(tok string) (name string, eq int, appends, subscript, ok bool) {
+	i := 0
+	for i < len(tok) && (tok[i] == '_' || tok[i] >= 'a' && tok[i] <= 'z' || tok[i] >= 'A' && tok[i] <= 'Z' ||
+		i > 0 && tok[i] >= '0' && tok[i] <= '9') {
+		i++
 	}
-	for i := 0; i < eq; i++ {
-		c := tok[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
-		default:
-			return false
+	if i == 0 || i == len(tok) {
+		return "", 0, false, false, false
+	}
+	name = tok[:i]
+	if tok[i] == '[' {
+		end := strings.IndexByte(tok[i:], ']')
+		if end < 0 {
+			return "", 0, false, false, false
 		}
+		i += end + 1
+		subscript = true
 	}
-	return !(tok[0] >= '0' && tok[0] <= '9')
+	if i < len(tok) && tok[i] == '+' {
+		i++
+		appends = true
+	}
+	if i >= len(tok) || tok[i] != '=' {
+		return "", 0, false, false, false
+	}
+	return name, i, appends, subscript, true
+}
+
+// isName reports whether w is a shell variable name.
+func isName(w string) bool {
+	name, eq, _, _, ok := splitAssignment(w + "=")
+	return ok && eq == len(w) && name == w
 }
 
 // matchSegment applies the pattern's command, subcommand, and flag constraints
@@ -393,7 +425,7 @@ func argsFed(p Pattern, s segment, site int) bool {
 	}
 	from := site + 1
 	if x, ok := xargsBefore(s, site); ok {
-		if s.piped.hits(p.ArgsFrom) || anyHits(s.stdinIn, p.ArgsFrom) {
+		if s.piped.hits(p.ArgsFrom) || anyHits(s.stdinIn, p.ArgsFrom) || anyHits(s.carries, p.ArgsFrom) {
 			return true
 		}
 		from = x + 1
@@ -458,6 +490,7 @@ func newArgsReader(s segment) *argsReader {
 			r.base = append(r.base, s.piped)
 		}
 		r.base = append(r.base, s.stdinIn...)
+		r.base = append(r.base, s.carries...)
 		r.next = r.x + 1
 	}
 	return r
@@ -502,11 +535,22 @@ func anyHits(fs []feed, srcs []Pattern) bool {
 }
 
 // segmentHits reports whether a command matches one of srcs, or any command of
-// a command string it runs does (segList.payloads), however deep they nest.
+// a command string it runs does (segList.payloads), however deep they nest, or
+// any command whose output reaches it otherwise does (segment.carries).
 func segmentHits(s segment, srcs []Pattern) bool {
 	for _, src := range srcs {
 		if matchSegment(src, s) {
 			return true
+		}
+	}
+	if anyHits(s.carries, srcs) {
+		return true
+	}
+	if s.processSearch {
+		for _, src := range srcs {
+			if matchSegment(src, processSearchReading) {
+				return true
+			}
 		}
 	}
 	if s.home == nil {
@@ -532,16 +576,20 @@ func (f feed) hits(srcs []Pattern) bool {
 	counts, ok := f.list.hits[key]
 	if !ok {
 		counts = make([]int, len(f.list.segs)+1)
+		// Filed before it is counted: a command's carries (segmentHits) name
+		// only commands before it in its own list, which are counted by the
+		// time it is read, so the question it asks of them is answered from
+		// the counts already made rather than counted again without end.
+		if f.list.hits == nil {
+			f.list.hits = map[*Pattern][]int{}
+		}
+		f.list.hits[key] = counts
 		for i, s := range f.list.segs {
 			counts[i+1] = counts[i]
 			if segmentHits(s, srcs) {
 				counts[i+1]++
 			}
 		}
-		if f.list.hits == nil {
-			f.list.hits = map[*Pattern][]int{}
-		}
-		f.list.hits[key] = counts
 	}
 	hi := f.hi
 	if hi > len(f.list.segs) {

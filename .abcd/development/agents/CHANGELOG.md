@@ -12,6 +12,16 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-12 (itd-2609291923559186 — the consistency pass reads an overflowing corpus in chunks)
+
+### intent-auditor 0.5.2
+
+PATCH: Role 2's `corpus` input says that a request naming a `chunk` hands the
+reviewer one part of a corpus too large for one request, whose manifest lists
+that part only, so both ends of every finding are documents it lists
+(spc-2610021456200324, step 3). The rubric, the classes and the findings shape
+are unchanged. Unmeasured, in the `0.x` band.
+
 ## 2026-10-11 (itd-2610090831227812 — the changelog verb retires into the launch preview)
 
 ### release-changelog-composer 0.4.3

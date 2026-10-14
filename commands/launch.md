@@ -270,14 +270,22 @@ Then summarise the JSON for the user:
   {"exclude_path_fragments": [{"fragment": "testdata/vectors/", "reason": "published third-party test vectors"}]}
   ```
 
-  A fragment matches anywhere in the path, so an extension-shaped fragment
-  such as `.jar` excludes every file of that kind, and also any path that
-  carries `.jar` elsewhere (`lib.jar.d/notes.md`); `scan.excluded` names every
-  file it matched. An exclusion takes precedence over every skip entry, so it
-  is the way to leave out a file a repository-added skip extension or filename
-  matches. An entry with no reason, a blank fragment, a fragment of slashes
-  alone, or a fragment of punctuation alone (`.`) makes the scanner
-  unavailable, and the release refuses.
+  A fragment matches whole path segments, wherever they appear in the path:
+  `docs/notes.md` excludes that file and not `olddocs/notes.md`, and a
+  fragment ending in `/` names a directory, so `generated/` excludes every file
+  under a `generated` directory and nothing under `regenerated/`. A fragment
+  starting with `.` and holding no `/` is extension-shaped: `.jar` excludes
+  every file whose name ends `.jar`, and not `lib.jar.d/notes.md`.
+  `scan.excluded` names every file it matched. A fragment that matches no
+  payload file leaves nothing out, so a misspelt one would read as working:
+  `scan.unmatched_exclusions` names it and the report carries a warning
+  naming it, which refuses the release under `strict_warnings`. Correct or
+  remove the fragment. An exclusion takes precedence over every skip entry,
+  so it is the way to leave out a file a repository-added skip extension or
+  filename matches. An entry with no
+  reason, a blank fragment, a fragment of slashes alone, a fragment of
+  punctuation alone (`.`), or a single-character fragment (`e`) makes the
+  scanner unavailable, and the release refuses.
 - `smoke.ok` — whether the payload would install (a plugin only; for another
   kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
   the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,
@@ -851,7 +859,7 @@ The reason codes:
 | `quote-not-verbatim` | carries a quote that is not word for word from its intent's press release, with its attribution |
 | `outbound-policy` | would put a session URL or a tool attribution footer in the page or the changelog |
 | `persona-registry` | would put on the page words attributed to a persona the registry does not hold |
-| `privacy` | would put a secret, a key, or the caller's own home path or identity in the page or the changelog |
+| `privacy` | would put a secret, a key, the caller's own home path or identity, or another account's home path in the page or the changelog (a username is allowed) |
 
 Then show the user the written heading and the diff, so a human reviews the release
 record before it is committed. This command never commits, tags, or publishes.

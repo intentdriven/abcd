@@ -13,7 +13,7 @@ remedy: "Have readSeries run parsePaceFlags on the stored flags and refuse the f
 resolution: "readSeries refuses a series state whose stored pace flags are not in the typed flags' form, at the pick stage, exit 2, without echoing them, so no control rune reaches the --json stream"
 impact: fix
 resolved_by:
-  commit: "7ff6fb44043dfbd03dc490668d2336bb7b4a1415"
+  commit: "b7e517abb6231a0c4acbdfe7e55f14c10a23e498"
 ---
 
 readSeries (internal/core/implement/loop/nextseries.go) checks a series file's intent, run_id and outcome but not its stored pace flags (flags.pace, flags.sub_agents, flags.fix_rounds), so a hand-written or repository-shipped .abcd/.work.local/run/next.json can carry control or bidi runes (for example U+202E, U+009B) in them; on a series move that picks nothing (window or cap), those strings reach 'abcd build next --json' unvalidated and encoding/json leaves them raw. Low severity: display spoofing of the JSON text on a terminal, no read, write or exec. Found by the security reviewer, round 2 of run-2610110908001704 lane-1.

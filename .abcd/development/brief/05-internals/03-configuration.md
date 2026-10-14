@@ -544,9 +544,26 @@ person's, in a plain terminal (spc-2610031309233367).
 abcd never moves the folder itself, and a managed project's block keeps naming
 the old paths until setup runs in that project again.
 
+**`~/.abcd.noindex` ignores itself, once (itd-2610140858048004, adr-2610140859394097).**
+A home folder that is a git repository would stage everything the user scope
+holds. So the CLI front door, before every command and again after it (the status
+line excepted, which writes nothing at all), makes sure an existing `~/.abcd.noindex` carries `.gitignore` holding `*`, owner-only,
+with a marker `gitignore-laid` beside it (`internal/core/homeignore`). It never
+creates the folder, never overwrites a file, never writes through a link, and
+reads or runs nothing of any repository. While the marker stands it writes
+nothing, so a deleted `.gitignore` is the person's deliberate opt-in and stays
+deleted. A symlinked `~/.abcd.noindex` reads as absent and is never laid. A
+failed lay says so once per command on stderr (never under `--json` or in a
+hook call, where a machine reads stderr) and never fails the command; the
+old home's stop lays nothing. The lay is the front door's, not any verb's, so
+a verb whose sentence says it writes nothing may still be the command that
+lays the file in a home that lacks it. **Invariant:** the credential store's abcd home
+stays refused inside any git working tree, the account's own included, whatever
+`.gitignore` says.
+
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `path-entry`, `cache-attestation`, `config.json`,
+`local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
 `credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
@@ -678,6 +695,14 @@ in `abcd rules` and in the hook's diagnostic, and `"source": "user"`, `"repo"`
 or `"bundled"` in `abcd rules --json`. A disabled set names every file whose kill
 switch is set.
 
+**An override's words render as text.** Each rule an override domain carries is
+rendered inside a tilde fence under its bullet, one tilde longer than the
+longest run of tildes or backticks in the rule and never shorter than three, so
+a reader that renders the block as markdown shows the rule as written: a `#`
+line, a `===` underline or an `<h2>` in it cannot become a heading that wears
+no override label (iss-2609020219265817). A bundled domain's rules are abcd's
+own and keep their markdown.
+
 **Known limitation.** Replacement is per field, so a user or repo layer cannot
 add one rule to a bundled domain's list: it restates the list. A third layer
 makes that grain more visible; finer-grained merging, detecting a repo file that
@@ -780,7 +805,7 @@ iss-2608261550580260):
 
 ```json
 {
-  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
              "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
@@ -1024,7 +1049,7 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus seven build-time binaries
+├── cmd/                                # the shipped entrypoint plus eight build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
@@ -1032,8 +1057,9 @@ abcd/
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
+│   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
-│                                       #   The seven are developer tooling, not user surface: they run
+│                                       #   The eight are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
