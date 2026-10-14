@@ -431,10 +431,12 @@ func TestCloseScanFindingRefusesShowAndClose(t *testing.T) {
 // TestCloseRefusesTextNamingAnotherEmbargoedAdvisory: the reporter reads the
 // closing text, so a text naming another advisory still under embargo, by
 // its id, reserved CVE id or title, refuses the show and the close alike
-// before anything is sent, saying why without repeating it. The advisory's
-// own id and a published advisory's id pass.
+// before anything is sent, saying why without repeating it. A closed
+// advisory stays private on GitHub, so its title is refused too. The
+// advisory's own id and a published advisory's id pass.
 func TestCloseRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
 	const otherTitle = "a sample sibling report title"
+	const closedTitle = "a sample report closed earlier"
 	for name, tc := range map[string]struct {
 		line   string
 		refuse bool
@@ -442,6 +444,7 @@ func TestCloseRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
 		"other id":     {"see also " + strings.ToLower(ghsaClosed), true},
 		"other cve":    {"tracked with " + cveOpen, true},
 		"other title":  {"like " + strings.ToUpper(otherTitle), true},
+		"closed title": {"like " + strings.ToUpper(closedTitle), true},
 		"own id":       {"this is GHSA-xxxx-xxxx-xxxx", false},
 		"published id": {"as in " + ghsaPublished, false},
 	} {
@@ -456,7 +459,9 @@ func TestCloseRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
 				Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000002", Title: otherTitle, CVEID: strp(cveOpen),
 					Severity: "minor", ForgeState: "triage"},
 				Advisory{GHSAID: ghsaPublished, IssueID: "iss-2610120000000003", Title: titlePublishd, CVEID: strp(cvePublished),
-					Severity: "major", ForgeState: "published", Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at})
+					Severity: "major", ForgeState: "published", Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at},
+				Advisory{GHSAID: "GHSA-cccc-cccc-cccc", IssueID: "iss-2610120000000004", Title: closedTitle, Severity: "minor",
+					ForgeState: "closed", Verdict: strp(VerdictNotAVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, Reason: strp("documented"), ClosedAt: &at})
 			if err := cf.s.SaveState(st); err != nil {
 				t.Fatal(err)
 			}
@@ -470,7 +475,7 @@ func TestCloseRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
 			for _, approve := range []string{"", strings.Repeat("0", 64)} {
 				_, err := cf.close(approve)
 				mustRefuse(t, err, "another advisory still under embargo")
-				for _, leak := range []string{ghsaClosed, strings.ToLower(ghsaClosed), cveOpen, otherTitle} {
+				for _, leak := range []string{ghsaClosed, strings.ToLower(ghsaClosed), cveOpen, otherTitle, closedTitle} {
 					if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(leak)) {
 						t.Fatalf("the refusal repeats the finding: %v", err)
 					}

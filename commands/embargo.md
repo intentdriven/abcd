@@ -76,9 +76,9 @@ below a separator line. Without `--approve` it sends nothing but a read: show
 the user `text` exactly as returned, then `approve_with`. The reporter reads
 that text, so it is refused before it is shown when it carries a secret, a
 name the private-names layer bans, or another advisory still under embargo
-(its id, reserved CVE id or title); the refusal names the kind and the line,
-never the match, and the remedy is to record the verdict again with a reason
-that does not carry it.
+(its id, reserved CVE id or title, a closed advisory's title included); the
+refusal names the kind and the line, never the match, and the remedy is to
+record the verdict again with a reason that does not carry it.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in
 this session, has read that text and said yes to it. Never supply the digest on
@@ -140,7 +140,8 @@ patched version that gives, and the affected range in GitHub's form.
 `left_out` names each advisory the plan does not publish and why: its record
 is not resolved in the release, its fix is in no release tag, its package is
 not set on GitHub, or its text carries a secret, a private name, or another
-advisory still under embargo. Show the user the whole plan, then
+advisory still under embargo (a closed one's title included: it stays private
+on GitHub). Show the user the whole plan, then
 `approve_with`.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in

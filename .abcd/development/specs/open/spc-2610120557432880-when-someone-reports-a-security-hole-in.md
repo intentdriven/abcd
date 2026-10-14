@@ -243,7 +243,11 @@ in the set):
 3. its `title`, whitespace-normalised and matched case-insensitively, until
    `closed_at` is set: the reporter chose it and nothing will publish it, so a
    closed advisory's title held forever (one such as "Merge pull request")
-   would refuse every range after it, while its id and CVE id stay;
+   would refuse every range after it, while its id and CVE id stay. This
+   applies to the range and file check alone: the text another advisory
+   publishes, and a closing text its reporter reads, are still refused a
+   closed advisory's title, since the closed advisory stays private on
+   GitHub;
 4. the store path in three forms: absolute, `~/`-relative, and the
    `worktrees/<root-sha>/embargo` fragment; and `.abcd/.work.local/embargo`.
 
@@ -426,7 +430,11 @@ Fixes from the security review of 2026-10-12, each held by a named test:
 - **Step 7, criterion 6: a closed advisory's title.** It stayed in the deny
   set forever; it now leaves it once `closed_at` is set, keeping the id and
   CVE id (TestCheckRefusesClosedUnpublishedGHSA,
-  TestCheckKeepsClosedAdvisorysCVE, TestPlanLeavesOutAdvisoryNamingAnother).
+  TestCheckKeepsClosedAdvisorysCVE). It leaves the range and file check's
+  set only: a publication text or a closing text naming a closed advisory's
+  title is still refused, since that advisory stays private on GitHub
+  (TestPlanLeavesOutAdvisoryNamingAnother,
+  TestCloseRefusesTextNamingAnotherEmbargoedAdvisory).
 - **Steps 6, 8 and 9, criteria 5, 7 and 9: a confirmed act left unrecorded.**
   A publication GitHub confirmed whose `published_at` could not be saved, or
   a close GitHub accepted whose read-back failed, left the advisory under

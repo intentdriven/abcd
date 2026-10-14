@@ -351,9 +351,9 @@ func TestScanFindingLeavesAdvisoryOut(t *testing.T) {
 // TestPlanLeavesOutAdvisoryNamingAnother: an advisory whose text names
 // another advisory still under embargo (its id, reserved CVE id, or its
 // title by the check's title rule) is left out, naming why and never the
-// other advisory, since publishing it would disclose the other one. Naming
-// itself, an advisory already published, or a closed advisory's title, does
-// not.
+// other advisory, since publishing it would disclose the other one. A closed
+// advisory stays private on GitHub, so its title is refused too. Naming
+// itself, or an advisory already published, does not.
 func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 	at := fixedNow
 	other := Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000003", Title: titleClosed, CVEID: strp(cveOpen), Severity: "minor",
@@ -370,7 +370,7 @@ func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 		"other id":        {"also see " + strings.ToLower(ghsaClosed), true},
 		"other cve":       {"tracked with " + cveOpen, true},
 		"other title":     {"related to " + strings.ToUpper(siblingTitle), true},
-		"closed title":    {"related to " + strings.ToUpper(titleClosed), false},
+		"closed title":    {"related to " + strings.ToUpper(titleClosed), true},
 		"same-plan id":    {"found with " + ghsaPublic, true},
 		"own id":          {"this is " + ghsaOpen, false},
 		"published id":    {"like " + ghsaPublished + ": " + titlePublishd, false},
@@ -399,7 +399,7 @@ func TestPlanLeavesOutAdvisoryNamingAnother(t *testing.T) {
 				t.Fatalf("plan %+v", p)
 			}
 			low := strings.ToLower(r)
-			for _, s := range []string{ghsaClosed, ghsaPublic, cveOpen, siblingTitle} {
+			for _, s := range []string{ghsaClosed, ghsaPublic, cveOpen, siblingTitle, titleClosed} {
 				if strings.Contains(low, strings.ToLower(s)) {
 					t.Fatalf("the reason repeats %q: %q", s, r)
 				}

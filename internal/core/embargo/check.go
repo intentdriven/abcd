@@ -463,7 +463,7 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 				"drop it from --allow; only an advisory already public may be allowed")
 		}
 	}
-	ds.addEmbargoed(st, "")
+	ds.addEmbargoed(st, "", true)
 	if ds.embargo == 0 {
 		return ds, nil
 	}
@@ -487,12 +487,16 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 // addEmbargoed adds every advisory under embargo but the one with id skip:
 // each not yet published (a closed one stays private on GitHub, so it stays
 // in the set), by its id and reserved CVE id, and by its title unless it was
-// moved to the public track (that issue is fixed in the open), is closed, or
-// is shorter than minTitleRunes; and each pending a severity, the same way.
-// A closed advisory's title leaves the set because its reporter chose it and
-// nothing will ever publish it: held forever, a title such as "Merge pull
-// request" would refuse every range after it. Its id and CVE id stay.
-func (ds *denySet) addEmbargoed(st State, skip string) {
+// moved to the public track (that issue is fixed in the open), is shorter
+// than minTitleRunes, or is closed while dropClosedTitles is set; and each
+// pending a severity, the same way. Only the range and file check sets
+// dropClosedTitles: a closed advisory's title was chosen by its reporter and
+// nothing will ever publish it, so held there forever a title such as "Merge
+// pull request" would refuse every range after it. The text another
+// advisory publishes, or a closing text its reporter reads, still refuses
+// it: the closed advisory stays private on GitHub. Its id and CVE id stay
+// in every set.
+func (ds *denySet) addEmbargoed(st State, skip string, dropClosedTitles bool) {
 	for _, a := range st.Advisories {
 		if a.PublishedAt != nil || (skip != "" && canonGHSA(a.GHSAID) == canonGHSA(skip)) {
 			continue
@@ -502,7 +506,7 @@ func (ds *denySet) addEmbargoed(st State, skip string) {
 		if a.CVEID != nil {
 			ds.add(*a.CVEID, KindReservedCVE, true)
 		}
-		if a.ClosedAt == nil && (a.Verdict == nil || *a.Verdict != VerdictPublicTrack) {
+		if (a.ClosedAt == nil || !dropClosedTitles) && (a.Verdict == nil || *a.Verdict != VerdictPublicTrack) {
 			ds.addTitle(a.Title)
 		}
 	}
@@ -529,13 +533,14 @@ func (ds *denySet) addTitle(title string) {
 }
 
 // othersDenySet is the deny set an advisory's own text is held to before it
-// is published: every other advisory still under embargo, by id, reserved
-// CVE id and title, so publishing one never discloses another. An advisory id
+// is published or closed: every other advisory still under embargo, by id,
+// reserved CVE id and title, a closed one's title included (it is private on
+// GitHub still), so publishing one never discloses another. An advisory id
 // the store does not hold is not refused here: an advisory may cite another
 // project's, already public.
 func othersDenySet(st State, self string) denySet {
 	ds := denySet{}
-	ds.addEmbargoed(st, self)
+	ds.addEmbargoed(st, self, false)
 	return ds
 }
 
