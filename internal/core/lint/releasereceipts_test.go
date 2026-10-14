@@ -425,3 +425,39 @@ func TestCheckReleaseReceiptsRefusesACloneWithoutItsTags(t *testing.T) {
 		t.Fatalf("with its release tags present the same tree must pass, got %+v, %v", check, err)
 	}
 }
+
+// A managed repository that never carried the release-gate manifest is not
+// judged by its release tags, so the release job admits it whatever tags it
+// has: tagged without the v prefix, or never tagged at all. The local check
+// warns there rather than refuse a tree the release job admits, and the
+// warning does not promise that a fetch clears it.
+func TestCheckReleaseReceiptsOnlyWarnsAboutTagsOutsideTheManifestEra(t *testing.T) {
+	r, _ := releaseFixture(t)
+	r.Remove(".abcd/development/release-gate/manifest.json")
+	r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [1.1.0] - 2026-02-01\n\n## [1.0.0] - 2026-01-01\n")
+	r.Commit("roll 1.1.0 (content)")
+	r.Git("tag", "1.0.0", "HEAD~1")
+	roll := r.Git("rev-parse", "HEAD")
+	dir := ".abcd/work/reviews/" + roll + "/"
+	r.Write(dir+"docs-currency-reviewer.json", promote("docs-currency-reviewer", roll))
+	r.Write(dir+"iss35-brief-surface-crosscheck.json", promote("iss35-brief-surface-crosscheck", roll))
+	r.Commit("receipts")
+
+	check, err := lint.CheckReleaseReceipts(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.Pass || len(check.Problems) != 0 {
+		t.Fatalf("a repository outside the manifest era must not be refused for its tags, got %+v", check)
+	}
+	warned := false
+	for _, w := range check.Warnings {
+		warned = warned || strings.Contains(w, "no release tags")
+		if strings.Contains(w, "and run the check again") {
+			t.Errorf("the warning must not promise that a fetch clears it: %q", w)
+		}
+	}
+	if !warned {
+		t.Errorf("the missing tags must still be named as a warning, got %+v", check.Warnings)
+	}
+}

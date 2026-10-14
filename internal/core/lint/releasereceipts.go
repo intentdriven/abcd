@@ -139,6 +139,9 @@ type ReceiptCheck struct {
 	// way round: any such change refuses. A ledger change no deferred finding
 	// names is no input, so a peer's concurrent capture is left alone.
 	Uncommitted []string `json:"uncommitted,omitempty"`
+	// Warnings are what the local check notices but does not refuse on,
+	// because the release job would not refuse on it either.
+	Warnings []string `json:"warnings,omitempty"`
 	// Pass is the verdict: exactly when the release job's receipt gate admits
 	// the same repository state.
 	Pass bool `json:"pass"`
@@ -204,16 +207,19 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 		})
 	}
 
-	// The release job checks out full history with its tags, and the gate
-	// judges a deleted manifest or a backdated version by them. A clone with no
-	// release tag, while CHANGELOG.md names an earlier release than the one
+	// The release job checks out full history with its tags, and in the
+	// manifest era the gate judges the release's version by them. A clone with
+	// no release tag, while CHANGELOG.md names an earlier release than the one
 	// cut, cannot reach that verdict, so the local check refuses rather than
-	// pass a tree the release job may refuse. A first release, with no earlier
-	// release to have tagged, is not refused.
-	if problem, err := missingTagsProblem(root); err != nil {
+	// pass a tree the release job may refuse. Outside the manifest era the
+	// tags decide nothing, so it only warns. A first release, with no earlier
+	// release to have tagged, is neither.
+	if msg, refuse, err := missingTagsProblem(root); err != nil {
 		return ReceiptCheck{}, err
-	} else if problem != "" {
-		check.Problems = append(check.Problems, ReceiptProblem{Path: "CHANGELOG.md", Message: problem})
+	} else if refuse {
+		check.Problems = append(check.Problems, ReceiptProblem{Path: "CHANGELOG.md", Message: msg})
+	} else if msg != "" {
+		check.Warnings = append(check.Warnings, msg)
 	}
 
 	// The repository's content filters are blanked: over receipts whose index
@@ -249,23 +255,36 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 	return check, nil
 }
 
-// missingTagsProblem is the local check's refusal of a clone that carries no
-// release tag while CHANGELOG.md names more than one dated release, or "".
-func missingTagsProblem(root string) (string, error) {
+// missingTagsProblem names a clone that carries no vX.Y.Z release tag while
+// CHANGELOG.md names more than one dated release, and reports whether the
+// local check refuses on it: only when the tree carries the release-gate
+// manifest, where the gate judges the release's version by the tags. A
+// repository outside the manifest era — tagged without the v prefix, or never
+// tagged — is admitted by the release job, so it is a warning there, and
+// neither message promises that a fetch clears it.
+func missingTagsProblem(root string) (msg string, refuse bool, err error) {
 	releases, _, err := changelog.DatedReleases(root)
 	if err != nil || len(releases) < 2 {
-		return "", err
+		return "", false, err
 	}
 	tags, err := releaseTags(root)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if len(tags) > 0 {
-		return "", nil
+		return "", false, nil
 	}
-	return "this clone carries no release tags, though CHANGELOG.md names " + strconv.Itoa(len(releases)-1) +
-		" earlier release(s); the release job reads the tags to judge the release-gate manifest's era and the release's version, " +
-		"so fetch them (git fetch --tags) and run the check again", nil
+	msg = "this clone carries no release tags (vX.Y.Z), though CHANGELOG.md names " + strconv.Itoa(len(releases)-1) + " earlier release(s)"
+	_, err = os.Lstat(filepath.Join(root, filepath.FromSlash(releaseGateManifestPath)))
+	switch {
+	case err == nil:
+		return msg + "; the release job reads the release tags to judge the release's version against the earlier releases, " +
+			"so this check cannot reach its verdict: if the clone was made without its tags, fetch them (git fetch --tags)", true, nil
+	case os.IsNotExist(err):
+		return msg + "; outside the release-gate manifest's era the tags decide nothing, so this is not a refusal", false, nil
+	default:
+		return "", false, err
+	}
 }
 
 // verdictInput reports whether a git status line concerns an input of the

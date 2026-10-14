@@ -103,6 +103,9 @@ func renderReceiptCheck(w io.Writer, c lint.ReceiptCheck) {
 			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(u))
 		}
 	}
+	for _, warning := range c.Warnings {
+		fmt.Fprintf(w, "  warning: %s\n", termsafe.Sanitize(scrubMessage(warning)))
+	}
 	if c.Pass {
 		fmt.Fprintln(w, "  the release job's receipt gate admits this state.")
 	}
