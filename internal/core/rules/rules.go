@@ -896,7 +896,7 @@ func renderDomain(d ResolvedDomain) string {
 	for _, r := range d.Rules {
 		var body string
 		if fence {
-			body = fenceRuleBody(r)
+			body = FenceRuleBody(r)
 		} else {
 			body = sanitizeRuleBody(r)
 		}
@@ -911,7 +911,7 @@ func renderDomain(d ResolvedDomain) string {
 	return b.String()
 }
 
-// fenceRuleBody renders an override's rule body as a fenced code block inside
+// FenceRuleBody renders an override's rule body as a fenced code block inside
 // its bullet. The line-start contract the indent pass of sanitizeRuleBody
 // defends is not the only reader of the injected block: a markdown renderer
 // reads "- # x", a setext underline or an "<h2>" HTML block as a heading, which
@@ -925,7 +925,16 @@ func renderDomain(d ResolvedDomain) string {
 // flush-left. The body's own text is unchanged apart from the normalisation
 // and control-character mask sanitizeRuleBody also applies. An empty body
 // renders to "" so the caller drops it.
-func fenceRuleBody(r string) string {
+//
+// It is exported as the tree's one fence for another party's text under a
+// "- " bullet: the memory recall fences every note body through it
+// (spc-2610111627213138), so a note from a repository's committed
+// .abcd/memory.json can no more put a heading in front of the reader than an
+// override's rule can. One primitive, never a copy. The returned text starts
+// with the opening fence and carries no indent on that first line, so a
+// caller placing it on a line of its own prefixes "  " to reach the bullet's
+// content column.
+func FenceRuleBody(r string) string {
 	lines := ruleBodyLines(r)
 	if len(lines) == 1 && lines[0] == "" {
 		return ""
@@ -978,7 +987,7 @@ func sanitizeRuleBody(r string) string {
 		// "#" cannot forge a heading. The contract defended is the line-start
 		// one the host-side parser splits on ("## " flush-left); CommonMark
 		// would still read a two-space "## x" as a heading, which is why an
-		// override's body is fenced instead (fenceRuleBody). A line already
+		// override's body is fenced instead (FenceRuleBody). A line already
 		// indented keeps its own deeper indent, and a blank line stays blank,
 		// so the pass is a fixed point — rendered text fed back as a body
 		// re-renders unchanged.
@@ -1122,8 +1131,8 @@ func Hits(d ResolvedDomain, prompt string) []string {
 }
 
 // SanitizeRuleBody is the rule body's render-safety pass (sanitizeRuleBody),
-// exported so the memory recall renders a note under its "- " bullet through
-// the one pass that keeps a rule body from forging a heading or a sibling:
-// control and bidirectional characters masked, every continuation line
-// indented under the bullet.
+// exported so the memory recall renders a note's head line — its id, its
+// layer and its one-line title — through the same mask a rule body takes:
+// control and bidirectional characters masked, any continuation line indented
+// under the bullet. A note's body is fenced instead (FenceRuleBody).
 func SanitizeRuleBody(r string) string { return sanitizeRuleBody(r) }

@@ -38,6 +38,25 @@ type Result struct {
 	Omitted  []string
 	Ledger   map[string]string
 	RootErr  error
+
+	// layers is each candidate's layer, by key, for Labels.
+	layers map[string]string
+}
+
+// Labels names keys as the hook's diagnostic does, each with its layer —
+// "mem-… (project)", "mem-… (machine)" — so the out-of-band log says whose
+// words went into the context, as the rules line's "(repo override)" does.
+// A key this recall did not take or omit is named bare.
+func (r Result) Labels(keys []string) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if layer := r.layers[k]; layer != "" {
+			out = append(out, k+" ("+layer+")")
+		} else {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // Recall matches the items against the prompt, drops every candidate already
@@ -67,6 +86,10 @@ func Recall(req Request) Result {
 	if len(fresh) == 0 {
 		return res
 	}
+	res.layers = make(map[string]string, len(fresh))
+	for _, it := range fresh {
+		res.layers[it.Key] = it.Layer
+	}
 	var b strings.Builder
 	size := len(headerLine)
 	for i, it := range fresh {
@@ -90,11 +113,13 @@ func Recall(req Request) Result {
 
 // signature is the ledger's key for an item's content, never for the form it
 // was rendered in, so a later change of form never sends an item again while
-// a change of its words does. FNV-1a, as the rules ledger: dedup, not
-// security.
+// a change of its words does. The layer is part of the content: it is whose
+// words these are, and the rendered label says so, so a note promoted from
+// the machine's file into the project's is sent again under its new label.
+// FNV-1a, as the rules ledger: dedup, not security.
 func signature(it Item) string {
 	h := fnv.New64a()
-	for _, part := range append([]string{it.Key, it.Title, it.Body}, it.Recall...) {
+	for _, part := range append([]string{it.Key, it.Layer, it.Title, it.Body}, it.Recall...) {
 		_, _ = h.Write([]byte(part))
 		_, _ = h.Write([]byte{0})
 	}

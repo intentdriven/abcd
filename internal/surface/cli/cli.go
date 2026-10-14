@@ -1766,10 +1766,16 @@ exits 0, so the hook can never wedge a session.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			// Each note id carries its layer ("mem-… (project)"), as the
+			// rules line's names carry theirs, so the log says whether the
+			// words came from this repository's committed file or from the
+			// person's own notes.
 			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) %v, %d bytes", len(mem.Recalled), mem.Recalled, len(mem.Text))
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) [%s], %d bytes", len(mem.Recalled),
+					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
 				if len(mem.Omitted) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) %v did not fit this turn's budget and are tried again on the next", len(mem.Omitted), mem.Omitted)
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) [%s] did not fit this turn's budget and are tried again on the next",
+						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
