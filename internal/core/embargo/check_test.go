@@ -491,6 +491,12 @@ func TestCheckFoldsConfusablesAndLineWraps(t *testing.T) {
 			if strings.Contains(snippet, strings.TrimSpace(needle)) {
 				t.Fatalf("the snippet repeats the match: %q", res.Findings[0].Snippet)
 			}
+			// A wrapped match's snippet is only the line where it starts, so
+			// the whole folded needle can never appear there; the masked
+			// fragment before the break must still show none of its letters.
+			if strings.Contains(snippet, "xxxx") || strings.Contains(snippet, "2026-") {
+				t.Fatalf("the snippet repeats a fragment of the match: %q", res.Findings[0].Snippet)
+			}
 		})
 	}
 }
