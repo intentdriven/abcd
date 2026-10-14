@@ -948,3 +948,66 @@ func TestANewerStateIsReadAsANewerAbcdsWhateverItCarries(t *testing.T) {
 		t.Fatalf("a newer state is refused as a newer abcd's, keeping the run: %+v", r)
 	}
 }
+
+// TestATakenBackAnswerLeavesNoAttributionBehind: a placed return the loop
+// takes back off the path, because its receipt erred or its verifier refused
+// it and the review fell back, takes the answer recorded on its await with
+// it. A later hand-back of the same bytes, the host's now, is the host's, and
+// never stands as the route's beside a fallback saying the route did not
+// return.
+func TestATakenBackAnswerLeavesNoAttributionBehind(t *testing.T) {
+	for name, fail := range map[string]error{
+		"refused": refuse("receipt", "", "", "the return is not one this review can record", "correct it"),
+		"erred":   errors.New("the state could not be written"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+			prev := reviewReceipt
+			reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+				return StepResult{}, fail
+			}
+			_, _ = DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+			reviewReceipt = prev
+			st, _ := ReadState(repo.Root(), id)
+			if a := st.Lanes[0].awaiting(); a == nil || a.Answered != nil {
+				t.Fatalf("the review still awaits its return, with no answer recorded: %+v", a)
+			}
+			if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err != nil {
+				t.Fatal(err)
+			}
+			st, _ = ReadState(repo.Root(), id)
+			if v := st.Lanes[0].Validation[0].Validators[0]; v.Verdict != "SHIP" || v.Route != nil {
+				t.Fatalf("the host's hand-back of the same bytes is the host's: %+v", v)
+			}
+		})
+	}
+}
+
+// TestARestartReTellsAReviewWithNoAnswerRecorded: a restart re-tells a kept
+// review to a fresh agent, so whatever answer its await recorded is not the
+// fresh agent's, and goes.
+func TestARestartReTellsAReviewWithNoAnswerRecorded(t *testing.T) {
+	f, limited, _, until := keptValidator(t)
+	editState(t, f.repo.Root(), f.runID, func(doc map[string]any) {
+		for _, a := range doc["lanes"].([]any)[0].(map[string]any)["awaits"].([]any) {
+			if a.(map[string]any)["receipt"] == limited.Receipt {
+				a.(map[string]any)["answered"] = map[string]any{"route": "rp", "sha256": answerDigest([]byte(reviewerReturn("SHIP")))}
+			}
+		}
+	})
+	f.now = until
+	if err := os.Remove(f.abs(limited.Receipt)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
+		t.Fatalf("a restart takes the kept validator: %v", err)
+	}
+	if fresh := f.await(t, "lane-1", RoleRuthless); fresh.Answered != nil {
+		t.Fatalf("the re-told review has no answer recorded: %+v", fresh.Answered)
+	}
+}

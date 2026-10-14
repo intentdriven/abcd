@@ -130,7 +130,11 @@ choice, recorded for review; none changes a criterion.
   return as the route's with one file write, and is withdrawn. The run's
   state file is within that agent's reach too, so this opens no privilege the
   agent lacked; it moves the attribution into the lock-held state, where every
-  other attribution the run records lives (refined on review 2026-10-14). An
+  other attribution the run records lives (refined on review 2026-10-14). The
+  answer goes from the await wherever the review stops being the route's: a
+  placed return the loop takes back off the path, a review that falls back to
+  the host, and a restart that re-tells it to a fresh agent, so the same bytes
+  handed back later are the host's (refined on review 2026-10-14). An
   answer the loop could not place, because another invocation held the run's
   lock past the retries, is kept aside the same way, and the contention
   refusal names where it is; with the lock busy nothing records it as the
@@ -144,8 +148,9 @@ choice, recorded for review; none changes a criterion.
   out, outside the run's lock, as it starts a runner; the loop's change is
   confined to the validator stage's file (`validate.go`), but for the
   receipt's stamping of the route the verifier recognised (`loop.go`), the
-  await's `answered` and its schema version (`state.go`), and its masking
-  (`state_mask.go`) (refined on review 2026-10-14).
+  await's `answered` and its schema version (`state.go`), its masking
+  (`state_mask.go`), and its dropping on a fallback (`drive.go`) and a
+  restart (`restart.go`) (refined on review 2026-10-14).
 - 2026-10-12 (agent's choice, for review): **Bounds.** Ten seconds for the
   connection and the session's set-up, thirty minutes for the review call,
   8 MiB for an answer; the address is never proxied, a redirect is never

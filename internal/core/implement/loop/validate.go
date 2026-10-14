@@ -955,7 +955,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 			// The review is still open and nothing verified the return: it is
 			// taken back off the path, where the host's agent could otherwise
 			// hand it back as its own.
-			if rerr := removeRoundFile(repoRoot, aw.Receipt); rerr != nil {
+			if rerr := takeBack(repoRoot, runID, aw.Receipt); rerr != nil {
 				return res, errors.Join(err, rerr)
 			}
 			return res, err
@@ -971,7 +971,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 		// The verifier refused what the route returned: the return is taken
 		// back off the path, so the host's agent writes there afresh, and the
 		// review falls back like any other the route did not return.
-		if rerr := removeRoundFile(repoRoot, aw.Receipt); rerr != nil {
+		if rerr := takeBack(repoRoot, runID, aw.Receipt); rerr != nil {
 			return res, rerr
 		}
 		return fallBack(repoRoot, runID, res, aw, rr, &reviewFailure{runner.ReasonInvalid, err.Error()}, o)
@@ -1001,7 +1001,7 @@ func fallBack(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute,
 	if errors.As(cause, &why) {
 		fb.Reason = runner.Reason(why.Reason())
 	}
-	if err := retryContended(func() error { return recordFallback(repoRoot, runID, res.Lane, fb, o) }); err != nil {
+	if err := retryContended(func() error { return recordFallback(repoRoot, runID, res.Lane, aw.Receipt, fb, o) }); err != nil {
 		return res, err
 	}
 	res.Fallback = &fb
@@ -1081,6 +1081,41 @@ func validatorRoute(lane Lane, ret string) *runner.RouteRecord {
 		}
 	}
 	return nil
+}
+
+// takeBack takes the route's placed return off the review's return path rel,
+// under the run's lock, and drops the answer its await recorded, so nothing
+// left in the run's state names the route as the author of what is written
+// there next. The return goes first: a failure to write the state after it
+// leaves no answer of the route's at the path to be handed back.
+func takeBack(repoRoot, runID, rel string) error {
+	return retryContended(func() error {
+		return withLock(repoRoot, func(root *os.Root) error {
+			if err := root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("removing %s: %w", rel, err)
+			}
+			st, err := readStateIn(root, runID)
+			if err != nil {
+				return err
+			}
+			if !st.dropAnswer(repoRoot, rel) {
+				return nil
+			}
+			return writeState(root, st)
+		})
+	})
+}
+
+// dropAnswer drops the answer a route was recorded as placing on the await at
+// rel, and reports whether there was one.
+func (st *State) dropAnswer(repoRoot, rel string) bool {
+	i, k := st.findAwait(repoRoot, rel)
+	if i < 0 || st.Lanes[i].Awaits[k].Answered == nil {
+		return false
+	}
+	st.Lanes[i].Awaits = slices.Clone(st.Lanes[i].Awaits)
+	st.Lanes[i].Awaits[k].Answered = nil
+	return true
 }
 
 // removeRoundFile removes one file of a round, if it is there.
