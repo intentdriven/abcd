@@ -1044,3 +1044,35 @@ func TestAnAuditorsVerdictIsNeverTheRoutes(t *testing.T) {
 		}
 	}
 }
+
+// TestASecondAnswerKeptAsideNeverReplacesTheFirst: two steps whose route
+// answered while the run's lock stayed busy each keep their answer aside; the
+// second never replaces the first, but takes the next numbered name, and its
+// refusal names the file it wrote.
+func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))
+	answers := []string{reviewerReturn("SHIP"), reviewerReturn("FIX FIRST")}
+	calls := 0
+	srv := rpServer(func(string) string { calls++; return answers[calls-1] })
+	rr := rpRoute(t, srv)
+	prev := placeRouteReturn
+	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	t.Cleanup(func() { placeRouteReturn = prev })
+	for i, want := range []string{dir + "/rp-return.md", dir + "/rp-return-2.md"} {
+		_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rr)
+		if r, ok := AsRefusal(err); !ok || !r.Contention || !strings.Contains(r.Remedy, want+" ") {
+			t.Fatalf("step %d keeps its answer aside at %s and names it: %v", i+1, want, err)
+		}
+		if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(want))); err != nil || string(b) != answers[i] {
+			t.Fatalf("step %d's answer stands at %s: %q %v", i+1, want, b, err)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(dir+"/rp-return.md"))); string(b) != answers[0] {
+		t.Fatalf("the first answer kept aside stands: %q", b)
+	}
+}

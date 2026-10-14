@@ -1153,15 +1153,48 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 	return res, nil
 }
 
+// maxAsides bounds the answers kept aside beside one review's return.
+const maxAsides = 99
+
 // keepAside writes the route's answer beside the review's return and reports
-// the path it wrote. Nothing records the answer as the route's: no file beside
-// a return says who wrote it, and only placeReturn's locked write does.
+// the path it wrote: <route>-return.md, or the next numbered name
+// (<route>-return-2.md, ...) when an earlier answer is kept there, so an
+// answer kept aside is never replaced. Nothing records the answer as the
+// route's: no file beside a return says who wrote it, and only placeReturn's
+// locked write does.
 func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, error) {
-	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/" + rr.Name + "-return.md"
-	if err := writeRoundFile(repoRoot, aside, []byte(ret)); err != nil {
-		return "", err
+	dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))
+	if err := fsutil.EnsureRealDirAll(repoRoot, dir, dirPerm); err != nil {
+		return "", fmt.Errorf("creating the review's directory: %w", err)
 	}
-	return aside, nil
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("opening the checkout: %w", err)
+	}
+	defer root.Close()
+	for n := 1; n <= maxAsides; n++ {
+		aside := dir + "/" + rr.Name + "-return.md"
+		if n > 1 {
+			aside = fmt.Sprintf("%s/%s-return-%d.md", dir, rr.Name, n)
+		}
+		f, err := root.OpenFile(aside, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("writing %s: %w", aside, err)
+		}
+		_, werr := f.WriteString(ret)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			_ = root.Remove(aside)
+			return "", fmt.Errorf("writing %s: %w", aside, werr)
+		}
+		return aside, nil
+	}
+	return "", fmt.Errorf("%d answers are already kept aside beside %s; move them off before the route answers again", maxAsides, aw.Receipt)
 }
 
 // lockRetries bounds the retries of a write the route's result needs when
