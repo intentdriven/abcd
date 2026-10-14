@@ -323,7 +323,7 @@ func TestLaunchShipEmitEndsWithTheReceiptsProtocol(t *testing.T) {
 	if want := "  " + strconv.Itoa(len(proto.Steps)) + ". " + proto.Steps[len(proto.Steps)-1]; lastLine != want {
 		t.Errorf("the render must END with the protocol's last step;\n got %q\nwant %q", lastLine, want)
 	}
-	for _, want := range []string{"docs-currency-reviewer", "exactly two commits", "abcd launch receipts"} {
+	for _, want := range []string{"docs-currency-reviewer", "the roll, then the receipts naming it", "fixed, invalid or deferred", "abcd launch receipts"} {
 		if !strings.Contains(tail, want) {
 			t.Errorf("protocol render lacks %q:\n%s", want, tail)
 		}

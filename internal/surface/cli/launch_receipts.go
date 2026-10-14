@@ -29,7 +29,8 @@ import (
 //   - 0 — the release job's receipt gate admits this state, or the release
 //     workflow arms no receipt gate (nothing is required).
 //   - 1 — it refuses; the report names each missing or non-PROMOTE receipt and
-//     the commit it must name.
+//     the commit it must name, each finding whose disposition the release gate
+//     refuses, and each uncommitted receipt or capture.
 //   - 2 — a structural fault (the repository or its workflow could not be read).
 func newLaunchReceiptsCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
@@ -97,7 +98,7 @@ func renderReceiptCheck(w io.Writer, c lint.ReceiptCheck) {
 		fmt.Fprintf(w, "  - %s: %s\n", termsafe.Sanitize(label), termsafe.Sanitize(scrubMessage(p.Message)))
 	}
 	if len(c.Uncommitted) > 0 {
-		fmt.Fprintln(w, "  uncommitted receipt changes (the release job reads the committed tree, so commit them first):")
+		fmt.Fprintln(w, "  uncommitted receipt or capture changes (the release job reads the committed tree, so commit them first):")
 		for _, u := range c.Uncommitted {
 			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(u))
 		}
