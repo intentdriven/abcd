@@ -23,6 +23,12 @@ import (
 // checkout is P's, a GitHub no-reply identity.
 func drainLandFixture(t *testing.T) *landFixture {
 	t.Helper()
+	return drainLandFixtureWith(t, queueRuleset("MERGE"))
+}
+
+// drainLandFixtureWith is drainLandFixture with the ruleset mirror given.
+func drainLandFixtureWith(t *testing.T, ruleset string) *landFixture {
+	t.Helper()
 	repo := drainRepoAt(t, "AGENTS.md")
 	asPat(t, repo)
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
@@ -31,7 +37,7 @@ func drainLandFixture(t *testing.T) *landFixture {
 	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
 		t.Setenv(k, "pat@example.com")
 	}
-	repo.Write(".abcd/work/rulesets/main-protection.json", queueRuleset("MERGE"))
+	repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
 	repo.Commit("the ruleset mirror")
 	bare := filepath.Join(t.TempDir(), "origin.git")
 	gittest.InitBare(t, bare)
@@ -50,6 +56,17 @@ func drainLandFixture(t *testing.T) *landFixture {
 // armed pull request: a fix commit and a receipt resolving the issue, a
 // passing round, the records, the push, the pull request and the arming.
 func (f *landFixture) armIssueLane(t *testing.T) Lane {
+	t.Helper()
+	l := f.parkIssueLane(t)
+	if !l.Landing.Armed {
+		t.Fatalf("the lane's pull request is armed: %+v", l.Landing)
+	}
+	return l
+}
+
+// parkIssueLane is armIssueLane up to the lane parked at land with its pull
+// request open, armed or left for a person.
+func (f *landFixture) parkIssueLane(t *testing.T) Lane {
 	t.Helper()
 	repo := f.repo
 	stepTo(t, repo, f.runID, f.stages, StageImplement)
@@ -76,8 +93,8 @@ func (f *landFixture) armIssueLane(t *testing.T) Lane {
 	f.step(t)
 	f.step(t)
 	l = currentLane(t, repo, f.runID)
-	if l.Landing == nil || !l.Landing.Armed || l.PR != 7 {
-		t.Fatalf("the lane's pull request is armed: %+v", l.Landing)
+	if l.Landing == nil || l.Landing.Merge == "" || l.PR != 7 {
+		t.Fatalf("the lane's pull request is open: %+v", l.Landing)
 	}
 	return l
 }

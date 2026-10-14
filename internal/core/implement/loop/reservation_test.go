@@ -322,16 +322,18 @@ func TestTheFenceRefusesAReleasedOrUnreadableReservation(t *testing.T) {
 	})
 }
 
-// queueRulesetTimed is queueRuleset("MERGE") whose merge queue waits minutes
-// for its checks.
+// queueRulesetTimed is unreviewedQueueRuleset("MERGE") whose merge queue waits
+// minutes for its checks: no rule requires a person's approval, so the fence's
+// lease is the queue's check timeout, not the day an approval takes.
 func queueRulesetTimed(minutes string) string {
-	return strings.Replace(queueRuleset("MERGE"), `"grouping_strategy":"ALLGREEN"`,
+	return strings.Replace(unreviewedQueueRuleset("MERGE"), `"grouping_strategy":"ALLGREEN"`,
 		`"grouping_strategy":"ALLGREEN","check_response_timeout_minutes":`+minutes, 1)
 }
 
-// TestTheFenceRenewsPastTheQueueTimeout is C43: when the reservation holds,
-// the fence renews it with max(the default lease, the queue's check timeout
-// plus fifteen minutes), clamped to a day, then arms the merge.
+// TestTheFenceRenewsPastTheQueueTimeout is C43: when the reservation holds and
+// no person's approval gates the merge, the fence renews it with max(the
+// default lease, the queue's check timeout plus fifteen minutes), clamped to a
+// day; the pull request is then left open for a person to merge.
 func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		minutes string
@@ -352,8 +354,8 @@ func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 			if after.parent != before.commit || after.expires.Sub(after.claimed) != tc.lease || after.claimed.Before(now) {
 				t.Fatalf("the fence renews with a %s lease: before %+v, after %+v", tc.lease, before, after)
 			}
-			if l := currentLane(t, f.repo, f.runID); l.Landing == nil || !l.Landing.Armed {
-				t.Fatalf("the merge is armed once the fence holds: %+v", l.Landing)
+			if l := currentLane(t, f.repo, f.runID); l.Landing == nil || l.Landing.Armed || l.Landing.Merge == "" {
+				t.Fatalf("the pull request is left open once the fence holds: %+v", l.Landing)
 			}
 		})
 	}
@@ -503,9 +505,10 @@ func TestLaneBranchRemovalLeavesTheReservationBranch(t *testing.T) {
 func TestALandedLaneLeavesAnotherPersonsReservation(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	l := f.armReserved(t)
-	// Q's clock reads past P's renewed lease and the margin: Q takes it over.
+	// Q's clock reads past P's renewed lease (a day, the merge waiting on a
+	// person's approval) and the margin: Q takes it over.
 	q := otherCopy(t, f.bare, quinnEmail)
-	later := time.Now().UTC().Truncate(time.Second).Add(2*time.Hour + 10*time.Minute)
+	later := time.Now().UTC().Truncate(time.Second).Add(24*time.Hour + 10*time.Minute)
 	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, clockAt(later)); err != nil || res.Act != claim.ActTakenOver {
 		t.Fatalf("Q takes the reservation over: %+v %v", res, err)
 	}

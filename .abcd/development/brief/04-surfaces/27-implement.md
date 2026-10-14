@@ -339,11 +339,14 @@ this copy, never reserving a released record again or taking one over. Before
 the landing's merge rule decides, the land fence fetches the reservation and
 arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it
-holds it is renewed with `max(the default lease, the queue's
-check_response_timeout_minutes + 15 minutes)`, clamped to a day, read from the
-ruleset mirror at the lane's base: that covers the queue's check timeout, not
-the time the pull request waits in the queue before its checks start, so after
-the arming the hold rests on later steps renewing it at half its lease. Once the run's last lane has landed, the
+holds it is renewed for a day where the ruleset mirror at the lane's base
+gates the merge behind a person's approval, and otherwise with `max(the
+default lease, the queue's check_response_timeout_minutes + 15 minutes)`,
+clamped to a day, which covers the queue's check timeout and not a person's
+wait. Past the fence the hold rests on renewals at half the lease: each step
+of the run, whatever its stage, and each drain move for a drain lane parked at
+land. A run neither stepped nor drained over for longer than its lease loses
+its reservation. Once the run's last lane has landed, the
 step pushes a tombstone over the reservation while it is still this person's
 from this copy, leaves another's as it stands and names the holder, and a
 tombstone that fails is named without undoing the landing; the lane branch

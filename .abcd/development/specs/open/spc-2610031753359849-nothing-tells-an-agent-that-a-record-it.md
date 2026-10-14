@@ -782,6 +782,21 @@ These are the facilitator's design calls; none changes a criterion.
     fail, and both land fences refuse, until one lapsed. A reserve naming its
     footprint, a renewal by the verb among them, is still checked, so a
     footprint is never widened onto another.
+  - A lane parked at land waiting on a person's merge (the final review,
+    2026-10-14, a blocking finding): nothing stepped a drain's parked run,
+    so its reservation lapsed about two hours after the fence and another
+    account's drain could take the issue while it was still open on main.
+    Every drain move now renews, at half its lease, the reservation of each
+    issue run parked at land (`finishMerged`, logged in the run's record),
+    and the fence renews for `lease.Max` where the mirror gates the merge
+    behind a person's approval (an approving review, or a code owner's), the
+    queue-timeout lease only otherwise. Past the fence a reservation holds
+    only while something renews it: a step of the run, whatever its stage, an
+    implementer's long stage included, or a drain move over its parked lane.
+    A run neither stepped nor drained over for longer than its lease loses
+    it; that limit stands and is stated on the implement page. A pull request
+    left open for a person to merge with no required approval takes the
+    queue-timeout lease and then those renewals.
   - Clock skew is bounded by the take-over margin and documented, not
     corrected. The expiry is the holder's clock judged by the reader's; the
     committer date is written by the same clock, so it bounds nothing. A

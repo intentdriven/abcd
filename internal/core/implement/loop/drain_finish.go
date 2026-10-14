@@ -73,6 +73,24 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 	if len(parked) == 0 {
 		return out, nil
 	}
+	// Every drain move keeps its parked lanes held (spc-2610031753359849): a
+	// pull request waiting on a person's merge can wait overnight, and
+	// nothing else steps the run, so each parked run's reservation is renewed
+	// here at half its lease, logged in the run's record.
+	for _, run := range parked {
+		if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+			if parkedAtLand(*st) < 0 {
+				return false, nil
+			}
+			logged := len(st.Record)
+			renewReservation(repoRoot, st, now)
+			return len(st.Record) != logged, nil
+		}); err != nil {
+			if _, ok := AsRefusal(err); !ok {
+				return nil, err
+			}
+		}
+	}
 	refused := func(run State, r *Refusal) DrainFinished {
 		return DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[parkedAtLand(run)].PR,
 			Note: fsutil.RedactHome(r.Reason + "; " + r.Remedy)}

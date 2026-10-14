@@ -1,0 +1,143 @@
+package loop
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
+)
+
+// A lane parked at land holds its reservation while it waits on a person's
+// merge (spc-2610031753359849 spec 2, the final review of 2026-10-14): every
+// drain move renews a parked lane's reservation at half its lease, and a
+// fence before a merge that waits on a person's approval renews for a day.
+
+// drainAt makes one drain move at root with o and, when it awaits the host
+// judgement, answers no, as drainToLane does for a fixture repository.
+func drainAt(t *testing.T, root string, o Options) DrainResult {
+	t.Helper()
+	res, err := Drain(root, o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Judging == nil {
+		return res
+	}
+	data, err := json.Marshal(judgementAnswer(res.Judging, JudgementNo, "", "the remedy changes neither what a user sees nor a trust boundary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, filepath.FromSlash(res.Judging.Answer))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Drain(root, o, DrainOptions{Judgement: path})
+	if err != nil {
+		t.Fatalf("the host's no on %s: %v", res.Judging.Issue, err)
+	}
+	return out
+}
+
+// TestADrainKeepsItsOpenPullRequestLanesHeld: a drain lane parked at land, its
+// pull request left open for a person, is renewed by each drain move at half
+// its lease, so across a three-hour wait it stays this copy's, and another
+// account's drain passes the issue over rather than taking the lapsed tip.
+func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
+	f := drainLandFixtureWith(t, unreviewedQueueRuleset("MERGE"))
+	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	l := f.parkIssueLane(t)
+	if l.Landing.Armed {
+		t.Fatalf("the pull request is left open for a person: %+v", l.Landing)
+	}
+	ref := claim.RefPrefix + secondIssue
+	parked := originReservation(t, f.bare, ref)
+	if parked.expires.Sub(parked.claimed) != 2*time.Hour {
+		t.Fatalf("a lane left open without a required approval is fenced with the default lease: %+v", parked)
+	}
+
+	start := parked.claimed
+	var at time.Time
+	for _, after := range []time.Duration{65 * time.Minute, 130 * time.Minute, 195 * time.Minute} {
+		at = start.Add(after)
+		now := at
+		drainAt(t, f.repo.Root(), Options{Now: func() time.Time { return now }})
+		tip := originReservation(t, f.bare, ref)
+		if tip.holder != "octo" || tip.released || tip.claimed.Before(at) {
+			t.Fatalf("the drain move at +%s renews the parked lane's reservation: %+v", after, tip)
+		}
+	}
+
+	// Another account, its clock at the end of the wait.
+	q := otherCopy(t, f.bare, quinnEmail)
+	if err := os.WriteFile(filepath.Join(q, ".git", "info", "exclude"), []byte(".abcd/.work.local/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"AGENTS.md"}},
+		claim.Options{Now: func() time.Time { return at }}); !errors.Is(err, claim.ErrBackOff) {
+		t.Fatalf("another account reserving the parked issue after three hours = %v; want the back-off", err)
+	}
+	qres := drainAt(t, q, Options{Now: func() time.Time { return at }})
+	i := slices.IndexFunc(qres.Passed, func(e Excluded) bool { return e.ID == secondIssue })
+	if i < 0 || qres.Passed[i].Check != CheckReservation || !strings.Contains(qres.Passed[i].Reason, "reserved by octo") {
+		t.Fatalf("another account's drain passes the parked issue over: passed %+v, lane %+v", qres.Passed, qres.Lane)
+	}
+}
+
+// TestTheFenceHoldsADayWhenTheMergeWaitsOnACodeOwner: a merge the ruleset
+// gates behind a person's approval (here a code-owner review, with a
+// CODEOWNERS file naming an owner) can wait overnight, so the fence renews the
+// reservation with the longest lease, a day, not the queue's check timeout.
+func TestTheFenceHoldsADayWhenTheMergeWaitsOnACodeOwner(t *testing.T) {
+	ruleset := `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
+		`"enforcement":"active","name":"main review","rules":[{"type":"deletion"},` +
+		`{"parameters":{"required_approving_review_count":0,"require_code_owner_review":true},"type":"pull_request"},` +
+		`{"parameters":{"merge_method":"MERGE","grouping_strategy":"ALLGREEN","check_response_timeout_minutes":90},"type":"merge_queue"}],"target":"branch"}` + "\n"
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-review.json": ruleset,
+		".github/CODEOWNERS":                   "* @octo\n",
+	})
+	f.toArm(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+	f.step(t)
+	tip := originReservation(t, f.bare, reservedRef)
+	if tip.expires.Sub(tip.claimed) != 24*time.Hour {
+		t.Fatalf("the fence renews for a day before a code owner's review: %s (%+v)", tip.expires.Sub(tip.claimed), tip)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing == nil || !l.Landing.Armed {
+		t.Fatalf("the merge is armed behind the review: %+v", l.Landing)
+	}
+}
+
+// TestAStepWhileAnImplementerWorksRenewsTheReservation: a long implementer
+// stage keeps its reservation while the run is stepped, since every step
+// renews at half the lease before it looks at the stage, even one that moves
+// nothing. A run nobody steps for longer than its lease loses it.
+func TestAStepWhileAnImplementerWorksRenewsTheReservation(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	stepTo(t, f.repo, f.runID, f.stages, StageImplement)
+	if res, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil || res.Awaiting == nil {
+		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-61*time.Minute), "internal/widget")
+	before := originReservation(t, f.bare, reservedRef)
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		if r, ok := AsRefusal(err); !ok || !r.Contention {
+			t.Fatalf("a step while the implementer works: %v", err)
+		}
+	}
+	if after := originReservation(t, f.bare, reservedRef); after.parent != before.commit || after.claimed.Before(now) {
+		t.Fatalf("the step renews while the implementer works: before %+v, after %+v", before, after)
+	}
+}

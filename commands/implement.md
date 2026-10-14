@@ -516,14 +516,19 @@ nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your copy on
 another computer, or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
-(exit 3 when nothing else moves). When it holds, the fence renews it with a
-lease of the merge queue's `check_response_timeout_minutes` (read from the
-mirror at the lane's base) plus fifteen minutes, or the default two hours when
-that is longer or no mirror states a timeout, clamped to a day, so the
-reservation covers the queue's check timeout. The time the pull request waits
-in the queue before its checks start is not covered: once armed, the
-reservation holds because each later step renews it at half its lease, so
-keep stepping the run while it waits on the merge. A run whose state records no
+(exit 3 when nothing else moves). When it holds, the fence renews it. Where the
+mirror at the lane's base gates the merge behind a person's approval (an
+approving review, or a code owner's review with a CODEOWNERS file naming an
+owner), the merge can wait overnight, so the lease is a day. Otherwise it is
+the merge queue's `check_response_timeout_minutes` plus fifteen minutes, or
+the default two hours when that is longer or no mirror states a timeout,
+clamped to a day: that covers the queue's check timeout, not the time a pull
+request left for a person waits. Past the fence the reservation holds only
+while something renews it at half its lease: each step of the run does,
+whatever its stage, an implementer's long stage included, and each `abcd
+drain` move does for a drain's lane parked at land. A run nobody steps, and no
+drain moves over, for longer than its lease loses the reservation, and another
+person may then take the record over. A run whose state records no
 reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the

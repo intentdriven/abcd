@@ -179,7 +179,9 @@ what it did in `next`:
   the same way by the run's own step; the drain's part ended at the open pull
   request.
 - **It finishes merged lanes.** Every move, before it reads the window clock,
-  takes the landing's last step for each issue lane in the checkout parked at
+  renews the reservation of each issue lane parked at land at half its lease,
+  so a pull request waiting on a person's review stays held while the drain
+  keeps moving, and takes the landing's last step for each issue lane in the checkout parked at
   land whose pushed head is now on the default branch: the lane's worktree and
   branch are removed and the lane is done, during a pause included, since the
   cleanup does no new work. The lane may be this drain's, an ended drain's, or

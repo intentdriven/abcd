@@ -103,10 +103,17 @@ func renewFailed(st *State, now time.Time, err error) string {
 // stamp renders a time as a reservation carries one: RFC 3339, UTC.
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// fenceLease is the lease the land fence renews with: the default, or the
-// merge queue's check timeout plus fenceMargin when that is longer, clamped
-// to lease.Max.
-func fenceLease(checkTimeout time.Duration) time.Duration {
+// fenceLease is the lease the land fence renews with. A merge that waits on a
+// person's approval (a required approving review, or a code owner's) can
+// wait overnight, so it takes the longest lease, lease.Max. Otherwise it is
+// the default, or the merge queue's check timeout plus fenceMargin when that
+// is longer, clamped to lease.Max; what holds it past that is the renewals
+// that follow (a step's at half its lease, and every drain move's for a lane
+// parked at land).
+func fenceLease(checkTimeout time.Duration, approval bool) time.Duration {
+	if approval {
+		return lease.Max
+	}
 	term := lease.Default
 	if checkTimeout > 0 && checkTimeout+fenceMargin > term {
 		term = checkTimeout + fenceMargin
@@ -116,17 +123,15 @@ func fenceLease(checkTimeout time.Duration) time.Duration {
 
 // landFence is the land fence, at the top of the arming: it fetches the run's
 // reservation and refuses, arming nothing, unless the tip is this person's
-// from this copy and live; when it holds, it renews it with fenceLease, so the
-// reservation covers the queue's check timeout. The wait in the queue before
-// its checks run is not covered: later steps renew at half the lease. It
-// returns the renewed expiry, zero
+// from this copy and live; when it holds, it renews it with term, the
+// fenceLease of the merge rule. It returns the renewed expiry, zero
 // for a run that holds no reservation.
-func landFence(c Context, lane Lane, checkTimeout time.Duration) (time.Time, error) {
+func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 	id := c.State.Key
 	if c.State.ReservedAt == nil {
 		return time.Time{}, nil
 	}
-	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: fenceLease(checkTimeout)},
+	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term},
 		claimOptions(c.Now))
 	if err == nil {
 		return res.ExpiresAt, nil
