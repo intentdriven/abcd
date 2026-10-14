@@ -30,8 +30,8 @@ import (
 // standard-library code every git-execing test here runs under -race. So the
 // detector has nothing of this package's to watch, and instrumenting
 // those passes cost 125s against 6s uninstrumented on the same machine: a third
-// of this package's race time, on the macOS leg whose job is held to the merge
-// queue's 45-minute cap (iss-2609261924541555). The uninstrumented lane asserts
+// of this package's race time, on the macOS leg whose job is held to a
+// 60-minute ceiling (iss-2609261924541555). The uninstrumented lane asserts
 // the same cap on both CI legs.
 func TestHistoryCaptureAcceptsWhatTheHooksAccept(t *testing.T) {
 	if raceEnabled {
