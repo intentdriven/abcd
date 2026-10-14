@@ -5,9 +5,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The trailer keys a reservation commit carries. They are prefixed and
@@ -216,7 +218,7 @@ func parseMessage(record, text string) (message, string) {
 		*f.into = f.into.UTC()
 	}
 	for _, p := range vals[keyFootprint] {
-		if !fsutil.ValidRelPath(p) {
+		if !validFootprint(p) {
 			return message{}, reasonFootprint
 		}
 		m.Footprint = append(m.Footprint, p)
@@ -225,4 +227,22 @@ func parseMessage(record, text string) (message, string) {
 		m.AssistedBy = v
 	}
 	return m, ""
+}
+
+// validFootprint reports whether p is a footprint path a reservation may carry:
+// a repository-relative path (fsutil.ValidRelPath) of printing runes only, no
+// C1 control, bidi mark or zero-width rune among them. The writer refuses any
+// other and the reader reads a tip carrying one as unreadable, so a footprint
+// that reaches a refusal or a listing cannot reorder or hide the text around
+// it.
+func validFootprint(p string) bool {
+	if !fsutil.ValidRelPath(p) || termsafe.Sanitize(p) != p {
+		return false
+	}
+	for _, r := range p {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
 }

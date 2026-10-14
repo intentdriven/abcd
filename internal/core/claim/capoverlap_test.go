@@ -113,7 +113,7 @@ func TestAnOverlappingFootprintIsRefusedNamingTheSharedPath(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := c.who.reserve(c.id, c.fp...)
-			want := c.path + " is in the footprint of iss-1" + held
+			want := `"` + c.path + `" is in the footprint of iss-1` + held
 			if !errors.Is(err, ErrBackOff) || err.Error() != want {
 				t.Fatalf("reserve %v = %v; want %q", c.fp, err, want)
 			}
@@ -143,7 +143,7 @@ func TestARenewalIsNeverWidenedPastAnotherLiveReservation(t *testing.T) {
 	}
 	tip := w.remoteTip("iss-1")
 	_, err := p.reserve("iss-1", "a.go", "b.go")
-	want := "b.go is in the footprint of iss-2, reserved by quinn until 2026-10-03T16:00:00Z; take other work; nothing was pushed"
+	want := `"b.go" is in the footprint of iss-2,` + " reserved by quinn until 2026-10-03T16:00:00Z; take other work; nothing was pushed"
 	if !errors.Is(err, ErrBackOff) || err.Error() != want {
 		t.Fatalf("a widening renewal = %v; want %q", err, want)
 	}

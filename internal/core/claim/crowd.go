@@ -44,7 +44,7 @@ func crowding(p *prepared, j judged, res Result) error {
 			for _, held := range r.Footprint {
 				if shared, ok := sharedPath(want, held); ok {
 					return backOff("%s is in the footprint of %s, reserved by %s until %s; take other work; %s",
-						shared, r.Record, r.Holder, stamp(r.EffectiveExpiry), nothingPushed)
+						echo(shared), r.Record, r.Holder, stamp(r.EffectiveExpiry), nothingPushed)
 				}
 			}
 		}

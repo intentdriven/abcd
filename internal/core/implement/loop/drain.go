@@ -35,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // DrainStateRel is the drain's state file, beside the runs. Its name is not a
@@ -508,7 +509,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			if !ok || (r.Stage == StageReservation && !r.Contention) {
 				return DrainResult{}, err
 			}
-			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: r.Reason})
+			// The reason may quote what another writer chose (a reserved
+			// footprint), and the agent driving the drain reads it.
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: termsafe.Sanitize(r.Reason)})
 			continue
 		}
 		st.Lanes = append(st.Lanes, DrainLane{Issue: v.ID, RunID: started.RunID, OpenedAt: now, Outcome: DrainLaneInProgress})

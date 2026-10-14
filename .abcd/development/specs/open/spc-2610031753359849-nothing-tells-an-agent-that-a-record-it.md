@@ -520,7 +520,7 @@ and each ends by saying nothing was pushed or no reservation was made.
 | Another copy of yours | 3 | `you are already building <id> on another computer, until <expiry>; pass --take-over to continue here` |
 | Release of another's | 2 | `<id> is reserved by <holder>, not by you; nothing was pushed` |
 | Release from another copy | 2 | `<id> is held by your copy on another computer; release it there, or take it over here first; nothing was pushed` |
-| Footprint overlap | 3 | `<path> is in the footprint of <other-id>, reserved by <holder> until <expiry>; take other work; nothing was pushed` |
+| Footprint overlap | 3 | `"<path>" is in the footprint of <other-id>, reserved by <holder> until <expiry>; take other work; nothing was pushed` |
 | Over the cap | 2 | `you hold 10 live reservations, the most one person may hold: <ids>; release one (abcd reserve <id> --release) first; nothing was pushed` |
 | Build with no footprint | 2 | `<spc-N> has no footprint under ## Footprint to reserve <itd-N> with; fill its packages line, then run abcd build again; nothing was started` |
 | Drain issue with no `found_at` | handed back | `<iss-N> has no found_at path to reserve it with; handed back` |
@@ -761,6 +761,14 @@ These are the facilitator's design calls; none changes a criterion.
     view that cannot be read renders `unknown` with the reason.
   - The view's age is worded in whole units: under a minute, minutes below
     two hours, hours below two days, then days.
+- **What the review of steps 8 to 11 and 14 settled** (2026-10-14):
+  - A footprint path is a value a writer chose, so the overlap refusal names
+    the shared path quoted (`%q` after `termsafe.Sanitize`, as every other
+    remote value is echoed), and the drain sanitises the reason it passes an
+    issue over with, since the agent driving it reads it. A footprint must be
+    printing runes only, with no C1 control, bidi mark or zero-width rune:
+    the writer refuses another, and the reader reads a tip carrying one as
+    unreadable, which neither the cap nor the overlap counts.
 - **What step 8 settled** (renewal and the land fence, 2026-10-14):
   - The run records its reservation in its state, `reserved_at` (the state's
     schema version 11; version 10 is read as a run holding none). A run whose

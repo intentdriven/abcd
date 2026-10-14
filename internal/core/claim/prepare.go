@@ -8,7 +8,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/lease"
-	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // Options carries what a caller may set about the environment an act runs in.
@@ -117,7 +116,7 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
 	}
 	for _, p := range req.Footprint {
-		if !fsutil.ValidRelPath(p) {
+		if !validFootprint(p) {
 			return nil, refuse("footprint %s is not a repository-relative path; %s", echo(p), nothingPushed)
 		}
 	}
