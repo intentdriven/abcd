@@ -229,3 +229,50 @@ func TestTheBasePathGateIsDeniedAPassOnAnUnparsedPage(t *testing.T) {
 		t.Fatalf("the base-path gate passed a page it never read: %+v", res.Findings)
 	}
 }
+
+// Every attribute a page can carry a site URL in is held to the base path: a
+// responsive image's every candidate, a video's poster and an SVG reference
+// as well as href and src. A URL that starts with the prefix but climbs out
+// of it with a `..` segment leaves the site as surely as one without it.
+func TestTheGateReadsEveryURLAttributeAndRefusesAClimb(t *testing.T) {
+	f := newFixture(t)
+	out, _ := buildFixtureAt(t, f, "/widgets/")
+	page := filepath.Join(out, "index.html")
+	raw, err := os.ReadFile(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside := `<img src="/widgets/a.png" srcset="/widgets/a.png 1x, /widgets/a2.png 2x" alt="">` +
+		`<video poster="/widgets/p.png"></video><svg><use xlink:href="/widgets/s.svg#i"></use></svg>`
+	outside := `<img src="/widgets/b.png" srcset="/widgets/b.png 1x, /srcset-out.png 2x" alt="">` +
+		`<video poster="/poster-out.png"></video><svg><use xlink:href="/xlink-out.svg#i"></use></svg>` +
+		`<a href="/widgets/../climb-out/">x</a><img src="/widgets/./../dots-out.png" alt="">` +
+		`<a href="/widgets/%2e%2e/encoded-out/">x</a>`
+	marker := []byte(`<main id="app">`)
+	if !bytes.Contains(raw, marker) {
+		t.Fatal("the fixture's index page has no main element to add to")
+	}
+	if err := os.WriteFile(page, bytes.Replace(raw, marker, append(marker, inside+outside...), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, BasePath: "/widgets/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"/srcset-out.png", "/poster-out.png", "/xlink-out.svg", "/widgets/../climb-out/",
+		"/widgets/./../dots-out.png", "/widgets/%2e%2e/encoded-out/"} {
+		if !hasFinding(res, CheckBasePath, want) {
+			t.Errorf("the gate let %s through", want)
+		}
+	}
+	for _, fd := range res.Findings {
+		if fd.Check != CheckBasePath {
+			continue
+		}
+		for _, ok := range []string{"/widgets/a.png", "/widgets/a2.png", "/widgets/p.png", "/widgets/s.svg"} {
+			if strings.Contains(fd.Detail, ok) {
+				t.Errorf("a URL inside the base path was refused: %+v", fd)
+			}
+		}
+	}
+}

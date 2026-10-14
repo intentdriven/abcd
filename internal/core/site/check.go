@@ -1732,8 +1732,41 @@ func figureLabels(fig *htmlNode) []string {
 }
 
 // basePathAttrs are the attributes a page carries a site URL in: links and
-// form targets, every embedded resource, and the graph's data address.
-var basePathAttrs = []string{"href", "src", "action", "data-graph"}
+// form targets, every embedded resource (a responsive image's every srcset
+// candidate and a video's poster among them), an SVG reference, and the
+// graph's data address.
+var basePathAttrs = []string{"href", "src", "srcset", "poster", "action", "xlink:href", "data-graph"}
+
+// attrURLs are the URLs one attribute value carries: each candidate of a
+// srcset ("url 1x, url 2x"), the whole value of any other.
+func attrURLs(attr, v string) []string {
+	if attr != "srcset" {
+		return []string{v}
+	}
+	var out []string
+	for _, cand := range strings.Split(v, ",") {
+		if f := strings.Fields(cand); len(f) > 0 {
+			out = append(out, f[0])
+		}
+	}
+	return out
+}
+
+// climbs reports whether a URL's path has a `..` segment, written plainly or
+// percent-encoded, which a browser resolves before it requests the URL: a
+// URL that starts with the base path and climbs out of it leaves the site.
+func climbs(u string) bool {
+	if i := strings.IndexAny(u, "?#"); i >= 0 {
+		u = u[:i]
+	}
+	for _, seg := range strings.Split(u, "/") {
+		switch strings.ToLower(seg) {
+		case "..", ".%2e", "%2e.", "%2e%2e":
+			return true
+		}
+	}
+	return false
+}
 
 // checkBasePath asserts every root-absolute URL a page carries sits under the
 // base path the site is served below. A site at owner.github.io/<repo>/ that
@@ -1746,12 +1779,13 @@ func (c *checker) checkBasePath() {
 	for _, page := range c.res.Pages {
 		for _, n := range findElements(c.pages[page], func(*htmlNode) bool { return true }) {
 			for _, attr := range basePathAttrs {
-				u := n.Attr(attr)
-				if !strings.HasPrefix(u, "/") || strings.HasPrefix(u, "//") || strings.HasPrefix(u, c.base) {
-					continue
+				for _, u := range attrURLs(attr, n.Attr(attr)) {
+					if !strings.HasPrefix(u, "/") || strings.HasPrefix(u, "//") || (strings.HasPrefix(u, c.base) && !climbs(u)) {
+						continue
+					}
+					c.fail(CheckBasePath, page, n.Attr("data-src"), "<%s %s=%s> links outside the base path %s the site is served below",
+						n.Name, attr, quote(u), c.base)
 				}
-				c.fail(CheckBasePath, page, n.Attr("data-src"), "<%s %s=%s> links outside the base path %s the site is served below",
-					n.Name, attr, quote(u), c.base)
 			}
 		}
 	}
