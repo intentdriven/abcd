@@ -25,8 +25,8 @@ func TestALineCarriesTheValueItAssigns(t *testing.T) {
 		{`while read -r p; do kill "$p"; done <<< "$(pgrep make)"`, VerdictBlock, "kill-by-search"},
 		{`read p < <(pgrep make); kill $p`, VerdictBlock, "kill-by-search"},
 		// Allowed for now: no bundled entry reads a holder (lsof, fuser) as a
-		// search source yet. The held branch held/guard-port-blocks restores
-		// the kill-by-holder block here (iss-2609262259360005, ruling AS).
+		// search source yet; the kill-by-holder entry that blocks it lands
+		// with iss-2609262259360005 (ruling AS).
 		{`p=$(lsof -t -i :8080); kill $p`, VerdictAllow, ""},
 		{`p=$(pgrep make); q=$p; kill $q`, VerdictBlock, "kill-by-search"},
 		{`p=$(pgrep make); echo "$p" | xargs kill`, VerdictBlock, "kill-by-search"},

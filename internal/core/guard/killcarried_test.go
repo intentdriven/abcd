@@ -20,8 +20,8 @@ func TestAPidListFromASearchBlocksHoweverItTravels(t *testing.T) {
 		{`pgrep make > p; read q < p; kill $q`, VerdictBlock, "kill-by-search"},
 		{`pgrep make | sort > p; kill $(cat p)`, VerdictBlock, "kill-by-search"},
 		// Allowed for now: no bundled entry reads a holder (lsof, fuser) as a
-		// search source yet. The held branch held/guard-port-blocks restores
-		// the kill-by-holder block here (iss-2609262259360005, ruling AS).
+		// search source yet; the kill-by-holder entry that blocks it lands
+		// with iss-2609262259360005 (ruling AS).
 		{`lsof -t -i :8080 > p; kill $(cat p)`, VerdictAllow, ""},
 		// A ps listing filtered by a name.
 		{`ps aux | grep make | awk '{print $2}' | xargs kill`, VerdictBlock, "kill-by-search"},
