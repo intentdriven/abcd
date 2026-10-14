@@ -180,15 +180,26 @@ provider, and these things differ:
   composition's `hosting` block, writes the site's inputs under `site-src/` and
   adds `.github/workflows/site.yml`; nothing else in the repository changes. A
   no, or an unanswered run, writes nothing and changes nothing remote, and the
-  status is `declined`.
+  status is `declined`. A composition that already exists with no `hosting`
+  block is not rewritten: setup refuses and names the block to add, and once
+  it is added the next run still asks the switch before it adds the workflow.
 - **An existing Pages site.** Setup reads the repository's Pages site before it
   asks or writes. One the repository already publishes, built by a workflow, is
-  named by its address and build type in the switch question (or in a question
-  of its own when the composition already holds the switch), and in the host
-  outcome; `--yes` answers it. A site published from a branch, one already
-  served at a custom domain when `--domain` names another or none (the refusal
-  names the `--domain` to pass), and one GitHub serves below another path than
-  the workflow builds for are refused before anything is written.
+  named by its address and build type in the switch question and in the host
+  outcome. `--yes` never answers it: a run under `--yes` refuses before
+  anything is asked or written, naming the site, unless `--replace-existing` is
+  passed too, which publishes over it without asking. Pass
+  `--replace-existing` only after a question naming the live site's address
+  was answered yes. A site published from a branch, or whose build type GitHub
+  does not report, one already served at a custom domain when `--domain` names
+  another or none (the refusal says to declare that domain: `--domain` on the
+  run that writes the `hosting` block, its `domain` field once the block
+  exists), and one GitHub serves below another path than the workflow builds
+  for are refused before anything is written.
+- **HTTPS on a custom domain.** GitHub serves a new custom domain over http
+  until it has issued the domain's certificate, which can take up to a day
+  after the domain resolves. The address is still reported as `https://…`, and
+  the host outcome's `detail` says HTTPS is not enforced yet.
 - **Public repositories only.** Setup reads whether the repository is public
   from the forge first, and refuses a private one (or one whose visibility it
   cannot read) in one line, before it asks or writes anything. The workflow
@@ -209,7 +220,8 @@ provider, and these things differ:
   at the head of the default branch, so the next release publishes nothing, and
   neither does a later push or dispatch that renders an older tag. A later `abcd site setup` touches nothing
   remote and offers to remove the workflow it added, `removed` on a yes; a
-  workflow edited by hand is `kept`. Pages already published stay up until they
+  workflow edited by hand, or whose removal was declined, is `kept`, with the
+  reason in its `detail`. Pages already published stay up until they
   are unpublished in the repository's settings.
 
 Report each stage's outcome, then the remaining steps in order. Never paste a
