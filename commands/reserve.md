@@ -54,7 +54,8 @@ something else. Never retry in a loop.
 
 **Exit 3 also covers a shared path.** A footprint path that another live
 reservation's footprint also holds, whoever holds it and for whatever record,
-is refused, naming that path, the other record, its holder and until when. Two
+is refused (the user's own reservations from this copy excepted, since that
+work is this copy's: the user's other computer still backs off), naming that path, the other record, its holder and until when. Two
 paths are shared when they are equal or one is a directory holding the other.
 Running the command again to renew is checked the same way, since it names
 its footprint anew, so a reservation is never widened onto another; a build's

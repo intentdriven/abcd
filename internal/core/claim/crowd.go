@@ -12,7 +12,7 @@ const MaxLive = 10
 
 // crowding refuses an act the rest of the view forbids, judged on the view
 // just fetched: a footprint that shares a path with another live reservation
-// (the back-off), and a reservation that would take its holder past MaxLive
+// that is not this copy's own (the back-off), and a reservation that would take its holder past MaxLive
 // (the cap, checked first, since taking other work does not lift it). A
 // renewal, and a take-over of one's own other copy, add no reservation, so the
 // cap never refuses them. A reserve naming its footprint re-checks it, so a
@@ -53,6 +53,12 @@ func crowding(p *prepared, j judged, res Result) error {
 		return nil
 	}
 	for _, r := range others {
+		// This copy's own reservations on other records are no overlap: the
+		// work they name is this copy's, as a drain's next issue beside its
+		// own open lane. This person's other copy still backs off.
+		if r.Copy == CopyThis && sameHolder(r.Holder, p.holder) {
+			continue
+		}
 		for _, want := range res.Footprint {
 			for _, held := range r.Footprint {
 				if shared, ok := sharedPath(want, held); ok {

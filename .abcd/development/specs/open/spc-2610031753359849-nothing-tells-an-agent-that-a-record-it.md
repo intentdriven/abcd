@@ -737,8 +737,11 @@ These are the facilitator's design calls; none changes a criterion.
     said "lapsed or not"). A holder past ten, which only a race
     between two of their copies can make, is told "past the 10 one person
     may hold" rather than the table's "the most one person may hold".
-  - The overlap counts every other live reservation, the holder's own on
-    another record included. The path named is the deeper of the two shared
+  - The overlap counts every other live reservation but this copy's own on
+    another record: the holder's from another copy is counted. (This line
+    first counted the holder's own from this copy too; the review of
+    2026-10-14 exempted it, since a drain then passed over its own next
+    issue when two issues named one `found_at`.) The path named is the deeper of the two shared
     paths, the one in both footprints: a request for `commands` over a
     reservation of `commands/reserve.md` names `commands/reserve.md`.
   - An unreadable reservation is counted by neither: it has no holder and no

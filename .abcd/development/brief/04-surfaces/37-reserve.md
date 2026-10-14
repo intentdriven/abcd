@@ -67,7 +67,8 @@ across every record, is refused naming the ten; a renewal, and a take-over of
 the same person's other copy, of a reservation still live add none and are
 never refused by the cap, while reviving a lapsed one adds one. A
 footprint path that another live reservation's footprint shares, equal or one
-a directory holding the other, is refused, naming the deeper of the two paths,
+a directory holding the other, is refused, unless that reservation is the same
+person's from this copy, naming the deeper of the two paths,
 the other record, its holder and its expiry; a renewal the verb makes names
 its footprint and is checked the same way, so a footprint is never widened onto
 another reservation, while the implement loop's renewal, which keeps the tip's

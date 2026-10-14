@@ -191,3 +191,24 @@ func TestADrainQuotesAnotherReservationsFootprintWhenItPassesOver(t *testing.T) 
 		t.Fatalf("the reason quotes the other footprint's path: %q", reason)
 	}
 }
+
+// TestADrainTakesItsNextIssueSharingAFoundAtWithItsOwnOpenLane: two issues
+// that name one found_at are each reserved from this copy: the second lane
+// opens while the first's pull request is open, since this copy's own
+// reservation is not an overlap it backs off from.
+func TestADrainTakesItsNextIssueSharingAFoundAtWithItsOwnOpenLane(t *testing.T) {
+	f := drainLandFixture(t)
+	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	f.armIssueLane(t)
+	next := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if next.Start == nil || next.Lane == nil || next.Lane.Issue != eligibleIssue {
+		t.Fatalf("the drain opens the bug's lane beside its own open pull request: lane %+v, passed %+v", next.Lane, next.Passed)
+	}
+	if fp := footprintOf(t, f.bare, eligibleIssue); !slices.Equal(fp, []string{"AGENTS.md"}) {
+		t.Fatalf("the bug is reserved with the shared path: %v", fp)
+	}
+}

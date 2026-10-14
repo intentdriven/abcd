@@ -96,6 +96,7 @@ func TestAnOverlappingFootprintIsRefusedNamingTheSharedPath(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	q := w.clone("99+quinn@users.noreply.github.com", "")
+	laptop := w.clone("1234+octo@users.noreply.github.com", "")
 	if _, err := p.reserve("iss-1", "commands/reserve.md", "internal/core/claim"); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +110,7 @@ func TestAnOverlappingFootprintIsRefusedNamingTheSharedPath(t *testing.T) {
 		"an equal path":                     {q, "iss-2", []string{"docs/a.md", "internal/core/claim"}, "internal/core/claim"},
 		"a file under a reserved directory": {q, "iss-3", []string{"internal/core/claim/claim.go"}, "internal/core/claim/claim.go"},
 		"a directory over a reserved file":  {q, "iss-4", []string{"commands"}, "commands/reserve.md"},
-		"the holder's own other record":     {p, "iss-5", []string{"internal/core/claim/view.go"}, "internal/core/claim/view.go"},
+		"the holder's other copy":           {laptop, "iss-5", []string{"internal/core/claim/view.go"}, "internal/core/claim/view.go"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := c.who.reserve(c.id, c.fp...)
@@ -202,5 +203,24 @@ func TestRevivingOnesOwnLapsedReservationCountsAgainstTheCap(t *testing.T) {
 	}
 	if got := w.remoteTip("iss-11"); got != tip {
 		t.Fatalf("a refused revival moved the branch to %s", got)
+	}
+}
+
+// TestThisCopysOwnReservationsAreNoOverlap: a footprint shared with another
+// record this person holds from this copy is not refused, so a drain takes its
+// next issue beside its own open lane; this person's other copy, and every
+// other person, still back off.
+func TestThisCopysOwnReservationsAreNoOverlap(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-1", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := p.reserve("iss-2", "a.go"); err != nil || res.Act != ActReserved {
+		t.Fatalf("a second record from this copy over the same path = %+v, %v; want it reserved", res, err)
+	}
+	laptop := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := laptop.reserve("iss-3", "a.go"); !errors.Is(err, ErrBackOff) {
+		t.Fatalf("this person's other copy over the same path = %v; want the back-off", err)
 	}
 }
