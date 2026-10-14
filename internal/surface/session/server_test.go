@@ -189,6 +189,18 @@ func (c *client) until(typ string) (map[string]any, [][]byte) {
 
 const origin = "https://abcdesign.app"
 
+// hostNumber is the host's participant number from its hosted answer: the
+// last byte of the four an attributed update carries, in a test's small
+// relay.
+func hostNumber(t *testing.T, hosted map[string]any) byte {
+	t.Helper()
+	id, _ := hosted["id"].(string)
+	if len(id) != 2 || id[0] != 'p' || id[1] < '1' || id[1] > '9' {
+		t.Fatalf("hosted id %q is not a small participant id", id)
+	}
+	return id[1] - '0'
+}
+
 func TestHostAndGuestOverTheWire(t *testing.T) {
 	f := newFixture(t, nil)
 	host := f.dial(t, origin)
@@ -207,7 +219,8 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 		t.Fatalf("joined = %v", j)
 	}
 	_, replay := guest.until("synced")
-	if len(replay) != 1 || !bytes.Equal(replay[0], []byte{core.TagUpdate, 1, 2, 3}) {
+	hostNum := hostNumber(t, hosted)
+	if len(replay) != 1 || !bytes.Equal(replay[0], append([]byte{core.TagAttributedUpdate, 0, 0, 0, hostNum}, 1, 2, 3)) {
 		t.Fatalf("replay = %v, want the host's update", replay)
 	}
 
@@ -222,7 +235,7 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 			t.Fatal(err)
 		}
 		if b != nil {
-			if !bytes.Equal(b, []byte{core.TagUpdate, 4}) {
+			if !bytes.Equal(b, []byte{core.TagAttributedUpdate, 0, 0, 0, hostNum, 4}) {
 				t.Fatalf("the guest received %v, want the host's second update", b)
 			}
 			break

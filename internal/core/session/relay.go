@@ -29,6 +29,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -50,7 +51,17 @@ const (
 	// TagAwareness is a Yjs awareness message (cursors and selections):
 	// forwarded from anyone, never logged.
 	TagAwareness byte = 1
+	// TagAttributedUpdate is how the relay sends a TagUpdate on, live and in
+	// the replay, and it is never accepted from a participant: the tag, the
+	// sender's participant number as four big-endian bytes (the N of its
+	// roster id pN), then the update's bytes as the member sent them. The
+	// roster's authors map names each number's login, so a page can check
+	// that the client ids inside an update are credited to whoever sent it.
+	TagAttributedUpdate byte = 2
 )
+
+// attributedHeader is the length of TagAttributedUpdate's tag and number.
+const attributedHeader = 5
 
 // Frame is one WebSocket message: a JSON control message in a text frame, or
 // a tagged Yjs message in a binary frame.
@@ -109,7 +120,8 @@ type Limits struct {
 	// MaxVerifies caps the verify attempts of one connection, so the relay
 	// cannot be used to hammer GitHub.
 	MaxVerifies int
-	// MaxCredits caps the Yjs client ids one session credits to members.
+	// MaxCredits caps the Yjs client ids one session credits to members, and
+	// the participants it names as authors of its log.
 	MaxCredits int
 	// AwarenessPerSecond and AwarenessBurst are one connection's token
 	// bucket for awareness frames (cursors and selections).
@@ -221,7 +233,7 @@ type Relay struct {
 	seats    map[string]*seat // by the digest of their rejoin token
 	failed   *addrWindow
 	hosted   *addrWindow
-	nextConn int
+	nextConn uint32
 	open     int            // connections held, in a session or not
 	openBy   map[string]int // connections held, by address key
 }
@@ -294,6 +306,7 @@ type room struct {
 	log        [][]byte
 	logBytes   int               // what the log is charged: each entry's bytes and overhead
 	credits    map[uint32]string // Yjs client id -> member login
+	authors    map[uint32]string // participant number -> login, for every member whose update is logged
 	emptySince time.Time
 	suggests   int
 	seats      []*seat // every rejoin token issued, oldest first
@@ -307,6 +320,7 @@ type seat struct {
 	room     *room
 	conn     *Conn // the connection holding it now, if any
 	id       string
+	num      uint32
 	role     string
 	name     string
 	login    string
@@ -315,7 +329,7 @@ type seat struct {
 
 // save records c's participant on its seat.
 func (s *seat) save(c *Conn) {
-	s.id, s.role, s.name, s.login, s.memberOf = c.id, c.role, c.name, c.login, c.memberOf
+	s.id, s.num, s.role, s.name, s.login, s.memberOf = c.id, c.num, c.role, c.name, c.login, c.memberOf
 }
 
 // rejoinBytes is a rejoin token's length before encoding: 128 random bits.
@@ -335,7 +349,8 @@ func rejoinKey(token string) string {
 // connection (the transport's read loop).
 type Conn struct {
 	r        *Relay
-	id       string
+	id       string // "p" and num, as the roster shows it
+	num      uint32 // the participant number attributed updates carry
 	peer     Peer
 	addr     string // the failed-join key: an IPv4 address or an IPv6 /64
 	room     *room
@@ -371,7 +386,7 @@ func (r *Relay) Connect(p Peer, addr string) (*Conn, error) {
 	r.open++
 	r.openBy[key]++
 	r.nextConn++
-	return &Conn{r: r, id: "p" + strconv.Itoa(r.nextConn), peer: p, addr: key}, nil
+	return &Conn{r: r, id: "p" + strconv.FormatUint(uint64(r.nextConn), 10), num: r.nextConn, peer: p, addr: key}, nil
 }
 
 // markLeft ends c's hold on the relay, once: it is out of every count.
@@ -566,9 +581,23 @@ func (c *Conn) binary(data []byte) {
 			c.fail("log-full", "this session's log is full; the host can close it and open a new one")
 			return
 		}
-		entry := append([]byte(nil), data...)
+		_, known := rm.authors[c.num]
+		if !known && len(rm.authors) >= c.r.limits.MaxCredits {
+			c.fail("too-many-authors", "this session names as many authors as it may")
+			return
+		}
+		// The update is logged and sent on as the relay attributes it; its
+		// bytes after the tag are copied as they came, never read.
+		entry := make([]byte, attributedHeader+len(data)-1)
+		entry[0] = TagAttributedUpdate
+		binary.BigEndian.PutUint32(entry[1:attributedHeader], c.num)
+		copy(entry[attributedHeader:], data[1:])
 		rm.log = append(rm.log, entry)
 		rm.logBytes += cost
+		if !known {
+			rm.authors[c.num] = c.login
+			c.r.broadcastRoster(rm)
+		}
 		c.r.forward(rm, c, entry)
 	case data[0] == TagAwareness:
 		if !c.awareness.take(c.r.now(), c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) {
@@ -577,7 +606,7 @@ func (c *Conn) binary(data []byte) {
 		}
 		c.r.forward(rm, c, append([]byte(nil), data...))
 	default:
-		c.fail("unknown-tag", "the relay knows update (0) and awareness (1) frames")
+		c.fail("unknown-tag", "the relay takes update (0) and awareness (1) frames")
 	}
 }
 
@@ -705,7 +734,7 @@ func (c *Conn) host(repo string) {
 		return
 	}
 	r.hosted.note(c.addr, r.now())
-	rm := &room{repo: repo, repoKey: strings.ToLower(repo), code: code, hostLogin: c.login, credits: map[uint32]string{}}
+	rm := &room{repo: repo, repoKey: strings.ToLower(repo), code: code, hostLogin: c.login, credits: map[uint32]string{}, authors: map[uint32]string{}}
 	r.rooms[code] = rm
 	c.room, c.role, c.name = rm, roleMember, c.login
 	rm.conns = append(rm.conns, c)
@@ -818,7 +847,7 @@ func (c *Conn) rejoin(token string) {
 		return
 	}
 	c.room, c.seat, s.conn = rm, s, c
-	c.id, c.role, c.name, c.login, c.memberOf = s.id, s.role, s.name, s.login, s.memberOf
+	c.id, c.num, c.role, c.name, c.login, c.memberOf = s.id, s.num, s.role, s.name, s.login, s.memberOf
 	rm.conns = append(rm.conns, c)
 	c.admitted(token)
 	if c.isHost() {
@@ -988,7 +1017,7 @@ func (r *Relay) purge(rm *room) {
 			s.conn.seat = nil
 		}
 	}
-	rm.log, rm.logBytes, rm.credits, rm.seats = nil, 0, nil, nil
+	rm.log, rm.logBytes, rm.credits, rm.authors, rm.seats = nil, 0, nil, nil, nil
 }
 
 // rosterEntry is one participant as the roster shows them.
@@ -1001,7 +1030,9 @@ type rosterEntry struct {
 }
 
 // broadcastRoster sends rm's roster to everyone in it: the participants with
-// their verified identities, and the Yjs client ids credited to each member.
+// their verified identities, the Yjs client ids credited to each member, and
+// the login of each participant number an attributed update in the log
+// carries (authors), including those who have since left.
 func (r *Relay) broadcastRoster(rm *room) {
 	parts := make([]rosterEntry, 0, len(rm.conns))
 	for _, o := range rm.conns {
@@ -1011,7 +1042,11 @@ func (r *Relay) broadcastRoster(rm *room) {
 	for id, login := range rm.credits {
 		clients[strconv.FormatUint(uint64(id), 10)] = login
 	}
-	data, err := json.Marshal(map[string]any{"type": "roster", "participants": parts, "clients": clients})
+	authors := make(map[string]string, len(rm.authors))
+	for num, login := range rm.authors {
+		authors[strconv.FormatUint(uint64(num), 10)] = login
+	}
+	data, err := json.Marshal(map[string]any{"type": "roster", "participants": parts, "clients": clients, "authors": authors})
 	if err != nil {
 		return
 	}

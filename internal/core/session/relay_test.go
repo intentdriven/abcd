@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -221,6 +222,16 @@ func (h *harness) join(t *testing.T, code, name, addr string) (*Conn, *fakePeer)
 
 func update(b ...byte) Frame { return Frame{Binary: true, Data: append([]byte{TagUpdate}, b...)} }
 
+// attributed is an update as the relay sends it on: tag 2, the sender's
+// participant number as four big-endian bytes, then the update's bytes.
+func attributed(id string, b ...byte) []byte {
+	n, err := strconv.ParseUint(strings.TrimPrefix(id, "p"), 10, 32)
+	if err != nil || !strings.HasPrefix(id, "p") {
+		panic("not a participant id: " + id)
+	}
+	return append([]byte{TagAttributedUpdate, byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)}, b...)
+}
+
 func TestHostOpensASessionAndGetsACode(t *testing.T) {
 	h := newHarness(t, nil)
 	_, p, code := h.host(t, "tok-ada")
@@ -295,7 +306,7 @@ func TestGuestJoinsByCodeAndReceivesTheReplayedLog(t *testing.T) {
 		t.Fatalf("joined = %v, want a guest named Gus in acme/brief", joined)
 	}
 	got := gp.binaries()
-	if len(got) != 2 || !bytes.Equal(got[0], []byte{TagUpdate, 1, 2, 3}) || !bytes.Equal(got[1], []byte{TagUpdate, 4, 5}) {
+	if len(got) != 2 || !bytes.Equal(got[0], attributed(host.id, 1, 2, 3)) || !bytes.Equal(got[1], attributed(host.id, 4, 5)) {
 		t.Fatalf("replayed = %v, want the two updates in order", got)
 	}
 	// The replay sits between joined and synced.
@@ -335,7 +346,7 @@ func TestGuestUpdateIsRefusedWhileAMembersIsForwarded(t *testing.T) {
 	}
 
 	host.Receive(context.Background(), update(7))
-	if got := gp.binaries(); len(got) != 1 || !bytes.Equal(got[0], []byte{TagUpdate, 7}) {
+	if got := gp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributed(host.id, 7)) {
 		t.Fatalf("the guest received %v, want the member's update", got)
 	}
 	if len(hp.binaries()) != 0 {
@@ -384,7 +395,7 @@ func TestVerifyPromotesATokenWithPushAndNotOneWithout(t *testing.T) {
 	hp.reset()
 	g1.Receive(context.Background(), update(1))
 	g2.Receive(context.Background(), update(2))
-	if got := hp.binaries(); len(got) != 1 || got[0][1] != 1 {
+	if got := hp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributed(g1.id, 1)) {
 		t.Fatalf("host received %v, want bea's update alone", got)
 	}
 
@@ -892,7 +903,7 @@ func TestRejoinAfterARotationKeepsTheParticipant(t *testing.T) {
 	if j == nil || j["role"] != "guest" || j["name"] != "Gus" || j["id"] != guestID || j["host"] == true {
 		t.Fatalf("guest rejoined = %v, want guest Gus as %v", j, guestID)
 	}
-	if got := gp2.binaries(); len(got) != 1 || !bytes.Equal(got[0], []byte{TagUpdate, 1, 2}) {
+	if got := gp2.binaries(); len(got) != 1 || got[0][0] != TagAttributedUpdate || !bytes.Equal(got[0][5:], []byte{1, 2}) {
 		t.Fatalf("the rejoined guest was replayed %v", got)
 	}
 	if gp2.last(t, "synced") == nil {
@@ -1200,5 +1211,84 @@ func TestUpdatesAreRateLimitedPerConnection(t *testing.T) {
 	}
 	if e := hp.last(t, "error"); e != nil {
 		t.Fatalf("a second later, %d more: error %v", l.UpdatesPerSecond, e)
+	}
+}
+
+// TestUpdatesAreAttributedToTheirSender: the relay sends every member's
+// update on as tag 2 with the sender's participant number, live and in the
+// replay; the roster names each author's login, also after they left; and a
+// participant cannot send tag 2 itself.
+func TestUpdatesAreAttributedToTheirSender(t *testing.T) {
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	bea, bp := h.join(t, code, "", "198.51.100.8")
+	send(t, bea, msg{"type": "verify", "token": "tok-bea"})
+	beaTok := rejoinToken(t, bp, "joined")
+	guest, gp := h.join(t, code, "Gus", "198.51.100.7")
+	gp.reset()
+
+	host.Receive(context.Background(), update(1))
+	bea.Receive(context.Background(), update(2))
+	got := gp.binaries()
+	if len(got) != 2 || !bytes.Equal(got[0], attributed(host.id, 1)) || !bytes.Equal(got[1], attributed(bea.id, 2)) {
+		t.Fatalf("the guest received %v, want each update attributed to its sender", got)
+	}
+	authors := func(p *fakePeer) map[string]any {
+		r := p.last(t, "roster")
+		a, _ := r["authors"].(map[string]any)
+		return a
+	}
+	num := func(id string) string { return strings.TrimPrefix(id, "p") }
+	if a := authors(gp); a[num(host.id)] != "ada" || a[num(bea.id)] != "bea" || len(a) != 2 {
+		t.Fatalf("roster authors = %v, want ada and bea by participant number", a)
+	}
+
+	// A participant cannot claim another's attribution.
+	forged := Frame{Binary: true, Data: attributed(host.id, 9)}
+	bea.Receive(context.Background(), forged)
+	if e := bp.last(t, "error"); e == nil || e["code"] != "unknown-tag" {
+		t.Fatalf("a client's tag 2: error = %v, want unknown-tag", e)
+	}
+
+	// Bea leaves; a newcomer's replay still names her, and so does the roster.
+	beaID := bea.id
+	bea.Leave()
+	_, np := h.join(t, code, "Nia", "198.51.100.9")
+	replay := np.binaries()
+	if len(replay) != 2 || !bytes.Equal(replay[1], attributed(beaID, 2)) {
+		t.Fatalf("the newcomer's replay = %v", replay)
+	}
+	if a := authors(np); a[num(beaID)] != "bea" {
+		t.Fatalf("roster authors after bea left = %v", a)
+	}
+
+	// Rejoining keeps the participant number, so the attribution holds.
+	back, _ := h.rejoin(t, beaTok, "198.51.100.8")
+	if back.id != beaID {
+		t.Fatalf("bea rejoined as %s, want %s", back.id, beaID)
+	}
+	gp.reset()
+	back.Receive(context.Background(), update(3))
+	if got := gp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributed(beaID, 3)) {
+		t.Fatalf("after the rejoin the guest received %v", got)
+	}
+	_ = guest
+	_ = hp
+}
+
+// TestAuthorsAreBoundedPerSession: a session names at most MaxCredits
+// authors; past it a new author's update is refused and not logged.
+func TestAuthorsAreBoundedPerSession(t *testing.T) {
+	h := newHarness(t, func(l *Limits) { l.MaxCredits = 1 })
+	host, _, code := h.host(t, "tok-ada")
+	host.Receive(context.Background(), update(1))
+	bea, bp := h.join(t, code, "", "198.51.100.8")
+	send(t, bea, msg{"type": "verify", "token": "tok-bea"})
+	bea.Receive(context.Background(), update(2))
+	if e := bp.last(t, "error"); e == nil || e["code"] != "too-many-authors" {
+		t.Fatalf("a second author past the bound: error = %v, want too-many-authors", e)
+	}
+	if s := h.r.Stats(); s.LogBytes != LogEntryOverhead+2 {
+		t.Fatalf("log bytes = %d, want the first update alone", s.LogBytes)
 	}
 }
