@@ -352,7 +352,11 @@ semantic refusal blocks the release without the version-consuming wedge of a gat
 that sat in the publish path (iss-2608231226347380). `verify` supplies the
 content commit and the required-gate list from the workflow (the trust root), not
 the in-tree config: `record-lint --release-gate <sha> --require-gate <name>…`,
-where `<sha>` is `record-lint --derive-content-sha`. Before it, on a tag push,
+where `<sha>` is `record-lint --derive-content-sha`. That trust root has an edge:
+`verify` builds `record-lint` from the tree it gates, so a release cannot disarm
+the gate short of editing `release.yml` or the gate code (`internal/core/lint`,
+`cmd/record-lint`), both reviewed in the pull request and nothing more
+(iss-2610142152501415). Before it, on a tag push,
 `verify` requires the tag to be `v` plus the version `record-lint
 --released-version` reads from the released tree — the strict reader the
 receipts are bound with — so a hand-pushed tag naming another version cannot
