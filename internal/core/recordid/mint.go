@@ -91,3 +91,32 @@ func uniformSuffix(entropy io.Reader) (int, error) {
 		return v % suffixMod, nil
 	}
 }
+
+// DateFromStamp renders the UTC date a minted id's stamp carries, as the ISO
+// `YYYY-MM-DD` a record's `date:` field holds. digits is the id's number — the
+// twelve-digit yymmddHHMMSS stamp, with or without the four random digits
+// after it. "" when the digits are not a stamp: fewer than twelve, a byte that
+// is not a digit, or a date or time that does not exist.
+//
+// It is the ONE derivation for "what day was this record minted", shared by
+// the writers that put the date in a record (decide, the decisions writer) and
+// the gate that holds a decision record's date to its id (record-lint's
+// record_schema): the date comes off the stamp, never off a second clock
+// reading, so a record's id and its date cannot disagree (spec
+// spc-2610110931381316, decision 2).
+func DateFromStamp(digits string) string {
+	if len(digits) < len(stampLayout) {
+		return ""
+	}
+	head := digits[:len(stampLayout)]
+	for i := 0; i < len(digits); i++ {
+		if digits[i] < '0' || digits[i] > '9' {
+			return ""
+		}
+	}
+	at, err := time.ParseInLocation(stampLayout, head, time.UTC)
+	if err != nil {
+		return ""
+	}
+	return at.Format("2006-01-02")
+}

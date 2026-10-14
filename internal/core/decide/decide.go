@@ -144,7 +144,7 @@ func create(repoRoot, title string, render func(Decision) string) (Decision, err
 			// The date comes off the minted stamp rather than a second clock
 			// reading: one id, one instant, and a record whose frontmatter date can
 			// never disagree with the file it is written in.
-			Date: dateFromStamp(stamp),
+			Date: recordid.DateFromStamp(stamp),
 			Path: rel,
 		}
 		body := render(created)
@@ -172,13 +172,6 @@ func deriveSlug(title string) (string, error) {
 		return "", fmt.Errorf("decide: derived slug %q is not kebab-case", collapsed)
 	}
 	return collapsed, nil
-}
-
-// dateFromStamp renders the mint stamp's yymmdd head as the ISO date the record
-// frontmatter carries. The stamp is UTC and fixed-width by construction, so the
-// slice is total for every id the mint produces.
-func dateFromStamp(stamp string) string {
-	return "20" + stamp[0:2] + "-" + stamp[2:4] + "-" + stamp[4:6]
 }
 
 // mintADRID draws a native adr id that names no decision in this checkout. A
