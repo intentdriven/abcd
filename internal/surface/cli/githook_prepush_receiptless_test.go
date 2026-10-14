@@ -72,7 +72,7 @@ func TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck(t *testi
 		}
 		// The check runs through its own arm in shape_check, never under a
 		// name read from the table.
-		if !regexp.MustCompile(`(?m)^\s+`+regexp.QuoteMeta(shape)+`\) `).MatchString(hook) {
+		if !regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(shape) + `\) `).MatchString(hook) {
 			t.Errorf("prefix %q names the shape check %q, which shape_check has no arm for", prefix, shape)
 		}
 		id := strings.TrimPrefix(ruling, "adr-")
