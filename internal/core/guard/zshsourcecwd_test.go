@@ -29,11 +29,13 @@ func TestZshSourceInAnUnknownDirectory(t *testing.T) {
 		{`bash -c 'cd $X; PATH={d}/p; source lib.sh'`, VerdictAllow, ""},
 
 		// PATH's file is still read, and a write before the source still
-		// counts.
+		// counts: one of the same relative name in the same unknown
+		// directory is the file the source runs.
 		{`zsh -c 'cd $X; PATH={d}/h; source lib.sh'`, VerdictBlock, scriptHazardEntryID},
 		{`zsh -c 'cd {d}/w && printf hi > n.sh && source n.sh'`, VerdictBlock, scriptWrittenEntryID},
-		{`zsh -c 'cd $X; printf hi > n.sh; source n.sh'`, VerdictWarn, scriptWrittenEntryID},
-		{`cd "$(mktemp -d)" && printf hi > n.sh && source n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`zsh -c 'cd $X; printf hi > n.sh; source n.sh'`, VerdictBlock, scriptWrittenEntryID},
+		{`zsh -c 'cd $X; printf x > lib.sh; source lib.sh'`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && source n.sh`, VerdictBlock, scriptWrittenEntryID},
 
 		// A write the guard places, then a source in a directory the line
 		// leaves unknown: the file that runs may be the one written.
@@ -68,11 +70,39 @@ func TestARunInAnUnknownDirectoryAfterAPlacedWrite(t *testing.T) {
 		// A write relative to the unknown directory itself is one the run
 		// may reach, and so is a write the guard places beside a file PATH
 		// supplies.
-		{`cd "$(mktemp -d)" && printf hi > n.sh && source ./n.sh`, VerdictWarn, scriptWrittenEntryID},
-		{`cd "$(mktemp -d)" && printf hi > n.sh && ./n.sh`, VerdictWarn, scriptWrittenEntryID},
-		{`cd "$(mktemp -d)" && printf hi > n.sh && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
 		{`cd "$(mktemp -d)" && tar -xf {d}/w/keep && sh n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && sh m.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && cd "$Y" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && popd && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > ../n.sh && bash ../n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && bash -c 'cd $Q; printf hi > n.sh' && source ./n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > ./n.sh && bash {d}/w/keep && source ./m.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		// A write of the same relative name in the same unknown directory is
+		// the file that runs, and blocks as it does where the directory is
+		// known.
+		{`cd "$(mktemp -d)" && printf '` + hazardLine + `' > ./s.sh && source ./s.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && source ./n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && ./n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > ./n.sh && sh n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > sub/n.sh && sub/n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && cp {d}/w/keep n.sh && zsh ./n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`bash -c 'cd $X; printf x > n.sh; . n.sh'`, VerdictBlock, scriptWrittenEntryID},
+		{`bash -c 'cd $X; printf x > n.sh; source n.sh'`, VerdictBlock, scriptWrittenEntryID},
 		{`zsh -c 'cd $X; printf hi > $Y; PATH={d}/w; source keep'`, VerdictWarn, scriptWrittenEntryID},
+
+		// A write whose path is a variable's value counts where its last
+		// component is literal and is the name the run looks up.
+		{`printf x > "$T/n.sh"; cd "$T" && source n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T/n.sh"; cd "$T" && . n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T/n.sh"; cd "$T" && source ./n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T/n.sh"; cd "$T" && ./n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T"/'n.sh'; cd "$T" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > $T/n.sh; cd "$T" && sh ./n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cp {d}/w/keep "$T/n.sh"; cd "$T" && bash n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`zsh -c 'printf x > "$T/n.sh"; cd $T; source n.sh'`, VerdictWarn, scriptWrittenEntryID},
+		{`bash -c 'printf x > "$T/n.sh"; cd $T; source n.sh'`, VerdictWarn, scriptWrittenEntryID},
 
 		// No write before the run, or a run by an absolute path or in a
 		// directory the line fixes: unchanged.
@@ -84,6 +114,9 @@ func TestARunInAnUnknownDirectoryAfterAPlacedWrite(t *testing.T) {
 		{`printf x > {d}/w/n.sh; cd "$(mktemp -d)" && bash {d}/w/keep`, VerdictAllow, ""},
 		{`printf x > {d}/w/n.sh; cd {d}/w && bash keep`, VerdictAllow, ""},
 		{`printf x 2>/dev/null >&2; cd "$(mktemp -d)" && bash n.sh`, VerdictAllow, ""},
-		{`printf x > "$T/n.sh"; cd "$(mktemp -d)" && bash n.sh`, VerdictAllow, ""},
+		{`printf x > "$tmp/x"; cd "$T" && bash n.sh`, VerdictAllow, ""},
+		{`printf x > "$f"; cd "$T" && bash n.sh`, VerdictAllow, ""},
+		{`printf x > "$f"; cd "$T" && ./n.sh`, VerdictAllow, ""},
+		{`printf x > "$(echo a/n.sh)"; cd "$T" && bash m.sh`, VerdictAllow, ""},
 	})
 }

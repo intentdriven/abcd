@@ -272,6 +272,9 @@ type readCtx struct {
 	// dirChange caches, per file a `source` reads, whether it changes
 	// directory, so a line sourcing one file many times reads it once.
 	dirChange map[string]bool
+	// readings counts the texts read, so a directory one reading names
+	// (shellState.dirGen) is never one another names.
+	readings int
 }
 
 func newReadCtx(f *Files) *readCtx {
@@ -348,7 +351,17 @@ type shellState struct {
 	// assignment it opens (`fpath=(dir $fpath)`), whose elements can name
 	// the value from before it (withArray); nil where no such word ran.
 	emptied *emptiedVar
+	// dirGen names the directory the commands run in where the line leaves
+	// it unknown: two states share it only where no change of directory
+	// separates them, so a relative name in both is the same file. A change
+	// marks it freshGen, and the reading stamps it with where the change
+	// was (readScripts).
+	dirGen [2]int
 }
+
+// freshGen marks a directory a change has just left unknown, until the
+// reading names it; it names no directory, so it never equals another.
+var freshGen = [2]int{-1, -1}
 
 // emptiedVar is a tracked variable's value before a `NAME=` word emptied
 // it; set is false where the line had not set it.
@@ -418,6 +431,7 @@ func (st *shellState) at(s segment) []*shellState {
 	}
 	n := st.clone()
 	n.dir, n.dirOK, n.cd, n.stack = "", false, nil, nil
+	n.dirGen = freshGen
 	return []*shellState{n}
 }
 
@@ -426,7 +440,26 @@ func (st *shellState) at(s segment) []*shellState {
 func (st *shellState) unresolved() *shellState {
 	n := st.clone()
 	n.dir, n.dirOK, n.cd, n.stack = "", false, nil, nil
+	n.dirGen = freshGen
 	return n
+}
+
+// sameUnknownDir reports whether st and o run in one directory the line
+// leaves unknown, with no change of directory between them.
+func (st *shellState) sameUnknownDir(o [2]int) bool {
+	return !st.dirOK && st.dirGen != freshGen && st.dirGen == o
+}
+
+// cwdName is a relative word as the name of a file in the working
+// directory, cleaned (`./s.sh` is s.sh), or "" where a `..` in it makes the
+// file depend on where the directories lead.
+func cwdName(word string) string {
+	for _, c := range strings.Split(word, "/") {
+		if c == ".." {
+			return ""
+		}
+	}
+	return path.Clean(word)
 }
 
 // relativeUnknown reports whether word names a file relative to a working
@@ -706,7 +739,7 @@ func (st *shellState) prefixVars(rc *readCtx, s segment, site int) map[string]va
 // in, and the environment it hands down, every variable of it exported.
 // shell is the child's shell, shellUnknown where the guard cannot name it.
 func childState(st *shellState, env map[string]varVal, shell string) *shellState {
-	n := &shellState{dir: st.dir, dirOK: st.dirOK, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}, shell: shell}
+	n := &shellState{dir: st.dir, dirOK: st.dirOK, dirGen: st.dirGen, vars: map[string]varVal{}, exported: map[string]bool{}, fds: map[int]fdFile{}, shell: shell}
 	for k, v := range env {
 		n.vars[k] = v
 		n.exported[k] = true
@@ -793,8 +826,14 @@ type writeTarget struct {
 	path string
 	ok   bool
 	// rel marks a write the guard cannot place because it names a path
-	// relative to a working directory the line leaves unknown.
-	rel bool
+	// relative to a working directory the line leaves unknown; name is that
+	// path as a name in the directory (cwdName) and gen the directory
+	// (shellState.dirGen). base is the last component of a path the guard
+	// does not place, where the line fixes it, else "".
+	rel  bool
+	name string
+	gen  [2]int
+	base string
 }
 
 // scriptSeg is the reading's record of one segment: every state it can run
@@ -899,6 +938,16 @@ func earlier(a, b []int) bool {
 func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []payloadSignal {
 	n := len(segs)
 	recs := make([]scriptSeg, n)
+	rc.readings++
+	reading := rc.readings
+	// stamp names the directory a change at segment i left unknown.
+	stamp := func(sts []*shellState, i, at int) {
+		for _, st := range sts {
+			if st.dirGen == freshGen {
+				st.dirGen = [2]int{reading, 2*i + at}
+			}
+		}
+	}
 
 	// A string whose commands change directory changes it for an eval, which
 	// runs the string in the shell it stands in.
@@ -952,6 +1001,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				here = append(here, a.placed(s)...)
 			}
 		}
+		stamp(here, i, 1)
 		here = distinctStates(here)
 		if len(here) > maxShellStates {
 			signals = append(signals, rc.budgetSignal()...)
@@ -967,6 +1017,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		for j, st := range here {
 			next[j] = r.after(rc, st, s, dirChangeBelow[i])
 		}
+		stamp(next, i, 2)
 		scopes[s.carrier] = next
 	}
 
@@ -1715,7 +1766,10 @@ type readTarget struct {
 	// blind records a file named relative to a working directory the line
 	// leaves unknown, or a search that looked in one: the file that runs is
 	// not one the guard can name, so a write before it may be that file.
-	blind bool
+	// cwdName is, where the file in that directory is the one that runs when
+	// it is there, its name in the directory (cwdName), and "" otherwise.
+	blind   bool
+	cwdName string
 }
 
 // targetsOf is every file a segment's commands point a shell at, and the
@@ -1766,22 +1820,27 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			out = append(out, ts...)
 			sigs = append(sigs, ss...)
 		case name == "source" || name == ".":
-			p, ok, unfixed, blind, tried := sourceLookup(rc, st, s, a.idx)
+			p, ok, unfixed, blind, cwdRuns, tried := sourceLookup(rc, st, s, a.idx)
 			if unfixed {
 				sigs = append(sigs, sourcePathUnfixedSignal())
 				continue
 			}
+			w := sourceWord(s, a.idx)
+			cwd := ""
+			if cwdRuns {
+				cwd = cwdName(w)
+			}
 			if ok {
-				out = append(out, readTarget{path: p, shown: sourceWord(s, a.idx), kind: targetScript, sourced: true, env: env, shadows: tried, blind: blind})
-			} else if w := sourceWord(s, a.idx); w != "" {
+				out = append(out, readTarget{path: p, shown: w, kind: targetScript, sourced: true, env: env, shadows: tried, blind: blind, cwdName: cwd})
+			} else if w != "" {
 				if _, fixed := fixedToken(s, sourceIndex(s, a.idx)); fixed && !scriptIsStream(w, s.stdinStream) {
 					if !strings.Contains(w, "/") {
 						// No file is there now, but one the line writes on the
 						// search before the source runs is (readTarget).
-						out = append(out, readTarget{shown: w, kind: targetScript, sourced: true, env: env, shadows: tried, blind: blind,
+						out = append(out, readTarget{shown: w, kind: targetScript, sourced: true, env: env, shadows: tried, blind: blind, cwdName: cwd,
 							missing: fmt.Sprintf("abcd guard: `%s %s` names no file the shell can find, so there was nothing to read; if the shell reaches it, it refuses it.", tok, w)})
 					} else if blind {
-						out = append(out, readTarget{shown: w, kind: targetScript, sourced: true, env: env, blind: true})
+						out = append(out, readTarget{shown: w, kind: targetScript, sourced: true, env: env, blind: true, cwdName: cwd})
 					}
 				}
 			}
@@ -1793,7 +1852,7 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 			if p, ok := st.resolveToken(rc, s, a.idx); ok {
 				out = append(out, readTarget{path: p, shown: tok, kind: targetDirect, env: env, startupEnv: true})
 			} else if st.relativeUnknown(tok) {
-				out = append(out, readTarget{shown: tok, kind: targetDirect, env: env, blind: true})
+				out = append(out, readTarget{shown: tok, kind: targetDirect, env: env, blind: true, cwdName: cwdName(tok)})
 			}
 		}
 	}
@@ -1936,7 +1995,7 @@ func sourceWord(s segment, site int) string {
 // then on PATH, and for `.` on PATH alone. ok is false where the line does not fix the word, where it is a
 // stream (the stream refusal reads it), or where no file is found by search.
 func sourcePath(rc *readCtx, st *shellState, s segment, site int) (string, bool) {
-	p, ok, _, _, _ := sourceLookup(rc, st, s, site)
+	p, ok, _, _, _, _ := sourceLookup(rc, st, s, site)
 	return p, ok
 }
 
@@ -1951,16 +2010,20 @@ func sourcePath(rc *readCtx, st *shellState, s segment, site int) (string, bool)
 // file is named relative to a working directory the line leaves unknown, or
 // the search looked in one before it found the file or found none: there
 // the file that runs is not one the guard can name, so a write before it
-// may be that file (readTarget).
-func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, ok, unfixed, blind bool, tried []string) {
+// may be that file (readTarget). cwdRuns is whether, there, the file in the
+// working directory is the one that runs when it is there: a relative path,
+// zsh's `source`, which looks there first, or a search that reached the
+// directory past no PATH entry it skipped.
+func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, ok, unfixed, blind, cwdRuns bool, tried []string) {
 	i := sourceIndex(s, site)
 	w, ok := fixedToken(s, i)
 	if !ok || scriptIsStream(w, s.stdinStream) {
-		return "", false, false, false, nil
+		return "", false, false, false, false, nil
 	}
 	if strings.Contains(w, "/") || strings.HasPrefix(w, "~") {
 		p, ok := st.resolveToken(rc, s, i)
-		return p, ok, false, !ok && st.relativeUnknown(w), nil
+		blind := !ok && st.relativeUnknown(w)
+		return p, ok, false, blind, blind, nil
 	}
 	pv, set := st.vars["PATH"]
 	if v, ok := st.prefixVars(rc, s, site)["PATH"]; ok {
@@ -1969,9 +2032,10 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 	// A PATH the line set, before the command or as its prefix, is searched
 	// strictly: an entry the line does not fix stops the search
 	// (iss-2610120953445472).
+	var skipped searchSkips
 	if st.shell != shellZsh {
-		p, ok, unfixed := searchPath(rc, st, pv, set, w, true, set, &tried, &blind)
-		return p, ok, unfixed, blind, tried
+		p, ok, unfixed := searchPath(rc, st, pv, set, w, true, set, &tried, &skipped)
+		return p, ok, unfixed, skipped.entry || skipped.cwd, skipped.cwd && !skipped.entry, tried
 	}
 	if s.tokens[site] == "source" {
 		// zsh looks in the working directory first. Where the line leaves
@@ -1980,16 +2044,21 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 		// name, is read.
 		if p, ok := st.resolve(rc, w, false); ok {
 			if fi, err := rc.files.stat(p, false); err == nil && fi.Mode().IsRegular() {
-				return p, true, false, false, nil
+				return p, true, false, false, false, nil
 			}
 			tried = append(tried, p)
 		} else {
-			blind = true
+			blind, cwdRuns = true, true
 		}
 	}
-	p, ok, unfixed = searchPath(rc, st, pv, set, w, false, set, &tried, &blind)
-	return p, ok, unfixed, blind, tried
+	p, ok, unfixed = searchPath(rc, st, pv, set, w, false, set, &tried, &skipped)
+	return p, ok, unfixed, blind || skipped.entry || skipped.cwd, cwdRuns, tried
 }
+
+// searchSkips is what a search skipped because the line leaves the working
+// directory unknown: a relative PATH entry (entry), or the working directory
+// itself (cwd).
+type searchSkips struct{ entry, cwd bool }
 
 // searchPath finds a bare name on PATH — pv when set, as the line set it,
 // else the account's — and then, for `source`, in the working directory. An
@@ -1999,17 +2068,21 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 // strict, an entry the line does not fix — a value it does not fix, or a
 // relative entry where the working directory is unknown — stops the search
 // and is reported (unfixed); without, the search skips it, as it always has.
-// blind, when not nil, is set where the search skipped a directory relative
-// to a working directory the line leaves unknown.
-func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, thenCwd, strict bool, tried *[]string, blind *bool) (string, bool, bool) {
+// skipped, when not nil, records where the search skipped a directory
+// relative to a working directory the line leaves unknown.
+func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, thenCwd, strict bool, tried *[]string, skipped *searchSkips) (string, bool, bool) {
 	look := func(p string) {
 		if tried != nil {
 			*tried = append(*tried, p)
 		}
 	}
-	skipBlind := func() {
-		if blind != nil {
-			*blind = true
+	skip := func(cwd bool) {
+		if skipped != nil {
+			if cwd {
+				skipped.cwd = true
+			} else {
+				skipped.entry = true
+			}
 		}
 	}
 	type entry struct {
@@ -2056,7 +2129,7 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 					return "", false, true
 				}
 				if st.relativeUnknown(p) {
-					skipBlind()
+					skip(false)
 				}
 				continue
 			}
@@ -2074,7 +2147,7 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 			}
 			look(p)
 		} else if st.relativeUnknown(name) {
-			skipBlind()
+			skip(true)
 		}
 	}
 	return "", false, false
@@ -2339,7 +2412,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 				// The file in a directory the line leaves unknown is unread,
 				// and a write before the run may be it (readTarget).
 				t := child("", w, targetScript)
-				t.blind = true
+				t.blind, t.cwdName = true, cwdName(w)
 				out = append(out, t)
 			}
 		}
@@ -2383,6 +2456,16 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		w, u := writtenBefore(p, before)
 		written, unplaced = written || w, unplaced || u
 	}
+	if !written && t.blind && t.cwdName != "" {
+		// The same name written in the same unknown directory with no change
+		// of directory between is the file that runs, as a placed write is.
+		for _, w := range before {
+			if w.rel && w.name != "" && sameName(w.name, t.cwdName) && st.sameUnknownDir(w.gen) {
+				written = true
+				break
+			}
+		}
+	}
 	if written {
 		return []payloadSignal{scriptWrittenSignal(t.shown)}
 	}
@@ -2393,7 +2476,7 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 	// relative to an unknown directory. A write whose path the line does not
 	// fix (a variable's value) is not counted for that alone, as it was not
 	// before such a run had a target.
-	blind := t.blind && writesAFile(rc, before)
+	blind := t.blind && writesAFile(rc, before, filepath.Base(t.shown))
 	switch {
 	case blind:
 		sigs = append(sigs, scriptWriteBlindSignal(t.shown))
@@ -2548,12 +2631,14 @@ func writtenBefore(p string, before []writeTarget) (written, unplaced bool) {
 }
 
 // writesAFile reports whether a write before the command lands on a path
-// relative to an unknown working directory, or on one the guard places that
-// can hold a script: not a device, a pipe or a socket, as /dev/null and
-// /dev/stderr are.
-func writesAFile(rc *readCtx, before []writeTarget) bool {
+// relative to an unknown working directory, on one the guard places that can
+// hold a script (not a device, a pipe or a socket, as /dev/null and
+// /dev/stderr are), or on one the guard does not place whose last component
+// is literal and is name, the file the run looks up: `> "$T/n.sh"` before a
+// run of n.sh, never `> "$f"`.
+func writesAFile(rc *readCtx, before []writeTarget, name string) bool {
 	for _, w := range before {
-		if w.rel {
+		if w.rel || (w.base != "" && sameName(w.base, name)) {
 			return true
 		}
 		if !w.ok || w.path == "" {
@@ -2566,6 +2651,15 @@ func writesAFile(rc *readCtx, before []writeTarget) bool {
 		return true
 	}
 	return false
+}
+
+// sameName compares two file names as the filesystem does, case-folded
+// where it folds case: erring toward "the same file" is the safe direction.
+func sameName(a, b string) bool {
+	if fsutil.CaseFoldingFS() {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // scriptSignals carries out of a script what its reading found that

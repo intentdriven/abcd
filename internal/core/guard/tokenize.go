@@ -232,6 +232,9 @@ type pathWord struct {
 	text  string
 	tilde bool
 	ok    bool
+	// base is, for a word the line does not fix, its last path component
+	// where that is literal text (`"$T/n.sh"` is n.sh), else "".
+	base string
 }
 
 // redirectWord reads a redirection's raw target the way the shell reads it:
@@ -282,6 +285,27 @@ func redirectWord(raw string) pathWord {
 	}
 	w.text = b.String()
 	return w
+}
+
+// literalBase is the last path component of a raw word whose earlier part
+// the line does not fix, where that component is literal text after quote
+// removal: `"$T/n.sh"`, `$T/'n.sh'` and `"$T"/n.sh` are n.sh. A component
+// holding an expansion, a glob, a backslash or anything else the shell
+// reads specially, or a word with no slash, gives "".
+func literalBase(raw string) string {
+	i := strings.LastIndexByte(raw, '/')
+	if i < 0 {
+		return ""
+	}
+	rest := raw[i+1:]
+	if strings.ContainsAny(rest, "$`\\*?[]{}()<>|&;~ \t\n") {
+		return ""
+	}
+	rest = strings.NewReplacer(`"`, "", "'", "").Replace(rest)
+	if rest == "" || rest == "." || rest == ".." {
+		return ""
+	}
+	return rest
 }
 
 // feed is a run of segments one tokenize call emitted, list.segs[lo:hi]: the
@@ -672,7 +696,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if raw == "" {
 			return
 		}
-		curRedirs = append(curRedirs, redirect{fd: fd, op: op, target: redirectWord(raw)})
+		w := redirectWord(raw)
+		if !w.ok {
+			w.base = literalBase(raw)
+		}
+		curRedirs = append(curRedirs, redirect{fd: fd, op: op, target: w})
 	}
 	// feedFrom records, for the word being built, that it holds the output of
 	// the commands emitted since start: a substitution's own command and every
