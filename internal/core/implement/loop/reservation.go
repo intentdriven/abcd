@@ -42,7 +42,10 @@ const (
 )
 
 // fenceMargin is how far past the merge queue's check timeout the land fence
-// renews the reservation, so it holds while the queue decides.
+// renews the reservation, so it covers one run of the queue's checks. It does
+// not cover the time a pull request waits in the queue before its checks
+// start: after the arming the hold rests on later steps renewing it at half
+// its lease, as `landMerged` waits.
 const fenceMargin = 15 * time.Minute
 
 // claimOptions are the options a run's reservation act runs under: the step's
@@ -113,7 +116,9 @@ func fenceLease(checkTimeout time.Duration) time.Duration {
 // landFence is the land fence, at the top of the arming: it fetches the run's
 // reservation and refuses, arming nothing, unless the tip is this person's
 // from this copy and live; when it holds, it renews it with fenceLease, so the
-// reservation outlasts the queue's wait. It returns the renewed expiry, zero
+// reservation covers the queue's check timeout. The wait in the queue before
+// its checks run is not covered: later steps renew at half the lease. It
+// returns the renewed expiry, zero
 // for a run that holds no reservation.
 func landFence(c Context, lane Lane, checkTimeout time.Duration) (time.Time, error) {
 	id := c.State.Key

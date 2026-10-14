@@ -15,7 +15,7 @@ import (
 
 // The run's reservation in `implement step` (spc-2610031753359849 spec 2,
 // steps 8 and 9): renewed at half its lease before a stage, fenced and
-// renewed past the queue's timeout before the landing arms a merge, and
+// renewed past the queue's check timeout before the landing arms a merge, and
 // tombstoned once the lane that completes the run has landed. A reservation
 // test runs against the fixture's bare origin, with further clones standing
 // in for a second person and a second computer; never the real remote.

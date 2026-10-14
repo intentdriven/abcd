@@ -520,7 +520,10 @@ another computer, or says it was released (reserve it again with `abcd build
 lease of the merge queue's `check_response_timeout_minutes` (read from the
 mirror at the lane's base) plus fifteen minutes, or the default two hours when
 that is longer or no mirror states a timeout, clamped to a day, so the
-reservation holds while the queue decides. A run whose state records no
+reservation covers the queue's check timeout. The time the pull request waits
+in the queue before its checks start is not covered: once armed, the
+reservation holds because each later step renews it at half its lease, so
+keep stepping the run while it waits on the merge. A run whose state records no
 reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the

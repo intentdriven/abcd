@@ -953,7 +953,7 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	method, approval := rule.method, rule.approval
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
-	// it is renewed past the queue's wait.
+	// it is renewed past the queue's check timeout.
 	holds, err := landFence(c, *lane, rule.checkTimeout)
 	if err != nil {
 		return Outcome{}, err

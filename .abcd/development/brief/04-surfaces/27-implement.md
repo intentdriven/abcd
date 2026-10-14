@@ -341,7 +341,9 @@ arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it
 holds it is renewed with `max(the default lease, the queue's
 check_response_timeout_minutes + 15 minutes)`, clamped to a day, read from the
-ruleset mirror at the lane's base. Once the run's last lane has landed, the
+ruleset mirror at the lane's base: that covers the queue's check timeout, not
+the time the pull request waits in the queue before its checks start, so after
+the arming the hold rests on later steps renewing it at half its lease. Once the run's last lane has landed, the
 step pushes a tombstone over the reservation while it is still this person's
 from this copy, leaves another's as it stands and names the holder, and a
 tombstone that fails is named without undoing the landing; the lane branch
