@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -44,12 +45,14 @@ var listenerPackages = map[string]string{
 	"internal/surface/session":   "adr-2610032150581128, as amended 2026-10-14",
 }
 
-// allowedListenerPackage reports the allowed package rel lies in, if any.
+// allowedListenerPackage reports the allowed package rel (a slash-separated
+// file path) is a file of, if any: the package's own directory exactly, never
+// a subpackage below it, which is a package of its own with no record
+// admitting it.
 func allowedListenerPackage(rel string) (string, bool) {
-	for pkg := range listenerPackages {
-		if strings.HasPrefix(rel, pkg+"/") {
-			return pkg, true
-		}
+	dir := path.Dir(rel)
+	if _, ok := listenerPackages[dir]; ok {
+		return dir, true
 	}
 	return "", false
 }
@@ -213,6 +216,26 @@ func TestListenerScannerIsArmed(t *testing.T) {
 		}
 		if got := len(listenerCalls(fset, f)); got != c.want {
 			t.Errorf("%s: %d listener calls, want %d", c.src, got, c.want)
+		}
+	}
+}
+
+// TestAllowedListenerPackagesAreExact: an allowed package is admitted as its
+// own directory, never its subpackages, so a listener added under
+// internal/surface/session/web would fail the gate (security review 2,
+// item 11c).
+func TestAllowedListenerPackagesAreExact(t *testing.T) {
+	for rel, want := range map[string]bool{
+		"internal/surface/session/server.go":       true,
+		"internal/surface/session/listen.go":       true,
+		"internal/surface/dashboard/server.go":     true,
+		"internal/surface/session/web/web.go":      false,
+		"internal/surface/session/web/x/serve.go":  false,
+		"internal/surface/dashboard/sub/listen.go": false,
+		"internal/surface/sessionx/listen.go":      false,
+	} {
+		if _, got := allowedListenerPackage(rel); got != want {
+			t.Errorf("allowedListenerPackage(%q) = %v, want %v", rel, got, want)
 		}
 	}
 }
