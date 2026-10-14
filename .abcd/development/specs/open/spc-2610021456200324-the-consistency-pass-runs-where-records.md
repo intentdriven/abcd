@@ -509,7 +509,9 @@ narrowest reading that meets the criteria. Each is open to review.
   stay one-way, so answering one never fails a test.
 - **Step 2, where a finding sits.** On the file that declares the link, at the
   field's line, naming the other file. The key ends the message. It is also the
-  lint finding's `Key` field, which no front door prints yet: a seam for step
+  lint finding's `Key` field (`finding_ref` in JSON, as the record, the report
+  and the consistency rows spell it, since a default gitleaks flags
+  `"Key": "cfk-…"`), which no front door prints yet: a seam for step
   4's gate.
 - **Step 2, one `routed_from` finding per routing record.** Entries routed from
   one record share both files and so one key, and are one finding.

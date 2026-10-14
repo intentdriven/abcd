@@ -42,8 +42,11 @@ type Finding struct {
 	Message  string
 	// Key is the finding key (findingkey.Derive) of a cross-document finding,
 	// which the pre-commit gate reads to tell a new finding from a standing one.
-	// It is empty for every other rule and then left out of the JSON.
-	Key string `json:"Key,omitempty"`
+	// It is empty for every other rule and then left out of the JSON. Its JSON
+	// name is finding_ref, as the record, the report and the consistency rows
+	// spell it: `"Key": "cfk-…"` reads as a credential assignment to gitleaks'
+	// default generic-api-key rule.
+	Key string `json:"finding_ref,omitempty"`
 }
 
 const (

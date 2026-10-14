@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -148,6 +149,11 @@ func TestReciprocalRulesSilentWhenReciprocated(t *testing.T) {
 	}
 }
 
+// secretShapedKey is the shape of gitleaks' default generic-api-key rule
+// narrowed to a finding key: a credential word, up to twenty word characters,
+// an assignment and then the key (the row and record tests hold the same).
+var secretShapedKey = regexp.MustCompile(`(?i)(?:access|auth|api|credential|creds|key|passw(?:or)?d|secret|token)[ \t\w.-]{0,20}[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[` + "`" + `'"\s=]{0,5}cfk-[0-9a-f]{16}`)
+
 // TestReciprocalFindingCarriesItsKeyInJSON pins the key as a field too: the
 // pre-commit gate reads a finding's key from --json output rather than parsing
 // the message, and a finding of any other rule carries none.
@@ -166,14 +172,20 @@ func TestReciprocalFindingCarriesItsKeyInJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"Key":"`+want+`"`) {
-		t.Errorf("JSON does not carry the key: %s", b)
+	if !strings.Contains(string(b), `"finding_ref":"`+want+`"`) {
+		t.Errorf("JSON does not carry the key as finding_ref: %s", b)
+	}
+	// Lint output is as likely to be committed as a record or a report: no
+	// part of it may read as a credential assignment to a default secret
+	// scanner (gitleaks' generic-api-key flags `"Key":"cfk-…"`).
+	if m := secretShapedKey.FindString(string(b)); m != "" {
+		t.Errorf("the finding's JSON carries %q, which a default gitleaks flags as generic-api-key: %s", m, b)
 	}
 	b, err = json.Marshal(Finding{File: "a.md", Line: 1, RuleID: "links_resolve", Severity: severityWarn, Message: "m"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(b), `"Key"`) {
+	if strings.Contains(string(b), `"finding_ref"`) {
 		t.Errorf("a finding with no key serialises one: %s", b)
 	}
 }
