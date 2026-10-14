@@ -112,9 +112,10 @@ refused too unless `--allow <GHSA-id>` names it as another project's, already
 public. Each finding names its `kind`, `source`, `where` and `line` and never
 repeats the match. Text is folded before it is matched: fullwidth and other
 compatibility letters read as plain ones, every dash as a hyphen, invisible
-characters (a zero-width space, a soft hyphen) are dropped, and a token broken
-at a hyphen across a line end reads whole. Exit 0 is clean (or no store exists on this machine), exit 2
-is a finding. `intake_stale` says the last intake is more than a day old: run
+format characters (Unicode category Cf, such as a zero-width space or a soft
+hyphen) are dropped, and a token broken at a hyphen across a line end reads
+whole. Exit 0 is clean (or no store exists on this machine), exit 2 is a
+finding. `intake_stale` says the last intake is more than a day old: run
 intake first.
 
 Limits the user must hear: the check cannot recognise a paraphrase or a count
@@ -125,6 +126,21 @@ four-character group one character repeated (`GHSA-xxxx-xxxx-xxxx`,
 `GHSA-2222-cccc-xxxx`), is taken for a documentation or test placeholder and
 not refused as unlisted, so a real id of that form would pass unremarked. An
 advisory the store holds is still refused by its id whatever its form.
+
+The fold catches less than a reader would. It does not catch look-alike
+letters from other scripts (a Cyrillic or Greek letter standing in for a
+Latin one); invisible characters outside category Cf (the combining grapheme
+joiner U+034F, variation selectors, the Hangul filler U+3164); an id or title
+written as HTML entities or with markdown backslash escapes; or a word whose
+line wrap inserted a hyphen that was not in it (a title word split as
+`over-` and `flow`). `--range` reads commit messages, the lines each commit
+adds and the names of the files it adds, and nothing else: branch names and
+annotated tag messages are not checked.
+
+A consumer of the output must treat `no_store: true` as "not checked", never
+as clean: nothing was compared against anything. Keep the output off public
+logs, its `under_embargo` count included: how many advisories are held is
+itself a disclosure.
 
 ## Publish
 
