@@ -32,6 +32,11 @@
 #
 # REACH: git runs this hook for `git commit` and for a `git merge` that creates a
 # commit. `--no-verify`, `git rebase`, `git cherry-pick` and `git am` bypass it.
+# A message that itself spells git's scissors line, followed by a `diff --git `
+# line, is judged only above the scissors, even in a commit that keeps the text
+# below it: a verbose commit and the scissors cleanup are chosen as often by a
+# `-v` or `--cleanup` on the command line as by configuration, and a hook sees
+# only the configuration, so it cannot tell a forged cut from git's own.
 unset -f set 2>/dev/null || true
 set -euo pipefail
 # --- environment pin: the FIRST statements, before anything is read or run -------
