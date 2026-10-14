@@ -32,8 +32,12 @@ import (
 // Measured when the carried-value reading landed (iss-2609281134544802): 5,937
 // inputs, 390 unparsable, 25 blocks and 29 warns both before the reading and
 // after it, the same lines each time.
+//
+// Blocks raised to 26 when the installer's refuse_older landed
+// (hooks/bootstrap.sh): its printf argument line, read alone, blocks as
+// program-name-unknown, the same way say_refusal's argument line already did.
 const (
-	maxSweepBlocks = 25
+	maxSweepBlocks = 26
 	maxSweepWarns  = 29
 )
 
