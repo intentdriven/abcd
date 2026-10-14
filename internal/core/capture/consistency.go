@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // consistency.go is the ledger half of the intent consistency pass (itd-48,
@@ -217,25 +217,6 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// namesID reports whether text names id as a whole token: `itd-4` is not named
-// by `itd-48`, nor by `xitd-4`.
-func namesID(text, id string) bool {
-	if id == "" {
-		return false
-	}
-	for i := 0; ; {
-		k := strings.Index(text[i:], id)
-		if k < 0 {
-			return false
-		}
-		start, end := i+k, i+k+len(id)
-		before := start == 0 || !isIDRune(rune(text[start-1]))
-		after := end == len(text) || !unicode.IsDigit(rune(text[end]))
-		if before && after {
-			return true
-		}
-		i = start + 1
-	}
-}
-
-func isIDRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' }
+// namesID reports whether text names id as a whole token: the one record-id
+// test (recordid.NamesID) record-lint's cross-document rules apply too.
+func namesID(text, id string) bool { return recordid.NamesID(text, id) }

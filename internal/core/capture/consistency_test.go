@@ -419,3 +419,21 @@ func TestConsistencyALegacyOpenRecordLinksByProse(t *testing.T) {
 		t.Fatalf("linking a legacy record wrote to it:\n%s", after)
 	}
 }
+
+// TestNamesIDIsTheRecordIDToken: the consistency filer's id test is the one
+// record-lint's A1 rules use (recordid.NamesID): a trailing letter or digit
+// makes another word, a hyphen starts the record's own slug.
+func TestNamesIDIsTheRecordIDToken(t *testing.T) {
+	for text, want := range map[string]bool{
+		"see itd-4.":        true,
+		"see itd-4-slug.md": true,
+		"see itd-48":        false,
+		"see xitd-4":        false,
+		"see itd-4abc":      false,
+		"see itd-4étude":    false,
+	} {
+		if got := namesID(text, "itd-4"); got != want {
+			t.Errorf("namesID(%q, itd-4) = %t, want %t", text, got, want)
+		}
+	}
+}
