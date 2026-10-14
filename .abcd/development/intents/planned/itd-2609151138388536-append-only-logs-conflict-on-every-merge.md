@@ -30,8 +30,8 @@ Typed links: `related_adrs` [adr-2610110925465593](../../decisions/adrs/26101109
 > it now points at the decision's own file. Two branches that each record a
 > decision now merge the way two branches that each capture an issue already do:
 > git sees two new files and has nothing to reconcile. A repository abcd manages
-> records its new decisions the same way, and its existing log stays untouched as
-> frozen history.
+> records its new decisions the same way; abcd never touches its existing log,
+> which its owner can convert with the same one-off script.
 >
 > "I landed twenty-seven branches in a day and the decision log fought me on the
 > first two merges — I ended up hand-writing a merge attribute into
@@ -118,9 +118,9 @@ wrong.
 - **Repositories using git.** The claim is about git's merge behaviour on file <!-- cond: cond-2610110931385884 -->
   boundaries; nothing here is asserted about another version-control system.
 - **abcd itself and every repository abcd manages.** New decisions take the <!-- cond: cond-2610110931387631 -->
-  shape in both. A managed repository's existing log is never rewritten; it
-  stays as frozen history, so the claim covers the decisions recorded after the
-  shape is adopted.
+  shape in both. abcd never rewrites a managed repository's existing log; until
+  its owner converts it by hand, it stays as frozen history, so the claim covers
+  the decisions recorded after the shape is adopted.
 - **Parallel branch work.** The benefit is proportional to concurrency. At one <!-- cond: cond-2610110931381195 -->
   branch at a time the single file never conflicts and the folder buys nothing
   but consistency with the other five families.
@@ -164,7 +164,7 @@ wrong.
   the shape rather than disabled.
 - **Given** abcd's existing log, **when** the migration has run,
   **then** every entry is present as its own file with its original date and text
-  preserved verbatim, the index renders them in their original order, and the
+  preserved verbatim, the index renders them in date order, and the
   count matches — a migration that silently drops or reorders history fails this
   criterion.
 
@@ -181,6 +181,9 @@ None open: the product thinker settled them on 2026-10-11 (Decisions, below).
 - 2026-10-11, the product thinker: the migration of abcd's own log (splitting its entries into the folder and rewriting every link and citation) is a one-off script run once in this repository, not a verb or any code in abcd. It is needed once and only here; a managed repository is never migrated, since its log stays as frozen history.
 - 2026-10-11, the technical facilitator, with one answer defensible on the record: the folder is `.abcd/work/decisions/` (the home the press release named) and its records are `dec-`, a prefix no family uses; the union attribute for `.abcd/work/DECISIONS.md` goes in the same change; the changelog's attribute stays out of scope as a separate conflict class.
 
+- 2026-10-14, the product thinker, in a second planning interview that reconciled this record with later rulings: the press release's last sentence now reads "abcd never touches its existing log, which its owner can convert with the same one-off script"; a person may run the one-off script by hand on a repository they own, and abcd never runs it there; the migration of abcd's own log lands in the same change as the folder; the migrated entries take date order (the 48 written out of date order move to their dates), so the migration criterion reads "date order"; the site page is the "Decision log". The mechanism, the scope conditions and the eight criteria were walked again and stand.
+- 2026-10-14, the technical facilitator: the prefix is `dcn`, not `dec`, so a decision record reads apart from the lifeboat's `dec-L<line>` keys; `abcd decide "<text>"` (and `/abcd:decide`) records a decision, `abcd decide` with no operand lists them, and `abcd decide --adr "<title>"` mints an ADR, which bare `abcd decide "<title>"` did before. Accepted cost: an older page or an earlier release's binary still mints an ADR for the bare form until both catch up.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
@@ -188,3 +191,4 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 ## Grounds
 
 - pursued: We expect two pieces of work that each record a decision to land without a collision on decisions. Shown wrong if such a collision happens again after the change lands.
+- pursued: decisions recorded on branches from two accounts must merge without anyone resolving a conflict, or working across accounts stalls. Shown wrong if, after this ships, a pull request that records a decision is still dropped from the merge queue over a decision conflict.

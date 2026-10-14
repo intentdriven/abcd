@@ -11,7 +11,7 @@ production_mode: hand-written
 
 This spec delivers
 [itd-2609151138388536](../../intents/planned/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md):
-a decision is a record of its own, `dec-<id>-<slug>.md` in the flat folder
+a decision is a record of its own, `dcn-<id>-<slug>.md` in the flat folder
 `.abcd/work/decisions/`, and the single log `.abcd/work/DECISIONS.md` is
 retired. The rule is
 [adr-2610110925465593](../../decisions/adrs/2610110925465593-decisions-are-one-flat-file-each-and-the.md),
@@ -21,13 +21,13 @@ and drops its symlink.
 
 The approach, in plain words:
 
-- **A sixth family on the existing seam.** `dec` joins the record families the
+- **A sixth family on the existing seam.** `dcn` joins the record families the
   resolver, record-lint and the site already read. Its ids come from the adr-45
   mint (`internal/core/recordid`), its slugs are cut at `recordid.MaxSlugLen`
   (40), and one package, `internal/core/decisions`, owns the folder: the path,
   the writer and the reader.
 - **Recording writes one new file and nothing else.** A verb mints the record
-  (which verb, and whose, is open question 1). Nothing is appended anywhere,
+  (`abcd decide "<text>"`, decision 17). Nothing is appended anywhere,
   so two branches that each record a decision merge with nothing to reconcile.
 - **History is read, never committed.** The verb's bare form and a site page
   list every decision in date order, read from the folder each time. No index
@@ -60,24 +60,24 @@ lists them:
 | A5, a managed repository's existing `DECISIONS.md` untouched by install, new decisions to the folder, no merge attribute | Step 3, `TestInstallLeavesAFrozenLogByteForByte` and `TestInstallScaffoldsNoMergeAttribute`. |
 | A6, adoption with no log gets the folder and no single file | Step 3, `TestInstallSeedsTheDecisionsFolder`. |
 | A7, the gate gone from code, CI, preflight and the conventions | Step 6 deletes it with its wiring; `TestNoLiveDecisionsLogPath` also refuses `decisions-append` and `lint-decisions` on the live surfaces. |
-| A8, every entry its own file with date and text verbatim, rendered in original order, count matching | Step 6: the script's round trip (each record reproduces its entry byte for byte), its count check, and a diff of the listing against the old file. The order part waits on open question 2. |
+| A8, every entry its own file with date and text verbatim, rendered in date order, count matching | Step 6: the script's round trip (each record reproduces its entry byte for byte), its count check, and a diff of the listing against the old file. The order part waits on open question 2. |
 
 ## Design
 
 ### The record
 
-A decision record is one file, `.abcd/work/decisions/dec-<id>-<slug>.md`:
+A decision record is one file, `.abcd/work/decisions/dcn-<id>-<slug>.md`:
 
 ```markdown
 ---
-id: dec-<yymmddHHMMSS><rrrr>
+id: dcn-<yymmddHHMMSS><rrrr>
 slug: <at most 40 characters>
 date: <YYYY-MM-DD>
 ---
 <YYYY-MM-DD> — <the decision, in the words it was recorded in>
 ```
 
-- **The id** is the adr-45 grammar, `dec-` plus a twelve-digit UTC stamp plus
+- **The id** is the adr-45 grammar, `dcn-` plus a twelve-digit UTC stamp plus
   four random digits. The verb mints it through `recordid.Minter`, retrying a
   clash the same way `decide` does (`mintRetryBudget`, exclusive create under
   the store's mint lock).
@@ -99,33 +99,33 @@ date: <YYYY-MM-DD>
 
 ### The family in the shared code (step 1)
 
-`dec` is added everywhere the families are listed, so a decision is a record
+`dcn` is added everywhere the families are listed, so a decision is a record
 like any other before anything writes one:
 
-- `internal/core/recordid`: `familyRoots` gains `{"dec", ".abcd/work/decisions"}`
+- `internal/core/recordid`: `familyRoots` gains `{"dcn", ".abcd/work/decisions"}`
   through a new constant `DecisionsRelDir`. `CitedIDRe` and `citedIDPartsRe`
-  admit `dec`.
-- `internal/core/lint`: `recordStores` gains a flat `dec` store (no buckets,
-  `fileFamily: "dec"`, filename `dec-<N>-<slug>.md`, required fields `id`,
+  admit `dcn`.
+- `internal/core/lint`: `recordStores` gains a flat `dcn` store (no buckets,
+  `fileFamily: "dcn"`, filename `dcn-<N>-<slug>.md`, required fields `id`,
   `slug` and `date`, `readerFailsClosed`). The handle patterns in `schema.go`,
-  `crossstore.go` and `prosecitations.go` admit `dec`, so a prose citation of a
+  `crossstore.go` and `prosecitations.go` admit `dcn`, so a prose citation of a
   decision that no file holds is a blocker, exactly as it is for an issue. A
   record whose `date` disagrees with its id's stamp, or with the date its body
   starts with, is a finding.
-- `.abcd/record-lint.json`: `dec` joins `record_stores` in `record_schema`,
+- `.abcd/record-lint.json`: `dcn` joins `record_stores` in `record_schema`,
   `prose_citation_resolves` and `context_citation_currency`.
-- `internal/core/site/recordjson.go`: `bodyHandleRe` admits `dec`, so a body
+- `internal/core/site/recordjson.go`: `bodyHandleRe` admits `dcn`, so a body
   mention of a decision becomes a mention edge.
-- `internal/core/record`: `abcd dec-<id>` says what the record is and where it
+- `internal/core/record`: `abcd dcn-<id>` says what the record is and where it
   sits, the way `abcd iss-<id>` does.
 - `internal/core/decisions` (new): `RelDir`, `Parse` (one file into a
   `Decision`) and `List` (every record in the folder, ordered by id). `List`
   reads an absent folder as an empty list.
 
-The `dec-` prefix overlaps one existing name: the lifeboat keys a line of a
-frozen log as `dec-L<line>` (`internal/core/lifeboat/graveyard.go`). The `L`
-keeps the two apart, since a record id is digits only, and step 4 keeps both
-(decision 14).
+The prefix is `dcn`, not `dec`: the lifeboat already keys a line of a frozen
+log as `dec-L<line>` (`internal/core/lifeboat/graveyard.go`), and a distinct
+prefix keeps the two apart for a reader as well as for the grammar (decision
+16). Step 4 keeps both kinds of key (decision 14).
 
 ### Recording and listing (step 2)
 
@@ -140,7 +140,7 @@ ideate both call it (one-canonical-primitive). It:
 - mints, cuts the slug, and writes the file by exclusive create;
 - touches no other path. That is A1, and A4 follows from it.
 
-The listing is the verb's bare form (its spelling is open question 1). It
+The listing is the verb's bare form, `abcd decide` with no operand (decision 17). It
 prints every record oldest first, the order the old file was read in, one block
 per record: the id, then the body. `--json` returns `[{id, date, slug, path,
 text}]`. It reads only the folder. Where a frozen `.abcd/work/DECISIONS.md`
@@ -223,11 +223,11 @@ it is documented as a managed repository's frozen history, read-only
 ### The site page (step 5)
 
 The site reads the record graph that `lint.LoadRecordGraph` builds, so once
-step 1 lands the `dec` records are nodes. Step 5 decides where they show:
+step 1 lands the `dcn` records are nodes. Step 5 decides where they show:
 
 - **Publication is opted into**, as the issue ledger's is. The folder sits in
   the working tier, and adr-32 makes publishing that tier a per-repository
-  choice. `RecordOpts` gains `decisions`, and without it no `dec` node reaches
+  choice. `RecordOpts` gains `decisions`, and without it no `dcn` node reaches
   the export. abcd's `.abcd/site.json` sets it.
 - **One page lists them all**, oldest first, grouped by month. Each month is a
   disclosure, and every entry is in the HTML whether its month is open or not.
@@ -238,13 +238,14 @@ step 1 lands the `dec` records are nodes. Step 5 decides where they show:
 - **They stay off the development page and the relationship chart.** Both are
   about stores that move, and 523 one-line nodes would bury them. The
   dashboard gets one tile with the count, linking the page.
-- The page's route and its label are open question 3. The ADR tile is already
-  labelled "decisions" in `site-src/ui.json`.
+- The page is labelled "Decision log", at `record/decision-log/`; the ADR tile
+  keeps its "decisions" label in `site-src/ui.json` (decision 19).
 
 ### The migration script (step 6)
 
 The product thinker ruled that abcd's own migration is a one-off script, never
-a verb or any code in abcd, and never run in a managed repository.
+a verb or any code in abcd, and abcd never runs it in a managed repository;
+that repository's owner may run it there by hand (decision 20).
 
 - **Where it lives:** `.abcd/.work.local/scratch/decisions-migrate/main.go`,
   in the checkout's local tier. It is gitignored, so it is never committed and
@@ -418,14 +419,13 @@ generated part is never trusted from the day it was first run:
 
 ## Steps
 
-1. The `dec` family is a record family: resolver, record-lint, the site's mentions, the record dispatch and the folder reader
-   - packages: internal/core/recordid (resolve.go, a DecisionsRelDir constant, dateFromStamp moved in from decide), internal/core/decide (calls the moved helper), internal/core/lint (schema.go, crossstore.go, prosecitations.go), .abcd/record-lint.json (record_stores in record_schema, prose_citation_resolves and context_citation_currency), internal/core/site (recordjson.go bodyHandleRe), internal/core/record (dispatch for a dec id), internal/core/decisions (new: RelDir, Parse, List)
-   - tests: TestResolverFindsADecisionRecord, TestRecordSchemaRequiresDecisionFields (a record missing date, and one whose date disagrees with its stamp or body, each a finding), TestProseCitationOfAnAbsentDecisionIsABlocker, TestListOrdersByIDAndReadsAnAbsentFolderAsEmpty, TestRecordDispatchDescribesADecision, each watched fail first; record-lint clean on the tree, which holds no dec record yet
-   - the slug cap tree test (recordid/slugcap_tree_test.go) walks familyRoots and fails on a store holding no records, so it would break here: it exempts the `dec` store from that one assertion until step 6, which removes the exemption once the folder holds the migrated records
+1. The `dcn` family is a record family: resolver, record-lint, the site's mentions, the record dispatch and the folder reader
+   - packages: internal/core/recordid (resolve.go, a DecisionsRelDir constant, dateFromStamp moved in from decide), internal/core/decide (calls the moved helper), internal/core/lint (schema.go, crossstore.go, prosecitations.go), .abcd/record-lint.json (record_stores in record_schema, prose_citation_resolves and context_citation_currency), internal/core/site (recordjson.go bodyHandleRe), internal/core/record (dispatch for a dcn id), internal/core/decisions (new: RelDir, Parse, List)
+   - tests: TestResolverFindsADecisionRecord, TestRecordSchemaRequiresDecisionFields (a record missing date, and one whose date disagrees with its stamp or body, each a finding), TestProseCitationOfAnAbsentDecisionIsABlocker, TestListOrdersByIDAndReadsAnAbsentFolderAsEmpty, TestRecordDispatchDescribesADecision, each watched fail first; record-lint clean on the tree, which holds no dcn record yet
+   - the slug cap tree test (recordid/slugcap_tree_test.go) walks familyRoots and fails on a store holding no records, so it would break here: it exempts the `dcn` store from that one assertion until step 6, which removes the exemption once the folder holds the migrated records
 2. Recording a decision writes one file, and the bare verb lists them
    - packages: internal/core/decisions (Record, the mint lock, the listing's text and JSON forms), internal/surface/cli (the recording verb, its bare listing and its help placement, per open question 1), commands (the verb's page, per open question 1), .abcd/development/release/surface.json and docs/reference/cli/commands.md regenerated, .abcd/development/brief/04-surfaces (the verb's chapter, and README row), .abcd/rules.json (DOGFOODING recall list, if the answer adds a verb)
    - tests: TestRecordWritesOneFileAndNothingElse (A1), TestTwoBranchesRecordingMergeCleanly (A4), TestListingIsDateOrderedAndDerived (A2, records created out of id order, listing in id order, no tracked file changed by listing), TestListingNamesAFrozenLog, TestRecordRefusesWithoutTheSharedTier, TestRecordRefusesAnUnslugableText, each watched fail first; the menu, parity, snapshot and dogfooding tests pass after go generate ./internal/surface/cli
-   - waits on open question 1 for the verb's name, page and placement; the writer and the listing's core do not
 3. ideate, ahoy and the repository lint move to the folder
    - packages: internal/core/ideate (ideate.go, record.go, redact.go comment), commands/ideate.md, internal/core/ahoy (record_tiers.go, install_summary.go, apply.go comment), internal/core/repolint (rule_decisions.go), docs/how-to/install.md, commands/prepare-this-repo.md or commands/ahoy.md (whichever carries the adoption workflow when this lands), .abcd/development/brief/04-surfaces (16-lint.md, 18-ideate.md, 01-ahoy.md where it lists the seeds)
    - tests: TestIdeateRecordsItsPointerAsADecision (and the old missing-log refusal retired with its ruling in the commit), TestInstallSeedsTheDecisionsFolder (A6), TestInstallLeavesAFrozenLogByteForByte (A5, compared by hash), TestInstallScaffoldsNoMergeAttribute (A5), TestDecisionDurabilityPassesOnTheFolder, TestDecisionDurabilityWarnsOnAFrozenLogAlone, each watched fail first; TestEveryCommittedTierHasASeed passes with the new seed
@@ -434,14 +434,13 @@ generated part is never trusted from the day it was first run:
    - tests: TestBriefQuotesDecisionsNamingTheIntent (folder and frozen file both), TestIssueBriefQuotesDecisionsNamingTheIssue, TestLifeboatReadsTheDecisionsFolder, TestGraveyardKeysARecordByItsID, each watched fail first; the existing frozen-log lifeboat tests pass on FrozenLog; the cold-reading evals lane (make evals-cold-reading) and the reading tests pass with the folder excluded
    - if the non-test diff passes about 800 lines, the lifeboat moves to a step of its own
 5. The site lists every decision on one page
-   - packages: internal/core/site (manifest.go RecordOpts, recordjson.go, explorer.go the page, its route, its navigation entry and the dashboard tile; development.go and timeline.go keep dec nodes out), site-src/ui.json (the page's label, per open question 3), .abcd/site.json (the opt-in)
+   - packages: internal/core/site (manifest.go RecordOpts, recordjson.go, explorer.go the page, its route, its navigation entry and the dashboard tile; development.go and timeline.go keep dcn nodes out), site-src/ui.json (the page's label, per open question 3), .abcd/site.json (the opt-in)
    - tests: TestDecisionLogPageListsEveryEntry (more records than developmentDeckCap, oldest first, each with its id and full text), TestDecisionsAreOptedInto (absent without the switch), TestDevelopmentPageAndChartLeaveDecisionsOut, each watched fail first; make site-render clean, and the export built twice still identical
-   - waits on open question 3 for the route and label only
 6. abcd's log becomes records, every citation is rewritten, and the gate and the union line go
-   - packages: .abcd/work/decisions (generated by the script), .abcd/work/DECISIONS.md (deleted), every tracked file holding a citation (generated, plus hand resolutions of the review list), .gitattributes, AGENTS.md, .abcd/README.md, .gitignore, .github/CONTRIBUTING.md, .github/workflows/ci.yml (the two gate steps and the Go setup only they use), Makefile (lint-decisions and its place in preflight), cmd/record-lint (the decisions-append mode, its file and test), internal/core/lint (decisionsappend.go and its test deleted), internal/core/relink and cmd/record-slug-rename (the append-only entries and their fixtures), .abcd/development/brief/05-internals/06-lint.md, .abcd/development/brief/glossary/core/ledger.md, the four fixture-prose tests, internal/core/recordid (the slug cap test's `dec` exemption removed), a new repository-tree test file for TestNoLiveDecisionsLogPath
+   - packages: .abcd/work/decisions (generated by the script), .abcd/work/DECISIONS.md (deleted), every tracked file holding a citation (generated, plus hand resolutions of the review list), .gitattributes, AGENTS.md, .abcd/README.md, .gitignore, .github/CONTRIBUTING.md, .github/workflows/ci.yml (the two gate steps and the Go setup only they use), Makefile (lint-decisions and its place in preflight), cmd/record-lint (the decisions-append mode, its file and test), internal/core/lint (decisionsappend.go and its test deleted), internal/core/relink and cmd/record-slug-rename (the append-only entries and their fixtures), .abcd/development/brief/05-internals/06-lint.md, .abcd/development/brief/glossary/core/ledger.md, the four fixture-prose tests, internal/core/recordid (the slug cap test's `dcn` exemption removed), a new repository-tree test file for TestNoLiveDecisionsLogPath
    - tests: TestNoLiveDecisionsLogPath (A3, A7), watched fail on the tree before the script runs and pass after; the script's round trip, count check and listing diff, reported in the pull request (A8); go test ./... and record-lint, docs-lint and site-render clean; make preflight runs eight gates, with no lint-decisions
    - the gate leaves here, not after: its contract refuses any change that deletes the log's lines and requires the change that graduates the log to retire it in the same diff (decision 5)
-   - waits on open question 2, which fixes the migrated ids, and lands by the protocol under Concurrency at landing
+   - lands by the protocol under Concurrency at landing
    - the script lives at .abcd/.work.local/scratch/decisions-migrate and is never committed; the pull request body carries its source, its sha256, the counts, the round-trip verdict and the review list with each resolution
    - the non-generated diff is the hand edits, the tree test and the review resolutions; the deleted gate files (about 1,700 lines) are pure deletions and are counted apart from it
 7. The docs-fidelity review and the close
@@ -475,8 +474,8 @@ one defensible answer. Each is folded into the design above.
   dated earlier, gets the next number for its date, and no earlier id moves.
   Record-lint's uniqueness rules check the ids like any others. Grounds: the
   landing protocol needs a rerun to reproduce the reviewed output. A random
-  suffix would change every id each time. Open question 2 can change how the
-  stamp's date is chosen, and this decision then follows the answer.
+  suffix would change every id each time. Decision 18 fixes the
+  stamp's date: each entry's own date.
 - **4. The slug comes from the text after the date.** Cut at 40 by
   `recordid.Slug`. The script refuses an entry with nothing slug-able, and
   none exists at 6f0589fc3. Grounds: the date is in the id already.
@@ -540,56 +539,36 @@ one defensible answer. Each is folded into the design above.
   hand. Grounds: step 1 makes a decision handle a checked citation, so a
   wrong one is a finding rather than a dead link.
 
+## Decisions (product thinker and technical facilitator, 2026-10-14)
+
+Settled in the planning interview of 2026-10-14, which reconciled this spec
+with the product thinker's later rulings. Each is folded into the design above.
+
+- **16. The family's prefix is `dcn`.** The technical facilitator's ruling. A
+  distinct prefix keeps a decision record apart from the lifeboat's
+  `dec-L<line>` keys for a reader, not only for the grammar.
+- **17. `abcd decide` records, lists and mints.** The facilitator's ruling:
+  `abcd decide "<text>"` (and `/abcd:decide`) records a decision,
+  `abcd decide` with no operand lists them, and `abcd decide --adr "<title>"`
+  mints an ADR, which bare `abcd decide "<title>"` did before. Decisions
+  outnumber ADRs about eight to one, so the common act takes the short form.
+  The cost was accepted knowingly: an older page or the published binary of
+  an earlier release still files an ADR for the bare form until both catch
+  up, so the docs sweep lands in the same change. Settles open question 1 of
+  2026-10-11.
+- **18. Migrated entries take date order.** The product thinker's ruling. Each
+  migrated id carries its entry's own date, the 48 entries written out of
+  date order move to their dates, and within one date the file's order holds.
+  The pull request lists the 48 that move. Settles open question 2.
+- **19. The page is the "Decision log".** The product thinker's ruling: the
+  page is labelled "Decision log", at `record/decision-log/`, and the ADR tile
+  keeps "decisions". Settles open question 3.
+- **20. The owner may run the script on their own repository.** The product
+  thinker's ruling: abcd's install never touches a managed repository's
+  existing log, and the person who owns that repository may convert it with
+  the same one-off script, by hand. The script stays out of abcd's shipped
+  code.
+
 ## Open Questions
 
-1. **What command records a decision and lists them, and whose command is
-   it?** For the product thinker. The verb split
-   ([itd-2610090831227812](../../intents/planned/itd-2610090831227812-a-person-who-types-abcd-sees-only-the.md))
-   places every verb for people or for agents, and you placed `decide` on the
-   person's list. Its 2026-10-09 ruling also says an option only agents use is
-   not shown where people look. Recording a decision today is done by hand,
-   mostly by agents writing down a ruling after asking you. The open issue's
-   remedy names `abcd decide`, but that is a capture's remedy, not a ruling.
-   Step 2 builds the writer and the listing either way. Only the front door
-   waits on this answer.
-   - (a) `decide` grows a second form. `abcd decide "<title>"` still mints an
-     ADR; a flag (for example `--log "<text>"`) records a decision; and bare
-     `abcd decide`, which refuses today, lists them. It stays on your list,
-     and you also say whether the flag shows in a person's help.
-   - (b) A new agents-only verb that records with an operand and lists when
-     bare. Its page is hidden from the menu, and a person asks the agent.
-   - (c) A new person's verb of the same shape, listed beside `decide`.
-   - For (b) and (c), the verb's name is also yours to choose.
-
-2. **Which order wins for the 48 entries written out of date order?** For the
-   product thinker. A2 says the listing is in date order, and your ruling says
-   the id is the timestamp, so a listing sorts by date. A8 says the migrated
-   history renders "in their original order". For 475 of the 523 entries those
-   agree. For 48 they do not: the old file holds entries appended after later
-   dates. For example, nine entries dated 2026-07-14 sit after entries dated
-   2026-07-26. The gate's own header records these as honest back-dated
-   appends. Step 6 cannot land until this is answered, because it fixes the
-   migrated ids.
-   - (a) Date order. Each migrated id carries its entry's own date. The 48
-     move to their dates, and within one date the file's order holds. The pull
-     request lists the 48 that move.
-   - (b) File order. A migrated id carries the date of the latest entry above
-     it in the file, so the listing keeps the file's order. The `date` field
-     and the text keep the date as written, which then differs from the id's
-     stamp for those 48. The record-lint check that the two agree would have
-     to admit migrated records.
-   - (c) Recorded order. Each migrated id carries the day the entry was
-     committed, read from git history, and the text keeps the date as written.
-     This is close to file order, and it shows when each entry was written
-     down.
-
-3. **What does a person see the page called, and at what address?** For the
-   product thinker. The site already labels the ADRs "decisions" (the
-   dashboard tile, and "Latest decisions" on the front page). The new page
-   lists the decision records. Step 5 builds the page either way, and only its
-   route and label wait.
-   - (a) "Decision log", at `record/decision-log/`. The ADRs keep "decisions".
-   - (b) "Decisions" for the new page, with the ADR tile relabelled (for
-     example "Architecture decisions").
-   - (c) Another name you give, the same on the page, in the command's help
-     and in the docs.
+None. The three questions of 2026-10-11 are settled by decisions 17, 18 and 19.

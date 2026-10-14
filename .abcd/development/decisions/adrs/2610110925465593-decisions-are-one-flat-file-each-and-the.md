@@ -39,7 +39,7 @@ outside readers to keep resolving, only this repository's own links.
 
 **A decision is a record, minted through the adr-45 seam, stored one per file in
 one flat folder.** The folder is `.abcd/work/decisions/`, and each file is
-`dec-<id>-<slug>.md`, the same flat layout every other record family uses. The
+`dcn-<id>-<slug>.md`, the same flat layout every other record family uses. The
 id is the timestamp, so a plain listing sorts by date; there are no year, month
 or day subfolders, which would spend path length (iss-2610100626320367) on
 information the id already carries. Recording a decision creates a file and
@@ -61,7 +61,9 @@ file would bring the conflict back.
 ([adr-2609091248200336](2609091248200336-a-tool-never-creates-directories-in-user.md)'s
 caution about acting on a person's files unasked). New decisions go to the
 folder from the change that adopts the shape onward. The old file stays where it
-is, as frozen history.
+is, as frozen history, until its owner chooses to convert it by hand with the
+same one-off script abcd's own log is converted with (the product thinker's
+ruling of 2026-10-14); abcd itself never runs that script there.
 
 **The decisions-append gate is retired by the shape**, as the earlier ADR ruled.
 DA001–DA004 police position and preservation inside one appended file, and a
@@ -100,10 +102,12 @@ a separate conflict class and is not this decision's business.
   the migration cannot choose alone, so it lists those cases for review rather
   than guessing.
 - abcd's own existing entries are migrated into the folder with their dates and
-  text verbatim, in their original order. The migration and the link rewrite are
+  text verbatim, in date order (the product thinker's ruling of 2026-10-14: the
+  48 entries written out of date order move to their dates). The migration and the link rewrite are
   a one-off script run once in this repository (the product thinker's ruling of
   2026-10-11), never a verb or code that ships in abcd: they are needed once and
-  only here, and a managed repository is never migrated.
+  only here; abcd never migrates a managed repository, whose owner may run the
+  script by hand.
 - A managed repository that adopted abcd before this change has its history in
   two places: the frozen file, and the folder from then on.
 - adr-2609151138420062 is superseded. Its folder-of-minted-records rule and its
