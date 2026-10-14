@@ -42,6 +42,8 @@ type fakeForge struct {
 	protection map[string][]string
 	// defaultBranch is the repository's default branch as the forge names it.
 	defaultBranch string
+	// private is whether the forge reports the repository private.
+	private bool
 }
 
 func newFakeForge() *fakeForge {
@@ -59,6 +61,13 @@ func (f *fakeForge) DefaultBranch(context.Context) (string, error) {
 		return "", err
 	}
 	return f.defaultBranch, nil
+}
+
+func (f *fakeForge) Private(context.Context) (bool, error) {
+	if err := f.fail["Private"]; err != nil {
+		return false, err
+	}
+	return f.private, nil
 }
 
 func (f *fakeForge) Environments(context.Context) (map[string]EnvironmentState, error) {
@@ -347,15 +356,17 @@ func mustRead(t *testing.T, root, rel string) []byte {
 
 // --- criterion 3: the seam -------------------------------------------------------
 
-func TestTheProviderListHasOneAdapterBehindTheSeam(t *testing.T) {
-	if got := Providers(); !reflect.DeepEqual(got, []string{"cloudflare"}) {
-		t.Fatalf("providers = %v, want exactly [cloudflare]", got)
+func TestTheProviderListHasTwoAdaptersBehindTheSeam(t *testing.T) {
+	if got := Providers(); !reflect.DeepEqual(got, []string{"cloudflare", "github-pages"}) {
+		t.Fatalf("providers = %v, want exactly [cloudflare github-pages]", got)
 	}
-	a, ok := adapterNamed("cloudflare")
-	if !ok {
-		t.Fatal("the listed provider does not resolve")
+	for _, name := range Providers() {
+		a, ok := adapterNamed(name)
+		if !ok {
+			t.Fatalf("the listed provider %s does not resolve", name)
+		}
+		var _ hosting.Adapter = a
 	}
-	var _ hosting.Adapter = a
 }
 
 // --- criterion 4: the page set for any managed repository ------------------------
@@ -672,7 +683,7 @@ func TestAnUnsafeNameOrDomainIsRefused(t *testing.T) {
 // run block is spliced into the script before the shell parses it, which is
 // the injection shape; every value reaches the shell through env instead.
 func TestTheWorkflowInterpolatesNothingIntoAShell(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +720,7 @@ func TestTheWorkflowPinsFollowAbcdsOwn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +766,7 @@ func TestTheSeedSourcesAreAbcdsOwn(t *testing.T) {
 // successful run of this repository's own release workflow, never a pull
 // request's and never a fork's.
 func TestAWorkflowRunFromAForkNeverRenders(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -778,7 +789,7 @@ func TestAWorkflowRunFromAForkNeverRenders(t *testing.T) {
 // workflows, filters no branch in the trigger (a branch filter drops the tag),
 // and admits the default branch or a v-tag inside the render job's gate.
 func TestTheWorkflowFiresOnEveryReleasePath(t *testing.T) {
-	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{})
+	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{}, hosting.Site{Name: "x"})
 	if err != nil {
 		t.Fatal(err)
 	}

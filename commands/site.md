@@ -122,8 +122,8 @@ sets up the site of a repository abcd manages, in three stages, and emits
 `{ "status": …, "files": […], "environments": […], "host": {…}, "remaining": […], "notes": […] }`
 (with `added_labels` and `labels_file` when a label was added):
 
-- `files` — the repository half, each `written`, `current`, `kept` or
-  `refused`: `.abcd/site.json` (derived from the identity block and
+- `files` — the repository half, each `written`, `current`, `kept`, `removed`
+  (a switched-off project site's workflow, below) or `refused`: `.abcd/site.json` (derived from the identity block and
   `docs/README.md`), the static inputs under `site-src/`, the workflow
   `.github/workflows/site.yml` (render on each published release with abcd's
   verified binary, deploy from the rendered archive) and `wrangler.jsonc`. The
@@ -163,6 +163,43 @@ choose the host name and the custom domain, and are recorded in the
 composition's `hosting` block. The composition's `pages` block switches pages of
 the closed set (`landing`, `explorer`, `record_pages`, `graph`, `timeline`,
 `glossary`, `status`) off; it cannot add one.
+
+### A project's own GitHub Pages
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" site setup --provider github-pages --json
+```
+
+publishes the project's about page and development record on its own GitHub
+Pages at each release, at `https://<owner>.github.io/<repo>/` (or at the root of
+a custom domain given with `--domain`). It is the same verb with a second
+provider, and these things differ:
+
+- **The switch.** Before anything is written, setup asks whether to switch the
+  project site on, naming the address. A yes records `"publish": true` in the
+  composition's `hosting` block, writes the site's inputs under `site-src/` and
+  adds `.github/workflows/site.yml`; nothing else in the repository changes. A
+  no, or an unanswered run, writes nothing and changes nothing remote, and the
+  status is `declined`.
+- **Public repositories only.** Setup reads whether the repository is public
+  from the forge first, and refuses a private one (or one whose visibility it
+  cannot read) in one line, before it asks or writes anything.
+- **No secret and no credential.** The deploy job runs in the `github-pages`
+  environment with the run's own short-lived token (`contents: read`,
+  `pages: write`, `id-token: write`) and nothing else; there is no host
+  configuration file and no `gh secret set` step. The host stage creates the
+  Pages site (built by the workflow), sets the custom domain only when one was
+  given, and reports the address, acting through `gh` as you, the way the forge
+  stage does. Environments are `site-render` and `github-pages`.
+- **The base path.** The workflow builds and gates the site with
+  `--base-path /<repo>/`, the path GitHub serves it below (the root for a custom
+  domain or an `<owner>.github.io` repository).
+- **Switching it off.** Set `"publish"` to `false` in the composition's
+  `hosting` block. The workflow reads the switch at each released commit, so the
+  next release publishes nothing. A later `abcd site setup` touches nothing
+  remote and offers to remove the workflow it added, `removed` on a yes; a
+  workflow edited by hand is `kept`. Pages already published stay up until they
+  are unpublished in the repository's settings.
 
 Report each stage's outcome, then the remaining steps in order. Never paste a
 credential into the conversation: the user stores it themselves with `abcd ahoy

@@ -17,7 +17,7 @@ import (
 // CredentialService is the walkthrough's service for name when adapter reads
 // it: false for a name the site setup does not read.
 func CredentialService(name string, adapter hosting.Adapter) (credential.Service, bool) {
-	if adapter == nil || name != adapter.CredentialName() {
+	if adapter == nil || adapter.CredentialName() == "" || name != adapter.CredentialName() {
 		return credential.Service{}, false
 	}
 	return credential.Service{
@@ -48,11 +48,14 @@ func CredentialServiceFor(name string) (credential.Service, bool) {
 }
 
 // CredentialNames are the credentials the site setup reads, one per hosting
-// provider.
+// provider that reads one.
 func CredentialNames() []string {
 	out := make([]string, 0, len(adapters))
 	for _, a := range adapters {
-		out = append(out, a.CredentialName())
+		// A provider that acts through the forge reads no credential.
+		if a.CredentialName() != "" {
+			out = append(out, a.CredentialName())
+		}
 	}
 	return out
 }

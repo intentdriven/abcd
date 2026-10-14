@@ -58,6 +58,9 @@ type Profile struct {
 	// BasePath is the path the site is served below on the host, with a
 	// leading and a trailing slash; "/" is the root.
 	BasePath string
+	// Address is where the site will be served, when the provider can say so
+	// before the host exists; empty when it cannot.
+	Address string
 }
 
 // State is what the host holds for a site, read without writing anything.

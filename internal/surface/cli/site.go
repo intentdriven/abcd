@@ -283,7 +283,7 @@ func publishedWord(on bool) string {
 // machine, the host. An unanswered run declines both remote writes, so a script
 // that pipes nothing changes nothing remote; --yes says yes in advance.
 func newSiteSetupCommand(asJSON *bool) *cobra.Command {
-	var name, domain string
+	var name, domain, provider string
 	var confirm, yes bool
 	cmd := &cobra.Command{
 		Use:  "setup",
@@ -305,7 +305,7 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 				asker = alwaysConfirm{}
 			}
 			res, err := site.Setup(site.SetupRequest{
-				RepoRoot: cwd, Name: name, Domain: domain, Confirm: confirm, Asker: asker,
+				RepoRoot: cwd, Name: name, Domain: domain, Provider: provider, Confirm: confirm, Asker: asker,
 				ConfirmTool: confirmTool, Context: cmd.Context(),
 			})
 			if err != nil {
@@ -328,6 +328,8 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "host name when the composition names none (default: the repository's name)")
 	cmd.Flags().StringVar(&domain, "domain", "", "custom domain to route to the host when the composition names none")
+	cmd.Flags().StringVar(&provider, "provider", "", "hosting provider when the composition names none: "+strings.Join(site.Providers(), " or ")+
+		" (default "+site.DefaultProvider+"); github-pages asks whether to switch the project site on")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them")
 	return cmd

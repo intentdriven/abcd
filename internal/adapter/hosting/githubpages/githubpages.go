@@ -97,7 +97,21 @@ func (Adapter) Profile(s hosting.Site) hosting.Profile {
 		Switched:    true,
 		PublicOnly:  true,
 		BasePath:    basePath(s),
+		Address:     address(s),
 	}
+}
+
+// address is where GitHub will serve the site: the custom domain, or the
+// owner's github.io host below the base path.
+func address(s hosting.Site) string {
+	owner, _, ok := splitRepo(s.Repo)
+	switch {
+	case s.Domain != "":
+		return "https://" + s.Domain + "/"
+	case !ok:
+		return ""
+	}
+	return "https://" + strings.ToLower(owner) + ".github.io" + basePath(s)
 }
 
 // basePath is where GitHub serves the site: the root of a custom domain, the

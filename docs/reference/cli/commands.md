@@ -3751,10 +3751,11 @@ Take the website from this checkout to a live address: Writes its files, and the
 **Flags:**
 
 ```
-      --confirm         replace a workflow or host configuration that differs from what setup writes
-      --domain string   custom domain to route to the host when the composition names none
-      --name string     host name when the composition names none (default: the repository's name)
-      --yes             confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them
+      --confirm           replace a workflow or host configuration that differs from what setup writes
+      --domain string     custom domain to route to the host when the composition names none
+      --name string       host name when the composition names none (default: the repository's name)
+      --provider string   hosting provider when the composition names none: cloudflare or github-pages (default cloudflare); github-pages asks whether to switch the project site on
+      --yes               confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them
 ```
 
 ### `abcd spec`

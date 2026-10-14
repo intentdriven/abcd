@@ -22,6 +22,8 @@ type Forge interface {
 	// DefaultBranch reads the repository's default branch: the branch the
 	// workflow gates on and the environments admit.
 	DefaultBranch(ctx context.Context) (string, error)
+	// Private reads whether the repository is private.
+	Private(ctx context.Context) (bool, error)
 	// Environments reads every environment the repository has, by name.
 	Environments(ctx context.Context) (map[string]EnvironmentState, error)
 	// Policies reads one environment's deployment branch and tag policies.
@@ -107,6 +109,20 @@ func (g *ghForge) DefaultBranch(context.Context) (string, error) {
 		return "", errors.New("the repository response names no default branch")
 	}
 	return doc.DefaultBranch, nil
+}
+
+func (g *ghForge) Private(context.Context) (bool, error) {
+	out, err := g.api(nil, "", "repos/"+g.repo)
+	if err != nil {
+		return false, err
+	}
+	var doc struct {
+		Private *bool `json:"private"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil || doc.Private == nil {
+		return false, errors.New("the repository response does not say whether it is private")
+	}
+	return *doc.Private, nil
 }
 
 // perPage is the largest page the forge serves a list read in.

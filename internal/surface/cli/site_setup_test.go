@@ -313,3 +313,29 @@ func TestSiteVerbsSayWhichLabelsTheyAdded(t *testing.T) {
 		t.Fatalf("a failed build names the label it added before the error: stderr = %q, err = %v", errOut, err)
 	}
 }
+
+// TestSiteSetupTakesTheGitHubPagesProvider: --provider reaches the verb. With
+// no forge to say whether the repository is public, the github-pages provider
+// refuses before it asks or writes anything, since it publishes public
+// repositories only (itd-2610091010348892).
+func TestSiteSetupTakesTheGitHubPagesProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
+	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
+	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
+	r.Write("docs/README.md", "# Example\n\nThe example's documentation.\n")
+	r.Commit("the example")
+	t.Chdir(r.Root())
+
+	out, err := runCLIErr(t, "site", "setup", "--provider", "github-pages", "--yes")
+	if code := exitCodeOf(err); code != 2 || !strings.Contains(err.Error(), "github-pages publishes public repositories only") {
+		t.Fatalf("exit %d, %v:\n%s", code, err, out)
+	}
+	if _, serr := os.Stat(filepath.Join(r.Root(), ".abcd", "site.json")); !os.IsNotExist(serr) {
+		t.Fatal("a refused run wrote the composition")
+	}
+	if out, err = runCLIErr(t, "site", "setup", "--provider", "no-such-host"); exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "not a provider abcd ships") {
+		t.Fatalf("an unknown provider: %v\n%s", err, out)
+	}
+}
