@@ -25,6 +25,11 @@ in the tree rather than only a web console.
   one never changes how a lane merges. Ruled by the product thinker on
   2026-10-12. A later sweep that deletes reservation branches (itd-118) needs it
   amended first.
+- `release-tags.json` — the `v*` release tags: no update, no deletion, no
+  force-move, and **no bypass actors**. A release's build provenance is checked
+  against the commit its tag names, so a tag that could be moved would let an
+  older genuine build pass as a newer release. Creating a tag stays open, so a
+  cut still pushes its new tag.
 - `repo-settings.json` — the repository-object settings, which the rulesets above
   do not cover: a ruleset is not a repository setting, and these live behind
   `GET /repos/{owner}/{repo}`. Two sections, deliberately apart. `managed` is what
@@ -37,7 +42,7 @@ in the tree rather than only a web console.
   strength of a default nobody chose. Collapsing the two would make the file read as
   a promise about settings nothing enforces.
 
-Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633):
+Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439):
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \

@@ -50,6 +50,12 @@ const (
 	kindLocalUser  = "local_username"
 )
 
+// KindHomePathOther is the identity kind for another account's home path: a
+// generic /Users or /home path that is not the caller's own. The scanner grades
+// it warn, so the gates that judge committed files let it pass; the release cut
+// reads it by name to refuse it in newly composed public release text.
+const KindHomePathOther = kindHomeOther
+
 // DefaultIdentitySeverities is the built-in severity floor per identity kind
 // (ported from pii.py DEFAULT_IDENTITY_SEVERITIES). A config override may raise
 // but never lower these.

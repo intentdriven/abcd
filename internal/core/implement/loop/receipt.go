@@ -201,8 +201,13 @@ func resolutionGaps(rs []Resolution, commits []string) []string {
 			gaps = append(gaps, at+": "+r.Issue+"'s impact, one of additive, breaking, fix or internal")
 		}
 		for what, v := range map[string]string{"note": r.Note, "grounds": r.Grounds} {
-			if strings.TrimSpace(v) == "" || len(v) > maxResolutionText {
+			switch {
+			case strings.TrimSpace(v) == "" || len(v) > maxResolutionText:
 				gaps = append(gaps, fmt.Sprintf("%s: %s's %s, present and within %d bytes", at, r.Issue, what, maxResolutionText))
+			case !proseWritten(v):
+				// Stored on the lane and echoed on the --json streams
+				// (iss-2610121532247004).
+				gaps = append(gaps, fmt.Sprintf("%s: %s's %s, without a control, bidi or zero-width character but a line break or a tab", at, r.Issue, what))
 			}
 		}
 	}
@@ -274,6 +279,11 @@ func discardLane(c Context, lane Lane) (string, error) {
 	tip, _ := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+lane.Branch+"^{commit}", "--")
 	if !gitutil.IsFullSHA(tip) {
 		tip = ""
+	}
+	if tip != "" {
+		if err := branchCheckedOutElsewhere(c, lane, "receipt", "hand the receipt back again"); err != nil {
+			return "", err
+		}
 	}
 	if lane.Worktree != "" {
 		if err := loopWorktree(c, lane, "receipt"); err != nil {
@@ -380,6 +390,11 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	}
 	if rc.Branch != lane.Branch {
 		missing = append(missing, fmt.Sprintf("the lane's branch (it names %s, not %s)", termsafe.DescribeRefused(rc.Branch), lane.Branch))
+	}
+	// The model is stored on the lane and echoed on the --json streams, so it
+	// is one plain line (iss-2610121532247004).
+	if !plainWritten(rc.Model) {
+		missing = append(missing, "a model without a control, bidi or zero-width character (it names "+termsafe.DescribeRefused(rc.Model)+")")
 	}
 	if err := pickKept(c.RepoRoot, lane, receiptRel); err != nil {
 		return err

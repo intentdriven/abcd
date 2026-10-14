@@ -1,0 +1,52 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "dc102f1febcfc2e61088463f54b97182c2384943"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-12T19:16:21Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:a1f18bb638530a6acdc5745d835e2ec799b0709caddce91e1b1a287ceed76cbc",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.14.0"
+  },
+  "categories": {
+    "nitpick": 2,
+    "undocumented": 1
+  },
+  "failing": [
+    {
+      "id": "dc-001",
+      "category": "nitpick",
+      "severity": "nitpick",
+      "summary": "RELEASE.md:1: docs-currency-lint reports RELEASE.md as stray root markdown (allowed set: README, AGENTS, CHANGELOG, CONTRIBUTING, SECURITY, LICENSE, ACKNOWLEDGEMENTS). It is the release-notes artefact of the cut, so this is likely by design, but the lint's allow-list does not know it.",
+      "disposition": "deferred",
+      "note": "Misleads no action; deferred to the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-002",
+      "category": "nitpick",
+      "severity": "nitpick",
+      "summary": "docs/reference/writing-style.md:40: docs-currency-lint PHRASE hit on 'previously'. The row documents the banned tokens and carries a docs-lint allow escape, so it is a false positive of the deterministic lint, not a stale claim.",
+      "disposition": "deferred",
+      "note": "Misleads no action; deferred to the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-003",
+      "category": "undocumented",
+      "severity": "minor",
+      "summary": "(review coverage): Partial coverage: the review hit its time budget before the line-by-line read of the build.md, implement.md, launch.md, library.md and guard.md diffs and the step-3 sweep. Every abcd invocation on those pages was checked mechanically against the binary's --help (commands exist, flags exist) with no mismatch, and the retired-name sweep covered all of commands/ and docs/. Their prose claims about behaviour are UNVERIFIED, not CURRENT.",
+      "disposition": "deferred",
+      "note": "Misleads no action; deferred to the post-cut follow-up change, since correcting it now would change the content commit and re-run every review."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Opus 5.5, full tier for an additive and breaking release; the person directed Opus only after the account's weekly limit stopped the first, Fable, run) over an exact export of content commit dc102f1febcfc2e61088463f54b97182c2384943 with the binary built from it: every line of the 0.14.0 CHANGELOG section and RELEASE.md; every user-facing page changed since v0.13.4 checked mechanically (all 164 command sentences of docs/reference/cli/commands.md against --help, 106 abcd invocations and their flags against the binary, the links into the record); the seven retired command names each confirmed refused with its replacement named and recommended nowhere. Coverage gap, stated: the prose of commands/build.md, implement.md, launch.md, library.md and guard.md was not read line by line, and the sweep of the remaining commands/ and docs/ pages was not done. Verdict PROMOTE, 3 findings (minor or nitpick, none misleading an action), deferred."
+}

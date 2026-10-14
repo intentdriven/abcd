@@ -180,7 +180,7 @@ func TestUserLayerOverridesBundled(t *testing.T) {
 		t.Fatal("a field the user layer does not set must inherit the bundled value")
 	}
 	out := Render(rs.Match("redact the api key in this token"))
-	if !strings.Contains(out, "## PII (user override)\n- house pii rule\n") {
+	if !strings.Contains(out, "## PII (user override)\n- ~~~\n  house pii rule\n  ~~~\n") {
 		t.Fatalf("the injected block does not carry the user rule under a marked heading:\n%s", out)
 	}
 }
@@ -233,7 +233,7 @@ func TestUserCustomDomainInjectsInAnyRepo(t *testing.T) {
 			t.Fatalf("the user custom domain did not recall-match: %+v", got)
 		}
 		res := Inject(rs, "rename the widget", SessionState{}, 0)
-		if !strings.Contains(res.Text, "## HOUSE (user override)\n- widgets are named in the singular\n") {
+		if !strings.Contains(res.Text, "## HOUSE (user override)\n- ~~~\n  widgets are named in the singular\n  ~~~\n") {
 			t.Fatalf("injected text lacks the user domain:\n%s", res.Text)
 		}
 		if l := res.Labels(); len(l) != 1 || l[0] != "HOUSE (user override)" {

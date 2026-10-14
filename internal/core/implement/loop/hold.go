@@ -176,6 +176,9 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 // shared probe, changing nothing, and a close the network refuses is recorded
 // as the run's outage (outage.go).
 func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
+	if err := configTripwire(repoRoot, runID); err != nil {
+		return StepResult{}, err
+	}
 	g, err := outageFor(repoRoot, runID, o)
 	if err != nil {
 		return StepResult{}, err
@@ -200,6 +203,11 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		if lane.Branch != "" && !strings.HasPrefix(lane.Branch, BranchPrefix) {
 			return false, refuse(string(StageHeld), "", lane.ID, "the lane's branch is not one the loop made, so its work is not the loop's to discard",
 				"restore the run's state file")
+		}
+		if lane.Branch != "" {
+			if err := branchCheckedOutElsewhere(c, lane, string(StageHeld), "run `abcd implement step --discard "+lane.ID+"` again"); err != nil {
+				return false, err
+			}
 		}
 		did := []string{}
 		if lane.Worktree != "" {

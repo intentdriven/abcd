@@ -324,14 +324,15 @@ func raceCommand(t *testing.T, where, text string) string {
 
 // racePackages returns the package arguments of the one `go test -race`
 // command in text, in the order written: every word after `go test` that is
-// neither a flag nor a flag's value.
+// neither a flag nor a flag's value. make preflight's -p is the derived
+// parallelism (`-p "$$p"`, cmd/test-parallelism), whose value is a word too.
 func racePackages(t *testing.T, where, text string) []string {
 	t.Helper()
 	var pkgs []string
 	words := strings.Fields(raceCommand(t, where, text))[2:]
 	for i := 0; i < len(words); i++ {
 		switch w := words[i]; {
-		case w == "-timeout":
+		case w == "-timeout" || w == "-p":
 			i++ // its value is the next word
 		case strings.HasPrefix(w, "-"):
 		default:

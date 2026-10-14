@@ -64,6 +64,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Landing is the land stage's progress on one lane.
@@ -1013,7 +1016,7 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 	if tipErr == nil && gitutil.IsFullSHA(tip) {
-		if err := branchCheckedOutElsewhere(c, *lane); err != nil {
+		if err := branchCheckedOutElsewhere(c, *lane, string(StageLand), "run `abcd implement step` again"); err != nil {
 			return Outcome{}, err
 		}
 	}
@@ -1051,28 +1054,32 @@ func fetchDefault(c Context, lane Lane, def string) (string, error) {
 // branch -d` does, whether a checkout stands on it: deleting it there would
 // leave that checkout's HEAD naming nothing (the main checkout after a person
 // removed the clean lane worktree and checked the branch out, or a second
-// worktree a person added on it).
-func branchCheckedOutElsewhere(c Context, lane Lane) error {
+// worktree a person added on it). The landing, the held discard and the
+// hand-back discard each delete the branch that way, so each asks first; stage
+// names the refusing stage and again what to run once the checkout is moved.
+func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error {
 	wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
 	if err != nil {
 		return fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
 	own := fsutil.RealExistingPath(lane.Worktree)
 	for _, wt := range wts {
-		if wt.Branch != "refs/heads/"+lane.Branch || fsutil.RealExistingPath(wt.Path) == own {
+		if !sameBranchRef(wt.Branch, lane.Branch) || fsutil.RealExistingPath(wt.Path) == own {
 			continue
 		}
 		at := fsutil.RedactHome(wt.Path)
-		return refuse(string(StageLand), "", lane.ID,
+		return refuse(stage, "", lane.ID,
 			lane.Branch+" is checked out in "+at+", a checkout the loop did not make for this lane, and deleting the branch would leave its HEAD naming nothing",
-			"check out another branch in "+at+" (or remove that worktree), then run `abcd implement step` again")
+			"check out another branch in "+at+" (or remove that worktree), then "+again)
 	}
 	return nil
 }
 
 // removeLaneWorktree removes the lane's worktree when git lists it at the lane's
 // path on the lane's branch; git refuses a worktree with changes, and the loop
-// never forces it.
+// never forces it. git judges the changes as the person's own git does
+// (pickGit), through the filters and ignore files their global config names
+// (iss-2610111729375108).
 func removeLaneWorktree(c Context, lane Lane) error {
 	if err := loopWorktree(c, lane, string(StageLand)); err != nil {
 		return err
@@ -1090,7 +1097,7 @@ func removeLaneWorktree(c Context, lane Lane) error {
 			return refuse(string(StageLand), "", lane.ID, "git lists a worktree at the lane's path on another branch, and the loop removes only what it made",
 				"remove it yourself, then run `abcd implement step` again")
 		}
-		if _, err := gitutil.Run(c.RepoRoot, "worktree", "remove", "--", wt.Path); err != nil {
+		if _, err := pickGit(c.RepoRoot, "worktree", "remove", "--", wt.Path); err != nil {
 			return refuse(string(StageLand), "", lane.ID, "git could not remove the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports (it refuses a worktree with changes), then run `abcd implement step` again")
 		}
@@ -1103,4 +1110,30 @@ func removeLaneWorktree(c Context, lane Lane) error {
 		return fmt.Errorf("checking the lane's worktree: %w", err)
 	}
 	return nil
+}
+
+// caseFoldingRefs reports whether the platform's filesystem folds case, held
+// as a var so a test can provoke either answer on any host.
+var caseFoldingRefs = fsutil.CaseFoldingFS
+
+// sameBranchRef reports whether listed, a full ref git lists for a worktree,
+// names the branch branch. On a filesystem that folds case and Unicode
+// normalisation, git resolves a loose ref however it is spelled, so a state
+// naming build/Lane-1, an NFD spelling of an NFC name, or build/strasse for
+// build/stra\u00dfe reads and deletes the branch. Such a filesystem (APFS) folds
+// with full Unicode case folding over normalised text, which a simple
+// lower-case misses, so the names are compared through refFold there.
+func sameBranchRef(listed, branch string) bool {
+	want := "refs/heads/" + branch
+	if !caseFoldingRefs() {
+		return listed == want
+	}
+	return refFold(listed) == refFold(want)
+}
+
+// refFold is a ref name's key on a filesystem that folds case: full Unicode
+// case folding, then NFC. A Caser is not safe to share, so each call makes
+// its own.
+func refFold(s string) string {
+	return norm.NFC.String(cases.Fold().String(norm.NFC.String(s)))
 }

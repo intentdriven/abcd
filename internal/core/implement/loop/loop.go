@@ -7,6 +7,7 @@ package loop
 // writes it last; a stage that fails leaves the state exactly as it was.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -53,8 +54,9 @@ type Options struct {
 	// role of the run is routed to for its remaining quota; nil leaves every
 	// role on the host, which reports none.
 	Runners *runner.Config
-	// Quota asks the named runner for its remaining quota; nil asks Runners.
-	Quota func(name string) (runner.Quota, bool, error)
+	// Quota asks the named runner for its remaining quota, under ctx's
+	// deadline; nil asks Runners.
+	Quota func(ctx context.Context, name string) (runner.Quota, bool, error)
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -249,7 +251,11 @@ type StepResult struct {
 	// window early in this call, with the lanes it checkpointed
 	// (ratelimit.go); NextEligibleAt is then the pause's end.
 	RateLimit *RateLimit `json:"rate_limit,omitempty"`
-	Next      string     `json:"next"`
+	// AcceptedConfigChange names each changed git setting or file the call
+	// accepted (`implement step --accept-config-change`) before its step:
+	// names alone, a URL subsection hidden, never a value (configwatch.go).
+	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
+	Next                 string   `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
@@ -616,6 +622,11 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool) (StepResult, error) {
+	// The run tripwire (configwatch.go) comes before anything that may start
+	// git: a program-naming setting changed during the run stops the call.
+	if err := configTripwire(repoRoot, runID); err != nil {
+		return StepResult{}, err
+	}
 	g, err := outageFor(repoRoot, runID, o)
 	if err != nil {
 		return StepResult{}, err

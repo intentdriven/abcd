@@ -323,11 +323,28 @@ asking-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
+#
+# The test stages wait their turn on the machine (iss-2610102020442624,
+# iss-2610140638074587). Before them the load gate (`abcd implement load
+# --wait`) stays shut while the load is at the wait limit, another go test
+# -race run is live, another make preflight is running, or another waiter is
+# queued ahead or running its command, under any account: it reads all of that
+# from the process table, which shows every account's processes, never from a
+# file another account could write. Once clear it waits 15 to 60 seconds and
+# checks again, so two preflights in one quiet minute do not start together; a
+# preflight whose own gate is waiting takes that waiter's place in the queue.
+# It gives up after two hours, failing the preflight and naming what it still
+# waited on, and on a CI runner it opens at once. Each test stage then takes a
+# go test -p derived from the online cores and the load as the stage starts
+# (cmd/test-parallelism), so one run cannot saturate the machine.
 preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test ./...
-	go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	go run ./cmd/abcd implement load --wait --timeout 2h
+	p=$$(go run ./cmd/test-parallelism) && \
+	go test -p "$$p" ./...
+	p=$$(go run ./cmd/test-parallelism) && \
+	go test -race -p "$$p" -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook

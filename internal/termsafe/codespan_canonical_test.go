@@ -41,6 +41,7 @@ var backtickScanners = map[string]backtickScanner{
 	"internal/core/mdrecord/mdrecord.go":          {5, "OpensComment, CodeSpanRanges and MaskCodeSpans walk to each run and pair it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},
 	"internal/core/mdrender/render.go":            {2, "the site renderer's inline walk hands each run to PairCodeSpan; the other is the escapable-punctuation range, which names a backtick among the ASCII punctuation"},
 	"internal/core/question/check.go":             {2, "the question check's register rule walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
+	"internal/core/rules/rules.go":                {2, "a WRITER: fenceRuleBody measures the longest tilde or backtick run in an override's rule body to size a tilde fence one longer, so no body line can close it; nothing is paired"},
 	"internal/core/surface/appendix.go":           {2, "codeRegions walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
 }
 
