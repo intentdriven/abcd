@@ -27,12 +27,17 @@ with a second hosting provider, not a parallel one: one canonical primitive.
   it reads the repository's visibility and Pages state, creates a Pages site
   built by the workflow (`build_type: workflow`), sets the custom domain only
   when one was given, and reports the `html_url`. A private repository, a site
-  published from a branch and a domain routed elsewhere are refused, never
-  moved. The seam gained `Site.Repo` and one method, `Profile` (deploy
-  environment and permissions, the switch, the public-only rule, the base path
-  and the expected address); cloudflare's profile reproduces its workflow byte
-  for byte. Nothing in the adapter names abcd's own repository, so moving it
-  later is a composition edit.
+  published from a branch, a domain routed elsewhere, a live custom domain when
+  setup was given none, and a site served below another path than the one the
+  workflow builds for are refused, never moved; setup reads the host before it
+  asks or writes, so each is refused before anything is written. An existing
+  workflow-built site is named by its address and build type in the switch
+  question (or in a question of its own when the composition already holds the
+  switch), and in the host outcome. The seam gained `Site.Repo`,
+  `State.Existing` and one method, `Profile` (deploy environment and
+  permissions, the switch, the public-only rule, the base path and the
+  expected address); cloudflare's profile reproduces its workflow byte for
+  byte. Nothing in the adapter names abcd's own repository.
 - **The switch (criterion 1).** `abcd site setup --provider github-pages` asks
   whether to switch the project site on, naming the address, before anything
   is written. A yes records `"publish": true` in the `hosting` block of
@@ -44,6 +49,9 @@ with a second hosting provider, not a parallel one: one canonical primitive.
 - **Public repositories only (scope condition 1).** Setup reads the
   repository's visibility from the forge first and refuses a private one, or
   one whose visibility it cannot read, in one line before it asks or writes.
+  The workflow holds the same line at each release: the switch step reads the
+  event's `repository.private` and the deploy job requires it to be `false`,
+  so a repository made private later publishes nothing.
 - **Each release (criterion 2).** The workflow is the existing
   render-on-release-then-deploy workflow, with the provider's profile: the
   render job builds and gates the site with `--base-path /<repo>/`, and the
@@ -65,13 +73,24 @@ with a second hosting provider, not a parallel one: one canonical primitive.
 - **No secret (criterion 6).** The workflow reads no `secrets.` value and
   interpolates no expression into a shell.
 - **Switching off (criterion 7).** With `"publish"` anything but `true` at the
-  released commit, the render job's switch step stops the build and the deploy
-  job does not run, so the release publishes nothing. `abcd site setup` then
+  released commit or at the head of the default branch (a missing or malformed
+  file reads as off), the render job's switch step stops the build and the
+  deploy job does not run, so the release publishes nothing, and a later push or
+  dispatch rendering an older tag does not undo it. `abcd site setup` then
   touches nothing remote and offers to remove the workflow it added, keeping
   one edited by hand.
 - **abcd's own repository (criterion 4)** is not moved in this change (the
-  product thinker's "at some point"); the route it would take carries no abcd
-  special case.
+  product thinker's "at some point"), and the move is more than a composition
+  edit. The workflow setup writes renders the composed site only, and builds
+  no `/docs/` tree; abcd's composition declares a `docs` block, so its header
+  links `/docs/`, which abcd's own `site.yml` fills by running MkDocs into
+  `site/docs` (with `site_url` set to `https://abcdev.app` in `mkdocs.yml`).
+  Moving abcd onto this route therefore also needs the MkDocs build carried
+  into the Pages workflow, or the docs link dropped, and the MkDocs tree built
+  below the same base path; and it would leave behind what abcd's own
+  workflow does beyond the generic one (the attested `site.tar.gz` attached
+  to each release, and the preview deploy on push). None of that is built
+  here, and abcd's own `site.yml` is unchanged.
 
 Found and captured, not fixed here: the `_headers` file the build copies is
 Cloudflare's, so a project site on GitHub Pages is served without those
@@ -80,7 +99,7 @@ security headers (iss-2610142036270003).
 ## Footprint
 
 - packages: internal/adapter/hosting, internal/adapter/hosting/cloudflare, internal/adapter/hosting/githubpages, internal/adapter/hosting/githubpages/githubpagestest, internal/core/site, internal/surface/cli
-- tests: the base path (normalising, every root-absolute URL prefixed, default output unchanged, the gate against the prefixed root, both verbs' flag); the managed-repository line on every page and its origin fallback; the github-pages adapter over its in-process fake (profile, create, route, address, refusals, every forge failure); setup switched on, declined, private, visibility unreadable, switched off with the workflow removed, kept when hand-edited, kept when the removal is declined; the Pages workflow holding no secret and gated on the switch; the cloudflare workflow pinned byte for byte by a golden file; the forge's visibility read and the `gh api` transport
+- tests: the base path (normalising, every root-absolute URL prefixed, default output unchanged, the gate against the prefixed root, both verbs' flag); the managed-repository line on every page and its origin fallback; the github-pages adapter over its in-process fake (profile, create, route, address, refusals, every forge failure); setup switched on, declined, private, visibility unreadable, switched off with the workflow removed, kept when hand-edited, kept when the removal is declined; the Pages workflow holding no secret and gated on the switch and on a public repository, pinned by a golden file, and its switch step run with bash against a checkout (switched off at the head, missing or malformed there, made private); a live custom domain without --domain, a site served below another path and an existing site named before it is published over; the base-path gate denied a pass on an unparsed page; the cloudflare workflow pinned byte for byte by a golden file; the forge's visibility read and the `gh api` transport
 
 ## Steps
 
