@@ -84,13 +84,14 @@ func IsTailnetAddr(a netip.Addr) bool {
 	return tailnet4.Contains(a) || tailnet6.Contains(a)
 }
 
-// AddressKey is the key the failed-join limit counts by: an IPv4 address, or
-// an IPv6 /64 network, since one home or phone usually holds a whole /64 and
-// counting single IPv6 addresses would let one visitor rotate through
-// millions (the rascals server's addressKey). A tailnet IPv6 address is the
-// exception and its own key: every device of a tailnet shares one /64 of
-// Tailscale's range, and a device cannot pick another address in it. An
-// address that does not parse is its own key.
+// AddressKey is the key the failed-join limit and the connection caps count
+// by: an IPv4 address, or an IPv6 /48 network. One home or phone usually holds
+// a whole /64, and a site is commonly given a /48 of 65,536 of them, so
+// counting single IPv6 addresses, or /64s, would let one visitor rotate
+// through millions. A tailnet IPv6 address is the exception and its own key:
+// every device of a tailnet shares one /48 of Tailscale's range, and a device
+// cannot pick another address in it. An address that does not parse is its
+// own key.
 func AddressKey(addr string) string {
 	a, err := netip.ParseAddr(strings.TrimSpace(addr))
 	if err != nil {
@@ -100,7 +101,7 @@ func AddressKey(addr string) string {
 	if a.Is4() || tailnet6.Contains(a) {
 		return a.String()
 	}
-	p, err := a.Prefix(64)
+	p, err := a.Prefix(48)
 	if err != nil {
 		return a.String()
 	}

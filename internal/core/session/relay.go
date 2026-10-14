@@ -117,6 +117,12 @@ type Limits struct {
 	FailedJoinWindow time.Duration
 	// MaxTrackedAddrs caps the addresses the failed-join count remembers.
 	MaxTrackedAddrs int
+	// RelayFailedJoins wrong codes from every address together within
+	// FailedJoinWindow pause joining by code for everybody for a window, so
+	// spreading guesses over many addresses does not help (the rascals
+	// server's global limit). A rejoin token and a verified team member are
+	// not held up, and wrong rejoin tokens do not count towards it.
+	RelayFailedJoins int
 	// MaxVerifies caps the verify attempts of one connection, so the relay
 	// cannot be used to hammer GitHub.
 	MaxVerifies int
@@ -174,6 +180,7 @@ func DefaultLimits() Limits {
 		MaxFailedJoins:   20,
 		FailedJoinWindow: 10 * time.Minute,
 		MaxTrackedAddrs:  10000,
+		RelayFailedJoins: 200,
 		MaxVerifies:      5,
 		MaxCredits:       512,
 		// A cursor moving is a burst of awareness frames, settling at a few a
@@ -233,6 +240,12 @@ type Relay struct {
 	seats    map[string]*seat // by the digest of their rejoin token
 	failed   *addrWindow
 	hosted   *addrWindow
+	// allFailed counts wrong codes from every address together.
+	allFailed struct {
+		count       int
+		since       time.Time
+		pausedUntil time.Time
+	}
 	nextConn uint32
 	open     int            // connections held, in a session or not
 	openBy   map[string]int // connections held, by address key
@@ -256,6 +269,7 @@ func New(o Options) *Relay {
 	fill(&l.MaxSessions, d.MaxSessions)
 	fill(&l.MaxFailedJoins, d.MaxFailedJoins)
 	fill(&l.MaxTrackedAddrs, d.MaxTrackedAddrs)
+	fill(&l.RelayFailedJoins, d.RelayFailedJoins)
 	fill(&l.MaxVerifies, d.MaxVerifies)
 	fill(&l.MaxCredits, d.MaxCredits)
 	fill(&l.AwarenessPerSecond, d.AwarenessPerSecond)
@@ -759,9 +773,27 @@ func (c *Conn) join(code, name string) {
 		c.peer.Close(true, "too many wrong codes")
 		return
 	}
+	// A verified team member is neither paused nor counted towards the
+	// pause, so guessers cannot lock the team out of its own session.
+	member := c.memberOf != ""
+	if !member && now.Before(r.allFailed.pausedUntil) {
+		// Every code tried during a pause, right or wrong, gets this answer
+		// without being looked up, and counts for its own address but not
+		// towards the pause: the addresses that caused it are blocked when
+		// it ends instead of starting the next.
+		c.fail("paused", "joining by code is paused on this relay for a while; try again later")
+		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
+			c.leave()
+			c.peer.Close(true, "too many wrong codes")
+		}
+		return
+	}
 	rm := r.rooms[NormalizeCode(code)]
 	if rm == nil {
 		c.fail("bad-code", "no session has that code")
+		if !member {
+			r.noteFailedJoin(now)
+		}
 		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
 			c.leave()
 			c.peer.Close(true, "too many wrong codes")
@@ -804,6 +836,21 @@ func (c *Conn) admitted(token string) {
 	}
 	c.sendJSON(map[string]string{"type": "synced"})
 	c.r.broadcastRoster(rm)
+}
+
+// noteFailedJoin counts one wrong code towards the relay-wide budget, and
+// pauses joining by code for a window once it is spent. The count starts
+// afresh when the pause ends.
+func (r *Relay) noteFailedJoin(now time.Time) {
+	f := &r.allFailed
+	if now.Sub(f.since) >= r.limits.FailedJoinWindow {
+		f.count, f.since = 0, now
+	}
+	f.count++
+	if f.count >= r.limits.RelayFailedJoins {
+		f.pausedUntil = now.Add(r.limits.FailedJoinWindow)
+		f.count, f.since = 0, f.pausedUntil
+	}
 }
 
 // rejoin restores the participant a rejoin token was issued to: the same id,

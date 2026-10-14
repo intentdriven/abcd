@@ -492,12 +492,12 @@ func TestWrongCodesAreLimitedPerAddress(t *testing.T) {
 	if e := p.last(t, "error"); e == nil || e["code"] != "too-many-tries" || !p.closed {
 		t.Fatalf("error = %v, want too-many-tries and a close", e)
 	}
-	// An IPv6 visitor is counted by its /64.
+	// An IPv6 visitor is counted by its /48: a site holds 65,536 /64s.
 	for i := 0; i < 3; i++ {
-		h.join(t, "ZZZZZZ", "Mal", "2001:db8:1:2::"+string(rune('a'+i)))
+		h.join(t, "ZZZZZZ", "Mal", "2001:db8:1:"+string(rune('a'+i))+"::1")
 	}
-	if _, p := h.join(t, code, "Mal", "2001:db8:1:2::ff"); p.last(t, "error")["code"] != "too-many-tries" {
-		t.Fatal("rotating addresses inside one /64 escaped the limit")
+	if _, p := h.join(t, code, "Mal", "2001:db8:1:ff::1"); p.last(t, "error")["code"] != "too-many-tries" {
+		t.Fatal("rotating networks inside one /48 escaped the limit")
 	}
 	// Another address is not held up, and the window passes.
 	if _, p := h.join(t, code, "Gus", "198.51.100.7"); p.last(t, "joined") == nil {
@@ -702,7 +702,8 @@ func TestAddressKeyCountsATailnetAddressAlone(t *testing.T) {
 		"fd7a:115c:a1e0::a1":                      "fd7a:115c:a1e0::a1",
 		"fd7a:115c:a1e0:ab12:4843:cd96:6258:b240": "fd7a:115c:a1e0:ab12:4843:cd96:6258:b240",
 		"100.101.102.103":                         "100.101.102.103",
-		"2001:db8:1:2::a":                         "2001:db8:1:2::/64",
+		"2001:db8:1:2::a":                         "2001:db8:1::/48",
+		"2001:db8:1:ffff::a":                      "2001:db8:1::/48",
 		"::ffff:192.0.2.1":                        "192.0.2.1",
 	} {
 		if got := AddressKey(in); got != want {
@@ -1290,5 +1291,71 @@ func TestAuthorsAreBoundedPerSession(t *testing.T) {
 	}
 	if s := h.r.Stats(); s.LogBytes != LogEntryOverhead+2 {
 		t.Fatalf("log bytes = %d, want the first update alone", s.LogBytes)
+	}
+}
+
+// TestWrongCodesAreBudgetedRelayWide: past the relay-wide budget of wrong
+// codes, joining by code pauses for everybody until the window turns. During
+// the pause every code gets the same answer, right or wrong, and counts for
+// its own address but not towards the pause. A rejoin token and a verified
+// member are not held up.
+func TestWrongCodesAreBudgetedRelayWide(t *testing.T) {
+	if d := DefaultLimits(); d.RelayFailedJoins != 200 || d.FailedJoinWindow != 10*time.Minute {
+		t.Fatalf("defaults: %d wrong codes in %v, want 200 in 10m", d.RelayFailedJoins, d.FailedJoinWindow)
+	}
+	h := newHarness(t, func(l *Limits) {
+		l.RelayFailedJoins = 5
+		l.MaxFailedJoins = 3
+	})
+	_, _, code := h.host(t, "tok-ada")
+	_, gp := h.join(t, code, "Gus", "198.51.100.200")
+	gusTok := rejoinToken(t, gp, "joined")
+	for i := 0; i < 5; i++ {
+		_, p := h.join(t, "ZZZZZZ", "Mal", "203.0.113."+strconv.Itoa(i+1))
+		if e := p.last(t, "error"); e == nil || e["code"] != "bad-code" {
+			t.Fatalf("wrong code %d: %v, want bad-code", i, e)
+		}
+	}
+	// The pause: a right code and a wrong one get the same answer.
+	for _, c := range []string{code, "ZZZZZZ"} {
+		_, p := h.join(t, c, "Ann", "198.51.100.1")
+		if e := p.last(t, "error"); e == nil || e["code"] != "paused" || p.last(t, "joined") != nil {
+			t.Fatalf("joining with %s during the pause: %v, want paused", c, p.texts(t))
+		}
+	}
+	// Each try during the pause counts for its own address.
+	_, p := h.join(t, code, "Ann", "198.51.100.1")
+	if !p.closed {
+		t.Fatal("an address past its own limit during the pause stayed open")
+	}
+	// A rejoin token and a verified member carry on.
+	if _, rp := h.rejoin(t, gusTok, "198.51.100.200"); rp.last(t, "joined") == nil {
+		t.Fatalf("a rejoin during the pause: %v", rp.texts(t))
+	}
+	mp := &fakePeer{}
+	m := h.connect(t, mp, "198.51.100.50")
+	send(t, m, msg{"type": "verify", "token": "tok-bea", "repo": "acme/brief"})
+	send(t, m, msg{"type": "join", "code": code})
+	if mp.last(t, "joined") == nil {
+		t.Fatalf("a verified member during the pause: %v", mp.texts(t))
+	}
+	// The tries during the pause did not extend it: once the window turns,
+	// joining by code works again.
+	h.clock.advance(DefaultLimits().FailedJoinWindow)
+	if _, p := h.join(t, code, "Bo", "198.51.100.2"); p.last(t, "joined") == nil {
+		t.Fatalf("after the pause: %v", p.texts(t))
+	}
+}
+
+// TestForgedRejoinTokensDoNotPauseJoining: wrong rejoin tokens count for
+// their address alone, never towards the relay-wide budget.
+func TestForgedRejoinTokensDoNotPauseJoining(t *testing.T) {
+	h := newHarness(t, func(l *Limits) { l.RelayFailedJoins = 2 })
+	_, _, code := h.host(t, "tok-ada")
+	for i := 0; i < 4; i++ {
+		h.rejoin(t, "forged-token-"+strconv.Itoa(i), "203.0.113."+strconv.Itoa(i+1))
+	}
+	if _, p := h.join(t, code, "Gus", "198.51.100.7"); p.last(t, "joined") == nil {
+		t.Fatalf("joining after forged rejoin tokens: %v", p.texts(t))
 	}
 }
