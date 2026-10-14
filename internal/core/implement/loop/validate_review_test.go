@@ -588,6 +588,9 @@ func TestAReceiptThatErrsTakesThePlacedReturnBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
 		t.Fatal("the placed return is taken back off the path")
 	}
+	if notes, _ := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(aw.Receipt))), "answer-*.route")); len(notes) != 0 {
+		t.Fatalf("the answer note is taken back with it: %v", notes)
+	}
 }
 
 // TestTheReviewRouteIsNoneUnlessRPIsSelected is criterion 3's weight-bearing
@@ -636,6 +639,59 @@ func TestTheReviewRouteIsNoneUnlessRPIsSelected(t *testing.T) {
 				if rr == nil || rr.Reviewer == nil || rr.Name != "rp" {
 					t.Fatalf("the route reaches the server: %+v", rr)
 				}
+			}
+		})
+	}
+}
+
+// TestAHandBackAfterABusyLockRecordsTheRoute: the route's return placed and
+// its receipt refused by a busy lock, the person hands it back with `abcd
+// implement receipt`, as the refusal says. The review the route ran is
+// recorded as the route's, `asked` and `ran` both rp, exactly as if the
+// step's own receipt had verified it; a return rewritten after the route
+// placed it is the host's.
+func TestAHandBackAfterABusyLockRecordsTheRoute(t *testing.T) {
+	for _, rewritten := range []bool{false, true} {
+		t.Run(fmt.Sprintf("rewritten=%v", rewritten), func(t *testing.T) {
+			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+			prev := reviewReceipt
+			reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+				return StepResult{}, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+			}
+			_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+			reviewReceipt = prev
+			if r, ok := AsRefusal(err); !ok || !r.Contention {
+				t.Fatalf("a busy lock is refused as contention: %v", err)
+			}
+			if rewritten {
+				if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(reviewerReturn("FIX FIRST")), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{})
+			if err != nil {
+				t.Fatalf("the hand-back the refusal names: %v", err)
+			}
+			st, _ := ReadState(repo.Root(), id)
+			v := st.Lanes[0].Validation[0].Validators[0]
+			if rewritten {
+				if v.Route != nil || got.Route != nil || v.Verdict != "FIX FIRST" {
+					t.Fatalf("a return rewritten after the route placed it is the host's: %+v %+v", v, got.Route)
+				}
+				return
+			}
+			want := runner.RouteRecord{Asked: "rp", Ran: "rp"}
+			if v.Route == nil || *v.Route != want || got.Route == nil || *got.Route != want || v.Verdict != "SHIP" {
+				t.Fatalf("the hand-back records the route that ran the review: %+v %+v", v, got.Route)
+			}
+			var record strings.Builder
+			for _, e := range st.Record {
+				record.WriteString(e.Note + "\n")
+			}
+			if !strings.Contains(record.String(), "the ruthless-reviewer ran on the rp") {
+				t.Fatalf("the run record names the route:\n%s", record.String())
 			}
 		})
 	}

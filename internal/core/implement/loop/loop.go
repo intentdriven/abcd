@@ -761,10 +761,14 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 }
 
 // receipt is Receipt. A route that is not nil is the runner that ran the
-// agent (Drive): it is stamped on what the verifier recorded from the receipt,
-// and the record names it. The host's receipt carries none.
+// agent (Drive), or the reviewer route that answered (DriveReview): it is
+// stamped on what the verifier recorded from the receipt, and the record names
+// it. A nil route is the reviewer route's still when the return handed back is
+// the answer it placed (answeredBy), so a hand-back after the step could not
+// verify it records the route; the host's own receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
 	var res StepResult
+	var noted *runner.RouteRecord
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
@@ -773,6 +777,11 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		}
 		lane := st.Lanes[i]
 		await := lane.Awaits[k]
+		route := route
+		if route == nil {
+			noted = answeredBy(root, await.Receipt)
+			route = noted
+		}
 		def, ok := steps.lookup(lane.Stage)
 		if !ok || def.Verify == nil {
 			return false, refusef("receipt", lane.ID, "use an abcd that carries the verifier; the lane still awaits the receipt",
@@ -826,6 +835,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		res = laneResult(*st, lane, performed, nil)
 		return true, nil
 	})
+	if err == nil && noted != nil {
+		res.Route = noted
+	}
 	return res, err
 }
 

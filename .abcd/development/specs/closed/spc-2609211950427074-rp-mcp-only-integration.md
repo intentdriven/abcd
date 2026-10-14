@@ -116,14 +116,22 @@ choice, recorded for review; none changes a criterion.
   both `rp`). A concurrent step can re-tell the open review to the host while
   the route works; a return the host's agent wrote first stands, and the
   route's answer is kept aside beside it (`rp-return.md`) and recorded
-  nowhere.
+  nowhere. The route's answer also leaves a note beside the return, named by
+  the answer's SHA-256 and naming the route (`answer-<sha256>.route`), so a
+  return the step's own receipt could not verify, because another invocation
+  held the run's lock, and that the person hands back with `abcd implement
+  receipt` is recorded as the route's when it is that answer byte for byte; a
+  return the host's agent wrote, or rewrote, has no note and is the host's
+  (refined on review 2026-10-14).
 - 2026-10-12 (agent's choice, for review): **Which reviews take the route, and
   where.** The ruthless and the security reviewer, when the step hands them to
   the host: the intent-auditor stays on the host (decision 2, reviews and not
   audits), and a reviewer the machine routes to a command-line runner keeps its
   runner. `implement step` reaches the route after the stage hands the review
   out, outside the run's lock, as it starts a runner; the loop's change is
-  confined to the validator stage's file (`validate.go`).
+  confined to the validator stage's file (`validate.go`), but for the
+  receipt's reading of the route's answer note (`loop.go`, refined on review
+  2026-10-14).
 - 2026-10-12 (agent's choice, for review): **Bounds.** Ten seconds for the
   connection and the session's set-up, thirty minutes for the review call,
   8 MiB for an answer; the address is never proxied, a redirect is never
