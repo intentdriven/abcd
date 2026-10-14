@@ -89,6 +89,7 @@ Required:
 Optional:
 
 - `found_at` — repo-relative path or conceptual location.
+- `finding_ref` — the consistency finding's stable key (`cfk-…`), which a later pass links by.
 - `lapsed_at` — the RFC 3339 instant, in UTC, at which a recorded discipline gave
   way: the lapse itself, not its write-up. The record id is timestamp-numeric and
   therefore already carries write-up time, which is the value this property

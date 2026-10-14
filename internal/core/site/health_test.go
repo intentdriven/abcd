@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
 // TestHealthPageRendersEveryFamily is the page's contract: five panels, each
@@ -317,5 +319,22 @@ func TestHealthCarriesTheDisclosureRate(t *testing.T) {
 	}
 	if strings.Contains(contributors, `class="tile`) {
 		t.Error("the contributors page carries a stat tile")
+	}
+}
+
+// TestHealthIgnoresAGraphOnlyField: related_issues and routed_from are graph
+// fields no rule resolves, so a dangling one leaves the unresolved count alone.
+func TestHealthIgnoresAGraphOnlyField(t *testing.T) {
+	g := lint.RecordGraph{Dangling: []lint.RecordEdge{
+		{From: "itd-1", To: "adr-9", Field: "supersedes"},
+		{From: "itd-1", To: "iss-9", Field: "related_issues"},
+		{From: "iss-1", To: "iss-8", Field: "routed_from"},
+	}}
+	h, err := measureHealth(t.TempDir(), "", g, map[string]int{"itd-1": 0, "iss-1": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Unresolved) != 1 || h.Unresolved[0].To != "adr-9" {
+		t.Fatalf("unresolved = %+v; want only the supersedes reference", h.Unresolved)
 	}
 }
