@@ -331,7 +331,7 @@ func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p for
 		}
 	}
 	if unplaced {
-		add(forgeUnreadSignal(p.command, "names a path relative to a directory this line leaves unknown"))
+		add(forgeUnreadSignal(p.command, "is relative to a directory this line leaves unknown"))
 	}
 	if len(paths) == 0 {
 		return
