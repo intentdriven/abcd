@@ -101,12 +101,20 @@ func isLoadWaiter(args []string) bool {
 
 // GateCandidates returns, in pid order, the processes the gate asks for their
 // arguments: those executing go (a race run), make (a preflight) or abcd (a
-// waiter), outside self's process and its ancestors.
+// waiter), outside self's process and its ancestors, and the ancestors
+// executing abcd, so a waiter can tell that an ancestor is a waiter running
+// the command this one is part of.
 func GateCandidates(snap Snapshot, self Self) []int {
 	chain := lineage(snap.Procs, self.PID)
 	var out []int
 	for _, p := range snap.Procs {
+		if p.PID == self.PID {
+			continue
+		}
 		if chain[p.PID] {
+			if isAbcdName(p.Name) {
+				out = append(out, p.PID)
+			}
 			continue
 		}
 		if p.Name == GoProgram || isMakeName(p.Name) || isAbcdName(p.Name) {
@@ -130,7 +138,8 @@ type Ahead struct {
 // candidates' arguments (args, keyed by pid, the program name dropped). A
 // waiter with a child other than ps is running its command. A preflight with a
 // waiter beneath it that is not running a command is queued at its gate, and
-// that waiter is its place in the queue.
+// that waiter is its place in the queue. A waiter beneath a waiter running its
+// command takes that ancestor's place, ahead of every queued waiter.
 func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 	var out Ahead
 	if !snap.HasProcs {
@@ -148,21 +157,34 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 			}
 		}
 	}
+	chain := lineage(snap.Procs, self.PID)
+	candidates := GateCandidates(snap, self)
+	// A waiter beneath a waiter running its command (`--wait -- make
+	// preflight`, whose preflight runs its own gate line) is part of work that
+	// already won its turn, so it takes that ancestor's place, ahead of every
+	// queued waiter. Queued behind them instead, it would wait on a waiter that
+	// waits on its ancestor, and neither would move until its timeout.
+	turnWon := false
+	for _, pid := range candidates {
+		if chain[pid] && isLoadWaiter(args[pid]) {
+			turnWon = true
+		}
+	}
 	var waiting []int
-	for _, pid := range GateCandidates(snap, self) {
+	for _, pid := range candidates {
 		p := byPID[pid]
-		if !isAbcdName(p.Name) || !isLoadWaiter(args[pid]) {
+		if chain[pid] || !isAbcdName(p.Name) || !isLoadWaiter(args[pid]) {
 			continue
 		}
 		if !running[pid] {
 			waiting = append(waiting, pid)
 		}
-		if running[pid] || pid < self.PID {
+		if running[pid] || (!turnWon && pid < self.PID) {
 			out.Waiters = append(out.Waiters, pid)
 		}
 	}
-	for _, pid := range GateCandidates(snap, self) {
-		if !isMakeName(byPID[pid].Name) || !isPreflightMake(args[pid]) {
+	for _, pid := range candidates {
+		if chain[pid] || !isMakeName(byPID[pid].Name) || !isPreflightMake(args[pid]) {
 			continue
 		}
 		queued := false

@@ -1807,7 +1807,9 @@ live, no other `make preflight` is running and no other waiter is ahead of it in
 the queue (a lower pid) or running its command, under any account: all of it is
 read from the process table, which shows every account's processes, and nothing
 from a file another account could write. A preflight whose own waiter is queued
-takes that waiter's place in the queue. Once it finds all of that clear it waits
+takes that waiter's place in the queue, and a waiter beneath a waiter running its
+command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
+queued waiter. Once it finds all of that clear it waits
 a random 15s to 1m0s and checks everything again, and opens only if the
 re-check is clear too, so two starters in one quiet minute do not start together.
 The load limit is twice the cores because a busy multi-session machine already

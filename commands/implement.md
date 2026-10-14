@@ -610,7 +610,9 @@ table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded, and never from
 a file another account could write, so no account can hold another's gate
 shut. A preflight whose own waiter is queued takes that waiter's place in the
-queue. Once all of it is clear the waiter waits a random 15 to 60 seconds and
+queue, and a waiter beneath a waiter running its command (the preflight's own
+gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
+every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
 checks everything again, and opens only if the re-check is clear too, so two
 starters in one quiet minute do not start together. Twice the cores, because a
 busy machine with several sessions already sits near one core-count of load;

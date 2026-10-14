@@ -2,6 +2,7 @@ package machineload
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -229,5 +230,64 @@ func TestGoTestParallelism(t *testing.T) {
 		if got := GoTestParallelism(snap); got != c.want {
 			t.Errorf("%s: GoTestParallelism(load %v on %d) = %d, want %d", c.comment, c.load, c.cores, got, c.want)
 		}
+	}
+}
+
+// TestQueueInnerWaiterTakesItsRunningAncestorsPlace is the deadlock of
+// `abcd implement load --wait -- make preflight`: the outer waiter has won its
+// turn and runs make, whose own gate line starts an inner waiter minutes later;
+// meanwhile another session's waiter Y, with a lower pid than the inner one,
+// queues. Y is shut by the outer waiter running its command, and the inner
+// waiter must not be shut by Y in turn, or neither moves until its timeout. The
+// inner waiter takes its running ancestor's place, ahead of every queued
+// waiter, and still sees what is running.
+func TestQueueInnerWaiterTakesItsRunningAncestorsPlace(t *testing.T) {
+	procs := []Proc{
+		{PID: 1, PPID: 0, PGID: 1, UID: rootUID, Age: time.Hour, Name: "launchd"},
+		// Session X: zsh, go run, the outer waiter running make preflight, make's
+		// sh, the gate line's go run, the inner waiter.
+		{PID: 15000, PPID: 1, PGID: 15000, UID: callerUID, Age: time.Hour, Name: "go"},
+		{PID: 15001, PPID: 15000, PGID: 15000, UID: callerUID, Age: 9 * time.Minute, Name: "abcd"},
+		{PID: 15002, PPID: 15001, PGID: 15000, UID: callerUID, Age: 9 * time.Minute, Name: "make"},
+		{PID: 15003, PPID: 15002, PGID: 15000, UID: callerUID, Age: time.Minute, Name: "sh"},
+		{PID: 20000, PPID: 15003, PGID: 15000, UID: callerUID, Age: time.Minute, Name: "go"},
+		{PID: 20001, PPID: 20000, PGID: 15000, UID: callerUID, Age: 50 * time.Second, Name: "abcd"},
+		// Session Y, another account: a plain waiter, queued, with the lower pid.
+		{PID: 10000, PPID: 1, PGID: 10000, UID: otherUID, Age: 5 * time.Minute, Name: "go"},
+		{PID: 10001, PPID: 10000, PGID: 10000, UID: otherUID, Age: 5 * time.Minute, Name: "abcd"},
+	}
+	args := map[int][]string{
+		15000: {"run", "./cmd/abcd", "implement", "load", "--wait", "--", "make", "preflight"},
+		15001: {"implement", "load", "--wait", "--", "make", "preflight"},
+		15002: {"preflight"},
+		20000: {"run", "./cmd/abcd", "implement", "load", "--wait", "--timeout", "2h"},
+		20001: {"implement", "load", "--wait", "--timeout", "2h"},
+		10000: {"run", "./cmd/abcd", "implement", "load", "--wait"},
+		10001: {"implement", "load", "--wait"},
+	}
+	snap := Snapshot{HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}
+	inner := Self{PID: 20001, UID: callerUID}
+	y := Self{PID: 10001, UID: otherUID}
+
+	for _, pid := range []int{15001} {
+		if !slices.Contains(GateCandidates(snap, inner), pid) {
+			t.Fatalf("the inner waiter does not read its ancestor waiter %d's arguments: %v", pid, GateCandidates(snap, inner))
+		}
+	}
+	if got := QueueAhead(snap, inner, args); len(got.Waiters) != 0 || len(got.Preflights) != 0 {
+		t.Fatalf("inner waiter's view = %+v, want nothing ahead: its ancestor already won the turn", got)
+	}
+	if got := QueueAhead(snap, y, args); !reflect.DeepEqual(got.Waiters, []int{15001}) {
+		t.Fatalf("Y's view = %+v, want the outer waiter 15001, running its command, ahead", got)
+	}
+
+	// What is running still shuts the inner waiter: a third waiter running its
+	// command, outside the inner waiter's chain.
+	snap.Procs = append(snap.Procs,
+		Proc{PID: 40001, PPID: 1, PGID: 40001, UID: otherUID, Age: time.Minute, Name: "abcd"},
+		Proc{PID: 40002, PPID: 40001, PGID: 40001, UID: otherUID, Age: time.Minute, Name: "go"})
+	args[40001] = []string{"implement", "load", "--wait", "--", "go", "test", "-race", "./..."}
+	if got := QueueAhead(snap, inner, args); !reflect.DeepEqual(got.Waiters, []int{40001}) {
+		t.Fatalf("inner waiter's view = %+v, want the waiter running its command, 40001", got)
 	}
 }

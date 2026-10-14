@@ -43,7 +43,9 @@ import (
 // waiter that opens also takes a hold, a record under ~/.abcd.noindex/ written
 // under a flock, and every other waiter of that account stays shut while the
 // hold is in force (a hold whose holder is the waiter's own ancestor, as when
-// `--wait -- make preflight` runs a preflight that gates itself, is not):
+// `--wait -- make preflight` runs a preflight that gates itself, is not; that
+// inner waiter also takes its ancestor's place in the process-table queue,
+// machineload.QueueAhead):
 //
 //   - the plain form (`--wait` alone) holds for WaitSettle after opening, long
 //     enough for the one-minute load average to show the work it admitted. Its

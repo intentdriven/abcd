@@ -79,7 +79,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"the queue (a lower pid) or running its command, under any account: all of it is\n" +
 			"read from the process table, which shows every account's processes, and nothing\n" +
 			"from a file another account could write. A preflight whose own waiter is queued\n" +
-			"takes that waiter's place in the queue. Once it finds all of that clear it waits\n" +
+			"takes that waiter's place in the queue, and a waiter beneath a waiter running its\n" +
+			"command (`--wait -- make preflight`) takes that ancestor's place, ahead of every\n" +
+			"queued waiter. Once it finds all of that clear it waits\n" +
 			"a random " + implement.WaitJitterMin.String() + " to " + implement.WaitJitterMax.String() + " and checks everything again, and opens only if the\n" +
 			"re-check is clear too, so two starters in one quiet minute do not start together.\n" +
 			"The load limit is twice the cores because a busy multi-session machine already\n" +
