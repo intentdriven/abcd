@@ -11,7 +11,9 @@ user-invocable: false
 Reserve an issue or an intent on the shared remote before starting work on it,
 so every other participant (a second person, a second computer, a hosted cloud
 session) sees that it is taken before starting the same item. This verb is an
-agent's: a person sees reservations through `/abcd:peers`, not by typing it.
+agent's, and so is `/abcd:peers`, which lists the reservations: a person sees
+them on the board (bare `/abcd:abcd`) and on a record's page
+(`/abcd:abcd <record-id>`), not by typing either.
 
 **What it does to the remote.** The command's documented meaning is a push: it
 writes one commit to the branch `abcd-reserved/<record-id>` on the remote named

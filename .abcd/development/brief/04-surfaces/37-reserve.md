@@ -7,7 +7,9 @@ reservation before starting the same item (itd-2609091034175565,
 spc-2610031753359849, adr-2610031352212697). It is an agent's verb (the product
 thinker's ruling of 2026-10-12, "I suggest /abcd:reserve becomes an agent-only
 verb"): it is listed in the agents-and-hosts block, its page is hidden from a
-person's `/abcd:` menu, and a person sees reservations through `abcd peers`.
+person's `/abcd:` menu. `abcd peers`, which lists the reservations, is an
+agent's verb too; a person sees them on the board (bare `abcd`) and on a
+record's page (`abcd <record-id>`), as [`08-abcd.md`](08-abcd.md) states.
 
 ## Sub-verbs
 

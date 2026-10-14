@@ -376,9 +376,9 @@ listed in the agents-and-hosts block `abcd --help --agent` renders
 (`internal/surface/cli/helpgroups.go`), naming `commands/reserve.md` as the
 page to read next, its sentence is in `sentences.go`, and its plugin page
 carries `user-invocable: false`, which keeps it out of a person's `/abcd:`
-menu. It stays runnable from the CLI. A person sees reservations through
-`abcd peers` and, in spec 2, the record and board renders, not through the
-verb:
+menu. It stays runnable from the CLI. A person sees reservations on the board
+and a record's page, the spec-2 renders (`abcd peers`, which lists them, is
+an agent's verb as well), not through the verb:
 
 ```text
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] [--json]
@@ -629,8 +629,8 @@ These are the facilitator's design calls; none changes a criterion.
   verb"). It is listed in the agents-and-hosts block, not in a person's
   group, and `commands/reserve.md` carries `user-invocable: false`; the page is
   still the plugin surface, so the verb is wired on both surfaces. It stays
-  runnable from the CLI, and a person sees reservations through `abcd peers`
-  and the record and board renders.
+  runnable from the CLI, and a person sees reservations through the record
+  and board renders; `abcd peers` is an agent's verb too.
 - **What steps 1 to 3 settled** (lane 1's build, recorded with step 7):
   - The machine layer is `~/.abcd.noindex/config.json` (the intent has it
     right; this spec said `~/.abcd/config.json`). Every message naming it
