@@ -774,3 +774,38 @@ func TestConfigNamesTheSignInAppType(t *testing.T) {
 		t.Fatal("an unknown app type was accepted")
 	}
 }
+
+// TestClientAddressBehindRendersProxy: Render's proxy appends the address
+// it saw to X-Forwarded-For and keeps whatever the client sent before it
+// (https://render.com/articles/host-pocketbase-on-render), and Render's own
+// advice is to trust one proxy hop (https://render.com/articles/how-render-handles-ddos-attacks).
+// So behind it the client is the rightmost entry, never the leftmost; an
+// entry that is not an address reads as missing.
+func TestClientAddressBehindRendersProxy(t *testing.T) {
+	at := func(xff ...string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/session", nil)
+		r.RemoteAddr = "10.0.0.1:5555"
+		for _, v := range xff {
+			r.Header.Add("X-Forwarded-For", v)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		name string
+		r    *http.Request
+		want string
+	}{
+		{"the proxy's entry alone", at("203.0.113.9"), "203.0.113.9"},
+		{"a forged entry before the proxy's", at("100.64.0.1, 198.51.100.4, 203.0.113.9"), "203.0.113.9"},
+		{"a forged line before the proxy's", at("100.64.0.1", "203.0.113.9"), "203.0.113.9"},
+		{"IPv6", at("6.6.6.6, 2001:db8::7"), "2001:db8::7"},
+		{"a mapped address", at("::ffff:203.0.113.9"), "203.0.113.9"},
+		{"not an address", at("6.6.6.6, nonsense"), "10.0.0.1"},
+		{"an address with a port", at("203.0.113.9:443"), "10.0.0.1"},
+		{"a trailing comma", at("203.0.113.9, "), "10.0.0.1"},
+	} {
+		if got := clientAddress(c.r, true, false); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}

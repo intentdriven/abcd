@@ -279,9 +279,16 @@ func (s *Server) originAllowed(origin string) bool {
 
 // clientAddress is the address the failed-join limit counts.
 //
-//   - Behind a declared proxy (--behind-proxy, the team relay), it is the last
-//     X-Forwarded-For entry: the one that proxy added; anything before it the
-//     client could have written.
+//   - Behind a declared proxy (--behind-proxy, the team relay), it is the
+//     rightmost X-Forwarded-For entry, across every line of the header: the
+//     one that proxy appended, one trusted hop. Anything before it the client
+//     could have written. Render's proxy appends rather than replaces, "so a
+//     caller who sends their own copy of the header controls the leftmost
+//     entry" (https://render.com/articles/host-pocketbase-on-render), and
+//     Render's advice is to trust one hop, Express's 'trust proxy' 1, which
+//     reads the rightmost entry
+//     (https://render.com/articles/how-render-handles-ddos-attacks). An entry
+//     that is not a bare IP address reads as missing.
 //   - On the host's own machine the relay is bound to loopback alone and
 //     Tailscale Serve proxies to it, so every tailnet visitor's socket address
 //     is loopback and one visitor's wrong codes would shut out everyone. There,
@@ -297,8 +304,8 @@ func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
 	if behindProxy {
 		if fwd := r.Header.Values("X-Forwarded-For"); len(fwd) > 0 {
 			parts := strings.Split(fwd[len(fwd)-1], ",")
-			if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
-				return last
+			if a, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil {
+				return a.Unmap().WithZone("").String()
 			}
 		}
 		return host
