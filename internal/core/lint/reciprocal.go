@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 )
@@ -253,9 +254,14 @@ func checkRelatedIssuesBacklink(repoRoot string, cfg Config, rc RuleConfig) ([]F
 }
 
 // namesRecordID reports whether text names id as a whole token: `itd-4` is not
-// named by `itd-48`, nor by `xitd-4`. It is the token test capture's
-// consistency filer applies (capture.namesID), reproduced here because lint
-// cannot import capture.
+// named by `itd-48`, `itd-4abc` or `xitd-4`. A hyphen after the id still names
+// it, because that is the head of the record's own file name or wikilink
+// (`itd-4-slug.md`, `[[itd-4-slug]]`), the way a record most often names
+// another; no id continues with a hyphen, so it cannot start a different id.
+// Measured when this changed: the hyphen case answered six builds_on edges in
+// this tree, every one by a path or a wikilink. It is capture.namesID's test
+// (reproduced because lint cannot import capture), tightened to refuse a
+// trailing letter too.
 func namesRecordID(text, id string) bool {
 	if id == "" {
 		return false
@@ -266,8 +272,10 @@ func namesRecordID(text, id string) bool {
 			return false
 		}
 		start, end := i+k, i+k+len(id)
-		before := start == 0 || !isIDRune(rune(text[start-1]))
-		after := end == len(text) || !unicode.IsDigit(rune(text[end]))
+		prev, _ := utf8.DecodeLastRuneInString(text[:start])
+		next, _ := utf8.DecodeRuneInString(text[end:])
+		before := start == 0 || !isIDRune(prev)
+		after := end == len(text) || !(unicode.IsLetter(next) || unicode.IsDigit(next))
 		if before && after {
 			return true
 		}
