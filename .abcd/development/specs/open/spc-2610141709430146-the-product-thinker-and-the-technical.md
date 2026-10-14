@@ -80,9 +80,11 @@ The hosting of abcdesign.app is recorded in the plan but not made in this change
 1. The relay: session rooms, join codes, roles, update log, suggestions, sign-in exchange and limits, behind `abcd session serve`, with the WebSocket library github.com/coder/websocket v1.8.15 (ISC, no dependencies)
    - packages: internal/core/session, internal/surface/session, internal/surface/cli, commands/session.md
    - tests: internal/core/session, internal/surface/session
+   - landed: fc68350ac
 2. The relay blueprint and the Tailscale route: `abcd session blueprint` writes `.abcd/relay/render.yaml` and `.abcd/relay/Dockerfile`, pinned to a released binary and its checksum
    - packages: internal/core/session, internal/surface/cli, docs/
    - tests: internal/core/session, internal/surface/cli
+   - landed: fc68350ac
 3. The page: `abcd session page --out` emits the static page and the vendored, provenance-pinned editor bundle; joining by QR or code, live editing, presence, guest suggestions and approvals, and credit
    - packages: internal/surface/session/web, internal/surface/cli
    - tests: internal/surface/session
