@@ -132,8 +132,9 @@ gate, and an uncommitted change refuses the render.
 render closes with a numbered checklist, composed in the core and carried in
 the machine-readable report too: commit the roll, run each semantic gate the
 release workflow requires against that commit, key every receipt to it, commit
-the receipts on top so the branch is exactly two commits, then prove the gate
-locally. The gate names come from the committed `release.yml`, the list the
+the receipts on top of the roll, disposition every finding as fixed, invalid or
+deferred and commit one open issue record per deferred finding after the
+receipts, then prove the gate locally. The gate names come from the committed `release.yml`, the list the
 release job enforces, so the checklist cannot ask for a gate the release does not
 require. A workflow that arms no semantic gate gets a checklist that says no
 receipt is required.
@@ -144,8 +145,13 @@ content commit from the receipts directory the way the release job does, and
 runs the release job's own check over it — one reader, which a test holds to the
 release job's verdict and reasons on the same repository state by running the
 workflow's step beside it. It names each missing or non-PROMOTE receipt and the
-commit the receipt must name, and refuses on an uncommitted receipt change,
-because the release job reads the committed tree. It exits 0 when the gate would
+commit the receipt must name, and each finding the gate's closed disposition
+vocabulary refuses: from release-gate manifest schemaVersion 2 a finding is
+exactly `fixed`, `invalid` or `deferred`, and a deferred one names, in a
+`record` field, an open issue record of its own that no other deferred finding
+of the release names (itd-2610141956319695). It refuses on an uncommitted
+receipt or issue-ledger change, because the release job reads the committed
+tree. It exits 0 when the gate would
 admit (or nothing is armed), 1 when it would refuse, and 2 on a structural fault.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
