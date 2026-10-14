@@ -517,6 +517,16 @@ narrowest reading that meets the criteria. Each is open to review.
   one record share both files and so one key, and are one finding.
 - **Step 2, the item label.** A label counts only bounded on both sides by a
   character that is not a letter, digit or hyphen.
+- **Step 2, naming a record id is one test** (from review, 2026-10-14).
+  record-lint's A1 rules and the consistency filer's prose match both call
+  `recordid.NamesID`. It reads both neighbours of the id as characters, not
+  bytes: a letter or digit after the id, ASCII or not, means the text names
+  another word (`itd-4abc`, `itd-4é`, `itd-4s` do not name itd-4), and a
+  hyphen after it still names it (the record's own slug); a letter, digit or
+  hyphen before it makes a longer word. For the filer this is a change on
+  both sides: it tested only for a digit after the id, so `itd-4s` linked,
+  and it read the byte before the id as a character, so a non-ASCII
+  character there such as `›` blocked a match that is now made.
 - **Step 2, what is judged.** `builds_on` is judged from every store and bucket,
   superseded records included. `related_issues` is judged on intents only. A
   record naming itself, or a target named twice, is no extra edge. Where two
@@ -622,9 +632,18 @@ narrowest reading that meets the criteria. Each is open to review.
   set is ingested, by the provider route or a host ingest (from the second
   review): without both, a rerun on another provider reused every earlier
   answer and sent nothing, so whether a rerun asked the model again depended
-  on the corpus's size. No `--fresh` flag: a kept answer now lives only
-  between a fallback and the next run on the same provider and model, which
-  is the case reuse is for, and deleting the kept files forces a re-ask.
+  on the corpus's size. Reuse is bound to the connection, the provider and
+  the model the call went to, not to the endpoint or the settings sent, and
+  it is judged before this emit writes its request pair, against the request
+  the kept answer was given for. No `--fresh` flag: a kept answer is mostly
+  the case reuse is for, a fallback awaiting the next run on the same
+  provider and model, and deleting the kept files forces a re-ask. It can
+  outlive that case three ways, none of which files a wrong finding: the
+  answers of a set that fell back and was never ingested stay until a set
+  with those chunk receipts is ingested; a corpus reverted to the same bytes
+  plans the same receipts and reuses them on the same connection and model;
+  and two concurrent runs over one corpus can remove each other's kept
+  answers, which costs only a resend.
 
 ## Open point
 
