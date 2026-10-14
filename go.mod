@@ -3,6 +3,7 @@ module github.com/intentdriven/abcd
 go 1.26.9
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/minio/selfupdate v0.6.0
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/spf13/cobra v1.10.2
