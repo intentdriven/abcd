@@ -68,18 +68,36 @@ func NormalizeCode(s string) string {
 	return b.String()
 }
 
+// The address ranges Tailscale gives a tailnet's devices: IPv4 from the CGNAT
+// range 100.64.0.0/10 (https://tailscale.com/kb/1015/100.x-addresses) and IPv6
+// from the unique local prefix fd7a:115c:a1e0::/48
+// (https://tailscale.com/kb/1033/ip-and-dns-addresses). Each device holds one
+// stable address in each, given by the tailnet, not chosen by the visitor.
+var (
+	tailnet4 = netip.MustParsePrefix("100.64.0.0/10")
+	tailnet6 = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+)
+
+// IsTailnetAddr reports whether a is an address Tailscale gives a device.
+func IsTailnetAddr(a netip.Addr) bool {
+	a = a.Unmap().WithZone("")
+	return tailnet4.Contains(a) || tailnet6.Contains(a)
+}
+
 // AddressKey is the key the failed-join limit counts by: an IPv4 address, or
 // an IPv6 /64 network, since one home or phone usually holds a whole /64 and
 // counting single IPv6 addresses would let one visitor rotate through
-// millions (the rascals server's addressKey). An address that does not parse
-// is its own key.
+// millions (the rascals server's addressKey). A tailnet IPv6 address is the
+// exception and its own key: every device of a tailnet shares one /64 of
+// Tailscale's range, and a device cannot pick another address in it. An
+// address that does not parse is its own key.
 func AddressKey(addr string) string {
 	a, err := netip.ParseAddr(strings.TrimSpace(addr))
 	if err != nil {
 		return strings.TrimSpace(addr)
 	}
 	a = a.Unmap().WithZone("")
-	if a.Is4() {
+	if a.Is4() || tailnet6.Contains(a) {
 		return a.String()
 	}
 	p, err := a.Prefix(64)

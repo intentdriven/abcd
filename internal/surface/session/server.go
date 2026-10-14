@@ -25,6 +25,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -74,6 +75,10 @@ type Config struct {
 	// BehindProxy trusts the last X-Forwarded-For entry as the client's
 	// address, which is right only behind a proxy that sets it.
 	BehindProxy bool
+	// LoopbackOnly says the listener is bound to loopback alone: the host's
+	// own machine, reached through Tailscale Serve. Then, and only for a
+	// loopback peer, the tailnet address Serve forwards is the client's.
+	LoopbackOnly bool
 	// ClientID is the team's GitHub sign-in app's public id.
 	ClientID string
 	// ClientSecret is that app's secret, read from the environment by the
@@ -213,10 +218,23 @@ func (s *Server) originAllowed(origin string) bool {
 	return false
 }
 
-// clientAddress is the address the failed-join limit counts: the socket's
-// peer, or, behind a declared proxy, the last X-Forwarded-For entry (the one
-// that proxy added; anything before it the client could have written).
-func clientAddress(r *http.Request, behindProxy bool) string {
+// clientAddress is the address the failed-join limit counts.
+//
+//   - Behind a declared proxy (--behind-proxy, the team relay), it is the last
+//     X-Forwarded-For entry: the one that proxy added; anything before it the
+//     client could have written.
+//   - On the host's own machine the relay is bound to loopback alone and
+//     Tailscale Serve proxies to it, so every tailnet visitor's socket address
+//     is loopback and one visitor's wrong codes would shut out everyone. There,
+//     and only when the socket's peer is itself loopback, it is the address
+//     Serve forwards (tailnetForwarded).
+//   - Otherwise, and whenever the header is missing or malformed, it is the
+//     socket's peer.
+func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
 	if behindProxy {
 		if fwd := r.Header.Values("X-Forwarded-For"); len(fwd) > 0 {
 			parts := strings.Split(fwd[len(fwd)-1], ",")
@@ -224,12 +242,40 @@ func clientAddress(r *http.Request, behindProxy bool) string {
 				return last
 			}
 		}
+		return host
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+	if loopbackOnly {
+		if peer, err := netip.ParseAddr(host); err == nil && peer.Unmap().IsLoopback() {
+			if fwd, ok := tailnetForwarded(r); ok {
+				return fwd
+			}
+		}
 	}
 	return host
+}
+
+// tailnetForwarded reads the visitor's address as Tailscale Serve forwards
+// it. Serve's reverse proxy sets X-Forwarded-For to the tailnet address of the
+// device that connected, replacing whatever the device sent, alongside
+// X-Forwarded-Host, X-Forwarded-Proto (https) and, for a device that is not
+// tagged, the Tailscale-User-Login, Tailscale-User-Name and
+// Tailscale-User-Profile-Pic identity headers, which it strips from the
+// incoming request first:
+// https://tailscale.com/kb/1312/serve (the identity headers) and
+// https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/serve.go
+// (addProxyForwardedHeaders, which sets X-Forwarded-For). So the header is
+// accepted only in the shape Serve writes it: one line holding one address
+// in Tailscale's ranges. Anything else is not Serve's, and reads as missing.
+func tailnetForwarded(r *http.Request) (string, bool) {
+	fwd := r.Header.Values("X-Forwarded-For")
+	if len(fwd) != 1 {
+		return "", false
+	}
+	a, err := netip.ParseAddr(strings.TrimSpace(fwd[0]))
+	if err != nil || a.Zone() != "" || !core.IsTailnetAddr(a) {
+		return "", false
+	}
+	return a.Unmap().String(), true
 }
 
 // serveSession upgrades to the session's WebSocket and runs one connection.
@@ -250,7 +296,7 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	p := &peer{ws: ws, out: make(chan outFrame, sendQueue), cancel: cancel}
-	conn := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy))
+	conn := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
 	done := make(chan struct{})
 	go func() { p.writeLoop(ctx); close(done) }()
 	go p.pingLoop(ctx)

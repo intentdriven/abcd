@@ -105,4 +105,6 @@ Keeping the relay and its secret safe is the team's responsibility.
   repository, joins as a team member and edits directly.
 
 Twenty wrong join codes from one address within ten minutes stop that address
-from joining until the ten minutes pass.
+from joining until the ten minutes pass. On your own machine, behind Tailscale
+Serve, the address is each visitor's own tailnet address, so one teammate's
+mistyped codes never lock out the rest.

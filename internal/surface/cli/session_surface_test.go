@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	coresession "github.com/intentdriven/abcd/internal/core/session"
 )
 
@@ -225,6 +226,61 @@ func TestSessionServeListensOnLoopbackAndStops(t *testing.T) {
 	}
 	if _, err := http.Get(started.URL + "/healthz"); err == nil {
 		t.Fatal("the relay still answers after it stopped")
+	}
+}
+
+// TestSessionServeOnLoopbackCountsTailnetVisitorsApart: serve on loopback
+// is the host's own machine behind Tailscale Serve, so the wrong codes of one
+// tailnet address shut out that address and not every visitor Serve proxies.
+func TestSessionServeOnLoopbackCountsTailnetVisitorsApart(t *testing.T) {
+	out, _ := startServe(t, "--listen", "127.0.0.1:0", "--json")
+	var started struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	wsURL := "ws" + strings.TrimPrefix(started.URL, "http") + "/session"
+	// join tries a wrong code once on ws and returns the error code the
+	// relay answers; dial connects as Serve proxies the visitor at addr.
+	join := func(ws *websocket.Conn) string {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := ws.Write(ctx, websocket.MessageText, []byte(`{"type":"join","code":"ZZZZZZ"}`)); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		_, data, err := ws.Read(ctx)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var m map[string]any
+		_ = json.Unmarshal(data, &m)
+		code, _ := m["code"].(string)
+		return code
+	}
+	dial := func(addr string) *websocket.Conn {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ws, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: http.Header{
+			"Origin": {"https://abcdesign.app"}, "X-Forwarded-For": {addr},
+		}})
+		if err != nil {
+			t.Fatalf("dial as %s: %v", addr, err)
+		}
+		t.Cleanup(func() { _ = ws.CloseNow() })
+		return ws
+	}
+	mal := dial("100.101.102.103")
+	for i := 0; i < coresession.DefaultLimits().MaxFailedJoins; i++ {
+		if got := join(mal); got != "bad-code" {
+			t.Fatalf("wrong code %d: %q, want bad-code", i, got)
+		}
+	}
+	if got := join(dial("100.101.102.103")); got != "too-many-tries" {
+		t.Fatalf("the address past its limit: %q, want too-many-tries", got)
+	}
+	if got := join(dial("100.64.0.9")); got != "bad-code" {
+		t.Fatalf("another tailnet address: %q, want bad-code, not held up by the first", got)
 	}
 }
 

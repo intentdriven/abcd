@@ -115,6 +115,21 @@ func (f *fixture) dial(t *testing.T, origin string) *client {
 	return &client{t: t, ws: ws}
 }
 
+// dialFrom dials as Tailscale Serve would proxy a visitor: with the visitor's
+// tailnet address in X-Forwarded-For.
+func (f *fixture) dialFrom(t *testing.T, origin, forwarded string) *client {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	h := http.Header{"Origin": {origin}, "X-Forwarded-For": {forwarded}}
+	ws, _, err := websocket.Dial(ctx, f.wsURL, &websocket.DialOptions{HTTPHeader: h})
+	if err != nil {
+		t.Fatalf("dial from %q as %s: %v", origin, forwarded, err)
+	}
+	t.Cleanup(func() { _ = ws.CloseNow() })
+	return &client{t: t, ws: ws}
+}
+
 func (c *client) sendJSON(v any) {
 	c.t.Helper()
 	data, _ := json.Marshal(v)
@@ -411,15 +426,87 @@ func TestClientAddressTrustsForwardedOnlyBehindAProxy(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/session", nil)
 	r.RemoteAddr = "10.0.0.1:5555"
 	r.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.4")
-	if got := clientAddress(r, false); got != "10.0.0.1" {
+	if got := clientAddress(r, false, false); got != "10.0.0.1" {
 		t.Errorf("not behind a proxy: %q, want the socket's address", got)
 	}
-	if got := clientAddress(r, true); got != "198.51.100.4" {
+	if got := clientAddress(r, true, false); got != "198.51.100.4" {
 		t.Errorf("behind a proxy: %q, want the entry the proxy added", got)
 	}
 	r.Header.Del("X-Forwarded-For")
-	if got := clientAddress(r, true); got != "10.0.0.1" {
+	if got := clientAddress(r, true, false); got != "10.0.0.1" {
 		t.Errorf("behind a proxy with no header: %q, want the socket's address", got)
+	}
+}
+
+// TestClientAddressOnTheTailnetRoute: on the host's own machine the relay
+// listens on loopback and Tailscale Serve proxies to it, so every visitor's
+// socket address is loopback. Only then is the address Serve forwards the one
+// counted; a header from anywhere else, or one Serve would not send, is not.
+func TestClientAddressOnTheTailnetRoute(t *testing.T) {
+	at := func(remote string, xff ...string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/session", nil)
+		r.RemoteAddr = remote
+		for _, v := range xff {
+			r.Header.Add("X-Forwarded-For", v)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		name     string
+		r        *http.Request
+		loopback bool
+		want     string
+	}{
+		{"tailnet IPv4 through Serve", at("127.0.0.1:5555", "100.101.102.103"), true, "100.101.102.103"},
+		{"tailnet IPv6 through Serve", at("[::1]:5555", "fd7a:115c:a1e0::a1"), true, "fd7a:115c:a1e0::a1"},
+		{"a forged header from a non-loopback peer", at("192.0.2.7:5555", "100.64.0.1"), true, "192.0.2.7"},
+		{"a relay not bound to loopback alone", at("127.0.0.1:5555", "100.64.0.1"), false, "127.0.0.1"},
+		{"no header", at("127.0.0.1:5555"), true, "127.0.0.1"},
+		{"an empty header", at("127.0.0.1:5555", ""), true, "127.0.0.1"},
+		{"not an address", at("127.0.0.1:5555", "not-an-ip"), true, "127.0.0.1"},
+		{"an address with a port", at("127.0.0.1:5555", "100.64.0.1:443"), true, "127.0.0.1"},
+		{"a list Serve never sends", at("127.0.0.1:5555", "100.64.0.1, 100.64.0.2"), true, "127.0.0.1"},
+		{"two header lines", at("127.0.0.1:5555", "100.64.0.1", "100.64.0.2"), true, "127.0.0.1"},
+		{"an address outside the tailnet", at("127.0.0.1:5555", "203.0.113.9"), true, "127.0.0.1"},
+	} {
+		if got := clientAddress(c.r, false, c.loopback); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestTailnetVisitorsAreLimitedSeparately: one tailnet visitor's wrong codes
+// shut out that visitor alone, not everyone Serve proxies.
+func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
+	f := newFixture(t, func(c *Config) {
+		c.LoopbackOnly = true
+		c.Limits.MaxFailedJoins = 2
+	})
+	host := f.dial(t, origin)
+	host.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	host.until("verified")
+	host.sendJSON(map[string]string{"type": "host", "repo": "acme/brief"})
+	hosted, _ := host.until("hosted")
+	code := hosted["code"].(string)
+
+	for _, pair := range [][2]string{{"100.101.102.103", "100.64.0.9"}, {"fd7a:115c:a1e0::a1", "fd7a:115c:a1e0::b2"}} {
+		mal := f.dialFrom(t, origin, pair[0])
+		for i := 0; i < 2; i++ {
+			mal.sendJSON(map[string]string{"type": "join", "code": "ZZZZZZ", "name": "Mal"})
+			if e, _ := mal.until("error"); e["code"] != "bad-code" {
+				t.Fatalf("%s try %d: %v, want bad-code", pair[0], i, e)
+			}
+		}
+		again := f.dialFrom(t, origin, pair[0])
+		again.sendJSON(map[string]string{"type": "join", "code": code, "name": "Mal"})
+		if e, _ := again.until("error"); e["code"] != "too-many-tries" {
+			t.Fatalf("%s past its limit: %v, want too-many-tries", pair[0], e)
+		}
+		other := f.dialFrom(t, origin, pair[1])
+		other.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})
+		if j, _ := other.until("joined"); j["role"] != "guest" {
+			t.Fatalf("%s was held up by %s's wrong codes: %v", pair[1], pair[0], j)
+		}
 	}
 }
 

@@ -46,7 +46,9 @@ the user's tailnet at an https address; relay that line as printed. A
 non-loopback `--listen` is a second, explicit choice, meant for the team's
 relay; pass it only when the user names the address. `--behind-proxy` trusts
 the proxy's `X-Forwarded-For` entry as each visitor's address, and belongs to
-the team's relay behind its host's proxy. `--origin` admits a page served from
+the team's relay behind its host's proxy. On loopback without it, a visitor
+is counted by the tailnet address Tailscale Serve forwards, and only when the
+connection itself comes from loopback. `--origin` admits a page served from
 another origin besides `https://abcdesign.app` and loopback. `--json` prints
 the start line as an object with `url`, `loopback`, `behind_proxy`, `sign_in`
 and `hint`.

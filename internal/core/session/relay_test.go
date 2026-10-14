@@ -646,3 +646,20 @@ func TestSlowPeerIsDropped(t *testing.T) {
 		t.Fatalf("participants = %d, want the slow peer gone", s.Participants)
 	}
 }
+
+// TestAddressKeyCountsATailnetAddressAlone: Tailscale gives each device one
+// address, and every device of a tailnet shares a /64 of its IPv6 range, so a
+// tailnet address is its own key while other IPv6 addresses are counted by /64.
+func TestAddressKeyCountsATailnetAddressAlone(t *testing.T) {
+	for in, want := range map[string]string{
+		"fd7a:115c:a1e0::a1":                      "fd7a:115c:a1e0::a1",
+		"fd7a:115c:a1e0:ab12:4843:cd96:6258:b240": "fd7a:115c:a1e0:ab12:4843:cd96:6258:b240",
+		"100.101.102.103":                         "100.101.102.103",
+		"2001:db8:1:2::a":                         "2001:db8:1:2::/64",
+		"::ffff:192.0.2.1":                        "192.0.2.1",
+	} {
+		if got := AddressKey(in); got != want {
+			t.Errorf("AddressKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
