@@ -352,7 +352,9 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	}
 	raceAt, mintAt := -1, len(lines)-1
 	for i, l := range lines {
-		if strings.HasPrefix(l, "go test -race") {
+		// The race stage is the continuation of the line that derives its -p,
+		// so make -n prints it indented.
+		if strings.HasPrefix(strings.TrimSpace(l), "go test -race") {
 			raceAt = i
 		}
 	}

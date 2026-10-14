@@ -6601,6 +6601,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stop := homeStop(); stop != nil {
 		return renderHomeStop(root, args, stop, stdin, stdout, stderr)
 	}
+	// abcd keeps its home readable only by the account it belongs to: a home
+	// made at the umask by an earlier abcd or by hand is narrowed here, once,
+	// before any verb reads or writes in it (homestop.go, narrowHome).
+	narrowHome()
 
 	err := root.Execute()
 	if err == nil {
