@@ -352,10 +352,12 @@ the run's state. The reason is one `pursued:` grounds entry opening `picked by r
 on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
 falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
-receipt verifier does not count that commit as the implementer's. That commit runs no hook
-and is unsigned, even where your git configuration signs every commit. It does run the
-repository's content filters: staging the entry passes it through its clean filter, as
-Git LFS needs. The checkout you run this
+receipt verifier does not count that commit as the implementer's. That commit is made as
+your own git makes one: the repository's hooks run, and a hook that refuses it refuses the
+stage; it is signed where your git configuration signs every commit; and staging the entry
+passes it through the repository's clean filter, as Git LFS needs. A commit still waiting
+after ten minutes on a signing prompt or a hook is stopped and refuses the stage, naming
+the deadline. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
@@ -379,10 +381,10 @@ No candidate for a first pick is refused, naming each excluded intent and the ch
 excluded it, and nothing is written. Refused too, writing nothing: a negative --max,
 --max with --until-empty, and, while a series is in progress, a count or pace other than
 the one it began with, and, until it is restored or removed, a series state that cannot be
-read, does not parse, or names a count, a pick or an outcome the series never writes; and a
-pick whose reason the grounds writer's gate refuses, a defect to report. Exit 2 on a
-refusal, exit 3 when the chosen intent's run is already in progress or the run state or
-the series is locked.
+read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series
+never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.
+Exit 2 on a refusal, exit 3 when the chosen intent's run is already in progress or the run
+state or the series is locked.
 
 **Flags:**
 
@@ -1800,27 +1802,43 @@ value out of range, is reported loudly and every default is used.
 
 With --wait it waits for capacity instead of warning, and it is the one waiter
 concurrent sessions gate a preflight or a race run with, in place of a hand-written
-loop. It blocks until the one-minute load average is below the wait limit
-(`wait-load <load>` in the same file; by default twice the online core count) and
-no other `go test -race` run is live. Twice, because a busy multi-session machine
-already idles near one core-count of load, so a limit of the cores never opens;
-one waiter at a time is kept by the race-run condition and the hold below, not
-by the load number; and one race run adds about a core-count, so admitting below
-twice the cores bounds the peak near three times them, under the extreme limit.
-A race run is a process executing go whose go command is `test` with -race, read
-from its arguments, never from a pattern over a command line, and the waiter's own
-process and ancestors are never one: a hand-written `pgrep -f "go test -race"`
-matched its own shell and never opened.
+loop; `make preflight` runs its test stages through it. It blocks until the
+one-minute load average is below the wait limit (`wait-load <load>` in the same
+file; by default twice the online core count), no other `go test -race` run is
+live, no other `make preflight` is running and no other waiter is ahead of it in
+the queue (a lower pid) or running its command, under any account: all of it is
+read from the process table, which shows every account's processes: no file
+another account can write is read; the gate reads only the process table (and,
+for the wait limit, your own load-limits). A waiter ahead of yours still delays
+yours until it opens or reaches its own --timeout, whatever account it runs
+under and whatever its own account's wait limit is. A preflight whose own
+waiter is queued
+takes that waiter's place in the queue, and a waiter beneath a waiter running its
+command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
+queued waiter. Once it finds all of that clear it waits
+a random 15s to 1m0s and checks everything again, and opens only if the
+re-check is clear too, so two starters in one quiet minute do not start together.
+The load limit is twice the cores because a busy multi-session machine already
+idles near one core-count of load, so a limit of the cores never opens; one
+waiter at a time is kept by the process table and the hold below, not by the
+load number; and one race run adds about a core-count, so admitting below twice
+the cores bounds the peak near three times them, under the extreme limit.
+A race run is a process executing go whose go command is `test` with -race, a
+preflight a make whose goals name preflight, and a waiter an abcd running
+`implement load --wait`, each read from its arguments, never from a pattern over a
+command line, and the waiter's own process and ancestors are never one: a
+hand-written `pgrep -f "go test -race"` matched its own shell and never opened.
 It reads the machine every 15s, prints one line when it starts waiting and
-nothing more until it opens, and gives up after --timeout (30m0s by default),
-exiting 1 and naming what it was still waiting on. --json reports what it waited
-on and for how long.
+one when it first finds the machine free, and nothing more until it opens, and
+gives up after --timeout (30m0s by default), exiting 1 and naming what it
+was still waiting on. --json reports what it waited on and for how long.
 
-One waiter opens at a time. The one that opens takes a machine-wide hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter stays shut while it is in force.
+Within one account the waiter that opens also takes a hold,
+`~/.abcd.noindex/load-wait.json`, and every other waiter of that account stays shut while
+it is in force; a hold taken by the waiter's own ancestor does not shut it.
 Without a command the hold lasts 2m0s, long enough for the load average to show
-the work admitted. With a command after `--` (`abcd implement load --wait -- make
-preflight`) the waiter runs it once the gate opens and exits with its exit code,
+the work admitted. With a command after `--` (`abcd implement load --wait -- go
+test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,
 or with 128+N, as a shell does, when signal N killed it;
 the hold lasts until the command has started its own race run, the command exits,
 or 60 minutes pass, and a hold whose waiter has died, or whose pid now
@@ -2176,7 +2194,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -2202,17 +2220,25 @@ under blocked:; any other refused stage is the call's answer. Landing is one lan
 time; a lane whose sibling landed
 since its base is synced first (the default branch merged in with a merge commit, never a
 rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
-a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where
-your git configuration signs every commit, and the merge does not verify the signature of the
-commit it merges in. The merge is git's built-in merge on every path, whatever merge driver
-the repository configures or merge.default names, so a driver's program never runs. The
-merge does run the repository's content filters: each file it writes passes through its
-smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs
-the repository's own code.
+a sync counts no fix round. The sync's merge is made as your own `git merge` makes one, in
+the lane's worktree: the repository's hooks run, its merge commit is signed where your git
+configuration signs every commit, the signature of the commit it merges in is verified where
+merge.verifySignatures says so, the merge driver the repository configures or merge.default
+names merges each path it covers, and each file it writes passes through the repository's
+smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses
+the step, naming what git reported. A merge still waiting after ten minutes on a signing
+prompt or a hook (a passphrase dialog nobody answers) is stopped and refuses the step,
+so an unattended run is never held by it; the merged result git had staged is reset away,
+leaving the lane's worktree clean at its judged head, and the refusal says so. A sync
+starts only from a clean worktree, so that reset never touches a change the loop did not
+make.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
-cut from the default branch; brief renders the lane's brief from that base (the intent,
+cut from the default branch, as your own `git worktree add` makes one (the repository's
+post-checkout hook runs, as Git LFS needs); its checkout's time scales with the tree, so it
+is bounded at sixty minutes rather than the ten of a commit or a merge, and one stopped
+there refuses the stage naming the checkout and the bound; brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
@@ -2242,11 +2268,16 @@ for a lane that is not held or while any lane still has work.
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
 (aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is
-proved to apply to that commit, the lane's worktree is reset and cleaned, the run record
+proved to apply to that commit, the lane's worktree is reset and cleaned as your own git
+resets and cleans it (the repository's hooks run on the reset), the run record
 names the aside for review, and the implementer await is re-told; the brief never names
-the aside. It is refused, changing nothing, while the run has an outage (open or given
-up), for a blank --yielded, for a lane with no implementer out, or for a worktree that
-is not the one the loop derives.
+the aside. An await a rate limit kept, because what its agent left could not be saved
+aside, is marked in the run state, and --restart re-tells it the same way once that is
+settled, a validator's included: only a validator's partial return is saved aside, its
+worktree is not touched, and a validator of the round that is still out unmarked is left
+alone. It is refused, changing nothing, while the run has an outage (open or given up),
+for a blank --yielded, for a lane with neither an implementer out nor an await a rate
+limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -2333,17 +2364,37 @@ up on the outage, every call is refused at the stage outage, naming since when, 
 probes, what was done, what is left and whether the product thinker's notification is
 pending (notify).
 
+The run tripwire: the repository's git settings that can name a program (filter.*,
+core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.askPass,
+core.gitProxy, core.worktree, extensions.worktreeConfig, credential.*, a remote's url,
+pushurl, proxy, vcs, uploadpack and receivepack, url rewrites, protocol allow rules, diff
+and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf
+paths), every such setting each lane worktree reads and the hooks directory git runs
+there, the hooks directory and info/attributes are fingerprinted at the run's first
+check, and checked again at the start of every step, discard and restart, before the
+shared network probe and before a rate-limit checkpoint saves a lane aside. They run on
+the loop's git as on your own, so abcd never changes them; a change during the run is
+refused at the stage config, before the call reaches its git, naming each changed key or
+file (never a value; a key whose name can hold a URL is named url.<hidden-id>.insteadof),
+and a checkpoint keeps the lane as it is. The check is made when the call starts, not
+together with git: a change made while the call runs is seen by the next one. A run
+started before the tripwire records its fingerprint at its next check and moves.
+--accept-config-change, once you have looked at what changed, records the configuration
+as it stands, names what it accepted on stderr, in the result (accepted_config_change) and
+in the run record, and takes the step.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
 
 **Flags:**
 
 ```
-      --discard string   discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
-      --release string   land a held lane as it is (lane-<n>), once no lane has work left
-      --restart string   restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
-      --run string       the run to step (run-<16 digits>); the one run in progress when omitted
-      --yielded string   with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
+      --accept-config-change   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
+      --discard string         discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
+      --release string         land a held lane as it is (lane-<n>), once no lane has work left
+      --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
+      --run string             the run to step (run-<16 digits>); the one run in progress when omitted
+      --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
 ### `abcd inbox`
@@ -3793,14 +3844,25 @@ Swap the PATH-installed binary for a verified release, or with --check only comp
 **Usage:** `abcd update [tag] [flags]`
 
 Fetches the named release (or resolves the latest, naming it before acting),
-verifies the platform binary against the same release's checksums.txt, and
-swaps the PATH-installed copy atomically. The verb is the only ask: abcd
+verifies the platform binary against the same release's checksums.txt and
+against the SLSA build provenance the release workflow signed for it
+(fetched from GitHub's attestations API and checked against the Sigstore
+trusted root, pinned to intentdriven/abcd's release.yml and to the commit
+the release tag names), and swaps the
+PATH-installed copy atomically. A binary whose provenance cannot be
+verified, offline included, is refused with the way to install it by hand;
+nothing is swapped unverified. The verb is the only ask: abcd
 never checks for or applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
 command that owns them. The file being replaced must be provably abcd's:
 the binary running the command, an install ~/.abcd.noindex/path-entry records, or
 a digest a published release still names. Anything else is refused with a
 remedy that reinstalls over it — never one that deletes it.
+
+The release it installs or verifies is recorded as this machine's newest
+(~/.abcd.noindex/release-mark). A bare update whose latest release is older
+than that is refused, since the newer one may have been withdrawn; naming
+the older tag installs it and records it, which is the one way back.
 
 With --check it only asks: it fetches the latest release's tag once, says
 whether this binary is behind and which command takes the update for this

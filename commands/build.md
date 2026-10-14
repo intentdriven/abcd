@@ -124,7 +124,10 @@ and the falsifier (fix rounds past the pace rule's count, or an unachievable
 hand-back). A lane handed back after its fix rounds records the pick as
 falsified in the run record, and the entry is left as written. The lane's `worktree` stage appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
-record-only commit made before the brief. The receipt verifier does not count
+record-only commit made before the brief, as your own git makes a commit: the
+repository's hooks run (one that refuses it refuses the stage), and it is
+signed where your git configuration signs every commit; one still waiting after ten
+minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
 rebase or an amend. No existing entry changes, the checkout you run in is not written but
@@ -191,8 +194,11 @@ Refusals, each writing nothing:
   (not a regular file in a real directory, or past its size cap), that does not
   parse as it (malformed JSON, an unknown or repeated field, another
   `schema_version`), that names no run count a series takes, or that names a
-  pick that is not an intent and a run, or whose `outcome` is not one the
-  series writes: refused at the `pick` stage, exit 2, on every `build next`
+  pick that is not an intent and a run, whose `outcome` is not one the series
+  writes, whose stored pace flags are not in the form `--pace`,
+  `--sub-agents` and `--fix-rounds` take, or whose stored pace names a layer
+  other than `flag`, `repo`, `machine` or `bundled`, or an origin carrying a
+  control, bidi or zero-width character: refused at the `pick` stage, exit 2, on every `build next`
   until the file is restored or removed. `build next` is its only writer: tell
   the user, and do not edit it to get past the refusal.
 - the pick's reason refused by the grounds writer's own gate, asked before the
@@ -356,8 +362,12 @@ A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
-   `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
-   beside the checkout. In a run `build next` started, the first lane's
+   `build/<run-id>-<lane-id>` cut from the default branch, as your own
+   `git worktree add` makes one: the repository's post-checkout hook runs
+   (the one `git lfs install` installs). The checkout's time scales with the
+   tree (a Git LFS download), so it is bounded at sixty minutes, not the ten
+   minutes a commit or a merge in the lane is bounded at; a checkout stopped
+   there refuses the stage, naming the checkout and the bound. Nothing is made beside the checkout. In a run `build next` started, the first lane's
    worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the

@@ -17,7 +17,12 @@ import "strings"
 //     so masking ESC (a C0 control) alone would leave an equivalent path open;
 //   - bidirectional override/isolate controls (the "Trojan Source" class) and
 //     zero-width characters, which reorder or hide text so the rendered line
-//     differs from the bytes — the reader sees something the file does not say.
+//     differs from the bytes — the reader sees something the file does not say;
+//   - the other runes that render as nothing: the Unicode tag characters
+//     (U+E0000–U+E007F), which can also spell instructions an agent reading the
+//     output would follow while a person sees nothing, the interlinear
+//     annotation marks (U+FFF9–U+FFFB), the Mongolian vowel separator (U+180E)
+//     and the combining grapheme joiner (U+034F) (iss-2610121602237516).
 //
 // JSON output is NOT covered by encoding/json's own escaping: it escapes only
 // C0 (below 0x20) and U+2028/9 — DEL, the C1 range, bidi overrides and
@@ -112,8 +117,11 @@ func isBidiControl(r rune) bool {
 // isZeroWidth reports whether r is a zero-width character that can hide or splice
 // text invisibly. It covers ZWSP/ZWNJ/ZWJ and the BOM/ZWNBSP (U+FEFF), the WORD
 // JOINER (U+2060) that Unicode designates as U+FEFF's non-BOM successor, the
-// invisible-operator block (U+2061–U+2064), and SOFT HYPHEN (U+00AD) — each
-// renders zero-width, so two distinct byte strings can display identically.
+// invisible-operator block (U+2061–U+2064), SOFT HYPHEN (U+00AD), the
+// COMBINING GRAPHEME JOINER (U+034F), the MONGOLIAN VOWEL SEPARATOR (U+180E),
+// the interlinear annotation marks (U+FFF9–U+FFFB) and the whole tag block
+// (U+E0000–U+E007F) — each renders zero-width, so two distinct byte strings can
+// display identically, and a run of tag characters can carry a hidden message.
 func isZeroWidth(r rune) bool {
 	switch {
 	case r == 0x200B || r == 0x200C || r == 0x200D || r == 0xFEFF:
@@ -121,6 +129,14 @@ func isZeroWidth(r rune) bool {
 	case r >= 0x2060 && r <= 0x2064: // WORD JOINER + invisible operators
 		return true
 	case r == 0x00AD: // SOFT HYPHEN
+		return true
+	case r == 0x034F: // COMBINING GRAPHEME JOINER
+		return true
+	case r == 0x180E: // MONGOLIAN VOWEL SEPARATOR
+		return true
+	case r >= 0xFFF9 && r <= 0xFFFB: // interlinear annotation anchor/separator/terminator
+		return true
+	case r >= 0xE0000 && r <= 0xE007F: // tag characters (language tag, tag letters, cancel tag)
 		return true
 	}
 	return false

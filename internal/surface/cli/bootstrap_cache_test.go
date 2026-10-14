@@ -986,10 +986,12 @@ func TestBootstrapAttestsCacheAfterManifestAuthentication(t *testing.T) {
 	}
 	raw := strings.TrimSpace(mustReadFile(t, homeCacheAttestation(home)))
 	lines := strings.Split(raw, "\n")
-	if len(lines) != 4 {
-		t.Fatalf("the attestation must hold exactly its four declared fields, got %d lines: %q", len(lines), raw)
+	if len(lines) != 5 {
+		t.Fatalf("the attestation must hold exactly its five declared fields, got %d lines: %q", len(lines), raw)
 	}
-	for i, key := range []string{"data_dir", "binary_sha256", "cache_trust", "attested_at"} {
+	// release_tag names the release attested, so a newer release's mark can
+	// tell this attestation from an older one (iss-2609151847117977).
+	for i, key := range []string{"data_dir", "binary_sha256", "release_tag", "cache_trust", "attested_at"} {
 		if !strings.HasPrefix(lines[i], key+"=") {
 			t.Errorf("line %d must be %s=…, got %q", i+1, key, lines[i])
 		}
@@ -1237,7 +1239,7 @@ func TestBootstrapAttestationTempIgnoresAPlantedSymlink(t *testing.T) {
 // newline would write extra key=value lines into a record whose Go reader
 // parses last-wins — a forged binary_sha256 line after the real one wins — so
 // the class meta_field strips on read is stripped before the write, and the
-// record holds exactly its four declared fields whatever the variable held.
+// record holds exactly its five declared fields whatever the variable held.
 func TestBootstrapAttestationStripsControlCharactersFromDataDir(t *testing.T) {
 	root := bootstrapRoot(t)
 	home := t.TempDir()
@@ -1257,10 +1259,10 @@ func TestBootstrapAttestationStripsControlCharactersFromDataDir(t *testing.T) {
 	}
 	raw := strings.TrimSpace(mustReadFile(t, homeCacheAttestation(home)))
 	lines := strings.Split(raw, "\n")
-	if len(lines) != 4 {
+	if len(lines) != 5 {
 		t.Fatalf("a data dir carrying a newline must not inject lines: got %d lines %q", len(lines), raw)
 	}
-	for i, key := range []string{"data_dir", "binary_sha256", "cache_trust", "attested_at"} {
+	for i, key := range []string{"data_dir", "binary_sha256", "release_tag", "cache_trust", "attested_at"} {
 		if !strings.HasPrefix(lines[i], key+"=") {
 			t.Errorf("line %d must be %s=…, got %q", i+1, key, lines[i])
 		}

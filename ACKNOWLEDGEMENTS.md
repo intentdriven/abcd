@@ -78,9 +78,18 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
 - **golang.org/x/term (The Go Authors, BSD-3-Clause)** — the terminal package
   abcd reads a window's size through (`internal/term`), so a question drawn in
   a plain Terminal is laid out at the width the person sees
-  (itd-2610030810370060). It is the one runtime dependency named here rather
-  than in `go.mod` alone, because the intent's decision 5 adopted it by name, a
-  sign-off the record keeps.
+  (itd-2610030810370060). It is named here rather than in `go.mod` alone,
+  because the intent's decision 5 adopted it by name, a sign-off the record
+  keeps.
+- **Sigstore (sigstore-go, The Sigstore Authors, Apache-2.0,
+  <https://github.com/sigstore/sigstore-go>)** — the library `abcd update`
+  verifies a release's build provenance through before it swaps the binary
+  (`internal/core/update/provenance.go`): the SLSA provenance the release
+  workflow signs is checked against the Sigstore public-good trusted root, with
+  the signer pinned to abcd's release workflow and the statement naming the
+  downloaded bytes. Like golang.org/x/term it is named here rather than in
+  `go.mod` alone, because the product thinker signed it and its transitive
+  modules off by name (`.abcd/work/DECISIONS.md`, 2026-10-14).
 - **"20 Must-Know Agentic AI Terms" (Andreas Horn, LinkedIn, 2026)** — the
   practitioner term list whose assessment seeded the terminology crosswalk
   (itd-100, `docs/reference/terminology.md`). Credited as the prompt, not a

@@ -3908,6 +3908,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				opts.ReadmeParts = readmeParts
 			}
+			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
 				return err
@@ -4020,7 +4021,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
-					if slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID) {
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID):
+					case res.ReadmeAwaitsConfig():
+						// Neither route below works without the config the
+						// answer is kept in (iss-2610120505551170).
+						fmt.Fprint(w, "    the README answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the README question at a terminal, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
+					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
 				}
@@ -4866,6 +4873,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				st = st.Shown()
 				// The outstanding-readings report rides the same board. It is the
 				// SAME function the lint rule calls, not a second scan: an item
 				// nobody has answered has no state to sit in, and two readings of
@@ -5128,6 +5136,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			res = res.Shown()
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
 					fmt.Fprintf(w, "%s  %s  %s  %s%s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss), summaryNote(iss.Body))
@@ -6593,6 +6602,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stop := homeStop(); stop != nil {
 		return renderHomeStop(root, args, stop, stdin, stdout, stderr)
 	}
+	// abcd keeps its home readable only by the account it belongs to: a home
+	// made at the umask by an earlier abcd or by hand is narrowed here, once,
+	// before any verb reads or writes in it (homestop.go, narrowHome).
+	narrowHome()
 
 	err := root.Execute()
 	if err == nil {

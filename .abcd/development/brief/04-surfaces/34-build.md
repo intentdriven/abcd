@@ -29,9 +29,10 @@ landing), and the run record read back at the end with the run's transcripts.
 | `next` | — | shipped |
 
 The status cell records that the sub-verb is in the command tree, not that its
-intent is delivered: the pick is made once per invocation, and continuing under
-the pace rule (criterion 5) and naming a falsified pick in the run record
-(criterion 6) are not built ([The pick](#the-pick)).
+intent is delivered: the pick is made once per invocation by default, and a
+series (a run count above one, or a run until no candidate is left) continues under the pace rule
+(criterion 5); a lane handed back names the pick falsified in the run record
+(criterion 6) ([The pick](#the-pick)).
 
 ## The checks
 
@@ -148,10 +149,14 @@ carries it, since a rebase or an amend that drops it drops the reason. The
 readiness gate's grounds row skips a run-marked entry when it names the most
 recent conjecture, so the person's entry stays the one it reports.
 
-One pick per invocation. A run count above one, and a run until no candidate
-is left, which continue under the pace rule (criterion 5), are refused by name; so is a pick whose
-intent already has a run in progress. Naming a falsified pick in the run record
-(criterion 6) waits on the unachievable verdict of itd-50.
+One pick per invocation by default. A run count above one, and a run until no
+candidate is left, begin a series kept beside the run state, in
+`.abcd/.work.local/run/next.json`, that continues under the pace rule
+(criterion 5), one move per invocation. Refused by name are a negative count,
+both flags together, a count or pace other than the one a series began with,
+and a pick whose intent already has a run in progress. A lane handed back after
+its fix rounds names the pick falsified in the run record (criterion 6), and the
+intent's grounds entry is left as written.
 
 ## The pace
 
@@ -193,8 +198,15 @@ not pause.
 
 The ceiling binds (criterion 6, ruling DR6): the loop counts the agents out
 from the state, implementers and validators together, and starts nothing above
-the ceiling. The budget check and the rate-limit checkpoint (criteria 7 and 8)
-wait on a runner that reports its quota.
+the ceiling. The budget check (criterion 7) runs last of the start's checks:
+each runner a role is routed to is asked its remaining quota and the run's
+estimate is compared with it, an estimate over the quota is refused at the
+`budget` check, and a runner that reports none (the host included) is named and
+the check skipped out loud. The rate-limit checkpoint (criterion 8) ends the
+window early on a runner's rate-limit response: `next_eligible_at` is written,
+the lane's uncommitted work and partial receipt are saved aside and never built
+on, every other lane is checkpointed at its head, and the first call after the
+pause hands the same work to a fresh agent.
 
 ## The state file
 
@@ -211,7 +223,13 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 9. Version 9
+under a run id it does not name. The state is schema version 10. Version 10
+added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
+kept the await when it could not save the gone agent's return aside, which a
+restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate
+limit kept an await of; a file of version 9 or lower carrying `kept` is
+refused, and an abcd that writes version 9 refuses a version-10 file as a
+version it does not know. Version 9
 made a run work in parallel up to its ceiling (ruling DR6): a lane's `awaits`,
 a list replacing the one `awaiting`, the run's `waiting` (the work the ceiling
 holds back, each item with the time first held), a lane's `syncs` (each merge of
@@ -220,7 +238,7 @@ sibling's hand-back, ruling DR6c), a pending step's `needs`, and the lane
 stages `held` and `discarded`. A file of version 8 or lower reads as a run
 whose lanes await zero or one agent, its `awaiting` carried over to a one-entry
 `awaits`; one carrying what only version 9 writes is refused, and so is a
-version-9 file carrying `awaiting`. Version 8
+file of version 9 or later carrying `awaiting`. Version 8
 added the runner's record (itd-2609201916056194): the run's `fallbacks`, one
 receipt per role a routed runner did not run, and the `route` a verified receipt
 or a validator's recorded return names when a runner ran its agent. A review the
@@ -235,7 +253,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 9 by its next mutation; an earlier version carrying what
+written back at version 10 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
