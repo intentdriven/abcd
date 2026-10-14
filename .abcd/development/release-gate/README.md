@@ -263,8 +263,13 @@ refuses, naming the gate, the entry's index in `failing` and what is wrong:
   required gate's receipts for the commit, refused once with the count and each
   entry.
 
-Whether the record describes the finding is not something the gate can check;
-the reviewer who dispositions the finding owns that.
+**What the gate does not check.** It checks that a deferred entry's record is
+open, well-formed and named by that entry alone. It cannot check that the record
+describes the finding, or that the record is new rather than an older open issue
+about something else; the reviewer who dispositions the finding owns both.
+Naming an older open record is correct when that record really is this finding:
+a defect already captured is deferred to the record that holds it, not captured
+twice.
 
 **The captures land after the receipts.** A deferred entry's record is read from
 the tree the release job checks out, so it is committed on the release branch in
@@ -289,7 +294,9 @@ release closed. The manifest's own `schemaVersion` marks the next
 era the same way: a commit whose manifest is `schemaVersion` 1 keeps the
 free-text dispositions its receipts were written to, and the closed vocabulary
 arms at `schemaVersion` 2, which a receipt's `manifestHash` pins like every other
-byte of the manifest.
+byte of the manifest. A manifest below `schemaVersion` 2 is refused in a release
+after v0.14.1, and in a tree whose CHANGELOG.md names no dated release, so
+setting the manifest back cannot turn the vocabulary off.
 
 The `receipt_gate` rule is **disabled by default** — it must never fire on
 ordinary PRs/pushes, only at release time — and is armed by `release.yml`'s

@@ -87,10 +87,15 @@ a disposition was not blank, so every one of those shapes passed.
   merge tree the release job checks out holds it; `abcd launch receipts` refuses
   while it is uncommitted.
 
-What the gate cannot check is whether the record describes the finding that
-names it. That is a judgement about meaning, not shape: the reviewer who
-dispositions the finding owns it, and a record whose text does not match its
-finding is an ordinary review defect, caught by reading.
+**What the gate does not check.** The gate checks that the record is open,
+well-formed and named by one finding only. It cannot check that the record
+describes the finding that names it, or that the record is new rather than an
+older open issue about something else: both are judgements about meaning, not
+shape. The reviewer who dispositions the finding owns them, and a record whose
+text does not match its finding is an ordinary review defect, caught by reading.
+Naming an older open record is correct when that record really is this finding:
+a defect already captured is deferred to the record that holds it, not captured
+twice.
 
 ## Fit
 
@@ -116,8 +121,10 @@ deferral is written; the grant decides how long it may stand.
 The committed manifest moved to schemaVersion 2 for the release after v0.14.1,
 so that release is the first the rule judges. A commit re-gated from before it
 reads its own schemaVersion-1 manifest and keeps the free-text dispositions its
-receipts were written to, so no historical receipt is rewritten. The rule is
-armed only by the release's arming of the receipt gate; the doc-fidelity gate,
+receipts were written to, so no historical receipt is rewritten. A release after
+v0.14.1 whose manifest is below schemaVersion 2 is refused, so the rule cannot
+be turned off by setting the manifest back. The rule is armed only by the
+release's arming of the receipt gate; the doc-fidelity gate,
 which reads its receipts through the same reader with dispositions of its own,
 is untouched.
 
