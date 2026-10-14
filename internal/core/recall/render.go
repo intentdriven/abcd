@@ -20,11 +20,11 @@ const (
 	labelMachine = "personal note, agent-written"
 )
 
-// LayerLabel is the provenance an item's head carries: "project file,
+// layerLabel is the provenance an item's head carries: "project file,
 // committed in this repository" for the project's file, "personal note,
 // agent-written" for the machine's. An unknown layer is named as itself, so
 // a new layer is never rendered as one of these by default.
-func LayerLabel(layer string) string {
+func layerLabel(layer string) string {
 	switch layer {
 	case LayerProject:
 		return labelProject
@@ -44,7 +44,7 @@ func LayerLabel(layer string) string {
 // every line sits at the bullet's content column. The head line, a one-line
 // title, takes the rule body's mask (rules.SanitizeRuleBody).
 func renderItem(it Item) string {
-	head := rules.SanitizeRuleBody(it.Key + " (" + LayerLabel(it.Layer) + "): " + it.Title)
+	head := rules.SanitizeRuleBody(it.Key + " (" + layerLabel(it.Layer) + "): " + it.Title)
 	var b strings.Builder
 	b.WriteString("- ")
 	b.WriteString(head)
