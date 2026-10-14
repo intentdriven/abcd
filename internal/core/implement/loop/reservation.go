@@ -53,23 +53,27 @@ func claimOptions(now time.Time) claim.Options {
 }
 
 // renewReservation renews the run's reservation before a stage, when the view
-// (as last fetched) shows the run's own, from this copy and not released,
-// half through its lease since its Abcd-Claimed-At: it fetches and pushes a
-// renewal that keeps the tip's own term (renewalTerm), and logs
-// reservation_renewed in the run record. Under half its lease nothing is
-// pushed. A renewal that fails is logged and its note returned for the step's
-// answer; the stage still runs, since the land fence is where a lost
-// reservation stops the run. A view that shows the reservation held by
-// another person or copy is said too, and logged once.
-func renewReservation(repoRoot string, st *State, now time.Time) string {
+// (as last fetched; snap, or read here when nil) shows the run's own, from
+// this copy and not released, half through its lease since its
+// Abcd-Claimed-At: it fetches and pushes a renewal that keeps the tip's own
+// term (renewalTerm), and logs reservation_renewed in the run record. Under
+// half its lease nothing is pushed. A renewal that fails is logged, once
+// until one succeeds, and its note returned for the step's answer; the stage
+// still runs, since the land fence is where a lost reservation stops the run.
+// A view that shows the reservation held by another person or copy is said
+// too, and logged once.
+func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
 	if st.ReservedAt == nil {
 		return ""
 	}
-	snap, err := claim.View(repoRoot, now)
-	if err != nil {
-		return renewFailed(st, now, err)
+	if snap == nil {
+		s, err := claim.View(repoRoot, now)
+		if err != nil {
+			return renewFailed(st, now, err)
+		}
+		snap = &s
 	}
-	own, due, lost := renewalDue(*st, snap, now)
+	own, due, lost := renewalDue(*st, *snap, now)
 	if lost != "" {
 		logOnce(st, now, StageReservationLost, lost)
 		return lost
@@ -114,11 +118,11 @@ func renewalTerm(own claim.Reservation) time.Duration {
 	return min(max(lease.Default, own.EffectiveExpiry.Sub(own.ClaimedAt)), lease.Max)
 }
 
-// renewFailed logs a failed renewal in the run record and returns its note.
+// renewFailed logs a failed renewal in the run record, once until a renewal
+// succeeds, and returns its note.
 func renewFailed(st *State, now time.Time, err error) string {
 	note := "could not renew the reservation on " + st.Key + ": " + err.Error()
-	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewFailed, Note: note})
-	st.UpdatedAt = now
+	logOnce(st, now, StageReservationRenewFailed, note)
 	return note
 }
 

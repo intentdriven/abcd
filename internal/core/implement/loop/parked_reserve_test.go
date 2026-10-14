@@ -269,3 +269,24 @@ func countStage(t *testing.T, f *landFixture, stage string) int {
 	}
 	return n
 }
+
+// TestAFailingRenewalIsLoggedOnceWhileOriginIsDown: while origin does not
+// answer, every step's renewal fails, and the run record logs it once until a
+// renewal succeeds, so an offline spell does not grow the record a line per
+// step; each step's answer still names it.
+func TestAFailingRenewalIsLoggedOnceWhileOriginIsDown(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-61*time.Minute), "internal/widget")
+	if err := os.Rename(f.bare, f.bare+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if res, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err == nil && !strings.Contains(res.Next, "could not renew") {
+			t.Fatalf("each step names the failed renewal: %q", res.Next)
+		}
+	}
+	if n := countStage(t, f, StageReservationRenewFailed); n != 1 {
+		t.Fatalf("the failed renewal is logged once while origin is down: %d entries", n)
+	}
+}

@@ -694,7 +694,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		// The run's reservation is renewed at half its lease before a stage
 		// (reservation.go); a renewal that fails is named and the stage runs.
 		logged := len(st.Record)
-		renewNote := renewReservation(repoRoot, st, now)
+		renewNote := renewReservation(repoRoot, st, now, nil)
 		renewed := len(st.Record) != logged
 		r, moved, err := move(repoRoot, st, steps, now, g)
 		if err != nil {
@@ -830,7 +830,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		// An agent may have worked past half the lease with no step between:
 		// the receipt renews the run's reservation as a step would
 		// (reservation.go), and every path below writes the state.
-		renewNote = renewReservation(repoRoot, st, now)
+		renewNote = renewReservation(repoRoot, st, now, nil)
 		if route != nil {
 			stampRoute(&lane, await.Receipt, route)
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(await.Role, *route)})

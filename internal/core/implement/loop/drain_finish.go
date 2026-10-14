@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -77,17 +78,28 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 	// pull request waiting on a person's merge can wait overnight, and
 	// nothing else steps the run, so each parked run's reservation is renewed
 	// here at half its lease, logged in the run's record.
-	for _, run := range parked {
-		if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
-			if parkedAtLand(*st) < 0 {
-				return false, nil
+	// The view is read once, from disk, outside the run lock, and only a run
+	// it shows due (or held by another) is locked and renewed; the renewal's
+	// own fetch and push are made for that run alone.
+	if snap, err := claim.View(repoRoot, now); err == nil {
+		for _, run := range parked {
+			if run.ReservedAt == nil {
+				continue
 			}
-			logged := len(st.Record)
-			renewReservation(repoRoot, st, now)
-			return len(st.Record) != logged, nil
-		}); err != nil {
-			if _, ok := AsRefusal(err); !ok {
-				return nil, err
+			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" {
+				continue
+			}
+			if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+				if parkedAtLand(*st) < 0 {
+					return false, nil
+				}
+				logged, updated := len(st.Record), st.UpdatedAt
+				renewReservation(repoRoot, st, now, &snap)
+				return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
+			}); err != nil {
+				if _, ok := AsRefusal(err); !ok {
+					return nil, err
+				}
 			}
 		}
 	}

@@ -819,6 +819,12 @@ These are the facilitator's design calls; none changes a criterion.
     renewal at half a day-long fence lease would otherwise cut the hold to
     two hours, and a pull request waiting overnight would be lost two hours
     after this account's drain stopped (the last review, 2026-10-14).
+  - Renewing a drain's parked lanes reads the view once per drain move, from
+    disk and outside the run lock (`claim.View` reads no remote), and locks
+    and renews only a run it shows due or held by another; only a due run's
+    renewal fetches and pushes. A failed renewal is logged once until a
+    renewal succeeds, so an offline spell does not grow the run record a line
+    per step or drain move; every answer still names it.
   - `implement receipt` renews as a step does, so an implementer working past
     half the lease with no step between keeps the reservation. A step or a
     receipt whose view shows the reservation held by another person or copy
@@ -881,9 +887,11 @@ These are the facilitator's design calls; none changes a criterion.
     fence runs where the pull request is left open for a person too, since it
     runs before the rule decides, and the arming's note names the renewed
     expiry.
-  - The queue's timeout is the longest `check_response_timeout_minutes` a
-    merge-queue rule on the default branch states in the mirror at the
-    lane's base; the mirror here states 90, not 45.
+  - The queue's timeout was read as the longest
+    `check_response_timeout_minutes` a merge-queue rule on the default branch
+    states in the mirror at the lane's base (90 here, not 45); since the last
+    review of 2026-10-14 the fence takes a day under any mirror and the
+    timeout is no longer read (below).
 - **What step 9 settled** (the tidy-up after the merge, 2026-10-14):
   - Only the landing of the lane that completes the run, with no step
     pending and every other lane done, tombstones the run's reservation: an
