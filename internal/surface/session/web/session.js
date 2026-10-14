@@ -391,6 +391,14 @@ let ws = null;
 let retries = 0;
 let retryTimer = 0;
 let outbox = [];              // a member's updates made while disconnected
+// A member's updates sent in the last few seconds: the relay drops an update
+// that comes too fast and says only "rate-limited", so they are all sent
+// again, merged, a moment later. Yjs applies an update it already has as
+// nothing, so sending one twice is harmless.
+let recentUpdates = [];
+let resendTimer = 0;
+const RESEND_WINDOW = 5000;
+let quietClose = false;       // the relay closed an idle connection normally
 
 // ---------------------------------------------------------------------------
 // The relay connection.
@@ -455,8 +463,17 @@ function socketClosed(ev) {
   session.inRoom = false;
   session.verifying = false;
   session.rejoining = false;
+  const quiet = quietClose;
+  quietClose = false;
   renderTop();
   if (session.over) return;
+  // The relay closes a connection that joined nothing in time; the next
+  // Join or Host opens another.
+  if (quiet && !session.everJoined) {
+    setStatus("", false);
+    renderStart();
+    return;
+  }
   if (ev.code === 1008) {
     endSession(ev.reason ? ev.reason : WORDS.cannotConnect);
     return;
@@ -637,6 +654,7 @@ function becomeMember() {
   outbox = [];
   for (const frame of queued) {
     if (!sendBinary(TAG_UPDATE, frame)) outbox.push(frame);
+    else keepRecent(frame);
   }
   if (was !== "member") openFile(currentPath);
 }
@@ -681,6 +699,17 @@ function onError(msg) {
     return;
   }
   if (code === "rejoined-elsewhere" || code === "too-many-tries") forgetRejoin();
+  if (code === "join-timeout") {
+    // A normal close follows; a session in progress reconnects and rejoins.
+    quietClose = true;
+    return;
+  }
+  if (code === "rate-limited" && session.role === "member" && !session.verifying) {
+    // The relay dropped a message that came too fast: perhaps an update, so
+    // the recent ones go again.
+    resendRecent();
+    return;
+  }
   if (session.verifying) {
     session.verifying = false;
     githubToken = "";
@@ -688,7 +717,21 @@ function onError(msg) {
     proceed();
     return;
   }
-  if (code === "bad-code" || code === "too-many-tries") {
+  if (code === "repo-not-served") {
+    if (session.everJoined) { endSession(text); return; }
+    session.code = "";
+    session.pending = "";
+    toast(text);
+    renderStart();
+    return;
+  }
+  if (code === "paused" && session.everJoined) {
+    // Joining by code is paused on the relay for a while: try again later.
+    toast(text);
+    if (ws) ws.close();
+    return;
+  }
+  if (code === "bad-code" || code === "too-many-tries" || code === "paused") {
     if (session.everJoined) endSession(WORDS.codeGone);
     else {
       // The connection stays open: the person can type the code again.
@@ -708,7 +751,27 @@ doc.on("update", (update, origin) => {
   if (origin === FROM_RELAY) return;
   if (session.role !== "member") return; // a guest's text never changes locally
   if (!sendBinary(TAG_UPDATE, update)) outbox.push(update);
+  else keepRecent(update);
 });
+function keepRecent(update) {
+  const now = Date.now();
+  recentUpdates = recentUpdates.filter((u) => now - u.at < RESEND_WINDOW);
+  recentUpdates.push({ at: now, update });
+}
+// resendRecent sends this page's recent updates again, merged into one,
+// after the relay dropped one of them for coming too fast.
+function resendRecent() {
+  clearTimeout(resendTimer);
+  resendTimer = setTimeout(() => {
+    const now = Date.now();
+    const recent = recentUpdates.filter((u) => now - u.at < RESEND_WINDOW * 2).map((u) => u.update);
+    recentUpdates = [];
+    if (recent.length === 0 || session.role !== "member") return;
+    const merged = Y.mergeUpdates(recent);
+    if (sendBinary(TAG_UPDATE, merged)) keepRecent(merged);
+    else outbox.push(merged);
+  }, 1500);
+}
 
 function shareAwareness() {
   if (awareness.getLocalState() === null) return;

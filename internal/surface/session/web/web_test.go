@@ -951,3 +951,24 @@ func TestSignInPrefersAGitHubApp(t *testing.T) {
 		t.Error("the page has no note that a GitHub App is narrower")
 	}
 }
+
+// The relay's errors each have their answer: an idle connection's normal
+// close is quiet, a repository the relay does not serve and a pause on
+// joining by code are said, and an update dropped for coming too fast is
+// sent again.
+func TestPageAnswersTheRelaysRefusals(t *testing.T) {
+	js := pageScript(t)
+	on := functionBody(t, js, "onError")
+	for _, want := range []string{`code === "join-timeout"`, `code === "repo-not-served"`, `code === "paused"`, `code === "rate-limited"`, "resendRecent()"} {
+		if !strings.Contains(on, want) {
+			t.Errorf("onError does not answer %s", want)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "socketClosed"), "if (quiet && !session.everJoined) {") {
+		t.Error("a join-timeout close is reported as a failure to connect")
+	}
+	resend := functionBody(t, js, "resendRecent")
+	if !strings.Contains(resend, "Y.mergeUpdates(recent)") || !strings.Contains(resend, "sendBinary(TAG_UPDATE, merged)") {
+		t.Errorf("resendRecent does not send the recent updates again, merged:\n%s", resend)
+	}
+}
