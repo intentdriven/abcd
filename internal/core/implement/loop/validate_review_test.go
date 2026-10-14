@@ -788,7 +788,10 @@ func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) 
 
 // TestOnlyAReviewersReturnIsReadAsTheRoutes: the reviewer route answers the
 // ruthless and the security reviewer only, so an implementer's receipt is
-// never read as the route's, whatever its await records.
+// never recorded as the route's, whatever its await records. This pins the
+// outcome, not the role gates: an implementer's receipt is verified as a lane
+// receipt and never reaches the digest compare (TestAnAuditorsVerdictIsNever
+// TheRoutes says the same of the auditor).
 func TestOnlyAReviewersReturnIsReadAsTheRoutes(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -1009,5 +1012,35 @@ func TestARestartReTellsAReviewWithNoAnswerRecorded(t *testing.T) {
 	}
 	if fresh := f.await(t, "lane-1", RoleRuthless); fresh.Answered != nil {
 		t.Fatalf("the re-told review has no answer recorded: %+v", fresh.Answered)
+	}
+}
+
+// TestAnAuditorsVerdictIsNeverTheRoutes: the intent-auditor stays on the
+// host, so its verdict is never recorded as the route's, even with an answer
+// for its exact bytes forged on its await in the run's state. This pins the
+// outcome, not the role gates in the receipt and the verifier: no validator
+// but a reviewer reaches the digest compare at all, since the auditor's return
+// is read as a fidelity verdict, and a role with no verdict words is refused,
+// before it.
+func TestAnAuditorsVerdictIsNeverTheRoutes(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("SHIP"))
+	handBack(t, repo, id, stages, RoleSecurity, reviewerReturn("APPROVE"))
+	res := reviewOut(t, repo.Root(), id, stages, RoleAuditor)
+	aw := *res.Awaiting
+	path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
+	if err := os.WriteFile(path, []byte(auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), "MET")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	forgeRouteAnswer(t, repo.Root(), id, aw)
+	got, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := ReadState(repo.Root(), id)
+	for _, v := range st.Lanes[0].Validation[0].Validators {
+		if v.Role == RoleAuditor && (v.Verdict != "MET" || v.Route != nil || got.Route != nil) {
+			t.Fatalf("the auditor's verdict is the host's: %+v %+v", v, got.Route)
+		}
 	}
 }
