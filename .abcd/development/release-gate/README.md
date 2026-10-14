@@ -99,9 +99,11 @@ against the exact commit to be tagged:
 **A receipt names the commit its reviewer READ, and lives in a LATER commit** —
 it can never sit in the tree of the commit it names, because adding it would
 change that commit's sha. Under changelog-driven auto-release (adr-37) the
-release branch is therefore exactly two commits: the CHANGELOG roll (the
+release branch is therefore two commits: the CHANGELOG roll (the
 release-content commit the reviewers read), then the semantic receipts naming
-it. On merge, the released tree carries the receipts, and `release.yml` derives
+it. A review that defers a finding adds a third: the captures, one open issue
+record per deferred finding, committed after the receipts (see *Dispositions*
+below). On merge, the released tree carries the receipts, and `release.yml` derives
 the *content* commit from the **receipts directory** it carries — the receipts
 name the commit they gate, so `record-lint --derive-content-sha` reads the
 `.abcd/work/reviews/<sha>/` entry on the released lineage and returns that `<sha>`
@@ -220,18 +222,68 @@ release's content tree:
    inputs are not this release's.
 2. `tier` is insufficient for the release's impact class — a shallow receipt on a
    feature or breaking release.
-3. A `failing` entry carries no `disposition` — an un-triaged finding.
+3. A `failing` entry carries no `disposition` — an un-triaged finding. From
+   manifest `schemaVersion` 2 this refusal is the closed vocabulary below.
 
 None of these judges a finding's **content or severity**. Confirmed findings
 route to the maintainer, whose PROMOTE with recorded dispositions is the gate
 (verifier-selects-gates-decide); the gate does not hard-block on a confirmed
 major and keeps no never-worse ratchet across tiers.
 
+### Dispositions
+
+From manifest `schemaVersion` 2, every `failing` entry of a release receipt
+carries exactly one of three dispositions, compared byte for byte:
+
+- **`fixed`** — the change that answers the finding is in the reviewed tree;
+- **`invalid`** — re-verification shows the finding is not a defect;
+- **`deferred`** — the finding is captured as an open issue record of its own,
+  which the entry names in a separate `record` field.
+
+```json
+{"where": "04-surfaces/16-lint.md:12", "disposition": "deferred", "record": "iss-<id>"}
+```
+
+This is the deferred-finding discipline
+([itd-2610141956319695](../intents/disciplines/itd-2610141956319695-a-deferred-finding-is-its-own-captured.md)):
+a deferral is always a capture, never a line in a catch-all. `receipt_gate`
+refuses, naming the gate, the entry's index in `failing` and what is wrong:
+
+- any other disposition: free text such as `accepted: …`, a capitalised
+  `Deferred`, a trailing space or a blank;
+- a `deferred` entry with no `record`, or a `record` that is not `iss-<digits>`
+  with no leading zero;
+- a `record` that no file in `.abcd/work/issues/` carries, that two files claim,
+  that sits in `resolved/` or `wontfix/` rather than `open/`, that is reached
+  through a symbolic link, or that the ledger's reader (the one `abcd capture`
+  reads with) refuses;
+- a `record` on a `fixed` or `invalid` entry;
+- one `record` named by two or more deferred entries, counted across every
+  required gate's receipts for the commit, refused once with the count and each
+  entry.
+
+Whether the record describes the finding is not something the gate can check;
+the reviewer who dispositions the finding owns that.
+
+**The captures land after the receipts.** A deferred entry's record is read from
+the tree the release job checks out, so it is committed on the release branch in
+a commit after the receipts commit, and the merge tree holds it. It cannot ride
+in the roll: the reviewers read the roll before any finding exists, and the
+receipts name the roll's sha. `abcd launch receipts` refuses while a capture,
+like a receipt, is still uncommitted.
+
 **Era gating.** The manifest's presence in the armed content tree is the era
 marker. The three refusals above arm only when `manifest.json` is present at the
 gate's armed commit, so receipts written before the manifest existed — the
 receipts committed under `.abcd/work/reviews/` for earlier releases — stay valid
-for their own commits, judged by the checks that predate the manifest.
+for their own commits, judged by the checks that predate the manifest. A release
+newer than v0.4.0 cannot predate the manifest, so a release whose tree has none,
+or whose CHANGELOG.md names no dated release, is refused rather than judged by
+those older checks (iss-130). The manifest's own `schemaVersion` marks the next
+era the same way: a commit whose manifest is `schemaVersion` 1 keeps the
+free-text dispositions its receipts were written to, and the closed vocabulary
+arms at `schemaVersion` 2, which a receipt's `manifestHash` pins like every other
+byte of the manifest.
 
 The `receipt_gate` rule is **disabled by default** — it must never fire on
 ordinary PRs/pushes, only at release time — and is armed by `release.yml`'s
