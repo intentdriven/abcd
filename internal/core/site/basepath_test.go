@@ -195,3 +195,37 @@ func hasFinding(res CheckResult, check, detail string) bool {
 	}
 	return false
 }
+
+// TestTheBasePathGateIsDeniedAPassOnAnUnparsedPage: a page that does not parse
+// is never walked, so the base-path gate cannot report ok for it; a link that
+// leaves the site on that page would otherwise disappear behind the parse
+// fault.
+func TestTheBasePathGateIsDeniedAPassOnAnUnparsedPage(t *testing.T) {
+	f := newFixture(t)
+	out, _ := buildFixtureAt(t, f, "/widgets/")
+	page := filepath.Join(out, "index.html")
+	raw, err := os.ReadFile(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := bytes.Replace(raw, []byte(`<footer class="site-foot">`), []byte(`<footer class="site-foot"><!-- smuggled -->`), 1)
+	if bytes.Equal(broken, raw) {
+		t.Fatal("the fixture's index page has no footer to break")
+	}
+	if err := os.WriteFile(page, broken, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, BasePath: "/widgets/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	denied := false
+	for _, fd := range res.Findings {
+		if fd.Check == CheckBasePath && fd.Where == "index.html" && strings.Contains(fd.Detail, "did not parse") {
+			denied = true
+		}
+	}
+	if !denied {
+		t.Fatalf("the base-path gate passed a page it never read: %+v", res.Findings)
+	}
+}

@@ -456,7 +456,13 @@ func (c *checker) readPages() error {
 				// nothing, print `ok` — the report telling a reader a gate held
 				// when it never examined the page. Deny each page-walking gate that
 				// pass, so a genuine finding on an unparsed page cannot disappear.
-				for _, name := range []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels} {
+				// The base-path gate walks the pages only below a base path; at
+				// the root every root-absolute URL is inside the site, read or not.
+				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels}
+				if c.base != "/" {
+					gates = append(gates, CheckBasePath)
+				}
+				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")
 				}
 				continue
