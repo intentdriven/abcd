@@ -32,7 +32,17 @@ import (
 // loader's kill switch silences the recall: nothing is read, nothing comes
 // back, and the ledger is kept as it was. here answers the repository's root
 // commit for the notes tied to one, asked only once a tied note matched.
-func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map[string]string, budget int, here recall.RootFunc) recall.Result {
+//
+// It runs after the rules are rendered, so a panic inside it is recovered
+// here: that prompt recalls nothing, the ledger is kept as it was, stderr
+// names the failure, and the rules already rendered still inject.
+func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map[string]string, budget int, here recall.RootFunc) (res recall.Result) {
+	defer func() {
+		if p := recover(); p != nil {
+			diagnosticLine(w, "abcd memory: the recall failed (%s); recalling no notes this turn", fsutil.RedactHome(fmt.Sprint(p)))
+			res = recall.Result{Ledger: ledger}
+		}
+	}()
 	if rs.Disabled {
 		return recall.Result{Ledger: ledger}
 	}
@@ -40,7 +50,7 @@ func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map
 	for _, r := range refused {
 		diagnosticLine(w, "abcd memory: %s; recalling no notes from it", refusalText(r))
 	}
-	res := recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here})
+	res = recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here})
 	if res.RootErr != nil {
 		// git did not answer in time: the tied notes are left out, and,
 		// unrecorded, tried again on the next turn.

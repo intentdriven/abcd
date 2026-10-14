@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -152,5 +154,37 @@ func TestPromptRootLookupHasADeadline(t *testing.T) {
 	}
 	if !strings.Contains(errlog.String(), "did not answer in time") || !strings.Contains(errlog.String(), "recalling no notes tied to it this turn") {
 		t.Fatalf("stderr does not name the timeout:\n%s", errlog.String())
+	}
+}
+
+// TestARecallPanicKeepsTheRules: the recall runs after the rules are
+// rendered, so a panic inside it must not take the rules down with it. It
+// is recovered inside recallMemory: the prompt recalls nothing, the
+// session's ledger is kept as it was, and stderr says why.
+func TestARecallPanicKeepsTheRules(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	addRaceNote(t, "session-one") // tied to this repository, so the root is asked
+	rs, err := rules.Load(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := map[string]string{"mem-2610111200000001": "0123456789abcdef"}
+	boom := func() (string, error) { panic("boom in the recall") }
+	var errlog strings.Builder
+	var res recall.Result
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				t.Fatalf("a panic in the recall escaped recallMemory, dropping the rules already rendered: %v", p)
+			}
+		}()
+		res = recallMemory(&errlog, rs, repo, "why are the tests failing?", ledger, rules.InjectionBudgetBytes, boom)
+	}()
+	if res.Text != "" || len(res.Recalled) != 0 || !maps.Equal(res.Ledger, ledger) {
+		t.Fatalf("a recovered recall recalled or moved the ledger: %+v", res)
+	}
+	if !strings.Contains(errlog.String(), "abcd memory: the recall failed (boom in the recall); recalling no notes this turn") {
+		t.Fatalf("stderr does not name the failed recall:\n%s", errlog.String())
 	}
 }
