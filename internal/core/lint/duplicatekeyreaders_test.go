@@ -14,6 +14,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
@@ -175,6 +176,17 @@ func duplicateKeyReaderRows() []readerRow {
 		reader: "lint principle_claims → scanRecordStores → frontmatter.Fields",
 		want:   keepsFirst,
 		probe:  probePrincipleClaims,
+	}, {
+		// The decision records (itd-2609151138388536). The folder's reader is the
+		// one parse every decision surface goes through — the record dispatcher's
+		// describeDecision reads through decisions.List, which calls Parse — and it
+		// refuses a duplicated key, so the record is skipped. The store still does
+		// not declare readerRefusesDuplicateKey: that leg's refusal message is the
+		// issue ledger's own account.
+		store:  "dcn",
+		reader: "decisions.List → Parse → frontmatter.Duplicates (record.Describe → describeDecision → decisions.List)",
+		want:   refuses,
+		probe:  probeDecision,
 	}}
 }
 
@@ -224,6 +236,8 @@ func TestThisRulesOwnScannerKeepsTheFirstValueInEveryStore(t *testing.T) {
 		"work/issues/surprises/srp-6.md":          "---\nschema_version: 1\nid: srp-6\nid: srp-404\noccasioned_by: rdi-2\n---\n\n",
 		"work/issues/reframes/rfm-6.md":           dupReframe("id: rfm-6\nid: rfm-404"),
 		"rec/principles/a-thing.md":               "---\nid: prn-a-thing\nid: prn-404\n---\n\n# A thing\n",
+		"work/decisions/dcn-2610141200001111-a-ruling.md": "---\nid: dcn-2610141200001111\nid: dcn-404\nslug: a-ruling\ndate: 2026-10-14\n---\n" +
+			"2026-10-14 — a ruling\n",
 	}
 	writeRel(t, root, "rec/.keep", "")
 	for rel, body := range files {
@@ -547,6 +561,27 @@ func probeSurprise(t *testing.T) answer {
 	return which(t, d.Links["occasioned_by"], "FIRST-MARKER", "SECOND-MARKER")
 }
 
+// probeDecision reads a decision record whose `date` is stated twice, through
+// the folder's reader and through the record dispatcher.
+func probeDecision(t *testing.T) answer {
+	root := t.TempDir()
+	writeRel(t, root, ".abcd/work/decisions/dcn-2610141200001111-a-ruling.md",
+		"---\nid: dcn-2610141200001111\nslug: a-ruling\ndate: 2026-10-14\ndate: 2026-10-13\n---\n2026-10-14 — a ruling\n")
+	got, skipped, err := decisions.List(root)
+	if err != nil {
+		t.Fatalf("decisions.List: %v", err)
+	}
+	_, derr := record.Describe(root, "dcn-2610141200001111")
+	if len(got) == 0 && len(skipped) == 1 && derr != nil {
+		return refuses
+	}
+	if len(got) == 1 && derr == nil {
+		return which(t, got[0].Date, "2026-10-14", "2026-10-13")
+	}
+	t.Fatalf("the folder's reader and the dispatcher disagree: listed %+v skipped %+v, describe error %v", got, skipped, derr)
+	return ""
+}
+
 // dupReframe renders an open reframe record whose id line is idLines, so a
 // probe can duplicate the key it asks about.
 func dupReframe(idLines string) string {
@@ -778,6 +813,7 @@ func everyStoreConfig() lint.Config {
 				"srp": "work/issues/surprises",
 				"rfm": "work/issues/reframes",
 				"prn": "rec/principles",
+				"dcn": "work/decisions",
 			}},
 		},
 	}

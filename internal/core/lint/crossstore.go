@@ -54,7 +54,7 @@ var (
 	// A record handle OPENING a heading: `# ADR-23: …`, `# itd-7 …`. Anchored,
 	// because the anchor is what parts a CLAIM from a mention — "# How adr-23 was
 	// decided" is a document about a decision, not a second copy of it.
-	claimedHandleRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-(\d+)\b`)
+	claimedHandleRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc|dcn)-(\d+)\b`)
 	// The decision shape: a `Status` heading (the ADR template's own), or a
 	// `Status:` key line in either the bold or the bare spelling. Frontmatter is
 	// not read for this — a `status:` field is ordinary record metadata on plenty

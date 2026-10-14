@@ -84,9 +84,9 @@ package lint
 //     in either is read as prose and must resolve or carry a marker — which is
 //     the safe direction to be wrong in, and is stated here so an author who
 //     meets it knows why.
-//   - Nine record stores are configured, but only FOUR families resolve
-//     (recordid.familyRoots: adr, itd, iss, spc). The `rdi`, `dsp`, `rdg`, `adm`
-//     and `srp` stores are scanned as FILES — their prose is read like any
+//   - Eleven record stores are configured, but only FIVE families resolve
+//     (recordid.familyRoots: adr, itd, iss, spc, dcn). The `rdi`, `dsp`, `rdg`,
+//     `adm`, `srp` and `rfm` stores are scanned as FILES — their prose is read like any
 //     other — but their own ids are not the cited-id grammar, so a mention of
 //     `rdg-2609022207359936` is not a citation and is not checked by anything
 //     here.
@@ -135,7 +135,7 @@ const proseBaselineSizeLimit = 1 << 20 // 1 MiB
 // \b, so a handle inside a word (`xitd-5`) never matches; the trailing boundary
 // is applied in code because Go's regexp has no lookahead, and consuming the byte
 // after the match would make two adjacent handles read as one.
-var proseCitationRe = regexp.MustCompile(`(?i)\b(?:adr|itd|iss|spc)-[0-9]+`)
+var proseCitationRe = regexp.MustCompile(`(?i)\b(?:adr|itd|iss|spc|dcn)-[0-9]+`)
 
 // proseEscapeRe matches the line-scoped exemption marker in both its spellings.
 // The vocabulary is exactly the ruling's own two words, and there is no third,

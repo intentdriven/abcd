@@ -317,7 +317,8 @@
         "adm": ".abcd/work/issues/admissions",
         "srp": ".abcd/work/issues/surprises",
         "rfm": ".abcd/work/issues/reframes",
-        "prn": ".abcd/development/principles"
+        "prn": ".abcd/development/principles",
+        "dcn": ".abcd/work/decisions"
       }
     },
     "stale_edge": {
@@ -510,7 +511,8 @@
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
         "srp": ".abcd/work/issues/surprises",
-        "rfm": ".abcd/work/issues/reframes"
+        "rfm": ".abcd/work/issues/reframes",
+        "dcn": ".abcd/work/decisions"
       },
       "extra_roots": [
         ".abcd/development"
@@ -564,7 +566,8 @@
         "adr": ".abcd/development/decisions/adrs",
         "itd": ".abcd/development/intents",
         "spc": ".abcd/development/specs",
-        "iss": ".abcd/work/issues"
+        "iss": ".abcd/work/issues",
+        "dcn": ".abcd/work/decisions"
       }
     },
     "surface_coverage": {
