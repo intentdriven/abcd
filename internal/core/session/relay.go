@@ -177,6 +177,47 @@ type Limits struct {
 	// AdmitWithin is how long a connection may stay open without hosting,
 	// joining or rejoining; the transport calls Conn.Expire when it ends.
 	AdmitWithin time.Duration
+	// MaxAwarenessBytes caps one awareness frame: a cursor, a selection and
+	// a name are a few hundred bytes.
+	MaxAwarenessBytes int
+	// AwarenessBytesPerSecond and AwarenessBytesBurst are one session's
+	// token bucket for awareness, in bytes, shared by every participant: the
+	// frames each connection may send are bounded by its own bucket, and
+	// what the session forwards to each of its connections by this one.
+	AwarenessBytesPerSecond int
+	AwarenessBytesBurst     int
+	// MaxSuggestBytes caps one suggestion's body, MaxSuggestsPerConn the
+	// suggestions one connection makes, and MaxRoomSuggestBytes the bytes of
+	// every suggestion one session forwards: a member's page records each
+	// suggestion in the session's document, so they land in its log.
+	MaxSuggestBytes     int
+	MaxSuggestsPerConn  int
+	MaxRoomSuggestBytes int
+	// MessagesPerSecond and MessageBurst are one connection's token bucket
+	// for every control message and every binary frame the relay refuses; a
+	// message past it is dropped unanswered, without taking the relay's
+	// lock. A connection refused MaxRefusals times is closed. An accepted
+	// update or awareness frame spends nothing of it: those have their own
+	// buckets.
+	MessagesPerSecond int
+	MessageBurst      int
+	MaxRefusals       int
+	// MaxSessionLife is how long a session lasts from when it was opened,
+	// however busy: it then ends as a host's close does, with closed
+	// {reason: "expired"}. A rejoin token restores the role its participant
+	// had when it was issued, so this bounds how long a member whose access
+	// GitHub has since revoked keeps it.
+	MaxSessionLife time.Duration
+	// MaxExchangesPerAddr sign-in exchanges (/auth/token) are allowed from
+	// one address, keyed as wrong codes are (AddressKey), within
+	// ExchangeWindow.
+	MaxExchangesPerAddr int
+	ExchangeWindow      time.Duration
+	// MaxQueuedBytes caps the bytes waiting on one connection's send queue,
+	// besides its count of items; the transport drops a connection that
+	// falls further behind. A log replay is not charged: its entries are the
+	// session's own, held anyway.
+	MaxQueuedBytes int
 }
 
 // LogEntryOverhead is what each log entry is charged against MaxLogBytes
@@ -199,7 +240,10 @@ func DefaultLimits() Limits {
 		MaxFailedJoins:   20,
 		FailedJoinWindow: 10 * time.Minute,
 		MaxTrackedAddrs:  10000,
-		RelayFailedJoins: 200,
+		// About thirty addresses' worth of wrong codes (MaxFailedJoins each)
+		// pause joining by code for everybody: an accepted tradeoff, recorded
+		// in spc-2610141709430146.
+		RelayFailedJoins: 600,
 		MaxVerifies:      5,
 		MaxCredits:       512,
 		// A cursor moving is a burst of awareness frames, settling at a few a
@@ -217,6 +261,25 @@ func DefaultLimits() Limits {
 		MaxConnections:   256,
 		MaxConnsPerAddr:  16,
 		AdmitWithin:      30 * time.Second,
+		// A cursor's awareness frame is a few hundred bytes; 32 participants
+		// moving at once stay well inside the session's byte rate.
+		MaxAwarenessBytes:       8 << 10,
+		AwarenessBytesPerSecond: 128 << 10,
+		AwarenessBytesBurst:     512 << 10,
+		// A suggestion carries a passage and its replacement (the page caps
+		// a replacement at 64,000 characters).
+		MaxSuggestBytes:     70 << 10,
+		MaxSuggestsPerConn:  100,
+		MaxRoomSuggestBytes: 1 << 20,
+		// The page sends a control message now and then: hosting, joining,
+		// signing in, registering, suggesting.
+		MessagesPerSecond:   50,
+		MessageBurst:        100,
+		MaxRefusals:         1000,
+		MaxSessionLife:      12 * time.Hour,
+		MaxExchangesPerAddr: 10,
+		ExchangeWindow:      10 * time.Minute,
+		MaxQueuedBytes:      8 << 20,
 	}
 }
 
@@ -266,6 +329,8 @@ type Relay struct {
 	seats    map[string]*seat // by the digest of their rejoin token
 	failed   *addrWindow
 	hosted   *addrWindow
+	// exchanges counts sign-in exchanges per address.
+	exchanges *addrWindow
 	// allFailed counts wrong codes from every address together.
 	allFailed struct {
 		count       int
@@ -308,6 +373,21 @@ func New(o Options) *Relay {
 	fill(&l.MaxRejoinTokens, d.MaxRejoinTokens)
 	fill(&l.MaxConnections, d.MaxConnections)
 	fill(&l.MaxConnsPerAddr, d.MaxConnsPerAddr)
+	fill(&l.MaxAwarenessBytes, d.MaxAwarenessBytes)
+	fill(&l.AwarenessBytesPerSecond, d.AwarenessBytesPerSecond)
+	fill(&l.AwarenessBytesBurst, d.AwarenessBytesBurst)
+	fill(&l.MaxSuggestBytes, d.MaxSuggestBytes)
+	fill(&l.MaxSuggestsPerConn, d.MaxSuggestsPerConn)
+	fill(&l.MaxRoomSuggestBytes, d.MaxRoomSuggestBytes)
+	fill(&l.MessagesPerSecond, d.MessagesPerSecond)
+	fill(&l.MessageBurst, d.MessageBurst)
+	fill(&l.MaxRefusals, d.MaxRefusals)
+	fill(&l.MaxExchangesPerAddr, d.MaxExchangesPerAddr)
+	fill(&l.MaxQueuedBytes, d.MaxQueuedBytes)
+	// A frame the session's byte burst cannot hold could never be sent.
+	if l.AwarenessBytesBurst < l.MaxAwarenessBytes {
+		l.AwarenessBytesBurst = l.MaxAwarenessBytes
+	}
 	if l.MaxRejoinTokens < l.MaxParticipants {
 		l.MaxRejoinTokens = l.MaxParticipants
 	}
@@ -322,6 +402,12 @@ func New(o Options) *Relay {
 	}
 	if l.AdmitWithin <= 0 {
 		l.AdmitWithin = d.AdmitWithin
+	}
+	if l.MaxSessionLife <= 0 {
+		l.MaxSessionLife = d.MaxSessionLife
+	}
+	if l.ExchangeWindow <= 0 {
+		l.ExchangeWindow = d.ExchangeWindow
 	}
 	r := &Relay{limits: l, verifier: o.Verifier, now: o.Now, rand: o.Rand, rooms: map[string]*room{}, seats: map[string]*seat{}, openBy: map[string]int{}}
 	if r.now == nil {
@@ -339,7 +425,23 @@ func New(o Options) *Relay {
 	}
 	r.failed = newAddrWindow(l.MaxFailedJoins, l.FailedJoinWindow, l.MaxTrackedAddrs)
 	r.hosted = newAddrWindow(l.MaxHostsPerAddr, l.HostWindow, l.MaxTrackedAddrs)
+	r.exchanges = newAddrWindow(l.MaxExchangesPerAddr, l.ExchangeWindow, l.MaxTrackedAddrs)
 	return r
+}
+
+// AllowExchange counts one sign-in exchange from addr (the client's address
+// as the transport judged it, keyed by AddressKey) and reports whether it may
+// go ahead: at most MaxExchangesPerAddr in ExchangeWindow. A refused one is
+// not counted.
+func (r *Relay) AllowExchange(addr string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key, now := AddressKey(addr), r.now()
+	if r.exchanges.blocked(key, now) {
+		return false
+	}
+	r.exchanges.note(key, now)
+	return true
 }
 
 // Limits reports the limits in force, defaults filled in.
@@ -357,8 +459,14 @@ type room struct {
 	credits    map[uint32]string // Yjs client id -> member login
 	authors    map[uint32]string // participant number -> login, for every member whose update is logged
 	emptySince time.Time
+	opened     time.Time // when the host opened it; it ends MaxSessionLife later
 	suggests   int
-	seats      []*seat // every rejoin token issued, oldest first
+	// suggestBytes is what every suggestion forwarded so far weighed.
+	suggestBytes int
+	// awareness is the session's byte bucket for every participant's
+	// awareness frames together.
+	awareness bucket
+	seats     []*seat // every rejoin token issued, oldest first
 }
 
 // seat is one participant as a rejoin token restores them: who they were when
@@ -415,6 +523,20 @@ type Conn struct {
 	awareness bucket
 	suggests  bucket
 	updates   bucket
+	// suggested counts the suggestions this connection had forwarded.
+	suggested int
+	// gate guards the message budget. It is taken alone, or inside r.mu,
+	// never the other way round, so a message past the budget is dropped
+	// without waiting for the relay's lock.
+	gate sync.Mutex
+	// msgs is the message budget: every control message and every frame the
+	// relay refuses spends a token of it.
+	msgs bucket
+	// refused counts the connection's messages refused or dropped; at
+	// MaxRefusals the connection is closed.
+	refused int
+	// charged says the message being handled has spent its token already.
+	charged bool
 }
 
 // ErrTooManyConnections is Connect's refusal: the relay, or the address,
@@ -469,7 +591,7 @@ func (c *Conn) Expire() {
 	if c.left || c.entered {
 		return
 	}
-	c.fail("join-timeout", "host, join or rejoin a session soon after connecting")
+	c.notify("join-timeout", "host, join or rejoin a session soon after connecting")
 	c.leave()
 	c.peer.Close(false, "no session joined in time")
 }
@@ -487,7 +609,17 @@ type inbound struct {
 
 // Receive handles one frame from the connection.
 func (c *Conn) Receive(ctx context.Context, f Frame) {
+	defer c.closeIfAbusive()
 	r := c.r
+	// Every control message, and every frame refused on sight, spends the
+	// message budget before anything else is done with it; past the budget
+	// it is dropped here, unanswered, without the relay's lock. An update or
+	// awareness frame spends it only if the relay refuses it.
+	onSight := !f.Binary || len(f.Data) == 0 || len(f.Data) > r.limits.MaxMessageBytes ||
+		(f.Data[0] != TagUpdate && f.Data[0] != TagAwareness)
+	if !c.budget(onSight) {
+		return
+	}
 	if len(f.Data) > r.limits.MaxMessageBytes {
 		r.mu.Lock()
 		c.fail("too-big", fmt.Sprintf("a message is at most %d bytes", r.limits.MaxMessageBytes))
@@ -535,6 +667,55 @@ func (c *Conn) Receive(ctx context.Context, f Frame) {
 		c.closeRoom()
 	default:
 		c.fail("unknown-message", "the relay does not know this message")
+	}
+}
+
+// budget starts handling one message: a message charged on sight spends a
+// token of the message budget now, and reports false, counted as refused,
+// when none is left. Any other message is charged only if it is refused
+// (chargeRefusal).
+func (c *Conn) budget(onSight bool) bool {
+	c.gate.Lock()
+	defer c.gate.Unlock()
+	c.charged = onSight
+	if !onSight {
+		return true
+	}
+	if c.msgs.take(c.r.now(), c.r.limits.MessagesPerSecond, c.r.limits.MessageBurst) {
+		return true
+	}
+	c.refused++
+	return false
+}
+
+// chargeRefusal counts one refusal of c's message and reports whether to
+// answer it: a message that has spent its token already is answered, and one
+// that has not spends one now and is answered only if a token was left.
+func (c *Conn) chargeRefusal() bool {
+	c.gate.Lock()
+	defer c.gate.Unlock()
+	c.refused++
+	if c.charged {
+		return true
+	}
+	c.charged = true
+	return c.msgs.take(c.r.now(), c.r.limits.MessagesPerSecond, c.r.limits.MessageBurst)
+}
+
+// closeIfAbusive closes c once it has been refused MaxRefusals times: a page
+// that keeps sending what the relay refuses is not one the relay serves.
+func (c *Conn) closeIfAbusive() {
+	c.gate.Lock()
+	over := c.refused >= c.r.limits.MaxRefusals
+	c.gate.Unlock()
+	if !over {
+		return
+	}
+	c.r.mu.Lock()
+	defer c.r.mu.Unlock()
+	if !c.left {
+		c.leave()
+		c.peer.Close(true, "too many refused messages")
 	}
 }
 
@@ -593,16 +774,26 @@ func (c *Conn) sendJSON(v any) {
 	c.send(Frame{Data: data})
 }
 
-// fail answers c with an error message. Its text is fixed per code and never
-// echoes what the client sent.
+// fail refuses c's message with an error message, counted against the
+// connection's message budget: past the budget the refusal is not answered.
+// Its text is fixed per code and never echoes what the client sent.
 func (c *Conn) fail(code, text string) {
+	if c.chargeRefusal() {
+		c.notify(code, text)
+	}
+}
+
+// notify sends c an error message that answers nothing it sent, or a rate
+// limit's: it is not counted against the message budget.
+func (c *Conn) notify(code, text string) {
 	c.sendJSON(map[string]string{"type": "error", "code": code, "message": text})
 }
 
 // rateLimited answers a message dropped for coming too fast. The connection
-// stays open: only the message is dropped.
+// stays open: only the message is dropped. A rate limit counts as no
+// refusal: a cursor dragged quickly meets it often, and that is no abuse.
 func (c *Conn) rateLimited() {
-	c.fail("rate-limited", "too many messages of this kind; this one was dropped")
+	c.notify("rate-limited", "too many messages of this kind; this one was dropped")
 }
 
 // binary handles a tagged Yjs frame, under the lock.
@@ -645,7 +836,13 @@ func (c *Conn) binary(data []byte) {
 		}
 		c.r.forward(rm, c, entry)
 	case data[0] == TagAwareness:
-		if !c.awareness.take(c.r.now(), c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) {
+		if len(data) > c.r.limits.MaxAwarenessBytes {
+			c.fail("too-big", fmt.Sprintf("an awareness message is at most %d bytes", c.r.limits.MaxAwarenessBytes))
+			return
+		}
+		now := c.r.now()
+		if !c.awareness.take(now, c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) ||
+			!rm.awareness.takeN(now, c.r.limits.AwarenessBytesPerSecond, c.r.limits.AwarenessBytesBurst, len(data)) {
 			c.rateLimited()
 			return
 		}
@@ -806,7 +1003,7 @@ func (c *Conn) host(repo string) {
 		return
 	}
 	r.hosted.note(c.addr, r.now())
-	rm := &room{repo: repo, repoKey: strings.ToLower(repo), code: code, hostLogin: c.login, credits: map[uint32]string{}, authors: map[uint32]string{}}
+	rm := &room{repo: repo, repoKey: strings.ToLower(repo), code: code, hostLogin: c.login, opened: r.now(), credits: map[uint32]string{}, authors: map[uint32]string{}}
 	r.rooms[code] = rm
 	c.room, c.role, c.name = rm, roleMember, c.login
 	rm.conns = append(rm.conns, c)
@@ -847,6 +1044,13 @@ func (c *Conn) join(code, name string) {
 		return
 	}
 	rm := r.rooms[NormalizeCode(code)]
+	if rm != nil && r.expired(rm, now) {
+		// Its time is up, though the sweep has not ended it yet: it ends now,
+		// and the code is no longer one, without counting as a wrong one.
+		r.endRoom(rm, "expired")
+		c.fail("bad-code", "no session has that code")
+		return
+	}
 	if rm == nil {
 		c.fail("bad-code", "no session has that code")
 		if !member {
@@ -933,6 +1137,11 @@ func (c *Conn) rejoin(token string) {
 	if token != "" && len(token) <= maxRejoinInput {
 		s = r.seats[rejoinKey(token)]
 	}
+	if s != nil && r.expired(s.room, now) {
+		r.endRoom(s.room, "expired")
+		c.fail("bad-rejoin", "no session holds that rejoin token")
+		return
+	}
 	if s == nil {
 		c.fail("bad-rejoin", "no session holds that rejoin token")
 		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
@@ -943,7 +1152,7 @@ func (c *Conn) rejoin(token string) {
 	}
 	rm := s.room
 	if old := s.conn; old != nil && old != c {
-		old.fail("rejoined-elsewhere", "this participant rejoined on another connection")
+		old.notify("rejoined-elsewhere", "this participant rejoined on another connection")
 		old.leave()
 		old.peer.Close(true, "rejoined on another connection")
 	}
@@ -1020,11 +1229,24 @@ func (c *Conn) suggest(body json.RawMessage) {
 		return
 	}
 	trimmed := strings.TrimSpace(string(body))
+	switch {
+	case len(trimmed) > c.r.limits.MaxSuggestBytes:
+		c.fail("suggestion-too-big", fmt.Sprintf("a suggestion is at most %d bytes", c.r.limits.MaxSuggestBytes))
+		return
+	case c.suggested >= c.r.limits.MaxSuggestsPerConn:
+		c.fail("too-many-suggestions", "this connection has made as many suggestions as it may")
+		return
+	case rm.suggestBytes+len(trimmed) > c.r.limits.MaxRoomSuggestBytes:
+		c.fail("suggestions-full", "this session holds as many suggestions as it may")
+		return
+	}
 	var obj map[string]json.RawMessage
 	if !strings.HasPrefix(trimmed, "{") || json.Unmarshal(body, &obj) != nil {
 		c.fail("bad-suggestion", "a suggestion's body is one JSON object")
 		return
 	}
+	c.suggested++
+	rm.suggestBytes += len(trimmed)
 	rm.suggests++
 	id := "s" + strconv.Itoa(rm.suggests)
 	out := map[string]any{"type": "suggest", "id": id, "from": c.name, "from_id": c.id, "body": json.RawMessage(trimmed)}
@@ -1097,18 +1319,32 @@ func (c *Conn) closeRoom() {
 		c.fail("not-host", "only the host does that")
 		return
 	}
-	rm := c.room
+	c.r.endRoom(c.room, "host")
+}
+
+// endRoom ends rm for everyone in it, telling each why ("host" for a host's
+// close, "expired" past MaxSessionLife), and drops all of it.
+func (r *Relay) endRoom(rm *room, reason string) {
 	conns := append([]*Conn(nil), rm.conns...)
 	for _, o := range conns {
-		o.sendJSON(map[string]string{"type": "closed", "reason": "host"})
+		o.sendJSON(map[string]string{"type": "closed", "reason": reason})
+	}
+	text := "session closed"
+	if reason == "expired" {
+		text = "session expired"
 	}
 	for _, o := range conns {
 		o.room = nil
 		o.markLeft()
-		o.peer.Close(false, "session closed")
+		o.peer.Close(false, text)
 	}
 	rm.conns = nil
-	c.r.purge(rm)
+	r.purge(rm)
+}
+
+// expired reports whether rm has lived MaxSessionLife.
+func (r *Relay) expired(rm *room, now time.Time) bool {
+	return now.Sub(rm.opened) >= r.limits.MaxSessionLife
 }
 
 // purge drops a room and everything it holds.
@@ -1162,20 +1398,25 @@ func (r *Relay) broadcastRoster(rm *room) {
 	}
 }
 
-// Sweep purges every session nobody has been connected to for the idle
-// limit, and forgets addresses whose wrong codes have aged out. The transport
-// calls it on a timer.
+// Sweep ends every session that has lived MaxSessionLife, purges every
+// session nobody has been connected to for the idle limit, and forgets
+// addresses whose counted events have aged out. The transport calls it on a
+// timer.
 func (r *Relay) Sweep() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.now()
 	for _, rm := range r.rooms {
-		if len(rm.conns) == 0 && now.Sub(rm.emptySince) >= r.limits.IdleAfter {
+		switch {
+		case r.expired(rm, now):
+			r.endRoom(rm, "expired")
+		case len(rm.conns) == 0 && now.Sub(rm.emptySince) >= r.limits.IdleAfter:
 			r.purge(rm)
 		}
 	}
 	r.failed.sweep(now)
 	r.hosted.sweep(now)
+	r.exchanges.sweep(now)
 }
 
 // Stats reports what the relay holds.
@@ -1209,7 +1450,7 @@ func (r *Relay) debugState() string {
 			fmt.Fprintf(&b, "seat %s %s %s %s %s\n", s.key, s.id, s.role, s.name, s.login)
 		}
 		for _, o := range rm.conns {
-			fmt.Fprintf(&b, "%+v\n", *o)
+			fmt.Fprintf(&b, "%+v\n", o)
 		}
 	}
 	return b.String()

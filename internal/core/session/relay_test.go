@@ -1375,8 +1375,8 @@ func TestAuthorsAreBoundedPerSession(t *testing.T) {
 // its own address but not towards the pause. A rejoin token and a verified
 // member are not held up.
 func TestWrongCodesAreBudgetedRelayWide(t *testing.T) {
-	if d := DefaultLimits(); d.RelayFailedJoins != 200 || d.FailedJoinWindow != 10*time.Minute {
-		t.Fatalf("defaults: %d wrong codes in %v, want 200 in 10m", d.RelayFailedJoins, d.FailedJoinWindow)
+	if d := DefaultLimits(); d.RelayFailedJoins != 600 || d.FailedJoinWindow != 10*time.Minute {
+		t.Fatalf("defaults: %d wrong codes in %v, want 600 in 10m", d.RelayFailedJoins, d.FailedJoinWindow)
 	}
 	h := newHarness(t, func(l *Limits) {
 		l.RelayFailedJoins = 5
@@ -1496,5 +1496,287 @@ func TestValidOwner(t *testing.T) {
 		if ValidOwner(s) {
 			t.Errorf("%q accepted", s)
 		}
+	}
+}
+
+// TestAwarenessFramesAreCappedInSize: an awareness frame is a cursor and a
+// name, a few hundred bytes, so one over MaxAwarenessBytes is refused and
+// never forwarded (security review 2, item 1).
+func TestAwarenessFramesAreCappedInSize(t *testing.T) {
+	if d := DefaultLimits(); d.MaxAwarenessBytes != 8<<10 {
+		t.Fatalf("MaxAwarenessBytes = %d, want 8 KiB", d.MaxAwarenessBytes)
+	}
+	h := newHarness(t, nil)
+	_, hp, code := h.host(t, "tok-ada")
+	g, gp := h.join(t, code, "Gus", "198.51.100.7")
+	hp.reset()
+	g.Receive(context.Background(), Frame{Binary: true, Data: append([]byte{TagAwareness}, make([]byte, 8<<10)...)})
+	if e := gp.last(t, "error"); e == nil || e["code"] != "too-big" {
+		t.Fatalf("an awareness frame over 8 KiB: %v, want too-big", e)
+	}
+	if n := len(hp.binaries()); n != 0 {
+		t.Fatalf("an oversized awareness frame was forwarded %d times", n)
+	}
+	g.Receive(context.Background(), Frame{Binary: true, Data: append([]byte{TagAwareness}, make([]byte, 8<<10-1)...)})
+	if n := len(hp.binaries()); n != 1 {
+		t.Fatalf("an awareness frame of exactly 8 KiB was forwarded %d times, want once", n)
+	}
+}
+
+// TestAwarenessBytesAreRatedPerRoom: every participant's awareness together
+// is held to a byte rate per session, so many connections each inside their
+// own frame rate cannot flood the room's queues.
+func TestAwarenessBytesAreRatedPerRoom(t *testing.T) {
+	d := DefaultLimits()
+	if d.AwarenessBytesPerSecond != 128<<10 || d.AwarenessBytesBurst != 512<<10 {
+		t.Fatalf("room awareness defaults = %d/s burst %d, want 128 KiB/s burst 512 KiB", d.AwarenessBytesPerSecond, d.AwarenessBytesBurst)
+	}
+	h := newHarness(t, func(l *Limits) {
+		l.AwarenessPerSecond, l.AwarenessBurst = 1<<20, 1<<20
+		l.AwarenessBytesPerSecond, l.AwarenessBytesBurst = 4096, 4096*4
+	})
+	host, hp, code := h.host(t, "tok-ada")
+	g, gp := h.join(t, code, "Gus", "198.51.100.7")
+	frame := Frame{Binary: true, Data: append([]byte{TagAwareness}, make([]byte, 4095)...)}
+	hp.reset()
+	for i := 0; i < 4; i++ {
+		g.Receive(context.Background(), frame)
+	}
+	if n := len(hp.binaries()); n != 4 {
+		t.Fatalf("the room's burst forwarded %d frames, want 4", n)
+	}
+	g.Receive(context.Background(), frame)
+	if !rateLimited(t, gp) || len(hp.binaries()) != 4 {
+		t.Fatal("a frame past the room's byte burst was not refused")
+	}
+	// The budget is the room's: the host is held to it too.
+	host.Receive(context.Background(), frame)
+	if !rateLimited(t, hp) {
+		t.Fatal("the host's awareness was not held to the room's byte rate")
+	}
+	h.clock.advance(time.Second)
+	gp.reset()
+	hp.reset()
+	g.Receive(context.Background(), frame)
+	if n := len(hp.binaries()); n != 1 {
+		t.Fatalf("a second later %d frames were forwarded, want 1", n)
+	}
+}
+
+// TestSuggestionsAreBoundedInSizeCountAndRoomBytes: a guest's suggestions
+// end up in the session's log (a member's page records each), so each is
+// capped in bytes, each connection in count, and each session in total bytes
+// (security review 2, item 2).
+func TestSuggestionsAreBoundedInSizeCountAndRoomBytes(t *testing.T) {
+	d := DefaultLimits()
+	if d.MaxSuggestBytes != 70<<10 || d.MaxSuggestsPerConn != 100 || d.MaxRoomSuggestBytes != 1<<20 {
+		t.Fatalf("suggestion defaults = %d bytes, %d a connection, %d a room; want 70 KiB, 100, 1 MiB",
+			d.MaxSuggestBytes, d.MaxSuggestsPerConn, d.MaxRoomSuggestBytes)
+	}
+	delivered := func(p *fakePeer) int {
+		n := 0
+		for _, m := range p.texts(t) {
+			if m["type"] == "suggest" {
+				n++
+			}
+		}
+		return n
+	}
+	t.Run("size", func(t *testing.T) {
+		h := newHarness(t, nil)
+		_, hp, code := h.host(t, "tok-ada")
+		g, gp := h.join(t, code, "Gus", "198.51.100.7")
+		big := strings.Repeat("x", 70<<10)
+		send(t, g, msg{"type": "suggest", "body": msg{"replacement": big}})
+		if e := gp.last(t, "error"); e == nil || e["code"] != "suggestion-too-big" || delivered(hp) != 0 {
+			t.Fatalf("a suggestion over 70 KiB: %v, delivered %d", e, delivered(hp))
+		}
+		send(t, g, msg{"type": "suggest", "body": msg{"replacement": big[:60<<10]}})
+		if delivered(hp) != 1 {
+			t.Fatal("a suggestion under the cap was not delivered")
+		}
+	})
+	t.Run("count", func(t *testing.T) {
+		h := newHarness(t, func(l *Limits) {
+			l.SuggestPerSecond, l.SuggestBurst = 1<<20, 1<<20
+			l.MaxSuggestsPerConn = 3
+		})
+		_, hp, code := h.host(t, "tok-ada")
+		g, gp := h.join(t, code, "Gus", "198.51.100.7")
+		for i := 0; i < 4; i++ {
+			send(t, g, msg{"type": "suggest", "body": msg{"replacement": "x"}})
+		}
+		if e := gp.last(t, "error"); e == nil || e["code"] != "too-many-suggestions" || delivered(hp) != 3 {
+			t.Fatalf("the fourth suggestion: %v, delivered %d, want too-many-suggestions and 3", e, delivered(hp))
+		}
+	})
+	t.Run("room", func(t *testing.T) {
+		h := newHarness(t, func(l *Limits) {
+			l.SuggestPerSecond, l.SuggestBurst = 1<<20, 1<<20
+			l.MaxRoomSuggestBytes = 3000
+		})
+		_, hp, code := h.host(t, "tok-ada")
+		g1, _ := h.join(t, code, "Gus", "198.51.100.7")
+		g2, gp2 := h.join(t, code, "Ida", "198.51.100.8")
+		body := msg{"replacement": strings.Repeat("y", 1400)}
+		send(t, g1, msg{"type": "suggest", "body": body})
+		send(t, g2, msg{"type": "suggest", "body": body})
+		send(t, g2, msg{"type": "suggest", "body": body})
+		if e := gp2.last(t, "error"); e == nil || e["code"] != "suggestions-full" || delivered(hp) != 2 {
+			t.Fatalf("past the room's suggestion bytes: %v, delivered %d, want suggestions-full and 2", e, delivered(hp))
+		}
+	})
+}
+
+// TestRefusedMessagesAreBudgetedPerConnection: every control message, and
+// every binary frame the relay refuses, spends a token of one bucket per
+// connection; past it a message is dropped unanswered without taking the
+// relay's lock, and a connection refused MaxRefusals times is closed
+// (security review 2, item 7).
+func TestRefusedMessagesAreBudgetedPerConnection(t *testing.T) {
+	d := DefaultLimits()
+	if d.MessagesPerSecond != 50 || d.MessageBurst != 100 || d.MaxRefusals != 1000 {
+		t.Fatalf("message defaults = %d/s burst %d, close after %d; want 50/s, 100, 1000", d.MessagesPerSecond, d.MessageBurst, d.MaxRefusals)
+	}
+	h := newHarness(t, nil)
+	_, _, code := h.host(t, "tok-ada")
+	g, gp := h.join(t, code, "Gus", "198.51.100.7")
+	gp.reset()
+	errs := func() int {
+		n := 0
+		for _, m := range gp.texts(t) {
+			if m["type"] == "error" {
+				n++
+			}
+		}
+		return n
+	}
+	// The join spent one token of the burst.
+	for i := 0; i < d.MessageBurst+20; i++ {
+		send(t, g, msg{"type": "nonsense"})
+	}
+	if n := errs(); n != d.MessageBurst-1 {
+		t.Fatalf("%d refusals answered, want the burst's %d", n, d.MessageBurst-1)
+	}
+	// Past the budget the relay's lock is not taken.
+	h.r.mu.Lock()
+	done := make(chan struct{})
+	go func() {
+		send(t, g, msg{"type": "nonsense"})
+		g.Receive(context.Background(), Frame{Binary: true, Data: []byte{9}})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		h.r.mu.Unlock()
+		t.Fatal("a message past the budget waited for the relay's lock")
+	}
+	h.r.mu.Unlock()
+	// A member's accepted updates spend nothing of it.
+	h.clock.advance(time.Second)
+	gp.reset()
+	send(t, g, msg{"type": "nonsense"})
+	if errs() != 1 {
+		t.Fatal("a second later the refill was not spent on the next message")
+	}
+	// Sustained abuse closes the connection.
+	for i := 0; i < d.MaxRefusals && !gp.closed; i++ {
+		send(t, g, msg{"type": "nonsense"})
+	}
+	if !gp.closed || !gp.policy {
+		t.Fatalf("after %d refusals the connection is open (closed=%v)", d.MaxRefusals, gp.closed)
+	}
+}
+
+// TestAcceptedFramesSpendNoMessageBudget: a member typing fast is held only
+// by the update rate, never by the message budget.
+func TestAcceptedFramesSpendNoMessageBudget(t *testing.T) {
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	h.join(t, code, "Gus", "198.51.100.7")
+	hp.reset()
+	for i := 0; i < DefaultLimits().UpdateBurst; i++ {
+		host.Receive(context.Background(), update(byte(i)))
+	}
+	if e := hp.last(t, "error"); e != nil {
+		t.Fatalf("an update inside the update burst was refused: %v", e)
+	}
+}
+
+// TestSessionsExpireAfterTheirLifetime: a session ends MaxSessionLife after
+// it was opened, however busy, like a host's close, with closed
+// {reason: "expired"}; so a rejoin token, which restores a member's role
+// after GitHub has revoked it, lasts at most that long (security review 2,
+// item 8).
+func TestSessionsExpireAfterTheirLifetime(t *testing.T) {
+	if d := DefaultLimits(); d.MaxSessionLife != 12*time.Hour {
+		t.Fatalf("MaxSessionLife = %v, want 12h", d.MaxSessionLife)
+	}
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	tok := rejoinToken(t, hp, "hosted")
+	_, gp := h.join(t, code, "Gus", "198.51.100.7")
+	for i := 0; i < 11; i++ {
+		h.clock.advance(time.Hour)
+		host.Receive(context.Background(), update(byte(i)))
+		h.r.Sweep()
+	}
+	if s := h.r.Stats(); s.Sessions != 1 {
+		t.Fatal("a session was ended before its lifetime")
+	}
+	h.clock.advance(time.Hour)
+	h.r.Sweep()
+	for _, p := range []*fakePeer{hp, gp} {
+		if c := p.last(t, "closed"); c == nil || c["reason"] != "expired" || !p.closed {
+			t.Fatalf("a participant of an expired session: %v, closed=%v", p.last(t, "closed"), p.closed)
+		}
+	}
+	if s := h.r.Stats(); s != (Stats{}) {
+		t.Fatalf("after the session expired, the relay still holds %+v", s)
+	}
+	if _, p := h.rejoin(t, tok, "192.0.2.1"); p.last(t, "error")["code"] != "bad-rejoin" {
+		t.Fatal("an expired session's rejoin token still works")
+	}
+
+	// Between sweeps, an expired session admits nobody.
+	h2 := newHarness(t, nil)
+	_, hp2, code2 := h2.host(t, "tok-ada")
+	tok2 := rejoinToken(t, hp2, "hosted")
+	h2.clock.advance(12 * time.Hour)
+	if _, p := h2.join(t, code2, "Late", "198.51.100.9"); p.last(t, "joined") != nil {
+		t.Fatal("an expired session admitted a guest before the sweep")
+	}
+	if c := hp2.last(t, "closed"); c == nil || c["reason"] != "expired" {
+		t.Fatalf("the host of a session found expired was not told: %v", hp2.texts(t))
+	}
+	if _, p := h2.rejoin(t, tok2, "192.0.2.1"); p.last(t, "joined") != nil {
+		t.Fatal("an expired session admitted a rejoin")
+	}
+}
+
+// TestTokenExchangesAreLimitedPerAddress: the sign-in exchange is counted per
+// address, keyed as wrong codes are, at most MaxExchangesPerAddr in
+// ExchangeWindow (security review 2, item 10).
+func TestTokenExchangesAreLimitedPerAddress(t *testing.T) {
+	if d := DefaultLimits(); d.MaxExchangesPerAddr != 10 || d.ExchangeWindow != 10*time.Minute {
+		t.Fatalf("exchange defaults = %d in %v, want 10 in 10m", d.MaxExchangesPerAddr, d.ExchangeWindow)
+	}
+	h := newHarness(t, nil)
+	for i := 0; i < 10; i++ {
+		if !h.r.AllowExchange("2001:db8:1:2::" + strconv.Itoa(i+1)) {
+			t.Fatalf("exchange %d refused", i+1)
+		}
+	}
+	// The same /48 is one address.
+	if h.r.AllowExchange("2001:db8:1:ffff::1") {
+		t.Fatal("an eleventh exchange from the same /48 was allowed")
+	}
+	if !h.r.AllowExchange("203.0.113.9") {
+		t.Fatal("another address was held up")
+	}
+	h.clock.advance(10 * time.Minute)
+	if !h.r.AllowExchange("2001:db8:1:2::1") {
+		t.Fatal("after the window the address is still refused")
 	}
 }

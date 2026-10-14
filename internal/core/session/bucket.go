@@ -3,8 +3,9 @@ package session
 import "time"
 
 // bucket is a token bucket: it holds up to burst tokens, refills at rate
-// tokens a second, and each message takes one. Its zero value is full on
-// first use. Called under the relay's lock, with the relay's clock.
+// tokens a second, and each message takes one (or, counted in bytes, its
+// size). Its zero value is full on first use. Called under the lock that
+// guards its owner, with the relay's clock.
 type bucket struct {
 	tokens float64
 	last   time.Time
@@ -14,6 +15,11 @@ type bucket struct {
 // take spends a token if one is left, refilling first for the time since the
 // last call.
 func (b *bucket) take(now time.Time, rate, burst int) bool {
+	return b.takeN(now, rate, burst, 1)
+}
+
+// takeN spends n tokens if that many are left, refilling first.
+func (b *bucket) takeN(now time.Time, rate, burst, n int) bool {
 	if !b.used {
 		b.used, b.tokens, b.last = true, float64(burst), now
 	}
@@ -21,9 +27,9 @@ func (b *bucket) take(now time.Time, rate, burst int) bool {
 		b.tokens = min(float64(burst), b.tokens+elapsed.Seconds()*float64(rate))
 		b.last = now
 	}
-	if b.tokens < 1 {
+	if b.tokens < float64(n) {
 		return false
 	}
-	b.tokens--
+	b.tokens -= float64(n)
 	return true
 }
