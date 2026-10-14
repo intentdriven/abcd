@@ -85,6 +85,16 @@ named `origin`, a fetch or a push origin refused. Each refusal ends by saying
 nothing was pushed or no reservation was made, and quotes git's own reason with
 the home directory redacted. Relay it.
 
+**Clocks.** A reservation's expiry is written by the holder's clock and
+judged by the reader's, and the five-minute margin is all the disagreement it
+absorbs. A holder whose clock runs behind loses that much of each lease: one
+behind by more than half the lease plus the margin (65 minutes for the
+default two hours) can be taken over between its own renewals, and a
+reservation made once and never renewed by a clock behind by more than its
+lease is open to a take-over as soon as another copy fetches it. A clock
+running ahead is clamped to a day from the reader's own now. Keep the machines
+that reserve on network time.
+
 **The holder** is the user's GitHub username, read from `git config
 user.email` when it is a GitHub no-reply address, or from
 `reservation.github_username` in `~/.abcd.noindex/config.json`. The

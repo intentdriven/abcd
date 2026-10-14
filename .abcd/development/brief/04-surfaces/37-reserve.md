@@ -77,6 +77,15 @@ branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
 
+Expiry is the holder's clock judged by the reader's, and the five-minute
+take-over margin is the only skew it absorbs: a holder whose clock runs behind
+by more than half its lease plus the margin can be taken over between its own
+renewals, and a reservation never renewed is open to a take-over once the
+holder's clock is behind by more than its lease. A clock ahead is clamped to a
+day from the reader's now. No bound read on the reader's side holds: the
+commit date is written by the same clock, and the time this copy first saw a
+tip cannot tell a holder's slow clock from a late fetch.
+
 ## Exits
 
 Exit 0 when the act reached origin, or a release was already made. Exit 3, the

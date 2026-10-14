@@ -779,6 +779,21 @@ These are the facilitator's design calls; none changes a criterion.
     fail, and both land fences refuse, until one lapsed. A reserve naming its
     footprint, a renewal by the verb among them, is still checked, so a
     footprint is never widened onto another.
+  - Clock skew is bounded by the take-over margin and documented, not
+    corrected. The expiry is the holder's clock judged by the reader's; the
+    committer date is written by the same clock, so it bounds nothing. A
+    reader-side bound was weighed: holding a tip at least a lease (or
+    `lease.Min`) from when this copy first saw its commit. It cannot tell a
+    holder's slow clock from a late fetch, so the lease-length form would
+    revive, for a copy fetching for the first time, every reservation that
+    lapsed long ago, and the `lease.Min` form protects a skewed holder for six
+    minutes at the cost of a stamp per tip commit in the local tier, every
+    renewal a new one. Neither was built. The bound, stated on the reserve
+    page and its chapter: a holder whose clock runs behind by more than half
+    its lease plus the margin (65 minutes for the default) can be taken over
+    between its own renewals, and a reservation never renewed is open to a
+    take-over once its holder's clock is behind by more than its lease; a
+    clock ahead is clamped to a day from the reader's now.
   - The cap and the overlap are best-effort under a race: each is judged on
     the view fetched just before the push, and each reservation is its own
     ref, so two pushes for two records cannot see each other. A collision on
