@@ -386,10 +386,14 @@ type varVal struct {
 }
 
 // fdFile is a descriptor open on a file; ok is false where the line does not
-// fix which.
+// fix which. rel is, for a file the guard cannot place because it is named
+// relative to a working directory the line leaves unknown, that name, and
+// gen the directory it was opened in (shellState.dirGen).
 type fdFile struct {
 	path string
 	ok   bool
+	rel  string
+	gen  [2]int
 }
 
 func (st *shellState) clone() *shellState {
@@ -787,8 +791,7 @@ func (st *shellState) applyRedirects(rc *readCtx, fds map[int]fdFile, rs []redir
 				}
 			default:
 				// `>&file` is a file opened for writing on fd 1 and 2.
-				p, ok := st.resolve(rc, t, r.target.tilde)
-				set(fd, fdFile{path: p, ok: ok})
+				set(fd, st.openAt(rc, t, r.target.tilde))
 			}
 			continue
 		}
@@ -802,9 +805,20 @@ func (st *shellState) applyRedirects(rc *readCtx, fds map[int]fdFile, rs []redir
 			set(fd, fdFile{})
 			continue
 		}
-		p, ok := st.resolve(rc, r.target.text, r.target.tilde)
-		set(fd, fdFile{path: p, ok: ok})
+		set(fd, st.openAt(rc, r.target.text, r.target.tilde))
 	}
+}
+
+// openAt is a descriptor opened on word, resolved as the shell opens it.
+// Where the line leaves the working directory unknown, a relative word is
+// not placed, and keeps its name and the directory's identity (fdFile).
+func (st *shellState) openAt(rc *readCtx, word string, tilde bool) fdFile {
+	p, ok := st.resolve(rc, word, tilde)
+	f := fdFile{path: p, ok: ok}
+	if !ok && !tilde && st.relativeUnknown(word) {
+		f.rel, f.gen = word, st.dirGen
+	}
+	return f
 }
 
 // stdinOf is the file the command s reads as standard input, when a
@@ -1768,8 +1782,11 @@ type readTarget struct {
 	// not one the guard can name, so a write before it may be that file.
 	// cwdName is, where the file in that directory is the one that runs when
 	// it is there, its name in the directory (cwdName), and "" otherwise.
+	// base is the last component of the name the run looks up, where
+	// shown is not that name; "" means filepath.Base(shown).
 	blind   bool
 	cwdName string
+	base    string
 }
 
 // targetsOf is every file a segment's commands point a shell at, and the
@@ -2273,6 +2290,18 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	child := func(p, shown string, kind int) readTarget {
 		return readTarget{path: p, shown: shown, kind: kind, env: env, shell: shellOf(name)}
 	}
+	// stdinBlind is the file on the shell's standard input where the line
+	// leaves the directory it was opened in unknown: unread, and a write
+	// before the run may be it (readTarget). Its name is the file that runs
+	// only where it was opened in the directory the shell runs in.
+	stdinBlind := func(f fdFile, shown string) readTarget {
+		t := child("", shown, targetScript)
+		t.blind, t.base = true, filepath.Base(f.rel)
+		if f.gen == st.dirGen {
+			t.cwdName = cwdName(f.rel)
+		}
+		return t
+	}
 	startup := func(varName, value string, tilde bool) {
 		if strings.Contains(value, procSubOperand) {
 			sigs = append(sigs, interpreterStreamSignal())
@@ -2396,6 +2425,8 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 		case containsString(stdinDevices, w):
 			if f, ok := st.stdinOf(rc, s); ok && f.ok {
 				out = append(out, child(f.path, w+" (its standard input, "+f.path+")", targetScript))
+			} else if ok && f.rel != "" {
+				out = append(out, stdinBlind(f, w+" (its standard input, "+f.rel+")"))
 			}
 		default:
 			if p, ok := st.resolveToken(rc, s, idx); ok {
@@ -2419,6 +2450,8 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	} else if c.stdin && !c.cmdString {
 		if f, ok := st.stdinOf(rc, s); ok && f.ok {
 			out = append(out, child(f.path, "its standard input ("+f.path+")", targetScript))
+		} else if ok && f.rel != "" {
+			out = append(out, stdinBlind(f, "its standard input ("+f.rel+")"))
 		}
 	}
 	return out, sigs
@@ -2476,7 +2509,11 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 	// relative to an unknown directory. A write whose path the line does not
 	// fix (a variable's value) is not counted for that alone, as it was not
 	// before such a run had a target.
-	blind := t.blind && writesAFile(rc, before, filepath.Base(t.shown))
+	base := t.base
+	if base == "" {
+		base = filepath.Base(t.shown)
+	}
+	blind := t.blind && writesAFile(rc, before, base)
 	switch {
 	case blind:
 		sigs = append(sigs, scriptWriteBlindSignal(t.shown))

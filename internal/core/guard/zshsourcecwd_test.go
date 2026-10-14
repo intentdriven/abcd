@@ -120,3 +120,58 @@ func TestARunInAnUnknownDirectoryAfterAPlacedWrite(t *testing.T) {
 		{`printf x > "$(echo a/n.sh)"; cd "$T" && bash m.sh`, VerdictAllow, ""},
 	})
 }
+
+// TestAShellReadingAFileOnStdinInAnUnknownDirectory: a shell that reads its
+// commands from standard input runs the file a `<` puts there, so where the
+// line leaves the working directory unknown that file is read the way a
+// file handed to the shell by a relative name is: the same name written in
+// the same unknown directory blocks, another write the run may reach warns,
+// and with no write before it the run allows unread.
+func TestAShellReadingAFileOnStdinInAnUnknownDirectory(t *testing.T) {
+	dir := scriptTree(t, map[string]string{
+		"w/keep": "",
+	})
+	var cases []scriptCase
+	for _, sh := range []string{"sh", "bash", "dash", "zsh", "ksh", "mksh", "ash", "rbash", "yash"} {
+		cases = append(cases,
+			scriptCase{`cd "$(mktemp -d)" && printf hi > n.sh && ` + sh + ` < n.sh`, VerdictBlock, scriptWrittenEntryID},
+			scriptCase{`printf x > {d}/w/n.sh; cd "$(mktemp -d)" && ` + sh + ` < n.sh`, VerdictWarn, scriptWrittenEntryID},
+			scriptCase{`cd "$(mktemp -d)" && ` + sh + ` < n.sh`, VerdictAllow, ""},
+		)
+	}
+	cases = append(cases, []scriptCase{
+		// The same name in the same unknown directory, however the shell is
+		// told to read standard input or the redirection is spelled.
+		{`cd "$(mktemp -d)" && printf '` + hazardLine + `' > s.sh && bash < s.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && sh -s < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash -s arg < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash - < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash 0< n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash < ./n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > ./n.sh && bash < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash /dev/stdin < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && cp {d}/w/keep n.sh && zsh < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd {d}/w && printf hi > n.sh && bash < n.sh`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && bash 3< n.sh <&3`, VerdictBlock, scriptWrittenEntryID},
+		{`cd "$X"; exec < n.sh; printf hi > n.sh; bash`, VerdictBlock, scriptWrittenEntryID},
+
+		// A write the run may reach, but not by the same name in the same
+		// directory: warns.
+		{`printf x > {d}/w/n.sh; cd "$(mktemp -d)" && sh -s < n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > {d}/w/n.sh; cd "$(mktemp -d)" && bash 0< n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && cd "$Y" && bash < n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > ../n.sh && bash < ../n.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X" && printf hi > n.sh && bash < m.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`cd "$X"; exec < n.sh; cd "$Y"; printf hi > n.sh; bash`, VerdictWarn, scriptWrittenEntryID},
+		{`printf x > "$T/n.sh"; cd "$T" && bash < n.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		// No write before the run, a write that holds no script, or a shell
+		// whose standard input is not its commands: unchanged.
+		{`cd "$(mktemp -d)" && bash -s < n.sh`, VerdictAllow, ""},
+		{`printf x 2>/dev/null >&2; cd "$(mktemp -d)" && bash < n.sh`, VerdictAllow, ""},
+		{`printf x > "$f"; cd "$T" && bash < n.sh`, VerdictAllow, ""},
+		{`cd "$(mktemp -d)" && printf hi > n.sh && bash -c true < n.sh`, VerdictAllow, ""},
+		{`printf x > {d}/w/n.sh; cd "$(mktemp -d)" && bash {d}/w/keep < n.sh`, VerdictAllow, ""},
+	}...)
+	runScriptCases(t, dir, cases)
+}
