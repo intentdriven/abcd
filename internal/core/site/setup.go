@@ -36,6 +36,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -276,6 +277,14 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	}
 	if switchedOff {
 		return setupSwitchedOff(root, branch, adapter, s, req, res)
+	}
+	// A provider that acts through the forge is read before anything is asked
+	// or written, so a host it would refuse is refused before the repository
+	// half is written for an address the site would not be served from.
+	if adapter.CredentialName() == "" && forge != nil && s.Repo != "" {
+		if _, err := readForgeHost(ctx, adapter, s); err != nil {
+			return SetupResult{}, fmt.Errorf("site setup: %s", firstLine(err.Error()))
+		}
 	}
 	// The switch (the PT's 2026-10-14 ruling, "ask at setup"): a new
 	// composition naming a provider that publishes only while switched on is
@@ -889,6 +898,9 @@ func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, for
 	if err != nil {
 		return refuse(err)
 	}
+	if err := servedAtBase(adapter, s, addr); err != nil {
+		return refuse(err)
+	}
 	out.Address = addr
 	out.Status = HostCurrent
 	if len(out.Changes) > 0 {
@@ -1015,4 +1027,46 @@ func setupSwitchedOff(root, branch string, adapter hosting.Adapter, s hosting.Si
 	res.Status = StatusChanged
 	res.Remaining = append(res.Remaining, "commit the removal and push it to "+branch+": `git add "+SiteWorkflowRelPath+"`")
 	return res, nil
+}
+
+// readForgeHost is the host's read, made before anything is asked or written
+// for a provider that acts through the forge: Inspect, and for a host that
+// already exists with nothing left to route, the path it serves the site
+// below. A host it would refuse later is refused here.
+func readForgeHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site) (hosting.State, error) {
+	p := adapter.Connect("")
+	st, err := p.Inspect(ctx, s)
+	if err != nil || !st.Exists || !st.Routed {
+		// A host still to be routed changes its address on Route, so its path
+		// is judged by the host stage after the route.
+		return st, err
+	}
+	addr, err := p.Address(ctx, s)
+	if err != nil {
+		return st, err
+	}
+	return st, servedAtBase(adapter, s, addr)
+}
+
+// servedAtBase refuses an address the host serves the site below a path other
+// than the one the workflow builds it for: every root-absolute link the build
+// writes would miss the site.
+func servedAtBase(adapter hosting.Adapter, s hosting.Site, addr string) error {
+	want, err := NormaliseBasePath(adapter.Profile(s).BasePath)
+	if err != nil {
+		return err
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return fmt.Errorf("%s reports an address that is not a URL", adapter.Name())
+	}
+	got := "/" + strings.Trim(u.Path, "/") + "/"
+	if got == "//" {
+		got = "/"
+	}
+	if got != want {
+		return fmt.Errorf("%s serves this site at %s, below %s, but the workflow builds it for %s; "+
+			"abcd will not publish a site whose every link would miss it", adapter.Name(), addr, got, want)
+	}
+	return nil
 }

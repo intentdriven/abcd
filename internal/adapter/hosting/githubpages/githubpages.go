@@ -241,12 +241,19 @@ func (c *client) Inspect(ctx context.Context, s hosting.Site) (hosting.State, er
 			"off it, so set its Pages source to GitHub Actions in the repository's settings and re-run", s.Repo)
 	}
 	st.Exists = true
-	if s.Domain != "" && p.CNAME != nil && *p.CNAME != "" {
-		if *p.CNAME != s.Domain {
-			cname := *p.CNAME
-			if !domainRe.MatchString(cname) {
-				cname = "a domain with an unprintable name"
-			}
+	if p.CNAME != nil && *p.CNAME != "" {
+		cname := *p.CNAME
+		printable := domainRe.MatchString(cname)
+		if !printable {
+			cname = "a domain with an unprintable name"
+		}
+		switch {
+		case s.Domain == "" && printable:
+			// The workflow would build for /<repo>/ while GitHub serves the
+			// site at the domain's root, so every asset would 404.
+			return hosting.State{}, fmt.Errorf("github-pages: %s already serves its Pages site at %s; abcd will not move a live domain, so pass --domain %s",
+				s.Repo, cname, cname)
+		case *p.CNAME != s.Domain:
 			return hosting.State{}, fmt.Errorf("github-pages: %s already serves its Pages site at %s; abcd will not move a live domain", s.Repo, cname)
 		}
 		st.Routed = true

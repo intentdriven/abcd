@@ -33,6 +33,9 @@ const (
 type Pages struct {
 	BuildType string
 	CNAME     string
+	// HTMLURL, when set, is the address the site reports in place of the one
+	// GitHub would derive from its domain or its repository.
+	HTMLURL string
 }
 
 // Repo is one repository the fake holds.
@@ -105,9 +108,16 @@ func (s *Server) API(_ context.Context, method, path string, body []byte) ([]byt
 		if repo.Pages == nil {
 			return nil, status(404, "Not Found")
 		}
-		addr := "https://" + strings.ToLower(parts[0]) + ".github.io/" + parts[1] + "/"
-		if repo.Pages.CNAME != "" {
+		host := strings.ToLower(parts[0]) + ".github.io"
+		addr := "https://" + host + "/" + parts[1] + "/"
+		switch {
+		case repo.Pages.HTMLURL != "":
+			addr = repo.Pages.HTMLURL
+		case repo.Pages.CNAME != "":
 			addr = "https://" + repo.Pages.CNAME + "/"
+		case strings.EqualFold(parts[1], host):
+			// The owner's own owner.github.io repository is served at the root.
+			addr = "https://" + host + "/"
 		}
 		return json.Marshal(map[string]any{"build_type": repo.Pages.BuildType, "cname": nilIfEmpty(repo.Pages.CNAME), "html_url": addr})
 	case CreatePages:

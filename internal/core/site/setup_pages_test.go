@@ -164,8 +164,10 @@ func TestDecliningTheSwitchChangesNothing(t *testing.T) {
 	if got := changedPaths(t, h.harness); len(got) != 0 {
 		t.Fatalf("a declined switch changed %v", got)
 	}
-	if len(h.forge.writes) != 0 || len(h.pages.CallLog()) != 0 {
-		t.Fatalf("a declined switch reached the forge: %v %v", h.forge.writes, h.pages.CallLog())
+	// The host is read before the question (the seam's one call before a
+	// confirmation); nothing is written.
+	if len(h.forge.writes) != 0 || len(pagesWrites(h)) != 0 {
+		t.Fatalf("a declined switch wrote to the forge: %v %v", h.forge.writes, pagesWrites(h))
 	}
 	if len(h.ask.questions) != 1 {
 		t.Fatalf("questions = %q, want the switch alone", h.ask.questions)
@@ -339,5 +341,78 @@ func TestThePublishSwitchBelongsToASwitchedProvider(t *testing.T) {
 	}
 	if err := (&Hosting{Provider: "github-pages", Name: "x", Publish: &on}).validate(bad); err != nil {
 		t.Fatalf("github-pages refused its own switch: %v", err)
+	}
+}
+
+// pagesRequest is the setup request the Pages harness makes, for a test that
+// expects Setup itself to refuse.
+func pagesRequest(t *testing.T, h *pagesHarness) SetupRequest {
+	return SetupRequest{
+		RepoRoot: h.repo.Root(), Provider: "github-pages", Asker: h.ask, Forge: h.forge,
+		Adapter: githubpages.Adapter{API: h.pages.API}, Credentials: noCredential{t}, Context: context.Background(),
+	}
+}
+
+// pagesWrites are the calls that changed the Pages fake: everything but a read.
+func pagesWrites(h *pagesHarness) []string {
+	var out []string
+	for _, c := range h.pages.CallLog() {
+		if !strings.HasPrefix(c, "GET ") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// refusedBeforeAnything asserts a refusal changed nothing anywhere.
+func refusedBeforeAnything(t *testing.T, h *pagesHarness, err error, want string) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "\n") {
+		t.Fatalf("setup = %v, want a one-line refusal naming %q", err, want)
+	}
+	if got := changedPaths(t, h.harness); len(got) != 0 {
+		t.Fatalf("the refused run changed %v", got)
+	}
+	if len(h.forge.writes) != 0 || len(pagesWrites(h)) != 0 {
+		t.Fatalf("the refused run reached the forge: %v %v", h.forge.writes, pagesWrites(h))
+	}
+	if len(h.ask.questions) != 0 {
+		t.Fatalf("the refused run asked %q", h.ask.questions)
+	}
+}
+
+// A repository that already serves Pages at a custom domain, set up without
+// --domain, would get a workflow built for /<repo>/ while GitHub serves the
+// site at the domain's root, so every asset would 404. Setup refuses before
+// it asks or writes anything, and says which flag to pass.
+func TestALiveDomainWithNoneAskedForIsRefusedBeforeAnything(t *testing.T) {
+	h := newPagesHarness(t)
+	h.pages.Repos["example-owner/example-site"].Pages = &githubpagestest.Pages{BuildType: "workflow", CNAME: "docs.example.com"}
+	_, err := Setup(pagesRequest(t, h))
+	refusedBeforeAnything(t, h, err, "pass --domain docs.example.com")
+}
+
+// A Pages site GitHub serves below a path other than the one the workflow
+// builds for is refused before anything is written.
+func TestASiteServedBelowAnotherPathIsRefusedBeforeAnything(t *testing.T) {
+	h := newPagesHarness(t)
+	h.pages.Repos["example-owner/example-site"].Pages = &githubpagestest.Pages{BuildType: "workflow",
+		HTMLURL: "https://example-owner.github.io/elsewhere/"}
+	_, err := Setup(pagesRequest(t, h))
+	refusedBeforeAnything(t, h, err, "/elsewhere/")
+}
+
+// The host stage holds the same line on its own: an address served below a
+// path other than the profile's base path is refused, never reported live.
+func TestTheHostStageRefusesASiteServedBelowAnotherPath(t *testing.T) {
+	f := githubpagestest.New()
+	f.Repos["acme/widgets"].Pages = &githubpagestest.Pages{BuildType: "workflow", HTMLURL: "https://acme.github.io/elsewhere/"}
+	out, declined, refused := setupHost(context.Background(), githubpages.Adapter{API: f.API},
+		hosting.Site{Name: "widgets", Repo: "acme/widgets"}, true, SetupRequest{Asker: answer(true)})
+	if !refused || declined || out.Status != HostRefused {
+		t.Fatalf("host = %+v (declined %v, refused %v), want refused", out, declined, refused)
+	}
+	if out.Address != "" || !strings.Contains(out.Detail, "/elsewhere/") || !strings.Contains(out.Detail, "/widgets/") {
+		t.Fatalf("host = %+v, want no address and a detail naming both paths", out)
 	}
 }

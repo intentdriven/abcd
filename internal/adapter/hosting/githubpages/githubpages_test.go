@@ -138,6 +138,10 @@ func TestInspectRefuses(t *testing.T) {
 			"from a branch"},
 		"a domain routed elsewhere": {githubpagestest.Repo{Pages: &githubpagestest.Pages{BuildType: "workflow", CNAME: "other.example.com"}},
 			hosting.Site{Name: "widgets", Repo: "acme/widgets", Domain: "docs.example.com"}, "other.example.com"},
+		// The workflow would be built for /widgets/ while the site is served at
+		// the domain's root, so every asset would 404.
+		"a live domain with none asked for": {githubpagestest.Repo{Pages: &githubpagestest.Pages{BuildType: "workflow", CNAME: "docs.acme.com"}},
+			widgets, "already serves its Pages site at docs.acme.com; abcd will not move a live domain, so pass --domain docs.acme.com"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := githubpagestest.New()
