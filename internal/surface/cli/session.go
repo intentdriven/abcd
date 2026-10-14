@@ -97,9 +97,13 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				clientID = strings.TrimSpace(os.Getenv(sessionClientIDEnv))
 			}
 			secret := os.Getenv(sessionSecretEnv)
+			// On loopback alone, the relay is the host's own machine behind
+			// Tailscale Serve, and a visitor is counted by the tailnet address
+			// Serve forwards.
 			srv, err := session.New(session.Config{
 				Origins:      origins,
 				BehindProxy:  behindProxy,
+				LoopbackOnly: addr.Addr().IsLoopback(),
 				ClientID:     clientID,
 				ClientSecret: secret,
 			})

@@ -28,7 +28,7 @@ The relay never parses the brief and never writes to disk.
 
 **The wire.** A JSON control message is a text frame. A Yjs update or awareness message is a binary frame with a one-byte tag. These messages exist:
 - `host`: a team member opens a session for owner/repo. The relay answers with a six-character join code from rascals' 31-symbol alphabet. The code works while the host keeps it open, and the host can rotate it.
-- `join`: anyone presents the code. Failed joins are rate-limited per address, and the forwarded address is trusted only behind a declared proxy.
+- `join`: anyone presents the code. Failed joins are rate-limited per address. The forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback alone, as Tailscale Serve forwards it: one tailnet address, on a connection from loopback.
 - `verify`: a participant presents a GitHub token. The relay asks GitHub for the login, and for the repository's `permissions.push`. A participant with write access or above becomes a team member, and the relay drops the token straight after the check.
 
 The relay replays the session's update log to every newcomer. It then:
@@ -36,7 +36,7 @@ The relay replays the session's update log to every newcomer. It then:
 - forwards a guest's `suggest` message to the team members, stamped with the guest's display name.
 - broadcasts the roster of verified identities.
 
-Limits bound all of this: message size, log bytes, participants per session, sessions per relay and idle time. Origins are checked against an allowlist, with abcdesign.app and loopback as the defaults.
+Limits bound all of this: message size, log bytes, participants per session, sessions per relay and idle time. Rates bound it too: each connection's awareness messages (20 a second, in bursts of 40) and suggestions (1 a second, in bursts of 5), its sign-in attempts (5), and the sessions one address opens (3 in 10 minutes). A message over its rate is dropped with a `rate-limited` error, and the connection stays open. Origins are checked against an allowlist, with abcdesign.app and loopback as the defaults.
 
 **Sign-in.** The page builds the GitHub authorize URL from the relay's public client id, with PKCE and a state value it keeps in session storage. The redirect comes back to the page. The page posts the code and the PKCE verifier to `/auth/token`, and the relay adds the secret and does the exchange: this is the token-mediating backend in the IETF's browser-based-apps guidance. The token stays in the page's memory. Pasting a personal access token is the fallback, and the same `verify` admits it.
 

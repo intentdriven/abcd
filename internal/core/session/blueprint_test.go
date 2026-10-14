@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -104,6 +105,14 @@ func TestBlueprintPinsTheReleaseAndItsChecksum(t *testing.T) {
 	}
 	if strings.Contains(docker, "ARG ") {
 		t.Error("the pin is a build argument, which a build could override")
+	}
+	// The base image is pinned by its multi-arch index digest, so a tag moved
+	// on the registry cannot change what the relay is built on.
+	if !regexp.MustCompile(`(?m)^FROM --platform=linux/amd64 alpine:3\.22@sha256:[0-9a-f]{64}$`).MatchString(docker) {
+		t.Errorf("the base image is not pinned by digest:\n%s", docker)
+	}
+	if !strings.Contains(docker, "alpine:3.22@"+alpineDigest) {
+		t.Errorf("the Dockerfile does not pin %s", alpineDigest)
 	}
 	yaml := string(files["render.yaml"])
 	for _, want := range []string{
