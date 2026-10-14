@@ -336,16 +336,18 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
-`embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`intent`, `lab`, `launch`, `library`, `lint`, `mode`, `peers`,
-`reading`, `reflect`, `report`, `scribe`, `site`, `update`.
+`abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`,
+`disembark`, `docs`, `drain`, `embark`, `guard`, `history`, `ideate`,
+`identity`, `implement`, `inbox`, `intent`, `lab`, `launch`, `library`, `lint`,
+`mode`, `peers`, `reading`, `reflect`, `report`, `scribe`, `site`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
-The listing is gated rather than trusted: the `index_drift` record-lint rule holds
-the marked region to the contents of `commands/`, so a verb file added, renamed,
-or removed without the same edit here fails the record gate.
+The listing is generated, not hand-edited: `go generate ./internal/surface/cli`
+writes the marked region from the contents of `commands/`, and the `index_drift`
+record-lint rule fails while it differs, so a verb file added, renamed or
+removed is followed by rerunning the generator, and a merge conflict inside the
+markers is resolved the same way.
 
 **This documentation lives here rather than in `commands/README.md` because the
 loader registers every markdown file under `commands/` as a slash command** — with

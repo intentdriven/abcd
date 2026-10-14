@@ -423,8 +423,9 @@
           "id": "commands",
           "doc": ".abcd/development/brief/04-surfaces/README.md",
           "dir": "commands",
-          "entry": "^[a-z][a-z-]*$",
-          "suffix": ".md"
+          "suffix": ".md",
+          "mode": "generated",
+          "render": "names"
         },
         {
           "id": "planned-seams",
@@ -443,9 +444,18 @@
           "id": "later-phase-intents",
           "doc": ".abcd/development/brief/06-delivery/03-out-of-scope.md",
           "dir": ".abcd/development/intents/drafts",
-          "entry": "^itd-[0-9]+$",
           "suffix": ".md",
-          "dir_entry": "^(itd-[0-9]+)"
+          "dir_entry": "^(itd-[0-9]+)",
+          "mode": "generated",
+          "render": "titles"
+        },
+        {
+          "id": "adr-index",
+          "doc": ".abcd/development/decisions/adrs/README.md",
+          "dir": ".abcd/development/decisions/adrs",
+          "suffix": ".md",
+          "mode": "generated",
+          "render": "adr-table"
         }
       ]
     },
