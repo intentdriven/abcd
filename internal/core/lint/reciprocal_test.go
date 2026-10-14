@@ -1,6 +1,8 @@
 package lint
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -242,8 +244,21 @@ func TestBuildsOnExemptionsNeverGrow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The landing file is itself pinned, by its entry count and its digest,
+	// so the list cannot grow by editing the testdata beside it: growth means
+	// editing these two constants in this test, in a diff a reviewer reads.
+	const landingEntries = 155
+	const landingSHA256 = "d708b3cd7c70f5e66b62aaf839692e9927d2325005299b1f7712d80dd1fd3056"
+	if sum := sha256.Sum256(landing); hex.EncodeToString(sum[:]) != landingSHA256 {
+		t.Errorf("testdata/builds-on-exempt-at-landing.txt has sha256 %x, want %s: the landing set is frozen; "+
+			"a new one-way builds_on is answered in its target's file, not exempted", sum, landingSHA256)
+	}
+	entries := strings.Split(strings.TrimSpace(string(landing)), "\n")
+	if len(entries) != landingEntries {
+		t.Errorf("testdata/builds-on-exempt-at-landing.txt holds %d entries, want exactly %d", len(entries), landingEntries)
+	}
 	landed := map[string]bool{}
-	for _, e := range strings.Split(strings.TrimSpace(string(landing)), "\n") {
+	for _, e := range entries {
 		landed[e] = true
 	}
 	for _, e := range list {

@@ -482,7 +482,9 @@ narrowest reading that meets the criteria. Each is open to review.
   `exempt_edges` field in `.abcd/record-lint.json`, one `<source> -> <target>`
   entry per one-way edge. The tree held 155 one-way edges of 217 when the rule
   landed (the spec measured 136 of 184), and all 155 are listed. A test holds
-  the list at 155 at most. Every entry must still name a `builds_on` edge in the
+  every entry to the set it landed with, a testdata file the test pins at
+  exactly 155 entries and by its sha256 (from review), so the list grows only
+  by editing the Go test itself. Every entry must still name a `builds_on` edge in the
   tree, so a dropped edge drops its entry. The test does not demand the edge
   stay one-way, so answering one never fails a test.
 - **Step 2, where a finding sits.** On the file that declares the link, at the
