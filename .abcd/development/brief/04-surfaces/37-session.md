@@ -1,8 +1,9 @@
 # `/abcd:session` — The Brief Session's Relay
 
-`/abcd:session` runs the relay a team's live brief session goes through, and
-writes the blueprint that deploys it as the team's own relay
-(itd-2610091016262335, spc-2610141709430146 steps 1 and 2). abcd runs no relay
+`/abcd:session` runs the relay a team's live brief session goes through,
+writes the blueprint that deploys it as the team's own relay, and writes the
+static page the session is held on (itd-2610091016262335,
+spc-2610141709430146 steps 1 to 3). abcd runs no relay
 and holds no key
 ([adr-2610091016270711](../../decisions/adrs/2610091016270711-who-may-change-an-abcd-managed-project-s.md)):
 the team runs it, on the host's own machine or on the team's own Render
@@ -11,8 +12,8 @@ account. It is abcd's second listener, admitted on the terms of
 amendment of 2026-10-14 and brief invariant 7's inbound clause
 ([`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
 
-This chapter describes the relay and its blueprint. The session page that
-connects to it, and the route back to GitHub, are the spec's later steps.
+This chapter describes the relay, its blueprint and the page. The route back
+to GitHub is the spec's later step.
 
 ## Sub-verbs
 
@@ -28,6 +29,7 @@ connects to it, and the route back to GitHub, are the spec's later steps.
 |---|---|---|
 | `serve` | — | shipped |
 | `blueprint` | — | shipped |
+| `page` | — | shipped |
 
 ## Where the relay listens
 
@@ -101,9 +103,62 @@ that was edited or that abcd did not write. It refuses outside a checkout abcd
 manages and for a release that publishes no checksum for the linux/amd64
 binary.
 
+## The page
+
+The page is written into a directory the person names, from files embedded in
+the binary: `index.html` and an identical `404.html`, `session.js`,
+`session.css`, and the vendored editor bundle `vendor/collab.js` with its
+licences
+([adr-2610141949110653](../../decisions/adrs/2610141949110653-the-brief-session-s-browser-editor-ships.md)).
+It writes those six files and nothing else and removes nothing. The directory
+may be absent, empty, or one an earlier run wrote, whose files are replaced;
+one holding anything else, or the page's names without the `index.html` it
+wrote, is refused with nothing written. The bundle's bytes and its entry
+module are checked against the committed provenance by a test.
+
+A static host's 404 fallback serves the page at `/<owner>/<repo>/brief/`; the
+HTML names its own files three levels up, so a base path works too. Its
+content-security policy loads scripts and styles from the page's own origin
+only and lets it connect over https and wss, or to loopback for a local
+relay; it sends no referrer, and every piece of brief, relay or participant
+text is put on the page as text, never as markup.
+
+- **Joining.** A joiner's relay address and code arrive in the URL fragment of
+  the host's QR code, so neither reaches the static host; a host types the
+  relay address once and the page remembers it. Only an https relay is
+  accepted, or plain http on this computer.
+- **Signing in.** "Sign in with GitHub" goes to GitHub's authorize page with
+  PKCE and a random state, both held in session storage across the redirect;
+  the page posts the returned code and verifier to the relay's `/auth/token`.
+  Pasting a personal access token is the fallback. The token is held in the
+  page's memory only, and is presented to the relay as `verify`.
+- **Hosting.** A team member hosts; the page reads the default branch's brief
+  through GitHub's API with the host's token and seeds one shared document
+  with a text per file, once, recording the base commit, the branch, the
+  route back (one pull request by default, or one issue per change) and a
+  snapshot of the seeded state. The seed is sent before the invite shows: a
+  QR code of the page's address with the relay and code in the fragment, the
+  code in large letters, and buttons for a new code and to end the session.
+- **Editing.** A file list grouped by folder, and a Markdown editor bound to
+  the shared text, with each participant's cursor and name. A team member's
+  edits are sent as they are typed and the page registers its client id for
+  credit; edits made while the connection is down are sent when it returns,
+  and the page rejoins with the same code and replays the log.
+- **Guests.** A guest's editor is read-only. A guest selects a passage and
+  proposes a replacement, sent with the passage's relative positions and a
+  text quote of it. Team members see it in a suggestions panel: Apply replaces
+  the passage, found by its positions or else by its quote and refused when
+  neither still matches, and records the guest, the approving member, the text
+  before and after, and the time, in one change; Decline drops it, and both
+  are recorded so every member's panel agrees.
+
+Sending the session back to GitHub is the next step; the page shows that it
+is coming.
+
 ## Exit codes
 
-`0` done; `1` a failure after the relay started; `2` refused, with nothing
+`0` done; `1` a failure after the relay started, or while the page was being
+written; `2` refused, with nothing
 started or written.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
@@ -114,7 +169,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd session`
 
-Sub-verbs: `abcd session blueprint`, `abcd session serve`.
+Sub-verbs: `abcd session blueprint`, `abcd session page`, `abcd session serve`.
 
 Flags: none.
 
@@ -125,6 +180,14 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--release` | string |
+
+### `abcd session page`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--out` | string |
 
 ### `abcd session serve`
 

@@ -3714,12 +3714,13 @@ abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md
 
 ### `abcd session`
 
-Run the relay a team's live brief session goes through, or write its deployment blueprint: Writes nothing bare; refuses an unknown sub-verb.
+Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb.
 
 **Usage:** `abcd session`
 
-Run the relay a team's live brief session goes through, or write the blueprint
-that deploys it to the team's own Render account. The relay holds each session's
+Run the relay a team's live brief session goes through, write the blueprint
+that deploys it to the team's own Render account, or write the session's static
+page for the team to serve. The relay holds each session's
 edits in memory only, as opaque bytes, and drops them when the host closes the
 session or nobody has been connected for half an hour; it writes nothing to disk
 and logs nothing. abcd runs no relay of its own: the team runs it, on the host's
@@ -3750,6 +3751,32 @@ Exit 2 on a refusal, with nothing written.
 
 ```
       --release string   the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
+```
+
+#### `abcd session page`
+
+Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.
+
+**Usage:** `abcd session page [flags]`
+
+Write the brief session's page into --out: index.html and an identical 404.html,
+session.js, session.css, and the vendored editor bundle with its licences under
+vendor/. The files are plain and static, embedded in this binary; serve them
+from any static host, such as GitHub Pages, whose 404.html fallback is how
+/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the
+person names, to api.github.com with their own token, and to github.com for
+sign-in. It reads nothing from this checkout.
+
+It writes those six files and nothing else, and removes nothing. --out may be
+absent, empty, or a directory an earlier run wrote, whose files are replaced; a
+directory holding anything else, a symlink or a file is refused.
+
+Exit 2 on a refusal, with nothing written.
+
+**Flags:**
+
+```
+      --out string   the directory to write the page into: absent, empty, or one an earlier run wrote
 ```
 
 #### `abcd session serve`

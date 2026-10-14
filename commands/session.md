@@ -1,7 +1,7 @@
 ---
 name: session
-description: "Run the relay a team's live brief session goes through, or write its deployment blueprint: Writes nothing bare; refuses an unknown sub-verb."
-argument-hint: "[serve|blueprint]"
+description: "Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb."
+argument-hint: "[serve|blueprint|page]"
 block: people
 ---
 
@@ -16,7 +16,10 @@ when the host closes the session or nobody has been connected for half an
 hour. It writes nothing to disk and logs nothing: no token, no secret, no
 brief text.
 
-There are two ways to run it, both the team's own:
+The page itself is a set of static files `page` writes, for the team to serve
+from any static host.
+
+There are two ways to run the relay, both the team's own:
 
 - **On the host's own machine**, with `serve`, reached by teammates on the
   host's Tailscale network through Tailscale Serve. Never Funnel: a guest
@@ -27,7 +30,7 @@ There are two ways to run it, both the team's own:
 
 ## Status
 
-Bare invocation prints the two sub-verbs and writes nothing. A running relay's
+Bare invocation prints the three sub-verbs and writes nothing. A running relay's
 sessions live in that process's memory alone, so there is no state to report.
 
 ```bash
@@ -87,6 +90,30 @@ repository, sets the Blueprint path to `.abcd/relay/render.yaml`, and sets
 `ABCD_SESSION_GITHUB_CLIENT_ID` and `ABCD_SESSION_GITHUB_CLIENT_SECRET` in the
 service's Environment. `--json` returns `release`, `asset`, `sha256`,
 `checksums_url` and `files`, each with its `path` and `state`.
+
+## Page
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" session page --out <dir>
+```
+
+It writes the session page into `<dir>`: `index.html` and an identical
+`404.html`, `session.js`, `session.css`, and `vendor/collab.js` with
+`vendor/LICENSES.txt`, the vendored editor bundle and its licences. The files
+are embedded in the binary and read nothing from the checkout. A static host
+whose 404 fallback serves `404.html`, such as GitHub Pages, is how
+`/<owner>/<repo>/brief/` reaches the page; the page loads its own files from
+three levels up, so it also works under a base path. The page connects only to
+the relay the person names, to `api.github.com` with the person's own token,
+and to `github.com` for sign-in. The directory is the one the user names;
+never publish or deploy it for them.
+
+It writes those six files and nothing else, and removes nothing. `<dir>` may be
+absent, empty, or a directory an earlier run wrote, whose files are replaced.
+It refuses (exit 2, nothing written) a missing `--out`, a symlink or a file,
+and a directory holding anything else or holding the page's names without the
+`index.html` it wrote. Relay the files it wrote and the next step it prints.
+`--json` returns `out`, `files`, `bytes` and `replaced`.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

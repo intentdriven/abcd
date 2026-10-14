@@ -256,3 +256,39 @@ func TestSessionServeRefusals(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionPageWritesThePageAndRefusesAForeignDirectory(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "page")
+	text := string(runCLI(t, "session", "page", "--out", out))
+	for _, want := range []string{"wrote 6 files", "index.html", "404.html", "vendor/collab.js", "/<owner>/<repo>/brief/"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output does not say %q:\n%s", want, text)
+		}
+	}
+	var res struct {
+		Out      string   `json:"out"`
+		Files    []string `json:"files"`
+		Replaced bool     `json:"replaced"`
+	}
+	if err := json.Unmarshal(runCLI(t, "session", "page", "--out", out, "--json"), &res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.Replaced || len(res.Files) != 6 || res.Out != out {
+		t.Fatalf("--json = %+v", res)
+	}
+
+	foreign := t.TempDir()
+	if err := os.WriteFile(filepath.Join(foreign, "notes.md"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runCLIStdinErr(t, "", "session", "page", "--out", foreign)
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "notes.md") || !strings.Contains(err.Error(), "nothing written") {
+		t.Fatalf("a foreign --out: %v, want exit 2 naming notes.md", err)
+	}
+	if entries, _ := os.ReadDir(foreign); len(entries) != 1 {
+		t.Fatalf("a refusal wrote into the directory: %v", entries)
+	}
+	if _, err := runCLIStdinErr(t, "", "session", "page"); exitCode(err) != 2 {
+		t.Fatalf("no --out: %v, want exit 2", err)
+	}
+}

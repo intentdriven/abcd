@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/surface/session"
+	"github.com/intentdriven/abcd/internal/surface/session/web"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -36,12 +37,14 @@ var newSessionReleaseFetcher = func() (coresession.AssetFetcher, error) {
 }
 
 // newSessionCommand builds the `session` verb, the front door onto the brief
-// session's relay (itd-2610091016262335, spc-2610141709430146 steps 1 and 2).
+// session's relay and page (itd-2610091016262335, spc-2610141709430146 steps
+// 1 to 3).
 func newSessionCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "session",
-		Long: "Run the relay a team's live brief session goes through, or write the blueprint\n" +
-			"that deploys it to the team's own Render account. The relay holds each session's\n" +
+		Long: "Run the relay a team's live brief session goes through, write the blueprint\n" +
+			"that deploys it to the team's own Render account, or write the session's static\n" +
+			"page for the team to serve. The relay holds each session's\n" +
 			"edits in memory only, as opaque bytes, and drops them when the host closes the\n" +
 			"session or nobody has been connected for half an hour; it writes nothing to disk\n" +
 			"and logs nothing. abcd runs no relay of its own: the team runs it, on the host's\n" +
@@ -50,7 +53,7 @@ func newSessionCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: helpRunE,
 	}
-	cmd.AddCommand(newSessionServeCommand(asJSON), newSessionBlueprintCommand(asJSON))
+	cmd.AddCommand(newSessionServeCommand(asJSON), newSessionBlueprintCommand(asJSON), newSessionPageCommand(asJSON))
 	return cmd
 }
 
@@ -213,5 +216,48 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&release, "release", "", "the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)")
+	return c
+}
+
+func newSessionPageCommand(asJSON *bool) *cobra.Command {
+	var out string
+	c := &cobra.Command{
+		Use: "page",
+		Long: "Write the brief session's page into --out: index.html and an identical 404.html,\n" +
+			"session.js, session.css, and the vendored editor bundle with its licences under\n" +
+			"vendor/. The files are plain and static, embedded in this binary; serve them\n" +
+			"from any static host, such as GitHub Pages, whose 404.html fallback is how\n" +
+			"/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the\n" +
+			"person names, to api.github.com with their own token, and to github.com for\n" +
+			"sign-in. It reads nothing from this checkout.\n\n" +
+			"It writes those six files and nothing else, and removes nothing. --out may be\n" +
+			"absent, empty, or a directory an earlier run wrote, whose files are replaced; a\n" +
+			"directory holding anything else, a symlink or a file is refused.\n\n" +
+			"Exit 2 on a refusal, with nothing written.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const prefix = "abcd session page: "
+			res, err := web.Write(out)
+			if err != nil {
+				var ref *web.Refusal
+				if errors.As(err, &ref) {
+					return &exitError{Code: 2, Msg: prefix + ref.Error() + " (nothing written)"}
+				}
+				return fmt.Errorf("%s%w", prefix, err)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				verb := "wrote"
+				if res.Replaced {
+					verb = "replaced"
+				}
+				fmt.Fprintf(w, "abcd session page: %s %d files (%d bytes) in %s\n", verb, len(res.Files), res.Bytes, termsafe.Sanitize(res.Out))
+				for _, f := range res.Files {
+					fmt.Fprintf(w, "  %s\n", f)
+				}
+				fmt.Fprintln(w, "  next: serve the directory from a static host; the page opens at /<owner>/<repo>/brief/")
+			})
+		},
+	}
+	c.Flags().StringVar(&out, "out", "", "the directory to write the page into: absent, empty, or one an earlier run wrote")
 	return c
 }

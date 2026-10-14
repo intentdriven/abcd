@@ -3311,7 +3311,7 @@
       "hidden": false,
       "group": "set-up",
       "block": "people",
-      "sentence": "Run the relay a team's live brief session goes through, or write its deployment blueprint: Writes nothing bare; refuses an unknown sub-verb.",
+      "sentence": "Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -3321,6 +3321,20 @@
       "flags": [
         {
           "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session page",
+      "hidden": false,
+      "sentence": "Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.",
+      "flags": [
+        {
+          "name": "out",
           "shorthand": "",
           "type": "string",
           "required": false,
