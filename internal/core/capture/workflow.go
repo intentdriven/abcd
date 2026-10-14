@@ -835,7 +835,6 @@ func List(req ListRequest) (ListResult, error) {
 	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
 		markUncommitted(set, issues)
 	}
-	maskShownText(issues)
 	// A --json collection is an empty list, never bare null: a consumer that
 	// iterates the rows (the capture.md contract) errors on null.
 	if issues == nil {
@@ -926,8 +925,35 @@ func Status(req StatusRequest) (StatusResult, error) {
 		res.UncommittedCount = markUncommitted(set, every)
 		markUncommitted(set, res.RecentOpen)
 	}
-	maskShownText(res.RecentOpen)
 	return res, nil
+}
+
+// Shown is the list as a front door shows it: a copy whose issues carry
+// every stored string masked (maskShownText). List itself returns the text as
+// stored, because its in-process callers compare it: the drain's judgement
+// digests the remedy the lane works from, and a remedy rewritten with a hidden
+// rune in place of a '?' masks to the same text and would keep its digest.
+func (r ListResult) Shown() ListResult {
+	r.Issues = shownCopy(r.Issues)
+	return r
+}
+
+// Shown is the status as a front door shows it: a copy whose recent-open
+// issues carry every stored string masked, as ListResult.Shown.
+func (r StatusResult) Shown() StatusResult {
+	r.RecentOpen = shownCopy(r.RecentOpen)
+	return r
+}
+
+// shownCopy masks a copy of issues, so the caller's slice keeps the stored
+// text. A nil slice stays nil and an empty one stays empty.
+func shownCopy(issues []Issue) []Issue {
+	if issues == nil {
+		return nil
+	}
+	out := append([]Issue{}, issues...)
+	maskShownText(out)
+	return out
 }
 
 // maskShownText masks, in place, every string a record stores that a list or
@@ -936,10 +962,10 @@ func Status(req StatusRequest) (StatusResult, error) {
 // capture encodes the hidden runes of a body it writes, but a hand-edited or
 // repository-shipped record carries whatever it was given, and these payloads
 // reach `capture list --json` and `capture status --json`
-// (iss-2610121653499543). The mask is the payload's, applied once the scan's
-// own work (the blocked_by projection, the uncommitted marks) is done, and
-// never the record's: resolve, defer, promote and every other rewrite read the
-// record themselves and round-trip its stored text. The path is not masked: a
+// (iss-2610121653499543). The mask is the payload's, applied by the front
+// door through Shown, never the record's or an in-process caller's: resolve,
+// defer, promote and every other rewrite read the record themselves and
+// round-trip its stored text. The path is not masked: a
 // record the scan reads has a name the filename grammar holds to [a-z0-9-].
 func maskShownText(issues []Issue) {
 	for i := range issues {

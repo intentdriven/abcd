@@ -44,10 +44,14 @@ func TestCaptureSurfacesCarryNoRawRuneFromARecord(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, err := List(ListRequest{RepoRoot: repo, IssuesRoot: f.ir})
+	raw, err := List(ListRequest{RepoRoot: repo, IssuesRoot: f.ir})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(raw.Issues) != 1 || raw.Issues[0].Remedy != "guard\u202e the\u009b map\u034f" {
+		t.Fatalf("List returns the stored text to an in-process caller: %+v", raw.Issues)
+	}
+	list := raw.Shown()
 	if len(list.Issues) != 1 || len(list.Skipped) != 0 {
 		t.Fatalf("the hand-edited record still reads: %+v", list)
 	}
@@ -55,9 +59,13 @@ func TestCaptureSurfacesCarryNoRawRuneFromARecord(t *testing.T) {
 	if !strings.Contains(iss.Body, "text? of? iss?-3") || iss.Remedy != "guard? the? map?" || iss.FoundDuring != "t?" {
 		t.Errorf("the record's text is kept, masked: body %q remedy %q found_during %q", iss.Body, iss.Remedy, iss.FoundDuring)
 	}
-	st, err := Status(StatusRequest{RepoRoot: repo, IssuesRoot: f.ir})
+	rawSt, err := Status(StatusRequest{RepoRoot: repo, IssuesRoot: f.ir})
 	if err != nil {
 		t.Fatal(err)
+	}
+	st := rawSt.Shown()
+	if raw.Issues[0].Remedy != "guard\u202e the\u009b map\u034f" || rawSt.RecentOpen[0].Remedy != "guard\u202e the\u009b map\u034f" {
+		t.Errorf("Shown masks a copy, never the caller's slice")
 	}
 	for what, v := range map[string]any{"capture list": list, "capture status": st} {
 		b, err := json.Marshal(v)
