@@ -284,6 +284,18 @@ in the roll: the reviewers read the roll before any finding exists, and the
 receipts name the roll's sha. `abcd launch receipts` refuses while a capture,
 like a receipt, is still uncommitted.
 
+**A record resolved before the merge.** A deferral may name an older open record
+that really is the finding. If a peer pull request, or an entry batched with the
+release in the merge queue, resolves that record before the release merges, the
+merge tree holds it in `resolved/`, and `verify` refuses the receipt entry ("in
+resolved/, not open/") although the local check admitted it on the release
+branch. On the auto-release path the refusal comes before the tag, so the
+version stays free. Heal it by correcting that receipt entry in a follow-up pull
+request — `fixed` if the resolving change fixed the finding, or `deferred` to a
+new open record of its own — since the sha-keyed receipt directories are
+mutable (RD002's append-only rule covers the dated review directories, not
+them); the next push to `main` retries the release.
+
 **What the local check reads.** `abcd launch receipts` holds the working tree to
 the committed one for every input of the verdict: the receipts directory, the
 records the deferred findings name, `.abcd/record-lint.json`, the manifest,
