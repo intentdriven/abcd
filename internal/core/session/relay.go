@@ -49,7 +49,7 @@ const (
 	// from team members only.
 	TagUpdate byte = 0
 	// TagAwareness is a Yjs awareness message (cursors and selections):
-	// forwarded from anyone, never logged.
+	// forwarded from anyone, as a TagAttributedAwareness, and never logged.
 	TagAwareness byte = 1
 	// TagAttributedUpdate is how the relay sends a TagUpdate on, live and in
 	// the replay, and it is never accepted from a participant: the tag, the
@@ -58,10 +58,29 @@ const (
 	// roster's authors map names each number's login, so a page can check
 	// that the client ids inside an update are credited to whoever sent it.
 	TagAttributedUpdate byte = 2
+	// TagAttributedAwareness is how the relay sends a TagAwareness on, and it
+	// is never accepted from a participant: the tag, the sender's participant
+	// number as four big-endian bytes, then the message's bytes as the
+	// participant sent them, exactly as TagAttributedUpdate carries an update.
+	// A page keeps an awareness state only when the roster ties its client id
+	// to that sender, so nobody's cursor can carry someone else's name.
+	TagAttributedAwareness byte = 3
 )
 
-// attributedHeader is the length of TagAttributedUpdate's tag and number.
+// attributedHeader is the length of an attributed frame's tag and number,
+// TagAttributedUpdate's and TagAttributedAwareness's alike.
 const attributedHeader = 5
+
+// attribute is data, a participant's tagged frame, as the relay sends it on:
+// tag, then c's participant number as four big-endian bytes, then the bytes
+// after the participant's own tag, copied as they came and never read.
+func (c *Conn) attribute(tag byte, data []byte) []byte {
+	out := make([]byte, attributedHeader+len(data)-1)
+	out[0] = tag
+	binary.BigEndian.PutUint32(out[1:attributedHeader], c.num)
+	copy(out[attributedHeader:], data[1:])
+	return out
+}
 
 // Frame is one WebSocket message: a JSON control message in a text frame, or
 // a tagged Yjs message in a binary frame.
@@ -616,12 +635,8 @@ func (c *Conn) binary(data []byte) {
 			c.fail("too-many-authors", "this session names as many authors as it may")
 			return
 		}
-		// The update is logged and sent on as the relay attributes it; its
-		// bytes after the tag are copied as they came, never read.
-		entry := make([]byte, attributedHeader+len(data)-1)
-		entry[0] = TagAttributedUpdate
-		binary.BigEndian.PutUint32(entry[1:attributedHeader], c.num)
-		copy(entry[attributedHeader:], data[1:])
+		// The update is logged and sent on as the relay attributes it.
+		entry := c.attribute(TagAttributedUpdate, data)
 		rm.log = append(rm.log, entry)
 		rm.logBytes += cost
 		if !known {
@@ -634,7 +649,9 @@ func (c *Conn) binary(data []byte) {
 			c.rateLimited()
 			return
 		}
-		c.r.forward(rm, c, append([]byte(nil), data...))
+		// Sent on as the relay attributes it, as an update is, so a page can
+		// tell whose cursor it is; never logged.
+		c.r.forward(rm, c, c.attribute(TagAttributedAwareness, data))
 	default:
 		c.fail("unknown-tag", "the relay takes update (0) and awareness (1) frames")
 	}
@@ -1118,9 +1135,11 @@ type rosterEntry struct {
 }
 
 // broadcastRoster sends rm's roster to everyone in it: the participants with
-// their verified identities, the Yjs client ids credited to each member, and
-// the login of each participant number an attributed update in the log
-// carries (authors), including those who have since left.
+// their verified identities, the Yjs client ids credited to each member, the
+// login of each participant number an attributed update in the log carries
+// (authors), including those who have since left, and the login that opened
+// the session (host), also while the host is not connected, so a page can
+// tell the host's writes to the session's settings from anyone else's.
 func (r *Relay) broadcastRoster(rm *room) {
 	parts := make([]rosterEntry, 0, len(rm.conns))
 	for _, o := range rm.conns {
@@ -1134,7 +1153,7 @@ func (r *Relay) broadcastRoster(rm *room) {
 	for num, login := range rm.authors {
 		authors[strconv.FormatUint(uint64(num), 10)] = login
 	}
-	data, err := json.Marshal(map[string]any{"type": "roster", "participants": parts, "clients": clients, "authors": authors})
+	data, err := json.Marshal(map[string]any{"type": "roster", "participants": parts, "clients": clients, "authors": authors, "host": rm.hostLogin})
 	if err != nil {
 		return
 	}

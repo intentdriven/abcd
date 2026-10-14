@@ -232,6 +232,15 @@ func attributed(id string, b ...byte) []byte {
 	return append([]byte{TagAttributedUpdate, byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)}, b...)
 }
 
+// attributedAwareness is an awareness message as the relay sends it on: tag 3,
+// the sender's participant number as four big-endian bytes, then the
+// message's bytes.
+func attributedAwareness(id string, b ...byte) []byte {
+	out := attributed(id, b...)
+	out[0] = TagAttributedAwareness
+	return out
+}
+
 func TestHostOpensASessionAndGetsACode(t *testing.T) {
 	h := newHarness(t, nil)
 	_, p, code := h.host(t, "tok-ada")
@@ -353,9 +362,9 @@ func TestGuestUpdateIsRefusedWhileAMembersIsForwarded(t *testing.T) {
 		t.Fatal("the sender's own update was echoed back")
 	}
 
-	// Awareness is forwarded from anyone and never logged.
+	// Awareness is forwarded from anyone, attributed, and never logged.
 	guest.Receive(context.Background(), Frame{Binary: true, Data: []byte{TagAwareness, 1}})
-	if got := hp.binaries(); len(got) != 1 || got[0][0] != TagAwareness {
+	if got := hp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributedAwareness(guest.id, 1)) {
 		t.Fatalf("the host received %v, want the guest's awareness", got)
 	}
 	if s := h.r.Stats(); s.LogBytes != LogEntryOverhead+2 {
@@ -1275,6 +1284,72 @@ func TestUpdatesAreAttributedToTheirSender(t *testing.T) {
 	}
 	_ = guest
 	_ = hp
+}
+
+// TestAwarenessIsAttributedToItsSender: the relay sends every awareness
+// message on as tag 3 with the sender's participant number, exactly as it
+// sends an update on as tag 2, from a guest as from a member; it logs none of
+// them; and a participant cannot send tag 3 itself.
+func TestAwarenessIsAttributedToItsSender(t *testing.T) {
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	guest, gp := h.join(t, code, "Gus", "198.51.100.7")
+	gusTok := rejoinToken(t, gp, "joined")
+	hp.reset()
+	gp.reset()
+
+	guest.Receive(context.Background(), Frame{Binary: true, Data: []byte{TagAwareness, 4, 5}})
+	host.Receive(context.Background(), Frame{Binary: true, Data: []byte{TagAwareness, 6}})
+	if got := hp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributedAwareness(guest.id, 4, 5)) {
+		t.Fatalf("the host received %v, want the guest's awareness attributed to %s", got, guest.id)
+	}
+	if got := gp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributedAwareness(host.id, 6)) {
+		t.Fatalf("the guest received %v, want the host's awareness attributed to %s", got, host.id)
+	}
+	if s := h.r.Stats(); s.LogBytes != 0 {
+		t.Fatalf("awareness was logged: %+v", s)
+	}
+
+	// A participant cannot claim another's attribution.
+	hp.reset()
+	guest.Receive(context.Background(), Frame{Binary: true, Data: attributedAwareness(host.id, 9)})
+	if e := gp.last(t, "error"); e == nil || e["code"] != "unknown-tag" {
+		t.Fatalf("a client's tag 3: error = %v, want unknown-tag", e)
+	}
+	if got := hp.binaries(); len(got) != 0 {
+		t.Fatalf("a client's tag 3 was forwarded: %v", got)
+	}
+
+	// Rejoining keeps the participant number, so the attribution holds.
+	gusID := guest.id
+	guest.Leave()
+	back, _ := h.rejoin(t, gusTok, "198.51.100.7")
+	hp.reset()
+	back.Receive(context.Background(), Frame{Binary: true, Data: []byte{TagAwareness, 7}})
+	if got := hp.binaries(); len(got) != 1 || !bytes.Equal(got[0], attributedAwareness(gusID, 7)) {
+		t.Fatalf("after the rejoin the host received %v", got)
+	}
+}
+
+// TestRosterNamesTheHostsLogin: the roster names the login that opened the
+// session, also while the host is not connected, so a page can tell the
+// host's writes from anyone else's.
+func TestRosterNamesTheHostsLogin(t *testing.T) {
+	h := newHarness(t, nil)
+	host, hp, code := h.host(t, "tok-ada")
+	if r := hp.last(t, "roster"); r == nil || r["host"] != "ada" {
+		t.Fatalf("the host's roster = %v, want host ada", r)
+	}
+	bea, bp := h.join(t, code, "", "198.51.100.8")
+	send(t, bea, msg{"type": "verify", "token": "tok-bea"})
+	host.Leave()
+	if r := bp.last(t, "roster"); r == nil || r["host"] != "ada" {
+		t.Fatalf("after the host left, the roster = %v, want host ada", r)
+	}
+	_, np := h.join(t, code, "Nia", "198.51.100.9")
+	if r := np.last(t, "roster"); r == nil || r["host"] != "ada" {
+		t.Fatalf("a newcomer's roster while the host is away = %v, want host ada", r)
+	}
 }
 
 // TestAuthorsAreBoundedPerSession: a session names at most MaxCredits
