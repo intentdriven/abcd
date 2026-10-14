@@ -267,9 +267,9 @@ below the wait limit, no other `go test -race` run is live, no other
 lower pid) or running its command, under any account; a waiter beneath a waiter
 running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
 the process table, which shows every account's processes, judged from each
-candidate's arguments with the waiter's own ancestry excluded, and never from a
-file another account could write (iss-2610140638074587): no account writes
-anything another account's gate reads. A waiter queued ahead still delays the
+candidate's arguments with the waiter's own ancestry excluded
+(iss-2610140638074587): no file another account can write is read; the gate
+reads only the process table. A waiter queued ahead still delays the
 ones behind it, under any account, until it opens or reaches its own timeout,
 even when only its own account's stricter wait limit keeps it shut; there is no
 channel by which it could tell them so without a shared writable file. A waiter

@@ -31,8 +31,10 @@ import (
 // machineload.QueueAhead). It never signals anything.
 //
 // The process table is the cross-account half (iss-2610140638074587): it
-// shows every account's processes, and nothing in it is a file another account
-// can write: no account writes anything another account's gate reads. A
+// shows every account's processes: no file another account can write is read;
+// the gate reads only the process table (and the caller's own load-limits and
+// hold). Another account's processes and their arguments are read, and that
+// account wrote them, which is why a waiter ahead can delay this one. A
 // waiter queued ahead still delays the ones behind it, under any account, until
 // it opens or reaches its own timeout, even when only its own account's
 // stricter wait-load keeps it shut: it cannot yield its place, because the

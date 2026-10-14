@@ -607,9 +607,8 @@ core count), no other `go test -race` run is live, no other `make preflight`
 is running, and no other waiter is ahead of it in the queue (a lower pid) or
 running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
-arguments with the waiter's own process and ancestors excluded, and never from
-a file another account could write: no account writes anything another
-account's gate reads. A waiter queued ahead of yours still delays yours, under
+arguments with the waiter's own process and ancestors excluded: no file another
+account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
 any account, until it opens or reaches its own `--timeout` (it may be shut by
 its own account's stricter `wait-load`, which you cannot see), and a waiter
 running its command holds every later gate for the command's length, by

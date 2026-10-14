@@ -363,7 +363,6 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		"needs no wrapper",
 		"under any account",
 		"process table",
-		"never from a file another account could write",
 		"15 to 60 seconds",
 		"go test -p",
 		"abcd implement load --wait -- go test -race ./...",
@@ -371,16 +370,19 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		`pgrep -f "go test -race"`,
 		"matched its own shell",
 		"one waiter at a time",
-		// What is true across accounts: nothing another account's gate reads is
-		// writable, and a waiter ahead still delays you.
-		"no account writes anything another account's gate reads",
+		// What is true across accounts: no file another account can write is
+		// read, and a waiter ahead still delays you. Another account's processes
+		// and arguments are read, and that account wrote them.
+		"no file another account can write is read; the gate reads only the process table",
 		"still delays yours",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)
 		}
 	}
-	if strings.Contains(all, "no account can hold another's gate shut") {
-		t.Error("the LOAD rules claim no account can hold another's gate shut; a waiter ahead can, until its timeout")
+	for _, claim := range []string{"no account can hold another's gate shut", "no account writes anything another account's gate reads"} {
+		if strings.Contains(all, claim) {
+			t.Errorf("the LOAD rules claim %q, which is false: a waiter ahead, of any account, delays yours until its timeout", claim)
+		}
 	}
 }
