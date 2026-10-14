@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // maskForgeRunes are the runes the mask tests plant: a bidi override and the
@@ -164,5 +167,47 @@ func TestAScanGapKeepsItsLinesWhenMasked(t *testing.T) {
 	}
 	if got := st.Transcripts[0].ScanGap; got != want {
 		t.Errorf("read: the scan gap masks to %q, want %q", got, want)
+	}
+}
+
+// TestAStateRedactsTheHomeInItsFreeTextBeforeMaskingIt: a home directory
+// whose name carries a rune the mask replaces is redacted from the run's
+// notes, kept reasons, fallback details, exclusion reasons and transcripts
+// before the mask runs, so a surface's later redaction, which could no longer
+// find the masked home, is not what keeps the home out. A step title and the
+// pick's entry, each compared with the text it came from, and a lane's
+// worktree, a path the loop acts on, are masked and never rewritten.
+func TestAStateRedactsTheHomeInItsFreeTextBeforeMaskingIt(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "ho\u009bme")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	at := home + "/wt"
+	st := State{
+		Record:      []Entry{{Note: "git failed in " + at}},
+		Fallbacks:   []runner.FallbackReceipt{{Detail: "no runner at " + at}},
+		Transcripts: []Transcript{{Path: at, Stored: at, ScanGap: "gitleaks: " + at + "\nnext"}},
+		Pick:        &RunPick{Entry: "picked " + at, Excluded: []Excluded{{Reason: "spec at " + at}}},
+		Pending:     []PendingStep{{Title: "step " + at}},
+		Lanes:       []Lane{{StepTitle: "step " + at, Worktree: at, Awaits: []Await{{Kept: "could not save " + at}}}},
+	}
+	got := st.masked()
+	for what, v := range map[string][2]string{
+		"note":             {got.Record[0].Note, "git failed in ~/wt"},
+		"fallback detail":  {got.Fallbacks[0].Detail, "no runner at ~/wt"},
+		"transcript path":  {got.Transcripts[0].Path, "~/wt"},
+		"transcript store": {got.Transcripts[0].Stored, "~/wt"},
+		"scan gap":         {got.Transcripts[0].ScanGap, "gitleaks: ~/wt\nnext"},
+		"exclusion reason": {got.Pick.Excluded[0].Reason, "spec at ~/wt"},
+		"kept reason":      {got.Lanes[0].Awaits[0].Kept, "could not save ~/wt"},
+		"pick entry":       {got.Pick.Entry, termsafe.Sanitize("picked " + at)},
+		"pending title":    {got.Pending[0].Title, termsafe.Sanitize("step " + at)},
+		"step title":       {got.Lanes[0].StepTitle, termsafe.Sanitize("step " + at)},
+		"worktree":         {got.Lanes[0].Worktree, termsafe.Sanitize(at)},
+	} {
+		if v[0] != v[1] {
+			t.Errorf("%s: masked to %q, want %q", what, v[0], v[1])
+		}
 	}
 }

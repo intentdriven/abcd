@@ -5,6 +5,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -21,8 +22,10 @@ import (
 // returns, and readStateIn returns it, so every surface that shows a run's
 // state shows it masked, a run written before the mask included.
 //
-// One line is masked whole (termsafe.Sanitize); the prose a lane hands in (a
-// resolution's note and grounds) keeps its line breaks and tabs. The hand-back
+// One line is masked whole (termsafe.Sanitize), and free text a reader is
+// shown has the home directory redacted first (free); a transcript's scan gap
+// keeps its line breaks, and the prose a lane hands in (a resolution's note
+// and grounds) its line breaks and tabs. The hand-back
 // and receipt text the loop already holds to one plain line is also refused
 // when it is read (handBacksWritten, receiptsWritten), so here it is clean
 // already. The mask is idempotent and leaves clean text as it was, so a state
@@ -47,12 +50,12 @@ func (st State) masked() State {
 		return p
 	})
 	st.Record = maskEach(st.Record, func(e Entry) Entry {
-		e.Lane, e.Stage, e.Note = line(e.Lane), line(e.Stage), line(e.Note)
+		e.Lane, e.Stage, e.Note = line(e.Lane), line(e.Stage), free(e.Note)
 		return e
 	})
 	st.Transcripts = maskEach(st.Transcripts, Transcript.masked)
 	st.Fallbacks = maskEach(st.Fallbacks, func(f runner.FallbackReceipt) runner.FallbackReceipt {
-		f.Role, f.Asked, f.Detail, f.Ran = line(f.Role), line(f.Asked), line(f.Detail), line(f.Ran)
+		f.Role, f.Asked, f.Detail, f.Ran = line(f.Role), line(f.Asked), free(f.Detail), line(f.Ran)
 		f.Reason = runner.Reason(line(string(f.Reason)))
 		return f
 	})
@@ -64,7 +67,7 @@ func (l Lane) masked() Lane {
 	l.ID, l.Key, l.StepTitle = line(l.ID), line(l.Key), line(l.StepTitle)
 	l.Stage = Stage(line(string(l.Stage)))
 	l.Awaits = maskEach(l.Awaits, func(a Await) Await {
-		a.Role, a.Brief, a.Receipt, a.Kept = line(a.Role), line(a.Brief), line(a.Receipt), line(a.Kept)
+		a.Role, a.Brief, a.Receipt, a.Kept = line(a.Role), line(a.Brief), line(a.Receipt), free(a.Kept)
 		return a
 	})
 	l.Syncs = maskEach(l.Syncs, func(s Sync) Sync {
@@ -140,7 +143,7 @@ func (p RunPick) masked() RunPick {
 	p.Pick.Candidates = maskEach(p.Pick.Candidates, maskCandidate)
 	p.Pick.Rule, p.Pick.Falsifier = line(p.Pick.Rule), line(p.Pick.Falsifier)
 	p.Excluded = maskEach(p.Excluded, func(e Excluded) Excluded {
-		e.ID, e.Check, e.Reason = line(e.ID), line(e.Check), line(e.Reason)
+		e.ID, e.Check, e.Reason = line(e.ID), line(e.Check), free(e.Reason)
 		return e
 	})
 	return p
@@ -159,8 +162,8 @@ func maskCandidate(c intent.PickCandidate) intent.PickCandidate {
 // missing tools' explanations, one per line, which the record renders line by
 // line, so the mask keeps its line breaks (termsafe.SanitizeBlock).
 func (t Transcript) masked() Transcript {
-	t.Path, t.Session, t.Stored = line(t.Path), line(t.Session), line(t.Stored)
-	t.ScanGap = termsafe.SanitizeBlock(t.ScanGap)
+	t.Path, t.Session, t.Stored = free(t.Path), line(t.Session), free(t.Stored)
+	t.ScanGap = termsafe.SanitizeBlock(redactHome(t.ScanGap))
 	return t
 }
 
@@ -172,6 +175,25 @@ func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 
 // line masks one line of stored text whole: a newline in it is masked too.
 func line(s string) string { return termsafe.Sanitize(s) }
+
+// free masks one line of free text the loop composes for a reader (a record
+// note, a kept or exclusion reason, a fallback's detail, a transcript's
+// home-redacted paths), redacting the home directory first. Every surface
+// redacts the home again when it shows the text, but after the mask: a home
+// whose name carries a rune the mask replaces no longer matches there, so the
+// redaction that holds is this one, made before the mask runs. It is applied
+// only to text nothing compares with its source: a step title (compared with
+// the spec's), the pick's entry (with the pick commit's), the receipts and a
+// lane's worktree (a path the loop acts on) are masked by line alone.
+func free(s string) string { return termsafe.Sanitize(redactHome(s)) }
+
+// redactHome is fsutil.RedactHome, skipped for empty text.
+func redactHome(s string) string {
+	if s == "" {
+		return s
+	}
+	return fsutil.RedactHome(s)
+}
 
 // prose masks prose a lane hands in, keeping its line breaks (the CR of a
 // CRLF pair included) and its tabs, the shape proseWritten admits.
