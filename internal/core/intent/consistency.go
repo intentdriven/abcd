@@ -175,6 +175,10 @@ type ConsistencyEmitOptions struct {
 	// provider route, where every chunk is a request sent and paid for on its
 	// own; 0 leaves only MaxConsistencyChunks.
 	MaxChunks int
+	// Answered, when set, says a chunk (by its receipt) already has an answer
+	// the front door will reuse rather than send, so MaxChunks and the bytes
+	// it states count only the chunks still to send.
+	Answered func(receipt string) bool
 }
 
 // ConsistencySendCapError is an overflowing plan refused for holding more
@@ -182,11 +186,13 @@ type ConsistencyEmitOptions struct {
 // request and corpus bytes they would have written (and a provider route
 // sent), and Cap the limit it was held to. Nothing was written.
 type ConsistencySendCapError struct {
-	Chunks, Bytes, Cap int
+	// Chunks and Bytes are the chunks still to send and what they hold;
+	// Answered is the planned chunks a kept answer serves instead.
+	Chunks, Bytes, Cap, Answered int
 }
 
 func (e *ConsistencySendCapError) Error() string {
-	return fmt.Sprintf("intent: the corpus overflows into %d chunks, %d bytes of requests and corpus files in all, more than the %d allowed; nothing was written",
+	return fmt.Sprintf("intent: the corpus overflows into %d chunks to send, %d bytes of requests and corpus files in all, more than the %d allowed; nothing was written",
 		e.Chunks, e.Bytes, e.Cap)
 }
 
@@ -308,6 +314,7 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 	// and writes it before rendering the next, so the emit holds one chunk at
 	// a time, never the whole set.
 	chunks := plan.chunkList()
+	toSend, sendBytes := 0, 0
 	for i, ch := range plan.Chunks {
 		corpusLen := len(consistencyCorpusText(ch, plan.Receipts[i]))
 		if corpusLen > limit {
@@ -316,9 +323,13 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 		}
 		chunks[i].Bytes = corpusLen + len(consistencyRequestDoc(ch, plan.Receipts[i], commit, dirty, opts.RoutingSection))
 		res.ChunkBytes += chunks[i].Bytes
+		if opts.Answered == nil || !opts.Answered(plan.Receipts[i]) {
+			toSend++
+			sendBytes += chunks[i].Bytes
+		}
 	}
-	if opts.MaxChunks > 0 && len(plan.Chunks) > opts.MaxChunks {
-		return ConsistencyEmitResult{}, &ConsistencySendCapError{Chunks: len(plan.Chunks), Bytes: res.ChunkBytes, Cap: opts.MaxChunks}
+	if opts.MaxChunks > 0 && toSend > opts.MaxChunks {
+		return ConsistencyEmitResult{}, &ConsistencySendCapError{Chunks: toSend, Bytes: sendBytes, Cap: opts.MaxChunks, Answered: len(plan.Chunks) - toSend}
 	}
 	for i, ch := range plan.Chunks {
 		if err := writeConsistencyPair(repoRoot, ch, plan.Receipts[i], consistencyCorpusText(ch, plan.Receipts[i]), commit, dirty, opts.RoutingSection); err != nil {

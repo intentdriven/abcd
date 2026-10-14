@@ -1245,9 +1245,10 @@ connection or model than the route now names. Once a set is ingested, by
 either path, its kept answers are removed, so a later run asks the model
 again. To make the next run ask again before then, delete the kept files
 (`<chunk receipt>.findings.json` and `<chunk receipt>.route.json`). Each chunk is a request
-paid for on its own, so a plan of more than `--max-chunks` (default 8) is
-refused there at exit 2, with nothing written or sent, naming its count and
-bytes; run again with `--max-chunks <count>` to send them. A harness emit is
+paid for on its own, so a plan with more than `--max-chunks` (default 8)
+chunks still to send is refused there at exit 2, with nothing written or sent,
+naming that count and its bytes (a chunk a kept answer serves is not counted);
+run again with `--max-chunks <count>` to send them. A harness emit is
 not capped by it.
 
 The ingest validates before it writes anything. It refuses, with nothing

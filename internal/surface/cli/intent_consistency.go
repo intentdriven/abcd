@@ -71,16 +71,25 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			// own, so a plan of more than --max-chunks is refused there before
 			// anything is written or sent. The host runs a harness emit's
 			// chunks itself, and decides for itself how many.
+			// A chunk an earlier run's kept answer serves is not sent, so it
+			// does not count against the cap (judged once, shared with the send).
+			var kept *keptChunks
 			if route != nil && route.OnProvider() {
 				opts.MaxChunks = maxChunks
+				kept = newKeptChunks(emitRoute, route, repoRoot)
+				opts.Answered = func(rcp string) bool { d, _ := kept.reuse(rcp); return d != nil }
 			}
 			res, err := intent.EmitConsistency(repoRoot, id, opts)
 			var capErr *intent.ConsistencySendCapError
 			if errors.As(err, &capErr) {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent consistency: the corpus overflows into %d chunks, %d bytes of requests and corpus files in all, "+
+				answered := ""
+				if capErr.Answered > 0 {
+					answered = fmt.Sprintf(" (%d more are answered by kept answers and not sent)", capErr.Answered)
+				}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent consistency: the corpus overflows into %d chunks to send, %d bytes of requests and corpus files in all%s, "+
 					"and the route sends each to %s as a request of its own, more than the %d --max-chunks allows; nothing was written or sent. "+
 					"Run again with --max-chunks %d to send them all, raise consistency.max_request_bytes for fewer chunks, or route the auditor to the host",
-					capErr.Chunks, capErr.Bytes, termsafe.Sanitize(route.ConnectionUsed), capErr.Cap, capErr.Chunks)}
+					capErr.Chunks, capErr.Bytes, answered, termsafe.Sanitize(route.ConnectionUsed), capErr.Cap, capErr.Chunks)}
 			}
 			if err != nil {
 				e := &exitError{Code: 2, Msg: "abcd intent consistency: " + fsutil.RedactHome(err.Error())}
@@ -93,7 +102,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			// so this emit warns only when the host is handed the chunks.
 			warnEmit := func() { warnUnreviewed(cmd.ErrOrStderr(), "abcd intent consistency", "reviews", res.Overflow) }
 			if route != nil && route.OnProvider() {
-				ds, fell, err := sendConsistency(cmd, emitRoute, route, repoRoot, res)
+				ds, fell, err := sendConsistency(cmd, emitRoute, route, kept, repoRoot, res)
 				if err != nil {
 					return err
 				}
@@ -201,7 +210,7 @@ const defaultConsistencySendChunks = 8
 // chunks it runs, and the next provider run sends only the chunks not yet
 // answered. An answer is ingested only with the whole set, because the report
 // covers every chunk or none.
-func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, repoRoot string, res intent.ConsistencyEmitResult) ([]*dispatched, *oracle.Route, error) {
+func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, kept *keptChunks, repoRoot string, res intent.ConsistencyEmitResult) ([]*dispatched, *oracle.Route, error) {
 	const verb = "abcd intent consistency"
 	stderr := cmd.ErrOrStderr()
 	if res.Overflow == nil {
@@ -212,7 +221,9 @@ func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, rep
 		return []*dispatched{d}, fell, nil
 	}
 	ds := make([]*dispatched, len(res.Chunks))
-	kept := newKeptChunks(rf, route, repoRoot)
+	if kept == nil {
+		kept = newKeptChunks(rf, route, repoRoot)
+	}
 	reused, sendBytes := 0, 0
 	for i, ch := range res.Chunks {
 		if d, why := kept.reuse(ch.ReceiptID); d != nil {

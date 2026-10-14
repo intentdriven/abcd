@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -373,7 +374,7 @@ func TestIntentConsistencyCapsTheChunksSentToAProvider(t *testing.T) {
 	if exitCodeOf(err) != 2 || err == nil {
 		t.Fatalf("err = %v; want exit 2 for a plan over --max-chunks 1", err)
 	}
-	m := regexp.MustCompile(`overflows into ([0-9]+) chunks, ([0-9]+) bytes`).FindStringSubmatch(err.Error())
+	m := regexp.MustCompile(`overflows into ([0-9]+) chunks to send, ([0-9]+) bytes`).FindStringSubmatch(err.Error())
 	if m == nil || !strings.Contains(err.Error(), "--max-chunks "+m[1]) || !strings.Contains(err.Error(), "nothing was written or sent") {
 		t.Fatalf("refusal = %v; want the count, the bytes and --max-chunks <count> named", err)
 	}
@@ -509,5 +510,46 @@ func TestIntentConsistencyKeptAnswersExpireAndMatchTheRoute(t *testing.T) {
 	}
 	if got := keptAnswers(t, repo); len(got) != 0 {
 		t.Fatalf("the host ingest left kept answers behind: %v", got)
+	}
+}
+
+// TestIntentConsistencyMaxChunksCountsOnlyChunksToSend: --max-chunks and the
+// bytes it states count the chunks this run sends, not those whose kept answer
+// it reuses.
+func TestIntentConsistencyMaxChunksCountsOnlyChunksToSend(t *testing.T) {
+	srcRoot := repoRootFromTest(t)
+	repo := consistencyChunkCLIRepo(t)
+	t.Setenv("ABCD_PLUGIN_ROOT", srcRoot)
+	var em consistencyChunkEmitted
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "--json"), &em); err != nil {
+		t.Fatal(err)
+	}
+	n := len(em.Chunks)
+	if n < 3 {
+		t.Fatalf("the fixture plans %d chunks; want three or more", n)
+	}
+	same := `{"agent":"intent-auditor","connection_used":"openrouter","provider_call":{"provider":"openrouter","model_asked":"typesafe/jev-1.13","model_reported":"local-model"}}`
+	if _, err := intent.KeepConsistencyAnswer(repo, em.Chunks[0].ReceiptID,
+		chunkFindingsJSON(t, repo, em.Chunks[0].ReceiptID, em.Chunks[0].RequestPath, em.Chunks[0].CorpusPath), []byte(same)); err != nil {
+		t.Fatal(err)
+	}
+	receiptRe := regexp.MustCompile(`- receipt_id: (rcp-[0-9a-f]{12})`)
+	p := newChatFake(t, "local-model", func(body string) string {
+		m := receiptRe.FindStringSubmatch(body)
+		rel := ".abcd/.work.local/reviews/" + m[1]
+		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
+	})
+	pointMachine(t, os.Getenv("HOME"), p.srv.URL, false, "", "intent-auditor")
+
+	_, _, err := runCLISplit(t, "intent", "consistency", "--max-chunks", strconv.Itoa(n-2))
+	if exitCodeOf(err) != 2 || !strings.Contains(fmt.Sprint(err), fmt.Sprintf("overflows into %d chunks to send", n-1)) {
+		t.Fatalf("err = %v; want a refusal counting the %d chunks still to send", err, n-1)
+	}
+	_, stderr, err := runCLISplit(t, "intent", "consistency", "--max-chunks", strconv.Itoa(n-1))
+	if err != nil {
+		t.Fatalf("--max-chunks %d with one of %d chunks answered: %v\n%s", n-1, n, err, stderr)
+	}
+	if int(p.calls.Load()) != n-1 {
+		t.Fatalf("the provider was called %d times; want %d", p.calls.Load(), n-1)
 	}
 }

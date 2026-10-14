@@ -592,7 +592,8 @@ narrowest reading that meets the criteria. Each is open to review.
     the first send, and a plan of more than `--max-chunks` (default 8, about
     4 MiB at the default limit) is refused before anything is written or sent,
     naming the count to pass. The emit result gains `chunk_bytes` and each
-    chunk its `bytes`.
+    chunk its `bytes`. The cap and the bytes it names count only the chunks
+    still to send, not those a kept answer serves (from the second review).
 - **Step 3, the provider route.** The `route` member is the first chunk's
   dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
   back to the harness, every chunk is left to the host, and answers already
