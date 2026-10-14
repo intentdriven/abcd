@@ -103,6 +103,20 @@ func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
 // ordered by identity path, then by quote; and the key is the prefix and the
 // first sixteen hex digits of the SHA-256 of the domain, the class and the two
 // ordered (path, quote) pairs, with NUL between every field.
+//
+// The key is over the reviewers' quotes, so it is exactly as stable as they
+// are, and that has two limits a caller must not read past:
+//   - the same contradiction quoted differently (another sentence of the same
+//     passage, a longer or shorter excerpt, a reworded document) gets another
+//     key, so a resolved or won't-fix record carrying the old key does not
+//     mark it addressed, and it is filed again unless the prose match links
+//     it to an open record;
+//   - a contradiction fixed and later reintroduced with the same text gets the
+//     same key, so a resolved record carrying it marks the new occurrence
+//     addressed and files nothing.
+//
+// Quotes are compared with whitespace collapsed and nothing else: no stemming,
+// no fuzzy match, so neither limit narrows with wording that only looks alike.
 func Derive(class string, a, b End) string {
 	ends := [2]End{
 		{Path: identityPath(a.Path), Quote: collapse(a.Quote)},

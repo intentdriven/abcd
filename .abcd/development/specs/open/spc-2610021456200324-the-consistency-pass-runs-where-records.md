@@ -476,6 +476,16 @@ narrowest reading that meets the criteria. Each is open to review.
   detail line reads `finding_ref: cfk-…`; the value keeps its `cfk-` shape,
   and this repository's allowlist for it is gone. Nothing had written the old
   name outside the unmerged branch, so there is no migration.
+- **Step 1, what the key cannot see** (from review, 2026-10-14). The key is
+  over the reviewers' quotes, collapsed for whitespace only. So the same
+  contradiction quoted differently on a later run (another sentence of the
+  passage, a longer excerpt, a reworded document) gets another key: a closed
+  record carrying the old key does not mark it addressed, and it is filed
+  again unless the prose match links it to an open record. And a
+  contradiction fixed and later reintroduced with the same text gets the same
+  key, so a resolved record carrying it marks the new occurrence addressed and
+  files nothing. Both are stated on `findingkey.Derive`; neither is changed
+  here.
 - **Step 1, the duplicate refusal names the key.** "finding N repeats
   finding M" now ends with the key the two share.
 - **Step 2, the exemption list.** `builds_on_reciprocal` reads its own
