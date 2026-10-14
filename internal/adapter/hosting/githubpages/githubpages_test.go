@@ -146,8 +146,16 @@ func TestInspectRefuses(t *testing.T) {
 			hosting.Site{Name: "widgets", Repo: "acme/widgets", Domain: "docs.example.com"}, "other.example.com"},
 		// The workflow would be built for /widgets/ while the site is served at
 		// the domain's root, so every asset would 404.
+		// The fix differs by where the domain is declared: a flag on the run
+		// that writes the hosting block, the block's own field once it exists.
 		"a live domain with none asked for": {githubpagestest.Repo{Pages: &githubpagestest.Pages{BuildType: "workflow", CNAME: "docs.acme.com"}},
-			widgets, "already serves its Pages site at docs.acme.com; abcd will not move a live domain, so pass --domain docs.acme.com"},
+			widgets, "already serves its Pages site at docs.acme.com; abcd will not move a live domain, so declare docs.acme.com as the site's domain: " +
+				"pass --domain docs.acme.com when setup writes the hosting block, or set the hosting block's domain to docs.acme.com when the composition already has one"},
+		// A site that does not say how it is built is not one abcd knows it
+		// can publish over, and it is not called a branch site.
+		"a site with no build type": {githubpagestest.Repo{Pages: &githubpagestest.Pages{}}, widgets, "does not say how its Pages site is built"},
+		"a site with an unknown build type": {githubpagestest.Repo{Pages: &githubpagestest.Pages{BuildType: "future"}}, widgets,
+			"does not say how its Pages site is built"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := githubpagestest.New()

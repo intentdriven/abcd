@@ -384,12 +384,12 @@ func refusedBeforeAnything(t *testing.T, h *pagesHarness, err error, want string
 // A repository that already serves Pages at a custom domain, set up without
 // --domain, would get a workflow built for /<repo>/ while GitHub serves the
 // site at the domain's root, so every asset would 404. Setup refuses before
-// it asks or writes anything, and says which flag to pass.
+// it asks or writes anything, and says where to declare the domain.
 func TestALiveDomainWithNoneAskedForIsRefusedBeforeAnything(t *testing.T) {
 	h := newPagesHarness(t)
 	h.pages.Repos["example-owner/example-site"].Pages = &githubpagestest.Pages{BuildType: "workflow", CNAME: "docs.example.com"}
 	_, err := Setup(pagesRequest(t, h))
-	refusedBeforeAnything(t, h, err, "pass --domain docs.example.com")
+	refusedBeforeAnything(t, h, err, "pass --domain docs.example.com when setup writes the hosting block, or set the hosting block's domain")
 }
 
 // A Pages site GitHub serves below a path other than the one the workflow

@@ -239,14 +239,21 @@ func (c *client) Inspect(ctx context.Context, s hosting.Site) (hosting.State, er
 	if err != nil {
 		return hosting.State{}, err
 	}
-	if p.BuildType != "workflow" {
+	switch p.BuildType {
+	case "workflow":
+	case "legacy":
 		return hosting.State{}, fmt.Errorf("github-pages: %s already publishes GitHub Pages from a branch; abcd will not move a live site "+
 			"off it, so set its Pages source to GitHub Actions in the repository's settings and re-run", s.Repo)
+	default:
+		// An empty or unknown build type says nothing about how the live site
+		// is built, so it is neither called a branch site nor published over.
+		return hosting.State{}, fmt.Errorf("github-pages: %s does not say how its Pages site is built (no build type abcd knows), so abcd "+
+			"will not publish over it; check its Pages source in the repository's settings, set it to GitHub Actions, and re-run", s.Repo)
 	}
 	st.Exists = true
 	addr := p.HTMLURL
 	if !addrRe.MatchString(addr) {
-		addr = "an address that is not a plain https URL"
+		addr = "an address that is not a plain http or https URL"
 	}
 	st.Existing = addr + " (build type " + p.BuildType + ")"
 	if p.CNAME != nil && *p.CNAME != "" {
@@ -259,8 +266,12 @@ func (c *client) Inspect(ctx context.Context, s hosting.Site) (hosting.State, er
 		case s.Domain == "" && printable:
 			// The workflow would build for /<repo>/ while GitHub serves the
 			// site at the domain's root, so every asset would 404.
-			return hosting.State{}, fmt.Errorf("github-pages: %s already serves its Pages site at %s; abcd will not move a live domain, so pass --domain %s",
-				s.Repo, cname, cname)
+			// The domain is declared in one of two places: the flag, on the
+			// run that writes the hosting block, or the block's own field
+			// once it exists (setup refuses the flag then).
+			return hosting.State{}, fmt.Errorf("github-pages: %s already serves its Pages site at %s; abcd will not move a live domain, so declare %s "+
+				"as the site's domain: pass --domain %s when setup writes the hosting block, or set the hosting block's domain to %s "+
+				"when the composition already has one", s.Repo, cname, cname, cname, cname)
 		case *p.CNAME != s.Domain:
 			return hosting.State{}, fmt.Errorf("github-pages: %s already serves its Pages site at %s; abcd will not move a live domain", s.Repo, cname)
 		}
