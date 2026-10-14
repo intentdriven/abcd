@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -362,7 +363,10 @@ func renderSiteSetup(w io.Writer, res site.SetupResult) {
 	fmt.Fprintf(w, "  repository\n")
 	for _, f := range res.Files {
 		line := fmt.Sprintf("    %-*s %s", width, f.Status, f.Path)
-		if f.Detail != "" && f.Status != "kept" {
+		// A kept seed file's reason is the same for every seed, so it is left
+		// unsaid; any other kept file (a workflow edited by hand, or whose
+		// removal was declined) says why it was kept.
+		if f.Detail != "" && !(f.Status == scaffold.StatusKept && f.Detail == scaffold.SeedKeptDetail) {
 			line += " (" + f.Detail + ")"
 		}
 		fmt.Fprintln(w, termsafe.Sanitize(line))

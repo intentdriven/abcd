@@ -218,6 +218,11 @@ type PlannedFile struct {
 	Seed bool
 }
 
+// SeedKeptDetail is the Detail of every seed file WriteFiles keeps: the same
+// reason for each, so a renderer may leave it unsaid where another kept
+// file's reason is not.
+const SeedKeptDetail = "present: the repository's own, left as it is"
+
 // WriteFiles is the scaffold's writer, shared with every verb that lays
 // machinery into a managed repository (`abcd site setup` is the second). It is
 // idempotent and fail-safe:
@@ -250,7 +255,7 @@ func WriteFiles(repoRoot string, planned []PlannedFile, confirm bool) (outcomes 
 			writeNeeded[i] = true
 			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusSkipped} // provisional until written
 		case p.Seed:
-			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusKept, Detail: "present: the repository's own, left as it is"}
+			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusKept, Detail: SeedKeptDetail}
 		case confirm:
 			writeNeeded[i] = true
 			overwrite[i] = true

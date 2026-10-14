@@ -339,3 +339,33 @@ func TestSiteSetupTakesTheGitHubPagesProvider(t *testing.T) {
 		t.Fatalf("an unknown provider: %v\n%s", err, out)
 	}
 }
+
+// TestSiteSetupTextSaysWhyAWorkflowWasKept: setup keeps a switched-off site's
+// workflow when it was edited by hand or its removal was declined, and the text
+// output says which. A seed file the repository already had is kept for the
+// one reason every seed is, which the output does not repeat.
+func TestSiteSetupTextSaysWhyAWorkflowWasKept(t *testing.T) {
+	for _, why := range []string{
+		"differs from the workflow setup writes, so it was edited by hand and setup leaves it; remove it yourself if it is no longer wanted",
+		"its removal was declined",
+		"not a regular file, so setup leaves it",
+	} {
+		res := site.SetupResult{
+			Status: site.StatusNoChange,
+			Files: []scaffold.FileOutcome{
+				{Path: "site-src/site.css", Status: scaffold.StatusKept, Detail: scaffold.SeedKeptDetail},
+				{Path: ".github/workflows/site.yml", Status: scaffold.StatusKept, Detail: why},
+			},
+			Host: site.HostOutcome{Provider: "github-pages", Name: "example-site", Status: site.HostNotReached},
+		}
+		var buf bytes.Buffer
+		renderSiteSetup(&buf, res)
+		if !strings.Contains(buf.String(), ".github/workflows/site.yml ("+why+")") {
+			t.Errorf("the kept workflow's reason %q is not printed:\n%s", why, buf.String())
+		}
+		if strings.Contains(buf.String(), scaffold.SeedKeptDetail) {
+			t.Errorf("a kept seed file repeats the reason every seed is kept:\n%s", buf.String())
+		}
+	}
+}
+
