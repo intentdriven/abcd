@@ -1201,8 +1201,12 @@ is not written: the result's `overflow` states `corpus_bytes`, `limit_bytes`,
 the `groups` the documents were packed into in path order, the `chunks`, and
 the `unreviewed` documents (each `path` with its framed `bytes`, too large for
 any chunk, so no chunk reads it). `chunks` lists each chunk's `index`,
-`receipt_id`, `request_path`, `corpus_path` and `documents`; `request_path` and
-`corpus_path` at the top are then empty, and `receipt_id` is the emit's. A run
+`receipt_id`, `request_path`, `corpus_path`, `documents` and `bytes` (its
+request and corpus file together), and `chunk_bytes` totals them;
+`request_path` and `corpus_path` at the top are then empty, and `receipt_id` is
+the emit's. A plan of more than 128 chunks is refused with nothing written,
+naming its count and a larger `consistency.max_request_bytes` to try (or, when
+none up to 1 MiB plans within it, a run scoped to one intent). A run
 over the whole corpus writes one chunk for every pair of groups, so every pair
 of documents is read together in at least one chunk; a run scoped to one intent
 puts that intent in every chunk beside each group of the rest, and refuses
@@ -1228,9 +1232,13 @@ overflows):
    request alone asks for it; a finding on a pair another chunk owns is set
    aside rather than filed, and `set_aside` counts it.
 
-On a provider route, the emit sends the chunks one after another and ingests
-them together; if any send falls back to the harness, every chunk is left to
-the host, and it says so on stderr.
+On a provider route, the emit states the chunk count and their bytes on
+stderr, then sends the chunks one after another and ingests them together; if
+any send falls back to the harness, every chunk is left to the host, and it
+says so on stderr. Each chunk is a request paid for on its own, so a plan of
+more than `--max-chunks` (default 8) is refused there at exit 2, with nothing
+written or sent, naming its count and bytes; run again with `--max-chunks
+<count>` to send them. A harness emit is not capped by it.
 
 The ingest validates before it writes anything. It refuses, with nothing
 written: a receipt no request here was issued for, a corpus that moved since the

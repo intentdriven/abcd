@@ -268,3 +268,49 @@ func TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost(t *testing.T) {
 		t.Fatal("a report was written")
 	}
 }
+
+// TestIntentConsistencyCapsTheChunksSentToAProvider (S1 of the PR #974
+// review): on a provider route, where every chunk is a request sent and paid
+// for on its own, a plan of more chunks than --max-chunks is refused at exit 2
+// before anything is written or sent, naming its count, its bytes and the
+// flag; within the cap the verb states the count and the bytes on stderr
+// before the first send.
+func TestIntentConsistencyCapsTheChunksSentToAProvider(t *testing.T) {
+	srcRoot := repoRootFromTest(t)
+	repo := consistencyChunkCLIRepo(t)
+	t.Setenv("ABCD_PLUGIN_ROOT", srcRoot)
+	receiptRe := regexp.MustCompile(`- receipt_id: (rcp-[0-9a-f]{12})`)
+	p := newChatFake(t, "local-model", func(body string) string {
+		m := receiptRe.FindStringSubmatch(body)
+		if m == nil {
+			return "{}"
+		}
+		rel := ".abcd/.work.local/reviews/" + m[1]
+		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
+	})
+	pointMachine(t, os.Getenv("HOME"), p.srv.URL, false, "", "intent-auditor")
+
+	_, _, err := runCLISplit(t, "intent", "consistency", "--max-chunks", "1")
+	if exitCodeOf(err) != 2 || err == nil {
+		t.Fatalf("err = %v; want exit 2 for a plan over --max-chunks 1", err)
+	}
+	m := regexp.MustCompile(`overflows into ([0-9]+) chunks, ([0-9]+) bytes`).FindStringSubmatch(err.Error())
+	if m == nil || !strings.Contains(err.Error(), "--max-chunks "+m[1]) || !strings.Contains(err.Error(), "nothing was written or sent") {
+		t.Fatalf("refusal = %v; want the count, the bytes and --max-chunks <count> named", err)
+	}
+	if p.calls.Load() != 0 {
+		t.Fatalf("the provider was called %d times by a refused run", p.calls.Load())
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd/.work.local/reviews")); err == nil {
+		t.Fatal("the refused run wrote a request")
+	}
+
+	_, stderr, err := runCLISplit(t, "intent", "consistency", "--max-chunks", m[1])
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	want := fmt.Sprintf("sending %s chunks, %s bytes of requests and corpus files in all", m[1], m[2])
+	if !strings.Contains(stderr, want) || p.calls.Load() < 1 {
+		t.Fatalf("stderr lacks %q (provider called %d times):\n%s", want, p.calls.Load(), stderr)
+	}
+}

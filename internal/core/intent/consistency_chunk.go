@@ -43,6 +43,10 @@ import (
 // names the chunk, the emit's receipt (the unchunked corpus's) and the limit,
 // so prompt_hash binds all three.
 
+// MaxConsistencyChunks is the most chunks one emit plans; a plan of more is
+// refused before anything is written, naming a larger limit to try.
+const MaxConsistencyChunks = 128
+
 // consistencyChunkInfo marks an assembled corpus as one chunk of an
 // overflowing emit.
 type consistencyChunkInfo struct {
@@ -155,65 +159,18 @@ func framedBytes(d consistencyDoc, widestIndex int) int {
 // planConsistencyChunks plans the chunks of corpus c, whose unchunked corpus
 // file (receipt emitRcp) is corpusBytes long and over limit. Every number it
 // sizes against is an upper bound on what the chunk renders, and the emit
-// checks each rendered chunk against the limit all the same.
+// checks each rendered chunk against the limit all the same. A plan of more
+// than MaxConsistencyChunks chunks is refused, naming a larger limit to try.
 func planConsistencyChunks(c consistencyCorpus, emitRcp string, corpusBytes, limit int) (consistencyPlan, error) {
 	n := len(c.Docs)
-	// A chunk's header, with every number in it as wide as it can be: no chunk
-	// holds more documents than the corpus, and no plan has more chunks than
-	// the corpus has pairs of documents.
-	wide := n*n + 1
-	overhead := len(consistencyCorpusHeader(emitRcp, n, n, n, c.Digest, &consistencyChunkInfo{
-		Index: wide, Count: wide, EmitReceipt: emitRcp, LimitBytes: limit, WholeDocs: n,
-	}))
-	pinned := map[string]bool{}
-	if c.ScopePath != "" {
-		pinned[c.ScopePath] = true
+	pins, groups, unreviewed, err := groupConsistencyDocs(c, emitRcp, limit)
+	if err != nil {
+		return consistencyPlan{}, err
 	}
-	var pins, rest []consistencyDoc
-	pinBytes := 0
-	for _, d := range c.Docs {
-		if pinned[d.Path] {
-			pins = append(pins, d)
-			pinBytes += framedBytes(d, n)
-		} else {
-			rest = append(rest, d)
-		}
+	if count := chunkCount(len(pins) > 0, len(groups)); count > MaxConsistencyChunks {
+		return consistencyPlan{}, chunkCeilingRefusal(c, emitRcp, corpusBytes, limit, count)
 	}
-	var budget int
-	if len(pins) > 0 {
-		budget = limit - overhead - pinBytes
-		if budget <= 0 {
-			return consistencyPlan{}, fmt.Errorf("intent: the scope %s is %d bytes as the corpus frames it, and beside a chunk's %d-byte header it leaves no room "+
-				"under the request limit of %d bytes for any other document; raise consistency.max_request_bytes (at most %d)",
-				c.Scope, pinBytes, overhead, limit, MaxConsistencyRequestBytes)
-		}
-	} else {
-		budget = (limit - overhead) / 2
-	}
-	p := consistencyPlan{CorpusBytes: corpusBytes, Limit: limit, Unreviewed: []ConsistencyUnreviewed{}}
-	if budget <= 0 {
-		return consistencyPlan{}, fmt.Errorf("intent: the request limit of %d bytes leaves no room for a document beside a chunk's %d-byte header; "+
-			"raise consistency.max_request_bytes", limit, overhead)
-	}
-	var groups [][]consistencyDoc
-	fill := budget + 1 // no open group yet
-	for _, d := range rest {
-		size := framedBytes(d, n)
-		if size > budget {
-			p.Unreviewed = append(p.Unreviewed, ConsistencyUnreviewed{Path: d.Path, Bytes: size})
-			continue
-		}
-		if fill+size > budget {
-			groups = append(groups, nil)
-			fill = 0
-		}
-		groups[len(groups)-1] = append(groups[len(groups)-1], d)
-		fill += size
-	}
-	if len(groups) == 0 {
-		return consistencyPlan{}, fmt.Errorf("intent: no document of the corpus fits a chunk under the request limit of %d bytes "+
-			"(each is larger than the %d bytes a chunk leaves it); raise consistency.max_request_bytes", limit, budget)
-	}
+	p := consistencyPlan{CorpusBytes: corpusBytes, Limit: limit, Unreviewed: unreviewed}
 	p.Groups = len(groups)
 	p.Owners = consistencyOwners{Group: map[string]int{}, Groups: len(groups), Scoped: len(pins) > 0}
 	for _, d := range pins {
@@ -270,4 +227,114 @@ func planConsistencyChunks(c consistencyCorpus, emitRcp string, corpusBytes, lim
 		p.Receipts = append(p.Receipts, consistencyChunkReceipt(c.Scope, c.Digest, limit, i+1, len(parts)))
 	}
 	return p, nil
+}
+
+// groupConsistencyDocs splits corpus c into the pinned scope documents and the
+// groups of the rest under limit, naming every document too large for a group.
+func groupConsistencyDocs(c consistencyCorpus, emitRcp string, limit int) (pins []consistencyDoc, groups [][]consistencyDoc, unreviewed []ConsistencyUnreviewed, err error) {
+	n := len(c.Docs)
+	// A chunk's header, with every number in it as wide as it can be: no chunk
+	// holds more documents than the corpus, and no plan has more chunks than
+	// the corpus has pairs of documents.
+	wide := n*n + 1
+	overhead := len(consistencyCorpusHeader(emitRcp, n, n, n, c.Digest, &consistencyChunkInfo{
+		Index: wide, Count: wide, EmitReceipt: emitRcp, LimitBytes: limit, WholeDocs: n,
+	}))
+	pinned := map[string]bool{}
+	if c.ScopePath != "" {
+		pinned[c.ScopePath] = true
+	}
+	var rest []consistencyDoc
+	pinBytes := 0
+	for _, d := range c.Docs {
+		if pinned[d.Path] {
+			pins = append(pins, d)
+			pinBytes += framedBytes(d, n)
+		} else {
+			rest = append(rest, d)
+		}
+	}
+	var budget int
+	if len(pins) > 0 {
+		budget = limit - overhead - pinBytes
+		if budget <= 0 {
+			return nil, nil, nil, fmt.Errorf("intent: the scope %s is %d bytes as the corpus frames it, and beside a chunk's %d-byte header it leaves no room "+
+				"under the request limit of %d bytes for any other document; raise consistency.max_request_bytes (at most %d)",
+				c.Scope, pinBytes, overhead, limit, MaxConsistencyRequestBytes)
+		}
+	} else {
+		budget = (limit - overhead) / 2
+	}
+	if budget <= 0 {
+		return nil, nil, nil, fmt.Errorf("intent: the request limit of %d bytes leaves no room for a document beside a chunk's %d-byte header; "+
+			"raise consistency.max_request_bytes", limit, overhead)
+	}
+	unreviewed = []ConsistencyUnreviewed{}
+	fill := budget + 1 // no open group yet
+	for _, d := range rest {
+		size := framedBytes(d, n)
+		if size > budget {
+			unreviewed = append(unreviewed, ConsistencyUnreviewed{Path: d.Path, Bytes: size})
+			continue
+		}
+		if fill+size > budget {
+			groups = append(groups, nil)
+			fill = 0
+		}
+		groups[len(groups)-1] = append(groups[len(groups)-1], d)
+		fill += size
+	}
+	if len(groups) == 0 {
+		return nil, nil, nil, fmt.Errorf("intent: no document of the corpus fits a chunk under the request limit of %d bytes "+
+			"(each is larger than the %d bytes a chunk leaves it); raise consistency.max_request_bytes", limit, budget)
+	}
+	return pins, groups, unreviewed, nil
+}
+
+// chunkCount is the chunks a plan of g groups writes: one per group in a
+// scoped run, one for a lone group, else one per pair of groups.
+func chunkCount(scoped bool, g int) int {
+	if scoped || g == 1 {
+		return g
+	}
+	return g * (g - 1) / 2
+}
+
+// chunkCeilingRefusal refuses a plan of count chunks over MaxConsistencyChunks.
+// Every chunk is a request of its own, which a provider route sends and bills
+// separately, and a whole-corpus plan grows with the square of its groups, so
+// the refusal names the smallest larger limit, doubling up to
+// MaxConsistencyRequestBytes, under which the corpus fits one request or plans
+// within the ceiling. When none does, a scoped run, whose chunks grow with its
+// groups alone, is the way through.
+func chunkCeilingRefusal(c consistencyCorpus, emitRcp string, corpusBytes, limit, count int) error {
+	var candidates []int
+	for l := max(limit*2, MinConsistencyRequestBytes); l < MaxConsistencyRequestBytes; l *= 2 {
+		candidates = append(candidates, l)
+	}
+	if MaxConsistencyRequestBytes > limit {
+		candidates = append(candidates, MaxConsistencyRequestBytes)
+	}
+	try := ""
+	for _, l := range candidates {
+		if corpusBytes <= l {
+			try = fmt.Sprintf("try consistency.max_request_bytes %d, which fits the corpus in one request", l)
+			break
+		}
+		pins, groups, _, err := groupConsistencyDocs(c, emitRcp, l)
+		if err != nil {
+			continue
+		}
+		if n := chunkCount(len(pins) > 0, len(groups)); n <= MaxConsistencyChunks {
+			try = fmt.Sprintf("try consistency.max_request_bytes %d, which plans %d chunks", l, n)
+			break
+		}
+	}
+	if try == "" {
+		try = fmt.Sprintf("no request limit up to %d bytes plans within it, so review one intent against the corpus at a time "+
+			"(abcd intent consistency <itd-N>), whose chunks grow with the corpus rather than with its square", MaxConsistencyRequestBytes)
+	}
+	return fmt.Errorf("intent: the corpus is %d bytes and plans as %d chunks under the request limit of %d bytes, over the ceiling of %d chunks "+
+		"one emit writes (each chunk is a request of its own, which a provider route sends and bills separately); %s; nothing was written",
+		corpusBytes, count, limit, MaxConsistencyChunks, try)
 }

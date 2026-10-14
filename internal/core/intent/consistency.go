@@ -169,6 +169,25 @@ type ConsistencyEmitOptions struct {
 	// (consistency.max_request_bytes, which LoadConsistencyConfig resolves); 0
 	// is the bundled default.
 	MaxRequestBytes int
+	// MaxChunks, when positive, refuses an overflowing plan of more chunks
+	// than it before anything is written, with a *ConsistencySendCapError
+	// naming the count and the bytes they hold. A front door sets it on a
+	// provider route, where every chunk is a request sent and paid for on its
+	// own; 0 leaves only MaxConsistencyChunks.
+	MaxChunks int
+}
+
+// ConsistencySendCapError is an overflowing plan refused for holding more
+// chunks than ConsistencyEmitOptions.MaxChunks: Chunks is its count, Bytes the
+// request and corpus bytes they would have written (and a provider route
+// sent), and Cap the limit it was held to. Nothing was written.
+type ConsistencySendCapError struct {
+	Chunks, Bytes, Cap int
+}
+
+func (e *ConsistencySendCapError) Error() string {
+	return fmt.Sprintf("intent: the corpus overflows into %d chunks, %d bytes of requests and corpus files in all, more than the %d allowed; nothing was written",
+		e.Chunks, e.Bytes, e.Cap)
 }
 
 // ConsistencyOverflow is what an emit reports when the corpus is larger than
@@ -196,6 +215,9 @@ type ConsistencyChunk struct {
 	RequestPath string `json:"request_path"`
 	CorpusPath  string `json:"corpus_path"`
 	Documents   int    `json:"documents"`
+	// Bytes is what the chunk's request and corpus file hold together, as the
+	// emit wrote them; the ingest's listing leaves it out.
+	Bytes int `json:"bytes,omitempty"`
 }
 
 // ConsistencyEmitResult reports one emit.
@@ -219,6 +241,9 @@ type ConsistencyEmitResult struct {
 	// larger than the request limit.
 	Overflow *ConsistencyOverflow `json:"overflow,omitempty"`
 	Chunks   []ConsistencyChunk   `json:"chunks,omitempty"`
+	// ChunkBytes is the bytes every chunk's request and corpus file hold
+	// together: what a provider route sends.
+	ChunkBytes int `json:"chunk_bytes,omitempty"`
 }
 
 // EmitConsistency assembles the corpus for one scope — the whole corpus when
@@ -278,21 +303,29 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 		return ConsistencyEmitResult{}, err
 	}
 	// Every chunk is rendered and measured before the first is written: a
-	// chunk over the limit is a fault in the plan, and it is never sent.
-	texts := make([]string, len(plan.Chunks))
+	// chunk over the limit is a fault in the plan, and it is never sent. The
+	// measure keeps no chunk's text, and the write below renders each again
+	// and writes it before rendering the next, so the emit holds one chunk at
+	// a time, never the whole set.
+	chunks := plan.chunkList()
 	for i, ch := range plan.Chunks {
-		texts[i] = consistencyCorpusText(ch, plan.Receipts[i])
-		if len(texts[i]) > limit {
+		corpusLen := len(consistencyCorpusText(ch, plan.Receipts[i]))
+		if corpusLen > limit {
 			return ConsistencyEmitResult{}, fmt.Errorf("intent: chunk %d of %d renders to %d bytes, over the request limit of %d; "+
-				"the chunk plan is at fault, and nothing was written", i+1, len(plan.Chunks), len(texts[i]), limit)
+				"the chunk plan is at fault, and nothing was written", i+1, len(plan.Chunks), corpusLen, limit)
 		}
+		chunks[i].Bytes = corpusLen + len(consistencyRequestDoc(ch, plan.Receipts[i], commit, dirty, opts.RoutingSection))
+		res.ChunkBytes += chunks[i].Bytes
+	}
+	if opts.MaxChunks > 0 && len(plan.Chunks) > opts.MaxChunks {
+		return ConsistencyEmitResult{}, &ConsistencySendCapError{Chunks: len(plan.Chunks), Bytes: res.ChunkBytes, Cap: opts.MaxChunks}
 	}
 	for i, ch := range plan.Chunks {
-		if err := writeConsistencyPair(repoRoot, ch, plan.Receipts[i], texts[i], commit, dirty, opts.RoutingSection); err != nil {
+		if err := writeConsistencyPair(repoRoot, ch, plan.Receipts[i], consistencyCorpusText(ch, plan.Receipts[i]), commit, dirty, opts.RoutingSection); err != nil {
 			return ConsistencyEmitResult{}, err
 		}
 	}
-	res.Overflow, res.Chunks = plan.overflow(), plan.chunkList()
+	res.Overflow, res.Chunks = plan.overflow(), chunks
 	return res, nil
 }
 
@@ -309,15 +342,22 @@ func writeConsistencyPair(repoRoot string, c consistencyCorpus, rcp, corpusText,
 	if err := fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".corpus.md"), []byte(corpusText), 0o644); err != nil {
 		return fmt.Errorf("intent: writing consistency corpus %s: %w", corpusRel, err)
 	}
+	doc := consistencyRequestDoc(c, rcp, commit, dirty, routing)
+	if err := fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".request.md"), []byte(doc), 0o644); err != nil {
+		return fmt.Errorf("intent: writing consistency request %s: %w", requestRel, err)
+	}
+	return nil
+}
+
+// consistencyRequestDoc is the request file for one corpus: the prompt, the
+// provenance block and the routing section.
+func consistencyRequestDoc(c consistencyCorpus, rcp, commit string, dirty []string, routing string) string {
 	body := consistencyPromptBody(c, rcp)
 	doc := body + consistencyProvenanceBlock(consistencyPolicyFor(body), commit, dirty)
 	if routing != "" {
 		doc += "\n## Routing\n\n" + routing
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".request.md"), []byte(doc), 0o644); err != nil {
-		return fmt.Errorf("intent: writing consistency request %s: %w", requestRel, err)
-	}
-	return nil
+	return doc
 }
 
 // dirtyCorpusPaths names the corpus paths whose working-tree text is not the

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -29,6 +30,7 @@ import (
 // --findings-json once per chunk.
 func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 	var emitRoute, ingestRoute *routeFlag
+	var maxChunks int
 	cmd := &cobra.Command{
 		Use:  "consistency [<itd-N>]",
 		Args: cobra.MaximumNArgs(1),
@@ -57,10 +59,28 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd intent consistency: the request limit is refused: " +
 					termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 			}
-			res, err := intent.EmitConsistency(repoRoot, id, intent.ConsistencyEmitOptions{
+			if maxChunks < 1 {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent consistency: --max-chunks %d is not a chunk count (want 1 or more)", maxChunks)}
+			}
+			opts := intent.ConsistencyEmitOptions{
 				RoutingSection:  oracle.RenderRequestSection(route.Request()),
 				MaxRequestBytes: cfg.MaxRequestBytes,
-			})
+			}
+			// Every chunk a provider route sends is a request paid for on its
+			// own, so a plan of more than --max-chunks is refused there before
+			// anything is written or sent. The host runs a harness emit's
+			// chunks itself, and decides for itself how many.
+			if route != nil && route.OnProvider() {
+				opts.MaxChunks = maxChunks
+			}
+			res, err := intent.EmitConsistency(repoRoot, id, opts)
+			var capErr *intent.ConsistencySendCapError
+			if errors.As(err, &capErr) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent consistency: the corpus overflows into %d chunks, %d bytes of requests and corpus files in all, "+
+					"and the route sends each to %s as a request of its own, more than the %d --max-chunks allows; nothing was written or sent. "+
+					"Run again with --max-chunks %d to send them all, raise consistency.max_request_bytes for fewer chunks, or route the auditor to the host",
+					capErr.Chunks, capErr.Bytes, termsafe.Sanitize(route.ConnectionUsed), capErr.Cap, capErr.Chunks)}
+			}
 			if err != nil {
 				e := &exitError{Code: 2, Msg: "abcd intent consistency: " + fsutil.RedactHome(err.Error())}
 				if id != "" {
@@ -111,6 +131,8 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	emitRoute = addRouteFlag(cmd, auditAgent)
+	cmd.Flags().IntVar(&maxChunks, "max-chunks", defaultConsistencySendChunks,
+		"on a provider route, the most chunks of an overflowing corpus sent in one run; a plan of more is refused, naming its count and bytes")
 
 	var findingsJSON []string
 	ingestCmd := &cobra.Command{
@@ -154,6 +176,12 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
+// defaultConsistencySendChunks is --max-chunks unset: the most chunks a
+// provider route sends without the person naming the count. At the bundled
+// 512 KiB limit eight chunks are about 4 MiB of requests; past that, the run
+// states the count and the bytes and waits for --max-chunks to name them.
+const defaultConsistencySendChunks = 8
+
 // sendConsistency sends an emit's requests to the provider the route names:
 // the one request of a corpus that fits, or every chunk of one that overflows,
 // one after another. It returns one dispatch per request, or nil when the host
@@ -170,6 +198,8 @@ func sendConsistency(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, rep
 		}
 		return []*dispatched{d}, fell, nil
 	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "%s: sending %d chunks, %d bytes of requests and corpus files in all, one after another to %s\n",
+		verb, len(res.Chunks), res.ChunkBytes, termsafe.Sanitize(route.ConnectionUsed))
 	ds := make([]*dispatched, 0, len(res.Chunks))
 	for _, ch := range res.Chunks {
 		d, fell, err := rf.sendRequest(cmd, verb, route, auditAgent, repoRoot, ch.RequestPath, ch.CorpusPath)

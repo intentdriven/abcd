@@ -754,6 +754,7 @@ Sub-verbs: `abcd intent consistency ingest`.
 
 | Flag | Type |
 |---|---|
+| `--max-chunks` | int |
 | `--route` | stringArray |
 
 ### `abcd intent consistency ingest`

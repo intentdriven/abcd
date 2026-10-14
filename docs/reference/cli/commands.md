@@ -2519,6 +2519,7 @@ Emit the consistency request over the brief and every intent, or one intent agai
 **Flags:**
 
 ```
+      --max-chunks int      on a provider route, the most chunks of an overflowing corpus sent in one run; a plan of more is refused, naming its count and bytes (default 8)
       --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 

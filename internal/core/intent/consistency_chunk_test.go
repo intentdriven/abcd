@@ -2,7 +2,9 @@ package intent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -764,5 +766,81 @@ func TestConsistencyChunkReceiptBindsTheLimit(t *testing.T) {
 		return ps
 	}(), &fakeFiler{}); err != nil {
 		t.Fatalf("the first limit's chunk set no longer ingests after a second emit: %v", err)
+	}
+}
+
+// reviewsEntries lists what the local tier's reviews directory holds.
+func reviewsEntries(t *testing.T, root string) []string {
+	t.Helper()
+	ents, err := os.ReadDir(filepath.Join(root, reviewsRelDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range ents {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+// TestConsistencyEmitRefusesAPlanOverTheChunkCeiling: a limit that plans more
+// chunks than MaxConsistencyChunks is refused before anything is written,
+// naming the plan's count, the ceiling and a larger limit to try.
+func TestConsistencyEmitRefusesAPlanOverTheChunkCeiling(t *testing.T) {
+	r, _ := chunkRepo(t, 17, 1000, nil)
+	root := r.Root()
+	_, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err == nil {
+		t.Fatal("a plan of 17 groups (136 chunks) was emitted; want it refused over the ceiling")
+	}
+	for _, want := range []string{"136 chunks", fmt.Sprintf("ceiling of %d chunks", MaxConsistencyChunks),
+		"consistency.max_request_bytes", "nothing was written"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal lacks %q: %v", want, err)
+		}
+	}
+	if !regexp.MustCompile(`try consistency\.max_request_bytes [0-9]+`).MatchString(err.Error()) {
+		t.Errorf("refusal names no larger limit to try: %v", err)
+	}
+	if got := reviewsEntries(t, root); len(got) != 0 {
+		t.Fatalf("a refused emit wrote %v", got)
+	}
+	t.Log(err)
+}
+
+// TestConsistencyEmitCapsChunksForASend: with MaxChunks set (a provider route,
+// where every chunk is a paid request), a plan of more chunks is refused before
+// anything is written, stating its chunk count and the bytes it would send;
+// within the cap the emit states the same total on its result.
+func TestConsistencyEmitCapsChunksForASend(t *testing.T) {
+	r, _ := chunkRepo(t, 7, 1000, nil)
+	root := r.Root()
+	_, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000, MaxChunks: 20})
+	var capErr *ConsistencySendCapError
+	if !errors.As(err, &capErr) || capErr.Chunks != 21 || capErr.Cap != 20 || capErr.Bytes <= 0 {
+		t.Fatalf("err = %v; want a send-cap refusal naming 21 chunks over a cap of 20 and their bytes", err)
+	}
+	if got := reviewsEntries(t, root); len(got) != 0 {
+		t.Fatalf("a refused emit wrote %v", got)
+	}
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000, MaxChunks: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, ch := range em.Chunks {
+		for _, rel := range []string{ch.RequestPath, ch.CorpusPath} {
+			info, err := os.Stat(filepath.Join(root, rel))
+			if err != nil {
+				t.Fatal(err)
+			}
+			total += int(info.Size())
+		}
+	}
+	if em.ChunkBytes != total || capErr.Bytes != total {
+		t.Fatalf("chunk_bytes %d, refusal bytes %d; want the %d bytes the chunk files hold", em.ChunkBytes, capErr.Bytes, total)
 	}
 }

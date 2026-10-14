@@ -558,6 +558,28 @@ narrowest reading that meets the criteria. Each is open to review.
   findings sharing a key keep the owning chunk's copy, and no separate merge
   by key is needed (from review). The
   rubric is unchanged.
+- **Step 3, a ceiling on chunks** (from review, 2026-10-14). A whole-corpus
+  plan grows with the square of its groups: this tree's 2.36 MB corpus plans 45
+  chunks at the bundled 512 KiB, 210 at 256 KiB and 2,080 at the 64 KiB floor,
+  and the review estimated that a cloned repository with a 20 MB brief of small
+  pages would plan about 200,000 and exhaust memory, because the emit rendered
+  every chunk before writing any. Three changes:
+  - a plan of more than 128 chunks (`MaxConsistencyChunks`) is refused with
+    nothing written, naming its count and the smallest larger limit, doubling
+    up to 1 MiB, that fits the corpus in one request or plans within the
+    ceiling; when none does, it points at a scoped run, whose chunks grow with
+    its groups alone. 128 is about three times this tree's plan at the
+    default, so a corpus 1.7 times today's still plans at 512 KiB and one of
+    about 8 MiB at 1 MiB; at the default limit it bounds a run at about
+    64 MiB of requests;
+  - the emit measures every chunk first, keeping no text, then renders and
+    writes one chunk at a time, so it holds one chunk in memory, not the set,
+    and a chunk over the limit still refuses with nothing written;
+  - on a provider route the verb states the chunk count and their bytes before
+    the first send, and a plan of more than `--max-chunks` (default 8, about
+    4 MiB at the default limit) is refused before anything is written or sent,
+    naming the count to pass. The emit result gains `chunk_bytes` and each
+    chunk its `bytes`.
 - **Step 3, the provider route.** The `route` member is the first chunk's
   dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
   back to the harness, every chunk is left to the host. Answers already
