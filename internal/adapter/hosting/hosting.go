@@ -70,6 +70,10 @@ type State struct {
 	// Routed is true when the domain is already routed to the host, and
 	// vacuously true when the site asks for no domain.
 	Routed bool
+	// Existing names the site the host already serves, by its address and
+	// how it is built, when the provider can say so; empty when the host
+	// does not exist yet. The verb names it before publishing over it.
+	Existing string
 }
 
 // Provider is the live half of the seam: one connected account.

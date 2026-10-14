@@ -210,6 +210,7 @@ func (c *client) Verify(context.Context) error {
 
 // Inspect reads whether the repository is public, whether its Pages site
 // exists and is built by a workflow, and whether the domain is routed to it.
+// An existing site is named by its address and build type.
 func (c *client) Inspect(ctx context.Context, s hosting.Site) (hosting.State, error) {
 	if err := checkSite(s); err != nil {
 		return hosting.State{}, err
@@ -241,6 +242,11 @@ func (c *client) Inspect(ctx context.Context, s hosting.Site) (hosting.State, er
 			"off it, so set its Pages source to GitHub Actions in the repository's settings and re-run", s.Repo)
 	}
 	st.Exists = true
+	addr := p.HTMLURL
+	if !addrRe.MatchString(addr) {
+		addr = "an address that is not a plain https URL"
+	}
+	st.Existing = addr + " (build type " + p.BuildType + ")"
 	if p.CNAME != nil && *p.CNAME != "" {
 		cname := *p.CNAME
 		printable := domainRe.MatchString(cname)

@@ -86,8 +86,14 @@ func TestInspectCreateAndAddressAProjectSite(t *testing.T) {
 	if got := f.Repos["acme/widgets"].Pages; got == nil || got.BuildType != "workflow" {
 		t.Fatalf("pages = %+v, want a site built by the workflow", got)
 	}
+	if st.Existing != "" {
+		t.Fatalf("inspect named an existing site where there is none: %q", st.Existing)
+	}
 	if st, err = p.Inspect(context.Background(), widgets); err != nil || !st.Exists {
 		t.Fatalf("inspect after create = %+v, %v", st, err)
+	}
+	if st.Existing != "https://acme.github.io/widgets/ (build type workflow)" {
+		t.Fatalf("existing = %q, want the site's address and build type", st.Existing)
 	}
 	addr, err := p.Address(context.Background(), widgets)
 	if err != nil || addr != "https://acme.github.io/widgets/" {

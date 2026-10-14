@@ -416,3 +416,57 @@ func TestTheHostStageRefusesASiteServedBelowAnotherPath(t *testing.T) {
 		t.Fatalf("host = %+v, want no address and a detail naming both paths", out)
 	}
 }
+
+// A repository that already publishes a Pages site built by a workflow is
+// not taken over silently: the switch question names the site's address and
+// build type, a no leaves everything as it was, and the host outcome names it.
+func TestAnExistingPagesSiteIsNamedBeforeItIsPublishedOver(t *testing.T) {
+	existing := "https://example-owner.github.io/example-site/ (build type workflow)"
+	t.Run("declined", func(t *testing.T) {
+		h := newPagesHarness(t)
+		h.pages.Repos["example-owner/example-site"].Pages = &githubpagestest.Pages{BuildType: "workflow"}
+		h.ask.yes = false
+		res := h.run(t)
+		if len(h.ask.questions) != 1 || !strings.Contains(h.ask.questions[0], existing) {
+			t.Fatalf("questions = %q, want the switch naming %q", h.ask.questions, existing)
+		}
+		if res.Status != StatusDeclined || len(changedPaths(t, h.harness)) != 0 || len(pagesWrites(h)) != 0 || len(h.forge.writes) != 0 {
+			t.Fatalf("a declined takeover = %q, changed %v, wrote %v %v", res.Status, changedPaths(t, h.harness), pagesWrites(h), h.forge.writes)
+		}
+	})
+	t.Run("confirmed", func(t *testing.T) {
+		h := newPagesHarness(t)
+		h.pages.Repos["example-owner/example-site"].Pages = &githubpagestest.Pages{BuildType: "workflow"}
+		res := h.run(t)
+		if len(h.ask.questions) == 0 || !strings.Contains(h.ask.questions[0], existing) {
+			t.Fatalf("questions = %q, want the switch naming %q", h.ask.questions, existing)
+		}
+		if res.Host.Status != HostCurrent || !strings.Contains(res.Host.Detail, existing) {
+			t.Fatalf("host = %+v, want the outcome naming %q", res.Host, existing)
+		}
+	})
+	// A composition that already holds the switch is asked no switch
+	// question, so the takeover is asked on its own before anything is
+	// written.
+	t.Run("composition already switched on", func(t *testing.T) {
+		h := newPagesHarness(t)
+		h.run(t)
+		h.repo.Git("add", "-A")
+		h.repo.Git("commit", "-q", "-m", "switch the project site on")
+		if err := os.Remove(filepath.Join(h.repo.Root(), SiteWorkflowRelPath)); err != nil {
+			t.Fatal(err)
+		}
+		h.ask.questions, h.ask.yes = nil, false
+		writes := len(pagesWrites(h))
+		res := h.run(t)
+		if len(h.ask.questions) != 1 || !strings.Contains(h.ask.questions[0], existing) {
+			t.Fatalf("questions = %q, want the takeover naming %q", h.ask.questions, existing)
+		}
+		if res.Status != StatusDeclined || len(pagesWrites(h)) != writes {
+			t.Fatalf("a declined takeover = %q, wrote %v", res.Status, pagesWrites(h)[writes:])
+		}
+		if got := changedPaths(t, h.harness); !reflect.DeepEqual(got, []string{SiteWorkflowRelPath}) {
+			t.Fatalf("a declined takeover changed %v, want only the workflow the test removed", got)
+		}
+	})
+}

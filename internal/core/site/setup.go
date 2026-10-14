@@ -281,22 +281,34 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	// A provider that acts through the forge is read before anything is asked
 	// or written, so a host it would refuse is refused before the repository
 	// half is written for an address the site would not be served from.
+	takeover := ""
 	if adapter.CredentialName() == "" && forge != nil && s.Repo != "" {
-		if _, err := readForgeHost(ctx, adapter, s); err != nil {
+		st, err := readForgeHost(ctx, adapter, s)
+		if err != nil {
 			return SetupResult{}, fmt.Errorf("site setup: %s", firstLine(err.Error()))
+		}
+		// A site the host already serves, in a repository setup has not
+		// added its workflow to, is someone's: it is published over only
+		// after a question naming it.
+		if st.Existing != "" {
+			if _, serr := os.Lstat(filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath))); os.IsNotExist(serr) {
+				takeover = st.Existing
+			}
+		}
+	}
+	if takeover != "" && !(prof.Switched && manifestBytes != nil) {
+		if req.Asker == nil || !req.Asker.Confirm(takeoverQuestion(adapter, takeover)) {
+			return declinedBeforeWriting(res, "the existing "+adapter.Name()+" site at "+takeover+" was not published over",
+				"re-run `abcd site setup` and answer yes, to publish over the existing site"), nil
 		}
 	}
 	// The switch (the PT's 2026-10-14 ruling, "ask at setup"): a new
 	// composition naming a provider that publishes only while switched on is
 	// written only on a yes, and then with the switch on.
 	if prof.Switched && manifestBytes != nil {
-		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof)) {
-			res.Status = StatusDeclined
-			res.Files, res.Environments = []scaffold.FileOutcome{}, []EnvironmentOutcome{}
-			res.Host.Detail = "not reached: the project site was not switched on"
-			res.Notes = append(res.Notes, "the project site was not switched on, so nothing was written and nothing remote was changed")
-			res.Remaining = append(res.Remaining, "re-run `abcd site setup --provider "+adapter.Name()+"` and answer yes, to switch the project site on")
-			return res, nil
+		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover)) {
+			return declinedBeforeWriting(res, "the project site was not switched on",
+				"re-run `abcd site setup --provider "+adapter.Name()+"` and answer yes, to switch the project site on"), nil
 		}
 		on := true
 		manifest.Hosting.Publish, hostingBlock.Publish = &on, &on
@@ -872,6 +884,9 @@ func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, for
 	if err != nil {
 		return refuse(err)
 	}
+	if st.Existing != "" {
+		out.Detail = "publishes to the " + adapter.Name() + " site already at " + st.Existing
+	}
 	if !st.Exists {
 		out.Changes = append(out.Changes, "create "+adapter.Name()+" host "+s.Name)
 	}
@@ -962,15 +977,39 @@ func firstLine(s string) string {
 	return line
 }
 
-// switchQuestion is the switch, asked once, before anything is written.
-func switchQuestion(adapter hosting.Adapter, prof hosting.Profile) string {
+// switchQuestion is the switch, asked once, before anything is written. A
+// site the host already serves (takeover, its address and build type) is
+// named in it, since a yes publishes over that site.
+func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover string) string {
 	where := adapter.Name()
 	if prof.Address != "" {
 		where = prof.Address + " (" + adapter.Name() + ")"
 	}
-	return "Switch on the project site? At each release this repository's own workflow builds its about page and development record " +
+	q := "Switch on the project site? At each release this repository's own workflow builds its about page and development record " +
 		"and publishes them at " + where + ". Yes records the switch in " + ManifestRelPath + ", writes the site's inputs under site-src/ " +
 		"and adds " + SiteWorkflowRelPath + "; nothing else in the repository changes"
+	if takeover != "" {
+		q += ". This repository already publishes a site there, at " + takeover + ", and yes replaces it at the next release"
+	}
+	return q
+}
+
+// takeoverQuestion asks before publishing over a site the host already
+// serves, when no switch question is asked to name it.
+func takeoverQuestion(adapter hosting.Adapter, takeover string) string {
+	return "Publish over the existing " + adapter.Name() + " site? This repository already publishes one, at " + takeover +
+		", and abcd's release workflow (" + SiteWorkflowRelPath + ") replaces it at the next release"
+}
+
+// declinedBeforeWriting is a run declined before anything was written or
+// changed remotely: why, and the step that takes it further.
+func declinedBeforeWriting(res SetupResult, why, step string) SetupResult {
+	res.Status = StatusDeclined
+	res.Files, res.Environments = []scaffold.FileOutcome{}, []EnvironmentOutcome{}
+	res.Host.Detail = "not reached: " + why
+	res.Notes = append(res.Notes, why+", so nothing was written and nothing remote was changed")
+	res.Remaining = append(res.Remaining, step)
+	return res
 }
 
 // setupSwitchedOff is setup for a project site whose switch is off: the next
