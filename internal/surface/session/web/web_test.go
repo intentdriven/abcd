@@ -664,3 +664,16 @@ func TestPageUnderABasePath(t *testing.T) {
 		t.Fatal("a refused base path still created the directory")
 	}
 }
+
+func TestIssueBodyEndsWithTheSessionMarker(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, `const ISSUE_MARKER = "Sent from an abcdesign.app brief session.";`) {
+		t.Fatal("session.js does not name the issue marker")
+	}
+	if !strings.HasSuffix(functionBody(t, js, "issueBody"), "    \"\",\n    ISSUE_MARKER,\n  ].join(\"\\n\");\n}") {
+		t.Errorf("issueBody does not end with the marker on its own line:\n%s", functionBody(t, js, "issueBody"))
+	}
+	if !strings.Contains(functionBody(t, js, "issueTitle"), `return "Brief: " + `) {
+		t.Error("an issue's title does not start with Brief:")
+	}
+}

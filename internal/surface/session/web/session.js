@@ -1241,6 +1241,11 @@ function fenced(text) {
   return fence + "markdown\n" + text + (text === "" || text.endsWith("\n") ? "" : "\n") + fence;
 }
 
+// ISSUE_MARKER ends every issue a session sends, so the team's agent can find
+// them without a label: a pre-filled label is refused for anyone who may not
+// triage the repository, and the repository may not have one.
+const ISSUE_MARKER = "Sent from an abcdesign.app brief session.";
+
 function issueTitle(p) {
   return "Brief: " + relPath(p.path) + ", " + linesLabel(p);
 }
@@ -1262,6 +1267,8 @@ function issueBody(p) {
     fenced(p.after),
     "",
     ...creditLines(p),
+    "",
+    ISSUE_MARKER,
   ].join("\n");
 }
 

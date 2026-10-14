@@ -64,6 +64,8 @@ The document has `gc` off, so each change can be credited. Credit comes from the
   - the base commit
   - the credited author, or the approver and the guest
 
+  Each issue's title starts `Brief:` and its body ends with the fixed line `Sent from an abcdesign.app brief session.` The team's agent session finds a session's issues by that marker, not by a label: a pre-filled label makes GitHub answer 404 to anyone without triage permission, and a label the repository lacks is unreliable.
+
   The link's length is measured as GitHub receives it, after encoding, against a margin under 8 KB. A longer passage is offered as a pull request instead.
 - **One pull request.** The submitter's token calls `createRef`, then `createCommitOnBranch` (the commit's author is the submitter), then `createPullRequest`. The commit message carries a `Co-authored-by:` line for every credited team member. For each approved guest change it carries a `Suggested-by:` line naming the guest, with the `Approved-by:` line beside it.
 
