@@ -101,6 +101,12 @@ type RuleConfig struct {
 	// the verdict is judged. It is how CheckGateReceipt reads what a HOLD
 	// receipt found with the gate's own reader; no config file can set it.
 	onReceipt func(gate, verdict string, failing []ReceiptFinding)
+	// release, when set, says the receipt gate is judging a release. Only
+	// ArmReceiptGate sets it, so no config file can, and CheckGateReceipt — the
+	// reader the doc-fidelity gate (itd-60) shares — never does. It arms the
+	// refusal of a release after v0.4.0 whose tree carries no manifest
+	// (iss-130).
+	release bool
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
 	// Exempt is a glob allowlist of repo-relative paths (filepath.Match, so `*`
@@ -370,6 +376,7 @@ func ArmReceiptGate(cfg Config, commit string, requiredGates []string) Config {
 	// clears the gates (fail-closed at check time) rather than inheriting the
 	// committer-editable config.
 	rc.RequiredGates = requiredGates
+	rc.release = true
 	rules["receipt_gate"] = rc
 	cfg.Rules = rules
 	return cfg

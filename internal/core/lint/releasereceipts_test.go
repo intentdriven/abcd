@@ -1,6 +1,8 @@
 package lint_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -83,10 +85,26 @@ func TestReadReleaseGateReadsAbcdsOwnReleaseWorkflow(t *testing.T) {
 	}
 }
 
+// fixtureManifest is the release-gate manifest every fixture release carries:
+// a release after v0.4.0 without one is refused (iss-130).
+const fixtureManifest = `{"schemaVersion":2,"detector":"iss35-brief-surface-crosscheck"}` + "\n"
+
+// fixtureManifestHash is the hash a receipt for a fixture release echoes.
+func fixtureManifestHash() string {
+	sum := sha256.Sum256([]byte(fixtureManifest))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 // promote is a receipt the gate admits for gate at commit.
 func promote(gate, commit string) string {
+	return promoteWith(gate, commit, `[]`)
+}
+
+// promoteWith is a PROMOTE for gate at commit recording the failing findings.
+func promoteWith(gate, commit, failing string) string {
 	return `{"subject":{"digest":{"gitCommit":"` + commit + `"}},"verificationResult":"PROMOTE",` +
-		`"policy":{"detector":"` + gate + `"},"judgeModel":"claude-opus-4-8"}` + "\n"
+		`"policy":{"detector":"` + gate + `"},"judgeModel":"claude-opus-4-8",` +
+		`"tier":"full","manifestHash":"` + fixtureManifestHash() + `","failing":` + failing + `}` + "\n"
 }
 
 // releaseFixture is a repository with the armed workflow and a release branch
@@ -97,6 +115,7 @@ func releaseFixture(t *testing.T) (*gittest.Repo, string) {
 	r.Write(lint.ReleaseWorkflowPath, armedWorkflow)
 	r.Write(".abcd/record-lint.json", minimalRecordLintConfig)
 	r.Write("CHANGELOG.md", "## [Unreleased]\n")
+	r.Write(".abcd/development/release-gate/manifest.json", fixtureManifest)
 	r.Commit("base")
 	r.Git("switch", "-c", "release")
 	r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n")

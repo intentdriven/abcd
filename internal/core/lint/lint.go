@@ -1224,8 +1224,11 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// scope and depth, so once it exists a receipt must echo its hash and a
 	// sufficient tier, and any recorded finding must carry a disposition. Its
 	// presence in the content tree is the era marker — a receipt/commit that
-	// predates the manifest is judged by the pre-manifest rules only. Read it from
-	// repoRoot, the checked-out content tree the gate is armed against.
+	// predates the manifest is judged by the pre-manifest rules only. A release
+	// newer than v0.4.0 cannot predate it, so the release's arming refuses one
+	// whose tree has none rather than reverting it to those rules (iss-130).
+	// Read it from repoRoot, the checked-out content tree the gate is armed
+	// against.
 	//
 	// Both this read and each receipt read below are fsutil.ReadGuardedInRoot
 	// through an os.Root opened on repoRoot: the reviews store and the manifest
@@ -1255,6 +1258,13 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		requiredTier = requiredReleaseTier(repoRoot)
 	case os.IsNotExist(manifestErr):
 		manifestEra = false
+		// A release after v0.4.0 carries the manifest, so its absence is a
+		// deletion, not the pre-manifest era (iss-130).
+		if cfg.release {
+			if msg := missingManifestRefusal(root); msg != "" {
+				return failClosed(msg), nil
+			}
+		}
 	default:
 		// The manifest exists but cannot be read — never fall through to the
 		// pre-manifest rules on an I/O error, which would silently drop the new

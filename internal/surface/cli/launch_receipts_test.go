@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -44,6 +46,7 @@ func receiptsRepo(t *testing.T) (*gittest.Repo, string) {
 	r.Write(".abcd/record-lint.json",
 		`{"rules":{"receipt_gate":{"enabled":false,"severity":"blocker","receipts_dir":".abcd/work/reviews","required_gates":[]}}}`+"\n")
 	r.Write("CHANGELOG.md", "## [Unreleased]\n")
+	r.Write(".abcd/development/release-gate/manifest.json", receiptsManifest)
 	r.Commit("base")
 	r.Git("switch", "-c", "release")
 	r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n")
@@ -51,9 +54,21 @@ func receiptsRepo(t *testing.T) (*gittest.Repo, string) {
 	return r, r.Git("rev-parse", "HEAD")
 }
 
+// receiptsManifest is the release-gate manifest the fixture release carries: a
+// release after v0.4.0 without one is refused (iss-130).
+const receiptsManifest = `{"schemaVersion":2,"detector":"iss35-brief-surface-crosscheck"}` + "\n"
+
 func receiptJSON(gate, commit, verdict, detector string) string {
+	return receiptWithFindings(commit, verdict, detector, `[]`)
+}
+
+// receiptWithFindings is a full-tier receipt pinned to receiptsManifest that
+// records the failing findings.
+func receiptWithFindings(commit, verdict, detector, failing string) string {
+	sum := sha256.Sum256([]byte(receiptsManifest))
 	return `{"subject":{"digest":{"gitCommit":"` + commit + `"}},"verificationResult":"` + verdict + `",` +
-		`"policy":{"detector":"` + detector + `"},"judgeModel":"claude-opus-4-8"}` + "\n"
+		`"policy":{"detector":"` + detector + `"},"judgeModel":"claude-opus-4-8",` +
+		`"tier":"full","manifestHash":"sha256:` + hex.EncodeToString(sum[:]) + `","failing":` + failing + `}` + "\n"
 }
 
 // TestLaunchReceiptsNamesEachMissingReceiptAndTheCommit is itd-93 AC7's
