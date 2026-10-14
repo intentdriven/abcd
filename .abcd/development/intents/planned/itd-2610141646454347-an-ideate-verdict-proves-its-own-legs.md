@@ -1,7 +1,7 @@
 ---
 id: itd-2610141646454347
 slug: an-ideate-verdict-proves-its-own-legs
-spec_id: null
+spec_id: spc-2610142138047122
 kind: standalone
 bundle: null
 suggested_kind: null
@@ -13,6 +13,7 @@ severity: major
 impact: breaking
 origin: researcher-authored
 production_mode: hand-written
+target_release: next
 ---
 
 # An ideate verdict proves its own legs
@@ -73,12 +74,12 @@ sources.
 
 ## Scope Conditions
 
-- The writer accepts version 2 only; a version 1 payload is refused with a
+- The writer accepts version 2 only; a version 1 payload is refused with a <!-- cond: cond-2610142138048878 -->
   message naming version 2. Verdicts already on record are rendered Markdown
   and are not parsed or backfilled.
-- The command page and the binary ship together; a host reading an older page
+- The command page and the binary ship together; a host reading an older page <!-- cond: cond-2610142138047607 -->
   gets the version-1 refusal message.
-- The binary checks shapes and citations. Whether a claim is true, or how a
+- The binary checks shapes and citations. Whether a claim is true, or how a <!-- cond: cond-2610142138040936 -->
   reviewer reached a verdict, is the host's and the person's judgement.
 
 ## Acceptance Criteria
@@ -132,3 +133,7 @@ _None._
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: an ideate verdict on record today can cite things that do not exist and still pass; we expect that after this change no verdict on record carries an unresolved citation or an unlabelled self-quotation, and the fix also unblocks release cuts, which refuse while its serious issue is open. Shown wrong if a verdict recorded after it still carries one.
