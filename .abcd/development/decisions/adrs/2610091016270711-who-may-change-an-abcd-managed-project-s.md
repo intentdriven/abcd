@@ -57,4 +57,4 @@ Decided by the product thinker's rulings of 2026-10-14, recorded verbatim in itd
 - Each team does a one-off setup: deploying the relay or joining the host's Tailscale network, and registering its own GitHub sign-in app. Keeping that relay and its secret safe is the team's responsibility, not abcd's.
 - Anyone the host gives the code to sees the brief, a private one included; admission of guests is the host's call.
 - The session needs per-person change tracking and a suggestion mode for guests.
-- abcd adds no network surface of its own: its only network surface stays the local dashboard (adr-2610032150581128), and the hosted page at abcdesign.app is static.
+- abcd runs no network surface of its own anywhere. The relay is a verb in the abcd binary that the team starts on its own machine or deploys to its own account, admitted as the second listener by the 2026-10-14 amendment of adr-2610032150581128. The hosted page at abcdesign.app is static.

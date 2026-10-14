@@ -34,7 +34,13 @@ The following are non-negotiable invariants — any architectural choice that vi
    which refines adr-38 without superseding it). One package alone opens a
    listener, held by `TestOnlyTheDashboardOpensAListener`
    (`internal/surface/dashboard`); a later listener is admitted only by
-   amending that record in the open.
+   amending that record in the open. Its amendment of 2026-10-14 admits one
+   second listener, the brief session's relay (`internal/surface/session`).
+   The relay is started on purpose and listens on loopback unless an address
+   is chosen on that run. On a person's machine it is reached through
+   Tailscale Serve, never Funnel. It admits people by the host's join code
+   and by GitHub's own answer on a presented token, and it holds no project
+   content at rest.
 
 8. **Acceptance discipline applies uniformly** — every intent's press release is followed by a `## Acceptance Criteria` block in Given-When-Then format (per itd-1). Every brief phase has an `## Acceptance` block in the same format. The format is uniform across the boundary; the *home* differs to match the nature of the work. See [`01-product/03-mental-model.md`](../01-product/03-mental-model.md).
 
