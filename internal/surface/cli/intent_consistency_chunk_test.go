@@ -243,14 +243,20 @@ func TestIntentConsistencyChunkFallbackLeavesEveryChunkToTheHost(t *testing.T) {
 	receiptRe := regexp.MustCompile(`- receipt_id: (rcp-[0-9a-f]{12})`)
 	var p *chatFake
 	p = newChatFake(t, "local-model", func(body string) string {
-		// The first answer closes its connection and the listener, so the
-		// next send cannot reach the provider.
-		p.srv.Config.SetKeepAlivesEnabled(false)
+		// The first answer closes the listener, so the next send cannot
+		// reach the provider.
 		_ = p.srv.Listener.Close()
 		m := receiptRe.FindStringSubmatch(body)
 		rel := ".abcd/.work.local/reviews/" + m[1]
 		return string(chunkFindingsJSON(t, repo, m[1], rel+".request.md", rel+".corpus.md"))
 	})
+	// Every response closes its connection, so the client pools none: chunk
+	// 2's model-list check dials the closed listener and is refused before
+	// anything is sent, which is the unreachable case that falls back. A
+	// connection pooled from chunk 1 would let that check connect, and a
+	// call whose check connected is, by design, not unreachable (the key
+	// may have left the machine), so it is an error, not a fallback.
+	p.srv.Config.SetKeepAlivesEnabled(false)
 	pointMachine(t, os.Getenv("HOME"), p.srv.URL, false, "", "intent-auditor")
 	stdout, stderr, err := runCLISplit(t, "intent", "consistency", "--json")
 	if err != nil {
