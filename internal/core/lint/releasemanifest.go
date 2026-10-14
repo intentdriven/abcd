@@ -13,6 +13,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/launch"
@@ -35,35 +36,77 @@ import (
 func missingManifestRefusal(repoRoot string, root *os.Root) string {
 	const head = "receipt_gate finds no release-gate manifest " + releaseGateManifestPath
 	const tail = "; a release after one that carried the manifest is in the manifest era, and without it the gate would fall back to the pre-manifest rules (iss-130), so the release gate fails closed"
-	tags, err := launch.GitExistingTags(repoRoot)
+	tags, err := releaseTags(repoRoot)
 	if err != nil {
 		return head + " and cannot read the release tags that show whether an earlier release carried it (" + bareCause(err) + ")" + tail
 	}
 	v, why := releasedVersionInTree(root)
-	sort.Slice(tags, func(i, j int) bool { return launch.CoreGreater(tags[i], tags[j]) })
 	for _, tag := range tags {
-		if why == "" && !launch.CoreGreater(v, tag) {
+		if why == "" && !launch.CoreGreater(v, tag.version) {
 			continue
 		}
-		held, err := tagCarriesManifest(repoRoot, tag)
+		held, err := commitCarriesManifest(repoRoot, tag.commit)
 		if err != nil {
-			return head + " and cannot read the tree of release v" + tag.String() + " (" + bareCause(err) + ")" + tail
+			return head + " and cannot read the tree of release v" + tag.version.String() + " (" + bareCause(err) + ")" + tail
 		}
 		if !held {
 			continue
 		}
 		if why != "" {
-			return head + " and " + why + ", though release v" + tag.String() + " carried it" + tail
+			return head + " and " + why + ", though release v" + tag.version.String() + " carried it" + tail
 		}
-		return head + " in the tree of release v" + v.String() + ", though release v" + tag.String() + " carried it" + tail
+		return head + " in the tree of release v" + v.String() + ", though release v" + tag.version.String() + " carried it" + tail
 	}
 	return ""
 }
 
-// tagCarriesManifest reports whether the tree of release tag v carries the
-// release-gate manifest. A git failure is an error, never an absence.
-func tagCarriesManifest(repoRoot string, v launch.Semver) (bool, error) {
-	out, err := gitutil.Run(repoRoot, "ls-tree", "--name-only", "refs/tags/v"+v.String(), "--", releaseGateManifestPath)
+// releaseTag is one release as the repository's tags record it: the version a
+// vX.Y.Z tag names and the commit it peels to.
+type releaseTag struct {
+	version launch.Semver
+	commit  string
+}
+
+// releaseTags lists the repository's releases, newest first, in one
+// for-each-ref: every tag named v plus a plain X.Y.Z version (a pre-release or
+// build tag is not a release, as launch.GitExistingTags reads them) that peels
+// to a commit. A tag naming a blob or a tree, or a tag of a tag, is not a
+// release: the tag rules forbid deleting it, so reading it as one would let a
+// single stray tag refuse every later release for good.
+func releaseTags(repoRoot string) ([]releaseTag, error) {
+	out, err := gitutil.Run(repoRoot, "for-each-ref",
+		"--format=%(refname:strip=2)%09%(objecttype)%09%(objectname)%09%(*objecttype)%09%(*objectname)", "refs/tags/v*")
+	if err != nil {
+		return nil, err
+	}
+	var tags []releaseTag
+	for _, line := range strings.Split(out, "\n") {
+		// The peeled fields are empty for a lightweight tag, and the output's
+		// trimming drops them from the last line, so they are padded back.
+		f := append(strings.Split(line, "\t"), "", "", "", "")[:5]
+		v, err := launch.ParseSemver(strings.TrimPrefix(f[0], "v"))
+		if err != nil || !strings.HasPrefix(f[0], "v") || v.Prerelease != "" || v.Build != "" {
+			continue
+		}
+		var commit string
+		switch {
+		case f[1] == "commit":
+			commit = f[2]
+		case f[1] == "tag" && f[3] == "commit":
+			commit = f[4]
+		default:
+			continue
+		}
+		tags = append(tags, releaseTag{version: v, commit: commit})
+	}
+	sort.Slice(tags, func(i, j int) bool { return launch.CoreGreater(tags[i].version, tags[j].version) })
+	return tags, nil
+}
+
+// commitCarriesManifest reports whether commit's tree carries the release-gate
+// manifest. A git failure is an error, never an absence.
+func commitCarriesManifest(repoRoot, commit string) (bool, error) {
+	out, err := gitutil.Run(repoRoot, "ls-tree", "--name-only", commit, "--", releaseGateManifestPath)
 	if err != nil {
 		return false, err
 	}
