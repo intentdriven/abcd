@@ -518,14 +518,13 @@ nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your copy on
 another computer, or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
-(exit 3 when nothing else moves). When it holds, the fence renews it. Where the
-mirror at the lane's base gates the merge behind a person's approval (an
-approving review, or a code owner's review with a CODEOWNERS file naming an
-owner), the merge can wait overnight, so the lease is a day. Otherwise it is
-the merge queue's `check_response_timeout_minutes` plus fifteen minutes, or
-the default two hours when that is longer or no mirror states a timeout,
-clamped to a day: that covers the queue's check timeout, not the time a pull
-request left for a person waits. Past the fence the reservation holds only
+(exit 3 when nothing else moves). When it holds, the fence renews it for a day
+wherever a ruleset mirror exists at the lane's base: every landing there waits
+on a person, either the approval the armed merge needs (an approving review,
+or a code owner's) or the merge of a pull request left open for one, and
+either can wait overnight; a day is also past any merge queue's
+`check_response_timeout_minutes`. With no mirror at all the lease is the
+default two hours. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included, and each `abcd
 drain` move does for a drain's lane parked at land. A run nobody steps, and no

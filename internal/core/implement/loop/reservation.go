@@ -46,13 +46,6 @@ const (
 // clause a refusal no git would write.
 var claimReserve = claim.Reserve
 
-// fenceMargin is how far past the merge queue's check timeout the land fence
-// renews the reservation, so it covers one run of the queue's checks. It does
-// not cover the time a pull request waits in the queue before its checks
-// start: after the arming the hold rests on later steps renewing it at half
-// its lease, as `landMerged` waits.
-const fenceMargin = 15 * time.Minute
-
 // claimOptions are the options a run's reservation act runs under: the step's
 // clock, so a test's injected clock dates the commits too.
 func claimOptions(now time.Time) claim.Options {
@@ -114,22 +107,20 @@ func renewFailed(st *State, now time.Time, err error) string {
 // stamp renders a time as a reservation carries one: RFC 3339, UTC.
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// fenceLease is the lease the land fence renews with. A merge that waits on a
-// person's approval (a required approving review, or a code owner's) can
-// wait overnight, so it takes the longest lease, lease.Max. Otherwise it is
-// the default, or the merge queue's check timeout plus fenceMargin when that
-// is longer, clamped to lease.Max; what holds it past that is the renewals
-// that follow (a step's at half its lease, and every drain move's for a lane
-// parked at land).
-func fenceLease(checkTimeout time.Duration, approval bool) time.Duration {
-	if approval {
+// fenceLease is the lease the land fence renews with. Under a ruleset mirror
+// every landing the loop makes waits on a person, so it takes the longest
+// lease, lease.Max: the loop arms a merge only behind a required approval (a
+// review, or a code owner's), and otherwise leaves the pull request open for
+// a person to merge, and either can wait overnight. A day is also past any
+// merge queue's check timeout and its margin (C43). With no mirror at all it
+// is the default lease (decision 29 on the intent, C44). Past the fence,
+// renewals keep the hold: a step's, a receipt's and every drain move's, each
+// at half the lease and keeping its term.
+func fenceLease(mirrored bool) time.Duration {
+	if mirrored {
 		return lease.Max
 	}
-	term := lease.Default
-	if checkTimeout > 0 && checkTimeout+fenceMargin > term {
-		term = checkTimeout + fenceMargin
-	}
-	return min(term, lease.Max)
+	return lease.Default
 }
 
 // landFence is the land fence, at the top of the arming: it fetches the run's

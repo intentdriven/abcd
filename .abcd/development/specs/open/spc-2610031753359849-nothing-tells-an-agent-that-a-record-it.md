@@ -798,15 +798,22 @@ These are the facilitator's design calls; none changes a criterion.
     account's drain could take the issue while it was still open on main.
     Every drain move now renews, at half its lease, the reservation of each
     issue run parked at land (`finishMerged`, logged in the run's record),
-    and the fence renews for `lease.Max` where the mirror gates the merge
-    behind a person's approval (an approving review, or a code owner's), the
-    queue-timeout lease only otherwise. Past the fence a reservation holds
+    and the fence renews for `lease.Max` under a ruleset mirror (below). Past the fence a reservation holds
     only while something renews it: a step of the run, whatever its stage, an
     implementer's long stage included, or a drain move over its parked lane.
     A run neither stepped nor drained over for longer than its lease loses
-    it; that limit stands and is stated on the implement page. A pull request
-    left open for a person to merge with no required approval takes the
-    queue-timeout lease and then those renewals.
+    it; that limit stands and is stated on the implement page.
+  - The fence's lease is `lease.Max` wherever a ruleset mirror exists at the
+    lane's base, and the default lease with none (decision 29, C44). Under a
+    mirror every landing the loop makes waits on a person: it arms a merge
+    only behind a required approval, and otherwise leaves the pull request
+    open for a person to merge, and either can wait overnight (the last
+    review, 2026-10-14). A day is past any `check_response_timeout_minutes`
+    and its margin, so C43 holds; the queue's timeout no longer decides the
+    lease, and the mirror's timeout is not read. The no-mirror case keeps
+    decision 29's default rather than the day the reviewers asked for every
+    unarmed pull request, since decision 29 is the intent's and changing it
+    is its owner's call; such a run's pull request holds by the renewals.
   - A renewal keeps the tip's own term, `min(max(lease.Default, effective
     expiry − Abcd-Claimed-At), lease.Max)`, never the default alone: a
     renewal at half a day-long fence lease would otherwise cut the hold to

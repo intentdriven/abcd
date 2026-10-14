@@ -325,23 +325,23 @@ func TestTheFenceRefusesAReleasedOrUnreadableReservation(t *testing.T) {
 
 // queueRulesetTimed is unreviewedQueueRuleset("MERGE") whose merge queue waits
 // minutes for its checks: no rule requires a person's approval, so the fence's
-// lease is the queue's check timeout, not the day an approval takes.
+// fence still holds the day a person's merge may take.
 func queueRulesetTimed(minutes string) string {
 	return strings.Replace(unreviewedQueueRuleset("MERGE"), `"grouping_strategy":"ALLGREEN"`,
 		`"grouping_strategy":"ALLGREEN","check_response_timeout_minutes":`+minutes, 1)
 }
 
-// TestTheFenceRenewsPastTheQueueTimeout is C43: when the reservation holds and
-// no person's approval gates the merge, the fence renews it with max(the
-// default lease, the queue's check timeout plus fifteen minutes), clamped to a
-// day; the pull request is then left open for a person to merge.
+// TestTheFenceRenewsPastTheQueueTimeout is C43: when the reservation holds,
+// the fence renews it past the queue's check timeout plus the margin. Under a
+// mirror every landing waits on a person (here the pull request is left open
+// for one to merge), so the lease is a day, past any timeout.
 func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		minutes string
 		lease   time.Duration
 	}{
-		{"45", 2 * time.Hour},
-		{"150", 165 * time.Minute},
+		{"45", 24 * time.Hour},
+		{"150", 24 * time.Hour},
 		{"3000", 24 * time.Hour},
 	} {
 		t.Run(tc.minutes, func(t *testing.T) {

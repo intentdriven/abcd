@@ -45,9 +45,10 @@ func drainAt(t *testing.T, root string, o Options) DrainResult {
 }
 
 // TestADrainKeepsItsOpenPullRequestLanesHeld: a drain lane parked at land, its
-// pull request left open for a person, is renewed by each drain move at half
-// its lease, so across a three-hour wait it stays this copy's, and another
-// account's drain passes the issue over rather than taking the lapsed tip.
+// pull request left open for a person, is fenced for a day and then renewed by
+// each drain move at half its lease, keeping the day, so across a wait of a
+// day and a half it stays this copy's, and another account's drain passes the
+// issue over rather than taking a lapsed tip.
 func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 	f := drainLandFixtureWith(t, unreviewedQueueRuleset("MERGE"))
 	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
@@ -61,18 +62,18 @@ func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 	}
 	ref := claim.RefPrefix + secondIssue
 	parked := originReservation(t, f.bare, ref)
-	if parked.expires.Sub(parked.claimed) != 2*time.Hour {
-		t.Fatalf("a lane left open without a required approval is fenced with the default lease: %+v", parked)
+	if parked.expires.Sub(parked.claimed) != 24*time.Hour {
+		t.Fatalf("a lane left open for a person is fenced for a day: %+v", parked)
 	}
 
 	start := parked.claimed
 	var at time.Time
-	for _, after := range []time.Duration{65 * time.Minute, 130 * time.Minute, 195 * time.Minute} {
+	for _, after := range []time.Duration{12*time.Hour + 30*time.Minute, 25 * time.Hour, 37*time.Hour + 30*time.Minute} {
 		at = start.Add(after)
 		now := at
 		drainAt(t, f.repo.Root(), Options{Now: func() time.Time { return now }})
 		tip := originReservation(t, f.bare, ref)
-		if tip.holder != "octo" || tip.released || tip.claimed.Before(at) {
+		if tip.holder != "octo" || tip.released || tip.claimed.Before(at) || tip.expires.Sub(tip.claimed) != 24*time.Hour {
 			t.Fatalf("the drain move at +%s renews the parked lane's reservation: %+v", after, tip)
 		}
 	}
@@ -84,7 +85,7 @@ func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 	}
 	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"AGENTS.md"}},
 		claim.Options{Now: func() time.Time { return at }}); !errors.Is(err, claim.ErrBackOff) {
-		t.Fatalf("another account reserving the parked issue after three hours = %v; want the back-off", err)
+		t.Fatalf("another account reserving the parked issue after a day and a half = %v; want the back-off", err)
 	}
 	qres := drainAt(t, q, Options{Now: func() time.Time { return at }})
 	i := slices.IndexFunc(qres.Passed, func(e Excluded) bool { return e.ID == secondIssue })
@@ -174,5 +175,32 @@ func TestARenewalKeepsTheDayTheFenceGave(t *testing.T) {
 	tip := originReservation(t, f.bare, ref)
 	if tip.parent != fenced.commit || tip.claimed.Before(at) || tip.expires.Sub(tip.claimed) != 24*time.Hour {
 		t.Fatalf("the drain's renewal keeps the day: fenced %+v, renewed %+v (%s)", fenced, tip, tip.expires.Sub(tip.claimed))
+	}
+}
+
+// TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson: a pull request the
+// landing leaves open for a person to merge, under a mirror with no queue or
+// with a queue no approval gates, waits on that person as long as a review
+// would, so the fence renews for a day there too. Only a checkout with no
+// mirror at all keeps the default lease (C44, decision 29).
+func TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson(t *testing.T) {
+	for name, ruleset := range map[string]string{
+		"no merge queue":     noQueueRuleset,
+		"a queue unreviewed": unreviewedQueueRuleset("MERGE"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, ruleset)
+			f.toArm(t)
+			now := time.Now().UTC().Truncate(time.Second)
+			reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+			f.step(t)
+			tip := originReservation(t, f.bare, reservedRef)
+			if tip.expires.Sub(tip.claimed) != 24*time.Hour {
+				t.Fatalf("the fence renews for a day before a person's merge: %s", tip.expires.Sub(tip.claimed))
+			}
+			if l := currentLane(t, f.repo, f.runID); l.Landing == nil || l.Landing.Armed || l.Landing.Merge == "" {
+				t.Fatalf("the pull request is left open for a person: %+v", l.Landing)
+			}
+		})
 	}
 }
