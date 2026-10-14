@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -1074,5 +1075,71 @@ func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(dir+"/rp-return.md"))); string(b) != answers[0] {
 		t.Fatalf("the first answer kept aside stands: %q", b)
+	}
+}
+
+// TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt: a placed
+// return whose receipt erred is taken back off the path without the run's
+// lock, so a lock held past the retries never leaves the route's answer
+// standing where the host's agent writes; the refusal then names the answer
+// still recorded on the await. A return the host's agent wrote over the
+// placement is never taken back.
+func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		busy, overwritten bool
+	}{{"busy lock", true, false}, {"host overwrote", false, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+			aw := *res.Awaiting
+			path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
+			host := reviewerReturn("FIX FIRST")
+			release := make(chan struct{})
+			done := make(chan struct{})
+			prev := reviewReceipt
+			reviewReceipt = func(string, string, string, Stages, Options, *runner.RouteRecord) (StepResult, error) {
+				if tc.overwritten {
+					if err := os.WriteFile(path, []byte(host), 0o600); err != nil {
+						t.Error(err)
+					}
+				}
+				if tc.busy {
+					held := make(chan struct{})
+					go func() {
+						defer close(done)
+						_ = fsutil.WithFileLock(filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), lockFileName), time.Minute, func() error {
+							close(held)
+							<-release
+							return nil
+						})
+					}()
+					<-held
+				}
+				return StepResult{}, errors.New("the state could not be written")
+			}
+			t.Cleanup(func() { reviewReceipt = prev })
+			_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+			if tc.busy {
+				close(release)
+				<-done
+			}
+			if err == nil {
+				t.Fatal("the receipt's error is the step's")
+			}
+			b, rerr := os.ReadFile(path)
+			if tc.overwritten {
+				if rerr != nil || string(b) != host {
+					t.Fatalf("the host's return over the placement stands: %q %v", b, rerr)
+				}
+				return
+			}
+			if rerr == nil {
+				t.Fatalf("the route's answer is taken back off the path though the lock stayed busy: %q", b)
+			}
+			if !strings.Contains(err.Error(), "answer recorded") {
+				t.Fatalf("the refusal names the answer still recorded on the await: %v", err)
+			}
+		})
 	}
 }
