@@ -3830,14 +3830,25 @@ Swap the PATH-installed binary for a verified release, or with --check only comp
 **Usage:** `abcd update [tag] [flags]`
 
 Fetches the named release (or resolves the latest, naming it before acting),
-verifies the platform binary against the same release's checksums.txt, and
-swaps the PATH-installed copy atomically. The verb is the only ask: abcd
+verifies the platform binary against the same release's checksums.txt and
+against the SLSA build provenance the release workflow signed for it
+(fetched from GitHub's attestations API and checked against the Sigstore
+trusted root, pinned to intentdriven/abcd's release.yml and to the commit
+the release tag names), and swaps the
+PATH-installed copy atomically. A binary whose provenance cannot be
+verified, offline included, is refused with the way to install it by hand;
+nothing is swapped unverified. The verb is the only ask: abcd
 never checks for or applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
 command that owns them. The file being replaced must be provably abcd's:
 the binary running the command, an install ~/.abcd.noindex/path-entry records, or
 a digest a published release still names. Anything else is refused with a
 remedy that reinstalls over it — never one that deletes it.
+
+The release it installs or verifies is recorded as this machine's newest
+(~/.abcd.noindex/release-mark). A bare update whose latest release is older
+than that is refused, since the newer one may have been withdrawn; naming
+the older tag installs it and records it, which is the one way back.
 
 With --check it only asks: it fetches the latest release's tag once, says
 whether this binary is behind and which command takes the update for this

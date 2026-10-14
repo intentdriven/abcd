@@ -3,7 +3,9 @@
 // tier 2 — the verb's documented meaning IS the fetch; nothing here runs
 // implicitly — and it completes a chosen update (tier 3): the tag is named
 // before anything is replaced, the asset is verified against the same
-// release's checksums.txt, and the swap is atomic in the target's directory.
+// release's checksums.txt AND against the SLSA build provenance release.yml
+// signed for it (provenance.go), and the swap is atomic in the target's
+// directory.
 // The transport is pinned: no proxy, no CA overrides from the environment,
 // redirects only onto the release origin's own hosts, every hop re-checked
 // under the urlguard policy. Transport-agnostic (adr-23): everything returns
@@ -125,9 +127,12 @@ type Report struct {
 	OldDigest  string    `json:"old_digest,omitempty"`
 	NewVersion string    `json:"new_version,omitempty"`
 	Ownership  Ownership `json:"ownership,omitempty"`
-	Action     Action    `json:"action"`
-	EnvIgnored []string  `json:"env_ignored,omitempty"`
-	Refusal    *Refusal  `json:"refusal,omitempty"`
+	// AttestedBy is the signer identity of the build provenance the swapped
+	// binary verified against: the release workflow's certificate SAN.
+	AttestedBy string   `json:"attested_by,omitempty"`
+	Action     Action   `json:"action"`
+	EnvIgnored []string `json:"env_ignored,omitempty"`
+	Refusal    *Refusal `json:"refusal,omitempty"`
 }
 
 // RemedyPluginUpdate is the way out of every refusal whose cause is a binary
@@ -325,6 +330,9 @@ type Updater struct {
 	redirectHost map[string]bool
 	envIgnored   []string // proxy/CA overrides scrubbed at construction, for the receipt
 	provenanceN  int      // how many recent releases to walk to prove a target file
+	// provenance verifies the downloaded asset's build provenance before the
+	// swap. nil refuses every swap: there is no unverified path.
+	provenance provenanceVerifier
 }
 
 // releaseOrigin is the one place releases come from — the same origin
@@ -363,7 +371,9 @@ func newUpdater(origin string, blocked func(net.IP) bool, assetName string, allo
 	if pool, err := x509.SystemCertPool(); err == nil {
 		rootCAs = pool
 	}
-	return buildUpdater(origin, blocked, assetName, allowHTTP, latest, ignored, rootCAs)
+	u := buildUpdater(origin, blocked, assetName, allowHTTP, latest, ignored, rootCAs)
+	u.provenance = newGitHubAttestations(u)
+	return u
 }
 
 // buildUpdater assembles an updater around a client that honours no transport
@@ -484,6 +494,26 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 		return rep, fmt.Errorf("reading %s: %w", target, err)
 	}
 	if targetHex == wantHex {
+		// A matching file is called current at tag only once its bytes verify
+		// as tag's build: the manifest it matched sits on the release page
+		// with the binary, and a page re-uploaded with an older release's
+		// genuine build would otherwise call that build current at the newer
+		// tag, and the CLI would record the newer tag as installed.
+		sum, err := hex.DecodeString(wantHex)
+		if err != nil {
+			return rep, fmt.Errorf("release %s carries a malformed digest for %s", tag, u.assetName)
+		}
+		signer, perr := u.verifyProvenance(tag, sum)
+		if perr != nil {
+			rep.Action = ActionRefused
+			rep.Refusal = &Refusal{
+				Shape:  "unverified-provenance",
+				Detail: "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + ", but its build provenance could not be verified as " + tag + "'s, so it is not reported current: " + perr.Error(),
+				Remedy: u.remedyInstallByHand(tag, target),
+			}
+			return rep, nil
+		}
+		rep.AttestedBy = signer
 		rep.Action = ActionCurrent
 		rep.Digest = wantHex
 		rep.OldVersion = tag
@@ -549,6 +579,22 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	if got := sha256.Sum256(newBytes); !bytes.Equal(got[:], sum) {
 		return rep, fmt.Errorf("verifying %s against the release manifest: the download's sha256 is %x, the manifest names %x", u.assetName, got, sum)
 	}
+	// The manifest came from the same page as the binary, so it proves only
+	// that the download arrived intact. Who BUILT these bytes is proven by the
+	// build provenance release.yml signed, which a release-page edit cannot
+	// forge (iss-2609231050273096). Any failure refuses before anything is
+	// staged: there is no unverified swap.
+	signer, perr := u.verifyProvenance(tag, sum)
+	if perr != nil {
+		rep.Action = ActionRefused
+		rep.Refusal = &Refusal{
+			Shape:  "unverified-provenance",
+			Detail: "the release's " + u.assetName + " matches its checksums.txt, but its build provenance could not be verified, so nothing was swapped: " + perr.Error(),
+			Remedy: u.remedyInstallByHand(tag, target),
+		}
+		return rep, nil
+	}
+	rep.AttestedBy = signer
 	staged, err := stageVerified(target, newBytes)
 	if err != nil {
 		return rep, fmt.Errorf("staging %s beside %s: %w", u.assetName, target, err)
@@ -575,6 +621,29 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	rep.NewVersion = tag
 	rep.Digest = wantHex
 	return rep, nil
+}
+
+// verifyProvenance runs the configured provenance check; an updater without
+// one refuses.
+func (u *Updater) verifyProvenance(tag string, digest []byte) (string, error) {
+	if u.provenance == nil {
+		return "", errors.New("no provenance check is configured")
+	}
+	return u.provenance.verify(tag, digest)
+}
+
+// remedyInstallByHand names the way to take the release without this verb:
+// fetch the asset, verify the same provenance with gh, and copy it OVER the
+// target (never remove it first, which strands the install).
+func (u *Updater) remedyInstallByHand(tag, target string) string {
+	p := releasePolicy
+	if g, ok := u.provenance.(*githubAttestations); ok {
+		p = g.policy
+	}
+	return "retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or install by hand: download " +
+		u.assetName + " from " + u.assetURL(tag, u.assetName) + " (" + u.origin + "/releases/tag/" + tag + "), check it with `gh attestation verify " +
+		u.assetName + " --repo " + p.repo + " --signer-workflow " + p.repo + "/" + p.workflow + " --source-digest $(gh api repos/" + p.repo + "/commits/" + tag + " -H 'Accept: application/vnd.github.sha')`, which also holds it to the commit " + tag + " names, and only then copy it over " +
+		fsutil.RedactHome(target)
 }
 
 // stagingWriter wraps the staging file's writer: the identity as it ships, a
@@ -821,6 +890,11 @@ func (e *notFoundError) Error() string { return "not found: " + e.url }
 
 // get performs one bounded GET under the pinned transport.
 func (u *Updater) get(rawURL string, limit int64) (io.ReadCloser, int64, error) {
+	return u.getWith(rawURL, limit, nil)
+}
+
+// getWith is get with extra request headers (the attestations API's Accept).
+func (u *Updater) getWith(rawURL string, limit int64, headers map[string]string) (io.ReadCloser, int64, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, 0, err
@@ -833,6 +907,9 @@ func (u *Updater) get(rawURL string, limit int64) (io.ReadCloser, int64, error) 
 		return nil, 0, err
 	}
 	req.Header.Set("User-Agent", "abcd-update")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return nil, 0, err

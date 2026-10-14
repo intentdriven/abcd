@@ -12,6 +12,8 @@ found_at: "internal/core/ahoy/cache_attestation.go, hooks/bootstrap.sh"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Cache attestation freshness: a release_tag binding, an attested_at bound, or a rewrite on every manifest-reaching run?"
 remedy: "Waits on ruling W (a release_tag binding, an attested_at bound, both, or kept): add the freshness term the ruling picks to the cache attestation in internal/core/ahoy/cache_attestation.go and hooks/bootstrap.sh: if a release binding, write release_tag and refuse promotion when the cache's binary-meta tag differs or is older than the newest tag this machine has recorded; if a time bound, read the already-written attested_at and refuse past the bound until an online session re-attests; if both, both; if kept, document the downgrade window in the threat model. Prove it with a test that replays the record's four steps (restore an older attested artefact) and expects the promotion refused."
+resolution: "facilitator design: a failed attestation write in hooks/bootstrap.sh removes the old attestation; the attestation names its release; a home-scoped newest-release mark (~/.abcd.noindex/release-mark, 0600, atomic) is raised by the bootstrap and recorded by abcd update; ahoy install and the bootstrap refuse a cached release older than the mark, and a withdrawal (latest below the mark) is refused naming abcd update <tag>, the one way to lower it"
+impact: fix
 ---
 
 The home-scoped cache attestation (GHSA-4q78-ccfv-f374) binds exactly two
