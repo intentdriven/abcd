@@ -262,8 +262,37 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 	}
 }
 
+// TestDisallowedOriginIsRefused: by default the relay admits
+// https://abcdesign.app and loopback pages; given origins replace that list,
+// so then only they are admitted.
 func TestDisallowedOriginIsRefused(t *testing.T) {
-	f := newFixture(t, func(c *Config) { c.Origins = []string{"https://brief.example.org"} })
+	refused := func(f *fixture, o string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		h := http.Header{}
+		if o != "" {
+			h.Set("Origin", o)
+		}
+		_, resp, err := websocket.Dial(ctx, f.wsURL, &websocket.DialOptions{HTTPHeader: h})
+		if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+			t.Errorf("origin %q: err=%v resp=%v, want 403", o, err, resp)
+		}
+	}
+	def := newFixture(t, nil)
+	for _, o := range []string{"https://abcdesign.app", "http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost"} {
+		def.dial(t, o)
+	}
+	for _, o := range []string{"https://brief.example.org", "https://evil.example", "", "null"} {
+		refused(def, o)
+	}
+	f := newFixture(t, func(c *Config) { c.Origins = []string{"https://brief.example.org", "http://localhost:5173"} })
+	for _, o := range []string{"https://abcdesign.app", "http://127.0.0.1:8000", "http://localhost", "http://localhost:5174"} {
+		refused(f, o)
+	}
+	for _, o := range []string{"https://brief.example.org", "http://localhost:5173"} {
+		f.dial(t, o)
+	}
 	for _, o := range []string{"https://evil.example", "", "null", "https://abcdesign.app.evil.example", "http://abcdesign.app"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		h := http.Header{}
@@ -275,9 +304,6 @@ func TestDisallowedOriginIsRefused(t *testing.T) {
 		if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
 			t.Errorf("origin %q: err=%v resp=%v, want 403", o, err, resp)
 		}
-	}
-	for _, o := range []string{"https://abcdesign.app", "https://brief.example.org", "http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost"} {
-		f.dial(t, o)
 	}
 }
 

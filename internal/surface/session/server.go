@@ -36,8 +36,8 @@ import (
 	core "github.com/intentdriven/abcd/internal/core/session"
 )
 
-// DefaultOrigin is the page's own origin, allowed unless the relay is told
-// otherwise; loopback origins are allowed too, for a page run locally.
+// DefaultOrigin is the page's own origin. With loopback pages, for a page run
+// locally, it is the default allowlist, which Config.Origins replaces.
 const DefaultOrigin = "https://abcdesign.app"
 
 // The kinds of GitHub sign-in app a team registers. A GitHub App's user
@@ -84,8 +84,9 @@ const (
 
 // Config is what the front door needs.
 type Config struct {
-	// Origins are allowed besides DefaultOrigin and loopback, each an exact
-	// scheme://host[:port].
+	// Origins, each an exact scheme://host[:port], replace the default
+	// allowlist (DefaultOrigin and any loopback page) when given: a relay
+	// serving a page from its own origin admits nothing else.
 	Origins []string
 	// BehindProxy trusts the last X-Forwarded-For entry as the client's
 	// address, which is right only behind a proxy that sets it.
@@ -120,7 +121,7 @@ type Config struct {
 // Server is the relay's HTTP handler.
 type Server struct {
 	cfg     Config
-	origins map[string]bool
+	origins map[string]bool // the given origins; nil admits the default list
 	relay   *core.Relay
 	client  *http.Client
 }
@@ -154,8 +155,11 @@ func New(cfg Config) (*Server, error) {
 	default:
 		return nil, fmt.Errorf("%q is not a sign-in app type: give %s or %s", cfg.AppType, AppTypeGitHubApp, AppTypeOAuthApp)
 	}
-	origins := map[string]bool{DefaultOrigin: true}
+	var origins map[string]bool
 	for _, o := range cfg.Origins {
+		if origins == nil {
+			origins = map[string]bool{}
+		}
 		n, ok := normalizeOrigin(o)
 		if !ok {
 			return nil, fmt.Errorf("%q is not an origin: give scheme://host[:port], over http or https, with no path or wildcard", o)
@@ -250,15 +254,19 @@ func normalizeOrigin(s string) (string, bool) {
 	return u.Scheme + "://" + strings.ToLower(u.Host), true
 }
 
-// originAllowed judges a request's Origin: one of the allowed origins, or a
-// loopback page. A request with no Origin is refused: every browser sends
-// one on a WebSocket and on a cross-origin POST.
+// originAllowed judges a request's Origin: one of the given origins exactly,
+// or, when none was given, DefaultOrigin or a loopback page. A request with
+// no Origin is refused: every browser sends one on a WebSocket and on a
+// cross-origin POST.
 func (s *Server) originAllowed(origin string) bool {
 	n, ok := normalizeOrigin(origin)
 	if !ok {
 		return false
 	}
-	if s.origins[n] {
+	if s.origins != nil {
+		return s.origins[n]
+	}
+	if n == DefaultOrigin {
 		return true
 	}
 	u, _ := url.Parse(n)
