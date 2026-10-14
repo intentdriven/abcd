@@ -225,7 +225,7 @@ replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
 under a run id it does not name. The state is schema version 11. Version 11
 added the run's reservation on the shared remote (itd-2609091034175565): the
-run's `reserved_at`, the reservation `abcd implement step` renews at half its
+run's `reserved_at`, the reservation each step of the run renews at half its
 lease, fences before the landing arms a merge, and tombstones once the run's
 last lane has landed. Version 10 is its strict subset, read as a run that holds
 no reservation; a file of version 10 or lower carrying `reserved_at` is
