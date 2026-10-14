@@ -122,6 +122,9 @@ choice, recorded for review; none changes a criterion.
   held the run's lock, and that the person hands back with `abcd implement
   receipt` is recorded as the route's when it is that answer byte for byte; a
   return the host's agent wrote, or rewrote, has no note and is the host's
+  (refined on review 2026-10-14). An answer the loop could not place, because
+  another invocation held the run's lock past the retries, is kept aside the
+  same way, with its note, and the contention refusal names where it is
   (refined on review 2026-10-14).
 - 2026-10-12 (agent's choice, for review): **Which reviews take the route, and
   where.** The ruthless and the security reviewer, when the step hands them to

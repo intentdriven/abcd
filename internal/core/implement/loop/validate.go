@@ -915,7 +915,20 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	if err != nil {
 		return fallBack(repoRoot, runID, res, aw, rr, err, o)
 	}
-	placed, err := placeReturn(repoRoot, runID, aw.Receipt, rr.Name, ret)
+	placed, err := placeRouteReturn(repoRoot, runID, aw.Receipt, rr.Name, ret)
+	if refusal, ok := AsRefusal(err); ok && refusal.Contention {
+		// Another invocation held the run's lock past the retries, so the
+		// return could not be placed: the answer is kept aside rather than
+		// dropped, and the refusal names where.
+		aside, kerr := keepAside(repoRoot, aw, rr, ret)
+		if kerr != nil {
+			return res, errors.Join(err, kerr)
+		}
+		return res, contend(refusal.Stage, refusal.Check, res.Lane, refusal.Reason,
+			fmt.Sprintf("the %s route's answer is kept aside at %s and recorded nowhere; the review still awaits its return at %s: "+
+				"copy the answer there, if nothing stands there yet, and hand it back with `abcd implement receipt %s`",
+				rr.Name, aside, aw.Receipt, aw.Receipt))
+	}
 	if err != nil {
 		return res, err
 	}
@@ -963,6 +976,10 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 // reviewReceipt hands the route's placed return back through the receipt;
 // a variable so a test can stand in for a receipt that fails.
 var reviewReceipt = receipt
+
+// placeRouteReturn is placeReturn; a variable so a test can stand in for a
+// placement the run's lock refuses.
+var placeRouteReturn = placeReturn
 
 // reasonInterrupted is the fallback's reason for a step interrupted while the
 // route worked: the person's interrupt, or a host's command timeout.
@@ -1112,8 +1129,8 @@ func removeRoundFile(repoRoot, rel string) error {
 // the host's agent wrote already stands there, records nothing for it, and
 // reports where the lane stands now.
 func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute, ret string) (StepResult, error) {
-	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/" + rr.Name + "-return.md"
-	if err := writeRoundFile(repoRoot, aside, []byte(ret)); err != nil {
+	aside, err := keepAside(repoRoot, aw, rr, ret)
+	if err != nil {
 		return res, err
 	}
 	st, err := ReadState(repoRoot, runID)
@@ -1128,6 +1145,20 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 	res.Next = fmt.Sprintf("a return the host's agent wrote already stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
 		aw.Receipt, rr.Name, aside, res.Next)
 	return res, nil
+}
+
+// keepAside writes the route's answer beside the review's return, with its
+// answer note (answerNoteRel), so the answer copied to the return path and
+// handed back is the route's, and reports the path it wrote.
+func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, error) {
+	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/" + rr.Name + "-return.md"
+	if err := writeRoundFile(repoRoot, answerNoteRel(aw.Receipt, ret), []byte(rr.Name+"\n")); err != nil {
+		return "", err
+	}
+	if err := writeRoundFile(repoRoot, aside, []byte(ret)); err != nil {
+		return "", err
+	}
+	return aside, nil
 }
 
 // lockRetries bounds the retries of a write the route's result needs when

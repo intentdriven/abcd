@@ -696,3 +696,47 @@ func TestAHandBackAfterABusyLockRecordsTheRoute(t *testing.T) {
 		})
 	}
 }
+
+// TestABusyLockAtThePlacementKeepsTheAnswerAside: the route answered, and
+// another invocation held the run's lock past the retries, so its return
+// could not be placed. The answer is not dropped: it is kept aside in the
+// review's directory, the contention refusal names where, nothing is
+// recorded for it, and the review still awaits its return. Placed at the
+// return path as the remedy says and handed back, it is the route's.
+func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	prev := placeRouteReturn
+	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+	placeRouteReturn = prev
+	aside := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt))) + "/rp-return.md"
+	r, ok := AsRefusal(err)
+	if !ok || !r.Contention || !strings.Contains(r.Remedy, aside) || !strings.Contains(r.Remedy, "abcd implement receipt "+aw.Receipt) {
+		t.Fatalf("a busy lock at the placement is refused as contention, naming the answer kept aside: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aside)))
+	if err != nil || string(b) != reviewerReturn("SHIP") {
+		t.Fatalf("the route's answer is kept aside: %q %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
+		t.Fatal("nothing is placed at the return path")
+	}
+	st, _ := ReadState(repo.Root(), id)
+	if len(st.Fallbacks) != 0 || st.Lanes[0].awaiting() == nil {
+		t.Fatalf("no fallback is recorded and the review still awaits its return: %+v", st.Fallbacks)
+	}
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err != nil {
+		t.Fatalf("the answer placed as the remedy says hands back: %v", err)
+	}
+	st, _ = ReadState(repo.Root(), id)
+	if v := st.Lanes[0].Validation[0].Validators[0]; v.Route == nil || *v.Route != (runner.RouteRecord{Asked: "rp", Ran: "rp"}) {
+		t.Fatalf("the answer kept aside, handed back, is the route's: %+v", v)
+	}
+}
