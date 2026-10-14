@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> [--findings-json <file>…] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -1171,6 +1171,7 @@ the one it read: a stderr line `abcd intent audit --issue-drift: ledger of
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency --json                               # the brief and every intent
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency <itd-N> --json                       # one intent against the rest
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <file> --json # file the findings
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <chunk 1> --findings-json <chunk 2> --json # every chunk of an overflow
 ```
 
 The cross-document pass (the intent-auditor's Role 2). The first form reads the
@@ -1189,14 +1190,66 @@ and marks the report with every path either reading names, so a mark edited out
 of the request, or an edit committed since the emit, never leaves the report
 clean.
 
-Then run the pass, one request at a time:
+**The request limit.** The emit measures the corpus file it would write, in
+bytes, against `consistency.max_request_bytes`: read from the repository's
+`.abcd/config.json`, else `~/.abcd.noindex/config.json`, else 524288 (512 KiB).
+A value below 65536 or above 1048576 (the most a provider dispatch sends), or a
+misspelt key under `consistency`, refuses the emit naming its file. A corpus
+within the limit is one request and one corpus file, and the result carries no
+`overflow`. A corpus over it is reviewed in chunks, and the whole corpus file
+is not written: the result's `overflow` states `corpus_bytes`, `limit_bytes`,
+the `groups` the documents were packed into in path order, the `chunks`, and
+the `unreviewed` documents (each `path` with its framed `bytes`, too large for
+any chunk, so no chunk reads it; the emit and the ingest each warn on stderr
+naming every one). `chunks` lists each chunk's `index`,
+`receipt_id`, `request_path`, `corpus_path`, `documents` and `bytes` (its
+request and corpus file together), and `chunk_bytes` totals them;
+`request_path` and `corpus_path` at the top are then empty, and `receipt_id` is
+the emit's. A plan of more than 128 chunks is refused with nothing written,
+naming its count and a larger `consistency.max_request_bytes` to try (or, when
+none up to 1 MiB plans within it, a run scoped to one intent). A run
+over the whole corpus writes one chunk for every pair of groups, so every pair
+of documents is read together in at least one chunk; a run scoped to one intent
+puts that intent in every chunk beside each group of the rest, and refuses
+when the intent alone cannot fit the limit. Each chunk is an ordinary request
+and corpus pair: its manifest lists that chunk's documents only, so a finding's
+ends must both be in the chunk.
+
+Then run the pass, one request at a time (one per chunk when the corpus
+overflows):
 
 1. Dispatch the `intent-auditor` agent with its **Role 2** section, handing it
    the whole request file and the corpus file it names. Relay the request's
    `## Routing` tier where the harness lets you choose one; `--route` works as
    it does for the audit above.
 2. Save the single JSON block it returns to a file, unedited.
-3. Run the ingest on that file and report its result.
+3. Run the ingest on that file and report its result. For a chunked corpus,
+   run every chunk first and ingest all of their files in one call, one
+   `--findings-json` per chunk: the ingest refuses, writing nothing, unless it
+   holds exactly one valid payload for every chunk of one emit (a chunk
+   missing or given twice, chunks of two emits, or a chunk beside an unchunked
+   payload). Findings of different chunks that share a key are one finding,
+   numbered in chunk order. Each pair of documents is owned by one chunk, whose
+   request alone asks for it; a finding on a pair another chunk owns is set
+   aside rather than filed, and `set_aside` counts it.
+
+On a provider route, the emit states the chunk count and their bytes on
+stderr, then sends the chunks one after another and ingests them together; if
+any send falls back to the harness, every chunk is left to the host, and it
+says so on stderr. Each answer the provider returned is kept as it arrives, at
+`.abcd/.work.local/reviews/<chunk receipt>.findings.json`, and the fallback
+names those files: give them to the ingest for their chunks beside the ones
+the host runs, or run again on the provider route, which sends only the chunks
+whose kept answer is missing, no longer validates, or came from another
+connection or model than the route now names. Once a set is ingested, by
+either path, its kept answers are removed, so a later run asks the model
+again. To make the next run ask again before then, delete the kept files
+(`<chunk receipt>.findings.json` and `<chunk receipt>.route.json`). Each chunk is a request
+paid for on its own, so a plan with more than `--max-chunks` (default 8)
+chunks still to send is refused there at exit 2, with nothing written or sent,
+naming that count and its bytes (a chunk a kept answer serves is not counted);
+run again with `--max-chunks <count>` to send them. A harness emit is
+not capped by it.
 
 The ingest validates before it writes anything. It refuses, with nothing
 written: a receipt no request here was issued for, a corpus that moved since the
@@ -1211,19 +1264,35 @@ finding and the id, wherever the repository's record-lint gates prose
 citations in the issue ledger: every finding is checked before the first is
 filed, so re-word the prose to describe the record and ingest again.
 
+Every finding carries a stable key (`finding_ref` in each `--json` row), `cfk-`
+and sixteen hex digits, derived
+from its class, its two ends' paths (with an intent's bucket, an issue's status
+folder and a spec's `open`/`closed` folder dropped, so a record moving between
+them keeps the key) and their quotes with whitespace collapsed: the same
+contradiction carries the same key on every run.
+
 A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with
-the report as its evidence) — unless an open record already quotes either end
-and names its document, in which case it is linked to that record and nothing
-is filed. A finding it files runs the capture verb's filing-time match on its
+the report as its evidence, carrying the key as `finding_ref:`) — unless a
+record already holds it. A record in `open/` carrying the key links the
+finding to it; failing that, a record in `resolved/` or `wontfix/` carrying the
+key marks the finding `addressed`, naming that record, and files nothing; and
+failing both, an open record that quotes either end and names its document
+(one filed before keys existed) links it. Linking and marking write nothing to
+the record. A finding it files runs the capture verb's filing-time match on its
 summary and explanation, never against a record the same pass filed, and
 carries a `duplicates:` or `refines:` link naming each likely double; each row
 reports it as `match`. And one dated report lands on the reviews shelf,
 `.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
-commit the pass read, listing every finding with both ends quoted and located
-and the record it was filed as or linked to; a second run the same day takes
-the next free suffix. Report `status`, `report_path`, and the `filed` and
-`linked` ids. The same findings ingested again are a `noop` naming the report.
+commit the pass read (for a chunked corpus, one report covering every chunk,
+whose header states the overflow, the unreviewed documents and every chunk's
+receipt, and whose `receipt` is the emit's), listing every finding with its key, both ends quoted and
+located, and the record it was filed as, linked to (`already open`) or
+addressed by (`addressed: resolved` or `addressed: wontfix`); a second run the
+same day takes the next free suffix. Each row's `state` is `filed`, `linked`
+or `addressed`, and an addressed row's `addressed_by` names the record and its
+folder. Report `status`, `report_path`, and the `filed`, `linked` and
+`addressed` ids. The same findings ingested again are a `noop` naming the report.
 The brief and the intents are never edited: act on a finding through its issue.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

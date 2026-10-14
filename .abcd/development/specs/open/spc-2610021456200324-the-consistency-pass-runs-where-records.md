@@ -19,7 +19,7 @@ Four pieces land in the order decision 7 and decision 6 set:
 
 - **G1** gives every finding a deterministic key, `cfk-` and sixteen hex
   digits, derived from the class, the two ends and their collapsed quotes. The
-  key is written into the issue a finding files (`finding_key:`), and a finding
+  key is written into the issue a finding files (`finding_ref:`), and a finding
   whose key a resolved or won't-fix record carries is marked `addressed` and
   files nothing.
 - **A1** adds three record-lint rules at warn, read out of the `record_schema`
@@ -55,10 +55,10 @@ In:
 - `internal/core/intent`: the key on every finding and row, the `addressed`
   state, the `staged` scope, overflow measurement and chunked emit and ingest;
 - `internal/core/capture`: the key lookup across `open/`, `resolved/` and
-  `wontfix/`, `finding_key` on the filed record, a dry classification for the
+  `wontfix/`, `finding_ref` on the filed record, a dry classification for the
   gate, and `Link` taught to append `related_intents`;
-- `internal/core/issueschema`: `finding_key` joins `Known`;
-- `internal/core/lint`: the three A1 rules, `finding_key`'s shape check in
+- `internal/core/issueschema`: `finding_ref` joins `Known`;
+- `internal/core/lint`: the three A1 rules, `finding_ref`'s shape check in
   `record_schema`, and `related_issues` and `routed_from` read by the scan;
 - `.abcd/record-lint.json`: the three rules at warn;
 - a new package, `internal/core/consistencygate`: the gate's decisions;
@@ -101,7 +101,9 @@ The package sits under `internal/core/record` beside `match` because both
 `validateConsistencyFindings` replaces its local
 `f.Class + "\x00" + k0 + "\x00" + k1` with the derived key, so the duplicate
 check and the row key are one computation. `ConsistencyFinding` gains
-`Key string` (`json:"key"`).
+`Key string` (`json:"finding_ref"`: a `"key": "cfk-…"` member is flagged by a
+default gitleaks as the record field was, so the JSON row spells it as the
+record does).
 
 **`ConsistencyRow`** gains `State` (`filed` | `linked` | `addressed`) and
 `AddressedBy` (the record's id and its folder). `Linked` stays, so `--json`
@@ -111,11 +113,11 @@ consumers keep working. `ConsistencyIngestResult` gains
 
 **The rendered report** gains a key column. The ledger cell reads
 `iss-N (filed)`, `iss-N (already open)` or `iss-N (addressed: resolved)` /
-`(addressed: wontfix)`. Each finding's detail line carries `key: cfk-…`.
+`(addressed: wontfix)`. Each finding's detail line carries `finding_ref: cfk-…`.
 
 **The filer** in `capture.IngestConsistency` looks a finding up in this order:
 
-1. Every record in `open/`, `resolved/` and `wontfix/` whose `finding_key`
+1. Every record in `open/`, `resolved/` and `wontfix/` whose `finding_ref`
    equals the key. The ledger is read once per ingest, as `loadOpen` reads it
    now. An open record wins and links. Failing that, a resolved or won't-fix
    record makes the finding `addressed`: nothing is filed and nothing is
@@ -123,8 +125,8 @@ consumers keep working. `ConsistencyIngestResult` gains
 2. Failing that, `openRecordHolding`, the existing prose match. It still links
    a record filed before keys existed. Linking writes nothing, as it does
    today, so no key is back-filled into a legacy record.
-3. Failing that, the finding is filed. `CaptureRequest` gains `FindingKey`,
-   which capture writes as frontmatter `finding_key:` and refuses unless it
+3. Failing that, the finding is filed. `CaptureRequest` gains `FindingRef`,
+   which capture writes as frontmatter `finding_ref:` and refuses unless it
    matches `^cfk-[0-9a-f]{16}$`.
 
 `check` skips a finding that is linked or addressed, as it already skips a
@@ -133,9 +135,9 @@ adr-2609300821558671 extended, keeps working as it does. The key does not
 replace it: the key joins exactly one contradiction to itself, and the match
 compares prose.
 
-**`issueschema.Known`** gains `finding_key`. Without it the ledger reader would
+**`issueschema.Known`** gains `finding_ref`. Without it the ledger reader would
 refuse a keyed record and drop it from every capture surface. `record_schema`
-reports a `finding_key` whose value is not the key's shape, so the
+reports a `finding_ref` whose value is not the key's shape, so the
 committed-ledger gate refuses what capture refuses.
 
 ### A1: three cross-document rules at warn
@@ -181,7 +183,9 @@ same with or without the gate.
 The `routed_from` entries are all spellings from the predecessor store, which
 the local spc-33 does not carry, so all five are skipped. The 136 targets of
 `builds_on_reciprocal` never name their follower. They arrive as warnings and
-fail nothing (see the open point).
+fail nothing (see the open point). These are the counts when this spec was
+written; when the rule landed the tree held 155 one-way edges of 217, and
+those 155 are what the exemption list holds.
 
 ### A4: measure, report, and read in chunks
 
@@ -216,8 +220,8 @@ report name it as unreviewed, with its size.
 
 Each chunk is an ordinary request and corpus pair:
 
-- its receipt is derived from the scope, the whole corpus's digest and
-  `chunk i of n`;
+- its receipt is derived from the scope, the whole corpus's digest, the
+  request limit and `chunk i of n`;
 - its prompt names the chunk and the emit's receipt (the receipt of the
   unchunked corpus), so `prompt_hash` binds both;
 - its manifest lists only that chunk's documents, so the existing rubric rule
@@ -230,8 +234,8 @@ unreviewed}` and lists every chunk's request and corpus path.
 **The ingest** takes `--findings-json` once per chunk and refuses, writing
 nothing, unless it holds exactly one valid payload for every chunk of one emit.
 That refusal is what makes "the report covers every chunk" checkable. Findings
-from different chunks that share a key are one finding, and the first chunk's
-copy is kept. The report's header states the overflow (corpus bytes, limit,
+from different chunks that share a key are one finding, and the owning chunk's
+copy is kept (see "every pair has one owner chunk" below). The report's header states the overflow (corpus bytes, limit,
 groups, chunks, unreviewed documents) and lists every chunk's receipt.
 
 **On a provider route**, the front door sends the chunks one after another
@@ -313,7 +317,7 @@ prose. A linked or addressed row is printed as known.
     gains `RelatedIntents`, appended through the validated single-field rewrite
     it already makes for `blocked_by`. The issue is then staged;
   - every judgement finding is ingested for real, so each issue is filed with
-    its `finding_key` and the report is written to the reviews shelf. Both are
+    its `finding_ref` and the report is written to the reviews shelf. Both are
     staged;
   - each change is noted, both printed and as a `Consistency-fix:` trailer
     line handed to the managed gates' `prepare-commit-msg` stage, so the commit
@@ -375,7 +379,7 @@ verb.
    either case.
 3. Under automatic, the gate adds the missing `related_intents` entry through
    `capture.Link` and stages it with a printed note and a trailer. It files the
-   judgement finding with its `finding_key`, stages both, and exits 0.
+   judgement finding with its `finding_ref`, stages both, and exits 0.
 4. The `consistency_hook` question is asked by `ahoy` (gap, prompt help, flag)
    and the answer is recorded as `consistency.on_finding`.
 5. With no admitted machine-layer provider route, no model is called, the A1
@@ -389,7 +393,7 @@ verb.
    reports the size and the chunk plan, and the ingest refuses unless every
    chunk is present. A corpus that fits emits one request with no overflow.
 9. `findingkey.Derive` returns the same key from the same class, identity paths
-   and collapsed quotes on any run. Capture writes it as `finding_key`, and the
+   and collapsed quotes on any run. Capture writes it as `finding_ref`, and the
    second run's row carries it.
 10. The key lookup finds a resolved or won't-fix record carrying the key. The row
     is `addressed`, naming that record, and nothing is filed.
@@ -449,24 +453,216 @@ These are the facilitator's design calls. None changes a criterion.
 - **The verb** is `abcd intent consistency precommit`, with exit 0 to proceed,
   1 only for the stop refusal, and 2 for a fault.
 
+### Agent's choices, 2026-10-12 (for review)
+
+The building agent made these calls where the spec is silent, taking the
+narrowest reading that meets the criteria. Each is open to review.
+
+- **Step 1, the addressing folder.** `ConsistencyFiling` carries `Folder`
+  beside `Addressed`. Without it the row's `AddressedBy` could not name the
+  record's folder.
+- **Step 1, the reader refuses a malformed key too.** `issuerecord.ValidateStrict`
+  refuses a `finding_ref` that is not the key's shape, as it refuses a
+  malformed `lapsed_at`. Capture, the reader and `record_schema` therefore
+  agree. `record_schema`'s own leg names a non-blank malformed value; a blank
+  one is left to the reader-parity backstop.
+- **Step 1, several closed records with one key.** When no open record
+  carries the key, the first resolved or won't-fix record in ledger order
+  addresses the finding.
+- **Step 1, the field is `finding_ref`, not `finding_key`** (from review,
+  2026-10-14). gitleaks' default `generic-api-key` rule reads
+  `finding_key: cfk-…` as a credential assignment: on 8.24.3 (CI's pin) and
+  8.30.1 it flagged most such lines, and it flagged the report's
+  `key: cfk-…` detail line too. Any repository running a default gitleaks
+  would then fail on the records and reports abcd writes, which a repo-local
+  allowlist cannot prevent outside this repository. `finding_ref` is flagged
+  by neither version, so the record carries `finding_ref:` and the report's
+  detail line reads `finding_ref: cfk-…`; the value keeps its `cfk-` shape,
+  and this repository's allowlist for it is gone. Nothing had written the old
+  name outside the unmerged branch, so there is no migration. One history
+  line stays flagged, a test constant commit 268da6f4a added, and
+  `.gitleaksignore` pins exactly that line by its fingerprint (commit, file,
+  rule, line). The pin holds only while that commit survives, so the pull
+  request carrying this step lands as a merge commit, never a rebase, which
+  rewrites the commit's sha and leaves the line flagged in the merged
+  history; a squash would leave no flagged line and the pin unused.
+- **Step 1, what the key cannot see** (from review, 2026-10-14). The key is
+  over the reviewers' quotes, collapsed for whitespace only. So the same
+  contradiction quoted differently on a later run (another sentence of the
+  passage, a longer excerpt, a reworded document) gets another key: a closed
+  record carrying the old key does not mark it addressed, and it is filed
+  again unless the prose match links it to an open record. And a
+  contradiction fixed and later reintroduced with the same text gets the same
+  key, so a resolved record carrying it marks the new occurrence addressed and
+  files nothing. Both are stated on `findingkey.Derive`; neither is changed
+  here.
+- **Step 1, the duplicate refusal names the key.** "finding N repeats
+  finding M" now ends with the key the two share.
+- **Step 2, the exemption list.** `builds_on_reciprocal` reads its own
+  `exempt_edges` field in `.abcd/record-lint.json`, one `<source> -> <target>`
+  entry per one-way edge. The tree held 155 one-way edges of 217 when the rule
+  landed (the spec measured 136 of 184), and all 155 are listed. A test holds
+  every entry to the set it landed with, a testdata file the test pins at
+  exactly 155 entries and by its sha256 (from review), so the list grows only
+  by editing the Go test itself. Every entry must still name a `builds_on` edge in the
+  tree, so a dropped edge drops its entry. The test does not demand the edge
+  stay one-way, so answering one never fails a test.
+- **Step 2, where a finding sits.** On the file that declares the link, at the
+  field's line, naming the other file. The key ends the message. It is also the
+  lint finding's `Key` field (`finding_ref` in JSON, as the record, the report
+  and the consistency rows spell it, since a default gitleaks flags
+  `"Key": "cfk-…"`), which no front door prints yet: a seam for step
+  4's gate.
+- **Step 2, one `routed_from` finding per routing record.** Entries routed from
+  one record share both files and so one key, and are one finding.
+- **Step 2, the item label.** A label counts only bounded on both sides by a
+  character that is not a letter, digit or hyphen.
+- **Step 2, naming a record id is one test** (from review, 2026-10-14).
+  record-lint's A1 rules and the consistency filer's prose match both call
+  `recordid.NamesID`. It reads both neighbours of the id as characters, not
+  bytes: a letter or digit after the id, ASCII or not, means the text names
+  another word (`itd-4abc`, `itd-4é`, `itd-4s` do not name itd-4), and a
+  hyphen after it still names it (the record's own slug); a letter, digit or
+  hyphen before it makes a longer word. For the filer this is a change on
+  both sides: it tested only for a digit after the id, so `itd-4s` linked,
+  and it read the byte before the id as a character, so a non-ASCII
+  character there such as `›` blocked a match that is now made.
+- **Step 2, what is judged.** `builds_on` is judged from every store and bucket,
+  superseded records included. `related_issues` is judged on intents only. A
+  record naming itself, or a target named twice, is no extra edge. Where two
+  files claim one id, the first in scan order answers.
+- **Step 2, the citation rule keeps its coverage.** `related_issues` and
+  `routed_from` join the graph fields. `prose_citation_resolves` keeps reading
+  both as prose, so moving them takes no coverage away.
+- **Step 3, the limit's home.** The emit takes the limit as
+  `MaxRequestBytes`, 0 meaning the bundled 524288. The 64 KiB–1 MiB bounds are
+  the configuration loader's, so the core plans under any positive limit.
+  `on_finding` is claimed beside it now and left unread until step 4.
+- **Step 3, an unreviewed document's size** is its framed size: its manifest
+  line, its BEGIN and END lines and its text. That is the number compared with
+  a group's budget.
+- **Step 3, "the space a chunk leaves" is a group's space.** A whole-corpus
+  chunk is two groups, each filled to half of what the header leaves, so a
+  document over half cannot share a chunk with every other document. Such a
+  document is named as unreviewed, even when it alone would fit a chunk. The
+  emit and the ingest each warn on stderr naming every unreviewed document
+  and its size (from review), since both still succeed and the report alone
+  would otherwise say so. At
+  the bundled 512 KiB no document in this tree comes near half. At the
+  64 KiB floor, brief pages over about 32 KB go unreviewed. Pairing such a
+  document with re-packed groups, as a scoped run pins its scope, is left for
+  review.
+- **Step 3, the header allowance** is an upper bound, rendered at worst-case
+  number widths. Every rendered chunk is still checked against the limit, and
+  a chunk over it refuses the emit with nothing written.
+- **Step 3, nothing fits.** When no group can form, the emit is refused rather
+  than writing no chunk. So is a scope too large to sit in a chunk by itself.
+- **Step 3, the top-level paths.** On an overflow, `request_path` and
+  `corpus_path` are empty, `chunks` lists every chunk's pair, and `receipt_id`
+  is the emit's receipt. The unchunked corpus file is not written.
+- **Step 3, the ingest recomputes the plan** from the chunk request's
+  `limit_bytes` line, which `prompt_hash` binds, not from the configuration.
+  A limit changed in the configuration between emit and ingest therefore never
+  breaks a chunk set. The chunk receipt binds the limit too (from review: it
+  first left it out, as the spec then spelled it, so a re-emit at another limit
+  that planned as many chunks overwrote the set in flight under the same
+  receipts). A re-emit at another limit now writes a separate chunk set beside
+  the first, and either set ingests.
+- **Step 3, extra refusals.** The ingest also refuses:
+  - a payload and a chunk set handed in together;
+  - two unchunked payloads;
+  - chunks read at different commits;
+  - a chunk request the corpus no longer plans, or whose corpus now fits its
+    limit.
+- **Step 3, the merged payload digest** is taken over every chunk's payload
+  digest in chunk order, so the same set given in any order is a noop.
+- **Step 3, several verifiers.** When different verifiers answered the
+  chunks, the report's verifier line lists each one.
+- **Step 3, every pair has one owner chunk** (from review). A whole-corpus
+  plan holds two documents of one group in several chunks, so one
+  contradiction could be filed once per chunk under different quotes. Every
+  pair is therefore owned by one chunk:
+  - a cross-group pair by the chunk holding both groups;
+  - group i's own pairs by the chunk pairing it with group i+1, and the last
+    group's by the chunk pairing it with the group before;
+  - in a scoped run, the scope's own pairs by chunk 1.
+
+  A chunk's prompt names the sets whose pairs it does not report. The ingest
+  sets aside a finding from a chunk that does not own its pair, and the
+  report and the result count it (`set_aside`). A key names one pair, so
+  findings sharing a key keep the owning chunk's copy, and no separate merge
+  by key is needed (from review). The
+  rubric is unchanged.
+- **Step 3, a ceiling on chunks** (from review, 2026-10-14). A whole-corpus
+  plan grows with the square of its groups: this tree's 2.36 MB corpus plans 45
+  chunks at the bundled 512 KiB, 210 at 256 KiB and 2,080 at the 64 KiB floor,
+  and the review estimated that a cloned repository with a 20 MB brief of small
+  pages would plan about 200,000 and exhaust memory, because the emit rendered
+  every chunk before writing any. Three changes:
+  - a plan of more than 128 chunks (`MaxConsistencyChunks`) is refused with
+    nothing written, naming its count and the smallest larger limit, doubling
+    up to 1 MiB, that fits the corpus in one request or plans within the
+    ceiling; when none does, it points at a scoped run, whose chunks grow with
+    its groups alone. 128 is about three times this tree's plan at the
+    default, so a corpus 1.7 times today's still plans at 512 KiB and one of
+    about 8 MiB at 1 MiB; at the default limit it bounds a run at about
+    64 MiB of requests;
+  - the emit measures every chunk first, keeping no text, then renders and
+    writes one chunk at a time, so it holds one chunk in memory, not the set,
+    and a chunk over the limit still refuses with nothing written;
+  - on a provider route the verb states the chunk count and their bytes before
+    the first send, and a plan of more than `--max-chunks` (default 8, about
+    4 MiB at the default limit) is refused before anything is written or sent,
+    naming the count to pass. The emit result gains `chunk_bytes` and each
+    chunk its `bytes`. The cap and the bytes it names count only the chunks
+    still to send, not those a kept answer serves (from the second review).
+- **Step 3, the provider route.** The `route` member is the first chunk's
+  dispatch receipt, and `chunk_routes` lists every chunk's. If any send falls
+  back to the harness, every chunk is left to the host, and answers already
+  received are not ingested, because the report covers every chunk or none.
+  They are not lost (from review): each chunk's answer is kept under the
+  local tier as it arrives, at `<chunk receipt>.findings.json` with the
+  call's receipt beside it at `<chunk receipt>.route.json`. The fallback
+  names the kept files, which a host ingest takes as those chunks'
+  `--findings-json`, and the next provider run sends only the chunks without
+  a kept answer that validates against its request and the corpus as they
+  stand, reporting each reused chunk's route from the call that answered it.
+  A kept answer is reused only when that call went to the connection and the
+  model the route now names, and a set's kept answers are removed once the
+  set is ingested, by the provider route or a host ingest (from the second
+  review): without both, a rerun on another provider reused every earlier
+  answer and sent nothing, so whether a rerun asked the model again depended
+  on the corpus's size. Reuse is bound to the connection, the provider and
+  the model the call went to, not to the endpoint or the settings sent, and
+  it is judged before this emit writes its request pair, against the request
+  the kept answer was given for. No `--fresh` flag: a kept answer is mostly
+  the case reuse is for, a fallback awaiting the next run on the same
+  provider and model, and deleting the kept files forces a re-ask. It can
+  outlive that case three ways, none of which files a wrong finding: the
+  answers of a set that fell back and was never ingested stay until a set
+  with those chunk receipts is ingested; a corpus reverted to the same bytes
+  plans the same receipts and reuses them on the same connection and model;
+  and two concurrent runs over one corpus can remove each other's kept
+  answers, which costs only a resend.
+
 ## Open point
 
 _None open._ Both points were settled on 2026-10-02:
 
 - **Ruling DR5 and the gate's model pass** needed no question, because the record settles it. DR5 keeps file-reading agents off a provider with a key unless the owner's personal list admits it, and DR5b-4 treats every remote provider the same way. So the gate's model pass runs where the owner's own settings allow it: on a local model, or on a provider the owner lists once that list carries bundles. Everywhere else the commit is marked "deep check owed" with DR5 named as the reason.
-- **The 136 `builds_on` arrivals** were ruled by the technical facilitator: only new ones are flagged. The one-way edges that exist when the rule lands are recorded once as a baseline, and the rule flags only an edge added after it. The baseline is the shared, shrink-only warnings baseline that ruling BT3 plans (H5); until that ships, the rule's own exemption list holds the 136, and it never grows.
+- **The 136 `builds_on` arrivals** were ruled by the technical facilitator: only new ones are flagged. The one-way edges that exist when the rule lands are recorded once as a baseline, and the rule flags only an edge added after it. The baseline is the shared, shrink-only warnings baseline that ruling BT3 plans (H5); until that ships, the rule's own exemption list holds the 155 one-way edges the tree held when the rule landed (136 when this spec measured it), and it never grows.
 
 ## Footprint
 
 - packages: internal/core/record/findingkey, internal/core/intent, internal/core/capture, internal/core/issueschema, internal/core/lint, internal/core/consistencygate, internal/core/ahoy, internal/surface/cli, .abcd/record-lint.json, commands/
-- tests: the key over reordered ends, whitespace-variant quotes and a record moved between status folders; the same finding ingested twice carrying one key and `finding_key` on the filed record; a resolved and a won't-fix keyed record making the row addressed with nothing filed; a legacy open record still linked by the prose match; `finding_key` admitted by the ledger reader and a malformed one refused by capture and `record_schema`; the three A1 rules over a one-way `builds_on`, an unacknowledged `routed_from`, a predecessor-store `routed_from` skipped, and a missing `related_intents` back-link, each at warn naming both files and its key; a corpus over the limit reported with its size and chunked so every pair of documents shares a chunk, an ingest missing a chunk refused, and a corpus under the limit emitted once with no overflow; the gate under warn, stop and automatic with an introduced back-link and an introduced judgement finding; a standing finding never stopping a commit; no route, a harness route, a repository route and a DR5-refused route each giving owed with no model call and exit 0; the staged scope's corpus as seeds plus one-hop neighbours; one envelope carrying lint and pass together; the ahoy question, its gap and its flag; the board's owed line and its absence from the site block
+- tests: the key over reordered ends, whitespace-variant quotes and a record moved between status folders; the same finding ingested twice carrying one key and `finding_ref` on the filed record; a resolved and a won't-fix keyed record making the row addressed with nothing filed; a legacy open record still linked by the prose match; `finding_ref` admitted by the ledger reader and a malformed one refused by capture and `record_schema`; the three A1 rules over a one-way `builds_on`, an unacknowledged `routed_from`, a predecessor-store `routed_from` skipped, and a missing `related_intents` back-link, each at warn naming both files and its key; a corpus over the limit reported with its size and chunked so every pair of documents shares a chunk, an ingest missing a chunk refused, and a corpus under the limit emitted once with no overflow; the gate under warn, stop and automatic with an introduced back-link and an introduced judgement finding; a standing finding never stopping a commit; no route, a harness route, a repository route and a DR5-refused route each giving owed with no model call and exit 0; the staged scope's corpus as seeds plus one-hop neighbours; one envelope carrying lint and pass together; the ahoy question, its gap and its flag; the board's owed line and its absence from the site block
 
 ## Steps
 
 1. G1: the stable finding key and the addressed state
    - criteria: 9, 10
    - packages: internal/core/record/findingkey, internal/core/intent, internal/core/capture, internal/core/issueschema, internal/core/lint, internal/surface/cli, commands/
-   - tests: `Derive` is stable over reordered ends, collapsed whitespace and a status-folder move, and differs by class; the duplicate check in `validateConsistencyFindings` uses the key; the same payload content ingested in two runs gives one key and the filed record carries `finding_key`; keyed resolved and won't-fix records make the row `addressed` naming them, with nothing filed and the record untouched; an open keyed record links; a legacy open record links by prose with nothing written; `issueschema.Known` admits `finding_key` and capture and `record_schema` refuse a malformed value; the report renders the key column and the addressed cell
+   - tests: `Derive` is stable over reordered ends, collapsed whitespace and a status-folder move, and differs by class; the duplicate check in `validateConsistencyFindings` uses the key; the same payload content ingested in two runs gives one key and the filed record carries `finding_ref`; keyed resolved and won't-fix records make the row `addressed` naming them, with nothing filed and the record untouched; an open keyed record links; a legacy open record links by prose with nothing written; `issueschema.Known` admits `finding_ref` and capture and `record_schema` refuse a malformed value; the report renders the key column and the addressed cell
 2. A1: the cross-document lint codes
    - criteria: 1
    - packages: internal/core/lint, .abcd/record-lint.json

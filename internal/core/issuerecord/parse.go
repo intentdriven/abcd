@@ -8,8 +8,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
-// Parse splits text into a frontmatter map and a body,
-// mirroring _issue_lib._parse_text_with_body. The text MUST start with an
+// parse splits text into a frontmatter map and a body (Parse masks its
+// error), mirroring _issue_lib._parse_text_with_body. The text MUST start with an
 // opening --- line; the next un-indented --- closes the block. At most one
 // leading blank line after the closing delimiter is stripped from the body.
 //
@@ -27,7 +27,7 @@ import (
 // lists (`[]`, `[itd-4, fn-12]`, `["a", "b"]`), and a single level of nested
 // object (used only by the optional resolved_by field). Values decode to
 // string, int, []string, or map[string]any.
-func Parse(text string) (map[string]any, string, error) {
+func parse(text string) (map[string]any, string, error) {
 	lines := SplitKeepEnds(text)
 	// TrimBOM applies to lines[0] and nowhere else: U+FEFF is a byte-order mark
 	// only at the file's first position, and a mid-file "\ufeff---" is an

@@ -108,6 +108,11 @@ func Ship(req ShipRequest) (ShipReport, error) {
 	}
 	report.BlockReasons = wouldRefuseOn(bundle, scan, lockstep, report.Retention, report.Smoke)
 	report.BlockReasons = append(report.BlockReasons, suite.Refusals...)
+	scanWarnings := exclusionWarnings(scan)
+	report.Warnings = append(report.Warnings, scanWarnings...)
+	if policy.StrictWarnings {
+		report.BlockReasons = append(report.BlockReasons, strictReasons(scanWarnings)...)
+	}
 	if len(report.BlockReasons) > 0 {
 		report.Blocked = true
 		report.WouldPublish = false

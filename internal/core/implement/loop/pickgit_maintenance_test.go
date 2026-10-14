@@ -16,9 +16,10 @@ import (
 // the repository's config (ScrubbedEnv), so a repository with a low gc.auto
 // makes the pick commit start `git maintenance run --auto` and `gc --auto`,
 // which repacks the loose objects and runs gc.recentObjectsHook, a program the
-// repository names. pickGit pins gc.auto=0 and maintenance.auto=false on the
-// command line, where they outrank the repository's config, and sets
-// GIT_NO_LAZY_FETCH=1 so a merge in a partial clone fetches nothing.
+// repository names. pickGit, and commitGit for the commit, pin gc.auto=0 and
+// maintenance.auto=false on the command line, where they outrank the
+// repository's config, and set GIT_NO_LAZY_FETCH=1 so a merge in a partial
+// clone fetches nothing.
 func TestPickGitStartsNoAutoMaintenance(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX sentinel script")
@@ -65,7 +66,7 @@ func TestPickGitStartsNoAutoMaintenance(t *testing.T) {
 	if _, err := pickGit(r.Root(), "add", "--", "pick.md"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pickGit(r.Root(), "commit", "-q", "-m", "pick", "--", "pick.md"); err != nil {
+	if _, err := commitGit(r.Root(), "commit", "-q", "-m", "pick", "--", "pick.md"); err != nil {
 		t.Fatal(err)
 	}
 	if n := packs(); n != 2 {

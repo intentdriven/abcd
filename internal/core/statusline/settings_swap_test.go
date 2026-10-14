@@ -54,11 +54,12 @@ func TestReadSettingsFileJudgesTheFileItReads(t *testing.T) {
 // TestLoadIgnoresASettingInAnAbcdHomeEveryAccountCanWrite: a ~/.abcd.noindex every
 // account can write hosts no setting of the caller's, whatever the file's own
 // mode says (iss-2609290656480443); the note names the directory and the
-// repair, and the defaults render.
+// repair, and the defaults render. Its group cannot write it, so the repair is
+// every account's write bit alone, whatever group the directory has.
 func TestLoadIgnoresASettingInAnAbcdHomeEveryAccountCanWrite(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"schema_version":1,"disabled":true}`)
-	if err := os.Chmod(abcdhome.Path(home), 0o777); err != nil {
+	if err := os.Chmod(abcdhome.Path(home), 0o757); err != nil {
 		t.Fatal(err)
 	}
 	got, notes, err := LoadFrom(home)
