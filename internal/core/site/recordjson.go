@@ -29,8 +29,9 @@ import (
 // maxRecordBodyBytes bounds one record read for the mentions pass.
 const maxRecordBodyBytes = 1 << 20
 
-// bodyHandleRe is the record handle as it appears in prose.
-var bodyHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc)-(\d+)\b`)
+// bodyHandleRe is the record handle as it appears in prose: the five id-bearing
+// families, decision records (dcn) among them (itd-2609151138388536).
+var bodyHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc|dcn)-(\d+)\b`)
 
 // RecordExport is record.json.
 type RecordExport struct {

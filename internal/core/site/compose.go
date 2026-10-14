@@ -1484,7 +1484,7 @@ func (c *composer) releaseOf(id string) string {
 //
 // The boundary comes from bodyHandleRe, this package's one definition of a
 // record handle as it appears in prose: every handle on the line is read out
-// and compared whole. bodyHandleRe knows the four record families the graph
+// and compared whole. bodyHandleRe knows the five record families the graph
 // exports, and a family it does not know would find no credit at all — which
 // fails closed, with the page carrying no version stamp, rather than open, with
 // the page carrying somebody else's.
