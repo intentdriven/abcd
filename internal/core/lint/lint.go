@@ -1298,8 +1298,10 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		return failClosed("receipt_gate cannot read the release-gate manifest " + releaseGateManifestPath + ": " + manifestErr.Error()), nil
 	}
 
-	// The release's own version is held to the release tags before either era
-	// refusal reads it.
+	// The release's own version is held to the release tags too. It runs after
+	// the two era refusals above, which read the same CHANGELOG.md version: a
+	// release they admit as an older one is refused here when that version is
+	// not newer than every release tag.
 	if cfg.release {
 		if msg := backdatedReleaseRefusal(repoRoot, root, manifestEra); msg != "" {
 			return failClosed(msg), nil

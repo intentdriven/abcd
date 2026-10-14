@@ -154,9 +154,9 @@ type releaseTag struct {
 var listReleaseTags = releaseTags
 
 // releaseTags lists the repository's releases, newest first, in one
-// for-each-ref: every tag named v plus a plain X.Y.Z version (a pre-release or
-// build tag is not a release, as launch.GitExistingTags reads them) that peels
-// to a commit. A tag naming a blob or a tree, or a tag of a tag, is not a
+// for-each-ref: every tag named v followed by an X.Y.Z version — a tag without
+// the v prefix, a pre-release or a build tag is not a release, as
+// launch.GitExistingTags reads them — that peels to a commit. A tag naming a blob or a tree, or a tag of a tag, is not a
 // release: the tag rules forbid deleting it, so reading it as one would let a
 // single stray tag refuse every later release for good.
 func releaseTags(repoRoot string) ([]releaseTag, error) {
