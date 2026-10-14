@@ -5,7 +5,7 @@ slug: "guard-script-lookup-differs-from-bash"
 severity: "major"
 category: "security"
 source: "agent-finding"
-found_during: "private security report, filed 2026-10-10"
+found_during: "private security advisory GHSA-xfjm-pv25-v4j4, filed 2026-10-10"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/script.go"
@@ -16,6 +16,6 @@ impact: fix
 
 The guard's script reader resolves a different file than bash runs in three ways: after `cd` it keeps the logical path (so `cd -P link && bash ../s.sh` judges the file beside the link while bash runs the one beside its target), it ignores `CDPATH`, and `source` of a bare name ignores a `PATH` prefix on the same command. Each lets a planted script carrying a bundled blocker run with exit 0.
 
-A private security report, handled in this release; its advisory is published or closed with the release.
+Private security advisory GHSA-xfjm-pv25-v4j4 (draft, severity high). Full text, evidence and reproduction: .abcd/.work.local/scratch/security-drain-2026-10-11/advisories/ in the main checkout's local tier. This record stays uncommitted until its fix lands; the fix commit adds it directly to resolved/.
 
-Evidence (main 3d171421a): `cdTarget` stores `filepath.Clean` of the argument and never reads CDPATH; `resolve` joins that logical directory to a relative script; `searchPath` uses only the shell state's stored PATH, skips relative entries and falls back to the working directory (all internal/core/guard/script.go).
+Evidence (main 3d171421a): `cdTarget` stores `filepath.Clean` of the argument and never reads CDPATH; `resolve` joins that logical directory to a relative script; `searchPath` uses only the shell state's stored PATH, skips relative entries and falls back to the working directory (all internal/core/guard/script.go). Reproduced at that commit with `abcd guard check --command` over planted trees: `cd -P <T>/link && bash ../s.sh`, `cd <T>/empty && CDPATH=<T>/cdp cd sub && bash s.sh`, `PATH=<T>/relp source p.sh` and `PATH=relp source p.sh` are all allow (exit 0); the control `export PATH=<T>/relp; source p.sh` blocks (exit 1).
