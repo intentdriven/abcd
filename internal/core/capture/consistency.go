@@ -16,7 +16,7 @@ import (
 // with the report as its evidence, and a finding an open record already holds
 // is linked to that record rather than filed twice. Since G1 of
 // itd-2609291923559186 the filed record carries the finding's stable key
-// (`finding_key:`), so the same contradiction found on a later run links to it
+// (`finding_ref:`), so the same contradiction found on a later run links to it
 // by key, and one whose record was resolved or won't-fixed is marked addressed
 // and files nothing.
 //
@@ -85,7 +85,7 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 			Match:       mc,
 			MatchText:   f.Summary + "\n\n" + f.Explanation,
 			MatchExcept: slices.Clone(filedHere),
-			FindingKey:  f.Key,
+			FindingRef:  f.Key,
 		}
 	}
 	// A finding a record already holds is linked or addressed, and writes
@@ -166,7 +166,7 @@ func recordKeyed(ledger []Issue, key string) (Issue, bool) {
 	}
 	var closed *Issue
 	for i, iss := range ledger {
-		if iss.FindingKey != key {
+		if iss.FindingRef != key {
 			continue
 		}
 		if iss.Status == StateOpen {

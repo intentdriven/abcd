@@ -21,12 +21,3 @@ paths = [
   '''internal/adapter/scanner/identity_span_test\.go''',
   '''internal/core/launch/dryrun_test\.go''',
 ]
-# A consistency finding key (itd-2609291923559186) is `cfk-` and sixteen hex
-# digits: a deterministic SHA-256 content hash of a finding's class and ends,
-# written into every issue the consistency pass files as `finding_key:`. It is
-# not a credential, and generic-api-key reads it as one. The regex is matched
-# against the secret alone and anchored, so a longer secret that merely starts
-# with a key's shape is still caught.
-regexes = [
-  '''^cfk-[0-9a-f]{16}$''',
-]

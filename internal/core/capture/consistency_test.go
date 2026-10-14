@@ -258,7 +258,7 @@ func cxKey() string {
 
 // TestConsistencyFiledRecordCarriesTheKeyAndTheNextRunLinksIt is G1's
 // criterion 9: the record a finding files carries the finding's key as
-// `finding_key:`, and the same contradiction found on a second run — reported
+// `finding_ref:`, and the same contradiction found on a second run — reported
 // in other words, so the payload is not the first one again — carries the same
 // key and links to that record rather than filing a second.
 func TestConsistencyFiledRecordCarriesTheKeyAndTheNextRunLinksIt(t *testing.T) {
@@ -274,11 +274,11 @@ func TestConsistencyFiledRecordCarriesTheKeyAndTheNextRunLinksIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Issues) != 1 || list.Issues[0].FindingKey != cxKey() {
-		t.Fatalf("open ledger = %+v; want one record carrying finding_key %s", list.Issues, cxKey())
+	if len(list.Issues) != 1 || list.Issues[0].FindingRef != cxKey() {
+		t.Fatalf("open ledger = %+v; want one record carrying finding_ref %s", list.Issues, cxKey())
 	}
-	if raw := readLedgerFile(t, root, list.Issues[0].Path); !strings.Contains(raw, "\nfinding_key: "+cxKey()+"\n") {
-		t.Fatalf("the filed record does not carry finding_key in its frontmatter:\n%s", raw)
+	if raw := readLedgerFile(t, root, list.Issues[0].Path); !strings.Contains(raw, "\nfinding_ref: "+cxKey()+"\n") {
+		t.Fatalf("the filed record does not carry finding_ref in its frontmatter:\n%s", raw)
 	}
 
 	second, err := IngestConsistency(root, consistencyPayloadWith(t, root, []any{cxFinding(
@@ -300,7 +300,7 @@ func TestConsistencyFiledRecordCarriesTheKeyAndTheNextRunLinksIt(t *testing.T) {
 func TestConsistencyAnOpenKeyedRecordLinksWithoutTheProse(t *testing.T) {
 	root := consistencyLedgerRepo(t)
 	held, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Reworded by a person; neither end is quoted any more.",
-		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingRef: cxKey()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestConsistencyAKeyedClosedRecordAddressesTheFinding(t *testing.T) {
 		t.Run(folder, func(t *testing.T) {
 			root := consistencyLedgerRepo(t)
 			held, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Seen in " + cxB + ": \"" + cxQuoteB + "\".",
-				Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+				Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingRef: cxKey()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -376,7 +376,7 @@ func TestConsistencyAKeyedClosedRecordAddressesTheFinding(t *testing.T) {
 func TestConsistencyAnOpenKeyedRecordWinsOverAClosedOne(t *testing.T) {
 	root := consistencyLedgerRepo(t)
 	old, err := testCapture(CaptureRequest{RepoRoot: root, Text: "An earlier filing of the same contradiction.",
-		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingRef: cxKey()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestConsistencyAnOpenKeyedRecordWinsOverAClosedOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := testCapture(CaptureRequest{RepoRoot: root, Text: "It came back.",
-		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingKey: cxKey()})
+		Severity: "minor", Category: "inconsistency", Source: "agent-finding", FoundDuring: "fixture", FindingRef: cxKey()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestConsistencyALegacyOpenRecordLinksByProse(t *testing.T) {
 	if strings.Join(res.Linked, ",") != held.ID || len(res.Filed) != 0 {
 		t.Fatalf("linked %v filed %v; want the legacy %s linked by prose", res.Linked, res.Filed, held.ID)
 	}
-	if after := readLedgerFile(t, root, held.Path); after != before || strings.Contains(after, "finding_key") {
+	if after := readLedgerFile(t, root, held.Path); after != before || strings.Contains(after, "finding_ref") {
 		t.Fatalf("linking a legacy record wrote to it:\n%s", after)
 	}
 }

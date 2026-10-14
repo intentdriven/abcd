@@ -117,7 +117,7 @@ func TestConsistencyChunkSetFilesOnceOrNothing(t *testing.T) {
 		t.Fatalf("ingest = %+v; want the contradiction filed once, under an overflow", res)
 	}
 	list, err := List(ListRequest{RepoRoot: root, State: StateOpen})
-	if err != nil || len(list.Issues) != 1 || list.Issues[0].FindingKey != res.Rows[0].Key {
+	if err != nil || len(list.Issues) != 1 || list.Issues[0].FindingRef != res.Rows[0].Key {
 		t.Fatalf("open ledger = %+v, %v; want one record carrying the finding's key", list.Issues, err)
 	}
 	if !strings.Contains(list.Issues[0].Body, res.ReportPath) {

@@ -1578,7 +1578,7 @@ func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date s
 	}
 	for _, r := range rows {
 		fmt.Fprintf(&b, "\n### %d. %s\n\n", r.Number, free(r.Summary))
-		fmt.Fprintf(&b, "- class: %s · severity: %s · key: %s · ledger: %s\n", r.ClassLabel(), r.Severity, r.Key, r.LedgerCell())
+		fmt.Fprintf(&b, "- class: %s · severity: %s · finding_ref: %s · ledger: %s\n", r.ClassLabel(), r.Severity, r.Key, r.LedgerCell())
 		for j, e := range r.Ends {
 			fmt.Fprintf(&b, "- end %c: `%s` — \u201c%s\u201d\n", 'A'+j, endLocation(e), free(e.Quote))
 		}

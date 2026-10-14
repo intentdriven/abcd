@@ -89,8 +89,8 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// A finding key is written only in the one shape the pass derives, so the
 	// ledger reader and record_schema never meet a key capture wrote and they
 	// refuse.
-	if req.FindingKey != "" && !findingkey.Valid(req.FindingKey) {
-		return CaptureResult{}, refused(fmt.Errorf("capture: finding_key %q is not a finding key (cfk- and sixteen lowercase hex digits); nothing written", req.FindingKey))
+	if req.FindingRef != "" && !findingkey.Valid(req.FindingRef) {
+		return CaptureResult{}, refused(fmt.Errorf("capture: finding_ref %q is not a finding key (cfk- and sixteen lowercase hex digits); nothing written", req.FindingRef))
 	}
 	// Every new issue carries a remedy (ruling BX3 of 2026-09-29, itd-82
 	// decision 6): the fix it proposes, or, from an automatic filer with none,
@@ -295,9 +295,9 @@ func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req Captu
 	}
 	// Written bare: the key is machine-read, and its shape (already checked)
 	// holds nothing a quote would protect.
-	if req.FindingKey != "" {
-		fields = append(fields, kv{"finding_key", rawScalar(req.FindingKey)})
-		fm["finding_key"] = req.FindingKey
+	if req.FindingRef != "" {
+		fields = append(fields, kv{"finding_ref", rawScalar(req.FindingRef)})
+		fm["finding_ref"] = req.FindingRef
 	}
 
 	if err := validateStrict(fm); err != nil {

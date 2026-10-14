@@ -120,11 +120,11 @@ type Issue struct {
 	// and removes it by deleting the line; a record without either is ordinary.
 	Duplicates []string `json:"duplicates,omitempty"`
 	Refines    []string `json:"refines,omitempty"`
-	// FindingKey is the stable key of the consistency finding this record was
-	// filed for (`finding_key:`, itd-2609291923559186 G1): the pass joins a
+	// FindingRef is the stable key of the consistency finding this record was
+	// filed for (`finding_ref:`, itd-2609291923559186 G1): the pass joins a
 	// finding found again to the record carrying its key, so a contradiction is
 	// answered once. Empty on every record a finding did not file.
-	FindingKey string `json:"finding_key,omitempty"`
+	FindingRef string `json:"finding_ref,omitempty"`
 	// Grounds is the record's recorded conjectures, in the order they were
 	// written: one `<token>: <text>` value in the shared core/grounds vocabulary
 	// per grounds-bearing act. Appended by promote, resolve and wontfix; never by
@@ -209,11 +209,11 @@ type CaptureRequest struct {
 	// filed, so two findings of one pass are never linked as doubles of each
 	// other.
 	MatchExcept []string
-	// FindingKey is the stable key of the consistency finding the record is
-	// filed for, written as `finding_key:` (itd-2609291923559186 G1). Empty
+	// FindingRef is the stable key of the consistency finding the record is
+	// filed for, written as `finding_ref:` (itd-2609291923559186 G1). Empty
 	// writes no key; any other value is refused unless it is a key's shape,
 	// cfk- and sixteen lowercase hex digits.
-	FindingKey string
+	FindingRef string
 }
 
 // CaptureResult is the outcome of a successful Capture. The timestamp-numeric

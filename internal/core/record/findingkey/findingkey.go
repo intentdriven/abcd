@@ -4,7 +4,7 @@
 //
 // It is the ONE derivation. The consistency pass keys every finding and report
 // row with it and capture writes it into the issue a finding files
-// (`finding_key:`), so a contradiction found again is joined to the record that
+// (`finding_ref:`), so a contradiction found again is joined to the record that
 // already holds it; record-lint keys its cross-document findings with it too.
 // It sits under core/record beside match because both core/intent and core/lint
 // call it, and lint cannot import intent. It is a leaf: it reads nothing,
@@ -33,7 +33,7 @@ const domain = "abcd/finding-key/v1"
 var keyRe = regexp.MustCompile(`^cfk-[0-9a-f]{16}$`)
 
 // Valid reports whether s is verbatim a key's shape. Capture refuses a
-// `finding_key` that is not, and record_schema reports one, so the writer and
+// `finding_ref` that is not, and record_schema reports one, so the writer and
 // the committed-ledger gate agree.
 func Valid(s string) bool { return keyRe.MatchString(s) }
 

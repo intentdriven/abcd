@@ -192,7 +192,7 @@ func TestIntentConsistencyIngestNamesTheFindingKey(t *testing.T) {
 	if len(recs) != 1 {
 		t.Fatalf("the filed record %s is not in open/", first.Filed[0])
 	}
-	if rec, _ := os.ReadFile(recs[0]); !strings.Contains(string(rec), "\nfinding_key: "+first.Rows[0].Key+"\n") {
+	if rec, _ := os.ReadFile(recs[0]); !strings.Contains(string(rec), "\nfinding_ref: "+first.Rows[0].Key+"\n") {
 		t.Fatalf("the filed record does not carry its finding key:\n%s", rec)
 	}
 

@@ -1493,14 +1493,14 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		}
 	}
 
-	// finding_key: the stable key of the consistency finding the record was
+	// finding_ref: the stable key of the consistency finding the record was
 	// filed for (itd-2609291923559186 G1). Capture writes it in one shape only,
 	// and the reader refuses and skips a record carrying any other, so this gate
 	// reports it in the reader's terms. A blank is the reader-parity leg's.
-	if f, present := r.fields["finding_key"]; present && !isNull(strings.TrimSpace(f.value)) {
+	if f, present := r.fields["finding_ref"]; present && !isNull(strings.TrimSpace(f.value)) {
 		v := r.scalar(f.value)
 		if !findingkey.Valid(v) {
-			add("finding_key", f.line, "invalid finding_key '"+v+"'; a finding key is cfk- and sixteen lowercase hex digits, and capture refuses any other shape and skips the record")
+			add("finding_ref", f.line, "invalid finding_ref '"+v+"'; a finding key is cfk- and sixteen lowercase hex digits, and capture refuses any other shape and skips the record")
 		}
 	}
 

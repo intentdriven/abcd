@@ -875,6 +875,11 @@ func TestConsistencyIngestChecksEveryFindingBeforeFilingAny(t *testing.T) {
 	}
 }
 
+// secretShapedKey is the shape of gitleaks' default generic-api-key rule
+// narrowed to a finding key: a credential word, up to twenty word characters,
+// an assignment and then the key.
+var secretShapedKey = regexp.MustCompile(`(?i)(?:access|auth|api|credential|creds|key|passw(?:or)?d|secret|token)[ \t\w.-]{0,20}[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[` + "`" + `'"\s=]{0,5}cfk-[0-9a-f]{16}`)
+
 // TestConsistencyRowsCarryTheFindingKey is G1's criterion 9 at the report: every
 // finding and row carries the derived key, the report renders a key column and
 // a key on each finding's detail line, and the rows say they were filed.
@@ -910,12 +915,18 @@ func TestConsistencyRowsCarryTheFindingKey(t *testing.T) {
 	for _, line := range []string{
 		"| # | Class | Severity | Key | End A | End B | Ledger |",
 		"| 1 | premise contradiction | major | `" + want + "` |",
-		"key: " + want + " · ledger: iss-901 (filed)",
-		"key: " + res.Rows[1].Key + " · ledger: iss-902 (filed)",
+		"finding_ref: " + want + " · ledger: iss-901 (filed)",
+		"finding_ref: " + res.Rows[1].Key + " · ledger: iss-902 (filed)",
 	} {
 		if !strings.Contains(string(body), line) {
 			t.Errorf("report lacks %q:\n%s", line, body)
 		}
+	}
+	// The report is committed on the reviews shelf: no line of it may read as
+	// a credential assignment to a default secret scanner (gitleaks'
+	// generic-api-key flagged `key: cfk-…` on 8.24.3 and 8.30.1).
+	if m := secretShapedKey.FindString(string(body)); m != "" {
+		t.Errorf("the report carries %q, which a default gitleaks flags as generic-api-key:\n%s", m, body)
 	}
 	js, err := json.Marshal(res.Rows[0])
 	if err != nil {

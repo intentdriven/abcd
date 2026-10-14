@@ -1253,7 +1253,7 @@ contradiction carries the same key on every run.
 
 A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with
-the report as its evidence, carrying the key as `finding_key:`) — unless a
+the report as its evidence, carrying the key as `finding_ref:`) — unless a
 record already holds it. A record in `open/` carrying the key links the
 finding to it; failing that, a record in `resolved/` or `wontfix/` carrying the
 key marks the finding `addressed`, naming that record, and files nothing; and

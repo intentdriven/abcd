@@ -19,7 +19,7 @@ Four pieces land in the order decision 7 and decision 6 set:
 
 - **G1** gives every finding a deterministic key, `cfk-` and sixteen hex
   digits, derived from the class, the two ends and their collapsed quotes. The
-  key is written into the issue a finding files (`finding_key:`), and a finding
+  key is written into the issue a finding files (`finding_ref:`), and a finding
   whose key a resolved or won't-fix record carries is marked `addressed` and
   files nothing.
 - **A1** adds three record-lint rules at warn, read out of the `record_schema`
@@ -55,10 +55,10 @@ In:
 - `internal/core/intent`: the key on every finding and row, the `addressed`
   state, the `staged` scope, overflow measurement and chunked emit and ingest;
 - `internal/core/capture`: the key lookup across `open/`, `resolved/` and
-  `wontfix/`, `finding_key` on the filed record, a dry classification for the
+  `wontfix/`, `finding_ref` on the filed record, a dry classification for the
   gate, and `Link` taught to append `related_intents`;
-- `internal/core/issueschema`: `finding_key` joins `Known`;
-- `internal/core/lint`: the three A1 rules, `finding_key`'s shape check in
+- `internal/core/issueschema`: `finding_ref` joins `Known`;
+- `internal/core/lint`: the three A1 rules, `finding_ref`'s shape check in
   `record_schema`, and `related_issues` and `routed_from` read by the scan;
 - `.abcd/record-lint.json`: the three rules at warn;
 - a new package, `internal/core/consistencygate`: the gate's decisions;
@@ -111,11 +111,11 @@ consumers keep working. `ConsistencyIngestResult` gains
 
 **The rendered report** gains a key column. The ledger cell reads
 `iss-N (filed)`, `iss-N (already open)` or `iss-N (addressed: resolved)` /
-`(addressed: wontfix)`. Each finding's detail line carries `key: cfk-…`.
+`(addressed: wontfix)`. Each finding's detail line carries `finding_ref: cfk-…`.
 
 **The filer** in `capture.IngestConsistency` looks a finding up in this order:
 
-1. Every record in `open/`, `resolved/` and `wontfix/` whose `finding_key`
+1. Every record in `open/`, `resolved/` and `wontfix/` whose `finding_ref`
    equals the key. The ledger is read once per ingest, as `loadOpen` reads it
    now. An open record wins and links. Failing that, a resolved or won't-fix
    record makes the finding `addressed`: nothing is filed and nothing is
@@ -123,8 +123,8 @@ consumers keep working. `ConsistencyIngestResult` gains
 2. Failing that, `openRecordHolding`, the existing prose match. It still links
    a record filed before keys existed. Linking writes nothing, as it does
    today, so no key is back-filled into a legacy record.
-3. Failing that, the finding is filed. `CaptureRequest` gains `FindingKey`,
-   which capture writes as frontmatter `finding_key:` and refuses unless it
+3. Failing that, the finding is filed. `CaptureRequest` gains `FindingRef`,
+   which capture writes as frontmatter `finding_ref:` and refuses unless it
    matches `^cfk-[0-9a-f]{16}$`.
 
 `check` skips a finding that is linked or addressed, as it already skips a
@@ -133,9 +133,9 @@ adr-2609300821558671 extended, keeps working as it does. The key does not
 replace it: the key joins exactly one contradiction to itself, and the match
 compares prose.
 
-**`issueschema.Known`** gains `finding_key`. Without it the ledger reader would
+**`issueschema.Known`** gains `finding_ref`. Without it the ledger reader would
 refuse a keyed record and drop it from every capture surface. `record_schema`
-reports a `finding_key` whose value is not the key's shape, so the
+reports a `finding_ref` whose value is not the key's shape, so the
 committed-ledger gate refuses what capture refuses.
 
 ### A1: three cross-document rules at warn
@@ -313,7 +313,7 @@ prose. A linked or addressed row is printed as known.
     gains `RelatedIntents`, appended through the validated single-field rewrite
     it already makes for `blocked_by`. The issue is then staged;
   - every judgement finding is ingested for real, so each issue is filed with
-    its `finding_key` and the report is written to the reviews shelf. Both are
+    its `finding_ref` and the report is written to the reviews shelf. Both are
     staged;
   - each change is noted, both printed and as a `Consistency-fix:` trailer
     line handed to the managed gates' `prepare-commit-msg` stage, so the commit
@@ -375,7 +375,7 @@ verb.
    either case.
 3. Under automatic, the gate adds the missing `related_intents` entry through
    `capture.Link` and stages it with a printed note and a trailer. It files the
-   judgement finding with its `finding_key`, stages both, and exits 0.
+   judgement finding with its `finding_ref`, stages both, and exits 0.
 4. The `consistency_hook` question is asked by `ahoy` (gap, prompt help, flag)
    and the answer is recorded as `consistency.on_finding`.
 5. With no admitted machine-layer provider route, no model is called, the A1
@@ -389,7 +389,7 @@ verb.
    reports the size and the chunk plan, and the ingest refuses unless every
    chunk is present. A corpus that fits emits one request with no overflow.
 9. `findingkey.Derive` returns the same key from the same class, identity paths
-   and collapsed quotes on any run. Capture writes it as `finding_key`, and the
+   and collapsed quotes on any run. Capture writes it as `finding_ref`, and the
    second run's row carries it.
 10. The key lookup finds a resolved or won't-fix record carrying the key. The row
     is `addressed`, naming that record, and nothing is filed.
@@ -458,13 +458,24 @@ narrowest reading that meets the criteria. Each is open to review.
   beside `Addressed`. Without it the row's `AddressedBy` could not name the
   record's folder.
 - **Step 1, the reader refuses a malformed key too.** `issuerecord.ValidateStrict`
-  refuses a `finding_key` that is not the key's shape, as it refuses a
+  refuses a `finding_ref` that is not the key's shape, as it refuses a
   malformed `lapsed_at`. Capture, the reader and `record_schema` therefore
   agree. `record_schema`'s own leg names a non-blank malformed value; a blank
   one is left to the reader-parity backstop.
 - **Step 1, several closed records with one key.** When no open record
   carries the key, the first resolved or won't-fix record in ledger order
   addresses the finding.
+- **Step 1, the field is `finding_ref`, not `finding_key`** (from review,
+  2026-10-14). gitleaks' default `generic-api-key` rule reads
+  `finding_key: cfk-…` as a credential assignment: on 8.24.3 (CI's pin) and
+  8.30.1 it flagged most such lines, and it flagged the report's
+  `key: cfk-…` detail line too. Any repository running a default gitleaks
+  would then fail on the records and reports abcd writes, which a repo-local
+  allowlist cannot prevent outside this repository. `finding_ref` is flagged
+  by neither version, so the record carries `finding_ref:` and the report's
+  detail line reads `finding_ref: cfk-…`; the value keeps its `cfk-` shape,
+  and this repository's allowlist for it is gone. Nothing had written the old
+  name outside the unmerged branch, so there is no migration.
 - **Step 1, the duplicate refusal names the key.** "finding N repeats
   finding M" now ends with the key the two share.
 - **Step 2, the exemption list.** `builds_on_reciprocal` reads its own
@@ -554,14 +565,14 @@ _None open._ Both points were settled on 2026-10-02:
 ## Footprint
 
 - packages: internal/core/record/findingkey, internal/core/intent, internal/core/capture, internal/core/issueschema, internal/core/lint, internal/core/consistencygate, internal/core/ahoy, internal/surface/cli, .abcd/record-lint.json, commands/
-- tests: the key over reordered ends, whitespace-variant quotes and a record moved between status folders; the same finding ingested twice carrying one key and `finding_key` on the filed record; a resolved and a won't-fix keyed record making the row addressed with nothing filed; a legacy open record still linked by the prose match; `finding_key` admitted by the ledger reader and a malformed one refused by capture and `record_schema`; the three A1 rules over a one-way `builds_on`, an unacknowledged `routed_from`, a predecessor-store `routed_from` skipped, and a missing `related_intents` back-link, each at warn naming both files and its key; a corpus over the limit reported with its size and chunked so every pair of documents shares a chunk, an ingest missing a chunk refused, and a corpus under the limit emitted once with no overflow; the gate under warn, stop and automatic with an introduced back-link and an introduced judgement finding; a standing finding never stopping a commit; no route, a harness route, a repository route and a DR5-refused route each giving owed with no model call and exit 0; the staged scope's corpus as seeds plus one-hop neighbours; one envelope carrying lint and pass together; the ahoy question, its gap and its flag; the board's owed line and its absence from the site block
+- tests: the key over reordered ends, whitespace-variant quotes and a record moved between status folders; the same finding ingested twice carrying one key and `finding_ref` on the filed record; a resolved and a won't-fix keyed record making the row addressed with nothing filed; a legacy open record still linked by the prose match; `finding_ref` admitted by the ledger reader and a malformed one refused by capture and `record_schema`; the three A1 rules over a one-way `builds_on`, an unacknowledged `routed_from`, a predecessor-store `routed_from` skipped, and a missing `related_intents` back-link, each at warn naming both files and its key; a corpus over the limit reported with its size and chunked so every pair of documents shares a chunk, an ingest missing a chunk refused, and a corpus under the limit emitted once with no overflow; the gate under warn, stop and automatic with an introduced back-link and an introduced judgement finding; a standing finding never stopping a commit; no route, a harness route, a repository route and a DR5-refused route each giving owed with no model call and exit 0; the staged scope's corpus as seeds plus one-hop neighbours; one envelope carrying lint and pass together; the ahoy question, its gap and its flag; the board's owed line and its absence from the site block
 
 ## Steps
 
 1. G1: the stable finding key and the addressed state
    - criteria: 9, 10
    - packages: internal/core/record/findingkey, internal/core/intent, internal/core/capture, internal/core/issueschema, internal/core/lint, internal/surface/cli, commands/
-   - tests: `Derive` is stable over reordered ends, collapsed whitespace and a status-folder move, and differs by class; the duplicate check in `validateConsistencyFindings` uses the key; the same payload content ingested in two runs gives one key and the filed record carries `finding_key`; keyed resolved and won't-fix records make the row `addressed` naming them, with nothing filed and the record untouched; an open keyed record links; a legacy open record links by prose with nothing written; `issueschema.Known` admits `finding_key` and capture and `record_schema` refuse a malformed value; the report renders the key column and the addressed cell
+   - tests: `Derive` is stable over reordered ends, collapsed whitespace and a status-folder move, and differs by class; the duplicate check in `validateConsistencyFindings` uses the key; the same payload content ingested in two runs gives one key and the filed record carries `finding_ref`; keyed resolved and won't-fix records make the row `addressed` naming them, with nothing filed and the record untouched; an open keyed record links; a legacy open record links by prose with nothing written; `issueschema.Known` admits `finding_ref` and capture and `record_schema` refuse a malformed value; the report renders the key column and the addressed cell
 2. A1: the cross-document lint codes
    - criteria: 1
    - packages: internal/core/lint, .abcd/record-lint.json
