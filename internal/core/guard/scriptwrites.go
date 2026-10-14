@@ -31,10 +31,17 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 			out = append(out, writeTarget{})
 			continue
 		}
-		p, ok := st.resolve(rc, r.target.text, r.target.tilde)
-		out = append(out, writeTarget{path: p, ok: ok})
+		out = append(out, writeAt(rc, st, r.target.text, r.target.tilde))
 	}
 	return append(out, writerTargets(rc, s, st)...)
+}
+
+// writeAt is a write to word, resolved as the shell opens it. Where the line
+// leaves the working directory unknown, a relative word is not placed, and
+// is marked as written there (rel).
+func writeAt(rc *readCtx, st *shellState, word string, tilde bool) writeTarget {
+	p, ok := st.resolve(rc, word, tilde)
+	return writeTarget{path: p, ok: ok, rel: !ok && !tilde && st.relativeUnknown(word)}
 }
 
 // writerTargets is what the listed writers among s's commands write.
@@ -90,8 +97,11 @@ type writerArgs struct {
 }
 
 func (w writerArgs) at(i int) writeTarget {
-	p, ok := w.st.resolveToken(w.rc, w.s, i)
-	return writeTarget{path: p, ok: ok}
+	tok, ok := fixedToken(w.s, i)
+	if !ok {
+		return writeTarget{}
+	}
+	return writeAt(w.rc, w.st, tok, strings.HasPrefix(tok, "~"))
 }
 
 // valueAt is the path that token i carries after its first skip bytes.
@@ -101,8 +111,7 @@ func (w writerArgs) valueAt(i, skip int) writeTarget {
 		return writeTarget{}
 	}
 	v := tok[skip:]
-	p, ok := w.st.resolve(w.rc, v, strings.HasPrefix(v, "~"))
-	return writeTarget{path: p, ok: ok}
+	return writeAt(w.rc, w.st, v, strings.HasPrefix(v, "~"))
 }
 
 // operands is the operand indexes after w.from, stepping options; an option
@@ -170,7 +179,8 @@ func (w writerArgs) dirTarget(flags []string) writeTarget {
 	if vs := w.flagValues(flags); len(vs) > 0 {
 		return vs[len(vs)-1]
 	}
-	return writeTarget{path: w.st.dir, ok: w.st.dirOK && w.st.dir != ""}
+	ok := w.st.dirOK && w.st.dir != ""
+	return writeTarget{path: w.st.dir, ok: ok, rel: !ok}
 }
 
 // copyTarget is the destination of cp, mv or install: the -t value, else the
@@ -202,8 +212,7 @@ func (w writerArgs) lnTarget() []writeTarget {
 		if isUnknown(tok) || w.s.globAt(idx[0]) || strings.ContainsRune(tok, varMark) {
 			return []writeTarget{{}}
 		}
-		p, ok := w.st.resolve(w.rc, path.Base(tok), false)
-		return []writeTarget{{path: p, ok: ok}}
+		return []writeTarget{writeAt(w.rc, w.st, path.Base(tok), false)}
 	}
 	return []writeTarget{w.at(idx[len(idx)-1])}
 }
@@ -238,8 +247,7 @@ func (w writerArgs) curlTargets() []writeTarget {
 			out = append(out, writeTarget{})
 			continue
 		}
-		p, ok := w.st.resolve(w.rc, path.Base(u.Path), false)
-		out = append(out, writeTarget{path: p, ok: ok})
+		out = append(out, writeAt(w.rc, w.st, path.Base(u.Path), false))
 	}
 	return out
 }
@@ -318,8 +326,7 @@ func (w writerArgs) gitTargets() []writeTarget {
 			if i := strings.LastIndexByte(name, ':'); i >= 0 {
 				name = name[i+1:]
 			}
-			p, ok := w.st.resolve(w.rc, name, false)
-			return []writeTarget{{path: p, ok: ok}}
+			return []writeTarget{writeAt(w.rc, w.st, name, false)}
 		}
 	}
 	return nil
