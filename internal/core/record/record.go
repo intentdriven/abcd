@@ -1,5 +1,5 @@
 // Package record is the read side of `abcd <id>`: dispatch on a record id —
-// iss-N, itd-N, spc-N, adr-N, and the ledger's adm-N, srp-N and rfm-N — and report what the record is, its links, and
+// iss-N, itd-N, spc-N, adr-N, dcn-N, and the ledger's adm-N, srp-N and rfm-N — and report what the record is, its links, and
 // the concrete next move for its lifecycle state (spc-26). It is a leaf
 // package over the capture, intent, and spec read paths plus a thin adr
 // reader; nothing imports it back, and nothing here writes or knows a
@@ -21,6 +21,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -37,7 +38,8 @@ import (
 // reframe spec (spc-2609020626048705) landed after it and inherited the gate
 // rather than making a second edit; describeReframe is that spec's. The
 // reading families rdi, dsp and rdg stay outside it, the residual spc-67 names.
-var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$`)
+// dcn joined with the decision records' family (spc-2610110931381316, step 1).
+var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|dcn|adm|srp|rfm)-[0-9]+$`)
 
 // adrsRelDir is where decisions live. A file is <N>-<slug>.md carrying an
 // `id: adr-N` frontmatter line, in either of the store's two id vintages: the
@@ -61,7 +63,7 @@ var ErrSkippedRecord = errors.New("skipped on read")
 // superseded_by) as present.
 type Description struct {
 	ID        string            `json:"id"`
-	Family    string            `json:"family"` // issue | intent | spec | adr | admission | surprise | reframe
+	Family    string            `json:"family"` // issue | intent | spec | adr | decision | admission | surprise | reframe
 	Title     string            `json:"title"`
 	Status    string            `json:"status"` // folder/bucket, directory-as-truth; admitted | recorded | open | complete for the folderless ledger families
 	Path      string            `json:"path"`
@@ -143,6 +145,8 @@ func Describe(repoRoot, id string) (Description, error) {
 		return describeSurprise(repoRoot, id)
 	case "rfm":
 		return describeReframe(repoRoot, id)
+	case "dcn":
+		return describeDecision(repoRoot, id)
 	default:
 		return describeADR(repoRoot, id)
 	}
@@ -657,6 +661,59 @@ func describeADR(repoRoot, id string) (Description, error) {
 	}
 	d.NextMoves = []string{"none — decisions are read"}
 	return d, nil
+}
+
+// describeDecision renders one decision record read-only: the decision in its
+// own words, its date, and where it sits. It reads the folder through its one
+// reader, decisions.List, as describeIssue reads the ledger through
+// capture.List, so the dispatch describes exactly the records the listing
+// shows. A padded or case-shifted spelling of the id is the handle the citation
+// gate accepts. A file the reader skipped is reported as skipped on read, with
+// the reader's reason, never as not found, since it plainly sits in the folder.
+// A decision is immutable, as every record is: its one next move is to record a
+// correction as a new decision.
+func describeDecision(repoRoot, id string) (Description, error) {
+	canonical := recordid.CanonCitedID(id)
+	if canonical == "" {
+		return Description{}, fmt.Errorf("record: malformed dcn id %q", id)
+	}
+	list, skipped, err := decisions.List(repoRoot)
+	if err != nil {
+		return Description{}, fmt.Errorf("record: %s: %w", canonical, err)
+	}
+	var hits []decisions.Decision
+	for _, d := range list {
+		if recordid.CanonCitedID(d.ID) == canonical {
+			hits = append(hits, d)
+		}
+	}
+	switch {
+	case len(hits) > 1:
+		paths := make([]string, 0, len(hits))
+		for _, d := range hits {
+			paths = append(paths, d.Path)
+		}
+		return Description{}, fmt.Errorf("record: %w", &recordid.AmbiguousIDError{ID: canonical, Paths: paths})
+	case len(hits) == 1:
+		dec := hits[0]
+		return Description{
+			ID:        canonical,
+			Family:    "decision",
+			Title:     termsafe.Sanitize(firstLine(dec.Text, dec.Slug)),
+			Status:    "recorded",
+			Path:      termsafe.Sanitize(dec.Path),
+			Links:     map[string]string{"date": dec.Date},
+			NextMoves: []string{"none — a decision is immutable; a correction is a new decision"},
+		}, nil
+	}
+	for _, sk := range skipped {
+		fileID, _, ok := recordid.SplitRecordFilename(decisions.Family, path.Base(sk.Path))
+		if ok && recordid.CanonCitedID(fileID) == canonical {
+			return Description{}, fmt.Errorf("record: %s is in the decisions folder but was %w: %s: %s",
+				canonical, ErrSkippedRecord, sk.Path, sk.Reason)
+		}
+	}
+	return Description{}, fmt.Errorf("record: %s not found in %s", canonical, decisions.RelDir)
 }
 
 // describeAdmission renders one admission read-only: the grounds as its title,

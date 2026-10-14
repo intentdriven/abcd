@@ -162,7 +162,7 @@ what comes next. The block is computed each time and nothing stores it.
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is
-my next move*. A positional matching `^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$` locates the
+my next move*. A positional matching `^(iss|itd|spc|adr|dcn|adm|srp|rfm)-[0-9]+$` locates the
 record in its store — any status folder or bucket — and renders it read-only:
 
 ```bash
@@ -188,7 +188,9 @@ read). An admission (`adm-N`) and a surprise (`srp-N`) have no folder, so their
 (`rfm-N`) reads `open` or `complete`; its `links` are `occasioned_by`,
 `occasion_path`, the three `*_before` fingerprints and, once complete, the three
 `*_after` fingerprints and `changed`, and an open one's next move is
-`capture reframe --complete <rfm-N>`. The reading families
+`capture reframe --complete <rfm-N>`. A decision record (`dcn-N`) reads
+`recorded`; its title is the decision in its own words, its one `links` edge is
+its `date`, and its next move says a correction is a new decision. The reading families
 (`rdi-N`, `dsp-N`, `rdg-N`) are not dispatched. For an issue id the JSON also carries `ledger` — the `checkout` and
 `branch` whose ledger was read — because the same id can sit in another
 worktree's ledger in another state; name it when you report. For an issue or

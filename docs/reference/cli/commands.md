@@ -19,12 +19,12 @@ Render the status board, or say what one record id is and its next move: Writes 
 Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
-positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
-`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
-the next move for its lifecycle state — what is this. N is either a short
-ordinal from before ids were minted or the sixteen-digit stamp minted since;
-both resolve. The bare and the id form are strictly read-only; any other
-positional is refused as an unknown command.
+positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,
+`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it
+lives, and the next move for its lifecycle state — what is this. N is either
+a short ordinal from before ids were minted or the sixteen-digit stamp minted
+since; both resolve. The bare and the id form are strictly read-only; any
+other positional is refused as an unknown command.
 
 `--version` reports the running binary's version, install mode and vintage.
 When that binary sits in a plugin root other than the one this session

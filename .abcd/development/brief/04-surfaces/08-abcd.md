@@ -79,7 +79,7 @@ wrap `internal/textwidth` holds (iss-2610031207397996). The levels are indented
 two, four and six columns.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
-`spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
+`spc-N`, `adr-N`, `dcn-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
 record is, where it lives, and the concrete next move for its lifecycle state.
 An admission and a surprise are the issue ledger's two folderless families
 (spc-2609020626040342): their status reads `admitted` and `recorded`, their links
@@ -87,7 +87,10 @@ are the records they join to, and neither has a next move. A reframe record
 (`rfm-N`, spc-2609020626048705) reads `open` until its after half is written and
 `complete` after; its links are its occasion, the before fingerprints and, once
 complete, the after fingerprints and the surfaces that changed, and an open one's
-next move is its completion. The reading families have no record dispatch. Bare answers *what can I
+next move is its completion. A decision record (`dcn-N`,
+itd-2609151138388536) reads `recorded`; its title is the decision's own words,
+its link is its date, and its next move says a correction is a new decision.
+The reading families have no record dispatch. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). For a shipped intent the move is its fidelity-review state, read by
 the intent store's one reader of the review marker (itd-2609150819445595): an
