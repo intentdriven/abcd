@@ -363,6 +363,11 @@ func TestIdeateRecordRefusesAShallowCheckout(t *testing.T) {
 			if !strings.Contains(err.Error(), "shallow") {
 				t.Errorf("diagnostic %q does not say the checkout is shallow", err.Error())
 			}
+			// The remedy is named once, in the person's terms: no second copy of it
+			// and no aside about how CI checks out.
+			if n := strings.Count(err.Error(), "git fetch --unshallow"); n != 1 || strings.Contains(err.Error(), "CI") {
+				t.Errorf("diagnostic %q names the remedy %d times or speaks of CI", err.Error(), n)
+			}
 		})
 	}
 	if _, err := os.Stat(filepath.Join(dst, filepath.FromSlash(ideate.ResearchRelDir))); !os.IsNotExist(err) {

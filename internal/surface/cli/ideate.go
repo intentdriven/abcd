@@ -16,6 +16,7 @@ package cli
 // recordable or it is not.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -163,9 +164,14 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 	// clone of the same repository ever reads. The probe is fail-closed: a git
 	// that cannot say whether the checkout is shallow refuses too.
 	if err := gitutil.RequireFullHistory(repoRoot); err != nil {
-		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this checkout is shallow or its history could not be read (" +
-			scrubPaths(err) + "), and a verdict is filed under the repository's root commit, which a shallow clone does not hold; " +
-			"fetch the full history (git fetch --unshallow), then record (nothing written)"}
+		if errors.Is(err, gitutil.ErrShallowCheckout) {
+			return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this checkout is shallow, and a verdict is filed under " +
+				"the repository's root commit, which a shallow clone does not hold; fetch the full history (git fetch --unshallow), " +
+				"then record (nothing written)"}
+		}
+		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: whether this checkout is shallow could not be read (" +
+			scrubPaths(err) + "), and a verdict is filed under the repository's root commit, which a shallow clone does not hold " +
+			"(nothing written)"}
 	}
 	sha := gitutil.RootCommit(repoRoot)
 	if sha == "" {
