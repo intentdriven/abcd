@@ -2,10 +2,12 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -69,14 +71,29 @@ type rootLookup struct {
 // repository, so they share one root commit — and where git cannot answer
 // for cwd (a refused foreign-uid root, which leaves cwd as root), it cannot
 // answer for root either.
+//
+// The lookup it makes itself is bounded by promptRootTimeout: the hook runs
+// on every prompt, and a git that never answers must cost that prompt a
+// moment, not the session. A lookup past its deadline is a timeout
+// (gitutil.ErrGitTimedOut), so the tied notes are left out this turn and the
+// recall's caller names it on stderr.
 func promptRoot(drained rootLookup, root string) recall.RootFunc {
 	return sync.OnceValues(func() (string, error) {
 		if drained.asked {
 			return drained.sha, drained.err
 		}
-		return routerRootCommit(context.Background(), root)
+		ctx, cancel := context.WithTimeout(context.Background(), promptRootTimeout)
+		defer cancel()
+		sha, err := routerRootCommit(ctx, root)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", fmt.Errorf("%w (no answer within %s)", gitutil.ErrGitTimedOut, promptRootTimeout)
+		}
+		return sha, err
 	})
 }
+
+// promptRootTimeout bounds the root-commit lookup the recall makes itself.
+const promptRootTimeout = 2 * time.Second
 
 // refusalText words a refused layer once: the file, then why, without the
 // "memory: <file>:" prefix the reader's own error already carries.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,7 +10,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -106,5 +109,48 @@ func TestARootLookupTimeoutIsNamedAndRetried(t *testing.T) {
 	next, _ := recallRouterJSON(t, "session-two", repo, "the tests again")
 	if next.Recalled == nil || !slices.Equal(*next.Recalled, []string{id}) {
 		t.Fatalf("the tied note was recorded on the turn it was left out: %+v", next)
+	}
+}
+
+// TestPromptRootLookupHasADeadline: when the drain made no root-commit
+// lookup (`rules --prompt`, or a hook with no cwd), the recall asks git
+// itself, and that lookup is bounded: a git that never answers costs the
+// prompt about two seconds, not the session. A lookup past its deadline is
+// a timeout, the tied notes are left out, and stderr says so.
+func TestPromptRootLookupHasADeadline(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	id := addRaceNote(t, "session-one") // tied to this repository
+
+	prev := routerRootCommit
+	t.Cleanup(func() { routerRootCommit = prev })
+	var deadline time.Time
+	var bounded bool
+	routerRootCommit = func(ctx context.Context, root string) (string, error) {
+		deadline, bounded = ctx.Deadline()
+		if !bounded {
+			return prev(ctx, root)
+		}
+		// git hung until the deadline: the real lookup returns ctx's own error.
+		return "", fmt.Errorf("git rev-list -n 1 --max-parents=0 HEAD: %w", context.DeadlineExceeded)
+	}
+	rs, err := rules.Load(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errlog strings.Builder
+	start := time.Now()
+	res := recallMemory(&errlog, rs, repo, "why are the tests failing?", nil, rules.InjectionBudgetBytes, promptRoot(rootLookup{}, repo))
+	if !bounded {
+		t.Fatalf("the recall's own root-commit lookup has no deadline (recalled %v)", res.Recalled)
+	}
+	if d := deadline.Sub(start); d <= 0 || d > 3*time.Second {
+		t.Fatalf("the lookup's deadline is %s away, want about two seconds", d)
+	}
+	if slices.Contains(res.Recalled, id) || !errors.Is(res.RootErr, gitutil.ErrGitTimedOut) {
+		t.Fatalf("a lookup past its deadline: recalled %v, root error %v; want no tied note and a timeout", res.Recalled, res.RootErr)
+	}
+	if !strings.Contains(errlog.String(), "did not answer in time") || !strings.Contains(errlog.String(), "recalling no notes tied to it this turn") {
+		t.Fatalf("stderr does not name the timeout:\n%s", errlog.String())
 	}
 }
