@@ -84,6 +84,11 @@ type UI struct {
 	// looks like a rendering fault, and one reading "v0.6.1" would be a lie.
 	Unreleased string `json:"unreleased"`
 	Beta       string `json:"beta"`
+	// ManagedRecord is the line every page opens with: the site is the record
+	// of an abcd-managed repository, and the line links that repository
+	// (itd-2610091010348892). It says who the content belongs to, because the
+	// repository is where every word on the page comes from.
+	ManagedRecord string `json:"managed_record"`
 }
 
 // RecordNav labels the explorer's sub-navigation.

@@ -103,6 +103,7 @@
   "read_script": "read the script",
   "unreleased": "unreleased",
   "beta": "Beta",
+  "managed_record": "This is the record of an abcd-managed repository",
   "health": {
     "unresolved": "References a record the tree does not hold",
     "isolated": "Linked to nothing, and nothing links to it",

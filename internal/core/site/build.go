@@ -24,6 +24,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
@@ -240,8 +241,23 @@ type RepoMeta struct {
 }
 
 // LoadRepoMeta reads the package manifest. An absent one is a state: the pages
-// that would carry a forge link render without it.
+// that would carry a forge link render without it. A repository address the
+// manifest does not give is the origin remote's on github.com, when it has one:
+// a managed repository need carry no package manifest, and the line every page
+// opens with links the repository (itd-2610091010348892).
 func LoadRepoMeta(repoRoot string) (RepoMeta, error) {
+	m, err := loadPackageMeta(repoRoot)
+	if err != nil || m.Repository != "" {
+		return m, err
+	}
+	if repo, rerr := ahoy.GitHubRepo(repoRoot); rerr == nil {
+		m.Repository = "https://github.com/" + repo
+	}
+	return m, nil
+}
+
+// loadPackageMeta reads the package manifest alone.
+func loadPackageMeta(repoRoot string) (RepoMeta, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return RepoMeta{}, err

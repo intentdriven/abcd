@@ -293,7 +293,20 @@ func (c *composer) headWith(pageTitle, script string) string {
 		b.WriteString(`<script src="` + escapeAttr(c.at(script)) + `" defer></script>` + "\n")
 	}
 	b.WriteString("</head>\n<body>\n")
+	b.WriteString(c.managedLine())
 	return b.String()
+}
+
+// managedLine is the line every page opens with: the site is the record of an
+// abcd-managed repository, linking to that repository where the build knows its
+// address. The words are the allowlist's, so the line adds nothing the
+// provenance gate cannot account for.
+func (c *composer) managedLine() string {
+	words := escapeText(c.ui.ManagedRecord)
+	if c.repo.Repository != "" {
+		words = `<a href="` + escapeAttr(c.repo.Repository) + `">` + words + `</a>`
+	}
+	return `<p class="managed">` + words + `</p>`
 }
 
 // identity reads the canonical Identity block. A repository that records none

@@ -110,6 +110,10 @@ th{font-family:"Bricolage Grotesque",sans-serif;font-weight:650;font-size:.82rem
    that duplication would mean changing the markup, not this rule. */
 .sr,th .th-portrait~span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
+/* ---------- the line every page opens with (itd-2610091010348892) ---------- */
+.managed{margin:0;padding:6px 16px;text-align:center;font-size:.8rem;line-height:1.4;color:var(--ink-2);background:var(--ground);border-bottom:1px solid var(--rule)}
+.managed a{color:inherit}
+
 /* ---------- site header ---------- */
 .site-head{background:var(--ground);border-bottom:1px solid var(--rule)}
 .site-head .wrap{display:flex;align-items:center;gap:22px;min-height:64px;flex-wrap:wrap}

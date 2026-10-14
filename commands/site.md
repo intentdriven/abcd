@@ -56,7 +56,8 @@ reads exactly this set — `.abcd/site.json`, `site-src/ui.json`,
 the root or in `docs/` — and `CITATION.cff` for the footer),
 `.abcd/site-baseline.json` (the ratchet the health block counts against), and
 `.claude-plugin/plugin.json` (the forge URL, licence and author the links and
-footer use) — and writes the landing page, the record
+footer use; without a forge URL there, the origin remote's github.com address)
+— and writes the landing page, the record
 export, the redirect and header maps, the stylesheet, the two scripts, the
 `install.sh`, and every referenced raster into the output directory. The one
 write outside it is `site-src/ui.json` itself, and only when the file lacks a
@@ -84,6 +85,11 @@ stylesheet, the scripts, the pictures, the navigation and every record route)
 is placed under that path. Give `abcd lint site` the same `--base-path`, so it
 resolves what it reads against the same root. The default, `/`, writes exactly
 the links a site served at the root of its domain needs.
+
+Every page opens with one line saying it is the record of an abcd-managed
+repository, linking to that repository. Its words are the `managed_record`
+interface string in `site-src/ui.json`, so like every other word the generator
+adds, they are declared there and nowhere else.
 
 Four flags exist so a build can pin what the footer says rather than reading it
 from the working tree: `--version`, `--commit`, `--date` and `--preview` (stamp

@@ -349,7 +349,8 @@ func (f *fixture) writeSources() {
   "matches_system": "matches this computer",
   "read_script": "read the script",
   "unreleased": "unreleased",
-  "beta": "Beta"
+  "beta": "Beta",
+  "managed_record": "This is the record of an abcd-managed repository"
 }
 `)
 
