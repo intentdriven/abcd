@@ -331,10 +331,13 @@ func unverifiedCopyHelp(check, why string) SummaryItem {
 		check = ghAttestationVerifyCommand("<the abcd on your PATH>", "")
 	}
 	if why != "" {
+		// The hand check is bound to the copy's own older tag, which a
+		// genuine older build passes, so it is qualified: a pass is not the
+		// copy being adopted.
 		return SummaryItem{
 			What:   "The abcd on your PATH is " + why + ", so it was not adopted; it was left as it is.",
 			Why:    "With no verified cache to compare it with, the copy names its own release, and a release older than the newest this machine has known is refused so an old build cannot stand in for a newer one.",
-			Action: "Reinstall the newest release with the install one-liner in the README, or run abcd update; check the copy by hand with `" + check + "`.",
+			Action: "Reinstall the newest release with the install one-liner in the README, or run abcd update. You can check the copy by hand with `" + check + "`, but a pass proves only that it is a genuine build of that older release; it does not lift the newest-release floor, and the copy is still refused.",
 			Refs:   []string{UnverifiedCopyGapID},
 		}
 	}

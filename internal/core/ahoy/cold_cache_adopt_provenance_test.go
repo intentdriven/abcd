@@ -341,3 +341,73 @@ func TestColdCopyAtTheMarkIsAdopted(t *testing.T) {
 		t.Errorf("a copy at the mark must adopt; remaining %v, notes %v", res.Remaining, res.Notes)
 	}
 }
+
+// olderThanMarkItem returns the summary item explaining the unverified copy,
+// failing the test when there is none.
+func olderThanMarkItem(t *testing.T, res InstallResult) SummaryItem {
+	t.Helper()
+	for _, it := range res.Summary {
+		if slices.Contains(it.Refs, UnverifiedCopyGapID) {
+			return it
+		}
+	}
+	t.Fatalf("no summary item explains %s: %+v", UnverifiedCopyGapID, res.Summary)
+	return SummaryItem{}
+}
+
+// TestColdCopyOlderThanTheMarkStaysNamedOnARerun: the second run has nothing
+// left to write, so it takes the early nothing-to-do return rather than an
+// apply step, and that return must still say the copy is older than the
+// mark, not fall back to the generic could-not-be-verified wording.
+func TestColdCopyOlderThanTheMarkStaysNamedOnARerun(t *testing.T) {
+	target, _ := plainCopy(t)
+	if err := RecordReleaseMark("v0.13.5", true); err != nil {
+		t.Fatal(err)
+	}
+	repo := gitRepo(t)
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{}).check
+	if _, err := Install(repo, opts, RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(repo, opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Writes) != 0 {
+		t.Fatalf("the rerun must have nothing to write, so it reaches the early return; writes %v", res.Writes)
+	}
+	assertUnverifiedCopyReported(t, res, target)
+	item := olderThanMarkItem(t, res)
+	for _, v := range []string{stubCopyRelease + ", older than v0.13.5", "the newest release this machine has installed or verified"} {
+		if !strings.Contains(item.What, v) {
+			t.Errorf("the rerun's summary must say %q: %q", v, item.What)
+		}
+	}
+}
+
+// TestOlderThanMarkHandCheckDoesNotLiftTheFloor: the hand check is bound to
+// the copy's own older tag, so a genuine older build passes it. The summary
+// must say that a pass proves only that, and that the copy stays refused,
+// so a green result is not read as the copy being adopted.
+func TestOlderThanMarkHandCheckDoesNotLiftTheFloor(t *testing.T) {
+	target, _ := plainCopy(t)
+	if err := RecordReleaseMark("v0.13.5", true); err != nil {
+		t.Fatal(err)
+	}
+	opts := installOpts()
+	opts.VerifyProvenance = (&recordingProvenance{}).check
+	res, err := Install(gitRepo(t), opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := olderThanMarkItem(t, res)
+	if !strings.Contains(item.Action, "gh attestation verify "+target) {
+		t.Fatalf("the hand check must still be given: %q", item.Action)
+	}
+	for _, v := range []string{"genuine build of that older release", "does not lift the newest-release floor", "still refused"} {
+		if !strings.Contains(item.Action, v) {
+			t.Errorf("the hand check must be qualified with %q: %q", v, item.Action)
+		}
+	}
+}
