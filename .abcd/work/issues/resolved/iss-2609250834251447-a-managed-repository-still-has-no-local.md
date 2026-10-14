@@ -12,7 +12,7 @@ found_at: ".githooks/commit-msg"
 deferred_after: v0.11.1
 deferral_reason: "ruling still owed to the product thinker (re-deferred at v0.11.1 by run A's major-triage lane; none recorded since v0.10.0): for the commit-msg hook abcd ahoy would scaffold into a managed repository, how does it find an abcd binary with no plugin root, does it fail open or closed when none is found, and is it installed by default or on opt-in? The sources-refresh hook's opt-in shape (git config abcd.sourcesBinary, fail open; DECISIONS 2026-09-25) is a provisional precedent, not that ruling."
 remedy: "Waits on ruling G+ (fail open or closed, default or opt-in): scaffold a commit-msg hook into managed repositories that runs abcd lint outbound through a binary named by an absolute path in git config --local abcd.binary (written by ahoy install to the owned PATH copy, the abcd.guardPath precedent), never a binary found in the working tree; then: if fail closed, exit 1 naming the key to set; if fail open, print one warning line and pass; if default, ahoy install arms it; if opt-in, behind an install flag. Prove it with hook fixture tests for a found binary refusing a footer, a missing binary on each branch, and a working-tree binary never executed."
-resolution: "ruled under abcd-fixes-what-it-adds: ahoy install --outbound-hook opts a managed repository into a committed commit-msg hook running abcd lint outbound; never installed by default; finds abcd only through git config --local abcd.binary (absolute, outside the working tree, never PATH); fails open with one warning when none is usable"
+resolution: "commit-message half only, ruled under abcd-fixes-what-it-adds: ahoy install --outbound-hook opts a managed repository into a committed commit-msg hook running abcd lint outbound; never installed by default; finds abcd only through git config --local abcd.binary (absolute, outside the working tree, never PATH); fails open with one warning when none is usable. The forge-text half this record also named (pull-request bodies, issues and comments handed to the forge CLI) is not covered by the hook and moves to iss-2610142210511831"
 impact: additive
 ---
 
@@ -26,3 +26,7 @@ Deferred past v0.11.1: ruling still owed to the product thinker (re-deferred at 
 
 - The threat is a session URL or tool footer reaching public history, plus the hook itself executing repository-controlled code; resolving through a local config key holding an absolute path answers the second. lefthook's generated hook searches an explicit variable, then PATH, then package-manager locations, and fails open unless assert_lefthook_installed is set: https://raw.githubusercontent.com/evilmartians/lefthook/master/internal/templates/hook.tmpl (consulted 2026-09-29), so fail-closed-on-opt-in is an established shape, but the choice stays the ruling's (G+).
 - Rejected: a PATH-only search, which a repository can shadow through a relative PATH element.
+
+## Split 2026-10-14
+
+Resolved for the commit-message half when the opt-in outbound commit-msg gate was re-applied for v0.15.0. The hook judges commit messages only; the text handed to the forge CLI for a pull request, an issue or a comment is still unchecked in a managed repository, and that half is now its own record, iss-2610142210511831.
