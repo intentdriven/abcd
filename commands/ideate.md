@@ -172,7 +172,7 @@ checkout's store. Outside a repository there is no research store to write into,
 and the verb refuses (exit 2) rather than laying one where it stands: a verdict
 filed outside every checkout reaches no gate and no reader, and a killed idea
 nobody can find is an idea that gets proposed again. If a research store also
-exists below the repository root, the verb names it on stderr and leaves it
+exists between the working directory and the repository root, the verb names it on stderr and leaves it
 alone; relay that line.
 
 A public verdict is committed, and a private one is a file on disk, so in both

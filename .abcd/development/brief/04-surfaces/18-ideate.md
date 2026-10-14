@@ -119,7 +119,7 @@ Refusals are **whole-document**, never cite-or-be-dropped. A verdict record with
 a quietly-dropped falsified claim or grill hit is worse than no record, because a
 later session trusts it.
 
-The refusals a caller actually meets fall into five groups, each protecting
+The refusals a caller actually meets fall into six groups, each protecting
 something a later reader depends on:
 
 - **The payload cannot be tied to a definition**: no `schema_version`, one this
@@ -143,9 +143,10 @@ something a later reader depends on:
   thinker's answer decides who can ever read the verdict, so the verb never
   picks one.
 - **The write is not safely containable**: a slug that is not lower-case
-  kebab-case, a symlinked component under the research directory, a repository
-  with no `.abcd/work/DECISIONS.md` for a public verdict's pointer line to land
-  in, or a private verdict whose home lies inside a git working tree.
+  kebab-case, a component under the research directory symlinked out of the
+  repository, a repository with no `.abcd/work/DECISIONS.md` for a public
+  verdict's pointer line to land in, or a private verdict whose home lies inside
+  a git working tree that is not the account's own.
 - **There is no store to address**: a working directory with no repository above
   it, or one git will not answer for. The research store belongs to a checkout,
   and laying one where the caller happens to be standing writes a verdict nobody
@@ -154,7 +155,7 @@ something a later reader depends on:
   than a second one beneath it.
 
 That resolution has a reporting half as well as a refusing one. If a second
-research store already exists somewhere below the checkout root, the run
+research store already exists between the working directory and the checkout root, the run
 succeeds against the checkout's own store and names the stray one on the way
 past, saying that it was left untouched and that anything filed there reaches no
 gate and no release cut. It is a notice, not a refusal, and it moves nothing:
@@ -165,7 +166,8 @@ The research directory itself is created when absent: nothing else in abcd
 establishes it, so refusing would fail the first run in every repository, after
 the three host legs have already been paid for. The create is exclusive, which is
 the no-overwrite guarantee, and the decision log's read-modify-write runs under
-the same advisory lock the ledger allocators use.
+an advisory lock of its own, `.abcd/work/.decisions.lock`, taken through the
+same flock primitive the ledger allocators use.
 
 ## References
 
