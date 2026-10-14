@@ -379,18 +379,10 @@ type pendingCD struct {
 }
 
 // varVal is a variable's value as the line set it; ok is false where the
-// line does not fix it. litTilde records that a `~` opening it was quoted
-// or escaped in the assignment (`BASH_ENV='~/x'`), which leaves it text:
-// only an unquoted one is the home (homeTilde).
+// line does not fix it.
 type varVal struct {
-	text     string
-	ok       bool
-	litTilde bool
-}
-
-// homeTilde reports whether v opens with a `~` the assignment expanded.
-func (v varVal) homeTilde() bool {
-	return strings.HasPrefix(v.text, "~") && !v.litTilde
+	text string
+	ok   bool
 }
 
 // fdFile is a descriptor open on a file; ok is false where the line does not
@@ -475,11 +467,9 @@ func cwdName(word string) string {
 }
 
 // relativeUnknown reports whether word names a file relative to a working
-// directory the line leaves unknown. tilde is whether its leading `~` is
-// tilde expansion, the home; a quoted `~` is a directory of that name, as
-// relative as any other.
-func (st *shellState) relativeUnknown(word string, tilde bool) bool {
-	return word != "" && !filepath.IsAbs(word) && !tilde && (!st.dirOK || st.dir == "")
+// directory the line leaves unknown.
+func (st *shellState) relativeUnknown(word string) bool {
+	return word != "" && !filepath.IsAbs(word) && !strings.HasPrefix(word, "~") && (!st.dirOK || st.dir == "")
 }
 
 // home is the directory `~` expands to: HOME as the line set it, else the
@@ -563,7 +553,7 @@ func (st *shellState) resolveToken(rc *readCtx, s segment, i int) (string, bool)
 	if isUnknown(tok) || s.globAt(i) || strings.ContainsRune(tok, varMark) {
 		return "", false
 	}
-	return st.resolve(rc, tok, s.homeTilde(i))
+	return st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
 }
 
 // fixedToken reports token i of s when the line fixes it.
@@ -612,10 +602,6 @@ func (st *shellState) assigned(rc *readCtx, s segment, i int, key string) varVal
 	}
 	v := tok[eq+1:]
 	val := varVal{text: v, ok: !isUnknown(v) && !strings.ContainsRune(v, varMark)}
-	val.litTilde = strings.HasPrefix(v, "~") && !s.tildeAt(i, eq+1)
-	if (key == "PATH" || key == "FPATH") && val.ok {
-		val.text = st.tildeList(rc, s, i, eq+1, v)
-	}
 	if key == "PATH" && !val.ok {
 		val = st.pathValue(rc, s, i, eq)
 	}
@@ -626,7 +612,7 @@ func (st *shellState) assigned(rc *readCtx, s segment, i int, key string) varVal
 	if !prev.ok || !val.ok {
 		return varVal{}
 	}
-	return varVal{text: prev.text + val.text, ok: true, litTilde: prev.litTilde || (prev.text == "" && val.litTilde)}
+	return varVal{text: prev.text + val.text, ok: true}
 }
 
 // valueBefore is key's value before an assignment that names it: the line's
@@ -668,12 +654,9 @@ func (st *shellState) pathValue(rc *readCtx, s segment, i, eq int) varVal {
 		return varVal{}
 	}
 	out := make([]string, 0, len(tents))
-	at := eq + 1
 	for k, te := range tents {
-		off := at
-		at += len(te) + 1
 		if !strings.ContainsRune(te, varMark) {
-			out = append(out, st.listEntry(rc, s, i, off, te))
+			out = append(out, te)
 			continue
 		}
 		se := sents[k]
@@ -694,41 +677,6 @@ func (st *shellState) pathValue(rc *readCtx, s segment, i, eq int) varVal {
 		out = append(out, entry)
 	}
 	return varVal{text: strings.Join(out, ":"), ok: true}
-}
-
-// tildeList is a colon list's value v, which opens at offset off of the
-// assignment word at token i of s, with each entry as the assignment leaves
-// it (listEntry).
-func (st *shellState) tildeList(rc *readCtx, s segment, i, off int, v string) string {
-	if !strings.Contains(v, "~") {
-		return v
-	}
-	parts := strings.Split(v, ":")
-	for k, e := range parts {
-		parts[k] = st.listEntry(rc, s, i, off, e)
-		off += len(e) + 1
-	}
-	return strings.Join(parts, ":")
-}
-
-// listEntry is one entry e of a colon list (PATH, FPATH), at offset off of
-// token i of s, as the shell assigns it: bash and zsh expand an unquoted `~`
-// at the value's start and after each `:`, so `~` or `~/…` is the home with
-// the rest after it, and `~user` a home the guard does not know
-// (unknownText, where a search stops). A quoted `~` stays text, a directory
-// of that name.
-func (st *shellState) listEntry(rc *readCtx, s segment, i, off int, e string) string {
-	if e == "" || e[0] != '~' || !s.tildeAt(i, off) {
-		return e
-	}
-	if e != "~" && !strings.HasPrefix(e, "~/") {
-		return unknownText
-	}
-	h, ok := st.home(rc)
-	if !ok || h == "" || isUnknown(h) || strings.ContainsRune(h, varMark) {
-		return unknownText
-	}
-	return h + e[1:]
 }
 
 // accountPath stands in a PATH the line set for the account's own PATH,
@@ -867,7 +815,7 @@ func (st *shellState) applyRedirects(rc *readCtx, fds map[int]fdFile, rs []redir
 func (st *shellState) openAt(rc *readCtx, word string, tilde bool) fdFile {
 	p, ok := st.resolve(rc, word, tilde)
 	f := fdFile{path: p, ok: ok}
-	if !ok && st.relativeUnknown(word, tilde) {
+	if !ok && !tilde && st.relativeUnknown(word) {
 		f.rel, f.gen = word, st.dirGen
 	}
 	return f
@@ -981,8 +929,7 @@ func needsShell(s segment) bool {
 		if isUnknown(tok) || (tok != "source" && tok != ".") {
 			continue
 		}
-		i := sourceIndex(s, a.idx)
-		if w, ok := fixedToken(s, i); ok && !strings.Contains(w, "/") && !s.homeTilde(i) {
+		if w, ok := fixedToken(s, sourceIndex(s, a.idx)); ok && !strings.Contains(w, "/") && !strings.HasPrefix(w, "~") {
 			return true
 		}
 	}
@@ -1197,7 +1144,7 @@ func segChangesDir(s segment) bool {
 // after is the state the commands after s run in, in s's shell.
 func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir bool) *shellState {
 	if key, ok := st.trackedKey(s.arrayOf); s.arrayOf != "" && ok {
-		return st.withArray(rc, s, key)
+		return st.withArray(s, key)
 	}
 	allAssign := len(s.tokens) > 0
 	for _, t := range s.tokens {
@@ -1340,7 +1287,7 @@ func (st *shellState) unset(args []string) *shellState {
 // (iss-2610111749099986). A path element that is the array itself
 // (`$path`, `$PATH`) is read the same way, the account's PATH kept as
 // accountPath (iss-2610120953445472).
-func (st *shellState) withArray(rc *readCtx, s segment, name string) *shellState {
+func (st *shellState) withArray(s segment, name string) *shellState {
 	// before is the value the array held before this assignment.
 	before, beforeSet := st.vars[name]
 	if e := st.emptied; !s.arrayAppend && e != nil && e.name == name {
@@ -1363,8 +1310,6 @@ func (st *shellState) withArray(rc *readCtx, s segment, name string) *shellState
 			}
 		case !ok || strings.ContainsRune(w, ':'):
 			w = unknownText
-		default:
-			w = st.listEntry(rc, s, i, 0, w)
 		}
 		if w != "" {
 			elems = append(elems, w)
@@ -1491,7 +1436,7 @@ func (st *shellState) cdEnters(rc *readCtx, s segment, site int, e cdEnter) (str
 		if !fixed || w == "-" || strings.HasPrefix(w, "+") {
 			return "", false
 		}
-		return st.cdLands(rc, w, s.homeTilde(e.i), e.physical)
+		return st.cdLands(rc, w, strings.HasPrefix(w, "~"), e.physical)
 	}
 	target, ok := st.home(rc)
 	if !ok || target == "" {
@@ -1701,7 +1646,7 @@ func cdpathLookup(rc *readCtx, st *shellState, s segment, site int, e cdEnter) c
 		// directory unknown whatever CDPATH holds.
 		return cdpathSearch{}
 	}
-	if w == "-" || strings.HasPrefix(w, "+") || strings.HasPrefix(w, "/") || s.homeTilde(i) ||
+	if w == "-" || strings.HasPrefix(w, "+") || strings.HasPrefix(w, "/") || strings.HasPrefix(w, "~") ||
 		w == "." || w == ".." || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../") {
 		return cdpathSearch{}
 	}
@@ -1923,7 +1868,7 @@ func (r Registry) targetsOf(rc *readCtx, s segment, st *shellState) ([]readTarge
 		case strings.Contains(tok, "/"):
 			if p, ok := st.resolveToken(rc, s, a.idx); ok {
 				out = append(out, readTarget{path: p, shown: tok, kind: targetDirect, env: env, startupEnv: true})
-			} else if st.relativeUnknown(tok, s.homeTilde(a.idx)) {
+			} else if st.relativeUnknown(tok) {
 				out = append(out, readTarget{shown: tok, kind: targetDirect, env: env, blind: true, cwdName: cwdName(tok)})
 			}
 		}
@@ -1988,9 +1933,6 @@ func autoloadTargets(rc *readCtx, s segment, st *shellState, site, first int, op
 	fp, lineSet := st.vars["FPATH"]
 	for i := 0; i < site && i < len(s.tokens); i++ {
 		if name, v, ok := assignment(s.tokens[i]); ok && trackedName(name) == "FPATH" {
-			if v.ok {
-				v.text = st.tildeList(rc, s, i, len(name)+1, v.text)
-			}
 			fp, lineSet = v, true
 		}
 	}
@@ -2025,9 +1967,7 @@ func autoloadTargets(rc *readCtx, s segment, st *shellState, site, first int, op
 			if d == "" || isUnknown(d) || strings.ContainsRune(d, varMark) {
 				return nil, unfixed
 			}
-			// The assignment expanded every `~` it could (listEntry): one
-			// left is text.
-			dir, ok := st.resolve(rc, d, false)
+			dir, ok := st.resolve(rc, d, strings.HasPrefix(d, "~"))
 			if !ok {
 				return nil, unfixed
 			}
@@ -2097,9 +2037,9 @@ func sourceLookup(rc *readCtx, st *shellState, s segment, site int) (p string, o
 	if !ok || scriptIsStream(w, s.stdinStream) {
 		return "", false, false, false, false, nil
 	}
-	if strings.Contains(w, "/") || s.homeTilde(i) {
+	if strings.Contains(w, "/") || strings.HasPrefix(w, "~") {
 		p, ok := st.resolveToken(rc, s, i)
-		blind := !ok && st.relativeUnknown(w, s.homeTilde(i))
+		blind := !ok && st.relativeUnknown(w)
 		return p, ok, false, blind, blind, nil
 	}
 	pv, set := st.vars["PATH"]
@@ -2205,7 +2145,7 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 				if lineStrict {
 					return "", false, true
 				}
-				if st.relativeUnknown(p, strings.HasPrefix(p, "~")) {
+				if st.relativeUnknown(p) {
 					skip(false)
 				}
 				continue
@@ -2223,7 +2163,7 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 				return p, true, false
 			}
 			look(p)
-		} else if st.relativeUnknown(name, strings.HasPrefix(name, "~")) {
+		} else if st.relativeUnknown(name) {
 			skip(true)
 		}
 	}
@@ -2378,13 +2318,13 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	// BASH_ENV is sourced by a non-interactive bash; read for every shell
 	// the line hands it to.
 	if v, ok := env["BASH_ENV"]; ok && v.ok && v.text != "" {
-		startup("BASH_ENV", v.text, v.homeTilde())
+		startup("BASH_ENV", v.text, strings.HasPrefix(v.text, "~"))
 	}
 	if c.unresolved {
 		return out, sigs
 	}
 	if v, ok := env["ENV"]; ok && v.ok && v.text != "" && c.interactive {
-		startup("ENV", v.text, v.homeTilde())
+		startup("ENV", v.text, strings.HasPrefix(v.text, "~"))
 	}
 	if c.rcfile >= 0 {
 		idx := site + 1 + c.rcfile
@@ -2414,14 +2354,14 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 				files = append(files, ".zlogin", ".zlogout")
 			}
 			for _, f := range files {
-				if p, ok := st.resolve(rc, filepath.Join(base.text, f), base.homeTilde()); ok {
+				if p, ok := st.resolve(rc, filepath.Join(base.text, f), strings.HasPrefix(base.text, "~")); ok {
 					out = append(out, child(p, "the startup file "+p, targetStartup))
 				}
 			}
 		}
 	case "bash", "rbash", "sh":
 		if home, ok := env["HOME"]; ok && home.ok && home.text != "" {
-			tilde := home.homeTilde()
+			tilde := strings.HasPrefix(home.text, "~")
 			if c.login && !c.noprofile {
 				for _, f := range []string{".bash_profile", ".bash_login", ".profile"} {
 					p, ok := st.resolve(rc, filepath.Join(home.text, f), tilde)
@@ -2470,7 +2410,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 			}
 		}
 		for _, f := range files {
-			if p, ok := st.resolve(rc, filepath.Join(home.text, f), home.homeTilde()); ok {
+			if p, ok := st.resolve(rc, filepath.Join(home.text, f), strings.HasPrefix(home.text, "~")); ok {
 				out = append(out, child(p, "the startup file "+p, targetStartup))
 			}
 		}
@@ -2499,7 +2439,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 					}
 				}
 				out = append(out, child(p, w, targetScript))
-			} else if _, fixed := fixedToken(s, idx); fixed && st.relativeUnknown(w, s.homeTilde(idx)) {
+			} else if _, fixed := fixedToken(s, idx); fixed && st.relativeUnknown(w) {
 				// The file in a directory the line leaves unknown is unread,
 				// and a write before the run may be it (readTarget).
 				t := child("", w, targetScript)
@@ -2651,7 +2591,7 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 		if v, ok := t.env["BASH_ENV"]; ok && v.ok && v.text != "" {
 			if shellExpandsStartup(v.text) {
 				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
-			} else if p, ok := st.resolve(rc, v.text, v.homeTilde()); ok {
+			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
 					kind: targetStartup, env: t.env}, before)...)
 			}
