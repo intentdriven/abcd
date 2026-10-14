@@ -53,7 +53,9 @@ the team's relay behind its host's proxy. On loopback without it, a visitor
 is counted by the tailnet address Tailscale Serve forwards, and only when the
 connection itself comes from loopback. By default it admits a page from
 `https://abcdesign.app` or loopback; `--origin` (repeatable) replaces that
-list, so the relay then admits exactly the origins named. `--json` prints the
+list, so the relay then admits exactly the origins named, and without
+`--origin` so does `ABCD_SESSION_ORIGINS`, a comma list of origins, which the
+blueprint sets on the team's relay. `--json` prints the
 start line as an object with `url`, `loopback`, `behind_proxy`, `sign_in`,
 `repos`, `owners`, `any_repository` and `hint`.
 
@@ -65,11 +67,12 @@ start without one. On loopback, with none given, it serves this checkout's
 origin repository, or any repository when run outside a GitHub checkout; the
 start line says which.
 
-Team members sign in with the team's own GitHub sign-in app. The relay reads
-its secret from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name, its public
-client id from `--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`, and its kind
-from `ABCD_SESSION_GITHUB_APP_TYPE`: `github-app` (the default) or
-`oauth-app`. Never ask the
+Team members sign in with the team's own GitHub App, the only kind of
+sign-in app the relay takes. The relay reads its secret from
+`ABCD_SESSION_GITHUB_CLIENT_SECRET` by name and its public client id from
+`--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`. `ABCD_SESSION_GITHUB_APP_TYPE`,
+which once chose an OAuth app, may be unset or `github-app`; set to anything
+else the relay refuses to start. Never ask the
 user for the secret, and never print it or pass it on a command line. Without
 them, sign-in is not offered and a team member pastes a personal access token
 instead; the relay asks GitHub for that token's login and whether it may push
@@ -78,15 +81,23 @@ to the repository, and drops the token straight after.
 It refuses (exit 2, nothing started) a `--listen` that is not an IP address
 (or `localhost`) and a port, an `--origin` that is not an exact
 `scheme://host[:port]`, a `--repo` that is not `owner/name`, an `--owner` or
-`ABCD_SESSION_REPOS` entry that is neither, an unknown app type, a relay
-beyond loopback with no repository to serve, and an address it cannot listen
-on.
+`ABCD_SESSION_REPOS` entry that is neither, an `ABCD_SESSION_ORIGINS` entry
+that is not an origin, `ABCD_SESSION_GITHUB_APP_TYPE` set to anything but
+`github-app`, a relay beyond loopback with no repository to serve, and an
+address it cannot listen on.
 
 The relay bounds what it holds: 256 connections, 16 from one address (an IPv4
 address or an IPv6 /48), past which a new one is refused with 503; 30 seconds
-for a connection to host, join or rejoin; a member's updates to 60 a second
-in bursts of 200; and joining by code pauses for everybody for ten minutes
-past 200 wrong codes from everywhere in ten minutes.
+for a connection to host, join or rejoin; 1,024 queued items and 8 MiB per
+connection, past which that connection is dropped; a member's updates to 60 a
+second in bursts of 200; an awareness message to 8 KiB, and a session's
+awareness to 128 KiB a second; a guest's suggestions to 70 KiB each, 100 per
+connection and 1 MiB per session; every control message and refused frame to
+50 a second per connection, closing one refused 1,000 times; sign-in
+exchanges to 10 per address in ten minutes; a session's life to 12 hours,
+after which it ends for everyone with `closed {reason: "expired"}`; and
+joining by code pauses for everybody for ten minutes past 600 wrong codes from
+everywhere in ten minutes.
 
 ## Blueprint
 
@@ -101,15 +112,16 @@ release's linux/amd64 binary and checks it against the SHA-256 that release's
 writes the files (the one network read it makes, named on stderr) and pins it
 in the Dockerfile. `--release` defaults to this abcd's own version when that is
 a release. `render.yaml` sets `ABCD_SESSION_REPOS` to this checkout's origin
-repository on github.com, the one the relay serves, and
-`ABCD_SESSION_GITHUB_APP_TYPE` to `github-app`. With `--relay-origin`, the
+repository on github.com, the one the relay serves, and `ABCD_SESSION_ORIGINS`
+to the session page origins the relay admits: `https://abcdesign.app`, or each
+https origin `--origin` (repeatable) names. With `--relay-origin`, the
 deployed relay's https origin once Render has given it one, it also writes
 `.abcd/relay/relays.json`, naming that relay as the one the repository
 trusts; the session page reads it. A file left exactly as abcd wrote it is
 replaced; one that was edited, or that abcd did not write, is never
 overwritten, and then nothing is written (exit 2). It refuses outside a
 checkout abcd manages, in a checkout whose origin is not on github.com, a
-`--relay-origin` that is not `https://host[:port]`, and a release that
+`--relay-origin` or `--origin` that is not `https://host[:port]`, and a release that
 publishes no checksum for the linux/amd64 binary.
 
 Relay what it prints: each file and whether it was written, replaced or left
@@ -118,7 +130,8 @@ commits both files, chooses New, then Blueprint, on Render, picks the
 repository, sets the Blueprint path to `.abcd/relay/render.yaml`, and sets
 `ABCD_SESSION_GITHUB_CLIENT_ID` and `ABCD_SESSION_GITHUB_CLIENT_SECRET` in the
 service's Environment. `--json` returns `release`, `asset`, `sha256`,
-`checksums_url`, `repos` and `files`, each with its `path` and `state`.
+`checksums_url`, `repos`, `origins` and `files`, each file with its `path` and
+`state`.
 
 ## Page
 
@@ -142,23 +155,30 @@ sends. The directory is the one the user names; never publish or deploy it for
 them.
 
 A link can name any relay, so the page trusts the repository, not the link.
-Before any sign-in or token reaches a relay, it reads the repository's
-committed `.abcd/relay/relays.json`, `{"relays": ["https://<relay>"]}`, from
-`api.github.com` on the default branch: without a token for a public
+Before any sign-in, token or guest's name reaches a relay, it reads the
+repository's committed `.abcd/relay/relays.json`, `{"relays": ["https://<relay>"]}`,
+from `api.github.com` on the default branch: without a token for a public
 repository, and with the person's token, before anything else, once there is
-one. A relay the file does not name gets no token, no sign-in and no
-connection. Where the file cannot be read (a private repository before
-sign-in, or no file), the page shows the relay's address and the person must
-confirm it ("Only continue if your team runs this relay") before any sign-in
-or token reaches it; the browser remembers the confirmation for that
-repository. So the team commits `relays.json` naming each relay's https
-origin: the one `blueprint --relay-origin` writes, and, for a host serving
-from their own machine, that machine's tailnet address. When a user asks how
-to set up sign-in, recommend a GitHub App over an OAuth app, with the
+one. A relay the file does not name gets no token, no sign-in, no join and no
+connection, and a listed one shows which repository names it ("This relay is
+named by owner/repo. Only continue if you work on owner/repo."). Only GitHub's
+404 means there is no list to read (a private repository before sign-in, or no
+file): then the page shows the relay's address and the person must confirm it
+("Only continue if your team runs this relay") before any sign-in, token or
+join reaches it; the browser remembers the confirmation for that repository.
+Any other failure to read the list (a 403, a 429, a 5xx, no network) refuses
+the relay with "try again later", and offers no confirmation. So the team
+commits `relays.json` naming each relay's https origin: the one
+`blueprint --relay-origin` writes, and, for a host serving from their own
+machine, that machine's tailnet address. Sign-in goes through a GitHub App
+alone: when a user asks how to set it up, it is a GitHub App with the
 repository permissions Contents read and write, Pull requests read and write,
-and Metadata read, and only those: its sign-in carries no scope and reaches
-only the repositories it is installed on, while an OAuth app's `repo` scope
-reaches every repository the person can.
+and Metadata read, and only those. Its sign-in carries no scope and reaches
+only the repositories it is installed on. A relay that offers no GitHub App
+sign-in gets no sign-in button on the page; a team member pastes a token
+instead. The page refuses to run inside another page's frame: a static host
+cannot forbid framing, so the page shows only a link to open it in its own
+tab.
 
 It writes those six files and nothing else, and removes nothing. `<dir>` may be
 absent, empty, or a directory an earlier run wrote, whose files are replaced.
