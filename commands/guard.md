@@ -693,7 +693,8 @@ on standard input (`--body-file -`), a flag spelled by a substitution
 into an editor or a browser (`--editor`, `--web`), text gh takes from the
 commits (`--fill`) or a template (`--template`), a posting command inside a
 script the line runs, and every other posting path: `gh api`, `gh pr review`,
-`gh release`, `gh pr merge --body`, and any forge client but gh. The re-read
+`gh release`, `gh pr merge --body`, `gh pr close --comment`,
+`gh issue close --comment`, and any forge client but gh. The re-read
 after posting stays the control for those.
 
 Nothing changes in a repository that did not opt in. To turn the check off,
