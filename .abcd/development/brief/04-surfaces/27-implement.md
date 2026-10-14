@@ -260,11 +260,30 @@ to the first-role session, carrying the verdict's facts so it renders exactly
 as it was printed; the run's hand-written load samples share the name and carry
 no `triggers`. Without its wait flag the check exits 0 on every status: it never
 refuses, waits or signals anything. With its wait flag it is the one waiter
-concurrent sessions gate a preflight or a race run with: it blocks until the
-one-minute load is below the wait limit and no other `go test -race` run is
-live, one waiter at a time under a machine-wide hold, runs a command given after
-`--` and exits with its code, forwarding an interrupt to it, and gives up after
-its timeout at exit 1, naming what it was still waiting on.
+concurrent sessions gate a preflight or a race run with, and `make preflight`
+runs its own test stages through it: it blocks until the one-minute load is
+below the wait limit, no other `go test -race` run is live, no other
+`make preflight` is running and no other waiter is ahead of it in the queue (a
+lower pid) or running its command, under any account; a waiter beneath a waiter
+running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
+the process table, which shows every account's processes, judged from each
+candidate's arguments with the waiter's own ancestry excluded
+(iss-2610140638074587): no file another account can write is read; the gate
+reads only the process table. A waiter queued ahead still delays the
+ones behind it, under any account, until it opens or reaches its own timeout,
+even when only its own account's stricter wait limit keeps it shut; there is no
+channel by which it could tell them so without a shared writable file. A waiter
+running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
+gate: the waiter waits a random 15 to 60 seconds and checks everything again,
+and opens only if that re-check is clear too (iss-2610102020442624). Within one
+account it also takes a hold under the abcd home, which a waiter beneath the
+holder ignores. It runs a command given after `--` and exits with its code,
+forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
+what it was still waiting on. Inside `make preflight` each test stage then
+takes a `go test -p` derived from the online cores and the load as the stage
+starts (`machineload.GoTestParallelism`: twice the cores less the load, at most
+the cores, at least a quarter of them), and on a CI runner the gate opens at
+once and go's own default stands.
 
 ## The implement loop
 

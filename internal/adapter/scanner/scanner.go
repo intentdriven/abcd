@@ -109,6 +109,11 @@ type ScanResult struct {
 	// zero-coverage sentinel.
 	Excluded    []string          `json:"excluded,omitempty"`
 	ExcludedWhy map[string]string `json:"excluded_why,omitempty"`
+	// UnmatchedExclusions names, in config order, every declared exclusion
+	// fragment that matched no bundle file. Such a fragment leaves nothing
+	// out, so a typo'd one would read as working while the files it was meant
+	// for are scanned; launch warns on each (iss-2610120929469571).
+	UnmatchedExclusions []string `json:"unmatched_exclusions,omitempty"`
 	// FindingsOmitted counts the findings dropped past maxBundleFindings. They
 	// are counted in HardFails all the same, so a truncated list never reads
 	// as a smaller verdict.
@@ -1229,6 +1234,23 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 		res.UnscannedWhy[logical] = why
 	}
 	secrets := secretPatterns(s.patterns)
+	// Every exclusion is judged against every file, not only the first that
+	// excludes it, so a fragment overlapping an earlier one is not reported
+	// as matching nothing.
+	matched := make([]bool, len(s.exclusions))
+	for _, f := range files {
+		l := filepath.ToSlash(f.LogicalPath)
+		for i, ex := range s.exclusions {
+			if !matched[i] && exclusionMatches(l, ex.Fragment) {
+				matched[i] = true
+			}
+		}
+	}
+	for i, ex := range s.exclusions {
+		if !matched[i] {
+			res.UnmatchedExclusions = append(res.UnmatchedExclusions, ex.Fragment)
+		}
+	}
 	for _, f := range files {
 		if why, ok := s.excludedBy(f.LogicalPath); ok {
 			res.Excluded = append(res.Excluded, f.LogicalPath)
