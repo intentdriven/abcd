@@ -315,6 +315,23 @@ byte of the manifest. A manifest below `schemaVersion` 2 is refused in a release
 after v0.14.1, and in a tree whose CHANGELOG.md names no dated release, so
 setting the manifest back cannot turn the vocabulary off.
 
+**A release is newer than every release tag.** Both era refusals read the
+release's version from CHANGELOG.md, so in the manifest era — the tree carries
+the manifest, or an earlier release tag's tree did — the gate also refuses a
+release whose version is not newer than every release tag, unless it re-gates
+its own tagged commit and every newer release tag descends from that commit.
+A version already tagged at another commit is refused too. This refuses a point
+release on an older line, such as v0.14.2 after v0.15.0: cut the next version on
+`main` instead. That is the release policy, not only the gate's: the product
+thinker ruled on 2026-10-14 that before 1.0 only the newest release is offered
+(the decisions log line of that date), and
+`launch.ComputeRetention` already refuses an out-of-order ship. On the
+auto-release path `verify` runs before the tag exists, and a tag push or a
+re-run from an existing tag gates the tagged commit itself, so a release and its
+re-run both pass. **A hand-pushed tag is used up if `verify` refuses it:** tags
+cannot be deleted or moved, so the version cannot be cut again, and the fix
+goes out under the next version.
+
 The `receipt_gate` rule is **disabled by default** — it must never fire on
 ordinary PRs/pushes, only at release time — and is armed by `release.yml`'s
 **`verify` job, before the tag** (adr-52): the semantic gate joins the

@@ -933,6 +933,16 @@ finding, and one record named by two deferred findings across the release's
 receipts. The rule arms from the release-gate manifest's `schemaVersion` 2, so
 a commit from before it keeps the free-text dispositions its receipts were
 written to.
+
+The gate also refuses, in the manifest era, a release whose version is not
+newer than every release tag, unless it re-gates its own tagged commit and every
+newer release tag descends from it; a version already tagged at another commit
+is refused too. So a point release on an older line, such as v0.14.2 after
+v0.15.0, is refused: cut the next version on `main` instead. Before 1.0 only the
+newest release is offered (the product thinker's ruling of 2026-10-14), and
+`ComputeRetention` refuses an out-of-order ship already. A hand-pushed tag that
+`verify` refuses is used up, because tags cannot be deleted or moved; roll the
+next version rather than push it again.
 Report a HOLD to the user and stop: a HOLD is a result, not an obstacle to route
 around, and the receipts cannot be hand-written to unblock a release.
 
