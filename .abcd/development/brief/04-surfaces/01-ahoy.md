@@ -1295,6 +1295,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
+| `--outbound-forge` | bool |
 | `--outbound-hook` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |

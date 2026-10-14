@@ -163,6 +163,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		!attributionWouldChange(abs, opts) &&
 		!readmeWouldChange(abs, opts) &&
 		!outboundWouldChange(abs, opts) &&
+		!outboundForgeWouldChange(abs, opts) &&
 		!modeForced {
 		// One state reaches here that is NOT a no-op: a config.json that could not
 		// be parsed. It raises exactly one gap, deliberately non-resolvable — the
@@ -211,21 +212,22 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	approved, declined := resolveApproval(det.Gaps, opts, overrideChanges(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
-		cwd:         abs,
-		det:         det,
-		approved:    approved,
-		overrides:   opts.ValueOverrides,
-		prompter:    p,
-		gapPresent:  gapIDSet(det.Gaps),
-		autoYes:     opts.Yes,
-		devMode:     opts.Dev,
-		modeForced:  modeForced,
-		binTarget:   binTargetPath,
-		attribution: opts.Attribution,
-		outbound:    opts.OutboundHook,
-		confirmTool: opts.ConfirmTool,
-		provenance:  opts.VerifyProvenance,
-		readmeFlag:  opts.ReadmeParts,
+		cwd:           abs,
+		det:           det,
+		approved:      approved,
+		overrides:     opts.ValueOverrides,
+		prompter:      p,
+		gapPresent:    gapIDSet(det.Gaps),
+		autoYes:       opts.Yes,
+		devMode:       opts.Dev,
+		modeForced:    modeForced,
+		binTarget:     binTargetPath,
+		attribution:   opts.Attribution,
+		outbound:      opts.OutboundHook,
+		outboundForge: opts.OutboundForge,
+		confirmTool:   opts.ConfirmTool,
+		provenance:    opts.VerifyProvenance,
+		readmeFlag:    opts.ReadmeParts,
 	}
 
 	// Ordered apply steps.
@@ -245,6 +247,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// directory, and the EOL pin stepBanlist appends covers `.githooks/*`.
 	ac.stepAttributionHook()
 	ac.stepOutboundHook()
+	ac.stepOutboundForge()
 	ac.stepHistory()
 	ac.stepMarker(cfg)
 	// After stepMarker, before stepSymlink: the README pair's place in
@@ -436,6 +439,7 @@ type applyCtx struct {
 	modeForced      bool     // the requested install mode differs from the on-disk state
 	attribution     bool     // --attribution: opt this repo into the committed prompt hook
 	outbound        bool     // --outbound-hook: opt this repo into the committed commit-msg gate
+	outboundForge   bool     // --outbound-forge: opt this repo into the guard's forge-text check
 	binTarget       string   // the resolved PATH entry this run installs (never re-derived)
 	confirmTool     tools.Confirm
 	readmeFlag      string          // --readme-parts as given; "" when not given
