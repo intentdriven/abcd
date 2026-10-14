@@ -155,10 +155,12 @@ func maskCandidate(c intent.PickCandidate) intent.PickCandidate {
 	return c
 }
 
-// masked is State.masked for one captured transcript.
+// masked is State.masked for one captured transcript. Its scan gap is the
+// missing tools' explanations, one per line, which the record renders line by
+// line, so the mask keeps its line breaks (termsafe.SanitizeBlock).
 func (t Transcript) masked() Transcript {
-	t.Path, t.Session = line(t.Path), line(t.Session)
-	t.Stored, t.ScanGap = line(t.Stored), line(t.ScanGap)
+	t.Path, t.Session, t.Stored = line(t.Path), line(t.Session), line(t.Stored)
+	t.ScanGap = termsafe.SanitizeBlock(t.ScanGap)
 	return t
 }
 

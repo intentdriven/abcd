@@ -132,3 +132,37 @@ func TestAStateMasksTheTextItStoresWhenWritten(t *testing.T) {
 		t.Errorf("a clean state round-trips byte for byte:\n%s\nwant\n%s", got, clean)
 	}
 }
+
+// TestAScanGapKeepsItsLinesWhenMasked: a transcript's scan gap is the missing
+// tools' explanations joined by line breaks, which the record renders one
+// line each; masking it keeps those breaks and masks the runes inside a line,
+// whether the gap is stored by this abcd or read from a run an earlier one
+// wrote.
+func TestAScanGapKeepsItsLinesWhenMasked(t *testing.T) {
+	gap := "gitleaks is not installed\u009b\nsee the tools registry"
+	want := "gitleaks is not installed?\nsee the tools registry"
+	if got := (Transcript{ScanGap: gap}).masked().ScanGap; got != want {
+		t.Errorf("stored: the scan gap masks to %q, want %q", got, want)
+	}
+	repo, runID, _, _ := issueAwaiting(t)
+	var doc map[string]any
+	if err := json.Unmarshal(stateBytes(t, repo.Root(), runID), &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["transcripts"] = []any{map[string]any{"at": "2026-10-12T10:00:00Z", "path": "~/t.jsonl", "session": "s",
+		"stored": "~/store/s", "wrote": true, "scan_gap": gap}}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(runID))), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Transcripts[0].ScanGap; got != want {
+		t.Errorf("read: the scan gap masks to %q, want %q", got, want)
+	}
+}
