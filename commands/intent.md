@@ -1200,7 +1200,8 @@ within the limit is one request and one corpus file, and the result carries no
 is not written: the result's `overflow` states `corpus_bytes`, `limit_bytes`,
 the `groups` the documents were packed into in path order, the `chunks`, and
 the `unreviewed` documents (each `path` with its framed `bytes`, too large for
-any chunk, so no chunk reads it). `chunks` lists each chunk's `index`,
+any chunk, so no chunk reads it; the emit and the ingest each warn on stderr
+naming every one). `chunks` lists each chunk's `index`,
 `receipt_id`, `request_path`, `corpus_path`, `documents` and `bytes` (its
 request and corpus file together), and `chunk_bytes` totals them;
 `request_path` and `corpus_path` at the top are then empty, and `receipt_id` is

@@ -314,3 +314,47 @@ func TestIntentConsistencyCapsTheChunksSentToAProvider(t *testing.T) {
 		t.Fatalf("stderr lacks %q (provider called %d times):\n%s", want, p.calls.Load(), stderr)
 	}
 }
+
+// TestIntentConsistencyWarnsOfUnreviewedDocuments (R6 of the PR #974 review):
+// a document too large for any chunk is read by none, so the emit and the
+// ingest each warn on stderr naming it and its size, not only the report.
+func TestIntentConsistencyWarnsOfUnreviewedDocuments(t *testing.T) {
+	repo := consistencyChunkCLIRepo(t)
+	big := ".abcd/development/intents/planned/itd-40-oversize.md"
+	writeRepoFile(t, repo, big, "---\nid: itd-40\nslug: oversize\nkind: standalone\nspec_id: spc-40\n---\n\n# Oversize\n\n## Press Release\n\n"+
+		strings.Repeat("filler words ", 40000/13)+"\n")
+	gitCmd(t, repo, "add", "-A")
+	gitCommit(t, repo, "commit", "-q", "-m", "oversize intent")
+
+	stdout, stderr, err := runCLISplit(t, "intent", "consistency", "--json")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	var em consistencyChunkEmitted
+	if err := json.Unmarshal([]byte(stdout), &em); err != nil {
+		t.Fatalf("emit output not JSON: %v\n%s", err, stdout)
+	}
+	warn := regexp.MustCompile(`(?m)^abcd intent consistency: warning: 1 document is too large for any chunk, so no chunk reviews it: ` +
+		regexp.QuoteMeta(big) + ` \([0-9]+ bytes\)`)
+	if !warn.MatchString(stderr) {
+		t.Fatalf("emit stderr does not warn of %s:\n%s", big, stderr)
+	}
+
+	dir := t.TempDir()
+	args := []string{"intent", "consistency", "ingest"}
+	for _, ch := range em.Chunks {
+		p := filepath.Join(dir, fmt.Sprintf("chunk-%d.json", ch.Index))
+		if err := os.WriteFile(p, chunkFindingsJSON(t, repo, ch.ReceiptID, ch.RequestPath, ch.CorpusPath), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, "--findings-json", p)
+	}
+	_, stderr, err = runCLISplit(t, args...)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	if !regexp.MustCompile(`(?m)^abcd intent consistency ingest: warning: 1 document is too large for any chunk, so no chunk reviewed it: ` +
+		regexp.QuoteMeta(big)).MatchString(stderr) {
+		t.Fatalf("ingest stderr does not warn of %s:\n%s", big, stderr)
+	}
+}

@@ -88,6 +88,9 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				}
 				return e
 			}
+			// The ingest that follows a provider's answers warns in its turn,
+			// so this emit warns only when the host is handed the chunks.
+			warnEmit := func() { warnUnreviewed(cmd.ErrOrStderr(), "abcd intent consistency", "reviews", res.Overflow) }
 			if route != nil && route.OnProvider() {
 				ds, fell, err := sendConsistency(cmd, emitRoute, route, repoRoot, res)
 				if err != nil {
@@ -107,6 +110,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				}
 				route = fell
 			}
+			warnEmit()
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent consistency — %s %s (receipt %s)\n", res.Scope, res.Status, res.ReceiptID)
 				fmt.Fprintf(w, "  read: %d documents (%d brief pages, %d intents) at %s\n",
@@ -247,6 +251,26 @@ func renderConsistencyOverflow(w io.Writer, ov *intent.ConsistencyOverflow) {
 		ov.CorpusBytes, ov.LimitBytes, ov.Groups, ov.Chunks, unreviewed)
 }
 
+// warnUnreviewed warns on stderr, naming each with its framed size, of every
+// document an overflowing plan put in no chunk: the pass reads none of them,
+// and a run that still succeeds would otherwise say so only in its report.
+// reviews is the verb's tense ("reviews" before the pass, "reviewed" after).
+func warnUnreviewed(w io.Writer, verb, reviews string, ov *intent.ConsistencyOverflow) {
+	if ov == nil || len(ov.Unreviewed) == 0 {
+		return
+	}
+	parts := make([]string, len(ov.Unreviewed))
+	for i, u := range ov.Unreviewed {
+		parts[i] = fmt.Sprintf("%s (%d bytes)", termsafe.Sanitize(u.Path), u.Bytes)
+	}
+	what, it := "1 document is", "it"
+	if len(parts) > 1 {
+		what, it = fmt.Sprintf("%d documents are", len(parts)), "them"
+	}
+	fmt.Fprintf(w, "%s: warning: %s too large for any chunk, so no chunk %s %s: %s; raise consistency.max_request_bytes to read %s\n",
+		verb, what, reviews, it, strings.Join(parts, ", "), it)
+}
+
 // ingestConsistency validates a consistency pass's findings, files them, and
 // renders the result with receipt joined to it and receiptLine closing its
 // text, for the ingest verb and for a pass a provider ran. payloads is one
@@ -266,6 +290,7 @@ func ingestConsistency(cmd *cobra.Command, repoRoot string, payloads [][]byte, r
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
 	}
+	warnUnreviewed(cmd.ErrOrStderr(), "abcd intent consistency ingest", "reviewed", res.Overflow)
 	for i := range res.Rows {
 		if res.Rows[i].Match == nil && res.Rows[i].State == intent.ConsistencyStateFiled {
 			res.Rows[i].Match = matchRefused

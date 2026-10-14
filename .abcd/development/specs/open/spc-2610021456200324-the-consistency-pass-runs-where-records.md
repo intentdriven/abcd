@@ -512,7 +512,10 @@ narrowest reading that meets the criteria. Each is open to review.
 - **Step 3, "the space a chunk leaves" is a group's space.** A whole-corpus
   chunk is two groups, each filled to half of what the header leaves, so a
   document over half cannot share a chunk with every other document. Such a
-  document is named as unreviewed, even when it alone would fit a chunk. At
+  document is named as unreviewed, even when it alone would fit a chunk. The
+  emit and the ingest each warn on stderr naming every unreviewed document
+  and its size (from review), since both still succeed and the report alone
+  would otherwise say so. At
   the bundled 512 KiB no document in this tree comes near half. At the
   64 KiB floor, brief pages over about 32 KB go unreviewed. Pairing such a
   document with re-packed groups, as a scoped run pins its scope, is left for
