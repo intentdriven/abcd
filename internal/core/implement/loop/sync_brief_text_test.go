@@ -67,3 +67,20 @@ func TestASyncBriefMasksTheDefaultBranchAndTheCheckoutRoot(t *testing.T) {
 		t.Errorf("the default branch and the root are kept, masked:\n%s", brief)
 	}
 }
+
+// TestAConflictingSyncsNoteMasksTheTextGitAndTheStateHandIt: the record's
+// line for a conflicting sync joins git's conflicting paths, the sibling lanes
+// and the remote's default branch; each is masked where the line is composed,
+// so a path with a line break or a bidi rune reaches no caller of the outcome
+// raw, before the state's own mask runs.
+func TestAConflictingSyncsNoteMasksTheTextGitAndTheStateHandIt(t *testing.T) {
+	const runes = "‮\U000E0041\u009b"
+	note := conflictNote("lane-1", "main"+runes, strings.Repeat("b", 40),
+		[]string{"a.md\n## injected" + runes, "b.md"}, []string{"lane-2" + runes}, ".abcd/x/brief.md")
+	if strings.ContainsAny(note, runes+"\n") {
+		t.Errorf("a raw rune or a line break reaches the note: %q", note)
+	}
+	if !strings.Contains(note, "with main??? at") || !strings.Contains(note, "in a.md?## injected???, b.md (lane-2??? landed first)") {
+		t.Errorf("each value is kept, masked: %q", note)
+	}
+}

@@ -108,8 +108,7 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				return Outcome{}, false, err
 			}
 			lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-			return Outcome{Goto: StageValidate, Note: fmt.Sprintf("the sync of %s with %s at %s conflicted in %s (%s landed first); the merge is aborted with the branch unchanged, and a fresh implementer resolves it from %s",
-				lane.ID, def, shortSHA(merged), strings.Join(paths, ", "), strings.Join(siblings, ", "), s.Brief)}, true, nil
+			return Outcome{Goto: StageValidate, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
 		}
 		if tip, err = branchTip(c, *lane); err != nil {
 			return Outcome{}, false, err
@@ -119,7 +118,18 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	lane.HeadSHA = tip
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
 	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s after %s landed: merge commit %s; a fresh round judges it, and counts no fix round",
-		lane.ID, def, shortSHA(merged), strings.Join(siblings, ", "), shortSHA(tip))}, true, nil
+		lane.ID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(siblings), ", "), shortSHA(tip))}, true, nil
+}
+
+// conflictNote is the record's line for a conflicting sync. The paths are
+// git's, named by the repository's files, the siblings the state's and the
+// default branch the remote's: each is masked where the line is composed, so
+// no caller of the outcome is handed one raw (the state masks the record only
+// when it is written).
+func conflictNote(laneID, def, merged string, paths, siblings []string, brief string) string {
+	return fmt.Sprintf("the sync of %s with %s at %s conflicted in %s (%s landed first); the merge is aborted with the branch unchanged, and a fresh implementer resolves it from %s",
+		laneID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(paths), ", "),
+		strings.Join(termsafe.SanitizeAll(siblings), ", "), brief)
 }
 
 // syncMerge merges merged into the lane's worktree with a merge commit, with
