@@ -88,8 +88,10 @@ type Provider interface {
 	Create(ctx context.Context, s Site) error
 	// Route routes s.Domain to the host. A site with no domain is a no-op.
 	Route(ctx context.Context, s Site) error
-	// Address reports the address the site is served from.
-	Address(ctx context.Context, s Site) (string, error)
+	// Address reports the address the site is served from, and a note on it
+	// when the host serves it in a state the person should know about (a
+	// certificate not issued yet, say); the note is empty otherwise.
+	Address(ctx context.Context, s Site) (addr, note string, err error)
 }
 
 // Adapter is one provider: the repository half as data, and Connect for the

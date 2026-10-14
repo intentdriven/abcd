@@ -49,7 +49,7 @@ func TestCreateRouteAndReportAgainstTheFake(t *testing.T) {
 	if !st.Exists || !st.Routed {
 		t.Fatalf("after create and route, state is %+v", st)
 	}
-	addr, err := p.Address(ctx, site)
+	addr, _, err := p.Address(ctx, site)
 	if err != nil {
 		t.Fatalf("address: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestAddressWithoutADomainIsTheWorkersDevName(t *testing.T) {
 	if fake.Writes() != 0 {
 		t.Fatalf("routing a site with no domain wrote: %v", fake.CallLog())
 	}
-	addr, err := p.Address(ctx, s)
+	addr, _, err := p.Address(ctx, s)
 	if err != nil {
 		t.Fatalf("address: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestEveryCallFailsLoudly(t *testing.T) {
 			return p.Route(context.Background(), site)
 		}},
 		{cloudflaretest.GetSubdomain, func(p hosting.Provider) error {
-			_, err := p.Address(context.Background(), hosting.Site{Name: "example-site"})
+			_, _, err := p.Address(context.Background(), hosting.Site{Name: "example-site"})
 			return err
 		}},
 	}

@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -134,8 +135,9 @@ var (
 	// accepts one; "." and ".." are refused separately.
 	nameRe   = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 	domainRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	// addrRe is the address Pages reports: https, a plain host, a plain path.
-	addrRe = regexp.MustCompile(`^https://[a-z0-9.-]+(/[A-Za-z0-9_.~-]+)*/?$`)
+	// addrRe is the address Pages reports: http or https, a plain host, a
+	// plain path. Address accepts http only for the site's own domain.
+	addrRe = regexp.MustCompile(`^https?://[a-z0-9.-]+(/[A-Za-z0-9_.~-]+)*/?$`)
 )
 
 func splitRepo(repo string) (owner, name string, ok bool) {
@@ -288,17 +290,39 @@ func (c *client) Route(ctx context.Context, s hosting.Site) error {
 	return err
 }
 
-// Address is the address Pages reports for the site.
-func (c *client) Address(ctx context.Context, s hosting.Site) (string, error) {
+// httpsPending is the note on a custom domain GitHub still serves over http.
+const httpsPending = "HTTPS is not enforced yet; GitHub issues the certificate after the domain resolves, which can take up to a day, " +
+	"and then Enforce HTTPS can be switched on in the repository's Pages settings"
+
+// Address is the address Pages reports for the site, always as https.
+//
+// A custom domain is reported as http until GitHub has issued its certificate
+// and HTTPS is enforced: GitHub requests the certificate only once the domain's
+// DNS resolves to Pages, DNS changes can take up to 24 hours, and "it can take
+// up to 24 hours before" Enforce HTTPS is available
+// (https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site,
+// https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https).
+// So an http address on the site's own domain is the site's: host and path
+// are what identify it, the scheme only says how far along the certificate
+// is, and the note says so. A github.io address is served over https from the
+// start, so http there, or on any other host, is refused.
+func (c *client) Address(ctx context.Context, s hosting.Site) (string, string, error) {
 	if err := checkSite(s); err != nil {
-		return "", err
+		return "", "", err
 	}
 	p, err := c.pages(ctx, s)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if !addrRe.MatchString(p.HTMLURL) {
-		return "", errors.New("github-pages: the Pages site reports no plain https address")
+	u, err := url.Parse(p.HTMLURL)
+	if !addrRe.MatchString(p.HTMLURL) || err != nil {
+		return "", "", errors.New("github-pages: the Pages site reports no plain https address")
 	}
-	return p.HTMLURL, nil
+	if u.Scheme == "https" {
+		return p.HTMLURL, "", nil
+	}
+	if s.Domain == "" || u.Host != s.Domain {
+		return "", "", errors.New("github-pages: the Pages site reports an http address that is not the site's own domain")
+	}
+	return "https://" + u.Host + u.Path, httpsPending, nil
 }

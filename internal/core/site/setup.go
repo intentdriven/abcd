@@ -909,7 +909,7 @@ func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, for
 			}
 		}
 	}
-	addr, err := p.Address(ctx, s)
+	addr, note, err := p.Address(ctx, s)
 	if err != nil {
 		return refuse(err)
 	}
@@ -917,6 +917,12 @@ func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, for
 		return refuse(err)
 	}
 	out.Address = addr
+	if note != "" {
+		if out.Detail != "" {
+			out.Detail += "; "
+		}
+		out.Detail += note
+	}
 	out.Status = HostCurrent
 	if len(out.Changes) > 0 {
 		out.Status = HostWritten
@@ -1080,7 +1086,7 @@ func readForgeHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site)
 		// is judged by the host stage after the route.
 		return st, err
 	}
-	addr, err := p.Address(ctx, s)
+	addr, _, err := p.Address(ctx, s)
 	if err != nil {
 		return st, err
 	}

@@ -408,26 +408,26 @@ func (c *client) Route(ctx context.Context, s hosting.Site) error {
 
 // Address is the custom domain when there is one, the workers.dev name
 // otherwise.
-func (c *client) Address(ctx context.Context, s hosting.Site) (string, error) {
+func (c *client) Address(ctx context.Context, s hosting.Site) (addr, note string, err error) {
 	if err := checkSite(s); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if s.Domain != "" {
-		return "https://" + s.Domain, nil
+		return "https://" + s.Domain, "", nil
 	}
 	acct, err := c.accountID(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	env, err := c.call(ctx, http.MethodGet, "read workers.dev subdomain", "/accounts/"+url.PathEscape(acct)+"/workers/subdomain", nil, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var sub struct {
 		Subdomain string `json:"subdomain"`
 	}
 	if err := json.Unmarshal(env.Result, &sub); err != nil || !subRe.MatchString(sub.Subdomain) {
-		return "", errors.New("cloudflare: the account has no plain workers.dev subdomain to serve the site from")
+		return "", "", errors.New("cloudflare: the account has no plain workers.dev subdomain to serve the site from")
 	}
-	return "https://" + s.Name + "." + sub.Subdomain + ".workers.dev", nil
+	return "https://" + s.Name + "." + sub.Subdomain + ".workers.dev", "", nil
 }

@@ -95,9 +95,9 @@ func TestInspectCreateAndAddressAProjectSite(t *testing.T) {
 	if st.Existing != "https://acme.github.io/widgets/ (build type workflow)" {
 		t.Fatalf("existing = %q, want the site's address and build type", st.Existing)
 	}
-	addr, err := p.Address(context.Background(), widgets)
-	if err != nil || addr != "https://acme.github.io/widgets/" {
-		t.Fatalf("address = %q, %v", addr, err)
+	addr, note, err := p.Address(context.Background(), widgets)
+	if err != nil || addr != "https://acme.github.io/widgets/" || note != "" {
+		t.Fatalf("address = %q, %q, %v", addr, note, err)
 	}
 	if err := p.Route(context.Background(), widgets); err != nil {
 		t.Fatal(err)
@@ -128,8 +128,8 @@ func TestRouteSetsTheCustomDomain(t *testing.T) {
 	if st, _ = p.Inspect(context.Background(), s); !st.Routed {
 		t.Fatal("the domain does not read as routed after Route")
 	}
-	if addr, err := p.Address(context.Background(), s); err != nil || addr != "https://docs.example.com/" {
-		t.Fatalf("address = %q, %v", addr, err)
+	if addr, note, err := p.Address(context.Background(), s); err != nil || addr != "https://docs.example.com/" || note != "" {
+		t.Fatalf("address = %q, %q, %v", addr, note, err)
 	}
 }
 
@@ -217,8 +217,42 @@ func TestAnAddressThatIsNotAPlainHTTPSURLIsRefused(t *testing.T) {
 	p := Adapter{API: func(context.Context, string, string, []byte) ([]byte, error) {
 		return []byte(`{"build_type":"workflow","html_url":"javascript:alert(1)"}`), nil
 	}}.Connect("")
-	if addr, err := p.Address(context.Background(), widgets); err == nil {
+	if addr, _, err := p.Address(context.Background(), widgets); err == nil {
 		t.Fatalf("address = %q, want a refusal", addr)
+	}
+}
+
+// GitHub reports a custom domain's address as http until it has issued the
+// domain's certificate and HTTPS is enforced, which can take a day after the
+// domain resolves. That address is still the site's: it is reported as https,
+// with a note saying HTTPS is not there yet. An http address is accepted only
+// for the site's own domain, and a github.io address only over https.
+func TestAnHTTPAddressForTheSitesOwnDomainIsReportedAsHTTPS(t *testing.T) {
+	docs := hosting.Site{Name: "widgets", Repo: "acme/widgets", Domain: "docs.example.com"}
+	f := githubpagestest.New()
+	f.Repos["acme/widgets"].Pages = &githubpagestest.Pages{BuildType: "workflow", CNAME: "docs.example.com", HTMLURL: "http://docs.example.com/"}
+	addr, note, err := connect(f).Address(context.Background(), docs)
+	if err != nil || addr != "https://docs.example.com/" {
+		t.Fatalf("address = %q, %v; want the domain over https", addr, err)
+	}
+	if !strings.Contains(note, "HTTPS is not enforced yet") || !strings.Contains(note, "certificate") {
+		t.Fatalf("note = %q, want one saying HTTPS is not enforced yet", note)
+	}
+	for name, c := range map[string]struct {
+		site hosting.Site
+		url  string
+	}{
+		"http for another host":    {docs, "http://elsewhere.example.com/"},
+		"http with no domain":      {widgets, "http://acme.github.io/widgets/"},
+		"a scheme other than http": {docs, "ftp://docs.example.com/"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := githubpagestest.New()
+			f.Repos["acme/widgets"].Pages = &githubpagestest.Pages{BuildType: "workflow", HTMLURL: c.url}
+			if addr, _, err := connect(f).Address(context.Background(), c.site); err == nil {
+				t.Fatalf("address = %q, want a refusal", addr)
+			}
+		})
 	}
 }
 
