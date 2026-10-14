@@ -353,6 +353,26 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   declared proxy; and one free Render web service, deployed from a Blueprint
   with its secret unsynced, serving every room. `internal/core/session` and
   `abcd session blueprint` follow it.
+- **Yjs, y-protocols and y-codemirror.next (Kevin Jahns and contributors,
+  MIT), CodeMirror 6 (Marijn Haverbeke and others, MIT) and
+  qrcode-generator (Kazuhiko Arase, MIT)** — the brief session page's shared
+  document, presence, Markdown editor and QR code
+  (`abcd session page`, spc-2610141709430146 step 3), vendored as one
+  provenance-pinned bundle the binary embeds (adr-2610141949110653); every
+  bundled package and its licence is listed in
+  `internal/surface/session/web/vendor/`. <https://yjs.dev>
+  <https://codemirror.net> <https://github.com/kazuhikoarase/qrcode-generator>
+- **The W3C Web Annotation Data Model's TextQuoteSelector** — the shape of a
+  guest's suggestion on the session page: the quoted passage with up to 32
+  characters of context either side, the fallback a team member's page
+  locates the passage by when the suggestion's relative positions no longer
+  resolve. <https://www.w3.org/TR/annotation-model/#text-quote-selector>
+- **PKCE (RFC 7636) and the IETF's OAuth 2.0 for Browser-Based Applications**
+  — the session page's GitHub sign-in: an S256 challenge and a random state
+  held in session storage across the redirect, with the code exchanged by the
+  team's relay as the token-mediating backend.
+  <https://www.rfc-editor.org/rfc/rfc7636>
+  <https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/>
 - **TruffleHog (Truffle Security)** — the optional deeper secret scanner the
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.

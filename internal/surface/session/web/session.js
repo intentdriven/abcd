@@ -1,0 +1,1259 @@
+// The brief session page (itd-2610091016262335, spc-2610141709430146 step 3).
+//
+// A team member hosts a live session on the team's own relay; everyone else
+// joins by the QR code or the six-character code. Team members edit the brief
+// directly and their edits are credited to them; a guest proposes a
+// replacement for a passage, which a team member applies or declines.
+//
+// What this page talks to, and nothing else: the relay the person names (its
+// WebSocket, /config and /auth/token), https://api.github.com with the
+// person's own token, and github.com for sign-in. The GitHub token is held in
+// this module's memory only; it is never stored, put in a URL or logged.
+// Every piece of text from the brief, the relay or another participant is
+// rendered with textContent.
+import {
+  Y, Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates,
+  yCollab, yUndoManagerKeymap, EditorView, basicSetup, EditorState, keymap, markdown, qrcode,
+} from "./vendor/collab.js";
+
+// ---------------------------------------------------------------------------
+// The words the page shows: one table, so they can be reviewed in one place.
+// ---------------------------------------------------------------------------
+const WORDS = Object.freeze({
+  title: "Brief session",
+  wrongAddress: "This page opens a project's brief for a live session. Open it at /<owner>/<repo>/brief/.",
+  relayLabel: "Relay address",
+  relayHint: "The https address of your team's relay, or of the host's computer on Tailscale.",
+  relayBad: "Give the relay's https address (plain http only for localhost).",
+  joinHeading: "Join a session",
+  joinHint: "Type the code the host's screen shows, or scan its QR code.",
+  codeLabel: "Join code",
+  nameLabel: "Your name",
+  join: "Join",
+  codeBad: "A join code is six letters and digits.",
+  teamHeading: "Team members",
+  teamHint: "Sign in with GitHub to edit directly and to host a session. Without signing in you join as a guest and suggest changes for a team member to approve.",
+  signIn: "Sign in with GitHub",
+  pasteToken: "Paste a GitHub token instead",
+  tokenLabel: "Personal access token",
+  useToken: "Use this token",
+  signInUnavailable: "This relay has no GitHub sign-in set up. Paste a personal access token instead.",
+  signInFailed: "GitHub sign-in did not complete. Try again, or paste a personal access token.",
+  signingIn: "Signing in…",
+  signedInAs: "Signed in as",
+  notMember: "GitHub says you cannot change this repository, so you take part as a guest.",
+  hostHeading: "Host a session",
+  host: "Host a session",
+  modeLabel: "Send the result back as",
+  modePR: "one pull request",
+  modeIssues: "one issue per change",
+  loadingBrief: "Reading the brief from GitHub…",
+  sendingBrief: "Sharing the brief with the session…",
+  noBrief: "This repository has no brief at .abcd/development/brief/ on its default branch.",
+  githubFailed: "GitHub did not answer the request for the brief",
+  connecting: "Connecting…",
+  connected: "Connected",
+  reconnecting: "Connection lost. Reconnecting…",
+  cannotConnect: "The relay could not be reached.",
+  syncing: "Loading the brief…",
+  ended: "The session has ended.",
+  codeGone: "That session is no longer open on this relay.",
+  inviteHeading: "Invite",
+  inviteHint: "Scan to join, or type the code.",
+  newCode: "New code",
+  endSession: "End session",
+  endConfirm: "End the session for everyone? Edits not yet sent to GitHub are lost.",
+  copyLink: "Copy link",
+  linkCopied: "Link copied.",
+  filesHeading: "Brief",
+  noFile: "Choose a file.",
+  rosterHeading: "In this session",
+  badgeHost: "host",
+  badgeMember: "team member",
+  badgeGuest: "guest",
+  you: "(you)",
+  suggestionsHeading: "Suggestions",
+  noSuggestions: "No suggestions waiting.",
+  suggestedBy: "Suggested by",
+  apply: "Apply",
+  decline: "Decline",
+  applied: "applied",
+  declined: "declined",
+  waiting: "waiting for a team member",
+  cannotApply: "That passage has changed since it was suggested, so the suggestion cannot be applied.",
+  guestHint: "You are a guest. Select a passage to suggest a change.",
+  suggest: "Suggest a change",
+  selectFirst: "Select a passage first.",
+  replacementLabel: "Replace it with",
+  send: "Send suggestion",
+  cancel: "Cancel",
+  suggestionSent: "Suggestion sent to the team members.",
+  noMembers: "No team member is connected to receive it.",
+  mySuggestionsHeading: "Your suggestions",
+  submit: "Send to GitHub",
+  submitComingNext: "Sending the session to GitHub is coming in the next step.",
+});
+
+// ---------------------------------------------------------------------------
+// Fixed values.
+// ---------------------------------------------------------------------------
+const GITHUB_API = "https://api.github.com";
+const GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize";
+const BRIEF_DIR = [".abcd", "development", "brief"];
+const BRIEF_PREFIX = BRIEF_DIR.join("/") + "/";
+const SIGN_IN_SCOPE = "repo";
+const TAG_UPDATE = 0;
+const TAG_AWARENESS = 1;
+// A relay message is at most 256 KiB; the seed is sent in updates of at most
+// SEED_BUDGET bytes of text, and a longer file in pieces of SEED_PIECE UTF-16
+// units (three bytes each at most).
+const SEED_BUDGET = 160000;
+const SEED_PIECE = 50000;
+const QUOTE_CONTEXT = 32;
+const MAX_REPLACEMENT = 64000;
+// Origins of Yjs transactions: what the relay sent, and the host's seeding.
+const FROM_RELAY = Symbol("relay");
+const FROM_SEED = Symbol("seed");
+const KEY_RELAY = "abcd.session.relay";
+const KEY_NAME = "abcd.session.name";
+const KEY_SIGN_IN = "abcd.session.sign-in";
+const COLOURS = ["#2f6fdb", "#c2410c", "#15803d", "#9333ea", "#b91c1c", "#0e7490", "#a16207", "#be185d"];
+
+// ---------------------------------------------------------------------------
+// Storage: only the relay address and the display name are remembered, and
+// the sign-in's PKCE verifier waits in session storage across GitHub's
+// redirect. Every access may throw (private windows, blocked storage).
+// ---------------------------------------------------------------------------
+function recall(key) {
+  try { return localStorage.getItem(key) || ""; } catch { return ""; }
+}
+function remember(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+}
+function stashSignIn(pending) {
+  try { sessionStorage.setItem(KEY_SIGN_IN, JSON.stringify(pending)); return true; } catch { return false; }
+}
+function takeSignIn() {
+  try {
+    const raw = sessionStorage.getItem(KEY_SIGN_IN);
+    sessionStorage.removeItem(KEY_SIGN_IN);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
+// The GitHub token: module memory only.
+// ---------------------------------------------------------------------------
+let githubToken = "";
+
+// ---------------------------------------------------------------------------
+// Small DOM helpers. Text always goes in through textContent.
+// ---------------------------------------------------------------------------
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? "" : String(v));
+  }
+  for (const c of children) {
+    if (c === null || c === undefined || c === false) continue;
+    node.append(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+function clear(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+let toastTimer = 0;
+function toast(text) {
+  const t = ui.toast;
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
+}
+
+// ---------------------------------------------------------------------------
+// Where the page is: /<owner>/<repo>/brief/, under any base path.
+// ---------------------------------------------------------------------------
+const NAME_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const REPO_RE = /^[A-Za-z0-9._-]{1,100}$/;
+function readRoute() {
+  const m = /^(.*)\/([^/]+)\/([^/]+)\/brief\/?$/.exec(location.pathname);
+  if (!m) return null;
+  let owner, repo;
+  try { owner = decodeURIComponent(m[2]); repo = decodeURIComponent(m[3]); } catch { return null; }
+  if (!NAME_RE.test(owner) || !REPO_RE.test(repo) || repo === "." || repo === "..") return null;
+  return { base: m[1], owner, repo, slug: owner + "/" + repo };
+}
+function pageURL() {
+  return location.origin + location.pathname;
+}
+
+// relayOrigin reads a relay address: https, or http on this computer.
+function relayOrigin(input) {
+  const s = String(input || "").trim();
+  if (!s) return "";
+  let u;
+  try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : "https://" + s); } catch { return ""; }
+  if (u.username || u.password) return "";
+  const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  if (u.protocol === "https:" || (u.protocol === "http:" && local)) return u.origin;
+  return "";
+}
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function normalizeCode(s) {
+  const c = String(s || "").toUpperCase().replace(/[\s-]/g, "");
+  if (c.length !== 6) return "";
+  for (const ch of c) if (!CODE_ALPHABET.includes(ch)) return "";
+  return c;
+}
+
+// ---------------------------------------------------------------------------
+// The shared document. gc stays off so every change can be credited.
+// ---------------------------------------------------------------------------
+const doc = new Y.Doc({ gc: false });
+const files = doc.getMap("files");
+const meta = doc.getMap("meta");
+const approvals = doc.getArray("approvals");
+const suggestionsDone = doc.getMap("suggestions_done");
+const awareness = new Awareness(doc);
+
+// ---------------------------------------------------------------------------
+// Page state.
+// ---------------------------------------------------------------------------
+const route = readRoute();
+const session = {
+  relay: "",
+  code: "",
+  name: "",
+  login: "",
+  member: false,      // GitHub says this login may push
+  role: "",           // "member" or "guest", once in the session
+  host: false,
+  myId: "",
+  inRoom: false,      // joined or hosted on the current socket
+  everJoined: false,  // reconnect only once a session was reached
+  seeding: false,
+  synced: false,
+  over: false,
+  verifying: false,
+  pending: "",        // "host" when the host button waits for a socket
+  roster: [],
+  credits: {},        // Yjs client id -> login, from the relay's roster
+};
+const incoming = new Map();   // suggestion id -> {id, from, body}, members only
+const mine = [];              // a guest's own suggestions
+const awaitingAck = [];       // suggestions sent, waiting for "suggested"
+let ws = null;
+let retries = 0;
+let retryTimer = 0;
+let outbox = [];              // a member's updates made while disconnected
+
+// ---------------------------------------------------------------------------
+// The relay connection.
+// ---------------------------------------------------------------------------
+function socketOpen() {
+  return ws !== null && ws.readyState === WebSocket.OPEN;
+}
+function sendJSON(msg) {
+  if (socketOpen()) ws.send(JSON.stringify(msg));
+}
+function sendBinary(tag, bytes) {
+  const frame = new Uint8Array(bytes.length + 1);
+  frame[0] = tag;
+  frame.set(bytes, 1);
+  if (socketOpen() && session.inRoom) {
+    ws.send(frame);
+    return true;
+  }
+  return false;
+}
+
+function openSocket() {
+  if (ws !== null || session.over || !session.relay) return;
+  setStatus(session.everJoined ? WORDS.reconnecting : WORDS.connecting, session.everJoined);
+  const url = session.relay.replace(/^http/, "ws") + "/session";
+  const sock = new WebSocket(url);
+  sock.binaryType = "arraybuffer";
+  ws = sock;
+  sock.onopen = () => { if (ws === sock) afterOpen(); };
+  sock.onmessage = (ev) => { if (ws === sock) receive(ev.data); };
+  sock.onclose = (ev) => { if (ws === sock) socketClosed(ev); };
+}
+
+function afterOpen() {
+  if (githubToken) {
+    session.verifying = true;
+    sendJSON({ type: "verify", token: githubToken, repo: route.slug });
+    return;
+  }
+  proceed();
+}
+
+// proceed joins or hosts once the connection is open and any sign-in checked.
+function proceed() {
+  if (session.code) {
+    sendJSON({ type: "join", code: session.code, name: session.name });
+  } else if (session.pending === "host") {
+    session.pending = "";
+    sendJSON({ type: "host", repo: route.slug });
+  }
+  renderStart();
+}
+
+function socketClosed(ev) {
+  ws = null;
+  session.inRoom = false;
+  session.verifying = false;
+  renderTop();
+  if (session.over) return;
+  if (ev.code === 1008) {
+    endSession(ev.reason ? ev.reason : WORDS.cannotConnect);
+    return;
+  }
+  if (!session.everJoined) {
+    setStatus(WORDS.cannotConnect, true);
+    renderStart();
+    return;
+  }
+  setStatus(WORDS.reconnecting, true);
+  const delay = Math.min(30000, 1000 * 2 ** retries) * (0.5 + Math.random() / 2);
+  retries += 1;
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(openSocket, delay);
+}
+
+function endSession(text) {
+  session.over = true;
+  session.inRoom = false;
+  clearTimeout(retryTimer);
+  if (ws) {
+    const sock = ws;
+    ws = null;
+    try { sock.close(); } catch { /* already closed */ }
+  }
+  setStatus(text, true);
+  toast(text);
+  renderAll();
+}
+
+function receive(data) {
+  if (data instanceof ArrayBuffer) {
+    const bytes = new Uint8Array(data);
+    if (bytes.length === 0) return;
+    const body = bytes.subarray(1);
+    try {
+      if (bytes[0] === TAG_UPDATE) Y.applyUpdate(doc, body, FROM_RELAY);
+      else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, body, FROM_RELAY);
+    } catch {
+      // A frame that does not decode is dropped; the relay forwards only
+      // what a participant's page sent.
+    }
+    return;
+  }
+  let msg;
+  try { msg = JSON.parse(data); } catch { return; }
+  if (!msg || typeof msg.type !== "string") return;
+  switch (msg.type) {
+    case "verified": onVerified(msg); break;
+    case "hosted": onHosted(msg); break;
+    case "joined": onJoined(msg); break;
+    case "synced": onSynced(); break;
+    case "roster": onRoster(msg); break;
+    case "suggest": onSuggest(msg); break;
+    case "suggested": onSuggested(msg); break;
+    case "code": onCode(msg); break;
+    case "closed": endSession(WORDS.ended); break;
+    case "error": onError(msg); break;
+    default: break;
+  }
+}
+
+function onVerified(msg) {
+  const wasVerifying = session.verifying;
+  session.verifying = false;
+  session.login = typeof msg.login === "string" ? msg.login : "";
+  session.member = msg.member === true;
+  if (session.inRoom) {
+    // A participant who joined by code and then signed in.
+    if (session.member) becomeMember();
+    else toast(WORDS.notMember);
+    renderAll();
+    return;
+  }
+  if (!session.member && !session.code) toast(WORDS.notMember);
+  if (wasVerifying) proceed();
+  renderAll();
+}
+
+function onHosted(msg) {
+  session.code = normalizeCode(msg.code);
+  session.myId = String(msg.id || "");
+  session.host = true;
+  session.role = "member";
+  session.inRoom = true;
+  session.everJoined = true;
+  session.seeding = true;
+  retries = 0;
+  setStatus(WORDS.connected, false);
+  sendJSON({ type: "register", client: doc.clientID });
+  renderAll();
+  hostBrief().catch((err) => {
+    // A session that cannot be seeded is closed again: nobody has its code.
+    sendJSON({ type: "close" });
+    session.seeding = false;
+    endSession(err instanceof Error && err.message ? err.message : WORDS.githubFailed);
+  });
+}
+
+function onJoined(msg) {
+  session.myId = String(msg.id || "");
+  session.role = msg.role === "member" ? "member" : "guest";
+  session.host = msg.host === true;
+  if (typeof msg.name === "string" && session.role === "guest") session.name = msg.name;
+  session.inRoom = true;
+  session.everJoined = true;
+  retries = 0;
+  setStatus(session.synced ? WORDS.connected : WORDS.syncing, false);
+  renderAll();
+}
+
+function onSynced() {
+  if (session.seeding) return; // the host's own fresh session: the seed follows
+  session.synced = true;
+  setStatus(WORDS.connected, false);
+  if (session.role === "member") becomeMember();
+  shareAwareness();
+  renderAll();
+}
+
+function becomeMember() {
+  const was = session.role;
+  session.role = "member";
+  sendJSON({ type: "register", client: doc.clientID });
+  const queued = outbox;
+  outbox = [];
+  for (const frame of queued) {
+    if (!sendBinary(TAG_UPDATE, frame)) outbox.push(frame);
+  }
+  if (was !== "member") openFile(currentPath);
+}
+
+function onRoster(msg) {
+  const before = new Set(session.roster.map((p) => p.id));
+  session.roster = Array.isArray(msg.participants) ? msg.participants.filter((p) => p && typeof p.id === "string") : [];
+  session.credits = msg.clients && typeof msg.clients === "object" ? msg.clients : {};
+  for (const p of session.roster) {
+    if (p.id === session.myId) {
+      session.host = p.host === true;
+      if (p.role === "member" && session.role !== "member" && session.synced) becomeMember();
+    }
+  }
+  // A newcomer sees the others' cursors once they say where they are.
+  if (session.roster.some((p) => !before.has(p.id))) shareAwareness();
+  renderSide();
+  renderTop();
+}
+
+function onCode(msg) {
+  const code = normalizeCode(msg.code);
+  if (code) {
+    session.code = code;
+    updateFragment();
+    renderSide();
+  }
+}
+
+function onError(msg) {
+  const code = typeof msg.code === "string" ? msg.code : "";
+  const text = typeof msg.message === "string" ? msg.message : code;
+  if (session.verifying) {
+    session.verifying = false;
+    githubToken = "";
+    toast(text);
+    proceed();
+    return;
+  }
+  if (code === "bad-code" || code === "too-many-tries") {
+    if (session.everJoined) endSession(WORDS.codeGone);
+    else {
+      // The connection stays open: the person can type the code again.
+      session.code = "";
+      toast(text);
+      renderStart();
+    }
+    return;
+  }
+  toast(text);
+}
+
+// ---------------------------------------------------------------------------
+// Yjs updates and awareness on the wire.
+// ---------------------------------------------------------------------------
+doc.on("update", (update, origin) => {
+  if (origin === FROM_RELAY) return;
+  if (session.role !== "member") return; // a guest's text never changes locally
+  if (!sendBinary(TAG_UPDATE, update)) outbox.push(update);
+});
+
+function shareAwareness() {
+  if (awareness.getLocalState() === null) return;
+  sendBinary(TAG_AWARENESS, encodeAwarenessUpdate(awareness, [doc.clientID]));
+}
+awareness.on("update", ({ added, updated, removed }, origin) => {
+  if (origin === FROM_RELAY) return;
+  const changed = added.concat(updated, removed);
+  if (!changed.includes(doc.clientID)) return;
+  sendBinary(TAG_AWARENESS, encodeAwarenessUpdate(awareness, [doc.clientID]));
+});
+window.addEventListener("pagehide", () => {
+  removeAwarenessStates(awareness, [doc.clientID], "window unload");
+});
+function setAwarenessUser() {
+  const name = session.role === "member" && session.login ? session.login : (session.name || "Guest");
+  awareness.setLocalStateField("user", { name, color: COLOURS[doc.clientID % COLOURS.length] });
+}
+
+// ---------------------------------------------------------------------------
+// Sign-in: GitHub's authorize page with PKCE, then the relay's exchange; or a
+// pasted personal access token. Either way the token stays in memory.
+// ---------------------------------------------------------------------------
+function b64url(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomText(n) {
+  return b64url(crypto.getRandomValues(new Uint8Array(n)));
+}
+function isLoopbackOrigin(origin) {
+  try {
+    const h = new URL(origin).hostname;
+    return h === "localhost" || h === "127.0.0.1";
+  } catch { return false; }
+}
+
+async function relayConfig() {
+  const res = await fetch(session.relay + "/config", {
+    method: "GET", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+  });
+  if (!res.ok) throw new Error(WORDS.cannotConnect);
+  const cfg = await res.json();
+  const clientID = typeof cfg.client_id === "string" ? cfg.client_id : "";
+  let authorize = typeof cfg.authorize_url === "string" ? cfg.authorize_url : "";
+  // Sign-in goes to github.com alone; a loopback relay may name a local
+  // stand-in for testing.
+  if (authorize !== GITHUB_AUTHORIZE && !(isLoopbackOrigin(session.relay) && isLoopbackOrigin(authorize))) authorize = "";
+  return {
+    signIn: cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && authorize !== "",
+    clientID,
+    authorize,
+  };
+}
+
+async function startSignIn() {
+  if (!readRelayInput()) return;
+  if (!session.everJoined) {
+    session.code = normalizeCode(ui.code.value);
+    session.name = ui.name.value.trim().slice(0, 40);
+  }
+  let cfg;
+  try { cfg = await relayConfig(); } catch { toast(WORDS.cannotConnect); return; }
+  if (!cfg.signIn) {
+    toast(WORDS.signInUnavailable);
+    showTokenForm(true);
+    return;
+  }
+  const state = randomText(16);
+  const verifier = randomText(32);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };
+  if (!stashSignIn(pending)) {
+    toast(WORDS.signInFailed);
+    showTokenForm(true);
+    return;
+  }
+  const q = new URLSearchParams({
+    client_id: cfg.clientID,
+    redirect_uri: pageURL(),
+    scope: SIGN_IN_SCOPE,
+    state,
+    code_challenge: b64url(new Uint8Array(digest)),
+    code_challenge_method: "S256",
+    allow_signup: "false",
+  });
+  location.assign(cfg.authorize + "?" + q.toString());
+}
+
+// finishSignIn handles GitHub's redirect back to this page.
+async function finishSignIn() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has("state") || (!q.has("code") && !q.has("error"))) return false;
+  const code = q.get("code") || "";
+  const state = q.get("state") || "";
+  const pending = takeSignIn();
+  // The code and state come off the address bar before anything else.
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (!pending || typeof pending.state !== "string" || pending.state !== state || !code) {
+    toast(WORDS.signInFailed);
+    return true;
+  }
+  session.relay = relayOrigin(pending.relay);
+  session.code = normalizeCode(pending.code);
+  session.name = typeof pending.name === "string" ? pending.name : "";
+  if (session.code) updateFragment();
+  if (!session.relay) { toast(WORDS.signInFailed); return true; }
+  setStatus(WORDS.signingIn, false);
+  try {
+    const res = await fetch(session.relay + "/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, code_verifier: pending.verifier, redirect_uri: pageURL() }),
+      credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || typeof out.access_token !== "string" || out.access_token === "") throw new Error("exchange");
+    githubToken = out.access_token;
+  } catch {
+    setStatus("", false);
+    toast(WORDS.signInFailed);
+    return true;
+  }
+  connectSignedIn();
+  return true;
+}
+
+function useToken(value) {
+  const t = String(value || "").trim();
+  if (!t) return;
+  if (!readRelayInput()) return;
+  githubToken = t;
+  connectSignedIn();
+}
+
+// connectSignedIn presents the token: on the open connection when there is
+// one, or on a new one.
+function connectSignedIn() {
+  setStatus(WORDS.signingIn, false);
+  if (socketOpen()) {
+    session.verifying = !session.inRoom;
+    sendJSON(session.inRoom ? { type: "verify", token: githubToken } : { type: "verify", token: githubToken, repo: route.slug });
+  } else {
+    openSocket();
+  }
+  renderAll();
+}
+
+// ---------------------------------------------------------------------------
+// Hosting: read the brief through GitHub's API, seed the document once, then
+// show the invite.
+// ---------------------------------------------------------------------------
+async function gh(path) {
+  const res = await fetch(GITHUB_API + path, {
+    headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + githubToken },
+    credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+  });
+  if (!res.ok) throw new Error(WORDS.githubFailed + " (" + res.status + ").");
+  return res.json();
+}
+const SHA_RE = /^[0-9a-f]{40,64}$/;
+function repoPath() {
+  return "/repos/" + encodeURIComponent(route.owner) + "/" + encodeURIComponent(route.repo);
+}
+async function subtree(sha, name, recursive) {
+  if (!SHA_RE.test(sha)) throw new Error(WORDS.noBrief);
+  const t = await gh(repoPath() + "/git/trees/" + sha + (recursive ? "?recursive=1" : ""));
+  if (!t || !Array.isArray(t.tree)) throw new Error(WORDS.noBrief);
+  if (recursive && t.truncated) throw new Error(WORDS.noBrief);
+  if (name === null) return t;
+  const entry = t.tree.find((e) => e && e.path === name && e.type === "tree");
+  if (!entry) throw new Error(WORDS.noBrief);
+  return entry.sha;
+}
+function decodeBlob(b64) {
+  const bin = atob(String(b64).replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+async function loadBrief() {
+  const repo = await gh(repoPath());
+  const branch = typeof repo.default_branch === "string" ? repo.default_branch : "";
+  if (!branch) throw new Error(WORDS.noBrief);
+  const head = await gh(repoPath() + "/branches/" + encodeURIComponent(branch));
+  const sha = head && head.commit && head.commit.sha;
+  const rootTree = head && head.commit && head.commit.commit && head.commit.commit.tree && head.commit.commit.tree.sha;
+  if (!SHA_RE.test(sha || "") || !SHA_RE.test(rootTree || "")) throw new Error(WORDS.noBrief);
+  let treeSha = rootTree;
+  for (const name of BRIEF_DIR) treeSha = await subtree(treeSha, name, false);
+  const brief = await subtree(treeSha, null, true);
+  const blobs = brief.tree.filter((e) => e && e.type === "blob" && typeof e.path === "string" && e.path.endsWith(".md") && SHA_RE.test(e.sha || ""));
+  if (blobs.length === 0) throw new Error(WORDS.noBrief);
+  const out = new Array(blobs.length);
+  let next = 0;
+  async function worker() {
+    while (next < blobs.length) {
+      const i = next++;
+      const b = await gh(repoPath() + "/git/blobs/" + blobs[i].sha);
+      if (!b || b.encoding !== "base64") throw new Error(WORDS.noBrief);
+      out[i] = { path: BRIEF_PREFIX + blobs[i].path, text: decodeBlob(b.content) };
+    }
+  }
+  await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+  out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return { sha, branch, files: out };
+}
+
+function utf8Length(s) {
+  return new TextEncoder().encode(s).length;
+}
+function pieces(text, size) {
+  const out = [];
+  let i = 0;
+  while (i < text.length) {
+    let end = Math.min(text.length, i + size);
+    // Never split a surrogate pair.
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
+    out.push(text.slice(i, end));
+    i = end;
+  }
+  return out;
+}
+
+// seed fills the document from the brief, exactly once. Each transaction is
+// one update the relay logs, kept under its message size.
+function seed(brief, mode) {
+  if (files.size > 0 || meta.has("base_sha")) return;
+  let batch = [];
+  let bytes = 0;
+  const flush = () => {
+    if (batch.length === 0) return;
+    const work = batch;
+    batch = [];
+    bytes = 0;
+    doc.transact(() => { for (const f of work) files.set(f.path, new Y.Text(f.text)); }, FROM_SEED);
+  };
+  for (const f of brief.files) {
+    const size = utf8Length(f.text);
+    if (size <= SEED_BUDGET) {
+      if (bytes + size > SEED_BUDGET) flush();
+      batch.push(f);
+      bytes += size;
+      continue;
+    }
+    flush();
+    const text = new Y.Text();
+    doc.transact(() => { files.set(f.path, text); }, FROM_SEED);
+    for (const p of pieces(f.text, SEED_PIECE)) doc.transact(() => { text.insert(text.length, p); }, FROM_SEED);
+  }
+  flush();
+  const base = Y.encodeSnapshot(Y.snapshot(doc));
+  doc.transact(() => {
+    meta.set("repo", route.slug);
+    meta.set("base_sha", brief.sha);
+    meta.set("branch", brief.branch);
+    meta.set("mode", mode === "issues" ? "issues" : "pr");
+    meta.set("base_snapshot", base);
+  }, FROM_SEED);
+}
+
+async function drained() {
+  for (let i = 0; i < 600 && socketOpen() && ws.bufferedAmount > 0; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+async function hostBrief() {
+  setStatus(WORDS.loadingBrief, false);
+  const brief = await loadBrief();
+  setStatus(WORDS.sendingBrief, false);
+  seed(brief, ui.mode ? ui.mode.value : "pr");
+  await drained();
+  session.seeding = false;
+  session.synced = true;
+  updateFragment();
+  setStatus(WORDS.connected, false);
+  renderAll();
+}
+
+function inviteURL() {
+  return location.origin + route.base + "/" + encodeURIComponent(route.owner) + "/" + encodeURIComponent(route.repo) +
+    "/brief/#relay=" + encodeURIComponent(session.relay) + "&code=" + session.code;
+}
+function updateFragment() {
+  if (!session.code || !session.relay) return;
+  history.replaceState(null, "", location.pathname + "#relay=" + encodeURIComponent(session.relay) + "&code=" + session.code);
+}
+
+// ---------------------------------------------------------------------------
+// Guests' suggestions, and the members' answers to them.
+// ---------------------------------------------------------------------------
+function quoteOf(text, from, to) {
+  return {
+    exact: text.slice(from, to),
+    prefix: text.slice(Math.max(0, from - QUOTE_CONTEXT), from),
+    suffix: text.slice(to, to + QUOTE_CONTEXT),
+  };
+}
+
+function sendSuggestion(replacement) {
+  if (!view || !currentPath) return;
+  const ytext = files.get(currentPath);
+  const sel = view.state.selection.main;
+  if (!(ytext instanceof Y.Text) || sel.empty) { toast(WORDS.selectFirst); return; }
+  if (replacement.length > MAX_REPLACEMENT) return;
+  const text = ytext.toString();
+  const body = {
+    path: currentPath,
+    anchor: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, sel.from)),
+    head: Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ytext, sel.to)),
+    quote: quoteOf(text, sel.from, sel.to),
+    replacement,
+  };
+  awaitingAck.push(body);
+  sendJSON({ type: "suggest", body });
+}
+
+function onSuggested(msg) {
+  const body = awaitingAck.shift();
+  if (!body) return;
+  mine.push({ id: String(msg.id || ""), body });
+  toast(msg.delivered > 0 ? WORDS.suggestionSent : WORDS.noMembers);
+  renderSide();
+}
+
+function validSuggestion(b) {
+  return b && typeof b === "object" && typeof b.path === "string" && typeof b.replacement === "string" &&
+    b.replacement.length <= MAX_REPLACEMENT && b.quote && typeof b.quote === "object" &&
+    typeof b.quote.exact === "string" && b.quote.exact !== "" &&
+    typeof (b.quote.prefix ?? "") === "string" && typeof (b.quote.suffix ?? "") === "string";
+}
+
+function onSuggest(msg) {
+  if (session.role !== "member") return;
+  const id = String(msg.id || "");
+  if (!id || !validSuggestion(msg.body)) return;
+  incoming.set(id, { id, from: typeof msg.from === "string" ? msg.from : "Guest", body: msg.body });
+  renderSide();
+}
+
+// findQuote places a W3C TextQuoteSelector: the occurrence of exact whose
+// surroundings match the prefix and suffix best, or -1 when that is not one.
+function findQuote(text, q) {
+  const at = [];
+  for (let i = text.indexOf(q.exact); i !== -1; i = text.indexOf(q.exact, i + 1)) at.push(i);
+  if (at.length === 0) return -1;
+  if (at.length === 1) return at[0];
+  const prefix = q.prefix || "";
+  const suffix = q.suffix || "";
+  const score = (i) => {
+    let s = 0;
+    const before = text.slice(Math.max(0, i - prefix.length), i);
+    const after = text.slice(i + q.exact.length, i + q.exact.length + suffix.length);
+    while (s < prefix.length && before[before.length - 1 - s] === prefix[prefix.length - 1 - s]) s++;
+    let t = 0;
+    while (t < suffix.length && after[t] === suffix[t]) t++;
+    return s + t;
+  };
+  const scored = at.map((i) => [score(i), i]).sort((a, b) => b[0] - a[0]);
+  return scored[0][0] > scored[1][0] ? scored[0][1] : -1;
+}
+
+// locate finds the suggested passage now: its relative positions first, then
+// its quote; null when neither still points at the quoted text.
+function locate(body) {
+  const ytext = files.get(body.path);
+  if (!(ytext instanceof Y.Text)) return null;
+  const text = ytext.toString();
+  try {
+    const a = Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(body.anchor), doc);
+    const h = Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(body.head), doc);
+    if (a && h && a.type === ytext && h.type === ytext) {
+      const from = Math.min(a.index, h.index);
+      const to = Math.max(a.index, h.index);
+      if (text.slice(from, to) === body.quote.exact) return { ytext, from, to };
+    }
+  } catch { /* fall through to the quote */ }
+  const at = findQuote(text, body.quote);
+  return at < 0 ? null : { ytext, from: at, to: at + body.quote.exact.length };
+}
+
+function applySuggestion(id) {
+  const s = incoming.get(id);
+  if (!s || session.role !== "member" || suggestionsDone.has(id)) return;
+  const place = locate(s.body);
+  if (!place) { toast(WORDS.cannotApply); return; }
+  doc.transact(() => {
+    const before = place.ytext.toString().slice(place.from, place.to);
+    place.ytext.delete(place.from, place.to - place.from);
+    place.ytext.insert(place.from, s.body.replacement);
+    approvals.push([{
+      id,
+      path: s.body.path,
+      guest: s.from,
+      approver: session.login,
+      before,
+      after: s.body.replacement,
+      at: new Date().toISOString(),
+    }]);
+    suggestionsDone.set(id, "applied");
+  });
+  incoming.delete(id);
+  renderSide();
+}
+
+function declineSuggestion(id) {
+  if (session.role !== "member") return;
+  if (!suggestionsDone.has(id)) doc.transact(() => { suggestionsDone.set(id, "declined"); });
+  incoming.delete(id);
+  renderSide();
+}
+suggestionsDone.observe(() => {
+  for (const id of suggestionsDone.keys()) incoming.delete(id);
+  renderSide();
+});
+
+// ---------------------------------------------------------------------------
+// Step 4's hook: sending the session back to GitHub. meta.mode, the
+// approvals array, the base snapshot and session.credits are what it reads.
+// ---------------------------------------------------------------------------
+function submitSession() {
+  toast(WORDS.submitComingNext);
+}
+
+// ---------------------------------------------------------------------------
+// The editor.
+// ---------------------------------------------------------------------------
+let view = null;
+let currentPath = "";
+function openFile(path) {
+  if (view) { view.destroy(); view = null; }
+  clear(ui.editor);
+  awareness.setLocalStateField("cursor", null);
+  setAwarenessUser();
+  const ytext = path ? files.get(path) : null;
+  if (!(ytext instanceof Y.Text)) {
+    currentPath = "";
+    ui.filetitle.textContent = WORDS.noFile;
+    renderFiles();
+    renderGuestBar();
+    return;
+  }
+  currentPath = path;
+  ui.filetitle.textContent = path;
+  const extensions = [
+    keymap.of([...yUndoManagerKeymap]),
+    basicSetup,
+    markdown(),
+    EditorView.lineWrapping,
+    yCollab(ytext, awareness),
+  ];
+  if (session.role !== "member") {
+    // A guest reads and selects; the text changes only through a member.
+    extensions.push(EditorState.readOnly.of(true), EditorView.contentAttributes.of({ inputmode: "none" }));
+    extensions.push(EditorView.updateListener.of((u) => { if (u.selectionSet) renderGuestBar(); }));
+  }
+  view = new EditorView({ state: EditorState.create({ doc: ytext.toString(), extensions }), parent: ui.editor });
+  renderFiles();
+  renderGuestBar();
+}
+files.observe(() => {
+  renderFiles();
+  if (!currentPath || !files.has(currentPath)) {
+    const first = [...files.keys()].sort()[0];
+    if (first && session.synced) openFile(first);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rendering.
+// ---------------------------------------------------------------------------
+const ui = {};
+let statusText = "";
+let statusBad = false;
+function setStatus(text, bad) {
+  statusText = text;
+  statusBad = bad;
+  if (ui.status) {
+    ui.status.textContent = text;
+    ui.status.className = bad ? "status bad" : "status";
+  }
+}
+
+function build() {
+  const app = document.getElementById("app");
+  clear(app);
+  ui.toast = el("div", { class: "toast", role: "status", "aria-live": "polite", hidden: true });
+  if (!route) {
+    app.append(el("p", { class: "notice", text: WORDS.wrongAddress }), ui.toast);
+    return false;
+  }
+  document.title = route.slug + " · " + WORDS.title;
+  ui.status = el("span", { class: "status" });
+  ui.who = el("span", { class: "who" });
+  ui.signInTop = el("button", { type: "button", text: WORDS.signIn, onclick: () => startSignIn() });
+  ui.submit = el("button", { type: "button", class: "primary", text: WORDS.submit, onclick: () => submitSession() });
+  const bar = el("header", { class: "bar" },
+    el("h1", { text: route.slug + " · " + WORDS.title }), ui.status, el("span", { class: "spacer" }),
+    ui.who, ui.signInTop, ui.submit);
+
+  // The start screen.
+  ui.relay = el("input", { id: "relay", type: "url", inputmode: "url", autocomplete: "off", spellcheck: "false", placeholder: "https://" });
+  ui.code = el("input", { id: "code", autocomplete: "off", spellcheck: "false", maxlength: "12", autocapitalize: "characters" });
+  ui.name = el("input", { id: "name", autocomplete: "nickname", maxlength: "40" });
+  ui.mode = el("select", { id: "mode" },
+    el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
+  ui.token = el("input", { id: "token", type: "password", autocomplete: "off", spellcheck: "false" });
+  ui.relayCard = el("section", { class: "card" },
+    el("label", { for: "relay", text: WORDS.relayLabel }), ui.relay, el("p", { text: WORDS.relayHint }));
+  ui.joinCard = el("form", { class: "card", onsubmit: (e) => { e.preventDefault(); joinClicked(); } },
+    el("h2", { text: WORDS.joinHeading }), el("p", { text: WORDS.joinHint }),
+    el("label", { for: "code", text: WORDS.codeLabel }), ui.code,
+    el("label", { for: "name", text: WORDS.nameLabel }), ui.name,
+    el("div", { class: "row" }, el("button", { type: "submit", class: "primary", text: WORDS.join })));
+  ui.signedIn = el("p");
+  ui.signInButton = el("button", { type: "button", class: "primary", text: WORDS.signIn, onclick: () => startSignIn() });
+  ui.tokenToggle = el("button", { type: "button", text: WORDS.pasteToken, onclick: () => showTokenForm(true) });
+  ui.tokenForm = el("form", { hidden: true, onsubmit: (e) => { e.preventDefault(); const v = ui.token.value; ui.token.value = ""; useToken(v); } },
+    el("label", { for: "token", text: WORDS.tokenLabel }), ui.token,
+    el("div", { class: "row" }, el("button", { type: "submit", text: WORDS.useToken })));
+  ui.hostRow = el("div", { hidden: true },
+    el("h2", { text: WORDS.hostHeading }),
+    el("label", { for: "mode", text: WORDS.modeLabel }), ui.mode,
+    el("div", { class: "row" }, el("button", { type: "button", class: "primary", text: WORDS.host, onclick: () => hostClicked() })));
+  ui.teamCard = el("section", { class: "card" },
+    el("h2", { text: WORDS.teamHeading }), el("p", { text: WORDS.teamHint }), ui.signedIn,
+    el("div", { class: "row" }, ui.signInButton, ui.tokenToggle), ui.tokenForm, ui.hostRow);
+  ui.start = el("div", { class: "start" }, ui.relayCard, ui.joinCard, ui.teamCard);
+
+  // The workspace.
+  ui.files = el("nav", { class: "files", "aria-label": WORDS.filesHeading });
+  ui.filetitle = el("div", { class: "filetitle" });
+  ui.editor = el("div", { class: "editor" });
+  ui.quote = el("div", { class: "quote" });
+  ui.replacement = el("textarea", { id: "replacement", maxlength: String(MAX_REPLACEMENT) });
+  ui.suggestForm = el("form", { hidden: true, onsubmit: (e) => { e.preventDefault(); sendSuggestion(ui.replacement.value); ui.suggestForm.hidden = true; } },
+    ui.quote, el("label", { for: "replacement", text: WORDS.replacementLabel }), ui.replacement,
+    el("div", { class: "row" },
+      el("button", { type: "submit", class: "primary", text: WORDS.send }),
+      el("button", { type: "button", text: WORDS.cancel, onclick: () => { ui.suggestForm.hidden = true; } })));
+  ui.suggestButton = el("button", { type: "button", text: WORDS.suggest, onclick: () => openSuggestForm() });
+  ui.guestbar = el("div", { class: "guestbar", hidden: true },
+    el("p", { class: "state", text: WORDS.guestHint }), el("div", { class: "row" }, ui.suggestButton), ui.suggestForm);
+  ui.side = el("aside", { class: "side" });
+  ui.work = el("div", { class: "work", hidden: true },
+    ui.files, el("section", { class: "center" }, ui.filetitle, ui.editor, ui.guestbar), ui.side);
+
+  app.append(bar, ui.start, ui.work, ui.toast);
+  return true;
+}
+
+function showTokenForm(show) {
+  ui.tokenForm.hidden = !show;
+  if (show) ui.token.focus();
+}
+
+function readRelayInput() {
+  if (session.inRoom || session.everJoined) return true;
+  const relay = relayOrigin(ui.relay.value);
+  if (!relay) { toast(WORDS.relayBad); ui.relay.focus(); return false; }
+  if (relay !== session.relay && ws) { const sock = ws; ws = null; sock.close(); }
+  session.relay = relay;
+  remember(KEY_RELAY, relay);
+  return true;
+}
+
+function joinClicked() {
+  if (!readRelayInput()) return;
+  const code = normalizeCode(ui.code.value);
+  if (!code) { toast(WORDS.codeBad); ui.code.focus(); return; }
+  session.code = code;
+  session.name = ui.name.value.trim().slice(0, 40);
+  if (session.name) remember(KEY_NAME, session.name);
+  if (socketOpen()) proceed();
+  else openSocket();
+}
+
+function hostClicked() {
+  if (!readRelayInput()) return;
+  session.code = "";
+  if (socketOpen() && session.member) sendJSON({ type: "host", repo: route.slug });
+  else { session.pending = "host"; openSocket(); }
+}
+
+function openSuggestForm() {
+  if (!view) return;
+  const sel = view.state.selection.main;
+  if (sel.empty) { toast(WORDS.selectFirst); return; }
+  const text = view.state.sliceDoc(sel.from, sel.to);
+  ui.quote.textContent = text;
+  ui.replacement.value = text;
+  ui.suggestForm.hidden = false;
+  ui.replacement.focus();
+}
+
+function renderTop() {
+  if (!ui.who) return;
+  let who = "";
+  if (session.login) who = WORDS.signedInAs + " " + session.login;
+  else if (session.inRoom && session.name) who = session.name;
+  ui.who.textContent = who;
+  ui.signInTop.hidden = !(session.inRoom && session.role === "guest" && !session.over);
+  ui.submit.hidden = !(session.synced && session.role === "member" && !session.over);
+  ui.status.textContent = statusText;
+  ui.status.className = statusBad ? "status bad" : "status";
+}
+
+function renderStart() {
+  if (!ui.start) return;
+  const inSession = session.everJoined || session.over;
+  ui.start.hidden = inSession;
+  ui.work.hidden = !inSession || session.seeding;
+  if (inSession) return;
+  ui.signedIn.textContent = session.login
+    ? WORDS.signedInAs + " " + session.login + (session.member ? "" : ". " + WORDS.notMember)
+    : "";
+  ui.signInButton.hidden = !!session.login;
+  ui.tokenToggle.hidden = !!session.login;
+  ui.hostRow.hidden = !(session.login && session.member);
+}
+
+function renderFiles() {
+  if (!ui.files) return;
+  clear(ui.files);
+  ui.files.append(el("h2", { text: WORDS.filesHeading }));
+  const paths = [...files.keys()].sort();
+  let folder = null;
+  for (const p of paths) {
+    const rel = p.startsWith(BRIEF_PREFIX) ? p.slice(BRIEF_PREFIX.length) : p;
+    const cut = rel.lastIndexOf("/");
+    const dir = cut < 0 ? "" : rel.slice(0, cut);
+    if (dir !== folder) {
+      folder = dir;
+      if (dir) ui.files.append(el("div", { class: "folder", text: dir + "/" }));
+    }
+    ui.files.append(el("button", {
+      type: "button",
+      text: cut < 0 ? rel : rel.slice(cut + 1),
+      "aria-current": p === currentPath ? "true" : "false",
+      onclick: () => openFile(p),
+    }));
+  }
+}
+
+function renderGuestBar() {
+  if (!ui.guestbar) return;
+  const guest = session.role === "guest" && session.synced && !session.over && !!view;
+  ui.guestbar.hidden = !guest;
+  if (guest) ui.suggestButton.disabled = view.state.selection.main.empty;
+}
+
+function badge(p) {
+  if (p.host) return el("span", { class: "badge host", text: WORDS.badgeHost });
+  return el("span", { class: "badge", text: p.role === "member" ? WORDS.badgeMember : WORDS.badgeGuest });
+}
+
+function renderSide() {
+  if (!ui.side) return;
+  clear(ui.side);
+  if (session.host && session.code && !session.seeding && !session.over) {
+    const url = inviteURL();
+    let img = null;
+    try {
+      const qr = qrcode(0, "M");
+      qr.addData(url);
+      qr.make();
+      img = el("img", { src: qr.createDataURL(6, 2), alt: WORDS.inviteHint });
+    } catch { img = null; }
+    const mode = el("select", { id: "mode-live", onchange: (e) => { doc.transact(() => meta.set("mode", e.target.value)); } },
+      el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
+    mode.value = meta.get("mode") === "issues" ? "issues" : "pr";
+    ui.side.append(el("section", { class: "invite" },
+      el("h2", { text: WORDS.inviteHeading }), img,
+      el("div", { class: "code", text: session.code, "aria-label": WORDS.codeLabel }),
+      el("p", { class: "state", text: WORDS.inviteHint }),
+      el("div", { class: "link", text: url }),
+      el("div", { class: "row" },
+        el("button", { type: "button", text: WORDS.copyLink, onclick: () => copyLink(url) }),
+        el("button", { type: "button", text: WORDS.newCode, onclick: () => sendJSON({ type: "rotate" }) }),
+        el("button", { type: "button", text: WORDS.endSession, onclick: () => { if (confirm(WORDS.endConfirm)) sendJSON({ type: "close" }); } })),
+      el("label", { for: "mode-live", text: WORDS.modeLabel }), mode));
+  }
+
+  const list = el("ul");
+  for (const p of session.roster) {
+    list.append(el("li", {}, p.name || p.login || "", badge(p), p.id === session.myId ? " " + WORDS.you : ""));
+  }
+  ui.side.append(el("section", { class: "roster" }, el("h2", { text: WORDS.rosterHeading }), list));
+
+  if (session.role === "member" && session.synced) {
+    const items = el("ul");
+    for (const s of incoming.values()) {
+      if (suggestionsDone.has(s.id)) continue;
+      items.append(el("li", { class: "suggestion" },
+        el("div", { class: "from", text: WORDS.suggestedBy + " " + s.from + " · " + s.body.path.replace(BRIEF_PREFIX, "") }),
+        el("del", { text: s.body.quote.exact }),
+        el("ins", { text: s.body.replacement }),
+        el("div", { class: "row" },
+          el("button", { type: "button", class: "primary", text: WORDS.apply, onclick: () => applySuggestion(s.id) }),
+          el("button", { type: "button", text: WORDS.decline, onclick: () => declineSuggestion(s.id) }))));
+    }
+    ui.side.append(el("section", { class: "suggestions" }, el("h2", { text: WORDS.suggestionsHeading }),
+      items.childElementCount ? items : el("p", { class: "state", text: WORDS.noSuggestions })));
+  }
+
+  if (session.role === "guest" && mine.length) {
+    const items = el("ul");
+    for (const s of mine) {
+      const done = suggestionsDone.get(s.id);
+      items.append(el("li", { class: "suggestion" },
+        el("del", { text: s.body.quote.exact }),
+        el("ins", { text: s.body.replacement }),
+        el("div", { class: "state", text: done === "applied" ? WORDS.applied : done === "declined" ? WORDS.declined : WORDS.waiting })));
+    }
+    ui.side.append(el("section", { class: "suggestions" }, el("h2", { text: WORDS.mySuggestionsHeading }), items));
+  }
+}
+
+async function copyLink(url) {
+  try { await navigator.clipboard.writeText(url); toast(WORDS.linkCopied); } catch { /* clipboard refused */ }
+}
+
+function renderAll() {
+  renderTop();
+  renderStart();
+  renderSide();
+  renderGuestBar();
+  if (session.synced && !session.seeding && !view && files.size > 0) {
+    openFile([...files.keys()].sort()[0]);
+  } else if (view && session.over) {
+    view.destroy();
+    view = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Start.
+// ---------------------------------------------------------------------------
+async function main() {
+  if (!build()) return;
+  const frag = new URLSearchParams(location.hash.slice(1));
+  session.relay = relayOrigin(frag.get("relay")) || relayOrigin(recall(KEY_RELAY));
+  session.code = normalizeCode(frag.get("code"));
+  session.name = recall(KEY_NAME);
+  ui.relay.value = session.relay;
+  ui.code.value = session.code;
+  ui.name.value = session.name;
+  if (frag.get("relay") && session.relay) ui.relayCard.hidden = true;
+  setStatus("", false);
+  renderAll();
+  await finishSignIn();
+  ui.relay.value = session.relay;
+  ui.code.value = session.code;
+  renderAll();
+}
+main();
