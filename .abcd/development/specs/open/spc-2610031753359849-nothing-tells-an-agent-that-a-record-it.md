@@ -767,6 +767,14 @@ These are the facilitator's design calls; none changes a criterion.
     view that cannot be read renders `unknown` with the reason.
   - The view's age is worded in whole units: under a minute, minutes below
     two hours, hours below two days, then days.
+- **Reservations are a cooperative model, not an access control** (the
+  reviewers' reading of 2026-10-14, stated here plainly): they coordinate
+  people who share push access in good faith. Any writer with push access
+  can append a commit to another holder's reservation branch, and the holder
+  is read from a self-declared trailer, set from the writer's `user.email` or
+  machine configuration. The forge's push permissions are the only boundary;
+  the pre-push hook's checks and the reservations ruleset keep honest tools
+  to the protocol and refuse deletion and force, but prove nobody's identity.
 - **What the review of steps 8 to 11 and 14 settled** (2026-10-14):
   - A footprint path is a value a writer chose, so the overlap refusal names
     the shared path quoted (`%q` after `termsafe.Sanitize`, as every other

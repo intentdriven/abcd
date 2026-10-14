@@ -89,6 +89,13 @@ named `origin`, a fetch or a push origin refused. Each refusal ends by saying
 nothing was pushed or no reservation was made, and quotes git's own reason with
 the home directory redacted. Relay it.
 
+**What a reservation is not.** Reservations coordinate people who share push
+access to the repository and act in good faith. They are not an access
+control: anyone who can push can append a commit to another holder's
+reservation branch, and the holder a reservation names is read from its own
+trailer, set from that writer's `user.email` or machine configuration, so it
+is self-declared. The forge's push permissions are the only boundary.
+
 **Clocks.** A reservation's expiry is written by the holder's clock and
 judged by the reader's, and the five-minute margin is all the disagreement it
 absorbs. A holder whose clock runs behind loses that much of each lease: one

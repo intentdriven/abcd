@@ -80,6 +80,11 @@ branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
 
+Reservations coordinate people who share push access in good faith; they are
+not an access control. Any writer who can push can append to another holder's
+branch, and the holder is a self-declared trailer, so the forge's push
+permissions are the only boundary.
+
 Expiry is the holder's clock judged by the reader's, and the five-minute
 take-over margin is the only skew it absorbs: a holder whose clock runs behind
 by more than half its lease plus the margin can be taken over between its own
