@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -54,10 +55,17 @@ func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map
 	if res.RootErr != nil {
 		// git did not answer in time: the tied notes are left out, and,
 		// unrecorded, tried again on the next turn.
-		diagnosticLine(w, "abcd memory: this repository's root commit: %s; recalling no notes tied to it this turn",
-			fsutil.RedactHome(res.RootErr.Error()))
+		rootErrLine(w, res.RootErr)
 	}
 	return res
+}
+
+// rootErrLine names, on stderr, a root-commit lookup git did not answer in
+// time, and that the notes tied to the repository are left out for it. The
+// hook and `rules --prompt` both say it in these words.
+func rootErrLine(w io.Writer, err error) {
+	diagnosticLine(w, "abcd memory: this repository's root commit: %s; recalling no notes tied to it this turn",
+		fsutil.RedactHome(err.Error()))
 }
 
 // routerRootCommit is the repository's root commit as the prompt router asks
@@ -156,8 +164,10 @@ type rulesPromptView struct {
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings
 // back to a fresh session. It runs the router's own path — rules.Inject on an
 // empty ledger, then the recall within what the rules left — and writes
-// nothing: no session state is loaded or saved.
-func rulesPrompt(rs rules.RuleSet, root, prompt string) rulesPromptView {
+// nothing: no session state is loaded or saved. A root-commit lookup git did
+// not answer in time leaves the tied notes out of the view, and is named on
+// stderr (w), once, as the hook names it.
+func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string) rulesPromptView {
 	v := rulesPromptView{Disabled: rs.Disabled, Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{}, Unreadable: []recall.Refusal{}}
 	if rs.Disabled {
 		return v
@@ -185,7 +195,12 @@ func rulesPrompt(rs rules.RuleSet, root, prompt string) rulesPromptView {
 	for _, key := range mem.Recalled {
 		recalled[key] = true
 	}
-	matched, _ := recall.Matching(items, prompt, here)
+	matched, matchErr := recall.Matching(items, prompt, here)
+	// here is memoised, so the recall and the matching share one lookup and
+	// one error: it is named once.
+	if rootErr := cmp.Or(mem.RootErr, matchErr); rootErr != nil {
+		rootErrLine(stderr, rootErr)
+	}
 	for _, c := range matched {
 		form := promptFormOverBudget
 		if recalled[c.Item.Key] {

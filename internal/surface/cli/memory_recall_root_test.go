@@ -232,3 +232,34 @@ func TestDrainRootLookupHasADeadline(t *testing.T) {
 		}
 	}
 }
+
+// TestRulesPromptNamesARootLookupTimeout: `rules --prompt` asks for the root
+// commit itself, and when git does not answer in time the tied notes are
+// left out of what it shows. It says so on stderr, as the hook does, so a
+// timeout never hides a tied note silently; stdout stays one document.
+func TestRulesPromptNamesARootLookupTimeout(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, _ = memoryFixture(t)
+	id := addRaceNote(t, "session-one") // tied to this repository
+
+	prev := routerRootCommit
+	t.Cleanup(func() { routerRootCommit = prev })
+	routerRootCommit = func(context.Context, string) (string, error) {
+		return "", fmt.Errorf("git rev-list -n 1 --max-parents=0 HEAD: %w", gitutil.ErrGitTimedOut)
+	}
+	out, stderr, err := runCLISplit(t, "rules", "--prompt", "commit once the tests pass", "--json")
+	if err != nil {
+		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+	}
+	if strings.Contains(out, id) {
+		t.Fatalf("a tied note was shown with no root:\n%s", out)
+	}
+	want := "abcd memory: this repository's root commit: "
+	if !strings.Contains(stderr, want) || !strings.Contains(stderr, "did not answer in time") ||
+		!strings.Contains(stderr, "recalling no notes tied to it this turn") {
+		t.Fatalf("rules --prompt does not name the timeout on stderr:\n%s", stderr)
+	}
+	if n := strings.Count(stderr, want); n != 1 {
+		t.Fatalf("the timeout was named %d times, want once:\n%s", n, stderr)
+	}
+}

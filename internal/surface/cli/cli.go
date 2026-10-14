@@ -2495,7 +2495,7 @@ Read-only.`,
 				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			if byPrompt {
-				v := rulesPrompt(rs, root, prompt)
+				v := rulesPrompt(cmd.ErrOrStderr(), rs, root, prompt)
 				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) { renderRulesPrompt(w, rs, v) })
 			}
 			// Scoped: inspect one domain's configured content regardless of its
