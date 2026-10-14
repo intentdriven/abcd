@@ -123,6 +123,7 @@ const WORDS = Object.freeze({
   ghRefTaken: "GitHub would not create the session's branch; one by that name may already exist. Try again.",
   ghPRRefused: "The commit is on the branch, but GitHub would not open the pull request. Open it on GitHub from branch",
   ghOther: "GitHub did not complete the request. Try again in a moment.",
+  pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
 });
 
 // ---------------------------------------------------------------------------
@@ -1175,13 +1176,42 @@ function makePassage(path, ops, offsets, i, j, approvalList) {
   };
 }
 
-// analyse reads every file's changes since the base, as passages.
+// baseFilePaths names the files the session started with: the files map's
+// keys as the base snapshot saw them, or null without a base.
+function baseFilePaths(base) {
+  if (!base) return null;
+  try { return new Set(Object.keys(Y.typeMapGetAllSnapshot(files, base))); } catch { return null; }
+}
+
+// briefFile says whether a path may go back to GitHub: a Markdown file under
+// the brief, with no ".." and no backslash, that the session started with.
+// The paths are the shared files map's keys, which any team member's page
+// can write, so nothing else is shown or sent (security review F9).
+function briefFile(path, baseFiles) {
+  return typeof path === "string" && path.startsWith(BRIEF_PREFIX) && path.endsWith(".md") &&
+    !path.includes("..") && !path.includes("\\") && baseFiles instanceof Set && baseFiles.has(path);
+}
+
+// shownPath is a refused path as the page names it: one line, bounded.
+function shownPath(path) {
+  return String(path).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, "?").slice(0, 200);
+}
+
+// analyse reads every file's changes since the base, as passages. A path
+// outside the brief is left out, and named in the result's refused list.
 function analyse() {
   const base = baseSnapshot();
   const out = [];
+  out.refused = [];
   if (!base) return out;
+  const baseFiles = baseFilePaths(base);
+  const refused = out.refused;
   const approvalList = approvals.toArray();
   for (const path of [...files.keys()].sort()) {
+    if (!briefFile(path, baseFiles)) {
+      refused.push(path);
+      continue;
+    }
     const ytext = files.get(path);
     if (!(ytext instanceof Y.Text)) continue;
     const ops = changesOf(ytext, base);
@@ -1421,11 +1451,13 @@ async function openPullRequest(only) {
     // The files: each changed file with these passages put on its base text.
     const additions = [];
     const changed = [];
+    const baseFiles = baseFilePaths(baseSnapshot());
     for (const f of analysis) {
       const mine = list.filter((p) => p.path === f.path);
       if (mine.length === 0) continue;
       const text = mine.length === f.passages.length ? f.current : applyPassages(f.base, mine);
       if (text === f.base) continue;
+      if (!briefFile(f.path, baseFiles)) throw new GitHubTrouble(WORDS.pathRefused + " " + shownPath(f.path));
       additions.push({ path: f.path, contents: utf8Base64(text) });
       changed.push(f.path);
     }
@@ -1540,6 +1572,9 @@ function renderSend() {
   ui.sendIntro.textContent = mode === "issues" ? WORDS.sendIntroIssues : WORDS.sendIntroPR;
   clear(ui.sendList);
   clear(ui.sendActions);
+  for (const path of analysis.refused) {
+    ui.sendList.append(el("li", { class: "state bad", text: WORDS.pathRefused + " " + shownPath(path) }));
+  }
   if (all.length === 0) {
     ui.sendList.append(el("li", { class: "state", text: WORDS.sendNothing }));
   }

@@ -720,3 +720,39 @@ func TestGuestNamesMentionNobody(t *testing.T) {
 		t.Error("the pull request's pairs name a guest without trailerText")
 	}
 }
+
+// The commit's paths are the shared files map's keys, which any team
+// member's page can write, so each is confined to the brief the session
+// started from before it is shown or sent (security review F9).
+func TestCommitPathsAreConfinedToTheBrief(t *testing.T) {
+	js := pageScript(t)
+	brief := functionBody(t, js, "briefFile")
+	for _, want := range []string{
+		"path.startsWith(BRIEF_PREFIX)", `path.endsWith(".md")`, `!path.includes("..")`, `!path.includes("\\")`, "baseFiles.has(path)",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("briefFile does not check %s:\n%s", want, brief)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "baseFilePaths"), "Y.typeMapGetAllSnapshot(files, base)") {
+		t.Error("the base file set is not the files map as the base snapshot saw it")
+	}
+	an := functionBody(t, js, "analyse")
+	check, changes := strings.Index(an, "if (!briefFile(path, baseFiles)) {"), strings.Index(an, "changesOf(")
+	if check < 0 || changes < 0 || check > changes {
+		t.Errorf("analyse does not refuse a path outside the brief before reading its changes:\n%s", an)
+	}
+	if !strings.Contains(an, "refused.push(path)") || !strings.Contains(functionBody(t, js, "renderSend"), "analysis.refused") {
+		t.Error("a refused path is not named in the Send panel")
+	}
+	// Immediately before every additions.push, the path is checked again.
+	pr := functionBody(t, js, "openPullRequest")
+	pushes := strings.Count(pr, "additions.push(")
+	guarded := regexp.MustCompile(`if \(!briefFile\(f\.path, baseFiles\)\) throw new GitHubTrouble\([^\n]*\n\s*additions\.push\(`).FindAllString(pr, -1)
+	if pushes == 0 || len(guarded) != pushes {
+		t.Errorf("openPullRequest has %d additions.push, %d guarded by briefFile", pushes, len(guarded))
+	}
+	if !strings.Contains(js, "  pathRefused: ") {
+		t.Error("the page has no words for a refused path")
+	}
+}
