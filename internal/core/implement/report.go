@@ -205,11 +205,21 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 		return sorted[i].Event == EventWindowMode && sorted[j].Event != EventWindowMode
 	})
 	sorted = joinsIntoTheirWindow(sorted)
+	// Every string the report carries that the log supplies (a session's id,
+	// its role, a window's mode and so the leader, an intervention's kind, and
+	// the log an unparsed line names) is masked with termsafe.Sanitize where the
+	// report composes it: the log is a file a hand edit or a hostile checkout
+	// can carry, and the report reaches `implement report --json`
+	// (iss-2610121653432051). The session is masked on the report's own copy of
+	// each event, so every figure keyed on it is keyed on the masked id.
+	for i := range sorted {
+		sorted[i].Session = termsafe.Sanitize(sorted[i].Session)
+	}
 
 	roles := map[string]string{}
 	for _, e := range sorted {
 		if e.Event == EventSessionOpen {
-			if r := normaliseRole(e.String("role")); r != "" {
+			if r := normaliseRole(termsafe.Sanitize(e.String("role"))); r != "" {
 				roles[e.Session] = r
 			}
 		}
@@ -253,7 +263,7 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 	for _, e := range sorted {
 		if e.Event == EventWindowMode {
 			closeWindow()
-			mode := e.String("mode")
+			mode := termsafe.Sanitize(e.String("mode"))
 			if mode == "" {
 				mode = UnsetMode
 			}
@@ -327,16 +337,18 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 	}
 	closeWindow()
 
-	rep := Report{Events: len(sorted), Unparsed: unparsed, Modes: []ModeTally{}, Context: []SessionContext{},
+	masked := make([]Unparsed, 0, len(unparsed))
+	for _, u := range unparsed {
+		u.File = termsafe.Sanitize(u.File)
+		masked = append(masked, u)
+	}
+	rep := Report{Events: len(sorted), Unparsed: masked, Modes: []ModeTally{}, Context: []SessionContext{},
 		LeaderBasis: "lanes landed per wall-clock hour", Evidence: evidenceOf(sorted),
 		MissingFields: missingFields(sorted), Coverage: coverageGaps(sorted), Outages: outageSpans(sorted)}
 	for _, c := range contexts {
 		rep.Context = append(rep.Context, *c)
 	}
 	sort.Slice(rep.Context, func(i, j int) bool { return rep.Context[i].Session < rep.Context[j].Session })
-	if rep.Unparsed == nil {
-		rep.Unparsed = []Unparsed{}
-	}
 	for _, t := range tallies {
 		if t.WallMinutes > 0 {
 			t.LandedPerHour = round2(float64(t.LanesLanded) / (t.WallMinutes / 60))
@@ -423,7 +435,7 @@ func evidenceOf(events []Event) Evidence {
 		switch e.Event {
 		case EventIntervention:
 			ev.Interventions++
-			kind := e.String("kind")
+			kind := termsafe.Sanitize(e.String("kind"))
 			if kind == "" {
 				kind = "unstated"
 			}
