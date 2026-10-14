@@ -1,0 +1,103 @@
+package claim
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+)
+
+// notHeld is err's *NotHeld, failing the test when it carries none.
+func notHeld(t *testing.T, err error, why string) *NotHeld {
+	t.Helper()
+	var nh *NotHeld
+	if !errors.As(err, &nh) {
+		t.Fatalf("err = %v; want a *NotHeld (%s)", err, why)
+	}
+	if nh.Why != why {
+		t.Fatalf("NotHeld.Why = %q; want %q (%v)", nh.Why, why, err)
+	}
+	if !strings.HasSuffix(err.Error(), nothingPushed) {
+		t.Fatalf("a renewal refused says nothing was pushed: %q", err)
+	}
+	return nh
+}
+
+// TestARenewalRenewsOnlyThisCopysOwnReservation is the implement loop's
+// renewal (spec 2, step 8): a renew-only act renews this person's reservation
+// from this copy, live or lapsed, keeping its footprint, and refuses every
+// other tip with a *NotHeld naming why, pushing nothing. It never reserves an
+// absent or released record and never takes one over, so a run's renewal
+// cannot undo a release (C36) or move another's reservation.
+func TestARenewalRenewsOnlyThisCopysOwnReservation(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	p2 := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("99+quinn@users.noreply.github.com", "")
+	renew := func(who *participant, id string, live bool) (Result, error) {
+		return who.do(Request{Record: id, Renew: true, Live: live})
+	}
+
+	if _, err := renew(p, "iss-5", false); err != nil {
+		notHeld(t, err, NotHeldAbsent)
+	} else {
+		t.Fatal("renewing a record nobody reserved reserves it")
+	}
+	if w.remoteTip("iss-5") != "" {
+		t.Fatal("a refused renewal pushed a reservation")
+	}
+
+	if _, err := p.reserve("iss-5", "a.go", "b"); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(time.Hour))
+	res, err := renew(p, "iss-5", true)
+	if err != nil || res.Act != ActRenewed {
+		t.Fatalf("P renews its own: %+v %v", res, err)
+	}
+	if strings.Join(res.Footprint, ",") != "a.go,b" || !res.ClaimedAt.Equal(t0.Add(time.Hour)) ||
+		!res.ExpiresAt.Equal(t0.Add(3*time.Hour)) {
+		t.Fatalf("the renewal keeps the footprint and counts the default lease from now: %+v", res)
+	}
+	if !strings.Contains(w.remoteMessage(w.remoteTip("iss-5")), "Abcd-Footprint: b\n") {
+		t.Fatal("the renewal's commit drops the footprint")
+	}
+	tip := w.remoteTip("iss-5")
+
+	if _, err := p.do(Request{Record: "iss-5", Renew: true, Footprint: []string{"c.go"}}); !errors.Is(err, ErrRefused) {
+		t.Fatalf("a renewal names no footprint of its own: %v", err)
+	}
+	nh := notHeld(t, func() error { _, err := renew(q, "iss-5", false); return err }(), NotHeldAnotherPerson)
+	if nh.Holder != "octo" || !nh.Expiry.Equal(t0.Add(3*time.Hour)) {
+		t.Fatalf("the refusal names the holder and the expiry: %+v", nh)
+	}
+	notHeld(t, func() error { _, err := renew(p2, "iss-5", false); return err }(), NotHeldAnotherCopy)
+	if w.remoteTip("iss-5") != tip {
+		t.Fatal("a refused renewal moved the branch")
+	}
+
+	// Lapsed: renewed when asked for any of one's own, refused when it must be
+	// live; another person's lapsed one is never taken over.
+	w.set(t0.Add(5 * time.Hour))
+	notHeld(t, func() error { _, err := renew(p, "iss-5", true); return err }(), NotHeldLapsed)
+	notHeld(t, func() error { _, err := renew(q, "iss-5", false); return err }(), NotHeldAnotherPerson)
+	if w.remoteTip("iss-5") != tip {
+		t.Fatal("a refused renewal moved the branch")
+	}
+	if res, err := renew(p, "iss-5", false); err != nil || res.Act != ActRenewed {
+		t.Fatalf("P renews its own lapsed reservation: %+v %v", res, err)
+	}
+
+	// Released: a renewal never reserves the record again.
+	if _, err := p.do(Request{Record: "iss-5", Release: true}); err != nil {
+		t.Fatal(err)
+	}
+	tomb := w.remoteTip("iss-5")
+	nh = notHeld(t, func() error { _, err := renew(p, "iss-5", false); return err }(), NotHeldReleased)
+	if nh.ReleasedAt.IsZero() || nh.Derived {
+		t.Fatalf("a tombstone's release names its time: %+v", nh)
+	}
+	if w.remoteTip("iss-5") != tomb {
+		t.Fatal("a renewal over a tombstone reserved the record again")
+	}
+}

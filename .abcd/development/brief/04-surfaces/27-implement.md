@@ -329,6 +329,21 @@ the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
 scan gap on the record, as the history verb reports it for a capture.
 
+A run that holds a reservation on the shared remote (itd-2609091034175565;
+the state's `reserved_at`) holds it for the copy the run lives in. The step
+verb renews it before a stage once half its lease has passed, as last fetched,
+with the default lease, and logs `reservation_renewed` in the run record; under
+half it pushes nothing, and a renewal that fails is logged and named while the
+stage still runs. A renewal renews only this person's own reservation from
+this copy, never reserving a released record again or taking one over. Before
+the landing's merge rule decides, the land fence fetches the reservation and
+arms nothing unless it is still this person's, from this copy, and live,
+naming the other person, the other copy or the release, as contention; when it
+holds it is renewed with `max(the default lease, the queue's
+check_response_timeout_minutes + 15 minutes)`, clamped to a day, read from the
+ruleset mirror at the lane's base. A run holding no reservation is neither
+renewed nor fenced.
+
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
 record with its remedy as the work; its receipt must declare the issue fixed,

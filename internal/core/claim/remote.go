@@ -175,6 +175,12 @@ func lostRace(p *prepared, tree string, before judged, perr error) error {
 	if derr == nil {
 		return pushFailed
 	}
+	// A renewal or a release that met another's tip says so in its own
+	// terms, which its caller reads.
+	var nh *NotHeld
+	if errors.As(derr, &nh) {
+		return derr
+	}
 	if errors.Is(derr, ErrBackOff) && j.Unreadable == "" && !j.mine {
 		return backOff("%s was reserved by %s while this push was on its way, until %s; back off and take other work",
 			p.id, j.Holder, stamp(j.verdict.EffectiveExpiry))
@@ -204,6 +210,9 @@ func pushRejection(stdout string, err error) error {
 func decide(p *prepared, j judged) (Result, message, string, error) {
 	if p.req.Release {
 		return decideRelease(p, j)
+	}
+	if p.req.Renew {
+		return decideRenew(p, j)
 	}
 	m := p.reservation()
 	res := Result{Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt}
@@ -274,14 +283,65 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 		return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Copy: copyOf, Footprint: j.Footprint,
 			ClaimedAt: j.ClaimedAt, ExpiresAt: j.ExpiresAt, Commit: j.Commit}, message{}, "", nil
 	case !j.mine:
-		return Result{}, message{}, "", refuse("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed)
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrRefused,
+			fmt.Sprintf("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed))
 	case !j.thisCopy:
-		return Result{}, message{}, "", refuse("%s is held by your copy on another computer; release it there, or take it over here first; %s",
-			p.id, nothingPushed)
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
+			fmt.Sprintf("%s is held by your copy on another computer; release it there, or take it over here first; %s", p.id, nothingPushed))
 	}
 	m := p.tombstone(j.Footprint)
 	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
+}
+
+// decideRenew is a renewal's row of the push table: this person's own
+// reservation from this copy, not released, is renewed as its child with the
+// lease asked for and the tip's own footprint; every other tip is a *NotHeld,
+// so a renewal never reserves anew and never takes over. A lapsed one is
+// renewed unless the request requires a live one.
+func decideRenew(p *prepared, j judged) (Result, message, string, error) {
+	exp := j.verdict.EffectiveExpiry
+	switch {
+	case !j.present:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAbsent, ErrBackOff,
+			fmt.Sprintf("%s holds no reservation on %s to renew; %s", p.id, Remote, nothingPushed))
+	case j.derived:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldReleased, ErrBackOff,
+			fmt.Sprintf("the reservation on %s is released: %s is finished on %s's default branch; %s", p.id, p.id, Remote, nothingPushed))
+	case j.Unreadable != "":
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldUnreadable, ErrBackOff,
+			fmt.Sprintf("the reservation on %s is unreadable (%s); %s", p.id, j.Unreadable, nothingPushed))
+	case j.message.released():
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldReleased, ErrBackOff,
+			fmt.Sprintf("the reservation on %s was released at %s; %s", p.id, stamp(j.ReleasedAt), nothingPushed))
+	case !j.mine:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrBackOff,
+			fmt.Sprintf("%s is reserved by %s until %s, not by you; %s", p.id, j.Holder, stamp(exp), nothingPushed))
+	case !j.thisCopy:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrBackOff,
+			fmt.Sprintf("%s is held by your copy on another computer, until %s; %s", p.id, stamp(exp), nothingPushed))
+	case p.req.Live && !j.verdict.Live:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldLapsed, ErrBackOff,
+			fmt.Sprintf("your reservation on %s lapsed at %s; %s", p.id, stamp(exp), nothingPushed))
+	}
+	p.req.Footprint = append([]string(nil), j.Footprint...)
+	m := p.reservation()
+	return Result{Act: ActRenewed, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
+		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
+}
+
+// notHeld is the *NotHeld a judged tip gives an act that needed this
+// person's own reservation from this copy.
+func (j judged) notHeld(id, why string, kind error, msg string) *NotHeld {
+	nh := &NotHeld{Record: id, Why: why, Expiry: j.verdict.EffectiveExpiry, Derived: j.derived && why == NotHeldReleased,
+		Unreadable: j.Unreadable, msg: msg, kind: kind}
+	if j.Unreadable == "" {
+		nh.Holder = j.Holder
+		if why == NotHeldReleased && !nh.Derived {
+			nh.ReleasedAt = j.ReleasedAt
+		}
+	}
+	return nh
 }
 
 // judge reads the record's tip from the view just fetched and judges it: its
@@ -408,12 +468,34 @@ func fetch(root string, now time.Time) (gap string, err error) {
 		_, ferr = gitutil.Net(root, args...)
 	}
 	if ferr != nil {
-		return "", refuse("could not read the reservations from %s: %s; %s", Remote, redacted(ferr), noReservation)
+		return "", &FetchError{Reason: redacted(ferr)}
 	}
 	if err := stampFetch(root, now); err != nil {
 		return "", refuse("fetched the reservations, but could not record when: %s; %s", redacted(err), noReservation)
 	}
 	return gap, nil
+}
+
+// FetchError is a failed fetch of the reservations from origin: Reason is
+// git's own, home-redacted, which a caller quotes in its own refusal (the land
+// fence). It is an ErrRefused refusal: no reservation was made.
+type FetchError struct {
+	Reason string
+}
+
+func (e *FetchError) Error() string {
+	return fmt.Sprintf("could not read the reservations from %s: %s; %s", Remote, e.Reason, noReservation)
+}
+func (e *FetchError) Is(target error) bool { return target == ErrRefused }
+
+// HasOrigin reports whether the checkout at root has a remote named origin,
+// the one reservations live on, reading only its configuration.
+func HasOrigin(root string) (bool, error) {
+	out, err := localGit(root, 64<<10, "remote")
+	if err != nil {
+		return false, fmt.Errorf("listing this checkout's remotes: %s", redacted(err))
+	}
+	return slices.Contains(strings.Fields(out), Remote), nil
 }
 
 // stampFetch records when this checkout last fetched the reservations, after a

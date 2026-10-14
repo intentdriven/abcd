@@ -761,6 +761,43 @@ These are the facilitator's design calls; none changes a criterion.
     view that cannot be read renders `unknown` with the reason.
   - The view's age is worded in whole units: under a minute, minutes below
     two hours, hours below two days, then days.
+- **What step 8 settled** (renewal and the land fence, 2026-10-14):
+  - The run records its reservation in its state, `reserved_at` (the state's
+    schema version 11; version 10 is read as a run holding none). A run whose
+    state records none, one started before this build or in a checkout with
+    no remote named `origin`, is neither renewed, fenced nor tombstoned. Until
+    step 13 makes `abcd build` reserve at start, only a drain's run (step 14)
+    holds one.
+  - The renewal and the fence are a renew-only act of `claim.Reserve`
+    (`Request.Renew`): it renews this person's reservation from this copy and
+    refuses every other tip with a `*claim.NotHeld` naming why (absent,
+    unreadable, released, another person's, another copy's), so a run's
+    renewal never reserves a released record again, which keeps `build
+    --release` a release (C36), and never takes one over. It keeps the tip's
+    footprint, is never counted by the cap and is still checked for overlap.
+  - The step's renewal renews one's own lapsed reservation too, since half its
+    lease has passed. The fence requires a live one (`Request.Live`) and
+    refuses a lapsed one; a step meets that only when its own renewal, which
+    runs first in the same step, failed.
+  - Half the lease is counted on the effective lease, `Abcd-Claimed-At` plus
+    half the time from it to the effective expiry.
+  - "The run log" is the run's own record (`State.Record`): the entry's stage
+    is `reservation_renewed`, and `reservation_renew_failed` for a renewal
+    that failed, since a run need not belong to a joined session of the
+    shared run log. A step that renewed, or failed to, writes its state even
+    when its stage waits or is refused, and the renewal's note is added to
+    the step's next move or to the refusal's remedy.
+  - The fence's refusals the table had no row for: the reservation gone from
+    `origin`, unreadable, lapsed, released by the default branch (the record
+    finished there), and an overlap met at the renewal, each contention; any
+    other refusal of the renewal (no username) is an exit-2 refusal naming
+    it. A fetch that fails at the fence is contention, not an outage. The
+    fence runs where the pull request is left open for a person too, since it
+    runs before the rule decides, and the arming's note names the renewed
+    expiry.
+  - The queue's timeout is the longest `check_response_timeout_minutes` a
+    merge-queue rule on the default branch states in the mirror at the
+    lane's base; the mirror here states 90, not 45.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

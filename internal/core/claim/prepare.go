@@ -63,6 +63,16 @@ type Request struct {
 	TakeOver bool
 	// Release pushes the tombstone instead.
 	Release bool
+	// Renew renews this person's own reservation from this copy, live or
+	// lapsed, and nothing else: an absent, unreadable or released tip, and one
+	// another person or another copy holds, is refused with a *NotHeld naming
+	// why, and nothing is pushed. A run's renewal therefore never reserves a
+	// record anew and never takes one over. It keeps the tip's footprint, so
+	// Footprint must be empty.
+	Renew bool
+	// Live, with Renew, refuses one's own reservation that has lapsed too
+	// (NotHeldLapsed): the land fence renews only a reservation that holds.
+	Live bool
 }
 
 // prepared is a request checked and filled in from the checkout, before the
@@ -97,7 +107,13 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 	if req.Release && (len(req.Footprint) > 0 || req.TakeOver || req.Lease != 0) {
 		return nil, refuse("a release takes no footprint, take-over or lease; %s", nothingPushed)
 	}
-	if !req.Release && len(req.Footprint) == 0 {
+	if req.Renew && (req.Release || req.TakeOver || len(req.Footprint) > 0) {
+		return nil, refuse("a renewal keeps its reservation's footprint, and takes no footprint, take-over or release; %s", nothingPushed)
+	}
+	if req.Live && !req.Renew {
+		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
+	}
+	if !req.Release && !req.Renew && len(req.Footprint) == 0 {
 		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
 	}
 	for _, p := range req.Footprint {
@@ -122,7 +138,7 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 	if p.copy, err = copyKey(root); err != nil {
 		return nil, err
 	}
-	if !req.Release {
+	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the
 		// tombstone that will one day release it (a longer subject and an
 		// Abcd-Released-At line), so a reservation the writer accepts can

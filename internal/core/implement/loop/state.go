@@ -143,7 +143,18 @@ const lockFileName = ".lock"
 // refused. Releases that write version 9 decode strictly, so a version-10 file
 // reaches them as a version they do not know rather than as a field they do
 // not name.
-const SchemaVersion = 10
+//
+// Version 11 added the run's reservation on the shared remote
+// (itd-2609091034175565, spc-2610031753359849 spec 2): the run's
+// `reserved_at`, which `implement step` renews, fences and tombstones. Version
+// 10 is its strict subset, read as a run that holds no reservation and written
+// back at version 11; a file of version 10 or lower carrying `reserved_at` is
+// not one its version wrote, and is refused.
+const SchemaVersion = 11
+
+// schemaVersionUnreserved is the version before the run's reservation: read,
+// never written.
+const schemaVersionUnreserved = 10
 
 // schemaVersionUnkept is the version before an await's `kept`: read, never
 // written.
@@ -292,6 +303,10 @@ type State struct {
 	// runner asked for, the reason and the route that ran instead. The run's
 	// summary counts them per runner and per role (runner.Tally).
 	Fallbacks []runner.FallbackReceipt `json:"fallbacks,omitempty"`
+	// ReservedAt is when the run reserved its key on the shared remote
+	// (itd-2609091034175565): the reservation `implement step` renews, fences
+	// and tombstones. Nil for a run that holds none.
+	ReservedAt *time.Time `json:"reserved_at,omitempty"`
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -777,7 +792,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnkept && st.kept() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnkept:
+	case st.SchemaVersion <= schemaVersionUnreserved && st.ReservedAt != nil:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a reservation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnreserved:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

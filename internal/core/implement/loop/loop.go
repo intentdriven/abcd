@@ -662,19 +662,31 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			res.Next = pausedMove(*st, until)
 			return true, nil
 		}
+		// The run's reservation is renewed at half its lease before a stage
+		// (reservation.go); a renewal that fails is named and the stage runs.
+		logged := len(st.Record)
+		renewNote := renewReservation(repoRoot, st, now)
+		renewed := len(st.Record) != logged
 		r, moved, err := move(repoRoot, st, steps, now, g)
 		if err != nil {
-			if moved {
+			if rf, ok := AsRefusal(err); ok && renewNote != "" {
+				rf.Remedy += "; " + renewNote
+			}
+			if moved || renewed {
 				// The wait, or a later lane's refusal, is the call's answer,
-				// and the time a lane began waiting for its full check is
-				// written with it (ruling DR6d-2).
+				// and the time a lane began waiting for its full check, or
+				// the reservation's renewal, is written with it (ruling
+				// DR6d-2).
 				wait = err
 				return true, nil
 			}
 			return false, err
 		}
 		res = r
-		return changed || moved, nil
+		if renewNote != "" {
+			res.Next += "; " + renewNote
+		}
+		return changed || moved || renewed, nil
 	})
 	if err == nil && wait != nil {
 		err = wait

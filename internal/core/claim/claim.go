@@ -124,3 +124,40 @@ func reservableID(arg string) (string, error) {
 // checkout's copy of it. Both take only reservableID's answer.
 func refName(id string) string      { return RefPrefix + id }
 func trackingName(id string) string { return TrackingPrefix + id }
+
+// Why a renewal found no reservation of this person's from this copy to renew.
+const (
+	NotHeldAbsent        = "absent"
+	NotHeldUnreadable    = "unreadable"
+	NotHeldReleased      = "released"
+	NotHeldAnotherPerson = "another_person"
+	NotHeldAnotherCopy   = "another_copy"
+	NotHeldLapsed        = "lapsed"
+)
+
+// NotHeld is the refusal of an act that needs this person's own reservation
+// from this copy — a renewal, or a release — when the tip is not one: Why
+// names what it is instead, with what the tip says of it, so a caller words
+// its own refusal (the land fence) without reading the message. It pushes
+// nothing.
+type NotHeld struct {
+	Record string
+	// Why is one of the NotHeld* reasons.
+	Why string
+	// Holder is the tip's holder, for another person's or another copy's.
+	Holder string
+	// Expiry is the tip's effective expiry, or an unreadable tip's hold.
+	Expiry time.Time
+	// ReleasedAt is a tombstone's time; Derived is true instead when the
+	// record is finished on origin's default branch.
+	ReleasedAt time.Time
+	Derived    bool
+	// Unreadable is why the tip cannot be read.
+	Unreadable string
+
+	msg  string
+	kind error
+}
+
+func (e *NotHeld) Error() string        { return e.msg }
+func (e *NotHeld) Is(target error) bool { return target == e.kind }

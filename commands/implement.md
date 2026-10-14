@@ -495,6 +495,28 @@ nothing on its own: the remedy is a person's hand merge in the lane's worktree
 with the queue's method), then `step` again; or closing it and handing the
 lane back.
 
+A run that holds a reservation on the shared remote (its state's
+`reserved_at`; `abcd peers` lists it) keeps it for the copy the run lives in.
+Before a step performs a stage, it reads the reservation as last fetched and,
+once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
+a renewal with the default two-hour lease, logged in the run record as
+`reservation_renewed`; under half, it pushes nothing. A renewal that fails is
+logged as `reservation_renew_failed` and named in the step's answer, and the
+stage still runs: the land fence is where a lost reservation stops the run. A
+renewal only renews this person's own reservation from this copy: it never
+reserves a released record again and never takes one over. At step 5, before
+the merge rule decides, the **land fence** fetches the reservation and arms
+nothing unless it is still this person's, from this copy, and live: it names
+the other person and the expiry, says the reservation moved to your copy on
+another computer, or says it was released (reserve it again with `abcd build
+<id>`), and a fetch origin does not answer is named too, each as contention
+(exit 3 when nothing else moves). When it holds, the fence renews it with a
+lease of the merge queue's `check_response_timeout_minutes` (read from the
+mirror at the lane's base) plus fifteen minutes, or the default two hours when
+that is longer or no mirror states a timeout, clamped to a day, so the
+reservation holds while the queue decides. A run whose state records no
+reservation is neither renewed nor fenced.
+
 Every landing step is recorded as it completes, so a killed `step` repeats the
 move that did not complete and finds what it made rather than making it twice.
 

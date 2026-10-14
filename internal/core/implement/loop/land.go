@@ -852,27 +852,51 @@ func requiresApproval(c Context, lane Lane, params json.RawMessage) bool {
 // base is the default branch the lane was cut from, so the lane's own commits
 // cannot change the rule it lands by.
 func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
+	r, err := readMergeRule(c, lane, def)
+	return r.method, r.approval, err
+}
+
+// mergeRuleRead is the ruleset mirror read at a lane's base: the merge
+// queue's method ("" when none gates the default branch), whether a person's
+// approval is required, and the longest check timeout a merge queue there
+// waits (check_response_timeout_minutes; zero when none states one), which
+// the land fence renews the run's reservation past.
+type mergeRuleRead struct {
+	method       string
+	approval     bool
+	checkTimeout time.Duration
+}
+
+// readMergeRule is mergeRule with the queue's check timeout.
+func readMergeRule(c Context, lane Lane, def string) (mergeRuleRead, error) {
+	method, approval, timeout, err := mergeRuleParts(c, lane, def)
+	return mergeRuleRead{method: method, approval: approval, checkTimeout: timeout}, err
+}
+
+// mergeRuleParts reads the mirror once for mergeRule and readMergeRule.
+func mergeRuleParts(c Context, lane Lane, def string) (string, bool, time.Duration, error) {
 	names, err := gitutil.RunCappedBytes(c.RepoRoot, maxGitOutput, "ls-tree", "-z", "--name-only", lane.BaseSHA, "--", RulesetsRelDir+"/")
 	if err != nil {
-		return "", false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
+		return "", false, 0, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
 	}
 	method := ""
 	approval := false
+	var timeout time.Duration
 	count := 0
 	for _, name := range strings.Split(string(names), "\x00") {
 		if !strings.HasSuffix(name, ".json") {
 			continue
 		}
 		if count++; count > maxRulesets {
-			return "", false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
+			return "", false, 0, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
 		}
 		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+name)
 		if err != nil {
-			return "", false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
+			return "", false, 0, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
 		}
 		var rs ruleset
 		if err := json.Unmarshal(raw, &rs); err != nil {
-			return "", false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
+			return "", false, 0, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
 				"restore the ruleset mirror (its README says how to refresh it), then run `abcd implement step` again")
 		}
 		if !rs.targets(def) {
@@ -886,25 +910,29 @@ func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
 				continue
 			}
 			var p struct {
-				MergeMethod string `json:"merge_method"`
+				MergeMethod  string `json:"merge_method"`
+				CheckTimeout int    `json:"check_response_timeout_minutes"`
 			}
 			_ = json.Unmarshal(rule.Parameters, &p)
+			if d := time.Duration(p.CheckTimeout) * time.Minute; p.CheckTimeout > 0 && d > timeout {
+				timeout = d
+			}
 			m := strings.ToUpper(p.MergeMethod)
 			if m == "" {
 				m = "MERGE"
 			}
 			if _, ok := mergeMethods[m]; !ok {
-				return "", false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
+				return "", false, 0, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
 					"correct the ruleset mirror, then run `abcd implement step` again")
 			}
 			if method != "" && method != m {
-				return "", false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
+				return "", false, 0, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
 					"correct the ruleset mirror, then run `abcd implement step` again")
 			}
 			method = m
 		}
 	}
-	return method, approval, nil
+	return method, approval, timeout, nil
 }
 
 // landArm arms the merge by the ruleset's rule, or leaves the pull request
@@ -918,18 +946,30 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	method, approval, err := mergeRule(c, *lane, def)
+	rule, err := readMergeRule(c, *lane, def)
 	if err != nil {
 		return Outcome{}, err
+	}
+	method, approval := rule.method, rule.approval
+	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
+	// the run's reservation must still be this person's from this copy, and
+	// it is renewed past the queue's wait.
+	holds, err := landFence(c, *lane, rule.checkTimeout)
+	if err != nil {
+		return Outcome{}, err
+	}
+	held := ""
+	if !holds.IsZero() {
+		held = "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
 	}
 	n := strconv.Itoa(lane.PR)
 	if method == "" {
 		ld.Merge = "left open: no ruleset gates " + def + " through a merge queue"
-		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; it lands when a person merges it"}, nil
+		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; it lands when a person merges it" + held}, nil
 	}
 	if !approval {
 		ld.Merge = "left open for a person to merge: the ruleset requires no approval on " + def
-		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + ", so the loop does not arm auto-merge; it lands when a person merges it"}, nil
+		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + ", so the loop does not arm auto-merge; it lands when a person merges it" + held}, nil
 	}
 	// A pull request the forge already reports conflicting never enters the
 	// queue, and nothing is pushed to a lane after arming: it is refused here,
@@ -951,7 +991,7 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Armed = true
 	ld.Merge = "auto-merge armed through " + def + "'s merge queue (" + strings.ToLower(method) + ")"
-	return Outcome{Stay: true, Note: "pull request #" + n + ": " + ld.Merge + "; nothing is pushed to the lane after this"}, nil
+	return Outcome{Stay: true, Note: "pull request #" + n + ": " + ld.Merge + "; nothing is pushed to the lane after this" + held}, nil
 }
 
 // landMerged waits for the pushed head to be an ancestor of the default branch
