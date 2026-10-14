@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // StagePick is the refusal stage of a pick that takes nothing.
@@ -148,7 +149,7 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 		if !chk.OK {
 			for _, row := range chk.Checks {
 				if !row.OK {
-					set.Excluded = append(set.Excluded, Excluded{ID: id, Check: row.Name, Reason: row.Detail})
+					set.Excluded = append(set.Excluded, Excluded{ID: id, Check: row.Name, Reason: termsafe.Sanitize(row.Detail)})
 					break
 				}
 			}

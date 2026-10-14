@@ -396,6 +396,20 @@ func readSeries(repoRoot string) (NextSeries, bool, error) {
 		return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names no run count a series takes",
 			"`abcd build next` is the file's only writer; restore it or remove it")
 	}
+	// The stored pace flags take the form the flags take as typed, so no other
+	// text (a hand edit, or control runes in a file a hostile checkout ships)
+	// reaches a move's --json payload; the refusal does not echo them.
+	if _, err := parsePaceFlags(st.Flags.Pace, st.Flags.SubAgents, st.Flags.FixRounds); err != nil {
+		return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names pace flags the series never writes",
+			"`abcd build next` is the file's only writer; restore it or remove it")
+	}
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches a move's --json payload or the refusal of a move typed
+	// with another pace; the refusal does not echo it.
+	if st.Pace != nil && !st.Pace.written() {
+		return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names a pace the series never writes",
+			"`abcd build next` is the file's only writer; restore it or remove it")
+	}
 	for _, p := range st.Picks {
 		if !recordid.ValidIntentID(p.Intent) || !ValidRunID(p.RunID) {
 			return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names a pick that is not an intent and a run",
