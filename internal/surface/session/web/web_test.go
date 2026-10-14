@@ -785,6 +785,15 @@ func TestAwarenessIsCleanedBeforeItIsApplied(t *testing.T) {
 			t.Errorf("cleanAwarenessState does not carry %s:\n%s", want, state)
 		}
 	}
+	// The editor sends a relative position as Yjs builds it, with null for
+	// a field it does not use (tname, or item at the end of a text): null is
+	// such a field's absence, not a malformed position, or no cursor shows.
+	pos := functionBody(t, js, "cleanPosition")
+	for _, want := range []string{"p.item != null", "p.type != null", "p.tname != null", "p.assoc != null"} {
+		if !strings.Contains(pos, want) {
+			t.Errorf("cleanPosition does not take a null field as absent (%s):\n%s", want, pos)
+		}
+	}
 	name := functionBody(t, js, "cleanName")
 	if !strings.Contains(name, `\u0000-\u001f\u007f-\u009f`) || !strings.Contains(name, ".slice(0, 40)") {
 		t.Errorf("cleanName does not remove control characters and clamp to 40:\n%s", name)

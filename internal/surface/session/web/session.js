@@ -904,15 +904,17 @@ function cleanAwarenessState(client, state) {
   return { user, cursor: anchor && head ? { anchor, head } : null };
 }
 // cleanPosition keeps a Yjs relative position's own fields, of their types.
+// The editor sends a position as Yjs builds it, with null for a field it does
+// not use (tname, or item at the end of a text): null is that field's absence.
 function cleanPosition(p) {
   if (p === null || typeof p !== "object") return null;
   const id = (v) => (v !== null && typeof v === "object" && Number.isSafeInteger(v.client) && v.client >= 0 &&
     Number.isSafeInteger(v.clock) && v.clock >= 0 ? { client: v.client, clock: v.clock } : null);
   const out = {};
-  if (p.item !== undefined) { out.item = id(p.item); if (!out.item) return null; }
-  if (p.type !== undefined) { out.type = id(p.type); if (!out.type) return null; }
-  if (p.tname !== undefined) { if (typeof p.tname !== "string") return null; out.tname = p.tname; }
-  if (p.assoc !== undefined) { if (!Number.isSafeInteger(p.assoc)) return null; out.assoc = p.assoc; }
+  if (p.item != null) { out.item = id(p.item); if (!out.item) return null; }
+  if (p.type != null) { out.type = id(p.type); if (!out.type) return null; }
+  if (p.tname != null) { if (typeof p.tname !== "string") return null; out.tname = p.tname; }
+  if (p.assoc != null) { if (!Number.isSafeInteger(p.assoc)) return null; out.assoc = p.assoc; }
   return out;
 }
 // cleanName is a participant's name as the editor shows it: no control or
