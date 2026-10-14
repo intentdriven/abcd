@@ -29,6 +29,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	if err != nil {
 		return res, err
 	}
+	res.readmeAwaitsConfig = slices.Contains(res.OptionalSkipped, ReadmeOfferGapID) && !readmeStorable(cwd)
 	res.explain()
 	return res, nil
 }

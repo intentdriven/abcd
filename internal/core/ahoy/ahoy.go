@@ -223,7 +223,17 @@ type InstallResult struct {
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
+	// readmeAwaitsConfig is set when the run reports the README question
+	// skipped and ends with no .abcd/config.json to keep its answer in, so the
+	// summary names the starter files first (iss-2610120505551170).
+	readmeAwaitsConfig bool
 }
+
+// ReadmeAwaitsConfig reports whether the run left the README question
+// unanswered with no .abcd/config.json to keep the answer in: until abcd's
+// starter files exist, the question is not asked and --readme-parts is
+// refused, so the way to answer it starts with creating them.
+func (r InstallResult) ReadmeAwaitsConfig() bool { return r.readmeAwaitsConfig }
 
 // ApplyResult is the outcome of one apply step.
 type ApplyResult struct {
