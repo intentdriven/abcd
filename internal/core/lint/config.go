@@ -103,8 +103,11 @@ type RuleConfig struct {
 	onReceipt func(gate, verdict string, failing []ReceiptFinding)
 	// release, when set, says the receipt gate is judging a release. Only
 	// ArmReceiptGate sets it, so no config file can, and CheckGateReceipt — the
-	// reader the doc-fidelity gate (itd-60) shares — never does. It arms the
-	// refusal of a release after v0.4.0 whose tree carries no manifest
+	// reader the doc-fidelity gate (itd-60) shares, with dispositions of its own
+	// such as "confirmed" — never does. It arms the two release-only rules: the
+	// closed disposition vocabulary from manifest schemaVersion 2, where a
+	// finding is fixed, invalid or deferred to its own open issue record; and
+	// the refusal of a release after v0.4.0 whose tree carries no manifest
 	// (iss-130).
 	release bool
 	// Fields is the no_git_metadata banned frontmatter key list.

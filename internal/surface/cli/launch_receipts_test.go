@@ -55,7 +55,8 @@ func receiptsRepo(t *testing.T) (*gittest.Repo, string) {
 }
 
 // receiptsManifest is the release-gate manifest the fixture release carries: a
-// release after v0.4.0 without one is refused (iss-130).
+// release after v0.4.0 without one is refused (iss-130), and schemaVersion 2
+// arms the closed disposition vocabulary.
 const receiptsManifest = `{"schemaVersion":2,"detector":"iss35-brief-surface-crosscheck"}` + "\n"
 
 func receiptJSON(gate, commit, verdict, detector string) string {
@@ -69,6 +70,13 @@ func receiptWithFindings(commit, verdict, detector, failing string) string {
 	return `{"subject":{"digest":{"gitCommit":"` + commit + `"}},"verificationResult":"` + verdict + `",` +
 		`"policy":{"detector":"` + detector + `"},"judgeModel":"claude-opus-4-8",` +
 		`"tier":"full","manifestHash":"sha256:` + hex.EncodeToString(sum[:]) + `","failing":` + failing + `}` + "\n"
+}
+
+// captureIssue writes an open issue record the ledger reader accepts.
+func captureIssue(r *gittest.Repo, id string) {
+	r.Write(".abcd/work/issues/open/"+id+"-a-slug.md",
+		"---\nschema_version: 1\nid: "+id+"\nslug: a-slug\nseverity: minor\ncategory: bug\n"+
+			"source: user-observation\nfound_during: t\n---\n\nan issue\n")
 }
 
 // TestLaunchReceiptsNamesEachMissingReceiptAndTheCommit is itd-93 AC7's
@@ -161,6 +169,34 @@ func TestLaunchReceiptsFailsIdenticallyToTheReleaseJobsGate(t *testing.T) {
 			return receipts(receiptJSON("", roll, "PROMOTE", "docs-currency-reviewer"),
 				receiptJSON("", roll, "PROMOTE", "iss35-brief-surface-crosscheck"))
 		}, true},
+		// The closed disposition vocabulary, and the ledger reader both front
+		// doors register, reach the two verdicts alike.
+		{"a free-text disposition", func(roll string) state {
+			return receipts(receiptJSON("", roll, "PROMOTE", "docs-currency-reviewer"),
+				receiptWithFindings(roll, "PROMOTE", "iss35-brief-surface-crosscheck", `[{"disposition":"accepted: knowingly shipped unfixed"}]`))
+		}, false},
+		{"a deferred finding with its own open record", func(roll string) state {
+			return func(r *gittest.Repo, roll string) {
+				captureIssue(r, "iss-5")
+				receipts(receiptJSON("", roll, "PROMOTE", "docs-currency-reviewer"),
+					receiptWithFindings(roll, "PROMOTE", "iss35-brief-surface-crosscheck", `[{"disposition":"fixed"},{"disposition":"deferred","record":"iss-5"}]`))(r, roll)
+			}
+		}, true},
+		{"a deferred record the ledger reader refuses", func(roll string) state {
+			return func(r *gittest.Repo, roll string) {
+				r.Write(".abcd/work/issues/open/iss-5-a-slug.md", "---\nid: iss-5\n---\n")
+				receipts(receiptJSON("", roll, "PROMOTE", "docs-currency-reviewer"),
+					receiptWithFindings(roll, "PROMOTE", "iss35-brief-surface-crosscheck", `[{"disposition":"deferred","record":"iss-5"}]`))(r, roll)
+			}
+		}, false},
+		{"two gates deferring to one record", func(roll string) state {
+			deferred := `[{"disposition":"deferred","record":"iss-5"}]`
+			return func(r *gittest.Repo, roll string) {
+				captureIssue(r, "iss-5")
+				receipts(receiptWithFindings(roll, "PROMOTE", "docs-currency-reviewer", deferred),
+					receiptWithFindings(roll, "PROMOTE", "iss35-brief-surface-crosscheck", deferred))(r, roll)
+			}
+		}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

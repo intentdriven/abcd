@@ -86,7 +86,8 @@ func TestReadReleaseGateReadsAbcdsOwnReleaseWorkflow(t *testing.T) {
 }
 
 // fixtureManifest is the release-gate manifest every fixture release carries:
-// a release after v0.4.0 without one is refused (iss-130).
+// a release after v0.4.0 without one is refused (iss-130), and schemaVersion 2
+// arms the closed disposition vocabulary.
 const fixtureManifest = `{"schemaVersion":2,"detector":"iss35-brief-surface-crosscheck"}` + "\n"
 
 // fixtureManifestHash is the hash a receipt for a fixture release echoes.
@@ -105,6 +106,13 @@ func promoteWith(gate, commit, failing string) string {
 	return `{"subject":{"digest":{"gitCommit":"` + commit + `"}},"verificationResult":"PROMOTE",` +
 		`"policy":{"detector":"` + gate + `"},"judgeModel":"claude-opus-4-8",` +
 		`"tier":"full","manifestHash":"` + fixtureManifestHash() + `","failing":` + failing + `}` + "\n"
+}
+
+// openIssue is an open issue record the ledger reader accepts.
+func openIssue(id string) (rel, body string) {
+	return ".abcd/work/issues/open/" + id + "-a-slug.md",
+		"---\nschema_version: 1\nid: " + id + "\nslug: a-slug\nseverity: minor\ncategory: bug\n" +
+			"source: user-observation\nfound_during: t\n---\n\nan issue\n"
 }
 
 // releaseFixture is a repository with the armed workflow and a release branch
@@ -221,5 +229,27 @@ func TestCheckReleaseReceiptsRefusesAnArmedGateWithNoRecordLintConfig(t *testing
 	}
 	if strings.Contains(check.Problems[0].Message, r.Root()) {
 		t.Errorf("the refusal must be path-free, got %q", check.Problems[0].Message)
+	}
+}
+
+// The local check runs the release's arming, so the closed disposition
+// vocabulary reaches `abcd launch receipts` exactly as it reaches the release
+// job: a record shared by two gates' deferred findings is refused here too.
+func TestCheckReleaseReceiptsRefusesASharedDeferral(t *testing.T) {
+	r, roll := releaseFixture(t)
+	dir := ".abcd/work/reviews/" + roll + "/"
+	deferred := `[{"disposition":"deferred","record":"iss-5"}]`
+	r.Write(dir+"docs-currency-reviewer.json", promoteWith("docs-currency-reviewer", roll, deferred))
+	r.Write(dir+"iss35-brief-surface-crosscheck.json", promoteWith("iss35-brief-surface-crosscheck", roll, deferred))
+	rel, body := openIssue("iss-5")
+	r.Write(rel, body)
+	r.Commit("receipts and capture")
+
+	check, err := lint.CheckReleaseReceipts(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.Pass || len(check.Problems) != 1 || !strings.Contains(check.Problems[0].Message, "iss-5 is named by 2 deferred findings") {
+		t.Fatalf("a record shared across two gates must refuse, got %+v", check)
 	}
 }
