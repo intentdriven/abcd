@@ -183,7 +183,9 @@ same with or without the gate.
 The `routed_from` entries are all spellings from the predecessor store, which
 the local spc-33 does not carry, so all five are skipped. The 136 targets of
 `builds_on_reciprocal` never name their follower. They arrive as warnings and
-fail nothing (see the open point).
+fail nothing (see the open point). These are the counts when this spec was
+written; when the rule landed the tree held 155 one-way edges of 217, and
+those 155 are what the exemption list holds.
 
 ### A4: measure, report, and read in chunks
 
@@ -477,7 +479,13 @@ narrowest reading that meets the criteria. Each is open to review.
   by neither version, so the record carries `finding_ref:` and the report's
   detail line reads `finding_ref: cfk-…`; the value keeps its `cfk-` shape,
   and this repository's allowlist for it is gone. Nothing had written the old
-  name outside the unmerged branch, so there is no migration.
+  name outside the unmerged branch, so there is no migration. One history
+  line stays flagged, a test constant commit 268da6f4a added, and
+  `.gitleaksignore` pins exactly that line by its fingerprint (commit, file,
+  rule, line). The pin holds only while that commit survives, so the pull
+  request carrying this step lands as a merge commit, never a rebase, which
+  rewrites the commit's sha and leaves the line flagged in the merged
+  history; a squash would leave no flagged line and the pin unused.
 - **Step 1, what the key cannot see** (from review, 2026-10-14). The key is
   over the reviewers' quotes, collapsed for whitespace only. So the same
   contradiction quoted differently on a later run (another sentence of the
@@ -621,7 +629,7 @@ narrowest reading that meets the criteria. Each is open to review.
 _None open._ Both points were settled on 2026-10-02:
 
 - **Ruling DR5 and the gate's model pass** needed no question, because the record settles it. DR5 keeps file-reading agents off a provider with a key unless the owner's personal list admits it, and DR5b-4 treats every remote provider the same way. So the gate's model pass runs where the owner's own settings allow it: on a local model, or on a provider the owner lists once that list carries bundles. Everywhere else the commit is marked "deep check owed" with DR5 named as the reason.
-- **The 136 `builds_on` arrivals** were ruled by the technical facilitator: only new ones are flagged. The one-way edges that exist when the rule lands are recorded once as a baseline, and the rule flags only an edge added after it. The baseline is the shared, shrink-only warnings baseline that ruling BT3 plans (H5); until that ships, the rule's own exemption list holds the 136, and it never grows.
+- **The 136 `builds_on` arrivals** were ruled by the technical facilitator: only new ones are flagged. The one-way edges that exist when the rule lands are recorded once as a baseline, and the rule flags only an edge added after it. The baseline is the shared, shrink-only warnings baseline that ruling BT3 plans (H5); until that ships, the rule's own exemption list holds the 155 one-way edges the tree held when the rule landed (136 when this spec measured it), and it never grows.
 
 ## Footprint
 
