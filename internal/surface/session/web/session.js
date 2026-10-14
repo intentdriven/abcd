@@ -139,6 +139,8 @@ const WORDS = Object.freeze({
   ghOther: "GitHub did not complete the request. Try again in a moment.",
   forgedUpdate: "An edit was not applied, because it claimed to be another participant's. It came from",
   setAside: "Edits that build on a refused edit can never be applied, so this page set them aside to stay in step.",
+  metaVoid: "A change to the session's settings was ignored, because only the host sets them and the base, the branch and the repository are set once. It came from",
+  someone: "a participant the session could not credit",
   notesHeading: "Warnings",
   pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
 });
@@ -385,6 +387,7 @@ const session = {
   roster: [],
   credits: {},        // Yjs client id -> login, from the relay's roster
   authors: {},        // participant number -> login, from the relay's roster
+  hostLogin: "",      // the login that opened the session, from the relay's roster
 };
 // Attributed updates wait here until a roster on this connection names their
 // senders: the relay replays a session's log before it sends the roster.
@@ -718,8 +721,14 @@ function onRoster(msg) {
   session.roster = Array.isArray(msg.participants) ? msg.participants.filter((p) => p && typeof p.id === "string") : [];
   session.credits = msg.clients && typeof msg.clients === "object" ? msg.clients : {};
   session.authors = msg.authors && typeof msg.authors === "object" ? msg.authors : {};
+  // The login that opened the session: the relay names it, also while the
+  // host is away, and marks the host among the participants.
+  const named = session.roster.find((p) => p.host === true && p.role === "member" && typeof p.login === "string" && NAME_RE.test(p.login));
+  if (typeof msg.host === "string" && NAME_RE.test(msg.host)) session.hostLogin = msg.host;
+  else if (named) session.hostLogin = named.login;
   rosterSeen = true;
   for (const h of held.splice(0)) admitUpdate(h.num, h.update);
+  watchMeta();
   for (const p of session.roster) {
     if (p.id === session.myId) {
       session.host = p.host === true;
@@ -1541,9 +1550,62 @@ function touchesBrief(tr) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// The session's settings. Any member's page can write the shared meta map,
+// for instance to point the pull request at another branch, so a value counts
+// only when the Yjs item holding it was written by a client id the roster
+// credits to the host's login. The base, the branch and the repository are
+// written once, when the host's page seeds the session: the host's first
+// write of each counts and every later write is void. The mode may change,
+// but only from the host: the host's latest write counts. gc is off, so an
+// overwritten value's item keeps its content and its writer.
+// ---------------------------------------------------------------------------
+const META_ONCE = ["base_snapshot", "base_sha", "branch", "repo"];
+const META_KEYS = META_ONCE.concat(["mode"]);
+
+// effectiveMeta is the settings as the host wrote them, and in voided each
+// void write as { key, client, clock }. A write whose writer the roster does
+// not credit yet (this page's own, before the roster names it) is neither
+// counted nor void. Without the host's login, nothing is known.
+function effectiveMeta() {
+  const out = { voided: [] };
+  const host = session.hostLogin;
+  if (!host) return out;
+  for (const key of META_KEYS) {
+    // The key's items, oldest first: each new value's item goes to the right
+    // of the one it replaced.
+    const items = [];
+    for (let item = meta._map.get(key); item; item = item.left) items.unshift(item);
+    let chosen = null;
+    for (const item of items) {
+      const writer = creditedTo(item.id.client);
+      if (writer === host && (chosen === null || !META_ONCE.includes(key))) chosen = item;
+      else if (writer !== "") out.voided.push({ key, client: item.id.client, clock: item.id.clock });
+    }
+    if (chosen) out[key] = chosen.content.getContent()[0];
+  }
+  return out;
+}
+
+// watchMeta warns once for each void write to the settings it has not seen.
+const voidSeen = new Set();
+function watchMeta() {
+  for (const v of effectiveMeta().voided) {
+    const id = v.client + ":" + v.clock;
+    if (voidSeen.has(id)) continue;
+    voidSeen.add(id);
+    const who = loginOf(v.client);
+    warn(WORDS.metaVoid + " " + (who ? "@" + who : WORDS.someone) + ".");
+  }
+}
+meta.observe(() => {
+  watchMeta();
+  renderSide();
+});
+
 let baseCache = { raw: null, snap: null };
 function baseSnapshot() {
-  const raw = meta.get("base_snapshot");
+  const raw = effectiveMeta().base_snapshot;
   if (!(raw instanceof Uint8Array)) return null;
   if (baseCache.raw !== raw) {
     try { baseCache = { raw, snap: Y.decodeSnapshot(raw) }; } catch { return null; }
@@ -1821,7 +1883,7 @@ function issueBody(p) {
     "A change to the brief, proposed in a live session.",
     "",
     "- File: `" + p.path + "`",
-    "- Base commit: " + meta.get("base_sha"),
+    "- Base commit: " + effectiveMeta().base_sha,
     "- At the base commit: " + linesLabel(p),
     "",
     "Before:",
@@ -1939,7 +2001,7 @@ function prBody(list, members, pairs, changed) {
     else if (r.role !== "member" && typeof r.name === "string" && r.name) people.add(trailerText(r.name) + " (guest)");
   }
   const out = [
-    "Edits to the brief made together in a live session, from base commit " + meta.get("base_sha") + ".",
+    "Edits to the brief made together in a live session, from base commit " + effectiveMeta().base_sha + ".",
     "",
     "Participants: " + [...people].join(", "),
     "",
@@ -1969,9 +2031,16 @@ async function openPullRequest(only) {
     return;
   }
   if (!githubToken || session.role !== "member" || !session.login) { showSendResult(WORDS.prNeedsSignIn, true); return; }
-  const baseSha = meta.get("base_sha");
-  const target = meta.get("branch");
-  if (!SHA_RE.test(baseSha || "") || typeof target !== "string" || !target) { showSendResult(WORDS.prNoBase, true); return; }
+  // The base commit, the branch the pull request goes into and the
+  // repository, as the host seeded them; nobody else's write counts.
+  const settings = effectiveMeta();
+  const baseSha = settings.base_sha;
+  const target = settings.branch;
+  if (!SHA_RE.test(baseSha || "") || typeof target !== "string" || !target ||
+      typeof settings.repo !== "string" || settings.repo.toLowerCase() !== route.slug.toLowerCase()) {
+    showSendResult(WORDS.prNoBase, true);
+    return;
+  }
   sending = true;
   renderSend();
   showSendResult(WORDS.prWorking, false);
@@ -2096,7 +2165,7 @@ doc.on("update", () => {
 function renderSend() {
   if (!ui.send || ui.send.hidden) return;
   if (session.role !== "member" || session.over) { ui.send.hidden = true; return; }
-  const mode = meta.get("mode") === "issues" ? "issues" : "pr";
+  const mode = effectiveMeta().mode === "issues" ? "issues" : "pr";
   const analysis = analyse();
   const all = analysis.flatMap((f) => f.passages);
   ui.sendIntro.textContent = mode === "issues" ? WORDS.sendIntroIssues : WORDS.sendIntroPR;
@@ -2423,7 +2492,7 @@ function renderSide() {
     } catch { img = null; }
     const mode = el("select", { id: "mode-live", onchange: (e) => { doc.transact(() => meta.set("mode", e.target.value)); } },
       el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
-    mode.value = meta.get("mode") === "issues" ? "issues" : "pr";
+    mode.value = effectiveMeta().mode === "issues" ? "issues" : "pr";
     ui.side.append(el("section", { class: "invite" },
       el("h2", { text: WORDS.inviteHeading }), img,
       el("div", { class: "code", text: session.code, "aria-label": WORDS.codeLabel }),

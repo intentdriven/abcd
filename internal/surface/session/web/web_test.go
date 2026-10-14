@@ -454,7 +454,7 @@ func TestIssueLinksAreMeasuredAgainstOneNamedLimit(t *testing.T) {
 	}
 	// The issue body names the file, the base commit, both versions and the credit.
 	body := functionBody(t, js, "issueBody")
-	for _, want := range []string{"p.path", `meta.get("base_sha")`, "fenced(p.before)", "fenced(p.after)", "creditLines(p)"} {
+	for _, want := range []string{"p.path", "effectiveMeta().base_sha", "fenced(p.before)", "fenced(p.after)", "creditLines(p)"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("issueBody does not carry %s", want)
 		}
@@ -970,6 +970,51 @@ func TestPageAnswersTheRelaysRefusals(t *testing.T) {
 	resend := functionBody(t, js, "resendRecent")
 	if !strings.Contains(resend, "Y.mergeUpdates(recent)") || !strings.Contains(resend, "sendBinary(TAG_UPDATE, merged)") {
 		t.Errorf("resendRecent does not send the recent updates again, merged:\n%s", resend)
+	}
+}
+
+// Any member's page can write the shared meta map, so the page counts a
+// setting only when the host's login wrote it: the base, the branch and the
+// repository once, at seeding, and the mode as the host last set it. Every
+// read of meta goes through that one rule, the pull request's target and the
+// commit's expected head among them, and a void write is shown.
+func TestSessionSettingsAreTheHostsAlone(t *testing.T) {
+	js := pageScript(t)
+	if n := strings.Count(js, "meta.get("); n != 0 {
+		t.Errorf("session.js reads meta.get( %d times outside the one rule", n)
+	}
+	if n := strings.Count(js, "meta._map"); n != 1 || !strings.Contains(functionBody(t, js, "effectiveMeta"), "meta._map.get(key)") {
+		t.Errorf("meta's items are read %d times, want once, in effectiveMeta", n)
+	}
+	if !strings.Contains(js, `const META_ONCE = ["base_snapshot", "base_sha", "branch", "repo"];`) {
+		t.Error("session.js does not name the settings written once")
+	}
+	em := functionBody(t, js, "effectiveMeta")
+	for _, want := range []string{"session.hostLogin", "item.left", "creditedTo(item.id.client)", "META_ONCE.includes(key)", "voided.push("} {
+		if !strings.Contains(em, want) {
+			t.Errorf("effectiveMeta does not carry %s:\n%s", want, em)
+		}
+	}
+	for _, fn := range []string{"baseSnapshot", "issueBody", "prBody", "openPullRequest", "renderSend", "renderSide"} {
+		if !strings.Contains(functionBody(t, js, fn), "effectiveMeta()") {
+			t.Errorf("%s does not read the settings through effectiveMeta", fn)
+		}
+	}
+	pr := functionBody(t, js, "openPullRequest")
+	for _, want := range []string{"const baseSha = settings.base_sha;", "const target = settings.branch;", "settings.repo", "expectedHeadOid: baseSha,", "base: target,"} {
+		if !strings.Contains(pr, want) {
+			t.Errorf("openPullRequest does not carry %s", want)
+		}
+	}
+	roster := functionBody(t, js, "onRoster")
+	if !strings.Contains(roster, "msg.host") || !strings.Contains(roster, "session.hostLogin = ") || !strings.Contains(roster, "watchMeta()") {
+		t.Errorf("onRoster does not take the host's login and judge the settings again:\n%s", roster)
+	}
+	if !strings.Contains(js, "meta.observe(") || !strings.Contains(functionBody(t, js, "watchMeta"), "WORDS.metaVoid") {
+		t.Error("a void write to the settings is not shown")
+	}
+	if !strings.Contains(js, "  metaVoid: ") {
+		t.Error("the page has no words for a void write to the settings")
 	}
 }
 
