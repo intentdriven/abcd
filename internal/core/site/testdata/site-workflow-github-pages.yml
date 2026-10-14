@@ -1,0 +1,249 @@
+name: site
+
+# Written by `abcd site setup` (itd-2609061543533170). Re-running the verb
+# rewrites nothing while this file is unchanged, and refuses a hand edit unless
+# it is told to replace it.
+#
+# Renders this repository's site from each published release with abcd's own
+# released binary — checksum- and attestation-verified before it runs — and
+# deploys the rendered artefact to github-pages. The render job holds no
+# credential, and neither does the deploy job: it deploys with the run's own
+# short-lived token and runs nothing from the repository.
+#
+# THE SWITCH: the site publishes only while `"publish": true` stands in the
+# hosting block of .abcd/site.json both at the released commit and at the
+# head of main, and only while the repository is public.
+# Switched off, a release builds and publishes nothing, a later push or
+# dispatch included, and `abcd site setup` offers to remove this file.
+#
+# Three entry points, one path:
+#
+#   release: published    a release published by a person or a personal token.
+#   workflow_run          the `release` or `auto-release` workflow finishing on
+#                         main or on a v-tag. A release created with
+#                         the workflow's own GITHUB_TOKEN fires no `release`
+#                         event, so a release workflow's completion is what
+#                         carries those releases here: `auto-release` runs on
+#                         every push to main and calls `release` inside
+#                         its own run, and a hand-pushed tag runs `release` with
+#                         the tag as its head branch. A completion that
+#                         released nothing redeploys the latest published
+#                         release: the same bytes the site already serves,
+#                         unless a dispatch rolled it back to an older tag,
+#                         which the next such completion replaces with the
+#                         latest release again.
+#   workflow_dispatch     a redeploy by hand; an empty tag means the latest
+#                         published release.
+#
+# THE ENVIRONMENT CONTRACT (the tree's record of the forge's state; `abcd site
+# setup` creates both through the forge's API when it is asked to):
+#
+#   site-render   the render job. No secrets. Deployment policy: branch
+#                 `main` and tags `v*`.
+#   github-pages  the deploy job. Same policy. No secrets: the run's own token.
+#
+# The policy refuses unreviewed workflow content: a dispatch runs this file as
+# it exists on the ref it was dispatched from, so a branch that is neither the
+# default branch nor a release tag is refused before either job starts.
+on:
+  release:
+    types: [published]
+  workflow_run:
+    workflows: [release, auto-release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to render and deploy (vX.Y.Z). Empty means the latest published release.
+        required: false
+        type: string
+        default: ''
+
+# One production target, so one queue. A deploy cancelled between uploading
+# assets and switching the route leaves the site half-moved.
+concurrency:
+  group: site-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    # A workflow_run fires for the release workflows' runs whatever triggered
+    # them, and a head branch is a name a fork can choose. Only a successful
+    # run of this repository's own release workflows, not of a pull request,
+    # on the default branch or a v-tag (the trigger filters no branch, because
+    # a tag-push run's head branch is the tag), reaches the render. Nothing
+    # from the triggering run is used either way: the tag is resolved from the
+    # repository's published releases.
+    if: >-
+      ${{ github.event_name != 'workflow_run' || (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event != 'pull_request' &&
+          github.event.workflow_run.event != 'pull_request_target' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.head_branch == 'main' ||
+           startsWith(github.event.workflow_run.head_branch, 'v'))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: site-render
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.switch.outputs.on }}
+    steps:
+      - name: Resolve the release to render
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${EVENT_TAG:-${INPUT_TAG:-}}"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          fi
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::the release tag is not vX.Y.Z; refusing to render it"
+            exit 1
+          fi
+          state="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft \
+            --jq 'if (.isPrerelease or .isDraft) then "true" else "false" end')"
+          if [ "$state" = true ]; then
+            echo "::error::$tag is a pre-release or a draft; the site renders published releases only"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the released commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # On only while all three hold: the repository is public (Pages from a
+      # private repository is public on every plan but Enterprise), and the
+      # switch is on both at the released commit and at the head of
+      # main, so a switch turned off there is not undone by a
+      # later push or dispatch that renders an older tag. A missing or
+      # malformed file reads as off.
+      - name: Read the project-site switch
+        id: switch
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          on=true
+          if [ "${REPO_PRIVATE:-}" != false ]; then
+            echo "::notice::this repository is not public, so this release publishes nothing"
+            on=false
+          fi
+          if ! jq -e '.hosting.publish == true' .abcd/site.json >/dev/null 2>&1; then
+            echo "::notice::the project site is switched off in .abcd/site.json at the released commit, so this release publishes nothing"
+            on=false
+          fi
+          if ! git show "origin/main:.abcd/site.json" 2>/dev/null | jq -e '.hosting.publish == true' >/dev/null 2>&1; then
+            echo "::notice::the project site is switched off in .abcd/site.json on main, so this release publishes nothing"
+            on=false
+          fi
+          echo "on=$on" >> "$GITHUB_OUTPUT"
+
+      - name: Download abcd and its checksums
+        if: steps.switch.outputs.on == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download --repo intentdriven/abcd \
+            --pattern 'abcd-linux-amd64' --pattern 'checksums.txt' --dir "$RUNNER_TEMP"
+
+      - name: Verify abcd against its release manifest and its provenance
+        if: steps.switch.outputs.on == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          grep ' abcd-linux-amd64$' checksums.txt | sha256sum -c -
+          gh attestation verify abcd-linux-amd64 --repo intentdriven/abcd \
+            --signer-workflow intentdriven/abcd/.github/workflows/release.yml
+          install -m 0755 abcd-linux-amd64 "${RUNNER_TEMP}/abcd"
+
+      - name: Render and check the site
+        if: steps.switch.outputs.on == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/abcd" site build --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)" --base-path /widgets/
+          "${RUNNER_TEMP}/abcd" lint site --out site --base-path /widgets/
+
+      - name: Pack the rendered site
+        if: steps.switch.outputs.on == 'true'
+        run: tar -czf site.tar.gz -C site .
+
+      - name: Hand the rendered site to the deploy job
+        if: steps.switch.outputs.on == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: site-${{ steps.release.outputs.tag }}
+          path: site.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: render
+    if: needs.render.outputs.publish == 'true' && toJSON(github.event.repository.private) == 'false'
+    # The visibility is compared as JSON: a loose `== false` reads a missing
+    # field as false, which would read as public.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: github-pages
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Collect the rendered site
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: site-${{ needs.render.outputs.tag }}
+          path: ${{ runner.temp }}/site-artifact
+
+      # The archive is audited before a byte of it is unpacked: only relative
+      # paths, no parent traversal, only regular files and directories.
+      - name: Audit and unpack the rendered site
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/site-artifact/site.tar.gz"
+          while IFS= read -r member; do
+            [ -n "$member" ] || continue
+            case "$member" in
+              /*|..|../*|*/../*|*/..) echo "::error::refusing site.tar.gz: unsafe member '$member'"; exit 1 ;;
+            esac
+          done <<< "$(tar -tzf "$archive")"
+          while IFS= read -r t; do
+            case "$t" in
+              -|d|'') ;;
+              *) echo "::error::refusing site.tar.gz: non-regular member (type '$t')"; exit 1 ;;
+            esac
+          done <<< "$(tar -tvzf "$archive" | awk '{print substr($1,1,1)}' | sort -u)"
+          staging="${RUNNER_TEMP}/site-unpacked"
+          rm -rf "$staging" site
+          mkdir -p "$staging" site
+          tar -xzf "$archive" -C "$staging"
+          cp -R "$staging/." site/
+          test -n "$(ls -A site)"
+
+      - name: Hand the rendered site to GitHub Pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

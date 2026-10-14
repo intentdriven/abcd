@@ -304,7 +304,7 @@ func TestThePagesWorkflowHoldsNoSecretAndInterpolatesNothingIntoAShell(t *testin
 	if strings.Contains(s, "for the host configuration") {
 		t.Error("the Pages deploy job checks out the repository, which it reads nothing from")
 	}
-	if !regexp.MustCompile(`(?m)^  deploy:\n    needs: render\n    if: needs.render.outputs.publish == 'true'\n`).MatchString(s) {
+	if !regexp.MustCompile(`(?m)^  deploy:\n    needs: render\n    if: needs.render.outputs.publish == 'true' && `).MatchString(s) {
 		t.Error("the deploy job is not gated on the switch")
 	}
 	if got := strings.Count(s, "        if: steps.switch.outputs.on == 'true'\n"); got != 5 {

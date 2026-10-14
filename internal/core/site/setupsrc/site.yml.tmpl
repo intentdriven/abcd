@@ -13,9 +13,10 @@ name: site
 # short-lived token and runs nothing from the repository.
 <% end %><% if .Switched %>#
 # THE SWITCH: the site publishes only while `"publish": true` stands in the
-# hosting block of <% .SwitchFile %> at the released commit. Switched off, a
-# release builds and publishes nothing, and `abcd site setup` offers to
-# remove this file.
+# hosting block of <% .SwitchFile %> both at the released commit and at the
+# head of <% .DefaultBranch %>, and only while the repository is public.
+# Switched off, a release builds and publishes nothing, a later push or
+# dispatch included, and `abcd site setup` offers to remove this file.
 <% end %>#
 # Three entry points, one path:
 #
@@ -126,16 +127,32 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-<% if .Switched %>      - name: Read the project-site switch at the released commit
+<% if .Switched %>      # On only while all three hold: the repository is public (Pages from a
+      # private repository is public on every plan but Enterprise), and the
+      # switch is on both at the released commit and at the head of
+      # <% .DefaultBranch %>, so a switch turned off there is not undone by a
+      # later push or dispatch that renders an older tag. A missing or
+      # malformed file reads as off.
+      - name: Read the project-site switch
         id: switch
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
           set -euo pipefail
-          if jq -e '.hosting.publish == true' <% .SwitchFile %> >/dev/null 2>&1; then
-            echo "on=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::the project site is switched off in <% .SwitchFile %>, so this release publishes nothing"
-            echo "on=false" >> "$GITHUB_OUTPUT"
+          on=true
+          if [ "${REPO_PRIVATE:-}" != false ]; then
+            echo "::notice::this repository is not public, so this release publishes nothing"
+            on=false
           fi
+          if ! jq -e '.hosting.publish == true' <% .SwitchFile %> >/dev/null 2>&1; then
+            echo "::notice::the project site is switched off in <% .SwitchFile %> at the released commit, so this release publishes nothing"
+            on=false
+          fi
+          if ! git show "origin/<% .DefaultBranch %>:<% .SwitchFile %>" 2>/dev/null | jq -e '.hosting.publish == true' >/dev/null 2>&1; then
+            echo "::notice::the project site is switched off in <% .SwitchFile %> on <% .DefaultBranch %>, so this release publishes nothing"
+            on=false
+          fi
+          echo "on=$on" >> "$GITHUB_OUTPUT"
 
 <% end %>      - name: Download abcd and its checksums
 <% .IfOn %>        env:
@@ -177,7 +194,9 @@ jobs:
 
   deploy:
     needs: render
-<% if .Switched %>    if: needs.render.outputs.publish == 'true'
+<% if .Switched %>    if: needs.render.outputs.publish == 'true' && toJSON(github.event.repository.private) == 'false'
+    # The visibility is compared as JSON: a loose `== false` reads a missing
+    # field as false, which would read as public.
 <% end %>    runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: <% .DeployEnv %>
