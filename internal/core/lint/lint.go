@@ -1275,6 +1275,11 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 				return failClosed("receipt_gate cannot read the schemaVersion of the release-gate manifest " + releaseGateManifestPath + ": " + err.Error() + "; the release gate fails closed"), nil
 			}
 			closedDispositions = version >= closedDispositionsSchemaVersion
+			if !closedDispositions {
+				if msg := schemaDowngradeRefusal(root, version); msg != "" {
+					return failClosed(msg), nil
+				}
+			}
 		}
 	case os.IsNotExist(manifestErr):
 		manifestEra = false

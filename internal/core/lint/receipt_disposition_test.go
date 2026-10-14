@@ -226,10 +226,12 @@ func TestReleaseDispositionsReadTheRecordGuarded(t *testing.T) {
 	})
 }
 
-// A schemaVersion-1 manifest is an older content tree re-gated: its receipts
-// were written to the old rules, and they stay valid for their own commit.
+// A schemaVersion-1 manifest in a v0.14.1 tree is an older content tree
+// re-gated: its receipts were written to the old rules, and they stay valid
+// for their own commit.
 func TestReleaseDispositionsLeaveASchemaVersionOneTreeAlone(t *testing.T) {
 	f := newDispFixture(t, "1")
+	writeFile(t, f.root, "CHANGELOG.md", "# Changelog\n\n## [0.14.1] - 2026-10-14\n")
 	f.put(dispGateA, `[{"disposition":"accepted: knowingly shipped unfixed"},{"disposition":"deferred to iss-2609091956001547"}]`)
 	f.put(dispGateB, `[{"disposition":"Deferred","record":"iss-0123"}]`)
 	if fs := f.run(); countRule(fs, "receipt_gate") != 0 {
