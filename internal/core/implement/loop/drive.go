@@ -202,7 +202,9 @@ func absIn(repoRoot, p string) string {
 // recordFallback appends one fallback receipt to the run's state and a line to
 // its record, under the lock. A receipt that is not "" is the return path of a
 // review the reviewer route did not return: its await, which the host's agent
-// takes now, drops any answer the route was recorded as placing.
+// takes now, drops any answer the route was recorded as placing, in this same
+// write. A review whose placed return the verifier refused relies on it: the
+// return is taken back without the lock, and this is the drop.
 func recordFallback(repoRoot, runID, laneID, receipt string, fb runner.FallbackReceipt, o Options) error {
 	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		now := o.now()

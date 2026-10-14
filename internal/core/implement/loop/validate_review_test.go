@@ -958,7 +958,8 @@ func TestANewerStateIsReadAsANewerAbcdsWhateverItCarries(t *testing.T) {
 // it and the review fell back, takes the answer recorded on its await with
 // it. A later hand-back of the same bytes, the host's now, is the host's, and
 // never stands as the route's beside a fallback saying the route did not
-// return.
+// return. The refused case is held by the fallback's own drop
+// (recordFallback), the only one on that path; the erred case by takeBack's.
 func TestATakenBackAnswerLeavesNoAttributionBehind(t *testing.T) {
 	for name, fail := range map[string]error{
 		"refused": refuse("receipt", "", "", "the return is not one this review can record", "correct it"),
