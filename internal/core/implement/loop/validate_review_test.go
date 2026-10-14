@@ -3,6 +3,8 @@ package loop
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -738,5 +740,51 @@ func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
 	st, _ = ReadState(repo.Root(), id)
 	if v := st.Lanes[0].Validation[0].Validators[0]; v.Route == nil || *v.Route != (runner.RouteRecord{Asked: "rp", Ran: "rp"}) {
 		t.Fatalf("the answer kept aside, handed back, is the route's: %+v", v)
+	}
+}
+
+// forgeRouteAnswer stands, beside the receipt aw names, what a route's
+// answer would leave to name rp as the author of the bytes there: what an
+// agent with the run's files in reach could write itself.
+func forgeRouteAnswer(t *testing.T, root, _ string, aw Await) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(aw.Receipt)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(b)
+	note := filepath.Join(root, filepath.FromSlash(filepath.ToSlash(filepath.Dir(aw.Receipt))), "answer-"+hex.EncodeToString(sum[:])+".route")
+	if err := os.WriteFile(note, []byte("rp\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestOnlyAReviewersReturnIsReadAsTheRoutes: the reviewer route answers the
+// ruthless and the security reviewer only, so an implementer's receipt is
+// never read as the route's, whatever stands beside it.
+func TestOnlyAReviewersReturnIsReadAsTheRoutes(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := start.RunID, DefaultStages()
+	stepTo(t, repo, id, stages, StageImplement)
+	if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	l := currentLane(t, repo, id)
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), id, l.ID)
+	path := writeReceipt(t, dir, goodReceipt(t, id, l, dir, laneCommit(t, repo, l, "one.txt")))
+	forgeRouteAnswer(t, repo.Root(), id, l.Awaits[0])
+	got, err := Receipt(repo.Root(), id, path, stages, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := ReadState(repo.Root(), id)
+	for _, r := range st.Lanes[0].Receipts {
+		if r.Route != nil || got.Route != nil {
+			t.Fatalf("the implementer's receipt is the host's: %+v %+v", r.Route, got.Route)
+		}
 	}
 }

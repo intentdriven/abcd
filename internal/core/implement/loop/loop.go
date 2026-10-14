@@ -778,7 +778,8 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		lane := st.Lanes[i]
 		await := lane.Awaits[k]
 		route := route
-		if route == nil {
+		if _, reviewer := reviewerVerdicts[await.Role]; route == nil && reviewer {
+			// Only the ruthless and the security reviewer take the route.
 			noted = answeredBy(root, await.Receipt)
 			route = noted
 		}
