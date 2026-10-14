@@ -36,7 +36,7 @@ The relay replays the session's update log to every newcomer. It then:
 - forwards a guest's `suggest` message to the team members, stamped with the guest's display name.
 - broadcasts the roster of verified identities.
 
-Limits bound all of this: message size, log bytes, participants per session, sessions per relay and idle time. Origins are checked against an allowlist, with abcdesign.app and loopback as the defaults.
+Limits bound all of this: message size, log bytes, participants per session, sessions per relay and idle time. Rates bound it too: each connection's awareness messages (20 a second, in bursts of 40) and suggestions (1 a second, in bursts of 5), its sign-in attempts (5), and the sessions one address opens (3 in 10 minutes). A message over its rate is dropped with a `rate-limited` error, and the connection stays open. Origins are checked against an allowlist, with abcdesign.app and loopback as the defaults.
 
 **Sign-in.** The page builds the GitHub authorize URL from the relay's public client id, with PKCE and a state value it keeps in session storage. The redirect comes back to the page. The page posts the code and the PKCE verifier to `/auth/token`, and the relay adds the secret and does the exchange: this is the token-mediating backend in the IETF's browser-based-apps guidance. The token stays in the page's memory. Pasting a personal access token is the fallback, and the same `verify` admits it.
 

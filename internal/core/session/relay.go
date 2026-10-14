@@ -88,6 +88,18 @@ type Limits struct {
 	MaxVerifies int
 	// MaxCredits caps the Yjs client ids one session credits to members.
 	MaxCredits int
+	// AwarenessPerSecond and AwarenessBurst are one connection's token
+	// bucket for awareness frames (cursors and selections).
+	AwarenessPerSecond int
+	AwarenessBurst     int
+	// SuggestPerSecond and SuggestBurst are one connection's token bucket
+	// for a guest's suggestions.
+	SuggestPerSecond int
+	SuggestBurst     int
+	// MaxHostsPerAddr sessions may be opened from one address within
+	// HostWindow.
+	MaxHostsPerAddr int
+	HostWindow      time.Duration
 }
 
 // DefaultLimits are the relay's limits unless a caller sets others. Sixteen
@@ -105,6 +117,14 @@ func DefaultLimits() Limits {
 		MaxTrackedAddrs:  10000,
 		MaxVerifies:      5,
 		MaxCredits:       512,
+		// A cursor moving is a burst of awareness frames, settling at a few a
+		// second; a guest suggests by hand.
+		AwarenessPerSecond: 20,
+		AwarenessBurst:     40,
+		SuggestPerSecond:   1,
+		SuggestBurst:       5,
+		MaxHostsPerAddr:    3,
+		HostWindow:         10 * time.Minute,
 	}
 }
 
@@ -142,7 +162,8 @@ type Relay struct {
 	now      func() time.Time
 	rand     io.Reader
 	rooms    map[string]*room // by join code
-	failed   *failedJoins
+	failed   *addrWindow
+	hosted   *addrWindow
 	nextConn int
 }
 
@@ -163,11 +184,19 @@ func New(o Options) *Relay {
 	fill(&l.MaxTrackedAddrs, d.MaxTrackedAddrs)
 	fill(&l.MaxVerifies, d.MaxVerifies)
 	fill(&l.MaxCredits, d.MaxCredits)
+	fill(&l.AwarenessPerSecond, d.AwarenessPerSecond)
+	fill(&l.AwarenessBurst, d.AwarenessBurst)
+	fill(&l.SuggestPerSecond, d.SuggestPerSecond)
+	fill(&l.SuggestBurst, d.SuggestBurst)
+	fill(&l.MaxHostsPerAddr, d.MaxHostsPerAddr)
 	if l.IdleAfter <= 0 {
 		l.IdleAfter = d.IdleAfter
 	}
 	if l.FailedJoinWindow <= 0 {
 		l.FailedJoinWindow = d.FailedJoinWindow
+	}
+	if l.HostWindow <= 0 {
+		l.HostWindow = d.HostWindow
 	}
 	r := &Relay{limits: l, verifier: o.Verifier, now: o.Now, rand: o.Rand, rooms: map[string]*room{}}
 	if r.now == nil {
@@ -176,7 +205,8 @@ func New(o Options) *Relay {
 	if r.rand == nil {
 		r.rand = rand.Reader
 	}
-	r.failed = newFailedJoins(l.MaxFailedJoins, l.FailedJoinWindow, l.MaxTrackedAddrs)
+	r.failed = newAddrWindow(l.MaxFailedJoins, l.FailedJoinWindow, l.MaxTrackedAddrs)
+	r.hosted = newAddrWindow(l.MaxHostsPerAddr, l.HostWindow, l.MaxTrackedAddrs)
 	return r
 }
 
@@ -211,6 +241,9 @@ type Conn struct {
 	memberOf string // the repository key the verified login may push to
 	verifies int
 	left     bool
+	// awareness and suggests are the connection's token buckets.
+	awareness bucket
+	suggests  bucket
 }
 
 // Connect admits a new connection from addr (the client's address as the
@@ -341,6 +374,12 @@ func (c *Conn) fail(code, text string) {
 	c.sendJSON(map[string]string{"type": "error", "code": code, "message": text})
 }
 
+// rateLimited answers a message dropped for coming too fast. The connection
+// stays open: only the message is dropped.
+func (c *Conn) rateLimited() {
+	c.fail("rate-limited", "too many messages of this kind; this one was dropped")
+}
+
 // binary handles a tagged Yjs frame, under the lock.
 func (c *Conn) binary(data []byte) {
 	if c.left {
@@ -366,6 +405,10 @@ func (c *Conn) binary(data []byte) {
 		rm.logBytes += len(entry)
 		c.r.forward(rm, c, entry)
 	case data[0] == TagAwareness:
+		if !c.awareness.take(c.r.now(), c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) {
+			c.rateLimited()
+			return
+		}
 		c.r.forward(rm, c, append([]byte(nil), data...))
 	default:
 		c.fail("unknown-tag", "the relay knows update (0) and awareness (1) frames")
@@ -481,12 +524,16 @@ func (c *Conn) host(repo string) {
 	case len(r.rooms) >= r.limits.MaxSessions:
 		c.fail("too-many-sessions", "this relay holds as many sessions as it may")
 		return
+	case r.hosted.blocked(c.addr, r.now()):
+		c.rateLimited()
+		return
 	}
 	code, err := r.newCode()
 	if err != nil {
 		c.fail("busy", "no join code could be drawn")
 		return
 	}
+	r.hosted.note(c.addr, r.now())
 	rm := &room{repo: repo, repoKey: strings.ToLower(repo), code: code, hostLogin: c.login, credits: map[uint32]string{}}
 	r.rooms[code] = rm
 	c.room, c.role, c.name = rm, roleMember, c.login
@@ -553,6 +600,9 @@ func (c *Conn) suggest(body json.RawMessage) {
 		return
 	case c.role != roleGuest:
 		c.fail("not-a-guest", "a team member edits directly")
+		return
+	case !c.suggests.take(c.r.now(), c.r.limits.SuggestPerSecond, c.r.limits.SuggestBurst):
+		c.rateLimited()
 		return
 	}
 	trimmed := strings.TrimSpace(string(body))
@@ -696,6 +746,7 @@ func (r *Relay) Sweep() {
 		}
 	}
 	r.failed.sweep(now)
+	r.hosted.sweep(now)
 }
 
 // Stats reports what the relay holds.

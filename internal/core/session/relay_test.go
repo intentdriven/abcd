@@ -663,3 +663,142 @@ func TestAddressKeyCountsATailnetAddressAlone(t *testing.T) {
 		}
 	}
 }
+
+// hostFrom connects at addr, verifies as ada and asks to host acme/brief,
+// returning the peer.
+func (h *harness) hostFrom(t *testing.T, addr string) *fakePeer {
+	t.Helper()
+	p := &fakePeer{}
+	c := h.r.Connect(p, addr)
+	send(t, c, msg{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	send(t, c, msg{"type": "host", "repo": "acme/brief"})
+	return p
+}
+
+// rateLimited reports whether p's last error is rate-limited, with p still
+// open: an answer over the limit is dropped, not the connection.
+func rateLimited(t *testing.T, p *fakePeer) bool {
+	t.Helper()
+	e := p.last(t, "error")
+	return e != nil && e["code"] == "rate-limited" && !p.closed
+}
+
+func TestAwarenessIsRateLimitedPerConnection(t *testing.T) {
+	h := newHarness(t, nil)
+	l := DefaultLimits()
+	if l.AwarenessPerSecond != 20 || l.AwarenessBurst != 40 {
+		t.Fatalf("awareness default = %d/s burst %d, want 20/s burst 40", l.AwarenessPerSecond, l.AwarenessBurst)
+	}
+	hc, hp, code := h.host(t, "tok-ada")
+	g, gp := h.join(t, code, "Gus", "198.51.100.7")
+	hp.reset()
+	gp.reset()
+	aw := Frame{Binary: true, Data: []byte{TagAwareness, 1}}
+	for i := 0; i < l.AwarenessBurst; i++ {
+		g.Receive(context.Background(), aw)
+	}
+	if n := len(hp.binaries()); n != l.AwarenessBurst {
+		t.Fatalf("the burst forwarded %d frames, want %d", n, l.AwarenessBurst)
+	}
+	if e := gp.last(t, "error"); e != nil {
+		t.Fatalf("an error inside the burst: %v", e)
+	}
+	g.Receive(context.Background(), aw)
+	if n := len(hp.binaries()); n != l.AwarenessBurst {
+		t.Fatal("a frame past the burst was forwarded")
+	}
+	if !rateLimited(t, gp) {
+		t.Fatalf("past the burst: %v, closed=%v; want rate-limited and still open", gp.last(t, "error"), gp.closed)
+	}
+	// A second refills the rate, and no more.
+	h.clock.advance(time.Second)
+	hp.reset()
+	gp.reset()
+	for i := 0; i < l.AwarenessPerSecond+1; i++ {
+		g.Receive(context.Background(), aw)
+	}
+	if n := len(hp.binaries()); n != l.AwarenessPerSecond {
+		t.Fatalf("a second later %d frames were forwarded, want %d", n, l.AwarenessPerSecond)
+	}
+	if !rateLimited(t, gp) {
+		t.Fatal("the frame past the refill was not refused")
+	}
+	// Each connection has its own bucket.
+	gp.reset()
+	hc.Receive(context.Background(), aw)
+	if len(gp.binaries()) != 1 {
+		t.Fatal("the host's awareness was held up by the guest's")
+	}
+}
+
+func TestSuggestIsRateLimitedPerConnection(t *testing.T) {
+	h := newHarness(t, nil)
+	l := DefaultLimits()
+	if l.SuggestPerSecond != 1 || l.SuggestBurst != 5 {
+		t.Fatalf("suggest default = %d/s burst %d, want 1/s burst 5", l.SuggestPerSecond, l.SuggestBurst)
+	}
+	_, hp, code := h.host(t, "tok-ada")
+	g, gp := h.join(t, code, "Gus", "198.51.100.7")
+	count := func() int {
+		n := 0
+		for _, m := range hp.texts(t) {
+			if m["type"] == "suggest" {
+				n++
+			}
+		}
+		return n
+	}
+	for i := 0; i < l.SuggestBurst+1; i++ {
+		send(t, g, msg{"type": "suggest", "body": msg{"text": "x"}})
+	}
+	if n := count(); n != l.SuggestBurst {
+		t.Fatalf("%d suggestions delivered, want the burst of %d", n, l.SuggestBurst)
+	}
+	if !rateLimited(t, gp) {
+		t.Fatalf("past the burst: %v, closed=%v; want rate-limited and still open", gp.last(t, "error"), gp.closed)
+	}
+	h.clock.advance(time.Second)
+	send(t, g, msg{"type": "suggest", "body": msg{"text": "y"}})
+	if n := count(); n != l.SuggestBurst+1 {
+		t.Fatal("a second later the next suggestion was not delivered")
+	}
+	gp.reset()
+	send(t, g, msg{"type": "suggest", "body": msg{"text": "z"}})
+	if !rateLimited(t, gp) || count() != l.SuggestBurst+1 {
+		t.Fatal("the suggestion past the refill was not refused")
+	}
+}
+
+func TestHostingIsRateLimitedPerAddress(t *testing.T) {
+	h := newHarness(t, nil)
+	l := DefaultLimits()
+	if l.MaxHostsPerAddr != 3 || l.HostWindow != 10*time.Minute {
+		t.Fatalf("host default = %d per %v, want 3 per 10m", l.MaxHostsPerAddr, l.HostWindow)
+	}
+	// A refused host does not count towards the limit.
+	p := &fakePeer{}
+	c := h.r.Connect(p, "203.0.113.5")
+	send(t, c, msg{"type": "host", "repo": "acme/brief"})
+	if e := p.last(t, "error"); e == nil || e["code"] != "not-verified" {
+		t.Fatalf("unverified host: %v", e)
+	}
+	for i := 0; i < l.MaxHostsPerAddr; i++ {
+		if p := h.hostFrom(t, "203.0.113.5"); p.last(t, "hosted") == nil {
+			t.Fatalf("session %d was not opened: %v", i, p.texts(t))
+		}
+	}
+	p = h.hostFrom(t, "203.0.113.5")
+	if p.last(t, "hosted") != nil || !rateLimited(t, p) {
+		t.Fatalf("a fourth session from one address: %v, closed=%v; want rate-limited and still open", p.texts(t), p.closed)
+	}
+	if h.r.Stats().Sessions != l.MaxHostsPerAddr {
+		t.Fatalf("sessions = %d, want %d", h.r.Stats().Sessions, l.MaxHostsPerAddr)
+	}
+	if p := h.hostFrom(t, "198.51.100.7"); p.last(t, "hosted") == nil {
+		t.Fatal("another address was held up by the limit")
+	}
+	h.clock.advance(l.HostWindow)
+	if p := h.hostFrom(t, "203.0.113.5"); p.last(t, "hosted") == nil {
+		t.Fatal("the limit outlived its window")
+	}
+}

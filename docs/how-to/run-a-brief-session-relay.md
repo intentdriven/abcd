@@ -108,3 +108,9 @@ Twenty wrong join codes from one address within ten minutes stop that address
 from joining until the ten minutes pass. On your own machine, behind Tailscale
 Serve, the address is each visitor's own tailnet address, so one teammate's
 mistyped codes never lock out the rest.
+
+The relay also bounds how fast anyone can send. One address opens at most three
+sessions in ten minutes. On one connection, cursor and selection updates are
+held to twenty a second and a guest's suggestions to one a second, each with a
+short burst allowed. A message over its limit is dropped with a `rate-limited`
+error, and the connection stays open.

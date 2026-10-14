@@ -107,9 +107,10 @@ func AddressKey(addr string) string {
 	return p.String()
 }
 
-// failedJoins counts wrong codes per address within a window, remembering at
-// most max addresses (the oldest are forgotten first).
-type failedJoins struct {
+// addrWindow counts events per address within a window (wrong codes, and
+// sessions opened), remembering at most max addresses (the oldest are
+// forgotten first).
+type addrWindow struct {
 	limit  int
 	window time.Duration
 	max    int
@@ -117,12 +118,12 @@ type failedJoins struct {
 	order  []string // insertion order, oldest first
 }
 
-func newFailedJoins(limit int, window time.Duration, max int) *failedJoins {
-	return &failedJoins{limit: limit, window: window, max: max, byAddr: map[string][]time.Time{}}
+func newAddrWindow(limit int, window time.Duration, max int) *addrWindow {
+	return &addrWindow{limit: limit, window: window, max: max, byAddr: map[string][]time.Time{}}
 }
 
-// recent is addr's wrong codes inside the window.
-func (f *failedJoins) recent(addr string, now time.Time) []time.Time {
+// recent is addr's events inside the window.
+func (f *addrWindow) recent(addr string, now time.Time) []time.Time {
 	var out []time.Time
 	for _, t := range f.byAddr[addr] {
 		if now.Sub(t) < f.window {
@@ -132,13 +133,13 @@ func (f *failedJoins) recent(addr string, now time.Time) []time.Time {
 	return out
 }
 
-// blocked reports whether addr has used up its wrong codes.
-func (f *failedJoins) blocked(addr string, now time.Time) bool {
+// blocked reports whether addr has used up its events.
+func (f *addrWindow) blocked(addr string, now time.Time) bool {
 	return len(f.recent(addr, now)) >= f.limit
 }
 
-// note counts one wrong code from addr and returns its count in the window.
-func (f *failedJoins) note(addr string, now time.Time) int {
+// note counts one event from addr and returns its count in the window.
+func (f *addrWindow) note(addr string, now time.Time) int {
 	list := append(f.recent(addr, now), now)
 	if _, seen := f.byAddr[addr]; !seen {
 		f.order = append(f.order, addr)
@@ -154,8 +155,8 @@ func (f *failedJoins) note(addr string, now time.Time) int {
 	return len(list)
 }
 
-// sweep forgets every address with no wrong code inside the window.
-func (f *failedJoins) sweep(now time.Time) {
+// sweep forgets every address with no event inside the window.
+func (f *addrWindow) sweep(now time.Time) {
 	kept := f.order[:0]
 	for _, a := range f.order {
 		if len(f.recent(a, now)) == 0 {
