@@ -71,7 +71,7 @@ The document has `gc` off, so each change can be credited. Credit comes from the
 
 Every request in a session goes to the team's relay, to GitHub, or to the static page's host. None reaches a server abcd runs.
 
-The hosting of abcdesign.app is recorded in the plan but not made in this change. Deploying the page to GitHub Pages under the abcdesign.app domain publishes, so it waits for the product thinker's go at the cut.
+The hosting of abcdesign.app is recorded in the plan but not made in this change. abcd's own GitHub Pages site is planned to become abcd's record (itd-2610142145236613 and adr-2610142147242544, planned on their own branch), and a repository has one Pages site, so the static abcdesign.app page is published from a repository of its own: that repository's workflow downloads the released abcd and runs `abcd session page`. Creating that repository is an outward act, done at the cut with the product thinker's go. <!-- record-lint: forward-looking -->
 
 ## Footprint
 
