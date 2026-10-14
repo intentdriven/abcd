@@ -123,10 +123,13 @@ func (p consistencyPlan) chunkList() []ConsistencyChunk {
 }
 
 // consistencyChunkReceipt is chunk i of n's receipt: derived from the scope,
-// the whole corpus's digest and the chunk's place, so a re-emit over an
-// unchanged corpus and limit reuses it.
-func consistencyChunkReceipt(scope, corpusDigest string, i, n int) string {
-	h := sha256.Sum256([]byte("consistency|" + scope + "|" + corpusDigest + "|chunk " + strconv.Itoa(i) + " of " + strconv.Itoa(n)))
+// the whole corpus's digest, the request limit and the chunk's place, so a
+// re-emit over an unchanged corpus and limit reuses it, and one at another
+// limit never overwrites a chunk set in flight, even when it plans as many
+// chunks.
+func consistencyChunkReceipt(scope, corpusDigest string, limit, i, n int) string {
+	h := sha256.Sum256([]byte("consistency|" + scope + "|" + corpusDigest + "|limit " + strconv.Itoa(limit) +
+		"|chunk " + strconv.Itoa(i) + " of " + strconv.Itoa(n)))
 	return "rcp-" + hex.EncodeToString(h[:])[:12]
 }
 
@@ -264,7 +267,7 @@ func planConsistencyChunks(c consistencyCorpus, emitRcp string, corpusBytes, lim
 			}
 		}
 		p.Chunks = append(p.Chunks, ch)
-		p.Receipts = append(p.Receipts, consistencyChunkReceipt(c.Scope, c.Digest, i+1, len(parts)))
+		p.Receipts = append(p.Receipts, consistencyChunkReceipt(c.Scope, c.Digest, limit, i+1, len(parts)))
 	}
 	return p, nil
 }

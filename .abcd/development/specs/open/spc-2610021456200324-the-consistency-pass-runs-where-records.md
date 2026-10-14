@@ -216,8 +216,8 @@ report name it as unreviewed, with its size.
 
 Each chunk is an ordinary request and corpus pair:
 
-- its receipt is derived from the scope, the whole corpus's digest and
-  `chunk i of n`;
+- its receipt is derived from the scope, the whole corpus's digest, the
+  request limit and `chunk i of n`;
 - its prompt names the chunk and the emit's receipt (the receipt of the
   unchunked corpus), so `prompt_hash` binds both;
 - its manifest lists only that chunk's documents, so the existing rubric rule
@@ -527,8 +527,12 @@ narrowest reading that meets the criteria. Each is open to review.
   is the emit's receipt. The unchunked corpus file is not written.
 - **Step 3, the ingest recomputes the plan** from the chunk request's
   `limit_bytes` line, which `prompt_hash` binds, not from the configuration.
-  A limit changed between emit and ingest therefore never breaks a chunk set.
-  The chunk receipt leaves the limit out, as the spec spells it.
+  A limit changed in the configuration between emit and ingest therefore never
+  breaks a chunk set. The chunk receipt binds the limit too (from review: it
+  first left it out, as the spec then spelled it, so a re-emit at another limit
+  that planned as many chunks overwrote the set in flight under the same
+  receipts). A re-emit at another limit now writes a separate chunk set beside
+  the first, and either set ingests.
 - **Step 3, extra refusals.** The ingest also refuses:
   - a payload and a chunk set handed in together;
   - two unchunked payloads;

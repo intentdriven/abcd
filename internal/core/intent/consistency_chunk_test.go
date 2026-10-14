@@ -721,3 +721,48 @@ func TestConsistencyOwnerMatchesTheChunkThatReports(t *testing.T) {
 		t.Fatalf("the plans covered groups %v; want 2 and at least one of 5 or more", seen)
 	}
 }
+
+// TestConsistencyChunkReceiptBindsTheLimit: two emits of one corpus under
+// different limits that plan the same number of chunks name different chunk
+// receipts, so the second never overwrites the first's request and corpus
+// files while the first set is in flight; the same limit again reuses them.
+func TestConsistencyChunkReceiptBindsTheLimit(t *testing.T) {
+	r, _ := chunkRepo(t, 7, 1000, nil)
+	root := r.Root()
+	a, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6010})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Chunks) != len(b.Chunks) {
+		t.Fatalf("the limits plan %d and %d chunks; the fixture needs one count", len(a.Chunks), len(b.Chunks))
+	}
+	for i := range a.Chunks {
+		if a.Chunks[i].ReceiptID == b.Chunks[i].ReceiptID {
+			t.Errorf("chunk %d of %d is %s under both limits; a re-emit at another limit overwrites the set in flight",
+				i+1, len(a.Chunks), a.Chunks[i].ReceiptID)
+		}
+	}
+	again, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: 6000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range a.Chunks {
+		if again.Chunks[i].ReceiptID != a.Chunks[i].ReceiptID {
+			t.Errorf("chunk %d's receipt moved on a re-emit at the same limit: %s, then %s", i+1, a.Chunks[i].ReceiptID, again.Chunks[i].ReceiptID)
+		}
+	}
+	// The first set still validates after the second emit: its files stand.
+	if _, err := ingestChunks(t, root, func() [][]byte {
+		var ps [][]byte
+		for _, ch := range a.Chunks {
+			ps = append(ps, chunkPayload(t, root, ch))
+		}
+		return ps
+	}(), &fakeFiler{}); err != nil {
+		t.Fatalf("the first limit's chunk set no longer ingests after a second emit: %v", err)
+	}
+}
