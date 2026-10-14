@@ -161,6 +161,9 @@ const KEY_SIGN_IN = "abcd.session.sign-in";
 const KEY_REJOIN = "abcd.session.rejoin";
 // A relay's rejoin token: 128 random bits, base64url without padding.
 const REJOIN_RE = /^[A-Za-z0-9_-]{22}$/;
+// A participant's awareness colour: the editor writes it into a style
+// attribute, so a remote one is used only when it is exactly this.
+const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/;
 const COLOURS = ["#2f6fdb", "#c2410c", "#15803d", "#9333ea", "#b91c1c", "#0e7490", "#a16207", "#be185d"];
 
 // ---------------------------------------------------------------------------
@@ -434,7 +437,7 @@ function receive(data) {
     const body = bytes.subarray(1);
     try {
       if (bytes[0] === TAG_UPDATE) Y.applyUpdate(doc, body, FROM_RELAY);
-      else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, body, FROM_RELAY);
+      else if (bytes[0] === TAG_AWARENESS) applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY);
     } catch {
       // A frame that does not decode is dropped; the relay forwards only
       // what a participant's page sent.
@@ -613,6 +616,81 @@ awareness.on("update", ({ added, updated, removed }, origin) => {
   if (!changed.includes(doc.clientID)) return;
   sendBinary(TAG_AWARENESS, encodeAwarenessUpdate(awareness, [doc.clientID]));
 });
+
+// A remote awareness update is decoded, cleaned and encoded again before it
+// is applied, so the editor never renders what another page chose for a
+// colour or a name (security review F7). The encoding is y-protocols': a
+// count, then per client its id, its clock and its state as JSON, numbers as
+// lib0 variable-length unsigned integers and the JSON as a length and UTF-8.
+function readVarUint(bytes, at) {
+  let num = 0;
+  let mult = 1;
+  for (;;) {
+    if (at.i >= bytes.length || mult > 2 ** 49) throw new Error("awareness");
+    const b = bytes[at.i++];
+    num += (b & 0x7f) * mult;
+    if (b < 0x80) return num;
+    mult *= 128;
+  }
+}
+function writeVarUint(out, num) {
+  while (num > 0x7f) {
+    out.push(0x80 | (num & 0x7f));
+    num = Math.floor(num / 128);
+  }
+  out.push(num);
+}
+function cleanAwarenessUpdate(bytes) {
+  const at = { i: 0 };
+  const out = [];
+  const count = readVarUint(bytes, at);
+  writeVarUint(out, count);
+  for (let n = 0; n < count; n++) {
+    const client = readVarUint(bytes, at);
+    const clock = readVarUint(bytes, at);
+    const len = readVarUint(bytes, at);
+    if (at.i + len > bytes.length) throw new Error("awareness");
+    const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(at.i, at.i + len));
+    at.i += len;
+    const clean = new TextEncoder().encode(JSON.stringify(cleanAwarenessState(client, JSON.parse(json))));
+    writeVarUint(out, client);
+    writeVarUint(out, clock);
+    writeVarUint(out, clean.length);
+    for (const b of clean) out.push(b);
+  }
+  return Uint8Array.from(out);
+}
+// cleanAwarenessState keeps what the editor reads, a user and a cursor: the
+// colours only when each is a six-digit hex colour (otherwise the palette's,
+// or the editor's own derived light colour), and the name cleaned.
+function cleanAwarenessState(client, state) {
+  if (state === null || typeof state !== "object" || Array.isArray(state)) return null;
+  const u = state.user !== null && typeof state.user === "object" ? state.user : {};
+  const user = { name: cleanName(u.name), color: HEX_COLOUR_RE.test(u.color) ? u.color : COLOURS[client % COLOURS.length] };
+  if (HEX_COLOUR_RE.test(u.colorLight)) user.colorLight = u.colorLight;
+  const c = state.cursor !== null && typeof state.cursor === "object" ? state.cursor : {};
+  const anchor = cleanPosition(c.anchor);
+  const head = cleanPosition(c.head);
+  return { user, cursor: anchor && head ? { anchor, head } : null };
+}
+// cleanPosition keeps a Yjs relative position's own fields, of their types.
+function cleanPosition(p) {
+  if (p === null || typeof p !== "object") return null;
+  const id = (v) => (v !== null && typeof v === "object" && Number.isSafeInteger(v.client) && v.client >= 0 &&
+    Number.isSafeInteger(v.clock) && v.clock >= 0 ? { client: v.client, clock: v.clock } : null);
+  const out = {};
+  if (p.item !== undefined) { out.item = id(p.item); if (!out.item) return null; }
+  if (p.type !== undefined) { out.type = id(p.type); if (!out.type) return null; }
+  if (p.tname !== undefined) { if (typeof p.tname !== "string") return null; out.tname = p.tname; }
+  if (p.assoc !== undefined) { if (!Number.isSafeInteger(p.assoc)) return null; out.assoc = p.assoc; }
+  return out;
+}
+// cleanName is a participant's name as the editor shows it: no control or
+// direction characters, at most 40 characters.
+function cleanName(name) {
+  const s = (typeof name === "string" ? name : "").replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, "").trim();
+  return [...s].slice(0, 40).join("") || "Guest";
+}
 window.addEventListener("pagehide", () => {
   removeAwarenessStates(awareness, [doc.clientID], "window unload");
 });

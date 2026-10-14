@@ -756,3 +756,36 @@ func TestCommitPathsAreConfinedToTheBrief(t *testing.T) {
 		t.Error("the page has no words for a refused path")
 	}
 }
+
+// The vendored editor writes each participant's awareness colour into a
+// style attribute and their name into the page, so a remote awareness
+// update is decoded and cleaned before it is applied (security review F7).
+func TestAwarenessIsCleanedBeforeItIsApplied(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, "const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/;") {
+		t.Fatal("session.js has no six-digit hex colour pattern")
+	}
+	// The one call that applies a remote awareness update applies a cleaned one.
+	if n := strings.Count(js, "applyAwarenessUpdate("); n != 1 {
+		t.Errorf("applyAwarenessUpdate is called %d times, want once", n)
+	}
+	if !strings.Contains(functionBody(t, js, "receive"), "applyAwarenessUpdate(awareness, cleanAwarenessUpdate(body), FROM_RELAY)") {
+		t.Error("receive applies a remote awareness update without cleaning it first")
+	}
+	clean := functionBody(t, js, "cleanAwarenessUpdate")
+	for _, want := range []string{"readVarUint(", "writeVarUint(", "JSON.parse(", "cleanAwarenessState(", "JSON.stringify("} {
+		if !strings.Contains(clean, want) {
+			t.Errorf("cleanAwarenessUpdate does not carry %s", want)
+		}
+	}
+	state := functionBody(t, js, "cleanAwarenessState")
+	for _, want := range []string{"HEX_COLOUR_RE.test(u.color)", "HEX_COLOUR_RE.test(u.colorLight)", "cleanName(u.name)"} {
+		if !strings.Contains(state, want) {
+			t.Errorf("cleanAwarenessState does not carry %s:\n%s", want, state)
+		}
+	}
+	name := functionBody(t, js, "cleanName")
+	if !strings.Contains(name, `\u0000-\u001f\u007f-\u009f`) || !strings.Contains(name, ".slice(0, 40)") {
+		t.Errorf("cleanName does not remove control characters and clamp to 40:\n%s", name)
+	}
+}
