@@ -249,8 +249,8 @@ an ancestor's. Other accounts' strays are a count and a CPU total, by type.
 
 The limits live in the caller's machine tier, `~/.abcd.noindex/load-limits`
 (`stray-minutes`, default 30; `extreme-load`, default four times the online core
-count), read through the guarded declaration read and never created; an
-unusable file is reported loudly and both defaults are used. On a CI runner
+count; `wait-load`, default twice it), read through the guarded declaration read
+and never created; an unusable file is reported loudly and every default is used. On a CI runner
 (`GITHUB_ACTIONS=true`, or a `CI` other than empty, `false` or `0`) nothing is
 read and the line says why; each CI job that starts the harness runs the check
 as a step first, so the reason reaches the job log. On another platform, or when
@@ -258,8 +258,13 @@ a read fails, the check says it could not check. Inside a live run (a run state
 with a joined session) a warning is also written as a load event, attributed
 to the first-role session, carrying the verdict's facts so it renders exactly
 as it was printed; the run's hand-written load samples share the name and carry
-no `triggers`. The check exits 0 on every status: it never refuses, waits or
-signals anything.
+no `triggers`. Without its wait flag the check exits 0 on every status: it never
+refuses, waits or signals anything. With its wait flag it is the one waiter
+concurrent sessions gate a preflight or a race run with: it blocks until the
+one-minute load is below the wait limit and no other `go test -race` run is
+live, one waiter at a time under a machine-wide hold, runs a command given after
+`--` and exits with its code, forwarding an interrupt to it, and gives up after
+its timeout at exit 1, naming what it was still waiting on.
 
 ## The implement loop
 
@@ -524,6 +529,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--accept-config-change` | bool |
 | `--discard` | string |
 | `--release` | string |
 | `--restart` | string |

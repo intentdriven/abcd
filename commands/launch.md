@@ -270,14 +270,18 @@ Then summarise the JSON for the user:
   {"exclude_path_fragments": [{"fragment": "testdata/vectors/", "reason": "published third-party test vectors"}]}
   ```
 
-  A fragment matches anywhere in the path, so an extension-shaped fragment
-  such as `.jar` excludes every file of that kind, and also any path that
-  carries `.jar` elsewhere (`lib.jar.d/notes.md`); `scan.excluded` names every
-  file it matched. An exclusion takes precedence over every skip entry, so it
-  is the way to leave out a file a repository-added skip extension or filename
-  matches. An entry with no reason, a blank fragment, a fragment of slashes
-  alone, or a fragment of punctuation alone (`.`) makes the scanner
-  unavailable, and the release refuses.
+  A fragment matches whole path segments, wherever they appear in the path:
+  `docs/notes.md` excludes that file and not `olddocs/notes.md`, and a
+  fragment ending in `/` names a directory, so `generated/` excludes every file
+  under a `generated` directory and nothing under `regenerated/`. A fragment
+  starting with `.` and holding no `/` is extension-shaped: `.jar` excludes
+  every file whose name ends `.jar`, and not `lib.jar.d/notes.md`.
+  `scan.excluded` names every file it matched. An exclusion takes precedence
+  over every skip entry, so it is the way to leave out a file a
+  repository-added skip extension or filename matches. An entry with no
+  reason, a blank fragment, a fragment of slashes alone, a fragment of
+  punctuation alone (`.`), or a single-character fragment (`e`) makes the
+  scanner unavailable, and the release refuses.
 - `smoke.ok` — whether the payload would install (a plugin only; for another
   kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
   the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,

@@ -2177,7 +2177,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -2324,17 +2324,37 @@ up on the outage, every call is refused at the stage outage, naming since when, 
 probes, what was done, what is left and whether the product thinker's notification is
 pending (notify).
 
+The run tripwire: the repository's git settings that can name a program (filter.*,
+core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.askPass,
+core.gitProxy, core.worktree, extensions.worktreeConfig, credential.*, a remote's url,
+pushurl, proxy, vcs, uploadpack and receivepack, url rewrites, protocol allow rules, diff
+and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf
+paths), every such setting each lane worktree reads and the hooks directory git runs
+there, the hooks directory and info/attributes are fingerprinted at the run's first
+check, and checked again at the start of every step, discard and restart, before the
+shared network probe and before a rate-limit checkpoint saves a lane aside. They run on
+the loop's git as on your own, so abcd never changes them; a change during the run is
+refused at the stage config, before the call reaches its git, naming each changed key or
+file (never a value; a key whose name can hold a URL is named url.<hidden-id>.insteadof),
+and a checkpoint keeps the lane as it is. The check is made when the call starts, not
+together with git: a change made while the call runs is seen by the next one. A run
+started before the tripwire records its fingerprint at its next check and moves.
+--accept-config-change, once you have looked at what changed, records the configuration
+as it stands, names what it accepted on stderr, in the result (accepted_config_change) and
+in the run record, and takes the step.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
 
 **Flags:**
 
 ```
-      --discard string   discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
-      --release string   land a held lane as it is (lane-<n>), once no lane has work left
-      --restart string   restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
-      --run string       the run to step (run-<16 digits>); the one run in progress when omitted
-      --yielded string   with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
+      --accept-config-change   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
+      --discard string         discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
+      --release string         land a held lane as it is (lane-<n>), once no lane has work left
+      --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
+      --run string             the run to step (run-<16 digits>); the one run in progress when omitted
+      --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
 ### `abcd inbox`
