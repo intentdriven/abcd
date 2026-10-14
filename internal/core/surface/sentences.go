@@ -231,11 +231,11 @@ var sentences = map[string]string{
 	"abcd session": "Run the relay a team's live brief session goes through, or write its blueprint or its page: " +
 		"Writes nothing bare; refuses an unknown sub-verb.",
 	"abcd session blueprint": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: " +
-		"Writes .abcd/relay/; refuses an edited file.",
+		"Writes .abcd/relay/; refuses an edited file or no GitHub origin.",
 	"abcd session page": "Write the brief session's static page and its editor bundle into a directory: " +
 		"Writes only the page's six files; refuses a directory holding anything else.",
 	"abcd session serve": "Run the brief session relay in the foreground, on loopback by default: " +
-		"Writes nothing; refuses a --listen that is not an IP address and port.",
+		"Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",

@@ -26,6 +26,15 @@ const (
 	sessionClientIDEnv = "ABCD_SESSION_GITHUB_CLIENT_ID"
 )
 
+// sessionReposEnv names the repositories the relay serves, besides --repo and
+// --owner: a comma list whose owner/name entries are repositories and whose
+// bare entries are owners. It is not a secret; the blueprint writes it.
+const sessionReposEnv = coresession.ReposEnv
+
+// sessionOriginRepo is the owner/name the checkout at cwd's origin names on
+// github.com. It is a package var so a test can answer for it.
+var sessionOriginRepo = ahoy.GitHubRepo
+
 // sessionReleaseOrigin is where the blueprint reads a release's checksums.
 const sessionReleaseOrigin = "https://github.com/intentdriven/abcd"
 
@@ -59,16 +68,72 @@ func newSessionCommand(asJSON *bool) *cobra.Command {
 
 // sessionStart is the one line, or JSON object, serve prints once it listens.
 type sessionStart struct {
-	URL      string `json:"url"`
-	Loopback bool   `json:"loopback"`
-	Proxy    bool   `json:"behind_proxy"`
-	SignIn   bool   `json:"sign_in"`
-	Hint     string `json:"hint"`
+	URL      string   `json:"url"`
+	Loopback bool     `json:"loopback"`
+	Proxy    bool     `json:"behind_proxy"`
+	SignIn   bool     `json:"sign_in"`
+	Repos    []string `json:"repos"`
+	Owners   []string `json:"owners"`
+	AnyRepo  bool     `json:"any_repository"`
+	Hint     string   `json:"hint"`
+}
+
+// sessionAllowlist gathers the repositories serve is told to serve: every
+// --repo, every --owner, and every entry of ABCD_SESSION_REPOS, refusing one
+// that is not owner/name or an owner.
+func sessionAllowlist(repos, owners []string, env string) ([]string, []string, error) {
+	var outRepos, outOwners []string
+	for _, r := range repos {
+		if !coresession.ValidRepo(r) {
+			return nil, nil, fmt.Errorf("--repo %s is not a repository: give owner/name", strconv.Quote(r))
+		}
+		outRepos = append(outRepos, r)
+	}
+	for _, o := range owners {
+		if !coresession.ValidOwner(o) {
+			return nil, nil, fmt.Errorf("--owner %s is not a GitHub user or organisation", strconv.Quote(o))
+		}
+		outOwners = append(outOwners, o)
+	}
+	if strings.TrimSpace(env) == "" {
+		return outRepos, outOwners, nil
+	}
+	for _, e := range strings.Split(env, ",") {
+		e = strings.TrimSpace(e)
+		switch {
+		case strings.Contains(e, "/") && coresession.ValidRepo(e):
+			outRepos = append(outRepos, e)
+		case !strings.Contains(e, "/") && coresession.ValidOwner(e):
+			outOwners = append(outOwners, e)
+		default:
+			return nil, nil, fmt.Errorf("%s holds %s, which is neither owner/name nor an owner", sessionReposEnv, strconv.Quote(e))
+		}
+	}
+	return outRepos, outOwners, nil
+}
+
+// sessionServed is what serve serves: the list it is given, or, with none,
+// the origin repository of the checkout at cwd on loopback (every repository
+// outside one), and a refusal beyond loopback.
+func sessionServed(loopback bool, repos, owners []string, env, cwd string) ([]string, []string, error) {
+	r, o, err := sessionAllowlist(repos, owners, env)
+	if err != nil || len(r) > 0 || len(o) > 0 {
+		return r, o, err
+	}
+	if !loopback {
+		return nil, nil, errors.New("listening beyond this computer, the relay serves only the repositories named with --repo, --owner or " + sessionReposEnv + "; name at least one")
+	}
+	if cwd != "" {
+		if origin, err := sessionOriginRepo(cwd); err == nil && coresession.ValidRepo(origin) {
+			return []string{origin}, nil, nil
+		}
+	}
+	return nil, nil, nil
 }
 
 func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	var listen, clientID string
-	var origins []string
+	var origins, repos, owners []string
 	var behindProxy bool
 	c := &cobra.Command{
 		Use: "serve",
@@ -79,9 +144,15 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"teammates reach it through Tailscale Serve, on the tailnet only; the start line\n" +
 			"prints the command. Never Funnel: a guest outside the tailnet joins through the\n" +
 			"team's relay instead.\n\n" +
+			"It serves sessions only for the repositories it is given: each --repo owner/name,\n" +
+			"every repository of each --owner, and each entry of " + sessionReposEnv + ", a\n" +
+			"comma list of either. Nobody signs in against, or hosts, any other. Listening\n" +
+			"beyond this computer it refuses to start without one; on loopback it serves this\n" +
+			"checkout's origin repository, or any repository outside a GitHub checkout.\n\n" +
 			"It serves the session WebSocket at /session, the sign-in exchange at /auth/token,\n" +
 			"the sign-in app's public client id at /config and a health check at /healthz. It\n" +
-			"admits a browser only from https://abcdesign.app, a loopback page or an --origin.\n" +
+			"admits a browser only from https://abcdesign.app or a loopback page, or, when\n" +
+			"--origin is given, from exactly the origins it names.\n" +
 			"The team's GitHub sign-in app secret is read from " + sessionSecretEnv + "\n" +
 			"and its client id from --client-id or " + sessionClientIDEnv + "; without\n" +
 			"them, sign-in is not offered and a team member pastes a personal access token.\n\n" +
@@ -90,6 +161,12 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd session serve: "
 			addr, err := session.ParseListen(listen)
+			if err != nil {
+				return &exitError{Code: 2, Msg: prefix + err.Error() + " (nothing started)"}
+			}
+			loopback := addr.Addr().IsLoopback()
+			cwd, _ := os.Getwd()
+			allowRepos, allowOwners, err := sessionServed(loopback, repos, owners, os.Getenv(sessionReposEnv), cwd)
 			if err != nil {
 				return &exitError{Code: 2, Msg: prefix + err.Error() + " (nothing started)"}
 			}
@@ -103,7 +180,9 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			srv, err := session.New(session.Config{
 				Origins:      origins,
 				BehindProxy:  behindProxy,
-				LoopbackOnly: addr.Addr().IsLoopback(),
+				LoopbackOnly: loopback,
+				Repos:        allowRepos,
+				Owners:       allowOwners,
 				ClientID:     clientID,
 				ClientSecret: secret,
 			})
@@ -117,12 +196,14 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: prefix + "cannot listen on " + addr.String() + ": " + err.Error() + " (nothing started)"}
 			}
 			bound := ln.Addr().String()
-			loopback := addr.Addr().IsLoopback()
 			start := sessionStart{
 				URL:      "http://" + bound,
 				Loopback: loopback,
 				Proxy:    behindProxy,
 				SignIn:   clientID != "" && os.Getenv(sessionSecretEnv) != "",
+				Repos:    append([]string{}, allowRepos...),
+				Owners:   append([]string{}, allowOwners...),
+				AnyRepo:  len(allowRepos) == 0 && len(allowOwners) == 0,
 			}
 			if loopback {
 				port := bound[strings.LastIndex(bound, ":")+1:]
@@ -138,6 +219,15 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "abcd session serve: relay listening at %s, on %s\n", termsafe.Sanitize(start.URL), where)
 				fmt.Fprintf(w, "  %s\n", start.Hint)
+				if start.AnyRepo {
+					fmt.Fprintln(w, "  serves sessions for every repository (loopback only; name one with --repo)")
+				} else {
+					names := append([]string{}, start.Repos...)
+					for _, o := range start.Owners {
+						names = append(names, "every repository of "+o)
+					}
+					fmt.Fprintf(w, "  serves sessions for %s\n", termsafe.Sanitize(strings.Join(names, ", ")))
+				}
 				if start.SignIn {
 					fmt.Fprintln(w, "  sign-in: the team's GitHub sign-in app is set up")
 				} else {
@@ -153,7 +243,9 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	}
 	c.Flags().StringVar(&listen, "listen", session.DefaultListen, "the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer")
 	c.Flags().BoolVar(&behindProxy, "behind-proxy", false, "trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy")
-	c.Flags().StringArrayVar(&origins, "origin", nil, "another page origin to admit, as scheme://host[:port] (repeatable); https://abcdesign.app and loopback are always admitted")
+	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port] (repeatable); given, it replaces the default of https://abcdesign.app and loopback pages")
+	c.Flags().StringArrayVar(&repos, "repo", nil, "a repository to serve sessions for, as owner/name (repeatable; also "+sessionReposEnv+")")
+	c.Flags().StringArrayVar(&owners, "owner", nil, "a GitHub user or organisation whose every repository to serve sessions for (repeatable)")
 	c.Flags().StringVar(&clientID, "client-id", "", "the team's GitHub sign-in app's public client id (default: "+sessionClientIDEnv+")")
 	return c
 }
@@ -167,7 +259,9 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			"which downloads the released abcd binary for linux/amd64 and checks it against\n" +
 			"the SHA-256 that release's checksums.txt publishes. The checksum is read from the\n" +
 			"release page when the files are written (the one network read this verb makes,\n" +
-			"named on stderr) and pinned in the Dockerfile.\n\n" +
+			"named on stderr) and pinned in the Dockerfile. The relay serves sessions for this\n" +
+			"checkout's origin repository on github.com, named in render.yaml as\n" +
+			sessionReposEnv + ", a plain value; it refuses a checkout without one.\n\n" +
 			"--release names the release to pin; it defaults to this abcd's own version when\n" +
 			"that is a release. A file left exactly as abcd wrote it is replaced; one that was\n" +
 			"edited, or that abcd did not write, is never overwritten, and nothing is written.\n\n" +
@@ -195,12 +289,16 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			if !ahoy.Managed(root) {
 				return &exitError{Code: 2, Msg: prefix + "this checkout is not one abcd manages; run `abcd ahoy install` first (nothing written)"}
 			}
+			served, err := sessionOriginRepo(root)
+			if err != nil || !coresession.ValidRepo(served) {
+				return &exitError{Code: 2, Msg: prefix + "the relay serves this checkout's repository, and its origin does not name one on github.com (nothing written)"}
+			}
 			fetch, err := newSessionReleaseFetcher()
 			if err != nil {
 				return fmt.Errorf("%s%w", prefix, err)
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "%sreading release %s's checksums.txt from %s\n", prefix, termsafe.Sanitize(release), sessionReleaseOrigin)
-			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch})
+			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch, Repos: []string{served}})
 			if err != nil {
 				var ref *coresession.BlueprintRefusal
 				if errors.As(err, &ref) || res.Digest == "" {
@@ -213,6 +311,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "abcd session blueprint: %s %s\n", f.State, f.Path)
 				}
 				fmt.Fprintf(w, "  pinned: abcd %s, %s sha256 %s\n", termsafe.Sanitize(res.Release), res.Asset, res.Digest)
+				fmt.Fprintf(w, "  serves: %s (%s in render.yaml)\n", termsafe.Sanitize(strings.Join(res.Repos, ", ")), sessionReposEnv)
 				fmt.Fprintf(w, "  from: %s\n", termsafe.Sanitize(res.Source))
 				fmt.Fprintln(w, "  next: commit both files; on Render choose New, then Blueprint, pick this repository and set the Blueprint path to .abcd/relay/render.yaml;")
 				fmt.Fprintf(w, "        then set %s and %s in the service's Environment\n", sessionClientIDEnv, sessionSecretEnv)

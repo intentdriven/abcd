@@ -84,6 +84,7 @@ func newFixture(t *testing.T, mod func(*Config)) *fixture {
 		GitHubAPI:    ghSrv.URL,
 		GitHubWeb:    ghSrv.URL,
 		HTTPClient:   ghSrv.Client(),
+		Repos:        []string{"acme/brief"},
 	}
 	if mod != nil {
 		mod(&cfg)
@@ -525,12 +526,12 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 
 func TestOriginsAreParsedStrictly(t *testing.T) {
 	for _, o := range []string{"https://ok.example", "http://ok.example:8080"} {
-		if _, err := New(Config{Origins: []string{o}}); err != nil {
+		if _, err := New(Config{Origins: []string{o}, LoopbackOnly: true}); err != nil {
 			t.Errorf("%s refused: %v", o, err)
 		}
 	}
 	for _, o := range []string{"*", "ok.example", "https://ok.example/path", "ftp://ok.example", "https://*.example"} {
-		if _, err := New(Config{Origins: []string{o}}); err == nil {
+		if _, err := New(Config{Origins: []string{o}, LoopbackOnly: true}); err == nil {
 			t.Errorf("%s accepted", o)
 		}
 	}
@@ -667,5 +668,52 @@ func TestTheSendQueueGrowsOnEnteringASession(t *testing.T) {
 	}
 	if preRoomQueue > 64 {
 		t.Fatalf("preRoomQueue = %d, want it small", preRoomQueue)
+	}
+}
+
+// TestARelayBeyondLoopbackNeedsItsRepositories: a relay not bound to
+// loopback alone serves only the repositories it is given, and refuses to
+// start without any; a malformed entry is refused too.
+func TestARelayBeyondLoopbackNeedsItsRepositories(t *testing.T) {
+	if _, err := New(Config{}); err == nil {
+		t.Fatal("a relay beyond loopback started with no repositories")
+	}
+	if _, err := New(Config{LoopbackOnly: true}); err != nil {
+		t.Fatalf("a loopback relay with no list: %v", err)
+	}
+	for _, c := range []Config{
+		{Repos: []string{"acme/brief"}},
+		{Owners: []string{"acme"}},
+	} {
+		if _, err := New(c); err != nil {
+			t.Errorf("%+v refused: %v", c, err)
+		}
+	}
+	for _, c := range []Config{
+		{Repos: []string{"acme"}},
+		{Repos: []string{"acme/brief/x"}},
+		{Owners: []string{"acme/brief"}},
+		{Owners: []string{"-acme"}},
+		{Repos: []string{"acme/brief"}, Owners: []string{""}},
+	} {
+		if _, err := New(c); err == nil {
+			t.Errorf("%+v accepted", c)
+		}
+	}
+}
+
+// TestVerifyAgainstAnUnservedRepositoryIsRefused: over the wire, a token
+// presented for a repository the relay does not serve is refused before
+// GitHub is asked.
+func TestVerifyAgainstAnUnservedRepositoryIsRefused(t *testing.T) {
+	f := newFixture(t, nil)
+	c := f.dial(t, origin)
+	c.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "mal/own"})
+	if e, _ := c.until("error"); e["code"] != "repo-not-served" {
+		t.Fatalf("verify: %v, want repo-not-served", e)
+	}
+	c.sendJSON(map[string]string{"type": "host", "repo": "mal/own"})
+	if e, _ := c.until("error"); e["code"] != "repo-not-served" {
+		t.Fatalf("host: %v, want repo-not-served", e)
 	}
 }

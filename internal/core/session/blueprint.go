@@ -19,6 +19,10 @@ import (
 // abcd binary for linux/amd64 and checks it against the digest that release's
 // checksums.txt published, fetched and pinned when the files are written.
 
+// ReposEnv is the environment variable `abcd session serve` reads the
+// repositories it serves from, as a comma list; the blueprint sets it.
+const ReposEnv = "ABCD_SESSION_REPOS"
+
 // BlueprintDir is where the blueprint is written, relative to the checkout.
 const BlueprintDir = ".abcd/relay"
 
@@ -59,6 +63,9 @@ type BlueprintRequest struct {
 	Release string
 	// Fetch reads the release's checksums.txt.
 	Fetch AssetFetcher
+	// Repos are the repositories the relay serves sessions for, each
+	// owner/name: the checkout's own, as the verb reads it from its origin.
+	Repos []string
 }
 
 // The states a blueprint file can be left in.
@@ -80,6 +87,7 @@ type BlueprintResult struct {
 	Asset   string          `json:"asset"`
 	Digest  string          `json:"sha256"`
 	Source  string          `json:"checksums_url"`
+	Repos   []string        `json:"repos"`
 	Files   []BlueprintFile `json:"files"`
 }
 
@@ -123,8 +131,10 @@ func untouched(data []byte) bool {
 }
 
 // RenderBlueprint renders the two files for release, pinned to digest, the
-// SHA-256 of release's abcd-linux-amd64. It reads and writes nothing.
-func RenderBlueprint(release, digest string) map[string][]byte {
+// SHA-256 of release's abcd-linux-amd64, serving repos (each owner/name, so
+// nothing in them needs escaping inside the quoted list). It reads and
+// writes nothing.
+func RenderBlueprint(release, digest string, repos []string) map[string][]byte {
 	docker := `# The team's own relay for abcd's live brief sessions. It downloads the
 # released abcd binary for linux/amd64, checks it against the checksum that
 # release published (pinned below when this file was written), and runs the
@@ -163,6 +173,13 @@ services:
         sync: false
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
         sync: false
+      # The repositories this relay serves sessions for, read from the
+      # checkout's origin when this file was written: a comma list of
+      # owner/name, or of owners for all of an owner's repositories. It is
+      # not a secret. Listening beyond loopback, the relay refuses to start
+      # without it.
+      - key: ` + ReposEnv + `
+        value: "` + strings.Join(repos, ",") + `"
 `
 	return map[string][]byte{
 		"Dockerfile":  stamp(release, []byte(docker)),
@@ -178,9 +195,17 @@ const maxBlueprintRead = 1 << 20
 // tag is not one, when the release publishes no checksum for the linux/amd64
 // binary, and when either file exists in a form abcd did not write.
 func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
-	res := BlueprintResult{Release: req.Release, Asset: relayAsset}
+	res := BlueprintResult{Release: req.Release, Asset: relayAsset, Repos: req.Repos}
 	if !ValidReleaseTag(req.Release) {
 		return res, fmt.Errorf("%q is not a release tag (vMAJOR.MINOR.PATCH)", req.Release)
+	}
+	if len(req.Repos) == 0 {
+		return res, errors.New("the relay must serve at least one repository")
+	}
+	for _, r := range req.Repos {
+		if !ValidRepo(r) {
+			return res, fmt.Errorf("%q is not an owner/name repository", r)
+		}
 	}
 	if req.Fetch == nil {
 		return res, errors.New("no way to read the release's checksums")
@@ -202,7 +227,7 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 		return res, fmt.Errorf("%s's checksums.txt names no %s", req.Release, relayAsset)
 	}
 	res.Digest = digest
-	files := RenderBlueprint(req.Release, digest)
+	files := RenderBlueprint(req.Release, digest, req.Repos)
 
 	if !fsutil.IsRealDir(req.Root) {
 		return res, fmt.Errorf("%s is not a directory", req.Root)

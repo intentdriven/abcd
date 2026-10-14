@@ -1359,3 +1359,67 @@ func TestForgedRejoinTokensDoNotPauseJoining(t *testing.T) {
 		t.Fatalf("joining after forged rejoin tokens: %v", p.texts(t))
 	}
 }
+
+// TestOnlyServedRepositoriesAreVerifiedOrHosted: a relay serving a list of
+// repositories refuses to verify against, or host, any other, before asking
+// GitHub anything; an owner on the list serves every repository it holds.
+func TestOnlyServedRepositoriesAreVerifiedOrHosted(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	ver := &fakeVerifier{
+		logins: map[string]string{"tok-ada": "ada", "tok-mal": "mal"},
+		push: map[string]map[string]bool{
+			"ada": {"acme/brief": true, "team/notes": true},
+			"mal": {"mal/own": true},
+		},
+	}
+	r := New(Options{Verifier: ver, Now: clock.Now, Repos: []string{"Acme/Brief"}, Owners: []string{"TEAM"}})
+	if r.Serves("mal/own") || !r.Serves("acme/brief") || !r.Serves("team/notes") || r.Serves("acme/other") {
+		t.Fatal("Serves does not follow the lists")
+	}
+
+	mp := &fakePeer{}
+	mal, _ := r.Connect(mp, "203.0.113.5")
+	send(t, mal, msg{"type": "verify", "token": "tok-mal", "repo": "mal/own"})
+	if e := mp.last(t, "error"); e == nil || e["code"] != "repo-not-served" {
+		t.Fatalf("verify against an unserved repository: %v, want repo-not-served", e)
+	}
+	if ver.calls != 0 {
+		t.Fatalf("GitHub was asked %d times about an unserved repository", ver.calls)
+	}
+	send(t, mal, msg{"type": "host", "repo": "mal/own"})
+	if e := mp.last(t, "error"); e == nil || e["code"] != "repo-not-served" {
+		t.Fatalf("host an unserved repository: %v, want repo-not-served", e)
+	}
+	if s := r.Stats(); s.Sessions != 0 {
+		t.Fatalf("sessions = %d, want none", s.Sessions)
+	}
+
+	for _, repo := range []string{"acme/brief", "Team/Notes"} {
+		p := &fakePeer{}
+		c, _ := r.Connect(p, "192.0.2.1")
+		send(t, c, msg{"type": "verify", "token": "tok-ada", "repo": repo})
+		send(t, c, msg{"type": "host", "repo": repo})
+		if p.last(t, "hosted") == nil {
+			t.Fatalf("hosting %s: %v", repo, p.texts(t))
+		}
+	}
+
+	// No list at all serves every repository.
+	open := New(Options{Verifier: ver, Now: clock.Now})
+	if !open.Serves("mal/own") {
+		t.Fatal("a relay with no list does not serve every repository")
+	}
+}
+
+func TestValidOwner(t *testing.T) {
+	for _, s := range []string{"acme", "a", "Acme-Co", "a1"} {
+		if !ValidOwner(s) {
+			t.Errorf("%q refused", s)
+		}
+	}
+	for _, s := range []string{"", "-acme", "acme/brief", "ac me", "a_b", strings.Repeat("a", 40)} {
+		if ValidOwner(s) {
+			t.Errorf("%q accepted", s)
+		}
+	}
+}

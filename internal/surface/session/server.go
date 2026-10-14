@@ -82,6 +82,12 @@ type Config struct {
 	// own machine, reached through Tailscale Serve. Then, and only for a
 	// loopback peer, the tailnet address Serve forwards is the client's.
 	LoopbackOnly bool
+	// Repos (owner/name) and Owners are the repositories the relay serves
+	// sessions for (core.Options). A relay that is not LoopbackOnly must be
+	// given at least one: otherwise anyone signed in to GitHub could hold
+	// its sessions with a repository of their own.
+	Repos  []string
+	Owners []string
 	// ClientID is the team's GitHub sign-in app's public id.
 	ClientID string
 	// ClientSecret is that app's secret, read from the environment by the
@@ -105,9 +111,28 @@ type Server struct {
 	client  *http.Client
 }
 
+// ErrNoRepositories is New's refusal of a relay beyond loopback that names
+// no repository to serve.
+var ErrNoRepositories = errors.New("a relay listening beyond this computer serves only the repositories it is given; name at least one")
+
 // New builds the handler, refusing an origin that is not an exact
-// scheme://host[:port] over http or https.
+// scheme://host[:port] over http or https, a repository that is not
+// owner/name, an owner that is not a GitHub name, and a relay beyond
+// loopback with neither.
 func New(cfg Config) (*Server, error) {
+	for _, r := range cfg.Repos {
+		if !core.ValidRepo(r) {
+			return nil, fmt.Errorf("%q is not a repository: give owner/name", r)
+		}
+	}
+	for _, o := range cfg.Owners {
+		if !core.ValidOwner(o) {
+			return nil, fmt.Errorf("%q is not a GitHub owner", o)
+		}
+	}
+	if !cfg.LoopbackOnly && len(cfg.Repos) == 0 && len(cfg.Owners) == 0 {
+		return nil, ErrNoRepositories
+	}
 	origins := map[string]bool{DefaultOrigin: true}
 	for _, o := range cfg.Origins {
 		n, ok := normalizeOrigin(o)
@@ -139,6 +164,8 @@ func New(cfg Config) (*Server, error) {
 		Verifier: GitHub{API: cfg.GitHubAPI, Client: &c},
 		Now:      cfg.Now,
 		Rand:     cfg.Rand,
+		Repos:    cfg.Repos,
+		Owners:   cfg.Owners,
 	})
 	return s, nil
 }

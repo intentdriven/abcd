@@ -200,5 +200,7 @@ Sub-verbs: none.
 | `--client-id` | string |
 | `--listen` | string |
 | `--origin` | stringArray |
+| `--owner` | stringArray |
+| `--repo` | stringArray |
 
 <!-- surface-appendix:end -->

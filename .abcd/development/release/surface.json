@@ -3317,7 +3317,7 @@
     {
       "path": "abcd session blueprint",
       "hidden": false,
-      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file.",
+      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file or no GitHub origin.",
       "flags": [
         {
           "name": "release",
@@ -3352,7 +3352,7 @@
     {
       "path": "abcd session serve",
       "hidden": false,
-      "sentence": "Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a --listen that is not an IP address and port.",
+      "sentence": "Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.",
       "flags": [
         {
           "name": "behind-proxy",
@@ -3377,6 +3377,20 @@
         },
         {
           "name": "origin",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "owner",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "repo",
           "shorthand": "",
           "type": "stringArray",
           "required": false,
