@@ -129,3 +129,28 @@ func TestFrontDoorKeepsAFailedLayOffMachineStderr(t *testing.T) {
 		}
 	}
 }
+
+// TestFrontDoorRespectsADeletedIgnoreFileSilently pins ac-3 at the front door:
+// once abcd has laid the file and the person has deleted it, the next command
+// neither lays it again nor says anything about it.
+func TestFrontDoorRespectsADeletedIgnoreFileSilently(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := abcdhome.Path(home)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, stderr, code := runFrontDoor("--version"); code != 0 {
+		t.Fatalf("first run exit %d\n%s", code, stderr)
+	}
+	if err := os.Remove(filepath.Join(dir, homeignore.IgnoreName)); err != nil {
+		t.Fatalf("the first run laid no file to delete: %v", err)
+	}
+	_, stderr, code := runFrontDoor("--version")
+	if code != 0 || stderr != "" {
+		t.Errorf("second run exit %d with stderr %q; want 0 and nothing said", code, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, homeignore.IgnoreName)); !os.IsNotExist(err) {
+		t.Errorf("the deleted ignore file was laid again: %v", err)
+	}
+}
