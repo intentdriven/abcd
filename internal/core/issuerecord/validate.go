@@ -70,10 +70,10 @@ func AcceptedValues(vals []string) string {
 // uniqueItems:true.
 var uniqueItemsFields = []string{"related_intents", "related_specs", "related_issues", "synthesis_clusters", "blocked_by", "duplicates", "refines"}
 
-// ValidateStrict validates a frontmatter map against the issue schema. It
+// validateStrict validates a frontmatter map against the issue schema. It
 // special-cases schema_version first (mirrors _validate_strict) and rejects
 // unknown keys (additionalProperties:false).
-func ValidateStrict(fm map[string]any) error {
+func validateStrict(fm map[string]any) error {
 	sv, ok := fm["schema_version"]
 	if !ok {
 		return fmt.Errorf("%w: missing required property 'schema_version'", ErrMissingRequiredField)
@@ -236,9 +236,9 @@ func ValidateStrict(fm map[string]any) error {
 	return nil
 }
 
-// ValidateInvariants enforces folder<->field invariants and filename<->id
+// validateInvariants enforces folder<->field invariants and filename<->id
 // match, mirroring _issue_lib._validate_invariants. Assumes ValidateStrict ran.
-func ValidateInvariants(fm map[string]any, status, path string) error {
+func validateInvariants(fm map[string]any, status, path string) error {
 	id, _ := fm["id"].(string)
 	if !IssIDRe.MatchString(id) {
 		return fmt.Errorf("%w: id %q does not match ^iss-[0-9]+$", ErrInvariantViolation, id)

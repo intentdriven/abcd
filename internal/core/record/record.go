@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // IDRe is the family gate: the only positional shapes the root command routes
@@ -149,16 +150,22 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if iss.ID != id {
 			continue
 		}
+		// capture.List returns the record's text as stored (its in-process
+		// callers compare it), so the description masks every record string
+		// it carries itself: both the text answer and `--json` print it, and
+		// encoding/json leaves a bidi override or a tag rune raw
+		// (iss-2610121653499543). PromotedInto below reads the raw issue.
+		shown := capture.ListResult{Issues: []capture.Issue{iss}}.Shown().Issues[0]
 		d := Description{
 			ID:     id,
 			Family: "issue",
-			Title:  firstLine(iss.Body, iss.Slug),
+			Title:  firstLine(shown.Body, shown.Slug),
 			Status: string(iss.Status),
-			Path:   iss.Path,
+			Path:   termsafe.Sanitize(iss.Path),
 			Links:  map[string]string{},
 		}
-		if len(iss.RelatedIntents) > 0 {
-			d.Links["related_intents"] = strings.Join(iss.RelatedIntents, ", ")
+		if len(shown.RelatedIntents) > 0 {
+			d.Links["related_intents"] = strings.Join(shown.RelatedIntents, ", ")
 		}
 		// Promoted is the two-sided join (itd-4 AC3), not the list: an issue may
 		// name an intent it was only related to.
@@ -166,7 +173,7 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if err != nil {
 			return Description{}, err
 		}
-		if rb := iss.ResolvedBy; rb != nil {
+		if rb := shown.ResolvedBy; rb != nil {
 			if rb.Intent != "" {
 				d.Links["resolved_by.intent"] = rb.Intent
 			}

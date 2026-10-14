@@ -37,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // StageRateLimit is the run record's stage for a rate-limit response, and
@@ -179,6 +180,10 @@ func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw
 		if r, ok := AsRefusal(err); ok {
 			reason = r.Reason
 		}
+		// The reason quotes paths and git's own text; the checkpoint shows it
+		// on this call's stream, so it is masked here as the state is
+		// (iss-2610121542240257).
+		reason = termsafe.Sanitize(reason)
 		cp.Kept = reason
 		lane.Awaits = slices.Clone(lane.Awaits)
 		lane.Awaits[k].Kept = reason

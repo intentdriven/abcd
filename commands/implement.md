@@ -360,7 +360,10 @@ then `validate` and `land`. An implementer's receipt is one strict JSON object:
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
 branch past its base, the definition of done's output exists with exit code 0,
 the report exists, and each fixed capture names one of the receipt's commits and
-an impact; any other field, a verdict included, refuses it.
+an impact; any other field, a verdict included, refuses it. The `model` carries
+no control, bidi or zero-width character, and a fixed capture's `note` and
+`grounds` none but a line break or a tab, or `receipt` refuses naming the field
+without quoting it.
 
 An issue-keyed run (`build <iss-N>`, the run `/abcd:drain` starts for each
 eligible issue) has one lane. Its brief is the issue's record read at the lane's
