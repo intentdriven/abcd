@@ -1307,9 +1307,12 @@ function branchName() {
   return "abcdesign/" + d.getUTCFullYear() + two(d.getUTCMonth() + 1) + two(d.getUTCDate()) + "-" + tail;
 }
 
-// trailerText makes a guest's display name safe for one trailer line.
+// trailerText makes a guest's display name safe for one trailer line, an
+// issue body and a pull request body: no line breaks or angle brackets, and
+// "@" written "(at)", so a name cannot mention anyone on GitHub. The page
+// itself shows the name as the guest gave it.
 function trailerText(s) {
-  const t = String(s || "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  const t = String(s || "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029<>]/g, " ").replace(/@/g, "(at)").replace(/\s+/g, " ").trim().slice(0, 60);
   return t || "Guest";
 }
 

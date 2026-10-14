@@ -701,3 +701,22 @@ func TestEveryApprovedGuestChangeGetsItsOwnPair(t *testing.T) {
 		t.Error("composeTrailers does not write one pair per approval")
 	}
 }
+
+func TestGuestNamesMentionNobody(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(functionBody(t, js, "trailerText"), `.replace(/@/g, "(at)")`) {
+		t.Error("trailerText leaves an @ in a guest's name")
+	}
+	// Every guest name in a trailer, an issue body or a pull request body
+	// comes through trailerText.
+	if !strings.Contains(functionBody(t, js, "makePassage"), "const guest = trailerText(a.guest);") {
+		t.Error("a passage's guest name does not go through trailerText")
+	}
+	pr := functionBody(t, js, "prBody")
+	if !strings.Contains(pr, "people.add(trailerText(r.name)") {
+		t.Error("prBody names a guest without trailerText")
+	}
+	if !strings.Contains(functionBody(t, js, "openPullRequest"), "const guest = trailerText(a.guest);") {
+		t.Error("the pull request's pairs name a guest without trailerText")
+	}
+}
