@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"strconv"
+
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -193,6 +195,11 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 	report.WouldRefuseOn = append(report.WouldRefuseOn, suite.Refusals...)
 	report.WouldRefuseOn = append(report.WouldRefuseOn, citationRefusals(req.Citations)...)
 	report.Warnings = suite.Warnings
+	scanWarnings := exclusionWarnings(scan)
+	report.Warnings = append(report.Warnings, scanWarnings...)
+	if policy.StrictWarnings {
+		report.WouldRefuseOn = append(report.WouldRefuseOn, strictReasons(scanWarnings)...)
+	}
 	report.WouldPublish = false
 	return report, nil
 }
@@ -321,6 +328,32 @@ func scanRefusals(scan scanner.ScanResult) []string {
 		reasons = append(reasons, reason)
 	}
 	return reasons
+}
+
+// exclusionWarnings is the scan's warn tier: every declared exclusion
+// fragment that matched no payload file. Such a fragment leaves nothing out,
+// so a typo'd one reads as working while the files it was meant for are
+// scanned, and one left behind by a rename stands ready to exclude whatever
+// next takes the name (iss-2610120929469571). Warn-tier like the suite's
+// warnings: surfaced on every path that reports the scan, and a refusal under
+// strict_warnings (strictReasons).
+func exclusionWarnings(scan scanner.ScanResult) []string {
+	var out []string
+	for _, frag := range scan.UnmatchedExclusions {
+		out = append(out, "secret+pii-scan: the exclusion fragment "+strconv.Quote(frag)+
+			" in .abcd/config/pii.json matched no payload file, so it leaves nothing out; correct it or remove it")
+	}
+	return out
+}
+
+// strictReasons is the refusal each warning becomes under strict_warnings,
+// spelled as the gate suite spells its own.
+func strictReasons(warnings []string) []string {
+	out := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		out = append(out, "strict "+w)
+	}
+	return out
 }
 
 // wouldRefuseOn collects everything a real ship WOULD block on: scan hard-fails,

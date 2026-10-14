@@ -197,6 +197,13 @@ worktree or transcript there sets off no indexing; abcd changes only the name
 of its own folder and never the computer's search settings. On Linux the
 ending changes nothing.
 
+abcd keeps this folder readable only by you. It makes the folder, and each
+folder it makes inside it, so that only your account can open them. If the
+folder already exists and other accounts can open it (made by hand with
+`mkdir`, or by an earlier abcd), the next abcd command closes it to your
+account alone, which closes everything inside it too. A `~/.abcd.noindex` that
+is a symlink, or that belongs to another account, is left as it is.
+
 If an earlier abcd left a `~/.abcd` folder in your home directory, every abcd
 command and hook stops before it writes anything and names the two commands
 that move you on. In an agent session no tool runs at all, because the safety
