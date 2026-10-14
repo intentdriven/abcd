@@ -324,7 +324,7 @@ A version already tagged at another commit is refused too. This refuses a point
 release on an older line, such as v0.14.2 after v0.15.0: cut the next version on
 `main` instead. That is the release policy, not only the gate's: the product
 thinker ruled on 2026-10-14 that before 1.0 only the newest release is offered
-(the decisions log line of that date), and
+(the decisions log line of that date, iss-2610141938299842), and
 `launch.ComputeRetention` already refuses an out-of-order ship. On the
 auto-release path `verify` runs before the tag exists, and a tag push or a
 re-run from an existing tag gates the tagged commit itself, so a release and its
