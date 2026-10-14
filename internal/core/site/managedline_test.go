@@ -12,8 +12,12 @@ import (
 	"testing"
 )
 
+// The words sit in a <small>, so a repository whose own site-src/site.css
+// predates the line's `.managed` rule (setup keeps a stylesheet the repository
+// already has) still shows it as a small line at the top of the page, not as a
+// paragraph of body text.
 func managedLine(href, words string) string {
-	return "<body>\n" + `<p class="managed"><a href="` + href + `">` + words + `</a></p>`
+	return "<body>\n" + `<p class="managed"><small><a href="` + href + `">` + words + `</a></small></p>`
 }
 
 func TestEveryPageOpensWithTheManagedRepositoryLine(t *testing.T) {
@@ -63,7 +67,19 @@ func TestTheLineLinksTheOriginWithoutAPackageManifest(t *testing.T) {
 // With no repository address at all the line still says what the site is.
 func TestTheLineStandsWithoutARepositoryAddress(t *testing.T) {
 	c := &composer{ui: UI{ManagedRecord: "The record."}}
-	if got := c.managedLine(); got != `<p class="managed">The record.</p>` {
+	if got := c.managedLine(); got != `<p class="managed"><small>The record.</small></p>` {
 		t.Fatalf("line = %q", got)
+	}
+}
+
+// The seed stylesheet's rule sizes the line itself, so the <small> inside it
+// takes the rule's size rather than shrinking the words a second time.
+func TestTheSeedStylesheetSizesTheLineOnce(t *testing.T) {
+	css, err := setupSources.ReadFile("setupsrc/site.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".managed small{font-size:inherit}") {
+		t.Fatal("the seed stylesheet does not size the managed line's <small> as the line")
 	}
 }

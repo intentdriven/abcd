@@ -300,13 +300,16 @@ func (c *composer) headWith(pageTitle, script string) string {
 // managedLine is the line every page opens with: the site is the record of an
 // abcd-managed repository, linking to that repository where the build knows its
 // address. The words are the allowlist's, so the line adds nothing the
-// provenance gate cannot account for.
+// provenance gate cannot account for. They sit in a <small>, whose default
+// rendering is a small line, so a repository whose own stylesheet predates
+// the `.managed` rule (setup keeps a stylesheet the repository already has)
+// still shows a small line at the top rather than a paragraph of body text.
 func (c *composer) managedLine() string {
 	words := escapeText(c.ui.ManagedRecord)
 	if c.repo.Repository != "" {
 		words = `<a href="` + escapeAttr(c.repo.Repository) + `">` + words + `</a>`
 	}
-	return `<p class="managed">` + words + `</p>`
+	return `<p class="managed"><small>` + words + `</small></p>`
 }
 
 // identity reads the canonical Identity block. A repository that records none
