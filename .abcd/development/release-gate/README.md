@@ -368,18 +368,26 @@ family + `gh` the binary provenance already uses).
 
 ## Procedure
 
-1. Land all work on the release commit; open the release the normal way (branch
-   → PR → merge). `ci.yml`'s required checks gate the merge; `verify` re-runs
-   the deterministic gates against the tagged commit before anything is
-   published.
-2. On the merged commit, run the two semantic gates above in the harness.
-3. Record each verdict as a receipt keyed to that commit's sha.
-4. Tag `vX.Y.Z` on the commit. `receipt_gate` is armed fail-closed in
-   `release.yml`'s **`verify` job, before the binaries are built or published**
-   (adr-52): the release is refused unless every semantic receipt is present and
-   PROMOTE, alongside the deterministic gates. The tag itself is never moved
-   (anti-tag-move); moving the gate to the safe side of the tag is what stops a
-   semantic refusal from wedging a version the way a gate in the publish path did
-   (iss-2608231226347380, iss-326). On the auto-release path the tag is made by
-   `release.yml`'s own `tag` job, which needs `verify`, so a refused gate —
-   semantic or deterministic — leaves no tag and the version stays free.
+1. **Roll the changelog.** On a release branch, `abcd launch ship` composes the
+   dated section from the records that shipped; commit it. That commit is the
+   content commit, R: the commit the reviewers read and every receipt names.
+2. **Review R.** Run the two semantic gates above against R in the harness.
+3. **Capture each deferred finding** as its own open issue record with
+   `abcd capture`, one record per finding, so its id exists before its receipt
+   entry names it.
+4. **Commit the receipts**, keyed to R's full sha at
+   `.abcd/work/reviews/<R>/<gate>.json`, each finding dispositioned `fixed`,
+   `invalid` or `deferred`, a deferred one with its `record`.
+5. **Commit the captures** after the receipts, so the merge tree holds them.
+6. **Run `abcd launch receipts`** on the release branch: the release job's
+   receipt gate, run locally. Merge only when it exits 0.
+7. **Open the pull request and enter the merge queue.** `ci.yml`'s required
+   checks gate the merge.
+8. **Auto-release tags after `verify` passes.** On the merge, `auto-release.yml`
+   reads the new dated heading and calls `release.yml`, whose `verify` job arms
+   `receipt_gate` fail-closed against R, derived from the receipts directory,
+   alongside the deterministic gates, **before the tag** (adr-52). Its `tag`
+   job needs `verify`, so a refused gate leaves no tag and the version stays
+   free; the tag is never moved (anti-tag-move), which is what stops a semantic
+   refusal from wedging a version the way a gate in the publish path did
+   (iss-2608231226347380, iss-326).
