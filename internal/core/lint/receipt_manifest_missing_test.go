@@ -85,11 +85,19 @@ func TestReleaseGateRefusesAMissingManifestAfterTheManifestEra(t *testing.T) {
 			t.Fatalf("a repository with no tag and no manifest must keep the old rules: %+v", fs)
 		}
 	})
-	t.Run("a release older than the first manifest keeps the pre-manifest rules", func(t *testing.T) {
-		// Re-gating v0.3.0 after v0.5.0 introduced the manifest: only the tags
-		// older than the release judged can show it was in the era.
-		root, cfg := release(t, []string{"0.2.0", "0.5.0"}, map[string]bool{"0.5.0": true}, "0.3.0")
-		if fs := runReceiptGate(t, root, cfg); countRule(fs, "receipt_gate") != 0 {
+	t.Run("a re-gate of a release older than the first manifest keeps the pre-manifest rules", func(t *testing.T) {
+		// Re-gating v0.3.0, at its own tagged commit, after v0.5.0 introduced
+		// the manifest: only the tags older than the release judged can show it
+		// was in the era.
+		x := newTagRepo(t)
+		x.commit("0.2.0", "")
+		x.tag("0.2.0")
+		x.commit("0.3.0", "")
+		x.tag("0.3.0")
+		x.commit("0.5.0", "2")
+		x.tag("0.5.0")
+		x.r.Git("checkout", "-q", "--detach", "v0.3.0")
+		if fs := x.run(); countRule(fs, "receipt_gate") != 0 {
 			t.Fatalf("a release whose older tags never carried the manifest keeps the old rules: %+v", fs)
 		}
 	})

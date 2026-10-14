@@ -1298,6 +1298,14 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		return failClosed("receipt_gate cannot read the release-gate manifest " + releaseGateManifestPath + ": " + manifestErr.Error()), nil
 	}
 
+	// The release's own version is held to the release tags before either era
+	// refusal reads it.
+	if cfg.release {
+		if msg := backdatedReleaseRefusal(repoRoot, root, manifestEra); msg != "" {
+			return failClosed(msg), nil
+		}
+	}
+
 	// The receipts directory comes out of the committed config, so it is held to
 	// the repository the way every other configured path is: lexically, and once
 	// symlinks in its ancestry are followed.

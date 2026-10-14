@@ -42,7 +42,13 @@ func (x *tagRepo) commit(v, manifest string) {
 		x.r.Write(releaseGateManifestPath, `{"schemaVersion":`+manifest+`}`+"\n")
 	}
 	for _, g := range tagGates {
-		x.r.Write(filepath.Join(reviewsSubdir, tagSha, g+".json"), manifestReceipt(tagSha, g, "", "", `[{"disposition":"accepted: x"}]`))
+		receipt := manifestReceipt(tagSha, g, "", "", `[{"disposition":"accepted: x"}]`)
+		if manifest != "" {
+			// Conforming manifest-era receipts, so only a refusal of the
+			// tree's release history can fire.
+			receipt = manifestReceipt(tagSha, g, releaseTierFull, hashManifest([]byte(`{"schemaVersion":`+manifest+`}`+"\n")), `[]`)
+		}
+		x.r.Write(filepath.Join(reviewsSubdir, tagSha, g+".json"), receipt)
 	}
 	x.r.Commit("release " + v)
 }
@@ -80,6 +86,83 @@ func TestReleaseGateTreatsATagThatIsNoCommitAsNoRelease(t *testing.T) {
 		x.commit("1.5.0", "")
 		if fs := x.run(); !findingWith(fs, reviewsSubdir, "receipt_gate", "in the tree of release v1.5.0, though release v0.14.1 carried it") {
 			t.Fatalf("the manifest-era refusal must name the real release that carried the manifest: %+v", fs)
+		}
+	})
+}
+
+// A cutter could top the CHANGELOG with an unused version older than the
+// newest release, push a matching new tag (creating a tag is open), and so
+// step around both era refusals, which key on the release version: a
+// schemaVersion-1 manifest or a deleted one would pass as an old release. In
+// the manifest era the release's version must be newer than every release
+// tag, except a re-gate of a release already tagged at the commit gated, whose
+// commit the newer releases descend from.
+func TestReleaseGateRefusesABackdatedRelease(t *testing.T) {
+	era := func(t *testing.T) *tagRepo {
+		x := newTagRepo(t)
+		x.commit("0.13.0", "2")
+		x.tag("0.13.0")
+		x.commit("0.14.1", "2")
+		x.tag("0.14.1")
+		return x
+	}
+	t.Run("a backdated release with a fresh tag is refused", func(t *testing.T) {
+		x := era(t)
+		x.commit("0.13.5", "1")
+		x.tag("0.13.5")
+		if fs := x.run(); !findingWith(fs, reviewsSubdir, "receipt_gate", "release v0.13.5 is not newer than release v0.14.1") {
+			t.Fatalf("a backdated release must be refused: %+v", fs)
+		}
+	})
+	t.Run("a backdated release before its tag is refused", func(t *testing.T) {
+		x := era(t)
+		x.commit("0.4.5", "")
+		if fs := x.run(); !findingWith(fs, reviewsSubdir, "receipt_gate", "release v0.4.5 is not newer than release v0.14.1") {
+			t.Fatalf("a backdated release that deleted the manifest must be refused: %+v", fs)
+		}
+	})
+	t.Run("a newer tag planted at the backdated commit does not help", func(t *testing.T) {
+		x := era(t)
+		x.commit("0.13.5", "1")
+		x.tag("0.13.5")
+		x.tag("99.0.0")
+		if fs := x.run(); !findingWith(fs, reviewsSubdir, "receipt_gate", "release v0.13.5 is not newer than release v0.14.1") {
+			t.Fatalf("a planted newer tag must not admit a backdated release: %+v", fs)
+		}
+	})
+	t.Run("a version already tagged at another commit is refused", func(t *testing.T) {
+		x := era(t)
+		x.commit("0.14.1", "1")
+		if fs := x.run(); !findingWith(fs, reviewsSubdir, "receipt_gate", "release v0.14.1 is already tagged at another commit") {
+			t.Fatalf("a release reusing a tagged version must be refused: %+v", fs)
+		}
+	})
+	t.Run("a fresh release passes", func(t *testing.T) {
+		x := era(t)
+		x.commit("0.15.0", "2")
+		if fs := x.run(); countRule(fs, "receipt_gate") != 0 {
+			t.Fatalf("a fresh v0.15.0 must pass: %+v", fs)
+		}
+		// verify on a tag push, and a re-run once the tag exists.
+		x.tag("0.15.0")
+		if fs := x.run(); countRule(fs, "receipt_gate") != 0 {
+			t.Fatalf("v0.15.0 gated at its own tag must pass: %+v", fs)
+		}
+	})
+	t.Run("a re-gate of an existing release at its own commit passes", func(t *testing.T) {
+		x := era(t)
+		x.r.Git("checkout", "-q", "--detach", "v0.13.0")
+		if fs := x.run(); countRule(fs, "receipt_gate") != 0 {
+			t.Fatalf("re-gating v0.13.0 at its tagged commit must pass: %+v", fs)
+		}
+	})
+	t.Run("a managed repository is untouched", func(t *testing.T) {
+		x := newTagRepo(t)
+		x.commit("1.4.0", "")
+		x.tag("1.4.0")
+		x.commit("1.3.9", "")
+		if fs := x.run(); countRule(fs, "receipt_gate") != 0 {
+			t.Fatalf("a repository that never had the manifest keeps its own versioning: %+v", fs)
 		}
 	})
 }

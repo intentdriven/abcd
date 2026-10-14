@@ -60,6 +60,81 @@ func missingManifestRefusal(repoRoot string, root *os.Root) string {
 	return ""
 }
 
+// backdatedReleaseRefusal is the release gate's verdict on the release's own
+// version against the repository's release tags. Both era refusals key on the
+// version the gated tree's CHANGELOG.md names, so a release that named an
+// unused version older than the newest release, and pushed a matching new tag
+// (creating a tag is open), would be judged as that old release: a manifest
+// set back below schemaVersion 2 or deleted would pass. So in the manifest era
+// — the tree carries the manifest, or a release tag's tree did — the release's
+// version is newer than every release tag, or the release is a re-gate: its
+// version is already tagged at the commit gated, and every newer release tag
+// descends from that commit. A version tagged at another commit is never
+// released again. "" admits; a repository whose releases never carried the
+// manifest keeps its own versioning; a tree outside git is left to the
+// missing-manifest refusal, which fails closed on it.
+func backdatedReleaseRefusal(repoRoot string, root *os.Root, manifestPresent bool) string {
+	const tail = ", so the release gate fails closed"
+	tags, err := releaseTags(repoRoot)
+	if err != nil {
+		return ""
+	}
+	inEra := manifestPresent
+	for _, tag := range tags {
+		if inEra {
+			break
+		}
+		held, err := commitCarriesManifest(repoRoot, tag.commit)
+		if err != nil {
+			return "receipt_gate cannot read the tree of release v" + tag.version.String() + " (" + bareCause(err) + ") to tell whether the release is in the manifest era" + tail
+		}
+		inEra = held
+	}
+	if !inEra {
+		return ""
+	}
+	v, why := releasedVersionInTree(root)
+	if why != "" {
+		return "" // the era refusals read the same version and fail closed on it
+	}
+	head, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return "receipt_gate cannot resolve the commit gated (" + bareCause(err) + ")" + tail
+	}
+	var own *releaseTag
+	var newer []releaseTag
+	for i, tag := range tags {
+		switch {
+		case launch.CoreGreater(tag.version, v):
+			newer = append(newer, tag)
+		case !launch.CoreGreater(v, tag.version):
+			own = &tags[i]
+		}
+	}
+	if own != nil && own.commit != head {
+		return "receipt_gate finds release v" + v.String() + " is already tagged at another commit (" + own.commit +
+			"); a released version is never released again from a different commit" + tail
+	}
+	if len(newer) == 0 {
+		return ""
+	}
+	if own == nil {
+		return "receipt_gate finds release v" + v.String() + " is not newer than release v" + newer[0].version.String() +
+			"; a release's version is newer than every release tag, so the manifest-era refusals cannot be stepped around with an older version" + tail
+	}
+	for _, tag := range newer {
+		_, notAncestor, err := gitutil.RunCappedExitOne(repoRoot, 4096, "merge-base", "--is-ancestor", head, tag.commit)
+		if err != nil {
+			return "receipt_gate cannot tell whether release v" + tag.version.String() + " descends from the commit gated (" + bareCause(err) + ")" + tail
+		}
+		if notAncestor {
+			return "receipt_gate finds release v" + v.String() + " is not newer than release v" + tag.version.String() +
+				", which does not descend from the commit gated; only a re-gate of an earlier release, at the commit its tag names, may carry an older version" + tail
+		}
+	}
+	return ""
+}
+
 // releaseTag is one release as the repository's tags record it: the version a
 // vX.Y.Z tag names and the commit it peels to.
 type releaseTag struct {
