@@ -296,3 +296,26 @@ func TestReleaseDispositionsReadTheCanonicalLedgerOnly(t *testing.T) {
 		t.Fatalf("a record in a shadow ledger must not satisfy the gate: %+v", fs)
 	}
 }
+
+// The receipts the release gate judges are read from the canonical reviews
+// directory, the one release.yml's --derive-content-sha and the local
+// uncommitted scan read: a committer-editable receipts_dir pointing elsewhere
+// is ignored, so receipts planted in a shadow directory satisfy nothing.
+func TestReleaseGateReadsTheCanonicalReceiptsOnly(t *testing.T) {
+	f := newDispFixture(t, "2")
+	shadow := filepath.Join(".abcd", "work", "shadow-reviews")
+	in := Config{Rules: map[string]RuleConfig{"receipt_gate": {ReceiptsDir: shadow}}}
+	f.cfg = ArmReceiptGate(in, dispSha, []string{dispGateA, dispGateB}).Rules["receipt_gate"]
+	if f.cfg.ReceiptsDir != reviewsSubdir {
+		t.Errorf("the release's arming must pin the receipts to %s, got %q", reviewsSubdir, f.cfg.ReceiptsDir)
+	}
+	// The canonical receipts defer to a record that does not exist; the
+	// shadow ones are clean.
+	f.put(dispGateA, `[{"disposition":"deferred","record":"iss-7"}]`)
+	for _, g := range []string{dispGateA, dispGateB} {
+		writeFile(t, f.root, filepath.Join(shadow, dispSha, g+".json"), manifestReceipt(dispSha, g, releaseTierFull, f.hash, `[]`))
+	}
+	if fs := f.run(); !refusal(fs, "failing[0]", "iss-7", "no issue record") {
+		t.Fatalf("receipts in a shadow directory must not stand in for the canonical ones: %+v", fs)
+	}
+}

@@ -390,6 +390,12 @@ func ArmReceiptGate(cfg Config, commit string, requiredGates []string) Config {
 	// config could point the gate at a shadow ledger of hand-made records that
 	// the ledger rules, the capture verbs and the release cut never read.
 	rc.IssuesDir = recordid.IssuesRelDir
+	// The receipts are read from the canonical reviews directory for the same
+	// reason: it is the one release.yml's --derive-content-sha derives the
+	// content commit from and the local receipts check scans for uncommitted
+	// changes, so a receipts_dir from the committer-editable config would let
+	// the gate judge receipts neither of them reads.
+	rc.ReceiptsDir = reviewsSubdir
 	rc.release = true
 	rules["receipt_gate"] = rc
 	cfg.Rules = rules
