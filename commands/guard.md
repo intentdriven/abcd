@@ -514,12 +514,7 @@ search prints — `kill $(pgrep -f make)`, `pgrep -f make | xargs kill`, `kill
 $(pidof make)` — is a **block** (`kill-by-search`), because it signals every
 matching process on the machine, as `pkill` does; a kill of a pid you name, one
 you recorded (`kill $(cat pidfile)`), or a search of your own group (`kill
-$(pgrep -g <pgid>)`) is not. Stopping whatever holds a port or a file is read
-the same way: `fuser -k` (`fuser-kill`) and a `kill` handed what `lsof` or
-`fuser` prints (`kill $(lsof -t -i :8080)`, `lsof -ti:8080 | xargs kill`;
-`kill-by-holder`) are a **block**, because they signal every process that
-holds it, another session's server included; looking (`lsof -i :8080`,
-`fuser 8080/tcp`) is not. The search is followed through a group (`{ pgrep
+$(pgrep -g <pgid>)`) is not. The search is followed through a group (`{ pgrep
 …; } | xargs kill`) and into one, to every command in it (`pgrep … | { sleep 1;
 xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
 …')`), and into a shell string that `xargs` runs or that reads the pipe or a
